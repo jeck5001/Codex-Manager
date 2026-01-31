@@ -22,6 +22,10 @@ docs/*
 # Build outputs
 /portable/
 
+# Docs/specs (keep repo clean)
+/docs/
+/specs/
+
 # Logs & local data
 *.log
 *.db

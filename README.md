@@ -2,6 +2,8 @@
 
 本地桌面端 + 服务进程的 Codex 账号池管理器，用于统一管理账号、用量与平台 Key，并提供本地网关与服务能力。
 
+[English](README.en.md)
+
 ## 项目简介
 - 桌面端（Tauri）负责账号管理、用量展示、授权登录与平台 Key 配置
 - 服务端（Rust）提供本地 RPC + Gateway，支持用量刷新、账号轮询与鉴权转发
@@ -14,6 +16,13 @@
 - 平台 Key：生成/禁用/删除
 - 本地服务：自动启动、可自定义端口
 - 网关能力：为本地 CLI/工具提供统一入口
+
+## 截图
+> GitHub 可直接预览
+
+![仪表盘](assets/images/dashboard.png)
+![账号管理](assets/images/accounts.png)
+![平台 Key](assets/images/platform-key.png)
 
 ## 技术栈
 - 前端：Vite + 原生 JS + 自定义 UI
@@ -51,6 +60,16 @@ pnpm run dev
 ```
 pnpm run build
 ```
+
+### Rust（service）单独构建
+本项目的 service 可单独编译（用于调试、替换或嵌入桌面端）。
+
+```
+cargo build -p gpttools-service --release
+```
+
+产物默认在：
+- `target/release/gpttools-service.exe`
 
 ### Tauri 打包
 ```
