@@ -17,8 +17,7 @@
 - 本地服务：自动启动、可自定义端口
 - 网关能力：为本地 CLI/工具提供统一入口
 
-## 截图
-> GitHub 可直接预览
+## 截图预览
 
 ![仪表盘](assets/images/dashboard.png)
 ![账号管理](assets/images/accounts.png)
