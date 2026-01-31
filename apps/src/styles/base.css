@@ -1,0 +1,29 @@
+:root {
+  --ink: #1f1f1f;
+  --muted: #8c8c8c;
+  --paper: #f5f7fb;
+  --paper-2: #f5f7fb;
+  --accent: #1677ff;
+  --accent-2: #0958d9;
+  --accent-3: #1f1f1f;
+  --danger: #ff4d4f;
+  --ok: #52c41a;
+  --card: #ffffff;
+  --border: #f0f0f0;
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  --sidebar: #001529;
+  --sidebar-muted: rgba(255, 255, 255, 0.65);
+  --sidebar-active: #1677ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  min-height: 100vh;
+}

@@ -1,0 +1,36 @@
+@media (max-width: 960px) {
+  .service-setup {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .service-meta {
+    width: 100%;
+  }
+
+  .usage-row {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-header {
+    display: none;
+  }
+
+  .usage-cell {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-meta {
+    text-align: left;
+  }
+}
+
+@media (max-width: 720px) {
+  .service-setup {
+    flex-wrap: wrap;
+  }
+
+  .service-setup input {
+    width: 100%;
+  }
+}

@@ -1,0 +1,9 @@
+[workspace]
+members = [
+  "crates/gpttools-core",
+  "crates/gpttools-service"
+]
+exclude = [
+  "apps/src-tauri"
+]
+resolver = "2"

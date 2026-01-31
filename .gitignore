@@ -1,0 +1,31 @@
+# Rust
+/target/
+**/target/
+**/*.rs.bk
+
+# Tauri
+/apps/src-tauri/target/
+/apps/src-tauri/gen/
+/apps/src-tauri/bin/*.exe
+/apps/src-tauri/bin/*.dll
+/apps/src-tauri/bin/*.pdb
+
+# Node/Vite
+/node_modules/
+/apps/node_modules/
+/apps/dist/
+/apps/.vite/
+/apps/.turbo/
+
+# Build outputs
+/portable/
+
+# Logs & local data
+*.log
+*.db
+*.sqlite
+codex resume*.txt
+
+# OS files
+.DS_Store
+Thumbs.db
