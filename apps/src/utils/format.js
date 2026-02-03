@@ -75,6 +75,31 @@ export function remainingPercent(value) {
   return Math.max(0, 100 - used);
 }
 
+export function computeUsageStats(accounts, usageList) {
+  const usageMap = new Map(usageList.map((u) => [u.accountId, u]));
+  let total = accounts.length;
+  let lowCount = 0;
+
+  accounts.forEach((acc) => {
+    const usage = usageMap.get(acc.id);
+    const primaryRemain = remainingPercent(usage ? usage.usedPercent : null);
+    const secondaryRemain = remainingPercent(
+      usage ? usage.secondaryUsedPercent : null,
+    );
+    if (
+      (primaryRemain != null && primaryRemain <= 20) ||
+      (secondaryRemain != null && secondaryRemain <= 20)
+    ) {
+      lowCount += 1;
+    }
+  });
+
+  return {
+    total,
+    lowCount,
+  };
+}
+
 export function parseCredits(raw) {
   if (!raw) return null;
   try {
