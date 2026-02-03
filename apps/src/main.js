@@ -377,6 +377,9 @@ function bindEvents() {
   dom.navDashboard.addEventListener("click", () => switchPage("dashboard"));
   dom.navAccounts.addEventListener("click", () => switchPage("accounts"));
   dom.navApiKeys.addEventListener("click", () => switchPage("apikeys"));
+  if (dom.viewAllAccounts) {
+    dom.viewAllAccounts.addEventListener("click", () => switchPage("accounts"));
+  }
   dom.addAccountBtn.addEventListener("click", openAccountModal);
   dom.createApiKeyBtn.addEventListener("click", openApiKeyModal);
   dom.closeAccountModal.addEventListener("click", closeAccountModal);
@@ -406,7 +409,41 @@ function bindEvents() {
     document.execCommand("copy");
   });
   dom.globalRefresh.addEventListener("click", refreshAll);
+  if (dom.refreshAll) {
+    dom.refreshAll.addEventListener("click", refreshAll);
+  }
   dom.serviceToggleBtn.addEventListener("click", handleServiceToggle);
+
+  if (dom.accountSearch) {
+    dom.accountSearch.addEventListener("input", (event) => {
+      state.accountSearch = event.target.value;
+      renderAccounts({
+        onUpdateSort: updateAccountSort,
+        onOpenUsage: handleOpenUsageModal,
+        onDelete: deleteAccount,
+      });
+    });
+  }
+
+  const updateFilterButtons = () => {
+    if (dom.filterAll) dom.filterAll.classList.toggle("active", state.accountFilter === "all");
+    if (dom.filterActive) dom.filterActive.classList.toggle("active", state.accountFilter === "active");
+    if (dom.filterLow) dom.filterLow.classList.toggle("active", state.accountFilter === "low");
+  };
+
+  const setFilter = (filter) => {
+    state.accountFilter = filter;
+    updateFilterButtons();
+    renderAccounts({
+      onUpdateSort: updateAccountSort,
+      onOpenUsage: handleOpenUsageModal,
+      onDelete: deleteAccount,
+    });
+  };
+
+  if (dom.filterAll) dom.filterAll.addEventListener("click", () => setFilter("all"));
+  if (dom.filterActive) dom.filterActive.addEventListener("click", () => setFilter("active"));
+  if (dom.filterLow) dom.filterLow.addEventListener("click", () => setFilter("low"));
 }
 
 function bootstrap() {

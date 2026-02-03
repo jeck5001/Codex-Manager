@@ -1,12 +1,49 @@
-import { state } from "../state";
-import { dom } from "../ui/dom";
-import { calcAvailability, formatTs } from "../utils/format";
-import { findUsage } from "./usage";
+import { state } from "../state.js";
+import { dom } from "../ui/dom.js";
+import { calcAvailability, formatTs, remainingPercent } from "../utils/format.js";
+import { findUsage } from "./usage.js";
 
 // 渲染账号列表
+export function filterAccounts(accounts, usageList, query, filter) {
+  const keyword = String(query || "").trim().toLowerCase();
+  const usageMap = new Map(usageList.map((item) => [item.accountId, item]));
+  return accounts.filter((account) => {
+    if (keyword) {
+      const label = String(account.label || "").toLowerCase();
+      const id = String(account.id || "").toLowerCase();
+      if (!label.includes(keyword) && !id.includes(keyword)) return false;
+    }
+    if (filter === "active" || filter === "low") {
+      const usage = usageMap.get(account.id);
+      const primaryRemain = remainingPercent(usage ? usage.usedPercent : null);
+      const secondaryRemain = remainingPercent(
+        usage ? usage.secondaryUsedPercent : null,
+      );
+      const status = calcAvailability(usage);
+      if (filter === "active" && status.level !== "ok") return false;
+      if (
+        filter === "low" &&
+        !(
+          (primaryRemain != null && primaryRemain <= 20) ||
+          (secondaryRemain != null && secondaryRemain <= 20)
+        )
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
 export function renderAccounts({ onUpdateSort, onOpenUsage, onDelete }) {
   dom.accountRows.innerHTML = "";
-  if (state.accountList.length === 0) {
+  const filtered = filterAccounts(
+    state.accountList,
+    state.usageList,
+    state.accountSearch,
+    state.accountFilter,
+  );
+  if (filtered.length === 0) {
     const empty = document.createElement("div");
     empty.className = "cell";
     empty.textContent = "暂无账号";
@@ -14,7 +51,7 @@ export function renderAccounts({ onUpdateSort, onOpenUsage, onDelete }) {
     return;
   }
 
-  state.accountList.forEach((account) => {
+  filtered.forEach((account) => {
     const usage = findUsage(account.id);
     const status = calcAvailability(usage);
 
@@ -23,7 +60,20 @@ export function renderAccounts({ onUpdateSort, onOpenUsage, onDelete }) {
     const workspaceLabel = account.workspaceName
       ? ` · ${account.workspaceName}`
       : "";
+    const primaryRemain = remainingPercent(usage ? usage.usedPercent : null);
+    const secondaryRemain = remainingPercent(
+      usage ? usage.secondaryUsedPercent : null,
+    );
     cellAccount.innerHTML = `<strong>${account.label}</strong><small>${account.id}${workspaceLabel}</small>`;
+    const mini = document.createElement("div");
+    mini.className = "mini-usage";
+    mini.appendChild(
+      renderMiniUsageLine("5小时", primaryRemain, false),
+    );
+    mini.appendChild(
+      renderMiniUsageLine("7天", secondaryRemain, true),
+    );
+    cellAccount.appendChild(mini);
 
     const cellGroup = document.createElement("div");
     cellGroup.className = "cell";
@@ -82,6 +132,23 @@ export function renderAccounts({ onUpdateSort, onOpenUsage, onDelete }) {
     dom.accountRows.appendChild(cellUpdated);
     dom.accountRows.appendChild(cellActions);
   });
+}
+
+function renderMiniUsageLine(label, remain, secondary) {
+  const line = document.createElement("div");
+  line.className = "progress-line";
+  if (secondary) line.classList.add("secondary");
+  const text = document.createElement("span");
+  text.textContent = `${label} ${remain == null ? "--" : `${remain}%`}`;
+  const track = document.createElement("div");
+  track.className = "track";
+  const fill = document.createElement("div");
+  fill.className = "fill";
+  fill.style.width = remain == null ? "0%" : `${remain}%`;
+  track.appendChild(fill);
+  line.appendChild(text);
+  line.appendChild(track);
+  return line;
 }
 
 // 打开账号登录弹窗

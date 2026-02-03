@@ -1,11 +1,11 @@
-import { dom } from "../ui/dom";
-import { state } from "../state";
+import { dom } from "../ui/dom.js";
+import { state } from "../state.js";
 import {
   formatLimitLabel,
   formatResetLabel,
   remainingPercent,
   parseCredits,
-} from "../utils/format";
+} from "../utils/format.js";
 
 // 查找指定账号的用量快照
 export function findUsage(accountId) {
