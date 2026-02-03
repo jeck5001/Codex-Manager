@@ -30,3 +30,16 @@ test("dashboard/accounts structure includes new hooks", () => {
     assert.ok(indexHtml.includes(`id=\"${id}\"`), `missing id ${id}`);
   }
 });
+
+const tableMustContain = [
+  'table class="data-table account-table"',
+  'table class="data-table api-table"',
+  'id="accountRows"',
+  'id="apiKeyRows"',
+];
+
+test("list pages use table markup", () => {
+  for (const snippet of tableMustContain) {
+    assert.ok(indexHtml.includes(snippet), `missing ${snippet}`);
+  }
+});

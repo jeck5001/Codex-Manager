@@ -35,9 +35,10 @@
 }
 
 .content {
-  width: min(1200px, 100%);
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
-  padding: 26px 28px 40px;
+  padding: 26px clamp(18px, 3vw, 48px) 40px;
   display: flex;
   flex-direction: column;
   gap: 28px;

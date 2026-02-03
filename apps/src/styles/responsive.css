@@ -20,6 +20,12 @@
   }
 }
 
+@media (max-width: 900px) {
+  .table-wrap {
+    overflow-x: auto;
+  }
+}
+
 @media (max-width: 960px) {
   .dashboard-duo {
     grid-template-columns: 1fr;

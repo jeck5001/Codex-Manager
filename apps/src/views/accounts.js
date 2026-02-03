@@ -44,19 +44,23 @@ export function renderAccounts({ onUpdateSort, onOpenUsage, onDelete }) {
     state.accountFilter,
   );
   if (filtered.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "cell";
-    empty.textContent = "暂无账号";
-    dom.accountRows.appendChild(empty);
+    const emptyRow = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyCell.colSpan = 7;
+    emptyCell.textContent = "暂无账号";
+    emptyRow.appendChild(emptyCell);
+    dom.accountRows.appendChild(emptyRow);
     return;
   }
 
   filtered.forEach((account) => {
+    const row = document.createElement("tr");
     const usage = findUsage(account.id);
     const status = calcAvailability(usage);
 
-    const cellAccount = document.createElement("div");
-    cellAccount.className = "cell";
+    const cellAccount = document.createElement("td");
+    const accountWrap = document.createElement("div");
+    accountWrap.className = "cell-stack";
     const workspaceLabel = account.workspaceName
       ? ` · ${account.workspaceName}`
       : "";
@@ -64,7 +68,7 @@ export function renderAccounts({ onUpdateSort, onOpenUsage, onDelete }) {
     const secondaryRemain = remainingPercent(
       usage ? usage.secondaryUsedPercent : null,
     );
-    cellAccount.innerHTML = `<strong>${account.label}</strong><small>${account.id}${workspaceLabel}</small>`;
+    accountWrap.innerHTML = `<strong>${account.label}</strong><small>${account.id}${workspaceLabel}</small>`;
     const mini = document.createElement("div");
     mini.className = "mini-usage";
     mini.appendChild(
@@ -73,18 +77,16 @@ export function renderAccounts({ onUpdateSort, onOpenUsage, onDelete }) {
     mini.appendChild(
       renderMiniUsageLine("7天", secondaryRemain, true),
     );
-    cellAccount.appendChild(mini);
+    accountWrap.appendChild(mini);
+    cellAccount.appendChild(accountWrap);
 
-    const cellGroup = document.createElement("div");
-    cellGroup.className = "cell";
+    const cellGroup = document.createElement("td");
     cellGroup.textContent = account.groupName || "-";
 
-    const cellTags = document.createElement("div");
-    cellTags.className = "cell";
+    const cellTags = document.createElement("td");
     cellTags.textContent = account.tags || "-";
 
-    const cellSort = document.createElement("div");
-    cellSort.className = "cell";
+    const cellSort = document.createElement("td");
     const sortInput = document.createElement("input");
     sortInput.className = "sort-input";
     sortInput.type = "number";
@@ -95,8 +97,7 @@ export function renderAccounts({ onUpdateSort, onOpenUsage, onDelete }) {
     });
     cellSort.appendChild(sortInput);
 
-    const cellStatus = document.createElement("div");
-    cellStatus.className = "cell";
+    const cellStatus = document.createElement("td");
     const statusTag = document.createElement("span");
     statusTag.className = "status-tag";
     statusTag.textContent = status.text;
@@ -106,31 +107,33 @@ export function renderAccounts({ onUpdateSort, onOpenUsage, onDelete }) {
     if (status.level === "unknown") statusTag.classList.add("status-unknown");
     cellStatus.appendChild(statusTag);
 
-    const cellUpdated = document.createElement("div");
-    cellUpdated.className = "cell";
+    const cellUpdated = document.createElement("td");
     cellUpdated.innerHTML = `<strong>${usage && usage.capturedAt ? formatTs(usage.capturedAt) : "未知"}</strong>`;
 
-    const cellActions = document.createElement("div");
-    cellActions.className = "cell";
+    const cellActions = document.createElement("td");
+    const actionsWrap = document.createElement("div");
+    actionsWrap.className = "cell-actions";
     const btn = document.createElement("button");
     btn.className = "secondary";
     btn.textContent = "用量查询";
     btn.addEventListener("click", () => onOpenUsage?.(account));
-    cellActions.appendChild(btn);
+    actionsWrap.appendChild(btn);
 
     const del = document.createElement("button");
     del.className = "danger";
     del.textContent = "删除";
     del.addEventListener("click", () => onDelete?.(account));
-    cellActions.appendChild(del);
+    actionsWrap.appendChild(del);
+    cellActions.appendChild(actionsWrap);
 
-    dom.accountRows.appendChild(cellAccount);
-    dom.accountRows.appendChild(cellGroup);
-    dom.accountRows.appendChild(cellTags);
-    dom.accountRows.appendChild(cellSort);
-    dom.accountRows.appendChild(cellStatus);
-    dom.accountRows.appendChild(cellUpdated);
-    dom.accountRows.appendChild(cellActions);
+    row.appendChild(cellAccount);
+    row.appendChild(cellGroup);
+    row.appendChild(cellTags);
+    row.appendChild(cellSort);
+    row.appendChild(cellStatus);
+    row.appendChild(cellUpdated);
+    row.appendChild(cellActions);
+    dom.accountRows.appendChild(row);
   });
 }
 

@@ -103,16 +103,22 @@
                     </div>
 
                     <div class="panel">
-                        <div class="table table-header account-table">
-                            <div>账号</div>
-                            <div>分组</div>
-                            <div>标签</div>
-                            <div>顺序</div>
-                            <div>可用状态</div>
-                            <div>最近刷新</div>
-                            <div>操作</div>
+                        <div class="table-wrap">
+                            <table class="data-table account-table">
+                                <thead>
+                                    <tr>
+                                        <th>账号</th>
+                                        <th>分组</th>
+                                        <th>标签</th>
+                                        <th>顺序</th>
+                                        <th>可用状态</th>
+                                        <th>最近刷新</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="accountRows"></tbody>
+                            </table>
                         </div>
-                        <div id="accountRows" class="table account-table"></div>
                     </div>
                 </section>
 
@@ -125,14 +131,20 @@
                             </div>
                             <button id="createApiKey" class="secondary">创建 Key</button>
                         </div>
-                        <div class="table table-header api-table">
-                            <div>Key ID</div>
-                            <div>名称</div>
-                            <div>状态</div>
-                            <div>最近使用</div>
-                            <div>操作</div>
+                        <div class="table-wrap">
+                            <table class="data-table api-table">
+                                <thead>
+                                    <tr>
+                                        <th>Key ID</th>
+                                        <th>名称</th>
+                                        <th>状态</th>
+                                        <th>最近使用</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="apiKeyRows"></tbody>
+                            </table>
                         </div>
-                        <div class="table api-table" id="apiKeyRows"></div>
                     </div>
                 </section>
             </main>

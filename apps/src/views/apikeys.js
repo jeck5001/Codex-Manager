@@ -5,34 +5,35 @@ import { dom } from "../ui/dom";
 export function renderApiKeys({ onDisable, onDelete }) {
   dom.apiKeyRows.innerHTML = "";
   if (state.apiKeyList.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "cell";
-    empty.textContent = "暂无平台 Key";
-    dom.apiKeyRows.appendChild(empty);
+    const emptyRow = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyCell.colSpan = 5;
+    emptyCell.textContent = "暂无平台 Key";
+    emptyRow.appendChild(emptyCell);
+    dom.apiKeyRows.appendChild(emptyRow);
     return;
   }
 
   state.apiKeyList.forEach((item) => {
-    const cellId = document.createElement("div");
-    cellId.className = "cell mono";
+    const row = document.createElement("tr");
+    const cellId = document.createElement("td");
+    cellId.className = "mono";
     cellId.textContent = item.id;
 
-    const cellName = document.createElement("div");
-    cellName.className = "cell";
+    const cellName = document.createElement("td");
     cellName.textContent = item.name || "-";
 
-    const cellStatus = document.createElement("div");
-    cellStatus.className = "cell";
+    const cellStatus = document.createElement("td");
     cellStatus.textContent = item.status || "unknown";
 
-    const cellUsed = document.createElement("div");
-    cellUsed.className = "cell";
+    const cellUsed = document.createElement("td");
     cellUsed.textContent = item.lastUsedAt
       ? new Date(item.lastUsedAt * 1000).toLocaleString()
       : "-";
 
-    const cellActions = document.createElement("div");
-    cellActions.className = "cell";
+    const cellActions = document.createElement("td");
+    const actionsWrap = document.createElement("div");
+    actionsWrap.className = "cell-actions";
     const btnDisable = document.createElement("button");
     btnDisable.className = "secondary";
     btnDisable.textContent = "禁用";
@@ -41,14 +42,16 @@ export function renderApiKeys({ onDisable, onDelete }) {
     btnDelete.className = "danger";
     btnDelete.textContent = "删除";
     btnDelete.addEventListener("click", () => onDelete?.(item));
-    cellActions.appendChild(btnDisable);
-    cellActions.appendChild(btnDelete);
+    actionsWrap.appendChild(btnDisable);
+    actionsWrap.appendChild(btnDelete);
+    cellActions.appendChild(actionsWrap);
 
-    dom.apiKeyRows.appendChild(cellId);
-    dom.apiKeyRows.appendChild(cellName);
-    dom.apiKeyRows.appendChild(cellStatus);
-    dom.apiKeyRows.appendChild(cellUsed);
-    dom.apiKeyRows.appendChild(cellActions);
+    row.appendChild(cellId);
+    row.appendChild(cellName);
+    row.appendChild(cellStatus);
+    row.appendChild(cellUsed);
+    row.appendChild(cellActions);
+    dom.apiKeyRows.appendChild(row);
   });
 }
 
