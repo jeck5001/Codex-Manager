@@ -2,6 +2,7 @@
 param(
   [ValidateSet("nsis", "msi")]
   [string]$Bundle = "nsis",
+  [switch]$NoBundle,
   [switch]$CleanDist,
   [switch]$Portable,
   [string]$PortableDir,
@@ -78,7 +79,11 @@ try {
 
   Push-Location $tauriDir
   try {
-    Run-Cargo "cargo tauri build --bundles $Bundle" { cargo tauri build --bundles $Bundle }
+    if ($NoBundle) {
+      Run-Cargo "cargo tauri build --no-bundle" { cargo tauri build --no-bundle }
+    } else {
+      Run-Cargo "cargo tauri build --bundles $Bundle" { cargo tauri build --bundles $Bundle }
+    }
   } finally {
     Pop-Location
   }
