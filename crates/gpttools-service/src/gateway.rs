@@ -1,5 +1,6 @@
 use gpttools_core::storage::{Account, Storage, Token, UsageSnapshotRecord};
 use reqwest::header::{HeaderName, HeaderValue};
+use reqwest::header::CONTENT_TYPE;
 use reqwest::blocking::Client;
 use reqwest::Method;
 use std::collections::HashMap;
@@ -7,8 +8,10 @@ use tiny_http::{Header, Request, Response, StatusCode};
 
 use crate::account_availability::{evaluate_snapshot, Availability, is_available};
 use crate::account_status::set_account_status;
+use crate::auth_tokens;
 use crate::storage_helpers::{hash_platform_key, open_storage};
 use crate::usage_refresh;
+use gpttools_core::auth::{DEFAULT_CLIENT_ID, DEFAULT_ISSUER};
 
 pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String> {
     // 处理代理请求（鉴权后转发到上游）
@@ -86,6 +89,16 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
         .ok()
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| "https://chatgpt.com/backend-api/codex".to_string());
+    let upstream_fallback_base = std::env::var("GPTTOOLS_UPSTREAM_FALLBACK_BASE_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| {
+            if upstream_base.contains("chatgpt.com/backend-api/codex") {
+                Some("https://api.openai.com/v1".to_string())
+            } else {
+                None
+            }
+        });
     let base = upstream_base.trim_end_matches('/');
     let path = request.url();
     let url = if base.contains("/backend-api/codex") && path.starts_with("/v1/") {
@@ -110,7 +123,7 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
     let upstream_cookie = std::env::var("GPTTOOLS_UPSTREAM_COOKIE").ok();
 
     let candidate_count = candidates.len();
-    for (idx, (account, token)) in candidates.into_iter().enumerate() {
+    for (idx, (account, mut token)) in candidates.into_iter().enumerate() {
         let mut builder = client.request(method.clone(), &url);
         let mut has_user_agent = false;
 
@@ -141,7 +154,7 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
             }
         }
 
-        let auth_token = token.access_token.as_str();
+        let auth_token = token.access_token.clone();
         if debug {
             eprintln!(
                 "gateway upstream: base={}, token_source=access_token",
@@ -172,6 +185,55 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
         };
 
         let mut status = upstream.status();
+        if should_try_openai_fallback(base, upstream.headers().get(CONTENT_TYPE)) {
+            if let Some(fallback_base) = upstream_fallback_base.as_deref() {
+                if debug {
+                    eprintln!("gateway upstream fallback: from={} to={}", upstream_base, fallback_base);
+                }
+                match try_openai_fallback(
+                    &client,
+                    &storage,
+                    &method,
+                    &request,
+                    &body,
+                    fallback_base,
+                    &account,
+                    &mut token,
+                    upstream_cookie.as_deref(),
+                    debug,
+                ) {
+                    Ok(Some(resp)) => {
+                        if resp.status().is_success() {
+                            return respond_with_upstream(request, resp);
+                        }
+                        upstream = resp;
+                        status = upstream.status();
+                    }
+                    Ok(None) => {
+                        let response = Response::from_string(
+                            "upstream blocked by Cloudflare; set GPTTOOLS_UPSTREAM_COOKIE or enable OpenAI API-key fallback",
+                        )
+                        .with_status_code(502);
+                        let _ = request.respond(response);
+                        return Ok(());
+                    }
+                    Err(err) => {
+                        let response =
+                            Response::from_string(format!("upstream fallback error: {err}"))
+                                .with_status_code(502);
+                        let _ = request.respond(response);
+                        return Ok(());
+                    }
+                }
+            } else {
+                let response = Response::from_string(
+                    "upstream returned HTML challenge; configure GPTTOOLS_UPSTREAM_COOKIE or GPTTOOLS_UPSTREAM_FALLBACK_BASE_URL",
+                )
+                .with_status_code(502);
+                let _ = request.respond(response);
+                return Ok(());
+            }
+        }
         if !status.is_success() {
             log::warn!(
                 "gateway upstream non-success: status={}, account_id={}",
@@ -248,6 +310,106 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
     }
 
     Err("no available account".to_string())
+}
+
+fn should_try_openai_fallback(base: &str, content_type: Option<&HeaderValue>) -> bool {
+    if !base.contains("chatgpt.com/backend-api/codex") {
+        return false;
+    }
+    let Some(content_type) = content_type else {
+        return false;
+    };
+    let Ok(value) = content_type.to_str() else {
+        return false;
+    };
+    is_html_content_type(value)
+}
+
+fn is_html_content_type(value: &str) -> bool {
+    value.trim().to_ascii_lowercase().starts_with("text/html")
+}
+
+fn compute_upstream_url(base: &str, path: &str) -> (String, Option<String>) {
+    let base = base.trim_end_matches('/');
+    let url = if base.contains("/backend-api/codex") && path.starts_with("/v1/") {
+        format!("{}{}", base, path.trim_start_matches("/v1"))
+    } else if base.ends_with("/v1") && path.starts_with("/v1") {
+        format!("{}{}", base.trim_end_matches("/v1"), path)
+    } else {
+        format!("{}{}", base, path)
+    };
+    let url_alt = if base.contains("/backend-api/codex") && path.starts_with("/v1/") {
+        Some(format!("{}{}", base, path))
+    } else {
+        None
+    };
+    (url, url_alt)
+}
+
+fn try_openai_fallback(
+    client: &Client,
+    storage: &gpttools_core::storage::Storage,
+    method: &Method,
+    request: &Request,
+    body: &[u8],
+    upstream_base: &str,
+    account: &Account,
+    token: &mut Token,
+    upstream_cookie: Option<&str>,
+    debug: bool,
+) -> Result<Option<reqwest::blocking::Response>, String> {
+    let (url, _url_alt) = compute_upstream_url(upstream_base, request.url());
+    let client_id = std::env::var("GPTTOOLS_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
+    let issuer = account.issuer.clone();
+    let bearer = match token.api_key_access_token.as_deref() {
+        Some(v) if !v.trim().is_empty() => v.to_string(),
+        _ => {
+            let issuer_env = std::env::var("GPTTOOLS_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
+            let issuer_for_exchange = if issuer.trim().is_empty() { issuer_env } else { issuer };
+            let exchanged = auth_tokens::obtain_api_key(&issuer_for_exchange, &client_id, &token.id_token)?;
+            token.api_key_access_token = Some(exchanged.clone());
+            let _ = storage.insert_token(token);
+            exchanged
+        }
+    };
+
+    let mut builder = client.request(method.clone(), &url);
+    let mut has_user_agent = false;
+    for header in request.headers() {
+        if header.field.equiv("Authorization")
+            || header.field.equiv("x-api-key")
+            || header.field.equiv("Host")
+            || header.field.equiv("Content-Length")
+        {
+            continue;
+        }
+        if header.field.equiv("User-Agent") {
+            has_user_agent = true;
+        }
+        if let (Ok(name), Ok(value)) = (
+            HeaderName::from_bytes(header.field.as_str().as_bytes()),
+            HeaderValue::from_str(header.value.as_str()),
+        ) {
+            builder = builder.header(name, value);
+        }
+    }
+    if !has_user_agent {
+        builder = builder.header("User-Agent", "codex-cli");
+    }
+    if let Some(cookie) = upstream_cookie {
+        if !cookie.trim().is_empty() {
+            builder = builder.header("Cookie", cookie);
+        }
+    }
+    if debug {
+        eprintln!("gateway upstream: base={}, token_source=api_key_access_token", upstream_base);
+    }
+    builder = builder.header("Authorization", format!("Bearer {}", bearer));
+    if !body.is_empty() {
+        builder = builder.body(body.to_vec());
+    }
+    let resp = builder.send().map_err(|e| e.to_string())?;
+    Ok(Some(resp))
 }
 
 fn extract_platform_key(request: &Request) -> Option<String> {
@@ -426,6 +588,7 @@ fn respond_with_upstream(
 #[cfg(test)]
 mod availability_tests {
     use super::should_failover_after_refresh;
+    use super::{compute_upstream_url, is_html_content_type};
     use gpttools_core::storage::{now_ts, Account, Storage, UsageSnapshotRecord};
 
     #[test]
@@ -463,5 +626,25 @@ mod availability_tests {
 
         let should_failover = should_failover_after_refresh(&storage, "acc-1", Ok(()));
         assert!(should_failover);
+    }
+
+    #[test]
+    fn html_content_type_detection() {
+        assert!(is_html_content_type("text/html; charset=utf-8"));
+        assert!(is_html_content_type("TEXT/HTML"));
+        assert!(!is_html_content_type("application/json"));
+    }
+
+    #[test]
+    fn compute_url_trims_v1_prefix_for_codex_backend() {
+        let (url, alt) = compute_upstream_url("https://chatgpt.com/backend-api/codex", "/v1/models");
+        assert_eq!(url, "https://chatgpt.com/backend-api/codex/models");
+        assert_eq!(
+            alt.as_deref(),
+            Some("https://chatgpt.com/backend-api/codex/v1/models")
+        );
+        let (url, alt) = compute_upstream_url("https://api.openai.com/v1", "/v1/models");
+        assert_eq!(url, "https://api.openai.com/v1/models");
+        assert!(alt.is_none());
     }
 }
