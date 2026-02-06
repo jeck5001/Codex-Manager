@@ -92,6 +92,8 @@ pub struct UsageListResult {
 pub struct ApiKeySummary {
     pub id: String,
     pub name: Option<String>,
+    pub model_slug: Option<String>,
+    pub reasoning_effort: Option<String>,
     pub status: String,
     pub created_at: i64,
     pub last_used_at: Option<i64>,
@@ -107,4 +109,35 @@ pub struct ApiKeyListResult {
 pub struct ApiKeyCreateResult {
     pub id: String,
     pub key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelOption {
+    pub slug: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApiKeyModelListResult {
+    pub items: Vec<ModelOption>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestLogSummary {
+    pub key_id: Option<String>,
+    pub request_path: String,
+    pub method: String,
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub upstream_url: Option<String>,
+    pub status_code: Option<i64>,
+    pub error: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RequestLogListResult {
+    pub items: Vec<RequestLogSummary>,
 }

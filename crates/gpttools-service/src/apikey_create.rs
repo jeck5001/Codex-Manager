@@ -3,7 +3,11 @@ use gpttools_core::storage::{now_ts, ApiKey};
 
 use crate::storage_helpers::{generate_key_id, generate_platform_key, hash_platform_key, open_storage};
 
-pub(crate) fn create_api_key(name: Option<String>) -> Result<ApiKeyCreateResult, String> {
+pub(crate) fn create_api_key(
+    name: Option<String>,
+    model_slug: Option<String>,
+    reasoning_effort: Option<String>,
+) -> Result<ApiKeyCreateResult, String> {
     // 创建平台 Key 并写入存储
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let key = generate_platform_key();
@@ -12,6 +16,8 @@ pub(crate) fn create_api_key(name: Option<String>) -> Result<ApiKeyCreateResult,
     let record = ApiKey {
         id: key_id.clone(),
         name,
+        model_slug,
+        reasoning_effort,
         key_hash,
         status: "active".to_string(),
         created_at: now_ts(),

@@ -1,20 +1,195 @@
 :root {
-  --ink: #1b2430;
-  --ink-strong: #0f172a;
-  --muted: #7b8794;
-  --surface: #f4f7fb;
-  --surface-2: #eef3f9;
+  --ink: #22344c;
+  --ink-strong: #0d1e35;
+  --muted: #617b98;
+  --surface: #eef6ff;
+  --surface-2: #e2efff;
   --card: #ffffff;
-  --border: rgba(15, 23, 42, 0.08);
-  --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
-  --accent: #3b82f6;
-  --accent-2: #22c55e;
-  --accent-3: #38bdf8;
-  --danger: #ef4444;
-  --ok: #22c55e;
+  --border: rgba(43, 81, 132, 0.14);
+  --border-strong: rgba(38, 83, 141, 0.3);
+  --shadow: 0 20px 54px rgba(31, 73, 131, 0.12);
+  --shadow-soft: 0 10px 24px rgba(31, 73, 131, 0.09);
+  --accent: #1d7df2;
+  --accent-2: #0abf7a;
+  --accent-3: #12b9e8;
+  --danger: #e04545;
+  --ok: #19a86b;
   --warn: #f59e0b;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
   --paper: var(--surface);
   --paper-2: var(--surface-2);
+
+  --top-nav-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(241, 249, 255, 0.75));
+  --btn-primary-bg: linear-gradient(135deg, #2d8fff, #176ce8);
+  --btn-primary-shadow: 0 10px 24px rgba(29, 125, 242, 0.32);
+  --btn-secondary-bg: linear-gradient(180deg, #fff, #eef6ff);
+  --pill-nav-bg: linear-gradient(180deg, #ffffff, #edf6ff);
+  --pill-active-bg: linear-gradient(135deg, #1571ef, #1a4fc9);
+  --pill-active-shadow: 0 10px 20px rgba(21, 113, 239, 0.32);
+}
+
+body[data-theme="business"] {
+  --ink: #3b332a;
+  --ink-strong: #231d16;
+  --muted: #847466;
+  --surface: #faf6ef;
+  --surface-2: #f5ecdf;
+  --card: #fffdfa;
+  --border: rgba(123, 98, 73, 0.2);
+  --border-strong: rgba(123, 98, 73, 0.36);
+  --shadow: 0 20px 54px rgba(120, 89, 55, 0.12);
+  --shadow-soft: 0 10px 24px rgba(120, 89, 55, 0.09);
+  --accent: #d29a3f;
+  --accent-2: #53a07a;
+  --accent-3: #6ba4bf;
+  --danger: #d14f4f;
+  --ok: #2f9468;
+  --warn: #e09a2b;
+  --top-nav-bg: linear-gradient(180deg, rgba(255, 251, 244, 0.86), rgba(249, 241, 227, 0.78));
+  --btn-primary-bg: linear-gradient(135deg, #d9a347, #c58a2e);
+  --btn-primary-shadow: 0 10px 24px rgba(197, 138, 46, 0.28);
+  --btn-secondary-bg: linear-gradient(180deg, #fffdfa, #f9f1e6);
+  --pill-nav-bg: linear-gradient(180deg, #fffdfa, #f8efdf);
+  --pill-active-bg: linear-gradient(135deg, #c9933d, #b77b25);
+  --pill-active-shadow: 0 10px 20px rgba(183, 123, 37, 0.3);
+}
+
+body[data-theme="mint"] {
+  --ink: #20413e;
+  --ink-strong: #102a28;
+  --muted: #5e807b;
+  --surface: #ecfffb;
+  --surface-2: #ddf7f0;
+  --accent: #15bfa0;
+  --accent-2: #1bbf77;
+  --accent-3: #4ad6d6;
+  --top-nav-bg: linear-gradient(180deg, rgba(247, 255, 253, 0.9), rgba(231, 255, 250, 0.82));
+  --btn-primary-bg: linear-gradient(135deg, #16c4a4, #0fae91);
+  --btn-primary-shadow: 0 10px 24px rgba(15, 174, 145, 0.28);
+  --pill-nav-bg: linear-gradient(180deg, #fcfffe, #e8fff8);
+  --pill-active-bg: linear-gradient(135deg, #0fae91, #0e8b75);
+  --pill-active-shadow: 0 10px 20px rgba(14, 139, 117, 0.28);
+}
+
+body[data-theme="sunset"] {
+  --ink: #4a2e23;
+  --ink-strong: #2c1a14;
+  --muted: #8f6e60;
+  --surface: #fff4ed;
+  --surface-2: #ffe8da;
+  --accent: #f0723c;
+  --accent-2: #e59b2a;
+  --accent-3: #f7a766;
+  --top-nav-bg: linear-gradient(180deg, rgba(255, 249, 244, 0.9), rgba(255, 236, 222, 0.8));
+  --btn-primary-bg: linear-gradient(135deg, #f57f49, #df5f2c);
+  --btn-primary-shadow: 0 10px 24px rgba(223, 95, 44, 0.3);
+  --pill-nav-bg: linear-gradient(180deg, #fffaf5, #ffeede);
+  --pill-active-bg: linear-gradient(135deg, #df5f2c, #c54d1c);
+  --pill-active-shadow: 0 10px 20px rgba(197, 77, 28, 0.3);
+}
+
+body[data-theme="grape"] {
+  --ink: #312c4d;
+  --ink-strong: #1f1a39;
+  --muted: #766f9c;
+  --surface: #f5f0ff;
+  --surface-2: #ece4ff;
+  --accent: #7b61ff;
+  --accent-2: #8a5adb;
+  --accent-3: #9e83ff;
+  --top-nav-bg: linear-gradient(180deg, rgba(251, 248, 255, 0.9), rgba(241, 232, 255, 0.8));
+  --btn-primary-bg: linear-gradient(135deg, #8a6dff, #6f4ff0);
+  --btn-primary-shadow: 0 10px 24px rgba(111, 79, 240, 0.3);
+  --pill-nav-bg: linear-gradient(180deg, #fdfbff, #efe5ff);
+  --pill-active-bg: linear-gradient(135deg, #6f4ff0, #593bc9);
+  --pill-active-shadow: 0 10px 20px rgba(89, 59, 201, 0.3);
+}
+
+body[data-theme="ocean"] {
+  --ink: #1f3750;
+  --ink-strong: #10253c;
+  --muted: #5e7f9f;
+  --surface: #ecf9ff;
+  --surface-2: #ddf1ff;
+  --accent: #1c92d2;
+  --accent-2: #18a9b8;
+  --accent-3: #58b4ea;
+  --top-nav-bg: linear-gradient(180deg, rgba(247, 254, 255, 0.9), rgba(229, 245, 255, 0.82));
+  --btn-primary-bg: linear-gradient(135deg, #2ba6e8, #1a86c4);
+  --btn-primary-shadow: 0 10px 24px rgba(26, 134, 196, 0.3);
+  --pill-nav-bg: linear-gradient(180deg, #fcfeff, #e6f6ff);
+  --pill-active-bg: linear-gradient(135deg, #1a86c4, #136ca3);
+  --pill-active-shadow: 0 10px 20px rgba(19, 108, 163, 0.3);
+}
+
+body[data-theme="forest"] {
+  --ink: #263d2f;
+  --ink-strong: #16291e;
+  --muted: #6e8a78;
+  --surface: #effaf1;
+  --surface-2: #e0f2e4;
+  --accent: #2f9d57;
+  --accent-2: #17a173;
+  --accent-3: #73c48e;
+  --top-nav-bg: linear-gradient(180deg, rgba(248, 255, 249, 0.9), rgba(231, 247, 235, 0.82));
+  --btn-primary-bg: linear-gradient(135deg, #39ac61, #248a49);
+  --btn-primary-shadow: 0 10px 24px rgba(36, 138, 73, 0.28);
+  --pill-nav-bg: linear-gradient(180deg, #fdfffd, #e9f8ec);
+  --pill-active-bg: linear-gradient(135deg, #248a49, #1b6f39);
+  --pill-active-shadow: 0 10px 20px rgba(27, 111, 57, 0.28);
+}
+
+body[data-theme="rose"] {
+  --ink: #4b3040;
+  --ink-strong: #2d1a25;
+  --muted: #916f81;
+  --surface: #fff2f7;
+  --surface-2: #ffe6f0;
+  --accent: #e65f97;
+  --accent-2: #d45086;
+  --accent-3: #f38bbb;
+  --top-nav-bg: linear-gradient(180deg, rgba(255, 248, 252, 0.9), rgba(255, 232, 243, 0.8));
+  --btn-primary-bg: linear-gradient(135deg, #ec70a5, #d9558f);
+  --btn-primary-shadow: 0 10px 24px rgba(217, 85, 143, 0.3);
+  --pill-nav-bg: linear-gradient(180deg, #fffdfd, #ffe9f3);
+  --pill-active-bg: linear-gradient(135deg, #d9558f, #bc3f77);
+  --pill-active-shadow: 0 10px 20px rgba(188, 63, 119, 0.3);
+}
+
+body[data-theme="slate"] {
+  --ink: #2e3743;
+  --ink-strong: #181f29;
+  --muted: #6f7d8f;
+  --surface: #f1f5f9;
+  --surface-2: #e4ecf3;
+  --accent: #5d7ea8;
+  --accent-2: #4f739f;
+  --accent-3: #7b97bb;
+  --top-nav-bg: linear-gradient(180deg, rgba(251, 253, 255, 0.88), rgba(236, 243, 250, 0.8));
+  --btn-primary-bg: linear-gradient(135deg, #6d8ab1, #55759f);
+  --btn-primary-shadow: 0 10px 24px rgba(85, 117, 159, 0.3);
+  --pill-nav-bg: linear-gradient(180deg, #ffffff, #edf3f9);
+  --pill-active-bg: linear-gradient(135deg, #55759f, #415f86);
+  --pill-active-shadow: 0 10px 20px rgba(65, 95, 134, 0.3);
+}
+
+body[data-theme="aurora"] {
+  --ink: #213a44;
+  --ink-strong: #11262f;
+  --muted: #5f808a;
+  --surface: #ecfffd;
+  --surface-2: #dcf7f2;
+  --accent: #18b5a8;
+  --accent-2: #2ea9df;
+  --accent-3: #70d3cd;
+  --top-nav-bg: linear-gradient(180deg, rgba(247, 255, 254, 0.9), rgba(227, 250, 247, 0.82));
+  --btn-primary-bg: linear-gradient(135deg, #24c1b4, #1a9fca);
+  --btn-primary-shadow: 0 10px 24px rgba(26, 159, 202, 0.3);
+  --pill-nav-bg: linear-gradient(180deg, #fdffff, #e7fbf8);
+  --pill-active-bg: linear-gradient(135deg, #1a9fca, #167ea1);
+  --pill-active-shadow: 0 10px 20px rgba(22, 126, 161, 0.3);
 }
 
 * {
@@ -23,8 +198,25 @@
 
 body {
   margin: 0;
-  font-family: "HarmonyOS Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  font-family: "HarmonyOS Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   color: var(--ink);
-  background: radial-gradient(circle at 15% 10%, #f7f9ff, #f1f5fb 45%, #eef2f9 100%);
+  background:
+    radial-gradient(72% 96% at 12% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 67%),
+    radial-gradient(72% 88% at 92% 0%, color-mix(in srgb, var(--accent-3) 18%, transparent), transparent 60%),
+    linear-gradient(180deg, #f8fcff 0%, color-mix(in srgb, var(--surface) 75%, #f5fbff) 45%, color-mix(in srgb, var(--surface-2) 70%, #edf5ff) 100%);
   min-height: 100vh;
+  letter-spacing: 0.01em;
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 44%, transparent);
+  outline-offset: 2px;
 }

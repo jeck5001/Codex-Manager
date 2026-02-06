@@ -23,19 +23,8 @@
                     <button id="navDashboard" class="active">仪表盘</button>
                     <button id="navAccounts">账号管理</button>
                     <button id="navApiKeys">平台 Key</button>
+                    <button id="navRequestLogs">请求日志</button>
                 </nav>
-                <div class="top-actions">
-                    <div class="service-setup">
-                        <input id="serviceAddr" type="text" placeholder="端口，如 5050" />
-                        <button id="serviceToggle" class="secondary">启动服务</button>
-                    </div>
-                    <div class="service-meta">
-                        <div id="status" class="status-pill">未启动</div>
-                        <div id="serviceHint" class="hint"></div>
-                    </div>
-                    <button class="icon-btn" type="button" aria-label="主题">主题</button>
-                    <button class="icon-btn" type="button" aria-label="语言">EN</button>
-                </div>
             </header>
 
             <main class="content">
@@ -44,8 +33,32 @@
                         <h2 id="pageTitle">仪表盘</h2>
                         <p class="hint">可用状态与用量概览</p>
                     </div>
-                    <div class="actions">
-                        <button id="globalRefresh">刷新配额</button>
+                    <div class="top-actions">
+                        <div class="service-setup">
+                            <input id="serviceAddr" type="text" placeholder="端口，如 5050" />
+                            <button id="serviceToggle" class="secondary">启动服务</button>
+                        </div>
+                        <div class="service-meta">
+                            <div id="status" class="status-pill">未启动</div>
+                            <div id="serviceHint" class="hint"></div>
+                        </div>
+                        <div class="theme-popover">
+                            <button
+                                id="themeToggle"
+                                class="secondary theme-toggle"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="themePanel"
+                            >
+                                主题
+                            </button>
+                            <div
+                                id="themePanel"
+                                class="theme-panel"
+                                aria-label="主题切换"
+                                hidden
+                            ></div>
+                        </div>
                     </div>
                 </section>
 
@@ -98,7 +111,6 @@
                         <div class="actions">
                             <button id="addAccount" class="ghost">添加账号</button>
                             <button id="refreshAll">刷新所有</button>
-                            <button id="exportAccounts" class="secondary">导出</button>
                         </div>
                     </div>
 
@@ -137,6 +149,7 @@
                                     <tr>
                                         <th>Key ID</th>
                                         <th>名称</th>
+                                        <th>绑定模型</th>
                                         <th>状态</th>
                                         <th>最近使用</th>
                                         <th>操作</th>
@@ -147,13 +160,45 @@
                         </div>
                     </div>
                 </section>
+
+                <section id="pageRequestLogs" class="page">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h3>请求日志</h3>
+                                <p>追踪每次请求的模型、状态码和错误信息</p>
+                            </div>
+                            <div class="toolbar-actions">
+                                <input id="requestLogSearch" placeholder="搜索 model/path/error/key id" />
+                                <button id="clearRequestLogs" class="danger">清空日志</button>
+                                <button id="refreshRequestLogs" class="secondary">刷新</button>
+                            </div>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="data-table requestlog-table">
+                                <thead>
+                                    <tr>
+                                        <th>时间</th>
+                                        <th>Key ID</th>
+                                        <th>方法</th>
+                                        <th>路径</th>
+                                        <th>模型</th>
+                                        <th>请求等级</th>
+                                        <th>状态</th>
+                                        <th>错误</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="requestLogRows"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
             </main>
         </div>
         <div id="modalAccount" class="modal">
             <div class="modal-card">
                 <div class="modal-header">
                     <h3>新增账号</h3>
-                    <button id="closeAccountModal" class="ghost">关闭</button>
                 </div>
                 <div class="modal-body">
                     <label>标签（逗号分隔）</label>
@@ -214,7 +259,6 @@
             <div class="modal-card">
                 <div class="modal-header">
                     <h3>创建平台 Key</h3>
-                    <button id="closeApiKeyModal" class="ghost">关闭</button>
                 </div>
                 <div class="modal-body">
                     <label>名称（可选）</label>
@@ -222,6 +266,18 @@
                         id="inputApiKeyName"
                         placeholder="例如：主机房 / 测试"
                     />
+                    <label>模型配置</label>
+                    <select id="inputApiKeyModel">
+                        <option value="">跟随请求模型（不覆盖）</option>
+                    </select>
+                    <label>推理等级</label>
+                    <select id="inputApiKeyReasoning">
+                        <option value="">跟随请求等级（不覆盖）</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="extra_high">Extra high</option>
+                    </select>
                     <label>平台 Key</label>
                     <div class="login-url">
                         <input id="apiKeyValue" class="mono" readonly value="" />
@@ -231,6 +287,20 @@
                 <div class="modal-footer">
                     <button id="submitApiKey">完成</button>
                     <button id="cancelApiKey" class="secondary">关闭</button>
+                </div>
+            </div>
+        </div>
+        <div id="modalConfirm" class="modal">
+            <div class="modal-card confirm-card">
+                <div class="modal-header">
+                    <h3 id="confirmTitle">确认操作</h3>
+                </div>
+                <div class="modal-body">
+                    <p id="confirmMessage">请确认是否继续。</p>
+                </div>
+                <div class="modal-footer">
+                    <button id="confirmOk">确定</button>
+                    <button id="confirmCancel" class="secondary">取消</button>
                 </div>
             </div>
         </div>

@@ -1,0 +1,1 @@
+-- request_logs table is ensured at runtime by Storage::ensure_request_logs_table()

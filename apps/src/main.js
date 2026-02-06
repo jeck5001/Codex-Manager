@@ -14,22 +14,172 @@ import {
   stopService,
   waitForConnection,
 } from "./services/connection";
-import { refreshAccounts, refreshUsageList, refreshApiKeys } from "./services/data";
+import {
+  refreshAccounts,
+  refreshUsageList,
+  refreshApiKeys,
+  refreshApiModels,
+  refreshRequestLogs,
+  clearRequestLogs,
+} from "./services/data";
 import { renderDashboard } from "./views/dashboard";
 import { renderAccounts, openAccountModal, closeAccountModal } from "./views/accounts";
-import { renderApiKeys, openApiKeyModal, closeApiKeyModal } from "./views/apikeys";
+import { renderApiKeys, openApiKeyModal, closeApiKeyModal, populateApiKeyModelSelect } from "./views/apikeys";
 import { openUsageModal, closeUsageModal, renderUsageSnapshot } from "./views/usage";
+import { renderRequestLogs } from "./views/requestlogs";
+
+let apiModelLoadSeq = 0;
+let requestLogSearchTimer = null;
 
 function switchPage(page) {
   state.currentPage = page;
+  closeThemePanel();
   dom.navDashboard.classList.toggle("active", page === "dashboard");
   dom.navAccounts.classList.toggle("active", page === "accounts");
   dom.navApiKeys.classList.toggle("active", page === "apikeys");
+  dom.navRequestLogs.classList.toggle("active", page === "requestlogs");
   dom.pageDashboard.classList.toggle("active", page === "dashboard");
   dom.pageAccounts.classList.toggle("active", page === "accounts");
   dom.pageApiKeys.classList.toggle("active", page === "apikeys");
+  dom.pageRequestLogs.classList.toggle("active", page === "requestlogs");
   dom.pageTitle.textContent =
-    page === "dashboard" ? "仪表盘" : page === "accounts" ? "账号管理" : "平台 Key";
+    page === "dashboard"
+      ? "仪表盘"
+      : page === "accounts"
+        ? "账号管理"
+        : page === "apikeys"
+          ? "平台 Key"
+          : "请求日志";
+  syncGlobalRefreshVisibility(page);
+}
+
+function syncGlobalRefreshVisibility(page = state.currentPage) {
+  // 已改为后台定时刷新，保留空函数避免影响现有调用点。
+  void page;
+}
+
+function showConfirmDialog({
+  title = "确认操作",
+  message = "请确认是否继续。",
+  confirmText = "确定",
+  cancelText = "取消",
+} = {}) {
+  if (
+    !dom.modalConfirm
+    || !dom.confirmTitle
+    || !dom.confirmMessage
+    || !dom.confirmOk
+    || !dom.confirmCancel
+  ) {
+    return Promise.resolve(window.confirm(message));
+  }
+  dom.confirmTitle.textContent = title;
+  dom.confirmMessage.textContent = message;
+  dom.confirmOk.textContent = confirmText;
+  dom.confirmCancel.textContent = cancelText;
+  dom.modalConfirm.classList.add("active");
+  return new Promise((resolve) => {
+    let settled = false;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      dom.confirmOk.removeEventListener("click", onOk);
+      dom.confirmCancel.removeEventListener("click", onCancel);
+      dom.modalConfirm.removeEventListener("click", onBackdropClick);
+      document.removeEventListener("keydown", onKeydown);
+      dom.modalConfirm.classList.remove("active");
+    };
+    const onOk = () => {
+      cleanup();
+      resolve(true);
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+    const onBackdropClick = (event) => {
+      if (event.target === dom.modalConfirm) {
+        onCancel();
+      }
+    };
+    const onKeydown = (event) => {
+      if (event.key === "Escape") {
+        onCancel();
+      }
+    };
+    dom.confirmOk.addEventListener("click", onOk, { once: true });
+    dom.confirmCancel.addEventListener("click", onCancel, { once: true });
+    dom.modalConfirm.addEventListener("click", onBackdropClick);
+    document.addEventListener("keydown", onKeydown);
+  });
+}
+
+const THEME_OPTIONS = [
+  { id: "tech", label: "科技蓝" },
+  { id: "business", label: "商务金" },
+  { id: "mint", label: "薄荷绿" },
+  { id: "sunset", label: "晚霞橙" },
+  { id: "grape", label: "葡萄紫" },
+  { id: "ocean", label: "海湾青" },
+  { id: "forest", label: "松林绿" },
+  { id: "rose", label: "玫瑰粉" },
+  { id: "slate", label: "石板灰" },
+  { id: "aurora", label: "极光青" },
+];
+
+function renderThemeButtons() {
+  if (!dom.themePanel) return;
+  dom.themePanel.innerHTML = "";
+  THEME_OPTIONS.forEach((theme) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary";
+    button.dataset.theme = theme.id;
+    button.textContent = theme.label;
+    dom.themePanel.appendChild(button);
+  });
+}
+
+function setTheme(theme) {
+  const validThemes = new Set(THEME_OPTIONS.map((item) => item.id));
+  const nextTheme = validThemes.has(theme) ? theme : "tech";
+  document.body.dataset.theme = nextTheme;
+  localStorage.setItem("gpttools.ui.theme", nextTheme);
+  if (dom.themePanel) {
+    dom.themePanel.querySelectorAll("button[data-theme]").forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.theme === nextTheme);
+    });
+  }
+  if (dom.themeToggle) {
+    const activeTheme = THEME_OPTIONS.find((item) => item.id === nextTheme);
+    dom.themeToggle.textContent = activeTheme ? `主题 · ${activeTheme.label}` : "主题";
+  }
+}
+
+function restoreTheme() {
+  const savedTheme = localStorage.getItem("gpttools.ui.theme");
+  setTheme(savedTheme || "tech");
+}
+
+function closeThemePanel() {
+  if (!dom.themePanel || !dom.themeToggle) return;
+  dom.themePanel.hidden = true;
+  dom.themeToggle.setAttribute("aria-expanded", "false");
+}
+
+function openThemePanel() {
+  if (!dom.themePanel || !dom.themeToggle) return;
+  dom.themePanel.hidden = false;
+  dom.themeToggle.setAttribute("aria-expanded", "true");
+}
+
+function toggleThemePanel() {
+  if (!dom.themePanel) return;
+  if (dom.themePanel.hidden) {
+    openThemePanel();
+  } else {
+    closeThemePanel();
+  }
 }
 
 function updateServiceToggle() {
@@ -56,7 +206,9 @@ async function refreshAll() {
   if (!ok) return;
   await refreshAccounts();
   await refreshUsageList();
+  await refreshApiModels();
   await refreshApiKeys();
+  await refreshRequestLogs(state.requestLogQuery);
   renderDashboard();
   renderAccounts({
     onUpdateSort: updateAccountSort,
@@ -64,9 +216,30 @@ async function refreshAll() {
     onDelete: deleteAccount,
   });
   renderApiKeys({
-    onDisable: disableApiKey,
+    onToggleStatus: toggleApiKeyStatus,
     onDelete: deleteApiKey,
+    onUpdateModel: updateApiKeyModel,
   });
+  renderRequestLogs();
+}
+
+async function handleClearRequestLogs() {
+  const confirmed = await showConfirmDialog({
+    title: "清空请求日志",
+    message: "确定清空请求日志吗？该操作不可撤销。",
+    confirmText: "清空",
+    cancelText: "取消",
+  });
+  if (!confirmed) return;
+  const ok = await ensureConnected();
+  if (!ok) return;
+  const res = await clearRequestLogs();
+  if (res && res.ok === false) {
+    alert(res.error || "清空日志失败");
+    return;
+  }
+  await refreshRequestLogs(state.requestLogQuery);
+  renderRequestLogs();
 }
 
 async function updateAccountSort(accountId, sort) {
@@ -78,9 +251,12 @@ async function updateAccountSort(accountId, sort) {
 
 async function deleteAccount(account) {
   if (!account || !account.id) return;
-  const confirmed = window.confirm(
-    `确定删除账号 ${account.label} 吗？删除后不可恢复。`,
-  );
+  const confirmed = await showConfirmDialog({
+    title: "删除账号",
+    message: `确定删除账号 ${account.label} 吗？删除后不可恢复。`,
+    confirmText: "删除",
+    cancelText: "取消",
+  });
   if (!confirmed) return;
   const ok = await ensureConnected();
   if (!ok) return;
@@ -127,42 +303,82 @@ async function refreshUsageForAccount() {
 async function createApiKey() {
   const ok = await ensureConnected();
   if (!ok) return;
-  const res = await api.serviceApiKeyCreate(dom.inputApiKeyName.value.trim() || null);
+  const modelSlug = dom.inputApiKeyModel.value || null;
+  const reasoningEffort = modelSlug ? (dom.inputApiKeyReasoning.value || null) : null;
+  const res = await api.serviceApiKeyCreate(
+    dom.inputApiKeyName.value.trim() || null,
+    modelSlug,
+    reasoningEffort,
+  );
   if (res && res.error) {
     alert(res.error);
     return;
   }
   dom.apiKeyValue.value = res && res.key ? res.key : "";
+  await refreshApiModels();
   await refreshApiKeys();
+  populateApiKeyModelSelect();
   renderApiKeys({
-    onDisable: disableApiKey,
+    onToggleStatus: toggleApiKeyStatus,
     onDelete: deleteApiKey,
+    onUpdateModel: updateApiKeyModel,
   });
 }
 
 async function deleteApiKey(item) {
   if (!item || !item.id) return;
-  const confirmed = window.confirm(`确定删除平台 Key ${item.id} 吗？`);
+  const confirmed = await showConfirmDialog({
+    title: "删除平台 Key",
+    message: `确定删除平台 Key ${item.id} 吗？`,
+    confirmText: "删除",
+    cancelText: "取消",
+  });
   if (!confirmed) return;
   const ok = await ensureConnected();
   if (!ok) return;
   await api.serviceApiKeyDelete(item.id);
   await refreshApiKeys();
   renderApiKeys({
-    onDisable: disableApiKey,
+    onToggleStatus: toggleApiKeyStatus,
     onDelete: deleteApiKey,
+    onUpdateModel: updateApiKeyModel,
   });
 }
 
-async function disableApiKey(item) {
+async function toggleApiKeyStatus(item) {
   if (!item || !item.id) return;
   const ok = await ensureConnected();
   if (!ok) return;
-  await api.serviceApiKeyDisable(item.id);
+  const isDisabled = String(item.status || "").toLowerCase() === "disabled";
+  if (isDisabled) {
+    await api.serviceApiKeyEnable(item.id);
+  } else {
+    await api.serviceApiKeyDisable(item.id);
+  }
   await refreshApiKeys();
   renderApiKeys({
-    onDisable: disableApiKey,
+    onToggleStatus: toggleApiKeyStatus,
     onDelete: deleteApiKey,
+    onUpdateModel: updateApiKeyModel,
+  });
+}
+
+async function updateApiKeyModel(item, modelSlug, reasoningEffort) {
+  if (!item || !item.id) return;
+  const ok = await ensureConnected();
+  if (!ok) return;
+  const normalizedModel = modelSlug || null;
+  const normalizedEffort = normalizedModel ? (reasoningEffort || null) : null;
+  const res = await api.serviceApiKeyUpdateModel(item.id, normalizedModel, normalizedEffort);
+  if (res && res.ok === false) {
+    alert(res.error || "模型配置保存失败");
+    return;
+  }
+  await refreshApiKeys();
+  renderApiKeys({
+    onToggleStatus: toggleApiKeyStatus,
+    onDelete: deleteApiKey,
+    onUpdateModel: updateApiKeyModel,
   });
 }
 
@@ -378,9 +594,25 @@ function bindEvents() {
   dom.navDashboard.addEventListener("click", () => switchPage("dashboard"));
   dom.navAccounts.addEventListener("click", () => switchPage("accounts"));
   dom.navApiKeys.addEventListener("click", () => switchPage("apikeys"));
+  dom.navRequestLogs.addEventListener("click", () => switchPage("requestlogs"));
   dom.addAccountBtn.addEventListener("click", openAccountModal);
-  dom.createApiKeyBtn.addEventListener("click", openApiKeyModal);
-  dom.closeAccountModal.addEventListener("click", closeAccountModal);
+  dom.createApiKeyBtn.addEventListener("click", async () => {
+    openApiKeyModal();
+    // 先用本地缓存秒开；仅在模型列表为空时再后台懒加载，避免弹窗开关被网络拖慢。
+    if (state.apiModelOptions && state.apiModelOptions.length > 0) {
+      return;
+    }
+    const currentSeq = ++apiModelLoadSeq;
+    const ok = await ensureConnected();
+    if (!ok || currentSeq !== apiModelLoadSeq) return;
+    await refreshApiModels();
+    if (currentSeq !== apiModelLoadSeq) return;
+    if (!dom.modalApiKey || !dom.modalApiKey.classList.contains("active")) return;
+    populateApiKeyModelSelect();
+  });
+  if (dom.closeAccountModal) {
+    dom.closeAccountModal.addEventListener("click", closeAccountModal);
+  }
   dom.cancelLogin.addEventListener("click", closeAccountModal);
   dom.submitLogin.addEventListener("click", handleLogin);
   dom.copyLoginUrl.addEventListener("click", () => {
@@ -397,7 +629,9 @@ function bindEvents() {
   dom.manualCallbackSubmit.addEventListener("click", handleManualCallback);
   dom.closeUsageModal.addEventListener("click", closeUsageModal);
   dom.refreshUsageSingle.addEventListener("click", refreshUsageForAccount);
-  dom.closeApiKeyModal.addEventListener("click", closeApiKeyModal);
+  if (dom.closeApiKeyModal) {
+    dom.closeApiKeyModal.addEventListener("click", closeApiKeyModal);
+  }
   dom.cancelApiKey.addEventListener("click", closeApiKeyModal);
   dom.submitApiKey.addEventListener("click", createApiKey);
   dom.copyApiKey.addEventListener("click", () => {
@@ -406,10 +640,64 @@ function bindEvents() {
     dom.apiKeyValue.setSelectionRange(0, dom.apiKeyValue.value.length);
     document.execCommand("copy");
   });
-  dom.globalRefresh.addEventListener("click", refreshAll);
+  if (dom.refreshRequestLogs) {
+    dom.refreshRequestLogs.addEventListener("click", async () => {
+      await refreshRequestLogs(state.requestLogQuery);
+      renderRequestLogs();
+    });
+  }
+  if (dom.clearRequestLogs) {
+    dom.clearRequestLogs.addEventListener("click", handleClearRequestLogs);
+  }
+  if (dom.requestLogSearch) {
+    dom.requestLogSearch.addEventListener("input", (event) => {
+      state.requestLogQuery = event.target.value || "";
+      if (requestLogSearchTimer) {
+        clearTimeout(requestLogSearchTimer);
+      }
+      requestLogSearchTimer = setTimeout(async () => {
+        await refreshRequestLogs(state.requestLogQuery);
+        renderRequestLogs();
+      }, 220);
+    });
+  }
   if (dom.refreshAll) {
     dom.refreshAll.addEventListener("click", refreshAll);
   }
+  if (dom.inputApiKeyModel && dom.inputApiKeyReasoning) {
+    const syncReasoningSelect = () => {
+      const enabled = Boolean((dom.inputApiKeyModel.value || "").trim());
+      dom.inputApiKeyReasoning.disabled = !enabled;
+      if (!enabled) {
+        dom.inputApiKeyReasoning.value = "";
+      }
+    };
+    dom.inputApiKeyModel.addEventListener("change", syncReasoningSelect);
+    syncReasoningSelect();
+  }
+  if (dom.themeToggle) {
+    dom.themeToggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleThemePanel();
+    });
+  }
+  if (dom.themePanel) {
+    dom.themePanel.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const themeButton = target.closest("button[data-theme]");
+        if (themeButton && themeButton.dataset.theme) {
+          setTheme(themeButton.dataset.theme);
+          closeThemePanel();
+        }
+      }
+      event.stopPropagation();
+    });
+  }
+  document.addEventListener("click", () => closeThemePanel());
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeThemePanel();
+  });
   dom.serviceToggleBtn.addEventListener("click", handleServiceToggle);
 
   if (dom.accountSearch) {
@@ -447,8 +735,11 @@ function bindEvents() {
 function bootstrap() {
   setStatus("", false);
   setServiceHint("请输入端口并点击启动", false);
+  renderThemeButtons();
+  restoreTheme();
   restoreServiceAddr();
   updateServiceToggle();
+  syncGlobalRefreshVisibility(state.currentPage);
   void autoStartService();
   bindEvents();
   renderDashboard();
@@ -458,9 +749,11 @@ function bootstrap() {
     onDelete: deleteAccount,
   });
   renderApiKeys({
-    onDisable: disableApiKey,
+    onToggleStatus: toggleApiKeyStatus,
     onDelete: deleteApiKey,
+    onUpdateModel: updateApiKeyModel,
   });
+  renderRequestLogs();
 }
 
 window.addEventListener("DOMContentLoaded", bootstrap);

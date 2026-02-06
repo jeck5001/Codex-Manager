@@ -2,21 +2,40 @@
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .toolbar-actions input {
+    min-width: 210px;
+  }
+
+  .top-actions {
+    gap: 10px;
+  }
+
+  .service-setup input {
+    width: 108px;
+    min-width: 84px;
+  }
 }
 
 @media (max-width: 1024px) {
   .top-nav {
     flex-wrap: wrap;
-    justify-content: center;
+    justify-content: flex-start;
   }
 
   .top-actions {
     width: 100%;
-    justify-content: center;
+    justify-content: flex-start;
+  }
+
+  .theme-panel {
+    right: auto;
+    left: 0;
+    justify-content: flex-start;
   }
 
   .content {
-    padding: 24px 20px 32px;
+    padding: 24px 18px 34px;
   }
 }
 
@@ -50,12 +69,22 @@
   .search-field input {
     width: 100%;
   }
+
+  .toolbar-actions {
+    width: 100%;
+  }
+
+  .toolbar-actions input {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 720px) {
   .pill-nav {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
+    padding: 6px;
   }
 
   .service-setup {
@@ -66,17 +95,27 @@
     width: 100%;
   }
 
+  .theme-panel {
+    width: min(320px, calc(100vw - 24px));
+  }
+
   .stats-grid,
   .dashboard-duo {
     grid-template-columns: 1fr;
   }
 
   .table.account-table,
-  .table.api-table {
+  .table.api-table,
+  .table.requestlog-table {
     grid-template-columns: 1fr;
   }
 
   .table-header {
     display: none;
+  }
+
+  .panel,
+  .card {
+    padding: 16px;
   }
 }

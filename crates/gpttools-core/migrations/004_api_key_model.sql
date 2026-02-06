@@ -1,0 +1,1 @@
+-- model_slug column is ensured in runtime via Storage::ensure_api_key_model_column()

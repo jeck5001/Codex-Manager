@@ -1,13 +1,21 @@
 import { state } from "../state";
 import { dom } from "../ui/dom";
 
+const REASONING_OPTIONS = [
+  { value: "", label: "跟随请求等级" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "extra_high", label: "Extra high" },
+];
+
 // 渲染 API Key 列表
-export function renderApiKeys({ onDisable, onDelete }) {
+export function renderApiKeys({ onToggleStatus, onDelete, onUpdateModel }) {
   dom.apiKeyRows.innerHTML = "";
   if (state.apiKeyList.length === 0) {
     const emptyRow = document.createElement("tr");
     const emptyCell = document.createElement("td");
-    emptyCell.colSpan = 5;
+    emptyCell.colSpan = 6;
     emptyCell.textContent = "暂无平台 Key";
     emptyRow.appendChild(emptyCell);
     dom.apiKeyRows.appendChild(emptyRow);
@@ -23,8 +31,65 @@ export function renderApiKeys({ onDisable, onDelete }) {
     const cellName = document.createElement("td");
     cellName.textContent = item.name || "-";
 
+    const cellModel = document.createElement("td");
+    const modelWrap = document.createElement("div");
+    modelWrap.className = "cell-stack";
+    const modelSelect = document.createElement("select");
+    modelSelect.className = "inline-select";
+    const followOption = document.createElement("option");
+    followOption.value = "";
+    followOption.textContent = "跟随请求模型";
+    modelSelect.appendChild(followOption);
+    state.apiModelOptions.forEach((model) => {
+      const option = document.createElement("option");
+      option.value = model.slug;
+      option.textContent = model.displayName || model.slug;
+      modelSelect.appendChild(option);
+    });
+    const effortSelect = document.createElement("select");
+    effortSelect.className = "inline-select";
+    REASONING_OPTIONS.forEach((optionItem) => {
+      const option = document.createElement("option");
+      option.value = optionItem.value;
+      option.textContent = optionItem.label;
+      effortSelect.appendChild(option);
+    });
+    modelSelect.value = item.modelSlug || "";
+    effortSelect.value = item.reasoningEffort || "";
+    const syncEffortState = () => {
+      const hasModelOverride = Boolean((modelSelect.value || "").trim());
+      effortSelect.disabled = !hasModelOverride;
+      if (!hasModelOverride) {
+        effortSelect.value = "";
+      }
+    };
+    modelSelect.addEventListener("change", () => {
+      syncEffortState();
+      onUpdateModel?.(item, modelSelect.value, effortSelect.value);
+    });
+    effortSelect.addEventListener("change", () => {
+      onUpdateModel?.(item, modelSelect.value, effortSelect.value);
+    });
+    syncEffortState();
+    modelWrap.appendChild(modelSelect);
+    modelWrap.appendChild(effortSelect);
+    cellModel.appendChild(modelWrap);
+
     const cellStatus = document.createElement("td");
-    cellStatus.textContent = item.status || "unknown";
+    const statusTag = document.createElement("span");
+    statusTag.className = "status-tag";
+    const normalizedStatus = String(item.status || "").toLowerCase();
+    if (normalizedStatus === "active") {
+      statusTag.classList.add("status-ok");
+      statusTag.textContent = "启用";
+    } else if (normalizedStatus === "disabled") {
+      statusTag.classList.add("status-bad");
+      statusTag.textContent = "禁用";
+    } else {
+      statusTag.classList.add("status-unknown");
+      statusTag.textContent = item.status || "未知";
+    }
+    cellStatus.appendChild(statusTag);
 
     const cellUsed = document.createElement("td");
     cellUsed.textContent = item.lastUsedAt
@@ -36,8 +101,9 @@ export function renderApiKeys({ onDisable, onDelete }) {
     actionsWrap.className = "cell-actions";
     const btnDisable = document.createElement("button");
     btnDisable.className = "secondary";
-    btnDisable.textContent = "禁用";
-    btnDisable.addEventListener("click", () => onDisable?.(item));
+    const isDisabled = String(item.status || "").toLowerCase() === "disabled";
+    btnDisable.textContent = isDisabled ? "启用" : "禁用";
+    btnDisable.addEventListener("click", () => onToggleStatus?.(item));
     const btnDelete = document.createElement("button");
     btnDelete.className = "danger";
     btnDelete.textContent = "删除";
@@ -48,6 +114,7 @@ export function renderApiKeys({ onDisable, onDelete }) {
 
     row.appendChild(cellId);
     row.appendChild(cellName);
+    row.appendChild(cellModel);
     row.appendChild(cellStatus);
     row.appendChild(cellUsed);
     row.appendChild(cellActions);
@@ -59,10 +126,48 @@ export function renderApiKeys({ onDisable, onDelete }) {
 export function openApiKeyModal() {
   dom.modalApiKey.classList.add("active");
   dom.inputApiKeyName.value = "";
+  populateApiKeyModelSelect();
+  if (dom.inputApiKeyModel) {
+    dom.inputApiKeyModel.value = "";
+  }
+  if (dom.inputApiKeyReasoning) {
+    dom.inputApiKeyReasoning.value = "";
+    dom.inputApiKeyReasoning.disabled = true;
+  }
   dom.apiKeyValue.value = "";
 }
 
 // 关闭 API Key 弹窗
 export function closeApiKeyModal() {
   dom.modalApiKey.classList.remove("active");
+  if (dom.inputApiKeyModel) {
+    dom.inputApiKeyModel.disabled = false;
+  }
+}
+
+export function populateApiKeyModelSelect() {
+  if (!dom.inputApiKeyModel) return;
+  dom.inputApiKeyModel.innerHTML = "";
+
+  const followOption = document.createElement("option");
+  followOption.value = "";
+  followOption.textContent = "跟随请求模型（不覆盖）";
+  dom.inputApiKeyModel.appendChild(followOption);
+
+  state.apiModelOptions.forEach((model) => {
+    const option = document.createElement("option");
+    option.value = model.slug;
+    option.textContent = model.displayName || model.slug;
+    dom.inputApiKeyModel.appendChild(option);
+  });
+
+  if (dom.inputApiKeyReasoning) {
+    dom.inputApiKeyReasoning.innerHTML = "";
+    REASONING_OPTIONS.forEach((item) => {
+      const option = document.createElement("option");
+      option.value = item.value;
+      option.textContent = item.label;
+      dom.inputApiKeyReasoning.appendChild(option);
+    });
+  }
 }

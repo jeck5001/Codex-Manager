@@ -65,9 +65,24 @@ pub struct Event {
 }
 
 #[derive(Debug, Clone)]
+pub struct RequestLog {
+    pub key_id: Option<String>,
+    pub request_path: String,
+    pub method: String,
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub upstream_url: Option<String>,
+    pub status_code: Option<i64>,
+    pub error: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct ApiKey {
     pub id: String,
     pub name: Option<String>,
+    pub model_slug: Option<String>,
+    pub reasoning_effort: Option<String>,
     pub key_hash: String,
     pub status: String,
     pub created_at: i64,
@@ -97,9 +112,17 @@ impl Storage {
         self.conn.execute_batch(sql_login)?;
         let sql_api_keys = include_str!("../../migrations/003_api_keys.sql");
         self.conn.execute_batch(sql_api_keys)?;
+        let sql_api_key_model = include_str!("../../migrations/004_api_key_model.sql");
+        self.conn.execute_batch(sql_api_key_model)?;
+        let sql_request_logs = include_str!("../../migrations/005_request_logs.sql");
+        self.conn.execute_batch(sql_request_logs)?;
         self.ensure_account_meta_columns()?;
         self.ensure_usage_secondary_columns()?;
-        self.ensure_token_api_key_column()
+        self.ensure_token_api_key_column()?;
+        self.ensure_api_key_model_column()?;
+        self.ensure_api_key_reasoning_column()?;
+        self.ensure_request_logs_table()?;
+        self.ensure_request_log_reasoning_column()
     }
 
     pub fn insert_account(&self, account: &Account) -> Result<()> {
@@ -250,10 +273,12 @@ impl Storage {
 
     pub fn insert_api_key(&self, key: &ApiKey) -> Result<()> {
         self.conn.execute(
-            "INSERT OR REPLACE INTO api_keys (id, name, key_hash, status, created_at, last_used_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT OR REPLACE INTO api_keys (id, name, model_slug, reasoning_effort, key_hash, status, created_at, last_used_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             (
                 &key.id,
                 &key.name,
+                &key.model_slug,
+                &key.reasoning_effort,
                 &key.key_hash,
                 &key.status,
                 key.created_at,
@@ -265,7 +290,7 @@ impl Storage {
 
     pub fn list_api_keys(&self) -> Result<Vec<ApiKey>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, key_hash, status, created_at, last_used_at FROM api_keys ORDER BY created_at DESC",
+            "SELECT id, name, model_slug, reasoning_effort, key_hash, status, created_at, last_used_at FROM api_keys ORDER BY created_at DESC",
         )?;
         let mut rows = stmt.query([])?;
         let mut out = Vec::new();
@@ -273,10 +298,12 @@ impl Storage {
             out.push(ApiKey {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                key_hash: row.get(2)?,
-                status: row.get(3)?,
-                created_at: row.get(4)?,
-                last_used_at: row.get(5)?,
+                model_slug: row.get(2)?,
+                reasoning_effort: row.get(3)?,
+                key_hash: row.get(4)?,
+                status: row.get(5)?,
+                created_at: row.get(6)?,
+                last_used_at: row.get(7)?,
             });
         }
         Ok(out)
@@ -284,17 +311,19 @@ impl Storage {
 
     pub fn find_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKey>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, key_hash, status, created_at, last_used_at FROM api_keys WHERE key_hash = ?1 LIMIT 1",
+            "SELECT id, name, model_slug, reasoning_effort, key_hash, status, created_at, last_used_at FROM api_keys WHERE key_hash = ?1 LIMIT 1",
         )?;
         let mut rows = stmt.query([key_hash])?;
         if let Some(row) = rows.next()? {
             Ok(Some(ApiKey {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                key_hash: row.get(2)?,
-                status: row.get(3)?,
-                created_at: row.get(4)?,
-                last_used_at: row.get(5)?,
+                model_slug: row.get(2)?,
+                reasoning_effort: row.get(3)?,
+                key_hash: row.get(4)?,
+                status: row.get(5)?,
+                created_at: row.get(6)?,
+                last_used_at: row.get(7)?,
             }))
         } else {
             Ok(None)
@@ -317,6 +346,27 @@ impl Storage {
         Ok(())
     }
 
+    pub fn update_api_key_model_slug(&self, key_id: &str, model_slug: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE api_keys SET model_slug = ?1 WHERE id = ?2",
+            (model_slug, key_id),
+        )?;
+        Ok(())
+    }
+
+    pub fn update_api_key_model_config(
+        &self,
+        key_id: &str,
+        model_slug: Option<&str>,
+        reasoning_effort: Option<&str>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE api_keys SET model_slug = ?1, reasoning_effort = ?2 WHERE id = ?3",
+            (model_slug, reasoning_effort, key_id),
+        )?;
+        Ok(())
+    }
+
     pub fn delete_api_key(&self, key_id: &str) -> Result<()> {
         self.conn
             .execute("DELETE FROM api_keys WHERE id = ?1", [key_id])?;
@@ -333,6 +383,85 @@ impl Storage {
                 event.created_at,
             ),
         )?;
+        Ok(())
+    }
+
+    pub fn insert_request_log(&self, log: &RequestLog) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO request_logs (key_id, request_path, method, model, reasoning_effort, upstream_url, status_code, error, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            (
+                &log.key_id,
+                &log.request_path,
+                &log.method,
+                &log.model,
+                &log.reasoning_effort,
+                &log.upstream_url,
+                log.status_code,
+                &log.error,
+                log.created_at,
+            ),
+        )?;
+        Ok(())
+    }
+
+    pub fn list_request_logs(&self, query: Option<&str>, limit: i64) -> Result<Vec<RequestLog>> {
+        let normalized_limit = if limit <= 0 { 200 } else { limit.min(1000) };
+        let normalized_query = query
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| format!("%{}%", v));
+
+        let mut out = Vec::new();
+        if let Some(pattern) = normalized_query {
+            let mut stmt = self.conn.prepare(
+                "SELECT key_id, request_path, method, model, reasoning_effort, upstream_url, status_code, error, created_at
+                 FROM request_logs
+                 WHERE request_path LIKE ?1 OR method LIKE ?1 OR IFNULL(model,'') LIKE ?1 OR IFNULL(reasoning_effort,'') LIKE ?1 OR IFNULL(error,'') LIKE ?1 OR IFNULL(key_id,'') LIKE ?1
+                 ORDER BY id DESC
+                 LIMIT ?2",
+            )?;
+            let mut rows = stmt.query((pattern, normalized_limit))?;
+            while let Some(row) = rows.next()? {
+                out.push(RequestLog {
+                    key_id: row.get(0)?,
+                    request_path: row.get(1)?,
+                    method: row.get(2)?,
+                    model: row.get(3)?,
+                    reasoning_effort: row.get(4)?,
+                    upstream_url: row.get(5)?,
+                    status_code: row.get(6)?,
+                    error: row.get(7)?,
+                    created_at: row.get(8)?,
+                });
+            }
+            return Ok(out);
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT key_id, request_path, method, model, reasoning_effort, upstream_url, status_code, error, created_at
+             FROM request_logs
+             ORDER BY id DESC
+             LIMIT ?1",
+        )?;
+        let mut rows = stmt.query([normalized_limit])?;
+        while let Some(row) = rows.next()? {
+            out.push(RequestLog {
+                key_id: row.get(0)?,
+                request_path: row.get(1)?,
+                method: row.get(2)?,
+                model: row.get(3)?,
+                reasoning_effort: row.get(4)?,
+                upstream_url: row.get(5)?,
+                status_code: row.get(6)?,
+                error: row.get(7)?,
+                created_at: row.get(8)?,
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn clear_request_logs(&self) -> Result<()> {
+        self.conn.execute("DELETE FROM request_logs", [])?;
         Ok(())
     }
 
@@ -462,6 +591,39 @@ impl Storage {
         Ok(())
     }
 
+    fn ensure_api_key_model_column(&self) -> Result<()> {
+        self.ensure_column("api_keys", "model_slug", "TEXT")?;
+        Ok(())
+    }
+
+    fn ensure_api_key_reasoning_column(&self) -> Result<()> {
+        self.ensure_column("api_keys", "reasoning_effort", "TEXT")?;
+        Ok(())
+    }
+
+    fn ensure_request_logs_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS request_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key_id TEXT,
+                request_path TEXT NOT NULL,
+                method TEXT NOT NULL,
+                model TEXT,
+                reasoning_effort TEXT,
+                upstream_url TEXT,
+                status_code INTEGER,
+                error TEXT,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_request_logs_created_at ON request_logs(created_at DESC)",
+            [],
+        )?;
+        Ok(())
+    }
+
     fn ensure_column(&self, table: &str, column: &str, column_type: &str) -> Result<()> {
         if self.has_column(table, column)? {
             return Ok(());
@@ -482,6 +644,11 @@ impl Storage {
             }
         }
         Ok(false)
+    }
+
+    fn ensure_request_log_reasoning_column(&self) -> Result<()> {
+        self.ensure_column("request_logs", "reasoning_effort", "TEXT")?;
+        Ok(())
     }
 }
 

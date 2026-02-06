@@ -63,6 +63,14 @@ export async function serviceUsageRefresh(accountId) {
   return invoke("service_usage_refresh", withAddr({ accountId }));
 }
 
+export async function serviceRequestLogList(query, limit) {
+  return invoke("service_requestlog_list", withAddr({ query, limit }));
+}
+
+export async function serviceRequestLogClear() {
+  return invoke("service_requestlog_clear", withAddr());
+}
+
 // 登录
 export async function serviceLoginStart(payload) {
   return invoke("service_login_start", withAddr(payload));
@@ -81,8 +89,16 @@ export async function serviceApiKeyList() {
   return invoke("service_apikey_list", withAddr());
 }
 
-export async function serviceApiKeyCreate(name) {
-  return invoke("service_apikey_create", withAddr({ name }));
+export async function serviceApiKeyCreate(name, modelSlug, reasoningEffort) {
+  return invoke("service_apikey_create", withAddr({ name, modelSlug, reasoningEffort }));
+}
+
+export async function serviceApiKeyModels() {
+  return invoke("service_apikey_models", withAddr());
+}
+
+export async function serviceApiKeyUpdateModel(keyId, modelSlug, reasoningEffort) {
+  return invoke("service_apikey_update_model", withAddr({ keyId, modelSlug, reasoningEffort }));
 }
 
 export async function serviceApiKeyDelete(keyId) {
@@ -91,6 +107,10 @@ export async function serviceApiKeyDelete(keyId) {
 
 export async function serviceApiKeyDisable(keyId) {
   return invoke("service_apikey_disable", withAddr({ keyId }));
+}
+
+export async function serviceApiKeyEnable(keyId) {
+  return invoke("service_apikey_enable", withAddr({ keyId }));
 }
 
 // 打开浏览器

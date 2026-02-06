@@ -1,6 +1,6 @@
 use gpttools_core::rpc::types::{
     AccountListResult, ApiKeyListResult, InitializeResult, JsonRpcRequest, JsonRpcResponse,
-    UsageListResult, UsageReadResult,
+    RequestLogListResult, UsageListResult, UsageReadResult,
 };
 use gpttools_core::storage::{now_ts, Event, Storage};
 use serde_json::Value;
@@ -21,6 +21,9 @@ mod apikey_list;
 mod apikey_create;
 mod apikey_delete;
 mod apikey_disable;
+mod apikey_enable;
+mod apikey_models;
+mod apikey_update_model;
 mod auth_login;
 mod auth_callback;
 mod auth_tokens;
@@ -28,6 +31,8 @@ mod usage_read;
 mod usage_list;
 mod usage_refresh;
 mod gateway;
+mod requestlog_list;
+mod requestlog_clear;
 
 pub const DEFAULT_ADDR: &str = "localhost:48760";
 
@@ -282,9 +287,57 @@ pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 .and_then(|v| v.get("name"))
                 .and_then(|v| v.as_str())
                 .map(|v| v.to_string());
-            let result = match apikey_create::create_api_key(name) {
+            let model_slug = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("modelSlug"))
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string());
+            let reasoning_effort = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("reasoningEffort"))
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string());
+            let result = match apikey_create::create_api_key(name, model_slug, reasoning_effort) {
                 Ok(result) => serde_json::to_value(result).unwrap_or(Value::Null),
                 Err(err) => serde_json::json!({ "error": err }),
+            };
+            JsonRpcResponse { id: req.id, result }
+        }
+        "apikey/models" => {
+            let result = match apikey_models::read_model_options() {
+                Ok(result) => serde_json::to_value(result).unwrap_or(Value::Null),
+                Err(err) => serde_json::json!({ "error": err }),
+            };
+            JsonRpcResponse { id: req.id, result }
+        }
+        "apikey/updateModel" => {
+            let key_id = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let model_slug = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("modelSlug"))
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string());
+            let reasoning_effort = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("reasoningEffort"))
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string());
+            let result = match apikey_update_model::update_api_key_model(
+                key_id,
+                model_slug,
+                reasoning_effort,
+            ) {
+                Ok(_) => serde_json::json!({ "ok": true }),
+                Err(err) => serde_json::json!({ "ok": false, "error": err }),
             };
             JsonRpcResponse { id: req.id, result }
         }
@@ -336,6 +389,46 @@ pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 id: req.id,
                 result: serde_json::to_value(result).unwrap_or(Value::Null),
             }
+        }
+        "requestlog/list" => {
+            let query = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("query"))
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string());
+            let limit = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("limit"))
+                .and_then(|v| v.as_i64());
+            let result = RequestLogListResult {
+                items: requestlog_list::read_request_logs(query, limit),
+            };
+            JsonRpcResponse {
+                id: req.id,
+                result: serde_json::to_value(result).unwrap_or(Value::Null),
+            }
+        }
+        "requestlog/clear" => {
+            let result = match requestlog_clear::clear_request_logs() {
+                Ok(_) => serde_json::json!({ "ok": true }),
+                Err(err) => serde_json::json!({ "ok": false, "error": err }),
+            };
+            JsonRpcResponse { id: req.id, result }
+        }
+        "apikey/enable" => {
+            let key_id = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let result = match apikey_enable::enable_api_key(key_id) {
+                Ok(_) => serde_json::json!({ "ok": true }),
+                Err(err) => serde_json::json!({ "ok": false, "error": err }),
+            };
+            JsonRpcResponse { id: req.id, result }
         }
         "account/usage/refresh" => {
             let account_id = req

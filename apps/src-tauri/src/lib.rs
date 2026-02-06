@@ -110,6 +110,21 @@ fn service_usage_refresh(
 }
 
 #[tauri::command]
+fn service_requestlog_list(
+  addr: Option<String>,
+  query: Option<String>,
+  limit: Option<i64>,
+) -> Result<serde_json::Value, String> {
+  let params = serde_json::json!({ "query": query, "limit": limit });
+  rpc_call("requestlog/list", addr, Some(params))
+}
+
+#[tauri::command]
+fn service_requestlog_clear(addr: Option<String>) -> Result<serde_json::Value, String> {
+  rpc_call("requestlog/clear", addr, None)
+}
+
+#[tauri::command]
 fn service_login_start(
   addr: Option<String>,
   login_type: String,
@@ -159,9 +174,30 @@ fn service_apikey_list(addr: Option<String>) -> Result<serde_json::Value, String
 }
 
 #[tauri::command]
-fn service_apikey_create(addr: Option<String>, name: Option<String>) -> Result<serde_json::Value, String> {
-  let params = serde_json::json!({ "name": name });
+fn service_apikey_create(
+  addr: Option<String>,
+  name: Option<String>,
+  model_slug: Option<String>,
+  reasoning_effort: Option<String>,
+) -> Result<serde_json::Value, String> {
+  let params = serde_json::json!({ "name": name, "modelSlug": model_slug, "reasoningEffort": reasoning_effort });
   rpc_call("apikey/create", addr, Some(params))
+}
+
+#[tauri::command]
+fn service_apikey_models(addr: Option<String>) -> Result<serde_json::Value, String> {
+  rpc_call("apikey/models", addr, None)
+}
+
+#[tauri::command]
+fn service_apikey_update_model(
+  addr: Option<String>,
+  key_id: String,
+  model_slug: Option<String>,
+  reasoning_effort: Option<String>,
+) -> Result<serde_json::Value, String> {
+  let params = serde_json::json!({ "id": key_id, "modelSlug": model_slug, "reasoningEffort": reasoning_effort });
+  rpc_call("apikey/updateModel", addr, Some(params))
 }
 
 #[tauri::command]
@@ -174,6 +210,12 @@ fn service_apikey_delete(addr: Option<String>, key_id: String) -> Result<serde_j
 fn service_apikey_disable(addr: Option<String>, key_id: String) -> Result<serde_json::Value, String> {
   let params = serde_json::json!({ "id": key_id });
   rpc_call("apikey/disable", addr, Some(params))
+}
+
+#[tauri::command]
+fn service_apikey_enable(addr: Option<String>, key_id: String) -> Result<serde_json::Value, String> {
+  let params = serde_json::json!({ "id": key_id });
+  rpc_call("apikey/enable", addr, Some(params))
 }
 
 #[tauri::command]
@@ -231,13 +273,18 @@ pub fn run() {
       service_usage_read,
       service_usage_list,
       service_usage_refresh,
+      service_requestlog_list,
+      service_requestlog_clear,
       service_login_start,
       service_login_status,
       service_login_complete,
       service_apikey_list,
       service_apikey_create,
+      service_apikey_models,
+      service_apikey_update_model,
       service_apikey_delete,
       service_apikey_disable,
+      service_apikey_enable,
       open_in_browser
     ])
     .run(tauri::generate_context!())
