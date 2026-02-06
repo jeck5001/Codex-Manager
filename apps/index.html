@@ -169,12 +169,18 @@
                                 <p>追踪每次请求的模型、状态码和错误信息</p>
                             </div>
                             <div class="toolbar-actions">
+                                <div class="segmented log-segmented">
+                                    <button id="filterLogAll" class="active">全部</button>
+                                    <button id="filterLog2xx">2xx</button>
+                                    <button id="filterLog4xx">4xx</button>
+                                    <button id="filterLog5xx">5xx</button>
+                                </div>
                                 <input id="requestLogSearch" placeholder="搜索 model/path/error/key id" />
                                 <button id="clearRequestLogs" class="danger">清空日志</button>
                                 <button id="refreshRequestLogs" class="secondary">刷新</button>
                             </div>
                         </div>
-                        <div class="table-wrap">
+                        <div class="table-wrap requestlog-wrap">
                             <table class="data-table requestlog-table">
                                 <thead>
                                     <tr>
@@ -304,6 +310,7 @@
                 </div>
             </div>
         </div>
+        <div id="appToast" class="app-toast" aria-live="polite"></div>
         <script type="module" src="/src/main.js"></script>
     </body>
 </html>

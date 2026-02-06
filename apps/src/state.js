@@ -13,6 +13,7 @@ export const state = {
   apiModelOptions: [],
   requestLogList: [],
   requestLogQuery: "",
+  requestLogStatusFilter: "all",
   accountSearch: "",
   accountFilter: "all",
   accountView: "list",

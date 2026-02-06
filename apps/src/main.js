@@ -30,6 +30,9 @@ import { renderRequestLogs } from "./views/requestlogs";
 
 let apiModelLoadSeq = 0;
 let requestLogSearchTimer = null;
+let toastTimer = null;
+let toastQueue = [];
+let toastActive = false;
 
 function switchPage(page) {
   state.currentPage = page;
@@ -56,6 +59,66 @@ function switchPage(page) {
 function syncGlobalRefreshVisibility(page = state.currentPage) {
   // 已改为后台定时刷新，保留空函数避免影响现有调用点。
   void page;
+}
+
+function updateRequestLogFilterButtons() {
+  const current = state.requestLogStatusFilter || "all";
+  if (dom.filterLogAll) dom.filterLogAll.classList.toggle("active", current === "all");
+  if (dom.filterLog2xx) dom.filterLog2xx.classList.toggle("active", current === "2xx");
+  if (dom.filterLog4xx) dom.filterLog4xx.classList.toggle("active", current === "4xx");
+  if (dom.filterLog5xx) dom.filterLog5xx.classList.toggle("active", current === "5xx");
+}
+
+async function withButtonBusy(button, busyText, task) {
+  if (!button) {
+    return task();
+  }
+  if (button.dataset.busy === "1") {
+    return;
+  }
+  const originalText = button.textContent;
+  button.dataset.busy = "1";
+  button.disabled = true;
+  button.classList.add("is-loading");
+  if (busyText) {
+    button.textContent = busyText;
+  }
+  try {
+    return await task();
+  } finally {
+    button.dataset.busy = "0";
+    button.disabled = false;
+    button.classList.remove("is-loading");
+    button.textContent = originalText;
+  }
+}
+
+function showToast(message, type = "info") {
+  if (!message) return;
+  if (!dom.appToast) {
+    return;
+  }
+  toastQueue.push({ message: String(message), type });
+  if (toastActive) return;
+  const flushNext = () => {
+    const item = toastQueue.shift();
+    if (!item) {
+      toastActive = false;
+      return;
+    }
+    toastActive = true;
+    dom.appToast.textContent = item.message;
+    dom.appToast.classList.toggle("is-error", item.type === "error");
+    dom.appToast.classList.add("active");
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+    }
+    toastTimer = setTimeout(() => {
+      dom.appToast.classList.remove("active");
+      setTimeout(flushNext, 180);
+    }, 2400);
+  };
+  flushNext();
 }
 
 function showConfirmDialog({
@@ -231,15 +294,18 @@ async function handleClearRequestLogs() {
     cancelText: "取消",
   });
   if (!confirmed) return;
-  const ok = await ensureConnected();
-  if (!ok) return;
-  const res = await clearRequestLogs();
-  if (res && res.ok === false) {
-    alert(res.error || "清空日志失败");
-    return;
-  }
-  await refreshRequestLogs(state.requestLogQuery);
-  renderRequestLogs();
+  await withButtonBusy(dom.clearRequestLogs, "清空中...", async () => {
+    const ok = await ensureConnected();
+    if (!ok) return;
+    const res = await clearRequestLogs();
+    if (res && res.ok === false) {
+      showToast(res.error || "清空日志失败", "error");
+      return;
+    }
+    await refreshRequestLogs(state.requestLogQuery);
+    renderRequestLogs();
+    showToast("请求日志已清空");
+  });
 }
 
 async function updateAccountSort(accountId, sort) {
@@ -268,14 +334,15 @@ async function deleteAccount(account) {
       return;
     }
     const msg = fallback && fallback.error ? fallback.error : "删除失败";
-    alert(msg);
+    showToast(msg, "error");
     return;
   }
   if (res && res.ok) {
     await refreshAll();
+    showToast("账号已删除");
   } else {
     const msg = res && res.error ? res.error : "删除失败";
-    alert(msg);
+    showToast(msg, "error");
   }
 }
 
@@ -301,27 +368,30 @@ async function refreshUsageForAccount() {
 }
 
 async function createApiKey() {
-  const ok = await ensureConnected();
-  if (!ok) return;
-  const modelSlug = dom.inputApiKeyModel.value || null;
-  const reasoningEffort = modelSlug ? (dom.inputApiKeyReasoning.value || null) : null;
-  const res = await api.serviceApiKeyCreate(
-    dom.inputApiKeyName.value.trim() || null,
-    modelSlug,
-    reasoningEffort,
-  );
-  if (res && res.error) {
-    alert(res.error);
-    return;
-  }
-  dom.apiKeyValue.value = res && res.key ? res.key : "";
-  await refreshApiModels();
-  await refreshApiKeys();
-  populateApiKeyModelSelect();
-  renderApiKeys({
-    onToggleStatus: toggleApiKeyStatus,
-    onDelete: deleteApiKey,
-    onUpdateModel: updateApiKeyModel,
+  await withButtonBusy(dom.submitApiKey, "创建中...", async () => {
+    const ok = await ensureConnected();
+    if (!ok) return;
+    const modelSlug = dom.inputApiKeyModel.value || null;
+    const reasoningEffort = modelSlug ? (dom.inputApiKeyReasoning.value || null) : null;
+    const res = await api.serviceApiKeyCreate(
+      dom.inputApiKeyName.value.trim() || null,
+      modelSlug,
+      reasoningEffort,
+    );
+    if (res && res.error) {
+      showToast(res.error, "error");
+      return;
+    }
+    dom.apiKeyValue.value = res && res.key ? res.key : "";
+    await refreshApiModels();
+    await refreshApiKeys();
+    populateApiKeyModelSelect();
+    renderApiKeys({
+      onToggleStatus: toggleApiKeyStatus,
+      onDelete: deleteApiKey,
+      onUpdateModel: updateApiKeyModel,
+    });
+    showToast("平台 Key 创建成功");
   });
 }
 
@@ -343,6 +413,7 @@ async function deleteApiKey(item) {
     onDelete: deleteApiKey,
     onUpdateModel: updateApiKeyModel,
   });
+  showToast("平台 Key 已删除");
 }
 
 async function toggleApiKeyStatus(item) {
@@ -361,6 +432,7 @@ async function toggleApiKeyStatus(item) {
     onDelete: deleteApiKey,
     onUpdateModel: updateApiKeyModel,
   });
+  showToast(isDisabled ? "平台 Key 已启用" : "平台 Key 已禁用");
 }
 
 async function updateApiKeyModel(item, modelSlug, reasoningEffort) {
@@ -371,7 +443,7 @@ async function updateApiKeyModel(item, modelSlug, reasoningEffort) {
   const normalizedEffort = normalizedModel ? (reasoningEffort || null) : null;
   const res = await api.serviceApiKeyUpdateModel(item.id, normalizedModel, normalizedEffort);
   if (res && res.ok === false) {
-    alert(res.error || "模型配置保存失败");
+    showToast(res.error || "模型配置保存失败", "error");
     return;
   }
   await refreshApiKeys();
@@ -383,45 +455,47 @@ async function updateApiKeyModel(item, modelSlug, reasoningEffort) {
 }
 
 async function handleLogin() {
-  const ok = await ensureConnected();
-  if (!ok) return;
-  dom.loginUrl.value = "生成授权链接中...";
-  try {
-    const res = await api.serviceLoginStart({
-      loginType: "chatgpt",
-      openBrowser: false,
-      note: dom.inputNote.value.trim(),
-      tags: dom.inputTags.value.trim(),
-      groupName: dom.inputGroup.value.trim(),
-    });
-    if (res && res.error) {
-      dom.loginHint.textContent = `登录失败：${res.error}`;
-      dom.loginUrl.value = "";
-      return;
-    }
-    dom.loginUrl.value = res && res.authUrl ? res.authUrl : "";
-    if (res && res.authUrl) {
-      await api.openInBrowser(res.authUrl);
-      if (res.warning) {
-        dom.loginHint.textContent = `注意：${res.warning}。如无法回调，可在下方粘贴回调链接手动解析。`;
-      } else {
-        dom.loginHint.textContent = "已打开浏览器，请完成授权。";
+  await withButtonBusy(dom.submitLogin, "授权中...", async () => {
+    const ok = await ensureConnected();
+    if (!ok) return;
+    dom.loginUrl.value = "生成授权链接中...";
+    try {
+      const res = await api.serviceLoginStart({
+        loginType: "chatgpt",
+        openBrowser: false,
+        note: dom.inputNote.value.trim(),
+        tags: dom.inputTags.value.trim(),
+        groupName: dom.inputGroup.value.trim(),
+      });
+      if (res && res.error) {
+        dom.loginHint.textContent = `登录失败：${res.error}`;
+        dom.loginUrl.value = "";
+        return;
       }
-    } else {
-      dom.loginHint.textContent = "未获取到授权链接，请重试。";
+      dom.loginUrl.value = res && res.authUrl ? res.authUrl : "";
+      if (res && res.authUrl) {
+        await api.openInBrowser(res.authUrl);
+        if (res.warning) {
+          dom.loginHint.textContent = `注意：${res.warning}。如无法回调，可在下方粘贴回调链接手动解析。`;
+        } else {
+          dom.loginHint.textContent = "已打开浏览器，请完成授权。";
+        }
+      } else {
+        dom.loginHint.textContent = "未获取到授权链接，请重试。";
+      }
+      state.activeLoginId = res && res.loginId ? res.loginId : null;
+      const success = await waitForLogin(state.activeLoginId);
+      if (success) {
+        await refreshAll();
+        closeAccountModal();
+      } else {
+        dom.loginHint.textContent = "登录失败，请重试。";
+      }
+    } catch (err) {
+      dom.loginUrl.value = "";
+      dom.loginHint.textContent = "登录失败，请检查 service 状态。";
     }
-    state.activeLoginId = res && res.loginId ? res.loginId : null;
-    const success = await waitForLogin(state.activeLoginId);
-    if (success) {
-      await refreshAll();
-      closeAccountModal();
-    } else {
-      dom.loginHint.textContent = "登录失败，请重试。";
-    }
-  } catch (err) {
-    dom.loginUrl.value = "";
-    dom.loginHint.textContent = "登录失败，请检查 service 状态。";
-  }
+  });
 }
 
 function parseCallbackUrl(raw) {
@@ -454,26 +528,28 @@ async function handleManualCallback() {
     dom.loginHint.textContent = parsed.error;
     return;
   }
-  const ok = await ensureConnected();
-  if (!ok) return;
-  dom.loginHint.textContent = "解析回调中...";
-  try {
-    const res = await api.serviceLoginComplete(
-      parsed.state,
-      parsed.code,
-      parsed.redirectUri,
-    );
-    if (res && res.ok) {
-      dom.loginHint.textContent = "登录成功，正在刷新...";
-      await refreshAll();
-      closeAccountModal();
-      return;
+  await withButtonBusy(dom.manualCallbackSubmit, "解析中...", async () => {
+    const ok = await ensureConnected();
+    if (!ok) return;
+    dom.loginHint.textContent = "解析回调中...";
+    try {
+      const res = await api.serviceLoginComplete(
+        parsed.state,
+        parsed.code,
+        parsed.redirectUri,
+      );
+      if (res && res.ok) {
+        dom.loginHint.textContent = "登录成功，正在刷新...";
+        await refreshAll();
+        closeAccountModal();
+        return;
+      }
+      const msg = res && res.error ? res.error : "解析失败";
+      dom.loginHint.textContent = `登录失败：${msg}`;
+    } catch (err) {
+      dom.loginHint.textContent = `登录失败：${String(err)}`;
     }
-    const msg = res && res.error ? res.error : "解析失败";
-    dom.loginHint.textContent = `登录失败：${msg}`;
-  } catch (err) {
-    dom.loginHint.textContent = `登录失败：${String(err)}`;
-  }
+  });
 }
 
 async function waitForLogin(loginId) {
@@ -621,9 +697,9 @@ function bindEvents() {
     dom.loginUrl.setSelectionRange(0, dom.loginUrl.value.length);
     try {
       document.execCommand("copy");
-      dom.loginHint.textContent = "授权链接已复制。";
+      showToast("授权链接已复制");
     } catch (err) {
-      dom.loginHint.textContent = "复制失败，请手动复制链接。";
+      showToast("复制失败，请手动复制链接", "error");
     }
   });
   dom.manualCallbackSubmit.addEventListener("click", handleManualCallback);
@@ -638,7 +714,12 @@ function bindEvents() {
     if (!dom.apiKeyValue.value) return;
     dom.apiKeyValue.select();
     dom.apiKeyValue.setSelectionRange(0, dom.apiKeyValue.value.length);
-    document.execCommand("copy");
+    try {
+      document.execCommand("copy");
+      showToast("平台 Key 已复制");
+    } catch (_err) {
+      showToast("复制失败，请手动复制", "error");
+    }
   });
   if (dom.refreshRequestLogs) {
     dom.refreshRequestLogs.addEventListener("click", async () => {
@@ -661,6 +742,15 @@ function bindEvents() {
       }, 220);
     });
   }
+  const setLogFilter = (value) => {
+    state.requestLogStatusFilter = value;
+    updateRequestLogFilterButtons();
+    renderRequestLogs();
+  };
+  if (dom.filterLogAll) dom.filterLogAll.addEventListener("click", () => setLogFilter("all"));
+  if (dom.filterLog2xx) dom.filterLog2xx.addEventListener("click", () => setLogFilter("2xx"));
+  if (dom.filterLog4xx) dom.filterLog4xx.addEventListener("click", () => setLogFilter("4xx"));
+  if (dom.filterLog5xx) dom.filterLog5xx.addEventListener("click", () => setLogFilter("5xx"));
   if (dom.refreshAll) {
     dom.refreshAll.addEventListener("click", refreshAll);
   }
@@ -754,6 +844,7 @@ function bootstrap() {
     onUpdateModel: updateApiKeyModel,
   });
   renderRequestLogs();
+  updateRequestLogFilterButtons();
 }
 
 window.addEventListener("DOMContentLoaded", bootstrap);
