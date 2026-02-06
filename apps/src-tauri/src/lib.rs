@@ -460,8 +460,9 @@ fn rpc_call(
     params,
   };
   let json = serde_json::to_string(&req).map_err(|e| e.to_string())?;
+  let rpc_token = gpttools_service::rpc_auth_token();
   let http = format!(
-    "POST /rpc HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+    "POST /rpc HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\nX-Gpttools-Rpc-Token: {rpc_token}\r\nContent-Length: {}\r\n\r\n{}",
     json.len(),
     json
   );

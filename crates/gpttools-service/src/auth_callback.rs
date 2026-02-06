@@ -88,6 +88,20 @@ fn ensure_login_server_with_addr(addr: &str) -> Result<LoginServerInfo, String> 
     Ok(info)
 }
 
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]")
+}
+
+fn allow_non_loopback_login_addr() -> bool {
+    matches!(
+        std::env::var("GPTTOOLS_ALLOW_NON_LOOPBACK_LOGIN_ADDR")
+            .ok()
+            .as_deref()
+            .map(str::trim),
+        Some("1" | "true" | "TRUE" | "yes" | "YES")
+    )
+}
+
 fn bind_login_server(addr: &str) -> Result<(Server, LoginServerInfo), String> {
     if let Ok(url) = Url::parse(&format!("http://{addr}")) {
         let host = url.host_str().unwrap_or("localhost");
@@ -95,7 +109,7 @@ fn bind_login_server(addr: &str) -> Result<(Server, LoginServerInfo), String> {
         if host == "localhost" {
             let mut addr_in_use = false;
             let mut last_err: Option<Box<dyn std::error::Error + Send + Sync>> = None;
-            match Server::http(format!("[::]:{port}")) {
+            match Server::http(format!("[::1]:{port}")) {
                 Ok(server) => {
                     let port = server
                         .server_addr()
@@ -135,6 +149,10 @@ fn bind_login_server(addr: &str) -> Result<(Server, LoginServerInfo), String> {
             if let Some(err) = last_err {
                 return Err(err.to_string());
             }
+        } else if !is_loopback_host(host) && !allow_non_loopback_login_addr() {
+            return Err(format!(
+                "登录回调地址仅允许 loopback（localhost/127.0.0.1/::1），当前为 {host}"
+            ));
         }
     }
 
@@ -163,7 +181,7 @@ fn run_login_server(server: Server) {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_redirect_uri, ensure_login_server_with_addr, LOGIN_SERVER_STATE};
+    use super::{ensure_login_server_with_addr, resolve_redirect_uri, LOGIN_SERVER_STATE};
     use std::net::TcpListener;
     use std::sync::Mutex;
     use url::Url;
@@ -218,7 +236,7 @@ mod tests {
         reset_login_server_state();
         let prev_login = std::env::var("GPTTOOLS_LOGIN_ADDR").ok();
 
-        let listener_v6 = TcpListener::bind("[::]:0").expect("bind v6 port");
+        let listener_v6 = TcpListener::bind("[::1]:0").expect("bind v6 port");
         let port = listener_v6.local_addr().expect("addr").port();
         let listener_v4 = TcpListener::bind(format!("127.0.0.1:{port}")).ok();
         let err = match ensure_login_server_with_addr(&format!("localhost:{port}")) {
@@ -232,6 +250,23 @@ mod tests {
         match prev_login {
             Some(value) => std::env::set_var("GPTTOOLS_LOGIN_ADDR", value),
             None => std::env::remove_var("GPTTOOLS_LOGIN_ADDR"),
+        }
+        reset_login_server_state();
+    }
+
+    #[test]
+    fn login_server_rejects_non_loopback_by_default() {
+        let _guard = ENV_LOCK.lock().expect("lock");
+        reset_login_server_state();
+        let prev_allow = std::env::var("GPTTOOLS_ALLOW_NON_LOOPBACK_LOGIN_ADDR").ok();
+
+        std::env::remove_var("GPTTOOLS_ALLOW_NON_LOOPBACK_LOGIN_ADDR");
+        let err = ensure_login_server_with_addr("0.0.0.0:1455").expect_err("should reject");
+        assert!(err.contains("loopback"));
+
+        match prev_allow {
+            Some(value) => std::env::set_var("GPTTOOLS_ALLOW_NON_LOOPBACK_LOGIN_ADDR", value),
+            None => std::env::remove_var("GPTTOOLS_ALLOW_NON_LOOPBACK_LOGIN_ADDR"),
         }
         reset_login_server_state();
     }

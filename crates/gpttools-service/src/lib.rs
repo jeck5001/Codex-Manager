@@ -3,10 +3,12 @@ use gpttools_core::rpc::types::{
     RequestLogListResult, UsageListResult, UsageReadResult,
 };
 use gpttools_core::storage::{now_ts, Event, Storage};
+use rand::RngCore;
 use serde_json::Value;
 use std::io::{self, Write};
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
 
@@ -37,6 +39,7 @@ mod requestlog_clear;
 pub const DEFAULT_ADDR: &str = "localhost:48760";
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+static RPC_AUTH_TOKEN: OnceLock<String> = OnceLock::new();
 
 pub struct ServerHandle {
     pub addr: String,
@@ -76,6 +79,44 @@ pub fn shutdown_requested() -> bool {
 
 pub fn clear_shutdown_flag() {
     SHUTDOWN_REQUESTED.store(false, Ordering::SeqCst);
+}
+
+fn build_rpc_auth_token() -> String {
+    if let Ok(raw) = std::env::var("GPTTOOLS_RPC_TOKEN") {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    let mut token = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        token.push_str(&format!("{byte:02x}"));
+    }
+    std::env::set_var("GPTTOOLS_RPC_TOKEN", &token);
+    token
+}
+
+pub fn rpc_auth_token() -> &'static str {
+    RPC_AUTH_TOKEN.get_or_init(build_rpc_auth_token).as_str()
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (a, b) in left.iter().zip(right.iter()) {
+        diff |= a ^ b;
+    }
+    diff == 0
+}
+
+pub fn rpc_auth_token_matches(candidate: &str) -> bool {
+    let expected = rpc_auth_token();
+    constant_time_eq(expected.as_bytes(), candidate.trim().as_bytes())
 }
 
 pub fn request_shutdown(addr: &str) {
@@ -499,4 +540,3 @@ mod tests {
         assert!(err.contains("missing"));
     }
 }
-
