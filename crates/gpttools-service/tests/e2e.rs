@@ -30,8 +30,9 @@ impl Drop for EnvGuard {
 
 fn post_rpc(addr: &str, body: &str) -> String {
     let mut stream = TcpStream::connect(addr).expect("connect server");
+    let token = gpttools_service::rpc_auth_token().to_string();
     let request = format!(
-        "POST /rpc HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+        "POST /rpc HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\nX-Gpttools-Rpc-Token: {token}\r\nContent-Length: {}\r\n\r\n{}",
         body.len(),
         body
     );
