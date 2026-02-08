@@ -94,6 +94,11 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -130,6 +135,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
@@ -144,12 +150,12 @@ jobs:
             exit 1
           fi
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${FILES[@]}" --clobber
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --repo "$GH_REPO" --clobber
           else
             if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
-              gh release create "$TAG" "${FILES[@]}" --title "$TITLE" --target "$REF" --generate-notes --prerelease
+              gh release create "$TAG" "${FILES[@]}" --repo "$GH_REPO" --title "$TITLE" --target "$REF" --generate-notes --prerelease
             else
-              gh release create "$TAG" "${FILES[@]}" --title "$TITLE" --target "$REF" --generate-notes
+              gh release create "$TAG" "${FILES[@]}" --repo "$GH_REPO" --title "$TITLE" --target "$REF" --generate-notes
             fi
           fi
