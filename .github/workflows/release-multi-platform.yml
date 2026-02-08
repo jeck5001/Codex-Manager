@@ -82,11 +82,59 @@ jobs:
         working-directory: apps/src-tauri
         run: cargo tauri build --bundles ${{ matrix.bundles }}
 
+      - name: Stage portable package
+        shell: pwsh
+        run: |
+          $releaseDir = "apps/src-tauri/target/release"
+          $portableDir = Join-Path $releaseDir "portable"
+          New-Item -ItemType Directory -Force $portableDir | Out-Null
+
+          $artifact = "${{ matrix.artifact_name }}"
+          $source = $null
+          if ($artifact -eq "windows") {
+            $preferred = Join-Path $releaseDir "CodexManager.exe"
+            if (Test-Path $preferred) { $source = $preferred }
+            if (-not $source) {
+              $source = Get-ChildItem $releaseDir -Filter "*.exe" -File |
+                Where-Object { $_.Name -notmatch "uninstall|setup|crash" } |
+                Select-Object -First 1 -ExpandProperty FullName
+            }
+          } else {
+            $preferred = Join-Path $releaseDir "CodexManager"
+            if (Test-Path $preferred) { $source = $preferred }
+            if (-not $source) {
+              $source = Get-ChildItem $releaseDir -File |
+                Where-Object { $_.Extension -eq "" -and $_.Name -notmatch "build-script|deps" } |
+                Select-Object -First 1 -ExpandProperty FullName
+            }
+          }
+
+          if (-not $source) {
+            throw "portable source binary not found in $releaseDir"
+          }
+
+          $portableName = if ($artifact -eq "windows") { "CodexManager.exe" } else { "CodexManager" }
+          $portableBinary = Join-Path $portableDir $portableName
+          Copy-Item -Force $source $portableBinary
+
+          $zipName = "CodexManager-$artifact-portable.zip"
+          $zipPath = Join-Path $portableDir $zipName
+          if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
+          Compress-Archive -Path $portableBinary -DestinationPath $zipPath
+          Write-Host "portable package: $zipPath"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: codexmanager-${{ matrix.artifact_name }}
-          path: apps/src-tauri/target/release/bundle/**
+          path: |
+            apps/src-tauri/target/release/bundle/**/*.exe
+            apps/src-tauri/target/release/bundle/**/*.msi
+            apps/src-tauri/target/release/bundle/**/*.dmg
+            apps/src-tauri/target/release/bundle/**/*.AppImage
+            apps/src-tauri/target/release/bundle/**/*.deb
+            apps/src-tauri/target/release/bundle/**/*.rpm
+            apps/src-tauri/target/release/portable/*.zip
           if-no-files-found: error
 
   release:
@@ -143,7 +191,7 @@ jobs:
           TITLE="CodexManager $TAG"
 
           mapfile -t FILES < <(find release-assets -type f \( \
-            -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+            -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.zip' \
           \) | sort)
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "No release assets found."
