@@ -58,6 +58,13 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            apps/src-tauri
+
       - name: Install Linux dependencies
         if: matrix.artifact_name == 'linux'
         run: |
@@ -97,20 +104,52 @@ jobs:
       - name: List release assets
         run: find release-assets -type f | sort
 
+      - name: Resolve release meta
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+            REF="${{ inputs.ref }}"
+          else
+            TAG="${{ github.ref_name }}"
+            REF="${{ github.sha }}"
+          fi
+          if [[ "$TAG" != v* ]]; then
+            TAG="v$TAG"
+          fi
+          if [[ "$TAG" == *-* ]]; then
+            PRERELEASE="true"
+          else
+            PRERELEASE="false"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          target_commitish: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
-          name: CodexManager ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          draft: false
-          prerelease: ${{ contains((github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name), '-') }}
-          generate_release_notes: true
-          fail_on_unmatched_files: false
-          files: |
-            release-assets/**/*.exe
-            release-assets/**/*.msi
-            release-assets/**/*.dmg
-            release-assets/**/*.AppImage
-            release-assets/**/*.deb
-            release-assets/**/*.rpm
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          REF="${{ steps.meta.outputs.ref }}"
+          TITLE="CodexManager $TAG"
+
+          mapfile -t FILES < <(find release-assets -type f \( \
+            -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+          \) | sort)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No release assets found."
+            exit 1
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+          else
+            if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
+              gh release create "$TAG" "${FILES[@]}" --title "$TITLE" --target "$REF" --generate-notes --prerelease
+            else
+              gh release create "$TAG" "${FILES[@]}" --title "$TITLE" --target "$REF" --generate-notes
+            fi
+          fi
