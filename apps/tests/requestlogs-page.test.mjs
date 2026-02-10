@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const appsRoot = path.resolve(__dirname, "..");
 
 test("request logs page wiring present", () => {
-  const indexHtml = fs.readFileSync("apps/index.html", "utf8");
-  const domJs = fs.readFileSync("apps/src/ui/dom.js", "utf8");
-  const mainJs = fs.readFileSync("apps/src/main.js", "utf8");
+  const indexHtml = fs.readFileSync(path.join(appsRoot, "index.html"), "utf8");
+  const domJs = fs.readFileSync(path.join(appsRoot, "src", "ui", "dom.js"), "utf8");
+  const mainJs = fs.readFileSync(path.join(appsRoot, "src", "main.js"), "utf8");
 
   assert(indexHtml.includes('id="navRequestLogs"'), "index.html missing navRequestLogs button");
   assert(indexHtml.includes('id="pageRequestLogs"'), "index.html missing pageRequestLogs section");

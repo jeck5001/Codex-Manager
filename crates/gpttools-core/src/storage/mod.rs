@@ -120,6 +120,8 @@ impl Storage {
         self.conn.execute_batch(sql_api_key_model)?;
         let sql_request_logs = include_str!("../../migrations/005_request_logs.sql");
         self.conn.execute_batch(sql_request_logs)?;
+        let sql_usage_latest_index = include_str!("../../migrations/006_usage_snapshots_latest_index.sql");
+        self.conn.execute_batch(sql_usage_latest_index)?;
         self.ensure_account_meta_columns()?;
         self.ensure_usage_secondary_columns()?;
         self.ensure_token_api_key_column()?;
@@ -487,9 +489,40 @@ impl Storage {
     }
 
     pub fn latest_usage_snapshots_by_account(&self) -> Result<Vec<UsageSnapshotRecord>> {
-        // Latest per account by captured_at; ties broken by highest id.
+        // 中文注释：窗口函数 + 复合索引可稳定处理“同 captured_at 并发写入”场景；
+        // 不这样做会依赖复杂子查询拼接，后续维护和优化都更难。
         let mut stmt = self.conn.prepare(
-            "SELECT account_id, used_percent, window_minutes, resets_at, secondary_used_percent, secondary_window_minutes, secondary_resets_at, credits_json, captured_at FROM usage_snapshots WHERE id IN (SELECT MAX(s2.id) FROM usage_snapshots s2 JOIN (SELECT account_id, MAX(captured_at) AS max_captured FROM usage_snapshots GROUP BY account_id) latest ON latest.account_id = s2.account_id AND latest.max_captured = s2.captured_at GROUP BY s2.account_id) ORDER BY captured_at DESC, id DESC",
+            "WITH ranked AS (
+                SELECT
+                    id,
+                    account_id,
+                    used_percent,
+                    window_minutes,
+                    resets_at,
+                    secondary_used_percent,
+                    secondary_window_minutes,
+                    secondary_resets_at,
+                    credits_json,
+                    captured_at,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY account_id
+                        ORDER BY captured_at DESC, id DESC
+                    ) AS rn
+                FROM usage_snapshots
+            )
+            SELECT
+                account_id,
+                used_percent,
+                window_minutes,
+                resets_at,
+                secondary_used_percent,
+                secondary_window_minutes,
+                secondary_resets_at,
+                credits_json,
+                captured_at
+            FROM ranked
+            WHERE rn = 1
+            ORDER BY captured_at DESC, id DESC",
         )?;
         let mut rows = stmt.query([])?;
         let mut out = Vec::new();

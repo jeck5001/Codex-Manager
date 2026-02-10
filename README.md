@@ -62,6 +62,19 @@ pnpm run dev
 pnpm run build
 ```
 
+### 前端一键检查（推荐）
+在 `apps/` 目录执行：
+
+```
+pnpm run check
+```
+
+预期输出：
+
+- `node --test src/**/*.test.js` 全部通过
+- `node --test tests/*.test.mjs` 全部通过
+- `vite build` 成功产出 `apps/dist`
+
 ### Rust（service）单独构建
 本项目的 service 可单独编译（用于调试、替换或嵌入桌面端）。
 
@@ -139,9 +152,14 @@ chmod +x scripts/rebuild-macos.sh
 ### 推荐打包流程
 1. 拉取最新代码并进入仓库根目录。
 2. 安装依赖：`pnpm install`（在 `apps/` 下执行）。
-3. 执行对应平台脚本。
-4. 校验产物是否存在于 `apps/src-tauri/target/release/bundle/`。
-5. 手动上传产物到 GitHub Release（避免 CI 分钟费用）。
+3. 先执行质量检查：`pnpm -C apps run check` 与 `cargo test --workspace`。
+4. 执行对应平台脚本。
+5. 校验产物是否存在于 `apps/src-tauri/target/release/bundle/`。
+6. 手动上传产物到 GitHub Release（避免 CI 分钟费用）。
+
+### CI 质量门禁
+- PR 默认应先通过 `ci-verify`（Rust tests + 前端 tests + 前端 build）再合并。
+- Release 流程与质量门禁解耦：发布工作流仅负责打包与发布，不替代 PR 验收。
 
 ### 常见报错排查
 - `pnpm: command not found`

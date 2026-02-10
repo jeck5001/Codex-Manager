@@ -22,11 +22,16 @@ import {
   refreshRequestLogs,
   clearRequestLogs,
 } from "./services/data";
-import { renderDashboard } from "./views/dashboard";
-import { renderAccounts, openAccountModal, closeAccountModal } from "./views/accounts";
+import {
+  ensureAutoRefreshTimer,
+  runRefreshTasks,
+  stopAutoRefreshTimer,
+} from "./services/refresh";
+import { openAccountModal, closeAccountModal } from "./views/accounts";
 import { renderApiKeys, openApiKeyModal, closeApiKeyModal, populateApiKeyModelSelect } from "./views/apikeys";
 import { openUsageModal, closeUsageModal, renderUsageSnapshot } from "./views/usage";
 import { renderRequestLogs } from "./views/requestlogs";
+import { renderAllViews, renderAccountsOnly } from "./views/renderers";
 
 let apiModelLoadSeq = 0;
 let requestLogSearchTimer = null;
@@ -267,23 +272,31 @@ async function refreshAll() {
   const ok = await ensureConnected();
   updateServiceToggle();
   if (!ok) return;
-  await refreshAccounts();
-  await refreshUsageList();
-  await refreshApiModels();
-  await refreshApiKeys();
-  await refreshRequestLogs(state.requestLogQuery);
-  renderDashboard();
-  renderAccounts({
+  const results = await runRefreshTasks(
+    [
+      { name: "accounts", run: refreshAccounts },
+      { name: "usage", run: refreshUsageList },
+      { name: "api-models", run: refreshApiModels },
+      { name: "api-keys", run: refreshApiKeys },
+      { name: "request-logs", run: () => refreshRequestLogs(state.requestLogQuery) },
+    ],
+    (taskName, err) => {
+      console.error(`[refreshAll] ${taskName} failed`, err);
+    },
+  );
+  // 中文注释：并行刷新时允许“部分失败部分成功”，否则某个慢/失败接口会拖垮整页刷新体验。
+  const hasFailedTask = results.some((item) => item.status === "rejected");
+  if (hasFailedTask) {
+    showToast("部分数据刷新失败，已展示可用数据", "error");
+  }
+  renderAllViews({
     onUpdateSort: updateAccountSort,
     onOpenUsage: handleOpenUsageModal,
-    onDelete: deleteAccount,
+    onDeleteAccount: deleteAccount,
+    onToggleApiKeyStatus: toggleApiKeyStatus,
+    onDeleteApiKey: deleteApiKey,
+    onUpdateApiKeyModel: updateApiKeyModel,
   });
-  renderApiKeys({
-    onToggleStatus: toggleApiKeyStatus,
-    onDelete: deleteApiKey,
-    onUpdateModel: updateApiKeyModel,
-  });
-  renderRequestLogs();
 }
 
 async function handleClearRequestLogs() {
@@ -593,9 +606,7 @@ async function handleStartService() {
         return;
       }
       void refreshAll();
-      if (!state.autoRefreshTimer) {
-        state.autoRefreshTimer = setInterval(refreshAll, 30000);
-      }
+      ensureAutoRefreshTimer(state, refreshAll);
     },
   );
 }
@@ -606,10 +617,7 @@ async function handleStopService() {
   await stopService();
   setServiceBusy(false);
   updateServiceToggle();
-  if (state.autoRefreshTimer) {
-    clearInterval(state.autoRefreshTimer);
-    state.autoRefreshTimer = null;
-  }
+  stopAutoRefreshTimer(state);
 }
 
 async function handleServiceToggle() {
@@ -658,9 +666,7 @@ async function autoStartService() {
   if (ok) {
     updateServiceToggle();
     void refreshAll();
-    if (!state.autoRefreshTimer) {
-      state.autoRefreshTimer = setInterval(refreshAll, 30000);
-    }
+    ensureAutoRefreshTimer(state, refreshAll);
     return;
   }
   await handleStartService();
@@ -793,10 +799,10 @@ function bindEvents() {
   if (dom.accountSearch) {
     dom.accountSearch.addEventListener("input", (event) => {
       state.accountSearch = event.target.value;
-      renderAccounts({
+      renderAccountsOnly({
         onUpdateSort: updateAccountSort,
         onOpenUsage: handleOpenUsageModal,
-        onDelete: deleteAccount,
+        onDeleteAccount: deleteAccount,
       });
     });
   }
@@ -810,10 +816,10 @@ function bindEvents() {
   const setFilter = (filter) => {
     state.accountFilter = filter;
     updateFilterButtons();
-    renderAccounts({
+    renderAccountsOnly({
       onUpdateSort: updateAccountSort,
       onOpenUsage: handleOpenUsageModal,
-      onDelete: deleteAccount,
+      onDeleteAccount: deleteAccount,
     });
   };
 
@@ -832,18 +838,14 @@ function bootstrap() {
   syncGlobalRefreshVisibility(state.currentPage);
   void autoStartService();
   bindEvents();
-  renderDashboard();
-  renderAccounts({
+  renderAllViews({
     onUpdateSort: updateAccountSort,
     onOpenUsage: handleOpenUsageModal,
-    onDelete: deleteAccount,
+    onDeleteAccount: deleteAccount,
+    onToggleApiKeyStatus: toggleApiKeyStatus,
+    onDeleteApiKey: deleteApiKey,
+    onUpdateApiKeyModel: updateApiKeyModel,
   });
-  renderApiKeys({
-    onToggleStatus: toggleApiKeyStatus,
-    onDelete: deleteApiKey,
-    onUpdateModel: updateApiKeyModel,
-  });
-  renderRequestLogs();
   updateRequestLogFilterButtons();
 }
 

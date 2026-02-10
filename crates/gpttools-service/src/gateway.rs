@@ -1,16 +1,13 @@
-use gpttools_core::storage::{now_ts, Account, RequestLog, Storage, Token, UsageSnapshotRecord};
+use gpttools_core::storage::{now_ts, Account, RequestLog, Storage, Token};
 use reqwest::header::{HeaderName, HeaderValue};
 use reqwest::header::CONTENT_TYPE;
 use reqwest::blocking::Client;
 use reqwest::Method;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tiny_http::{Header, Request, Response, StatusCode};
 
-use crate::account_availability::{evaluate_snapshot, Availability, is_available};
-use crate::account_status::set_account_status;
 use crate::auth_tokens;
 use crate::storage_helpers::open_storage;
 use gpttools_core::auth::{DEFAULT_CLIENT_ID, DEFAULT_ISSUER};
@@ -19,17 +16,28 @@ use serde_json::Value;
 
 mod local_validation;
 mod upstream_proxy;
+mod request_helpers;
+mod metrics;
+mod selection;
+mod failover;
+
+pub(super) use request_helpers::{
+    extract_request_model, extract_request_reasoning_effort, is_html_content_type,
+    is_upstream_challenge_response, normalize_models_path, should_drop_incoming_header,
+    should_drop_incoming_header_for_failover,
+};
+pub(crate) use metrics::{
+    AccountInFlightGuard, acquire_account_inflight,
+    begin_gateway_request, gateway_metrics_prometheus,
+    account_inflight_count, record_gateway_cooldown_mark, record_gateway_failover_attempt,
+};
+pub(crate) use selection::{collect_gateway_candidates, rotate_candidates_for_fairness};
+pub(crate) use failover::should_failover_after_refresh;
 
 static UPSTREAM_CLIENT: OnceLock<Client> = OnceLock::new();
-static CANDIDATE_CURSOR: AtomicUsize = AtomicUsize::new(0);
-static ACCOUNT_INFLIGHT: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
 static ACCOUNT_COOLDOWN_UNTIL: OnceLock<Mutex<HashMap<String, i64>>> = OnceLock::new();
 static ACCOUNT_TOKEN_EXCHANGE_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
     OnceLock::new();
-static GATEWAY_TOTAL_REQUESTS: AtomicUsize = AtomicUsize::new(0);
-static GATEWAY_ACTIVE_REQUESTS: AtomicUsize = AtomicUsize::new(0);
-static GATEWAY_FAILOVER_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
-static GATEWAY_COOLDOWN_MARKS: AtomicUsize = AtomicUsize::new(0);
 
 const DEFAULT_UPSTREAM_CONNECT_TIMEOUT_SECS: u64 = 15;
 const DEFAULT_ACCOUNT_MAX_INFLIGHT: usize = 0;
@@ -41,67 +49,6 @@ const DEFAULT_ACCOUNT_COOLDOWN_4XX_SECS: i64 = DEFAULT_ACCOUNT_COOLDOWN_SECS;
 const DEFAULT_ACCOUNT_COOLDOWN_CHALLENGE_SECS: i64 = 60;
 const DEFAULT_MODELS_CLIENT_VERSION: &str = "0.98.0";
 const DEFAULT_GATEWAY_DEBUG: bool = false;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct GatewayMetricsSnapshot {
-    pub total_requests: usize,
-    pub active_requests: usize,
-    pub account_inflight_total: usize,
-    pub failover_attempts: usize,
-    pub cooldown_marks: usize,
-}
-
-struct GatewayRequestGuard;
-
-impl Drop for GatewayRequestGuard {
-    fn drop(&mut self) {
-        GATEWAY_ACTIVE_REQUESTS.fetch_sub(1, Ordering::Relaxed);
-    }
-}
-
-fn begin_gateway_request() -> GatewayRequestGuard {
-    GATEWAY_TOTAL_REQUESTS.fetch_add(1, Ordering::Relaxed);
-    GATEWAY_ACTIVE_REQUESTS.fetch_add(1, Ordering::Relaxed);
-    GatewayRequestGuard
-}
-
-fn record_gateway_failover_attempt() {
-    GATEWAY_FAILOVER_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
-}
-
-fn account_inflight_total() -> usize {
-    let lock = ACCOUNT_INFLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
-    let Ok(map) = lock.lock() else {
-        return 0;
-    };
-    map.values().copied().sum()
-}
-
-pub(crate) fn gateway_metrics_snapshot() -> GatewayMetricsSnapshot {
-    GatewayMetricsSnapshot {
-        total_requests: GATEWAY_TOTAL_REQUESTS.load(Ordering::Relaxed),
-        active_requests: GATEWAY_ACTIVE_REQUESTS.load(Ordering::Relaxed),
-        account_inflight_total: account_inflight_total(),
-        failover_attempts: GATEWAY_FAILOVER_ATTEMPTS.load(Ordering::Relaxed),
-        cooldown_marks: GATEWAY_COOLDOWN_MARKS.load(Ordering::Relaxed),
-    }
-}
-
-pub(crate) fn gateway_metrics_prometheus() -> String {
-    let m = gateway_metrics_snapshot();
-    format!(
-        "gpttools_gateway_requests_total {}\n\
-gpttools_gateway_requests_active {}\n\
-gpttools_gateway_account_inflight_total {}\n\
-gpttools_gateway_failover_attempts_total {}\n\
-gpttools_gateway_cooldown_marks_total {}\n",
-        m.total_requests,
-        m.active_requests,
-        m.account_inflight_total,
-        m.failover_attempts,
-        m.cooldown_marks,
-    )
-}
 
 fn upstream_client() -> &'static Client {
     UPSTREAM_CLIENT.get_or_init(|| {
@@ -122,56 +69,6 @@ fn upstream_connect_timeout() -> Duration {
     Duration::from_secs(DEFAULT_UPSTREAM_CONNECT_TIMEOUT_SECS)
 }
 
-fn rotate_candidates_for_fairness(candidates: &mut Vec<(Account, Token)>) {
-    if candidates.len() <= 1 {
-        return;
-    }
-    let cursor = CANDIDATE_CURSOR.fetch_add(1, Ordering::Relaxed);
-    let offset = cursor % candidates.len();
-    if offset > 0 {
-        // 中文注释：轮转起点可把并发请求均匀打散到不同账号，降低首账号被并发打爆的概率。
-        candidates.rotate_left(offset);
-    }
-}
-
-fn account_inflight_count(account_id: &str) -> usize {
-    let lock = ACCOUNT_INFLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
-    let Ok(map) = lock.lock() else {
-        return 0;
-    };
-    map.get(account_id).copied().unwrap_or(0)
-}
-
-struct AccountInFlightGuard {
-    account_id: String,
-}
-
-impl Drop for AccountInFlightGuard {
-    fn drop(&mut self) {
-        let lock = ACCOUNT_INFLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
-        let Ok(mut map) = lock.lock() else {
-            return;
-        };
-        if let Some(value) = map.get_mut(&self.account_id) {
-            if *value > 1 {
-                *value -= 1;
-            } else {
-                map.remove(&self.account_id);
-            }
-        }
-    }
-}
-
-fn acquire_account_inflight(account_id: &str) -> AccountInFlightGuard {
-    let lock = ACCOUNT_INFLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut map) = lock.lock() {
-        let entry = map.entry(account_id.to_string()).or_insert(0);
-        *entry += 1;
-    }
-    AccountInFlightGuard {
-        account_id: account_id.to_string(),
-    }
-}
 
 fn account_max_inflight_limit() -> usize {
     DEFAULT_ACCOUNT_MAX_INFLIGHT
@@ -221,7 +118,7 @@ fn is_account_in_cooldown(account_id: &str) -> bool {
 fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut map) = lock.lock() {
-        GATEWAY_COOLDOWN_MARKS.fetch_add(1, Ordering::Relaxed);
+        record_gateway_cooldown_mark();
         let cooldown_until = now_ts() + cooldown_secs_for_reason(reason);
         // 中文注释：同账号短时间内可能触发不同失败类型；保留更晚的 until 可避免被较短冷却覆盖。
         match map.get_mut(account_id) {
@@ -363,61 +260,6 @@ fn is_chatgpt_backend_base(base: &str) -> bool {
         || normalized.contains("chat.openai.com/backend-api")
 }
 
-fn extract_request_model(body: &[u8]) -> Option<String> {
-    if body.is_empty() {
-        return None;
-    }
-    let value = serde_json::from_slice::<Value>(body).ok()?;
-    value
-        .get("model")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(|v| v.to_string())
-}
-
-fn extract_request_reasoning_effort(body: &[u8]) -> Option<String> {
-    if body.is_empty() {
-        return None;
-    }
-    let value = serde_json::from_slice::<Value>(body).ok()?;
-    // 兼容 responses 风格：{ "reasoning": { "effort": "medium" } }
-    value
-        .get("reasoning")
-        .and_then(|v| v.get("effort"))
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(|v| v.to_string())
-        // 兼容潜在直传字段：{ "reasoning_effort": "medium" }
-        .or_else(|| {
-            value
-                .get("reasoning_effort")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-                .map(|v| v.to_string())
-        })
-}
-
-fn should_drop_incoming_header(name: &str) -> bool {
-    name.eq_ignore_ascii_case("Authorization")
-        || name.eq_ignore_ascii_case("x-api-key")
-        || name.eq_ignore_ascii_case("Host")
-        || name.eq_ignore_ascii_case("Content-Length")
-        // 中文注释：resume 会携带旧会话的账号头；若不剔除会把请求强行绑定到过期/耗尽账号，导致无法切换候选账号。
-        || name.eq_ignore_ascii_case("ChatGPT-Account-Id")
-}
-
-fn should_drop_session_affinity_header(name: &str) -> bool {
-    // 中文注释：session_id / turn-state 属于会话粘性信号，正常直连时应保留；
-    // 仅在 failover 到其他账号时剔除，避免继续命中旧账号会话路由导致“切换无效”。
-    name.eq_ignore_ascii_case("session_id") || name.eq_ignore_ascii_case("x-codex-turn-state")
-}
-
-fn should_drop_incoming_header_for_failover(name: &str) -> bool {
-    should_drop_incoming_header(name) || should_drop_session_affinity_header(name)
-}
 
 fn write_request_log(
     storage: &Storage,
@@ -520,42 +362,6 @@ fn should_try_openai_fallback_by_status(base: &str, request_path: &str, status_c
     matches!(status_code, 403 | 429)
 }
 
-fn is_upstream_challenge_response(status_code: u16, content_type: Option<&HeaderValue>) -> bool {
-    let is_html = content_type
-        .and_then(|v| v.to_str().ok())
-        .map(is_html_content_type)
-        .unwrap_or(false);
-    // 中文注释：403 并不总是 Cloudflare challenge（也可能是上游业务鉴权错误），
-    // 仅在明确 HTML challenge 或 429 限流时按 challenge 处理，避免误导排障方向。
-    is_html || status_code == 429
-}
-
-fn is_html_content_type(value: &str) -> bool {
-    value.trim().to_ascii_lowercase().starts_with("text/html")
-}
-
-fn normalize_models_path(path: &str) -> String {
-    let is_models_path = path == "/v1/models" || path.starts_with("/v1/models?");
-    if !is_models_path {
-        return path.to_string();
-    }
-    let has_client_version = path
-        .split_once('?')
-        .map(|(_, query)| {
-            query.split('&').any(|part| {
-                part.split('=')
-                    .next()
-                    .is_some_and(|key| key.eq_ignore_ascii_case("client_version"))
-            })
-        })
-        .unwrap_or(false);
-    if has_client_version {
-        return path.to_string();
-    }
-    let client_version = DEFAULT_MODELS_CLIENT_VERSION.to_string();
-    let separator = if path.contains('?') { '&' } else { '?' };
-    format!("{path}{separator}client_version={client_version}")
-}
 
 fn compute_upstream_url(base: &str, path: &str) -> (String, Option<String>) {
     let base = base.trim_end_matches('/');
@@ -863,139 +669,6 @@ fn extract_platform_key(request: &Request) -> Option<String> {
         }
     }
     None
-}
-
-fn collect_gateway_candidates(storage: &Storage) -> Result<Vec<(Account, Token)>, String> {
-    // 选择可用账号作为网关上游候选
-    let accounts = storage.list_accounts().map_err(|e| e.to_string())?;
-    let tokens = storage.list_tokens().map_err(|e| e.to_string())?;
-    let snaps = storage
-        .latest_usage_snapshots_by_account()
-        .map_err(|e| e.to_string())?;
-    let mut token_map = HashMap::new();
-    for token in tokens {
-        token_map.insert(token.account_id.clone(), token);
-    }
-    let mut snap_map = HashMap::new();
-    for snap in snaps {
-        snap_map.insert(snap.account_id.clone(), snap);
-    }
-
-    let mut out = Vec::new();
-    for account in &accounts {
-        if account.status != "active" {
-            continue;
-        }
-        let token = match token_map.get(&account.id) {
-            Some(token) => token.clone(),
-            None => continue,
-        };
-        let usage = snap_map.get(&account.id);
-        if !is_available(usage) {
-            continue;
-        }
-        out.push((account.clone(), token));
-    }
-    if out.is_empty() {
-        let mut fallback = Vec::new();
-        for account in &accounts {
-            let token = match token_map.get(&account.id) {
-                Some(token) => token.clone(),
-                None => continue,
-            };
-            let usage = snap_map.get(&account.id);
-            if !fallback_allowed(usage) {
-                continue;
-            }
-            fallback.push((account.clone(), token));
-        }
-        if !fallback.is_empty() {
-            log::warn!("gateway fallback: no active accounts, using {} candidates", fallback.len());
-            return Ok(fallback);
-        }
-    }
-    if out.is_empty() {
-        log_no_candidates(&accounts, &token_map, &snap_map);
-    }
-    Ok(out)
-}
-
-fn fallback_allowed(usage: Option<&UsageSnapshotRecord>) -> bool {
-    if let Some(record) = usage {
-        if let Some(value) = record.used_percent {
-            if value >= 100.0 {
-                return false;
-            }
-        }
-        if let Some(value) = record.secondary_used_percent {
-            if value >= 100.0 {
-                return false;
-            }
-        }
-    }
-    true
-}
-
-fn log_no_candidates(
-    accounts: &[Account],
-    token_map: &HashMap<String, Token>,
-    snap_map: &HashMap<String, UsageSnapshotRecord>,
-) {
-    let db_path = std::env::var("GPTTOOLS_DB_PATH").unwrap_or_else(|_| "<unset>".to_string());
-    log::warn!(
-        "gateway no candidates: db_path={}, accounts={}, tokens={}, snapshots={}",
-        db_path,
-        accounts.len(),
-        token_map.len(),
-        snap_map.len()
-    );
-    for account in accounts {
-        let usage = snap_map.get(&account.id);
-        log::warn!(
-            "gateway account: id={}, status={}, has_token={}, primary=({:?}/{:?}) secondary=({:?}/{:?})",
-            account.id,
-            account.status,
-            token_map.contains_key(&account.id),
-            usage.and_then(|u| u.used_percent),
-            usage.and_then(|u| u.window_minutes),
-            usage.and_then(|u| u.secondary_used_percent),
-            usage.and_then(|u| u.secondary_window_minutes),
-        );
-    }
-}
-
-fn should_failover_after_refresh(
-    storage: &Storage,
-    account_id: &str,
-    refresh_result: Result<(), String>,
-) -> bool {
-    match refresh_result {
-        Ok(_) => {
-            let snap = storage
-                .latest_usage_snapshots_by_account()
-                .ok()
-                .and_then(|snaps| snaps.into_iter().find(|s| s.account_id == account_id));
-            match snap.as_ref().map(evaluate_snapshot) {
-                Some(Availability::Unavailable(reason)) => {
-                    set_account_status(storage, account_id, "inactive", reason);
-                    true
-                }
-                Some(Availability::Available) => false,
-                None => {
-                    set_account_status(storage, account_id, "inactive", "usage_missing_snapshot");
-                    true
-                }
-            }
-        }
-        Err(err) => {
-            if err.starts_with("usage endpoint status") {
-                set_account_status(storage, account_id, "inactive", "usage_unreachable");
-                true
-            } else {
-                false
-            }
-        }
-    }
 }
 
 fn respond_with_upstream(
