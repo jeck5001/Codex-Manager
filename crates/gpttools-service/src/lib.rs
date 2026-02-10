@@ -50,6 +50,10 @@ impl ServerHandle {
 }
 
 pub fn start_one_shot_server() -> std::io::Result<ServerHandle> {
+    // 中文注释：one-shot 入口也先尝试建表，避免未初始化数据库在首个 RPC 就触发读写失败。
+    if let Err(err) = storage_helpers::initialize_storage() {
+        log::warn!("storage startup init skipped: {}", err);
+    }
     let server = tiny_http::Server::http("127.0.0.1:0")
         .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
     let addr = server
@@ -66,6 +70,10 @@ pub fn start_one_shot_server() -> std::io::Result<ServerHandle> {
 }
 
 pub fn start_server(addr: &str) -> std::io::Result<()> {
+    // 中文注释：启动阶段先做一次显式初始化；不放在每次 open_storage 里是为避免高频 RPC 重复执行迁移检查。
+    if let Err(err) = storage_helpers::initialize_storage() {
+        log::warn!("storage startup init skipped: {}", err);
+    }
     usage_refresh::ensure_usage_polling();
     usage_refresh::ensure_gateway_keepalive();
     http::server::start_http(addr)

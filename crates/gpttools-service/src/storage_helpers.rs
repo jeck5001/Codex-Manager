@@ -75,8 +75,19 @@ pub(crate) fn open_storage() -> Option<Storage> {
             return None;
         }
     };
-    if let Err(err) = storage.init() {
-        log::error!("storage init failed: {} ({})", path, err);
-    }
     Some(storage)
+}
+
+pub(crate) fn initialize_storage() -> Result<(), String> {
+    let path = std::env::var("GPTTOOLS_DB_PATH")
+        .map_err(|_| "GPTTOOLS_DB_PATH not set".to_string())?;
+    if !Path::new(&path).exists() {
+        log::warn!("storage path missing: {}", path);
+    }
+    let storage = Storage::open(&path)
+        .map_err(|err| format!("open storage failed: {} ({})", path, err))?;
+    storage
+        .init()
+        .map_err(|err| format!("storage init failed: {} ({})", path, err))?;
+    Ok(())
 }

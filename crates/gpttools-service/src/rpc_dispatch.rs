@@ -2,28 +2,26 @@ use gpttools_core::rpc::types::{
     AccountListResult, ApiKeyListResult, InitializeResult, JsonRpcRequest, JsonRpcResponse,
     RequestLogListResult, UsageListResult, UsageReadResult,
 };
-use gpttools_core::storage::{now_ts, Event, Storage};
+use gpttools_core::storage::{now_ts, Event};
 use serde_json::Value;
 
 use crate::{
     account_delete, account_list, account_update, apikey_create, apikey_delete, apikey_disable,
     apikey_enable, apikey_list, apikey_models, apikey_update_model, auth_login, auth_tokens,
-    requestlog_clear, requestlog_list, usage_list, usage_read, usage_refresh,
+    requestlog_clear, requestlog_list, storage_helpers, usage_list, usage_read, usage_refresh,
 };
 
 pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
     match req.method.as_str() {
         "initialize" => {
-            if let Ok(path) = std::env::var("GPTTOOLS_DB_PATH") {
-                if let Ok(storage) = Storage::open(path) {
-                    let _ = storage.init();
-                    let _ = storage.insert_event(&Event {
-                        account_id: None,
-                        event_type: "initialize".to_string(),
-                        message: "service initialized".to_string(),
-                        created_at: now_ts(),
-                    });
-                }
+            let _ = storage_helpers::initialize_storage();
+            if let Some(storage) = storage_helpers::open_storage() {
+                let _ = storage.insert_event(&Event {
+                    account_id: None,
+                    event_type: "initialize".to_string(),
+                    message: "service initialized".to_string(),
+                    created_at: now_ts(),
+                });
             }
             let result = InitializeResult {
                 server_name: "gpttools-service".to_string(),
