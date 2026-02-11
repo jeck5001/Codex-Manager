@@ -1,1 +1,1 @@
--- model_slug column is ensured in runtime via Storage::ensure_api_key_model_column()
+ALTER TABLE api_keys ADD COLUMN model_slug TEXT;

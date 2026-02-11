@@ -1,4 +1,4 @@
-use gpttools_core::storage::{now_ts, Account, Storage, Token, UsageSnapshotRecord};
+use gpttools_core::storage::{now_ts, Account, RequestLog, Storage, Token, UsageSnapshotRecord};
 
 #[test]
 fn storage_can_insert_account_and_token() {
@@ -160,4 +160,62 @@ fn latest_usage_snapshots_break_ties_by_latest_id() {
         .find(|item| item.account_id == "acc-1")
         .expect("acc-1 exists");
     assert_eq!(acc1.used_percent, Some(30.0));
+}
+
+#[test]
+fn request_logs_support_prefixed_query_filters() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    storage
+        .insert_request_log(&RequestLog {
+            key_id: Some("key-alpha".to_string()),
+            request_path: "/v1/responses".to_string(),
+            method: "POST".to_string(),
+            model: Some("gpt-5.1".to_string()),
+            reasoning_effort: Some("low".to_string()),
+            upstream_url: Some("https://chatgpt.com/backend-api/codex/v1/responses".to_string()),
+            status_code: Some(200),
+            error: None,
+            created_at: now_ts() - 1,
+        })
+        .expect("insert request log 1");
+
+    storage
+        .insert_request_log(&RequestLog {
+            key_id: Some("key-beta".to_string()),
+            request_path: "/v1/models".to_string(),
+            method: "GET".to_string(),
+            model: Some("gpt-4.1".to_string()),
+            reasoning_effort: Some("xhigh".to_string()),
+            upstream_url: Some("https://api.openai.com/v1/models".to_string()),
+            status_code: Some(503),
+            error: Some("upstream timeout".to_string()),
+            created_at: now_ts(),
+        })
+        .expect("insert request log 2");
+
+    let method_filtered = storage
+        .list_request_logs(Some("method:GET"), 100)
+        .expect("filter by method");
+    assert_eq!(method_filtered.len(), 1);
+    assert_eq!(method_filtered[0].method, "GET");
+
+    let status_filtered = storage
+        .list_request_logs(Some("status:5xx"), 100)
+        .expect("filter by status range");
+    assert_eq!(status_filtered.len(), 1);
+    assert_eq!(status_filtered[0].status_code, Some(503));
+
+    let key_filtered = storage
+        .list_request_logs(Some("key:key-alpha"), 100)
+        .expect("filter by key id");
+    assert_eq!(key_filtered.len(), 1);
+    assert_eq!(key_filtered[0].key_id.as_deref(), Some("key-alpha"));
+
+    let fallback_filtered = storage
+        .list_request_logs(Some("timeout"), 100)
+        .expect("fallback fuzzy query");
+    assert_eq!(fallback_filtered.len(), 1);
+    assert_eq!(fallback_filtered[0].error.as_deref(), Some("upstream timeout"));
 }

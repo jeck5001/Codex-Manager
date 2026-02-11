@@ -26,6 +26,12 @@ mod auth_callback;
 mod auth_tokens;
 mod usage_read;
 mod usage_list;
+mod usage_scheduler;
+mod usage_http;
+mod usage_account_meta;
+mod usage_keepalive;
+mod usage_snapshot_store;
+mod usage_token_refresh;
 mod usage_refresh;
 mod gateway;
 mod requestlog_list;
@@ -63,7 +69,7 @@ pub fn start_one_shot_server() -> std::io::Result<ServerHandle> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "server addr missing"))?;
     let join = thread::spawn(move || {
         if let Some(request) = server.incoming_requests().next() {
-            crate::http::server::route_request(request);
+            crate::http::request_dispatch::dispatch_backend_request(request);
         }
     });
     Ok(ServerHandle { addr, join })
@@ -203,3 +209,11 @@ mod tests {
         assert!(err.contains("missing"));
     }
 }
+
+
+
+
+
+
+
+
