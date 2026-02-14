@@ -5,6 +5,7 @@ const byId = (id) => (doc ? doc.getElementById(id) : null);
 export const dom = {
   startupMask: byId("startupMask"),
   startupMaskText: byId("startupMaskText"),
+  startupMaskDetail: byId("startupMaskDetail"),
   statusEl: byId("status"),
   serviceAddrInput: byId("serviceAddr"),
   serviceToggleBtn: byId("serviceToggle"),

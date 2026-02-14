@@ -211,9 +211,10 @@
   background: linear-gradient(170deg, #ffffff, #eef7ff);
   box-shadow: var(--shadow);
   padding: 18px 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 12px;
+  row-gap: 4px;
 }
 
 .startup-spinner {
@@ -229,12 +230,22 @@
 .startup-mask-card strong {
   font-size: 14px;
   color: var(--ink-strong);
+  align-self: end;
 }
 
 .startup-mask-card .hint {
   font-size: 12px;
-  margin-left: auto;
-  white-space: nowrap;
+  grid-column: 2;
+}
+
+.startup-mask-detail {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px dashed color-mix(in srgb, var(--accent) 20%, var(--border));
+  padding-top: 6px;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
 }
 
 @keyframes rise {
