@@ -27,10 +27,14 @@ export function createApiKeyActions({
       if (!ok) return;
       const modelSlug = dom.inputApiKeyModel.value || null;
       const reasoningEffort = modelSlug ? (dom.inputApiKeyReasoning.value || null) : null;
+      const protocolType = dom.inputApiKeyProtocol?.value || "openai_compat";
       const res = await api.serviceApiKeyCreate(
         dom.inputApiKeyName.value.trim() || null,
         modelSlug,
         reasoningEffort,
+        {
+          protocolType,
+        },
       );
       if (res && res.error) {
         showToast(res.error, "error");

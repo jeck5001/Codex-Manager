@@ -107,3 +107,22 @@ fn models_path_does_not_try_openai_fallback() {
     ));
 }
 
+#[test]
+fn status_fallback_triggers_on_429_and_responses_403() {
+    assert!(should_try_openai_fallback_by_status(
+        "https://chatgpt.com/backend-api/codex",
+        "/v1/chat/completions",
+        429
+    ));
+    assert!(should_try_openai_fallback_by_status(
+        "https://chatgpt.com/backend-api/codex",
+        "/v1/responses",
+        403
+    ));
+    assert!(!should_try_openai_fallback_by_status(
+        "https://chatgpt.com/backend-api/codex",
+        "/v1/chat/completions",
+        403
+    ));
+}
+

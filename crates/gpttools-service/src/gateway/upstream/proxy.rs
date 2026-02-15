@@ -18,6 +18,7 @@ fn respond_terminal(request: Request, status_code: u16, message: String) -> Resu
 
 fn dispatch_candidate_decision(
     decision: CandidateUpstreamDecision,
+    response_adapter: super::super::ResponseAdapter,
     request: &mut Option<Request>,
     inflight_guard: &mut Option<super::super::AccountInFlightGuard>,
 ) -> CandidateDecisionDispatch {
@@ -29,7 +30,12 @@ fn dispatch_candidate_decision(
             let guard = inflight_guard
                 .take()
                 .expect("inflight guard should be available before terminal response");
-            CandidateDecisionDispatch::Return(super::super::respond_with_upstream(request, resp, guard))
+            CandidateDecisionDispatch::Return(super::super::respond_with_upstream(
+                request,
+                resp,
+                guard,
+                response_adapter,
+            ))
         }
         CandidateUpstreamDecision::Failover => {
             super::super::record_gateway_failover_attempt();
@@ -56,6 +62,8 @@ pub(in super::super) fn proxy_validated_request(
         storage,
         path,
         body,
+        is_stream,
+        response_adapter,
         request_method,
         key_id,
         model_for_log,
@@ -97,6 +105,7 @@ pub(in super::super) fn proxy_validated_request(
         candidate_count,
         account_max_inflight,
     );
+    let allow_openai_fallback = true;
 
     for (idx, (account, mut token)) in candidates.into_iter().enumerate() {
         let strip_session_affinity = idx > 0;
@@ -116,6 +125,7 @@ pub(in super::super) fn proxy_validated_request(
             &method,
             request_ref,
             &body,
+            is_stream,
             base,
             &path,
             url.as_str(),
@@ -126,11 +136,17 @@ pub(in super::super) fn proxy_validated_request(
             upstream_cookie.as_deref(),
             strip_session_affinity,
             debug,
+            allow_openai_fallback,
             context.has_more_candidates(idx),
             |upstream_url, status_code, error| context.log_result(upstream_url, status_code, error),
         );
 
-        match dispatch_candidate_decision(decision, &mut request, &mut inflight_guard) {
+        match dispatch_candidate_decision(
+            decision,
+            response_adapter,
+            &mut request,
+            &mut inflight_guard,
+        ) {
             CandidateDecisionDispatch::Continue => continue,
             CandidateDecisionDispatch::Return(result) => return result,
         }

@@ -54,6 +54,15 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
         )
         .expect("count 014 migration");
     assert_eq!(applied_014, 1);
+    let applied_015: i64 = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '015_api_key_profiles'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count 015 migration");
+    assert_eq!(applied_015, 1);
 
     assert!(!storage.has_column("accounts", "note").expect("check accounts.note"));
     assert!(!storage.has_column("accounts", "tags").expect("check accounts.tags"));
@@ -173,5 +182,65 @@ fn sql_migration_can_fallback_to_compat_when_schema_already_exists() {
         )
         .expect("count 004 migration");
     assert_eq!(applied_004, 1);
+}
+
+#[test]
+fn api_key_profile_migration_backfills_existing_keys() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage
+        .conn
+        .execute_batch(
+            "CREATE TABLE api_keys (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                model_slug TEXT,
+                reasoning_effort TEXT,
+                key_hash TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_used_at INTEGER
+            );
+            INSERT INTO api_keys (id, name, model_slug, reasoning_effort, key_hash, status, created_at, last_used_at)
+            VALUES ('key-1', 'k1', 'gpt-5', 'low', 'hash-1', 'active', 100, NULL);",
+        )
+        .expect("prepare api_keys");
+    storage
+        .ensure_migrations_table()
+        .expect("ensure migration tracker");
+
+    storage
+        .apply_sql_or_compat_migration(
+            "015_api_key_profiles",
+            include_str!("../../migrations/015_api_key_profiles.sql"),
+            |s| s.ensure_api_key_profiles_table(),
+        )
+        .expect("apply 015 migration with fallback");
+
+    let profile_row: (String, String, String, String, Option<String>, Option<String>) = storage
+        .conn
+        .query_row(
+            "SELECT client_type, protocol_type, auth_scheme, default_model, reasoning_effort, upstream_base_url
+             FROM api_key_profiles
+             WHERE key_id = 'key-1'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )
+        .expect("load backfilled profile");
+
+    assert_eq!(profile_row.0, "codex");
+    assert_eq!(profile_row.1, "openai_compat");
+    assert_eq!(profile_row.2, "authorization_bearer");
+    assert_eq!(profile_row.3, "gpt-5");
+    assert_eq!(profile_row.4.as_deref(), Some("low"));
+    assert_eq!(profile_row.5, None);
 }
 

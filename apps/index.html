@@ -153,6 +153,7 @@
                                     <tr>
                                         <th>Key ID</th>
                                         <th>名称</th>
+                                        <th>协议</th>
                                         <th>绑定模型</th>
                                         <th>状态</th>
                                         <th>最近使用</th>
@@ -286,6 +287,11 @@
                         id="inputApiKeyName"
                         placeholder="例如：主机房 / 测试"
                     />
+                    <label>协议</label>
+                    <select id="inputApiKeyProtocol">
+                        <option value="openai_compat">OpenAI Compatible（默认）</option>
+                        <option value="anthropic_native">Claude Code 兼容</option>
+                    </select>
                     <label>模型配置</label>
                     <select id="inputApiKeyModel">
                         <option value="">跟随请求模型（不覆盖）</option>

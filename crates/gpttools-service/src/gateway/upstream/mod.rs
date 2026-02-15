@@ -3,6 +3,7 @@ pub(super) mod candidates;
 pub(super) mod config;
 pub(super) mod execution_context;
 pub(super) mod fallback_branch;
+pub(super) mod header_profile;
 pub(super) mod openai_base;
 pub(super) mod outcome;
 pub(super) mod postprocess;

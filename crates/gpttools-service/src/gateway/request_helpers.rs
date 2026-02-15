@@ -38,21 +38,37 @@ pub(crate) fn extract_request_reasoning_effort(body: &[u8]) -> Option<String> {
         })
 }
 
+pub(crate) fn extract_request_stream(body: &[u8]) -> Option<bool> {
+    if body.is_empty() {
+        return None;
+    }
+    let value = serde_json::from_slice::<Value>(body).ok()?;
+    value.get("stream").and_then(Value::as_bool)
+}
+
+#[cfg(test)]
 pub(crate) fn should_drop_incoming_header(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
     name.eq_ignore_ascii_case("Authorization")
         || name.eq_ignore_ascii_case("x-api-key")
         || name.eq_ignore_ascii_case("Host")
         || name.eq_ignore_ascii_case("Content-Length")
+        // 中文注释：Claude SDK/CLI 会附带 anthropic/x-stainless 指纹头；
+        // 直接透传到 ChatGPT upstream 会提高 challenge 概率，这里统一剔除。
+        || lower.starts_with("anthropic-")
+        || lower.starts_with("x-stainless-")
         // 中文注释：resume 会携带旧会话的账号头；若不剔除会把请求强行绑定到过期/耗尽账号，导致无法切换候选账号。
         || name.eq_ignore_ascii_case("ChatGPT-Account-Id")
 }
 
+#[cfg(test)]
 pub(crate) fn should_drop_session_affinity_header(name: &str) -> bool {
     // 中文注释：session_id / turn-state 属于会话粘性信号，正常直连时应保留；
     // 仅在 failover 到其他账号时剔除，避免继续命中旧账号会话路由导致“切换无效”。
     name.eq_ignore_ascii_case("session_id") || name.eq_ignore_ascii_case("x-codex-turn-state")
 }
 
+#[cfg(test)]
 pub(crate) fn should_drop_incoming_header_for_failover(name: &str) -> bool {
     should_drop_incoming_header(name) || should_drop_session_affinity_header(name)
 }

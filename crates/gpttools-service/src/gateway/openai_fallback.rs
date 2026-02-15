@@ -1,6 +1,5 @@
 use gpttools_core::storage::{Account, Storage, Token};
 use reqwest::blocking::Client;
-use reqwest::header::{HeaderName, HeaderValue};
 use reqwest::Method;
 use tiny_http::Request;
 
@@ -8,8 +7,10 @@ pub(super) fn try_openai_fallback(
     client: &Client,
     storage: &Storage,
     method: &Method,
+    request_path: &str,
     request: &Request,
     body: &[u8],
+    is_stream: bool,
     upstream_base: &str,
     account: &Account,
     token: &mut Token,
@@ -17,38 +18,27 @@ pub(super) fn try_openai_fallback(
     strip_session_affinity: bool,
     debug: bool,
 ) -> Result<Option<reqwest::blocking::Response>, String> {
-    let path = super::normalize_models_path(request.url());
-    let (url, _url_alt) = super::compute_upstream_url(upstream_base, &path);
+    let (url, _url_alt) = super::compute_upstream_url(upstream_base, request_path);
     let bearer = super::resolve_openai_bearer_token(storage, account, token)?;
 
     let mut builder = client.request(method.clone(), &url);
-    let mut has_user_agent = false;
-    for header in request.headers() {
-        let name = header.field.as_str().as_str();
-        if if strip_session_affinity {
-            super::should_drop_incoming_header_for_failover(name)
-        } else {
-            super::should_drop_incoming_header(name)
-        } {
-            continue;
-        }
-        if header.field.equiv("User-Agent") {
-            has_user_agent = true;
-        }
-        if let (Ok(name), Ok(value)) = (
-            HeaderName::from_bytes(header.field.as_str().as_bytes()),
-            HeaderValue::from_str(header.value.as_str()),
-        ) {
-            builder = builder.header(name, value);
-        }
-    }
-    if !has_user_agent {
-        builder = builder.header("User-Agent", "codex-cli");
-    }
-    if let Some(cookie) = upstream_cookie {
-        if !cookie.trim().is_empty() {
-            builder = builder.header("Cookie", cookie);
-        }
+    let account_id = account
+        .chatgpt_account_id
+        .as_deref()
+        .or_else(|| account.workspace_id.as_deref());
+    let header_input = super::upstream::header_profile::CodexUpstreamHeaderInput {
+        auth_token: bearer.as_str(),
+        account_id,
+        upstream_cookie,
+        incoming_session_id: super::upstream::header_profile::find_incoming_header(request, "session_id"),
+        incoming_turn_state: super::upstream::header_profile::find_incoming_header(request, "x-codex-turn-state"),
+        incoming_conversation_id: super::upstream::header_profile::find_incoming_header(request, "conversation_id"),
+        strip_session_affinity,
+        is_stream,
+        has_body: !body.is_empty(),
+    };
+    for (name, value) in super::upstream::header_profile::build_codex_upstream_headers(header_input) {
+        builder = builder.header(name, value);
     }
     if debug {
         eprintln!(
@@ -56,7 +46,6 @@ pub(super) fn try_openai_fallback(
             upstream_base
         );
     }
-    builder = builder.header("Authorization", format!("Bearer {}", bearer));
     if !body.is_empty() {
         builder = builder.body(body.to_vec());
     }

@@ -22,6 +22,7 @@ pub(super) fn run_primary_upstream_flow<F>(
     method: &reqwest::Method,
     request: &Request,
     body: &[u8],
+    is_stream: bool,
     base: &str,
     path: &str,
     primary_url: &str,
@@ -31,17 +32,31 @@ pub(super) fn run_primary_upstream_flow<F>(
     upstream_cookie: Option<&str>,
     strip_session_affinity: bool,
     debug: bool,
+    allow_openai_fallback: bool,
     has_more_candidates: bool,
     mut log_gateway_result: F,
 ) -> PrimaryFlowDecision
 where
     F: FnMut(Option<&str>, u16, Option<&str>),
 {
-    let auth_token = token.access_token.clone();
+    let auth_token = match super::super::resolve_openai_bearer_token(storage, account, token) {
+        Ok(token) => token,
+        Err(err) => {
+            super::super::mark_account_cooldown(&account.id, super::super::CooldownReason::Network);
+            log_gateway_result(Some(primary_url), 502, Some(err.as_str()));
+            if has_more_candidates {
+                return PrimaryFlowDecision::Failover;
+            }
+            return PrimaryFlowDecision::Terminal {
+                status_code: 502,
+                message: format!("resolve upstream bearer token failed: {err}"),
+            };
+        }
+    };
     if debug {
         eprintln!(
-            "gateway upstream: base={}, token_source=access_token",
-            base
+            "gateway upstream: base={}, token_source=openai_bearer",
+            base,
         );
     }
 
@@ -51,6 +66,7 @@ where
         primary_url,
         request,
         body,
+        is_stream,
         upstream_cookie,
         auth_token.as_str(),
         account,
@@ -78,6 +94,7 @@ where
         method,
         request,
         body,
+        is_stream,
         base,
         path,
         upstream_fallback_base,
@@ -86,6 +103,7 @@ where
         upstream_cookie,
         strip_session_affinity,
         debug,
+        allow_openai_fallback,
         status,
         upstream.headers().get(CONTENT_TYPE),
         has_more_candidates,

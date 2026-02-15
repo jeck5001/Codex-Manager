@@ -33,7 +33,18 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 .and_then(|v| v.get("reasoningEffort"))
                 .and_then(|v| v.as_str())
                 .map(|v| v.to_string());
-            match apikey_create::create_api_key(name, model_slug, reasoning_effort) {
+            let protocol_type = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("protocolType"))
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string());
+            match apikey_create::create_api_key(
+                name,
+                model_slug,
+                reasoning_effort,
+                protocol_type,
+            ) {
                 Ok(result) => serde_json::to_value(result).unwrap_or(Value::Null),
                 Err(err) => serde_json::json!({ "error": err }),
             }
@@ -61,7 +72,18 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 .and_then(|v| v.get("reasoningEffort"))
                 .and_then(|v| v.as_str())
                 .map(|v| v.to_string());
-            match apikey_update_model::update_api_key_model(key_id, model_slug, reasoning_effort) {
+            let protocol_type = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("protocolType"))
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string());
+            match apikey_update_model::update_api_key_model(
+                key_id,
+                model_slug,
+                reasoning_effort,
+                protocol_type,
+            ) {
                 Ok(_) => serde_json::json!({ "ok": true }),
                 Err(err) => serde_json::json!({ "ok": false, "error": err }),
             }

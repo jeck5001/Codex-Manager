@@ -1,4 +1,4 @@
-use gpttools_core::storage::{now_ts, Account, RequestLog, Storage, Token, UsageSnapshotRecord};
+use gpttools_core::storage::{now_ts, Account, ApiKey, RequestLog, Storage, Token, UsageSnapshotRecord};
 
 #[test]
 fn storage_can_insert_account_and_token() {
@@ -212,5 +212,40 @@ fn request_logs_support_prefixed_query_filters() {
         .expect("fallback fuzzy query");
     assert_eq!(fallback_filtered.len(), 1);
     assert_eq!(fallback_filtered[0].error.as_deref(), Some("upstream timeout"));
+}
+
+#[test]
+fn storage_api_keys_include_profile_fields() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    storage
+        .insert_api_key(&ApiKey {
+            id: "key-1".to_string(),
+            name: Some("main".to_string()),
+            model_slug: Some("claude-sonnet-4".to_string()),
+            reasoning_effort: Some("medium".to_string()),
+            client_type: "claude_code".to_string(),
+            protocol_type: "anthropic_native".to_string(),
+            auth_scheme: "x_api_key".to_string(),
+            upstream_base_url: Some("https://api.anthropic.com".to_string()),
+            static_headers_json: Some("{\"anthropic-version\":\"2023-06-01\"}".to_string()),
+            key_hash: "hash-1".to_string(),
+            status: "active".to_string(),
+            created_at: now_ts(),
+            last_used_at: None,
+        })
+        .expect("insert key");
+
+    let key = storage
+        .list_api_keys()
+        .expect("list keys")
+        .into_iter()
+        .find(|item| item.id == "key-1")
+        .expect("key exists");
+    assert_eq!(key.client_type, "claude_code");
+    assert_eq!(key.protocol_type, "anthropic_native");
+    assert_eq!(key.auth_scheme, "x_api_key");
+    assert_eq!(key.model_slug.as_deref(), Some("claude-sonnet-4"));
 }
 

@@ -15,7 +15,7 @@ export function renderApiKeys({ onToggleStatus, onDelete, onUpdateModel }) {
   if (state.apiKeyList.length === 0) {
     const emptyRow = document.createElement("tr");
     const emptyCell = document.createElement("td");
-    emptyCell.colSpan = 6;
+    emptyCell.colSpan = 7;
     emptyCell.textContent = "暂无平台 Key";
     emptyRow.appendChild(emptyCell);
     dom.apiKeyRows.appendChild(emptyRow);
@@ -30,6 +30,12 @@ export function renderApiKeys({ onToggleStatus, onDelete, onUpdateModel }) {
 
     const cellName = document.createElement("td");
     cellName.textContent = item.name || "-";
+
+    const cellProfile = document.createElement("td");
+    const protocolType = item.protocolType || "openai_compat";
+    cellProfile.textContent = protocolType === "anthropic_native"
+      ? "Claude Code 兼容"
+      : "OpenAI Compatible";
 
     const cellModel = document.createElement("td");
     const modelWrap = document.createElement("div");
@@ -116,6 +122,7 @@ export function renderApiKeys({ onToggleStatus, onDelete, onUpdateModel }) {
 
     row.appendChild(cellId);
     row.appendChild(cellName);
+    row.appendChild(cellProfile);
     row.appendChild(cellModel);
     row.appendChild(cellStatus);
     row.appendChild(cellUsed);
@@ -128,6 +135,9 @@ export function renderApiKeys({ onToggleStatus, onDelete, onUpdateModel }) {
 export function openApiKeyModal() {
   dom.modalApiKey.classList.add("active");
   dom.inputApiKeyName.value = "";
+  if (dom.inputApiKeyProtocol) {
+    dom.inputApiKeyProtocol.value = "openai_compat";
+  }
   populateApiKeyModelSelect();
   if (dom.inputApiKeyModel) {
     dom.inputApiKeyModel.value = "";

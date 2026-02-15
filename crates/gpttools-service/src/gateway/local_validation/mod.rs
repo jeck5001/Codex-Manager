@@ -10,6 +10,8 @@ pub(super) struct LocalValidationResult {
     pub(super) storage: Storage,
     pub(super) path: String,
     pub(super) body: Vec<u8>,
+    pub(super) is_stream: bool,
+    pub(super) response_adapter: super::ResponseAdapter,
     pub(super) request_method: String,
     pub(super) key_id: String,
     pub(super) model_for_log: Option<String>,

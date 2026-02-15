@@ -1,9 +1,12 @@
-use gpttools_core::storage::Storage;
+use gpttools_core::storage::{now_ts, Account, ApiKey, Storage, Token};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{Read, Write};
+use std::collections::HashMap;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -69,6 +72,104 @@ fn post_http_raw(
         thread::sleep(Duration::from_millis(50));
     }
     panic!("status parse failed, raw response: {last_raw:?}");
+}
+
+fn hash_platform_key_for_test(key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
+}
+
+#[derive(Debug)]
+struct CapturedUpstreamRequest {
+    path: String,
+    headers: HashMap<String, String>,
+    body: Vec<u8>,
+}
+
+fn read_http_request_once(stream: &mut TcpStream) -> CapturedUpstreamRequest {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
+
+    let mut raw = Vec::new();
+    let mut buf = [0u8; 4096];
+    let mut header_end = None;
+    while header_end.is_none() {
+        let read = stream.read(&mut buf).expect("read upstream headers");
+        if read == 0 {
+            break;
+        }
+        raw.extend_from_slice(&buf[..read]);
+        header_end = raw
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|idx| idx + 4);
+    }
+    let header_end = header_end.expect("upstream header terminator");
+    let header_text = String::from_utf8_lossy(&raw[..header_end]).to_string();
+    let mut lines = header_text.split("\r\n").filter(|line| !line.is_empty());
+    let request_line = lines.next().expect("upstream request line");
+    let path = request_line
+        .split_whitespace()
+        .nth(1)
+        .unwrap_or("/")
+        .to_string();
+
+    let mut headers = HashMap::new();
+    let mut content_length = 0usize;
+    for line in lines {
+        if let Some((name, value)) = line.split_once(':') {
+            let name = name.trim().to_ascii_lowercase();
+            let value = value.trim().to_string();
+            if name == "content-length" {
+                content_length = value.parse::<usize>().unwrap_or(0);
+            }
+            headers.insert(name, value);
+        }
+    }
+
+    while raw.len() < header_end + content_length {
+        let read = stream.read(&mut buf).expect("read upstream body");
+        if read == 0 {
+            break;
+        }
+        raw.extend_from_slice(&buf[..read]);
+    }
+    let body_end = (header_end + content_length).min(raw.len());
+    let body = raw[header_end..body_end].to_vec();
+
+    CapturedUpstreamRequest {
+        path,
+        headers,
+        body,
+    }
+}
+
+fn start_mock_upstream_once(response_json: &str) -> (String, Receiver<CapturedUpstreamRequest>, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock upstream");
+    let addr = listener.local_addr().expect("mock upstream addr");
+    let response = response_json.as_bytes().to_vec();
+    let (tx, rx) = mpsc::channel();
+
+    let join = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept upstream");
+        let captured = read_http_request_once(&mut stream);
+        let _ = tx.send(captured);
+
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            response.len()
+        );
+        stream.write_all(header.as_bytes()).expect("write upstream status");
+        stream.write_all(&response).expect("write upstream body");
+        let _ = stream.flush();
+    });
+
+    (addr.to_string(), rx, join)
 }
 
 struct TestServer {
@@ -211,4 +312,159 @@ fn gateway_tolerates_non_ascii_turn_metadata_header() {
         ],
     );
     assert_eq!(status, 403, "response body: {body}");
+}
+
+#[test]
+fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
+    let _lock = ENV_LOCK.lock().expect("lock env");
+    let mut dir = std::env::temp_dir();
+    dir.push(format!(
+        "gpttools-gateway-claude-e2e-{}",
+        std::process::id()
+    ));
+    let _ = fs::create_dir_all(&dir);
+    let db_path: PathBuf = dir.join("gpttools.db");
+
+    let _db_guard = EnvGuard::set("GPTTOOLS_DB_PATH", db_path.to_string_lossy().as_ref());
+
+    let upstream_response = serde_json::json!({
+        "id": "resp_test_1",
+        "model": "gpt-5.3-codex",
+        "output": [{
+            "type": "message",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "text": "pong" }]
+        }],
+        "usage": { "input_tokens": 12, "output_tokens": 6 }
+    });
+    let upstream_response =
+        serde_json::to_string(&upstream_response).expect("serialize upstream response");
+    let (upstream_addr, upstream_rx, upstream_join) = start_mock_upstream_once(&upstream_response);
+    let upstream_base = format!("http://{upstream_addr}/backend-api/codex");
+    let _upstream_guard = EnvGuard::set("GPTTOOLS_UPSTREAM_BASE_URL", &upstream_base);
+
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init db");
+    let now = now_ts();
+
+    storage
+        .insert_account(&Account {
+            id: "acc_claude_e2e".to_string(),
+            label: "claude-e2e".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_acc_test".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_claude_e2e".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_fallback".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: Some("api_access_token_test".to_string()),
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let platform_key = "pk_claude_e2e";
+    storage
+        .insert_api_key(&ApiKey {
+            id: "gk_claude_e2e".to_string(),
+            name: Some("claude-e2e".to_string()),
+            model_slug: None,
+            reasoning_effort: None,
+            client_type: "codex".to_string(),
+            protocol_type: "anthropic_native".to_string(),
+            auth_scheme: "x_api_key".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: hash_platform_key_for_test(platform_key),
+            status: "active".to_string(),
+            created_at: now,
+            last_used_at: None,
+        })
+        .expect("insert api key");
+
+    let server = gpttools_service::start_one_shot_server().expect("start server");
+    let body = serde_json::json!({
+        "model": "claude-3-5-sonnet-20241022",
+        "messages": [
+            { "role": "user", "content": "你好" }
+        ],
+        "max_tokens": 64,
+        "stream": false
+    });
+    let body = serde_json::to_string(&body).expect("serialize request");
+    let (status, gateway_body) = post_http_raw(
+        &server.addr,
+        "/v1/messages",
+        &body,
+        &[
+            ("Content-Type", "application/json"),
+            ("x-api-key", platform_key),
+            ("anthropic-version", "2023-06-01"),
+            ("x-stainless-lang", "js"),
+        ],
+    );
+    server.join();
+    assert_eq!(status, 200, "gateway response: {gateway_body}");
+
+    let value: serde_json::Value =
+        serde_json::from_str(&gateway_body).expect("parse anthropic response");
+    assert_eq!(value["type"], "message");
+    assert_eq!(value["role"], "assistant");
+    assert_eq!(value["content"][0]["type"], "text");
+    assert_eq!(value["content"][0]["text"], "pong");
+
+    let captured = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive upstream request");
+    upstream_join.join().expect("join upstream");
+
+    assert_eq!(captured.path, "/backend-api/codex/responses");
+    let authorization = captured
+        .headers
+        .get("authorization")
+        .expect("authorization header");
+    assert!(authorization.starts_with("Bearer "));
+    assert!(!authorization.contains(platform_key));
+    assert_eq!(
+        captured.headers.get("accept").map(String::as_str),
+        Some("text/event-stream")
+    );
+    assert_eq!(
+        captured.headers.get("version").map(String::as_str),
+        Some("0.101.0")
+    );
+    assert_eq!(
+        captured.headers.get("openai-beta").map(String::as_str),
+        Some("responses=experimental")
+    );
+    assert_eq!(
+        captured.headers.get("originator").map(String::as_str),
+        Some("codex_cli_rs")
+    );
+    assert_eq!(
+        captured
+            .headers
+            .get("chatgpt-account-id")
+            .map(String::as_str),
+        Some("chatgpt_acc_test")
+    );
+    assert!(!captured.headers.contains_key("anthropic-version"));
+    assert!(!captured.headers.contains_key("x-stainless-lang"));
+
+    let upstream_payload: serde_json::Value =
+        serde_json::from_slice(&captured.body).expect("parse upstream payload");
+    assert_eq!(upstream_payload["model"], "gpt-5.3-codex");
+    assert_eq!(upstream_payload["reasoning"]["effort"], "high");
+    assert_eq!(upstream_payload["stream"], true);
+    assert_eq!(upstream_payload["input"][0]["role"], "user");
+    assert_eq!(upstream_payload["input"][0]["content"][0]["text"], "你好");
 }

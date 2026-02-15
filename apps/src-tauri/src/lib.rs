@@ -181,8 +181,14 @@ fn service_apikey_create(
   name: Option<String>,
   model_slug: Option<String>,
   reasoning_effort: Option<String>,
+  protocol_type: Option<String>,
 ) -> Result<serde_json::Value, String> {
-  let params = serde_json::json!({ "name": name, "modelSlug": model_slug, "reasoningEffort": reasoning_effort });
+  let params = serde_json::json!({
+    "name": name,
+    "modelSlug": model_slug,
+    "reasoningEffort": reasoning_effort,
+    "protocolType": protocol_type,
+  });
   rpc_call("apikey/create", addr, Some(params))
 }
 
@@ -197,8 +203,14 @@ fn service_apikey_update_model(
   key_id: String,
   model_slug: Option<String>,
   reasoning_effort: Option<String>,
+  protocol_type: Option<String>,
 ) -> Result<serde_json::Value, String> {
-  let params = serde_json::json!({ "id": key_id, "modelSlug": model_slug, "reasoningEffort": reasoning_effort });
+  let params = serde_json::json!({
+    "id": key_id,
+    "modelSlug": model_slug,
+    "reasoningEffort": reasoning_effort,
+    "protocolType": protocol_type,
+  });
   rpc_call("apikey/updateModel", addr, Some(params))
 }
 

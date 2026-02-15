@@ -81,7 +81,15 @@ pub(in super::super) fn should_try_openai_fallback_by_status(
     if is_models_path {
         return false;
     }
-    matches!(status_code, 403 | 429)
+    if status_code == 429 {
+        return true;
+    }
+    if status_code == 401 || status_code == 403 {
+        // 中文注释：/v1/responses 在部分账号上会先返回 401/403（content-type 未必是 text/html），
+        // 若只依赖 content-type 触发 fallback，会直接落到 challenge blocked。
+        return request_path.starts_with("/v1/responses");
+    }
+    false
 }
 
 

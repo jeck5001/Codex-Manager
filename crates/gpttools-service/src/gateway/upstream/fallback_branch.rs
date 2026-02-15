@@ -15,6 +15,7 @@ pub(super) fn handle_openai_fallback_branch<F>(
     method: &reqwest::Method,
     request: &tiny_http::Request,
     body: &[u8],
+    is_stream: bool,
     upstream_base: &str,
     path: &str,
     fallback_base: Option<&str>,
@@ -23,6 +24,7 @@ pub(super) fn handle_openai_fallback_branch<F>(
     upstream_cookie: Option<&str>,
     strip_session_affinity: bool,
     debug: bool,
+    allow_openai_fallback: bool,
     status: reqwest::StatusCode,
     upstream_content_type: Option<&HeaderValue>,
     has_more_candidates: bool,
@@ -31,6 +33,10 @@ pub(super) fn handle_openai_fallback_branch<F>(
 where
     F: FnMut(Option<&str>, u16, Option<&str>),
 {
+    if !allow_openai_fallback {
+        return FallbackBranchResult::NotTriggered;
+    }
+
     let should_fallback = super::super::should_try_openai_fallback(upstream_base, path, upstream_content_type)
         || super::super::should_try_openai_fallback_by_status(upstream_base, path, status.as_u16());
     if !should_fallback {
@@ -48,8 +54,10 @@ where
             client,
             storage,
             method,
+            path,
             request,
             body,
+            is_stream,
             fallback_base,
             account,
             token,

@@ -4,6 +4,7 @@ mod local_validation;
 mod upstream;
 mod request_helpers;
 mod request_rewrite;
+mod protocol_adapter;
 mod metrics;
 mod selection;
 mod failover;
@@ -17,17 +18,21 @@ mod request_log;
 mod request_entry;
 
 pub(super) use request_helpers::{
-    extract_request_model, extract_request_reasoning_effort, is_html_content_type,
-    is_upstream_challenge_response, normalize_models_path, should_drop_incoming_header,
-    should_drop_incoming_header_for_failover,
+    extract_request_model, extract_request_reasoning_effort, extract_request_stream,
+    is_html_content_type, is_upstream_challenge_response, normalize_models_path,
 };
+#[cfg(test)]
+use request_helpers::{should_drop_incoming_header, should_drop_incoming_header_for_failover};
 use request_rewrite::{apply_request_overrides, compute_upstream_url};
+use protocol_adapter::{adapt_request_for_protocol, ResponseAdapter};
 use upstream::config::{
     is_openai_api_base, resolve_upstream_base_url, resolve_upstream_fallback_base_url,
     should_try_openai_fallback, should_try_openai_fallback_by_status,
 };
 #[cfg(test)]
 use upstream::config::normalize_upstream_base_url;
+#[cfg(test)]
+use upstream::header_profile::{build_codex_upstream_headers, CodexUpstreamHeaderInput};
 use metrics::{
     account_inflight_count, acquire_account_inflight, begin_gateway_request,
     record_gateway_cooldown_mark, record_gateway_failover_attempt, AccountInFlightGuard,

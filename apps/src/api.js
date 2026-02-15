@@ -89,16 +89,26 @@ export async function serviceApiKeyList() {
   return invoke("service_apikey_list", withAddr());
 }
 
-export async function serviceApiKeyCreate(name, modelSlug, reasoningEffort) {
-  return invoke("service_apikey_create", withAddr({ name, modelSlug, reasoningEffort }));
+export async function serviceApiKeyCreate(name, modelSlug, reasoningEffort, profile = {}) {
+  return invoke("service_apikey_create", withAddr({
+    name,
+    modelSlug,
+    reasoningEffort,
+    protocolType: profile.protocolType || null,
+  }));
 }
 
 export async function serviceApiKeyModels() {
   return invoke("service_apikey_models", withAddr());
 }
 
-export async function serviceApiKeyUpdateModel(keyId, modelSlug, reasoningEffort) {
-  return invoke("service_apikey_update_model", withAddr({ keyId, modelSlug, reasoningEffort }));
+export async function serviceApiKeyUpdateModel(keyId, modelSlug, reasoningEffort, profile = {}) {
+  return invoke("service_apikey_update_model", withAddr({
+    keyId,
+    modelSlug,
+    reasoningEffort,
+    protocolType: profile.protocolType || null,
+  }));
 }
 
 export async function serviceApiKeyDelete(keyId) {

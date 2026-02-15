@@ -29,6 +29,13 @@ where
         log_gateway_result(Some(url), status.as_u16(), None);
         return UpstreamOutcomeDecision::RespondUpstream;
     }
+    if status.as_u16() == 404 && has_more_candidates {
+        // 中文注释：模型/路径 404 在多账号场景下通常是“该账号不可用”，
+        // 优先切换候选账号，最后一个候选再透传原始 404 给客户端。
+        super::super::mark_account_cooldown_for_status(account_id, status.as_u16());
+        log_gateway_result(Some(url), status.as_u16(), Some("upstream not-found failover"));
+        return UpstreamOutcomeDecision::Failover;
+    }
 
     let is_challenge = super::super::is_upstream_challenge_response(status.as_u16(), upstream_content_type);
     if is_challenge {
@@ -54,6 +61,43 @@ where
     }
 
     UpstreamOutcomeDecision::RespondUpstream
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_404_with_more_candidates_triggers_failover() {
+        let storage = Storage::open_in_memory().expect("open");
+        storage.init().expect("init");
+        let decision = decide_upstream_outcome(
+            &storage,
+            "acc-404",
+            reqwest::StatusCode::NOT_FOUND,
+            None,
+            "https://chatgpt.com/backend-api/codex/chat/completions",
+            true,
+            |_, _, _| {},
+        );
+        assert!(matches!(decision, UpstreamOutcomeDecision::Failover));
+    }
+
+    #[test]
+    fn status_404_on_last_candidate_keeps_upstream_response() {
+        let storage = Storage::open_in_memory().expect("open");
+        storage.init().expect("init");
+        let decision = decide_upstream_outcome(
+            &storage,
+            "acc-404",
+            reqwest::StatusCode::NOT_FOUND,
+            None,
+            "https://chatgpt.com/backend-api/codex/chat/completions",
+            false,
+            |_, _, _| {},
+        );
+        assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
+    }
 }
 
 

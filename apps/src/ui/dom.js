@@ -80,6 +80,7 @@ export const dom = {
   refreshUsageSingle: byId("refreshUsageSingle"),
   usageTitle: byId("usageTitle"),
   inputApiKeyName: byId("inputApiKeyName"),
+  inputApiKeyProtocol: byId("inputApiKeyProtocol"),
   inputApiKeyModel: byId("inputApiKeyModel"),
   inputApiKeyReasoning: byId("inputApiKeyReasoning"),
   apiKeyValue: byId("apiKeyValue"),

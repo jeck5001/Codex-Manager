@@ -32,6 +32,8 @@ mod apikey_disable;
 mod apikey_enable;
 #[path = "apikey/apikey_models.rs"]
 mod apikey_models;
+#[path = "apikey/apikey_profile.rs"]
+mod apikey_profile;
 #[path = "apikey/apikey_update_model.rs"]
 mod apikey_update_model;
 #[path = "auth/auth_login.rs"]
