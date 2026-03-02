@@ -10,13 +10,6 @@ pub(crate) fn is_keepalive_error_ignorable(err: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::is_keepalive_error_ignorable;
+#[path = "tests/usage_keepalive_tests.rs"]
+mod tests;
 
-    #[test]
-    fn keepalive_ignores_expected_idle_errors() {
-        assert!(is_keepalive_error_ignorable("no available account"));
-        assert!(is_keepalive_error_ignorable("storage unavailable"));
-        assert!(!is_keepalive_error_ignorable("upstream timeout"));
-    }
-}

@@ -36,7 +36,12 @@ pub(super) fn adapt_upstream_response(
                 return Err("upstream returned html challenge".to_string());
             }
             let is_json = upstream_content_type
-                .map(|value| value.trim().to_ascii_lowercase().starts_with("application/json"))
+                .map(|value| {
+                    value
+                        .trim()
+                        .to_ascii_lowercase()
+                        .starts_with("application/json")
+                })
                 .unwrap_or(false);
             if is_json {
                 let (anthropic_json, _) = convert_openai_json_to_anthropic(body)?;
@@ -55,7 +60,10 @@ pub(super) fn build_anthropic_error_body(message: &str) -> Vec<u8> {
             "message": message,
         }
     }))
-    .unwrap_or_else(|_| b"{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"unknown error\"}}".to_vec())
+    .unwrap_or_else(|_| {
+        b"{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"unknown error\"}}"
+            .to_vec()
+    })
 }
 
 fn looks_like_sse_payload(body: &[u8]) -> bool {

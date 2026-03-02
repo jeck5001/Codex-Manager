@@ -159,7 +159,10 @@ pub(crate) fn set_background_tasks_settings(
     }
     if let Some(enabled) = patch.gateway_keepalive_enabled {
         GATEWAY_KEEPALIVE_ENABLED.store(enabled, Ordering::Relaxed);
-        std::env::set_var(ENV_GATEWAY_KEEPALIVE_ENABLED, if enabled { "1" } else { "0" });
+        std::env::set_var(
+            ENV_GATEWAY_KEEPALIVE_ENABLED,
+            if enabled { "1" } else { "0" },
+        );
     }
     if let Some(secs) = patch.gateway_keepalive_interval_secs {
         let normalized = secs.max(MIN_GATEWAY_KEEPALIVE_INTERVAL_SECS);
@@ -168,7 +171,10 @@ pub(crate) fn set_background_tasks_settings(
     }
     if let Some(enabled) = patch.token_refresh_polling_enabled {
         TOKEN_REFRESH_POLLING_ENABLED.store(enabled, Ordering::Relaxed);
-        std::env::set_var(ENV_TOKEN_REFRESH_POLLING_ENABLED, if enabled { "1" } else { "0" });
+        std::env::set_var(
+            ENV_TOKEN_REFRESH_POLLING_ENABLED,
+            if enabled { "1" } else { "0" },
+        );
     }
     if let Some(secs) = patch.token_refresh_poll_interval_secs {
         let normalized = secs.max(MIN_TOKEN_REFRESH_POLL_INTERVAL_SECS);
@@ -263,7 +269,11 @@ fn reload_background_tasks_from_env() {
         Ordering::Relaxed,
     );
     HTTP_STREAM_WORKER_FACTOR.store(
-        env_usize_or(ENV_HTTP_STREAM_WORKER_FACTOR, DEFAULT_HTTP_STREAM_WORKER_FACTOR).max(1),
+        env_usize_or(
+            ENV_HTTP_STREAM_WORKER_FACTOR,
+            DEFAULT_HTTP_STREAM_WORKER_FACTOR,
+        )
+        .max(1),
         Ordering::Relaxed,
     );
     HTTP_STREAM_WORKER_MIN.store(
@@ -482,7 +492,9 @@ fn run_dynamic_poll_loop<F, L, E, I, J, B>(
         let delay = next_dynamic_poll_delay(
             Duration::from_secs(base_interval_secs),
             Duration::from_secs(jitter_cap_secs),
-            Duration::from_secs(failure_backoff_cap_secs(base_interval_secs).max(base_interval_secs)),
+            Duration::from_secs(
+                failure_backoff_cap_secs(base_interval_secs).max(base_interval_secs),
+            ),
             consecutive_failures,
             sampled_jitter,
         );
@@ -497,13 +509,16 @@ fn next_dynamic_poll_delay(
     consecutive_failures: u32,
     sampled_jitter: Duration,
 ) -> Duration {
-    let base_delay = next_dynamic_failure_backoff(interval, failure_backoff_cap, consecutive_failures);
+    let base_delay =
+        next_dynamic_failure_backoff(interval, failure_backoff_cap, consecutive_failures);
     let bounded_jitter = if jitter_cap.is_zero() {
         Duration::ZERO
     } else {
         sampled_jitter.min(jitter_cap)
     };
-    base_delay.checked_add(bounded_jitter).unwrap_or(Duration::MAX)
+    base_delay
+        .checked_add(bounded_jitter)
+        .unwrap_or(Duration::MAX)
 }
 
 fn next_dynamic_failure_backoff(
@@ -662,7 +677,8 @@ pub(crate) fn refresh_tokens_before_expiry_for_all_accounts() -> Result<(), Stri
         return Ok(());
     }
 
-    let issuer = std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
+    let issuer =
+        std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
     let client_id =
         std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
     let mut refreshed = 0usize;
@@ -676,11 +692,8 @@ pub(crate) fn refresh_tokens_before_expiry_for_all_accounts() -> Result<(), Stri
             TOKEN_REFRESH_AHEAD_SECS,
             TOKEN_REFRESH_FALLBACK_AGE_SECS,
         );
-        let _ = storage.update_token_refresh_schedule(
-            &token.account_id,
-            exp_opt,
-            Some(scheduled_at),
-        );
+        let _ =
+            storage.update_token_refresh_schedule(&token.account_id, exp_opt, Some(scheduled_at));
         if scheduled_at > now {
             skipped = skipped.saturating_add(1);
             continue;
@@ -758,7 +771,8 @@ fn refresh_usage_for_token(
     account_cache: Option<&mut HashMap<String, Account>>,
 ) -> Result<UsageRefreshResult, String> {
     // 读取用量接口所需的基础配置
-    let issuer = std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
+    let issuer =
+        std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
     let client_id =
         std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
     let base_url = std::env::var("CODEXMANAGER_USAGE_BASE_URL")
@@ -766,8 +780,7 @@ fn refresh_usage_for_token(
 
     let mut current = token.clone();
     let mut resolved_workspace_id = workspace_id.map(|v| v.to_string());
-    let (derived_chatgpt_id, derived_workspace_id) =
-        derive_account_meta(&current);
+    let (derived_chatgpt_id, derived_workspace_id) = derive_account_meta(&current);
 
     if resolved_workspace_id.is_none() {
         resolved_workspace_id = derived_workspace_id
@@ -838,82 +851,8 @@ fn account_map_from_list(accounts: Vec<Account>) -> HashMap<String, Account> {
 mod status_tests;
 
 #[cfg(test)]
-mod async_tests {
-    use super::{
-        clear_pending_usage_refresh_tasks_for_tests, enqueue_usage_refresh_with_worker,
-    };
-    use std::collections::HashSet;
-    use std::sync::mpsc;
-    use std::sync::Mutex;
-    use std::time::Duration;
-
-    static USAGE_ASYNC_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    #[test]
-    fn enqueue_usage_refresh_for_same_account_is_deduplicated_until_finish() {
-        let _guard = USAGE_ASYNC_TEST_LOCK.lock().expect("lock");
-        clear_pending_usage_refresh_tasks_for_tests();
-        let (started_tx, started_rx) = mpsc::channel();
-        let (release_tx, release_rx) = mpsc::channel();
-
-        let first = enqueue_usage_refresh_with_worker("acc-dedup", move |_| {
-            let _ = started_tx.send(());
-            let _ = release_rx.recv();
-        });
-        assert!(first);
-        started_rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("worker started");
-
-        let second = enqueue_usage_refresh_with_worker("acc-dedup", |_| {});
-        assert!(!second);
-
-        let _ = release_tx.send(());
-        std::thread::sleep(Duration::from_millis(20));
-
-        let third = enqueue_usage_refresh_with_worker("acc-dedup", |_| {});
-        assert!(third);
-        std::thread::sleep(Duration::from_millis(20));
-        clear_pending_usage_refresh_tasks_for_tests();
-    }
-
-    #[test]
-    fn enqueue_usage_refresh_for_different_accounts_keeps_queue_progress() {
-        let _guard = USAGE_ASYNC_TEST_LOCK.lock().expect("lock");
-        clear_pending_usage_refresh_tasks_for_tests();
-        let (started_tx, started_rx) = mpsc::channel::<String>();
-        let (release_tx, release_rx) = mpsc::channel();
-        let started_tx_first = started_tx.clone();
-
-        let first = enqueue_usage_refresh_with_worker("acc-a", move |_| {
-            let _ = started_tx_first.send("acc-a".to_string());
-            let _ = release_rx.recv_timeout(Duration::from_secs(1));
-        });
-        assert!(first);
-
-        let started_tx = started_tx.clone();
-        let second = enqueue_usage_refresh_with_worker("acc-b", move |_| {
-            let _ = started_tx.send("acc-b".to_string());
-        });
-        assert!(second);
-
-        let first_started = started_rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("first task should start");
-        let _ = release_tx.send(());
-        let second_started = started_rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("second task should start");
-
-        let seen: HashSet<String> = [first_started, second_started].into_iter().collect();
-        assert_eq!(seen.len(), 2);
-        assert!(seen.contains("acc-a"));
-        assert!(seen.contains("acc-b"));
-
-        std::thread::sleep(Duration::from_millis(20));
-        clear_pending_usage_refresh_tasks_for_tests();
-    }
-}
+#[path = "tests/usage_refresh_tests.rs"]
+mod tests;
 
 fn classify_usage_status_from_snapshot_value(value: &serde_json::Value) -> UsageAvailabilityStatus {
     let parsed = parse_usage_snapshot(value);
@@ -971,42 +910,3 @@ fn token_refresh_schedule(
             .max(now_ts_secs),
     )
 }
-
-#[cfg(test)]
-mod proactive_token_tests {
-    use super::token_refresh_schedule;
-    use codexmanager_core::storage::{now_ts, Token};
-
-    #[test]
-    fn schedule_prefers_exp_minus_ahead() {
-        let now = now_ts();
-        let token = Token {
-            account_id: "acc-1".to_string(),
-            id_token: "id".to_string(),
-            access_token: "a.eyJleHAiOjQxMDI0NDQ4MDB9.s".to_string(),
-            refresh_token: "refresh".to_string(),
-            api_key_access_token: None,
-            last_refresh: now - 10,
-        };
-        let (exp, scheduled_at) = token_refresh_schedule(&token, now, 600, 2700);
-        assert_eq!(exp, Some(4_102_444_800));
-        assert_eq!(scheduled_at, 4_102_444_200);
-    }
-
-    #[test]
-    fn schedule_falls_back_to_last_refresh_when_exp_missing() {
-        let now = now_ts();
-        let token = Token {
-            account_id: "acc-2".to_string(),
-            id_token: "id".to_string(),
-            access_token: "no-jwt".to_string(),
-            refresh_token: "refresh".to_string(),
-            api_key_access_token: None,
-            last_refresh: now - 5000,
-        };
-        let (exp, scheduled_at) = token_refresh_schedule(&token, now, 300, 2700);
-        assert_eq!(exp, None);
-        assert_eq!(scheduled_at, now);
-    }
-}
-

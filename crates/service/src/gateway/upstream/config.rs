@@ -12,8 +12,7 @@ static UPSTREAM_FALLBACK_BASE_URL: OnceLock<RwLock<Option<String>>> = OnceLock::
 pub(in super::super) fn normalize_upstream_base_url(base: &str) -> String {
     let mut normalized = base.trim().trim_end_matches('/').to_string();
     let lower = normalized.to_ascii_lowercase();
-    if (lower.starts_with("https://chatgpt.com")
-        || lower.starts_with("https://chat.openai.com"))
+    if (lower.starts_with("https://chatgpt.com") || lower.starts_with("https://chat.openai.com"))
         && !lower.contains("/backend-api")
     {
         // 中文注释：对齐官方客户端的主机归一化，避免仅填域名时落到错误路径。
@@ -29,8 +28,11 @@ pub(in super::super) fn resolve_upstream_base_url() -> String {
 
 pub(in super::super) fn resolve_upstream_fallback_base_url(primary_base: &str) -> Option<String> {
     ensure_config_loaded();
-    crate::lock_utils::read_recover(upstream_fallback_base_url_cell(), "upstream_fallback_base_url")
-        .clone()
+    crate::lock_utils::read_recover(
+        upstream_fallback_base_url_cell(),
+        "upstream_fallback_base_url",
+    )
+    .clone()
     .or_else(|| {
         if is_chatgpt_backend_base(primary_base) {
             // 默认兜底到 OpenAI v1，避免 Cloudflare challenge 时模型列表不可用。
@@ -60,9 +62,11 @@ pub(in super::super) fn should_try_openai_fallback(
     if !is_chatgpt_backend_base(base) {
         return false;
     }
-    let is_models_path = request_path == "/v1/models" || request_path.starts_with("/v1/models?");
-    if is_models_path {
-        // /models 需要与官方行为一致地直接透传，避免 fallback token-exchange 影响模型列表稳定性。
+    let is_responses_path = request_path.starts_with("/v1/responses");
+    let is_chat_completions_path = request_path.starts_with("/v1/chat/completions");
+    if !is_responses_path && !is_chat_completions_path {
+        // 仅对 /responses 和 /chat/completions 评估 OpenAI fallback；
+        // 其余路径保持原有行为，避免扩大 fallback 面。
         return false;
     }
     let Some(content_type) = content_type else {
@@ -71,6 +75,8 @@ pub(in super::super) fn should_try_openai_fallback(
     let Ok(value) = content_type.to_str() else {
         return false;
     };
+    // 中文注释：/chat/completions 仅在明确命中 HTML challenge 时才允许 fallback，
+    // 避免仅凭状态码把普通业务错误错误地切到 OpenAI API。
     super::super::is_html_content_type(value)
 }
 
@@ -82,17 +88,17 @@ pub(in super::super) fn should_try_openai_fallback_by_status(
     if !is_chatgpt_backend_base(base) {
         return false;
     }
-    let is_models_path = request_path == "/v1/models" || request_path.starts_with("/v1/models?");
-    if is_models_path {
+    let is_responses_path = request_path.starts_with("/v1/responses");
+    if !is_responses_path {
         return false;
     }
     if status_code == 429 {
         return true;
     }
     if status_code == 401 || status_code == 403 {
-        // 中文注释：/v1/responses 在部分账号上会先返回 401/403（content-type 未必是 text/html），
+        // /v1/responses 在部分账号上会先返回 401/403（content-type 未必是 text/html），
         // 若只依赖 content-type 触发 fallback，会直接落到 challenge blocked。
-        return request_path.starts_with("/v1/responses");
+        return true;
     }
     false
 }
@@ -133,5 +139,6 @@ fn env_non_empty(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-
-
+#[cfg(test)]
+#[path = "tests/config_tests.rs"]
+mod tests;

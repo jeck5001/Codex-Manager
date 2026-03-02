@@ -28,7 +28,9 @@ fn failover_on_missing_usage() {
         credits_json: None,
         captured_at: now_ts(),
     };
-    storage.insert_usage_snapshot(&record).expect("insert usage");
+    storage
+        .insert_usage_snapshot(&record)
+        .expect("insert usage");
 
     let should_failover = should_failover_after_refresh(&storage, "acc-1", Ok(()));
     assert!(should_failover);
@@ -108,10 +110,15 @@ fn models_path_does_not_try_openai_fallback() {
 }
 
 #[test]
-fn status_fallback_triggers_on_429_and_responses_403() {
-    assert!(should_try_openai_fallback_by_status(
+fn status_fallback_only_triggers_for_responses_path() {
+    assert!(!should_try_openai_fallback_by_status(
         "https://chatgpt.com/backend-api/codex",
         "/v1/chat/completions",
+        429
+    ));
+    assert!(should_try_openai_fallback_by_status(
+        "https://chatgpt.com/backend-api/codex",
+        "/v1/responses",
         429
     ));
     assert!(should_try_openai_fallback_by_status(
@@ -125,4 +132,3 @@ fn status_fallback_triggers_on_429_and_responses_403() {
         403
     ));
 }
-

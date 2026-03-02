@@ -32,37 +32,6 @@ pub(crate) fn should_skip_response_header(name: &HeaderName) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{should_skip_request_header, should_skip_response_header};
-    use axum::http::{HeaderName, HeaderValue};
+#[path = "tests/header_filter_tests.rs"]
+mod tests;
 
-    #[test]
-    fn request_header_filters_hop_by_hop_and_non_ascii() {
-        let connection = HeaderName::from_static("connection");
-        let keep = HeaderValue::from_static("keep-alive");
-        assert!(should_skip_request_header(&connection, &keep));
-
-        let metadata = HeaderName::from_static("x-codex-turn-metadata");
-        let bad_value = HeaderValue::from_bytes(&[0xE4, 0xB8, 0xAD]).expect("non-ascii bytes");
-        assert!(should_skip_request_header(&metadata, &bad_value));
-    }
-
-    #[test]
-    fn request_header_keeps_normal_content_type() {
-        let content_type = HeaderName::from_static("content-type");
-        let json = HeaderValue::from_static("application/json");
-        assert!(!should_skip_request_header(&content_type, &json));
-    }
-
-    #[test]
-    fn response_header_filters_content_length_and_connection() {
-        let content_length = HeaderName::from_static("content-length");
-        assert!(should_skip_response_header(&content_length));
-
-        let connection = HeaderName::from_static("connection");
-        assert!(should_skip_response_header(&connection));
-
-        let content_type = HeaderName::from_static("content-type");
-        assert!(!should_skip_response_header(&content_type));
-    }
-}

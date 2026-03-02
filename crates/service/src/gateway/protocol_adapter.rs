@@ -66,3 +66,7 @@ pub(super) fn adapt_upstream_response(
 pub(super) fn build_anthropic_error_body(message: &str) -> Vec<u8> {
     response_conversion::build_anthropic_error_body(message)
 }
+
+#[cfg(test)]
+#[path = "protocol_adapter/tests/protocol_adapter_tests.rs"]
+mod tests;

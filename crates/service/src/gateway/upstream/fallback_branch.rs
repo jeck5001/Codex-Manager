@@ -9,6 +9,13 @@ pub(super) enum FallbackBranchResult {
     Terminal { status_code: u16, message: String },
 }
 
+fn should_failover_after_fallback_non_success(status: u16, has_more_candidates: bool) -> bool {
+    if !has_more_candidates {
+        return false;
+    }
+    matches!(status, 401 | 403 | 404 | 408 | 409 | 429)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_openai_fallback_branch<F>(
     client: &reqwest::blocking::Client,
@@ -39,8 +46,13 @@ where
         return FallbackBranchResult::NotTriggered;
     }
 
-    let should_fallback = super::super::should_try_openai_fallback(upstream_base, path, upstream_content_type)
-        || super::super::should_try_openai_fallback_by_status(upstream_base, path, status.as_u16());
+    let should_fallback =
+        super::super::should_try_openai_fallback(upstream_base, path, upstream_content_type)
+            || super::super::should_try_openai_fallback_by_status(
+                upstream_base,
+                path,
+                status.as_u16(),
+            );
     if !should_fallback {
         return FallbackBranchResult::NotTriggered;
     }
@@ -80,22 +92,34 @@ where
                 }
                 let fallback_status = resp.status().as_u16();
                 super::super::mark_account_cooldown_for_status(&account.id, fallback_status);
+                let fallback_error = format!(
+                    "upstream fallback non-success(primary_status={})",
+                    status.as_u16()
+                );
                 log_gateway_result(
                     Some(fallback_base),
                     fallback_status,
-                    Some("upstream fallback non-success"),
+                    Some(fallback_error.as_str()),
                 );
-                // 中文注释：fallback 返回业务错误时优先切换候选账号；
-                // 若无候选才透传，避免把可恢复错误过早暴露给客户端。
-                if has_more_candidates {
+                // 中文注释：仅对“可能账号相关/可恢复”的状态继续 failover；
+                // 例如 5xx 这类上游服务端错误直接回传，避免单次请求在大量候选账号上长时间轮询。
+                if should_failover_after_fallback_non_success(fallback_status, has_more_candidates)
+                {
                     FallbackBranchResult::Failover
                 } else {
                     FallbackBranchResult::RespondUpstream(resp)
                 }
             }
             Ok(None) => {
-                super::super::mark_account_cooldown(&account.id, super::super::CooldownReason::Network);
-                log_gateway_result(Some(fallback_base), 502, Some("upstream fallback unavailable"));
+                super::super::mark_account_cooldown(
+                    &account.id,
+                    super::super::CooldownReason::Network,
+                );
+                log_gateway_result(
+                    Some(fallback_base),
+                    502,
+                    Some("upstream fallback unavailable"),
+                );
                 if has_more_candidates {
                     FallbackBranchResult::Failover
                 } else {
@@ -106,7 +130,10 @@ where
                 }
             }
             Err(err) => {
-                super::super::mark_account_cooldown(&account.id, super::super::CooldownReason::Network);
+                super::super::mark_account_cooldown(
+                    &account.id,
+                    super::super::CooldownReason::Network,
+                );
                 log_gateway_result(Some(fallback_base), 502, Some(err.as_str()));
                 if has_more_candidates {
                     FallbackBranchResult::Failover
@@ -136,4 +163,6 @@ where
     }
 }
 
-
+#[cfg(test)]
+#[path = "tests/fallback_branch_tests.rs"]
+mod tests;

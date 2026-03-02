@@ -69,12 +69,15 @@ pub(super) fn try_openai_fallback(
     let bearer = super::resolve_openai_bearer_token(storage, account, token)?;
     let attempt_started_at = Instant::now();
     let compact_headers_mode = should_compact_upstream_headers();
+    let is_openai_api_target = super::is_openai_api_base(upstream_base);
 
     // `x-codex-turn-state` is an org-scoped encrypted blob. When we hit API-key fallback
     // (often a different org than the ChatGPT workspace), forwarding it can trigger:
     // `invalid_encrypted_content` / organization_id mismatch. In that case, prefer
     // resetting session affinity to keep the request usable.
-    let strip_session_affinity = strip_session_affinity || incoming_headers.turn_state().is_some();
+    let strip_session_affinity = strip_session_affinity
+        || incoming_headers.turn_state().is_some()
+        || is_openai_api_target;
     let body_for_request = if strip_session_affinity && body_has_encrypted_content_hint(body.as_ref()) {
         strip_encrypted_content_from_body(body.as_ref())
             .map(Bytes::from)
@@ -87,20 +90,22 @@ pub(super) fn try_openai_fallback(
         .chatgpt_account_id
         .as_deref()
         .or_else(|| account.workspace_id.as_deref());
-    let include_account_id = !compact_headers_mode && !super::is_openai_api_base(upstream_base);
+    let include_account_id = !compact_headers_mode && !is_openai_api_target;
     let header_input = super::upstream::header_profile::CodexUpstreamHeaderInput {
         auth_token: bearer.as_str(),
         account_id,
         include_account_id,
-        include_openai_beta: !compact_headers_mode,
+        include_openai_beta: !compact_headers_mode
+            && !is_openai_api_target
+            && request_path.starts_with("/v1/responses"),
         upstream_cookie,
         incoming_session_id: incoming_headers.session_id(),
         fallback_session_id: None,
         incoming_turn_state: incoming_headers.turn_state(),
-        include_turn_state: !compact_headers_mode,
+        include_turn_state: !compact_headers_mode && !is_openai_api_target,
         incoming_conversation_id: incoming_headers.conversation_id(),
         fallback_conversation_id: None,
-        include_conversation_id: !compact_headers_mode,
+        include_conversation_id: !compact_headers_mode && !is_openai_api_target,
         strip_session_affinity,
         is_stream,
         has_body: !body.is_empty(),

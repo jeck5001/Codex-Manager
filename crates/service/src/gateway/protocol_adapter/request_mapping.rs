@@ -125,7 +125,9 @@ pub(super) fn convert_anthropic_messages_request(body: &[u8]) -> Result<(Vec<u8>
     out.insert("store".to_string(), Value::Bool(false));
     out.insert(
         "include".to_string(),
-        Value::Array(vec![Value::String("reasoning.encrypted_content".to_string())]),
+        Value::Array(vec![Value::String(
+            "reasoning.encrypted_content".to_string(),
+        )]),
     );
 
     serde_json::to_vec(&Value::Object(out))
@@ -384,7 +386,8 @@ fn convert_chat_messages_to_responses_input(
                                 if let Some(text) = value.as_str() {
                                     text.to_string()
                                 } else {
-                                    serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string())
+                                    serde_json::to_string(value)
+                                        .unwrap_or_else(|_| "{}".to_string())
                                 }
                             })
                             .unwrap_or_else(|| "{}".to_string());
@@ -471,7 +474,8 @@ fn extract_tool_result_content(value: Option<&Value>) -> Result<String, String> 
             }
         }
     }
-    serde_json::to_string(value).map_err(|err| format!("serialize tool_result content failed: {err}"))
+    serde_json::to_string(value)
+        .map_err(|err| format!("serialize tool_result content failed: {err}"))
 }
 
 fn map_anthropic_tool_definition(value: &Value) -> Option<Value> {
@@ -512,10 +516,7 @@ fn map_anthropic_tool_choice(value: &Value) -> Option<Value> {
     let Some(obj) = value.as_object() else {
         return None;
     };
-    let choice_type = obj
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or("auto");
+    let choice_type = obj.get("type").and_then(Value::as_str).unwrap_or("auto");
     match choice_type {
         "auto" => Some(Value::String("auto".to_string())),
         "any" => Some(Value::String("required".to_string())),

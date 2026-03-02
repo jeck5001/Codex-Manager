@@ -1,4 +1,5 @@
 use serde_json::{json, Map, Value};
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Cursor, Read};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -35,6 +36,8 @@ pub(super) struct UpstreamResponseBridgeResult {
     pub stream_terminal_error: Option<String>,
     // Any IO error while writing the response back to the downstream client.
     pub delivery_error: Option<String>,
+    // Optional upstream error hint parsed from non-stream error bodies.
+    pub upstream_error_hint: Option<String>,
 }
 
 impl UpstreamResponseBridgeResult {
@@ -89,6 +92,18 @@ fn merge_usage(target: &mut UpstreamResponseUsage, source: UpstreamResponseUsage
     }
 }
 
+fn usage_has_signal(usage: &UpstreamResponseUsage) -> bool {
+    usage.input_tokens.is_some()
+        || usage.cached_input_tokens.is_some()
+        || usage.output_tokens.is_some()
+        || usage.total_tokens.is_some()
+        || usage.reasoning_output_tokens.is_some()
+        || usage
+            .output_text
+            .as_ref()
+            .is_some_and(|text| !text.trim().is_empty())
+}
+
 fn parse_usage_from_object(usage: Option<&Map<String, Value>>) -> UpstreamResponseUsage {
     let input_tokens = usage
         .and_then(|map| map.get("input_tokens").and_then(Value::as_i64))
@@ -103,7 +118,8 @@ fn parse_usage_from_object(usage: Option<&Map<String, Value>>) -> UpstreamRespon
         .and_then(|details| details.get("cached_tokens"))
         .and_then(Value::as_i64)
         .or_else(|| {
-            usage.and_then(|map| map.get("prompt_tokens_details"))
+            usage
+                .and_then(|map| map.get("prompt_tokens_details"))
                 .and_then(Value::as_object)
                 .and_then(|details| details.get("cached_tokens"))
                 .and_then(Value::as_i64)
@@ -114,7 +130,8 @@ fn parse_usage_from_object(usage: Option<&Map<String, Value>>) -> UpstreamRespon
         .and_then(|details| details.get("reasoning_tokens"))
         .and_then(Value::as_i64)
         .or_else(|| {
-            usage.and_then(|map| map.get("completion_tokens_details"))
+            usage
+                .and_then(|map| map.get("completion_tokens_details"))
                 .and_then(Value::as_object)
                 .and_then(|details| details.get("reasoning_tokens"))
                 .and_then(Value::as_i64)
@@ -221,7 +238,10 @@ fn collect_response_output_text(value: &Value, output: &mut String) {
 fn output_text_limit_bytes() -> usize {
     let _ = OUTPUT_TEXT_LIMIT_LOADED.get_or_init(|| {
         let raw = std::env::var(OUTPUT_TEXT_LIMIT_BYTES_ENV).unwrap_or_default();
-        let limit = raw.trim().parse::<usize>().unwrap_or(DEFAULT_OUTPUT_TEXT_LIMIT_BYTES);
+        let limit = raw
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(DEFAULT_OUTPUT_TEXT_LIMIT_BYTES);
         OUTPUT_TEXT_LIMIT_BYTES.store(limit, Ordering::Relaxed);
     });
     OUTPUT_TEXT_LIMIT_BYTES.load(Ordering::Relaxed)
@@ -395,7 +415,10 @@ fn classify_terminal_event_name(name: &str) -> Option<SseTerminal> {
     if normalized.is_empty() {
         return None;
     }
-    if normalized == "done" || normalized == "response.completed" || normalized.ends_with(".completed") {
+    if normalized == "done"
+        || normalized == "response.completed"
+        || normalized.ends_with(".completed")
+    {
         return Some(SseTerminal::Ok);
     }
     if normalized == "error"
@@ -409,6 +432,22 @@ fn classify_terminal_event_name(name: &str) -> Option<SseTerminal> {
         return Some(SseTerminal::Err(normalized));
     }
     None
+}
+
+fn is_chat_completion_terminal_chunk(value: &Value) -> bool {
+    if value.get("object").and_then(Value::as_str) != Some("chat.completion.chunk") {
+        return false;
+    }
+    value
+        .get("choices")
+        .and_then(Value::as_array)
+        .is_some_and(|choices| {
+            choices.iter().any(|choice| {
+                choice
+                    .get("finish_reason")
+                    .is_some_and(|finish_reason| !finish_reason.is_null())
+            })
+        })
 }
 
 fn extract_error_message_from_json(value: &Value) -> Option<String> {
@@ -454,7 +493,10 @@ fn extract_error_message_from_json(value: &Value) -> Option<String> {
         }
 
         // Fall back to compact JSON if needed.
-        serde_json::to_string(err_obj).ok().map(|text| text.trim().to_string()).filter(|v| !v.is_empty())
+        serde_json::to_string(err_obj)
+            .ok()
+            .map(|text| text.trim().to_string())
+            .filter(|v| !v.is_empty())
     }
 
     fn extract_message_from_error_value(err_value: Option<&Value>) -> Option<String> {
@@ -481,7 +523,9 @@ fn extract_error_message_from_json(value: &Value) -> Option<String> {
         return Some(message);
     }
     // Some providers nest details under response.status_details.error.
-    if let Some(message) = extract_message_from_error_value(value.pointer("/response/status_details/error")) {
+    if let Some(message) =
+        extract_message_from_error_value(value.pointer("/response/status_details/error"))
+    {
         return Some(message);
     }
     // Some providers emit: { "type": "error", "message": "..." }
@@ -498,6 +542,30 @@ fn extract_error_message_from_json(value: &Value) -> Option<String> {
         }
     }
     None
+}
+
+fn extract_error_hint_from_body(status_code: u16, body: &[u8]) -> Option<String> {
+    if status_code < 400 || body.is_empty() {
+        return None;
+    }
+    if let Ok(value) = serde_json::from_slice::<Value>(body) {
+        if let Some(message) = extract_error_message_from_json(&value) {
+            return Some(message);
+        }
+    }
+    std::str::from_utf8(body)
+        .ok()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(|text| {
+            let mut chars = text.chars();
+            let snippet = chars.by_ref().take(240).collect::<String>();
+            if chars.next().is_some() {
+                format!("{snippet}...")
+            } else {
+                snippet
+            }
+        })
 }
 
 fn inspect_sse_frame(lines: &[String]) -> SseFrameInspection {
@@ -544,6 +612,10 @@ fn inspect_sse_frame(lines: &[String]) -> SseFrameInspection {
             if let Some(terminal) = classify_terminal_event_name(kind) {
                 inspection.terminal = Some(terminal);
             }
+        } else if is_chat_completion_terminal_chunk(&value) {
+            // OpenAI Chat Completions streaming compatibility:
+            // some upstreams omit `data: [DONE]` but emit final chunk with `finish_reason`.
+            inspection.terminal = Some(SseTerminal::Ok);
         }
 
         // Always attempt to parse usage; some terminal/error frames also include usage.
@@ -561,13 +633,17 @@ fn inspect_sse_frame(lines: &[String]) -> SseFrameInspection {
                 }
             }
             if !text_out.trim().is_empty() {
-                let usage = inspection.usage.get_or_insert_with(UpstreamResponseUsage::default);
+                let usage = inspection
+                    .usage
+                    .get_or_insert_with(UpstreamResponseUsage::default);
                 let target = usage.output_text.get_or_insert_with(String::new);
                 append_output_text(target, text_out.as_str());
             }
         } else if let Some(delta) = value.get("delta").and_then(Value::as_str) {
             if !delta.is_empty() {
-                let usage = inspection.usage.get_or_insert_with(UpstreamResponseUsage::default);
+                let usage = inspection
+                    .usage
+                    .get_or_insert_with(UpstreamResponseUsage::default);
                 let target = usage.output_text.get_or_insert_with(String::new);
                 append_output_text(target, delta);
             }
@@ -575,6 +651,153 @@ fn inspect_sse_frame(lines: &[String]) -> SseFrameInspection {
     }
 
     inspection
+}
+
+#[derive(Debug, Clone, Default)]
+struct ChatCompletionChoiceSynthesis {
+    role: Option<String>,
+    content: String,
+    finish_reason: Option<Value>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ChatCompletionSseSynthesis {
+    id: Option<String>,
+    model: Option<String>,
+    created: Option<i64>,
+    system_fingerprint: Option<Value>,
+    usage: Option<Value>,
+    choices: BTreeMap<i64, ChatCompletionChoiceSynthesis>,
+    saw_terminal: bool,
+}
+
+fn append_chat_delta_content(buffer: &mut String, delta_content: &Value) {
+    if let Some(text) = delta_content.as_str() {
+        buffer.push_str(text);
+        return;
+    }
+    let Some(parts) = delta_content.as_array() else {
+        return;
+    };
+    for part in parts {
+        if let Some(text) = part.get("text").and_then(Value::as_str) {
+            buffer.push_str(text);
+        }
+    }
+}
+
+fn update_chat_completion_sse_synthesis(synthesis: &mut ChatCompletionSseSynthesis, value: &Value) {
+    if value.get("object").and_then(Value::as_str) != Some("chat.completion.chunk") {
+        return;
+    }
+    if synthesis.id.is_none() {
+        synthesis.id = value
+            .get("id")
+            .and_then(Value::as_str)
+            .map(|v| v.to_string());
+    }
+    if synthesis.model.is_none() {
+        synthesis.model = value
+            .get("model")
+            .and_then(Value::as_str)
+            .map(|v| v.to_string());
+    }
+    if synthesis.created.is_none() {
+        synthesis.created = value.get("created").and_then(Value::as_i64);
+    }
+    if synthesis.system_fingerprint.is_none() {
+        synthesis.system_fingerprint = value.get("system_fingerprint").cloned();
+    }
+    if let Some(usage) = value.get("usage") {
+        synthesis.usage = Some(usage.clone());
+    }
+
+    let Some(choices) = value.get("choices").and_then(Value::as_array) else {
+        return;
+    };
+    for (position, choice) in choices.iter().enumerate() {
+        let index = choice
+            .get("index")
+            .and_then(Value::as_i64)
+            .unwrap_or(position as i64);
+        let target = synthesis.choices.entry(index).or_default();
+        if target.role.is_none() {
+            target.role = choice
+                .get("delta")
+                .and_then(|delta| delta.get("role"))
+                .and_then(Value::as_str)
+                .map(|v| v.to_string());
+        }
+        if let Some(delta_content) = choice.get("delta").and_then(|delta| delta.get("content")) {
+            append_chat_delta_content(&mut target.content, delta_content);
+        }
+        if let Some(finish_reason) = choice.get("finish_reason") {
+            if !finish_reason.is_null() {
+                target.finish_reason = Some(finish_reason.clone());
+                synthesis.saw_terminal = true;
+            }
+        }
+    }
+}
+
+fn synthesize_chat_completion_body(synthesis: &ChatCompletionSseSynthesis) -> Option<Vec<u8>> {
+    if !synthesis.saw_terminal || synthesis.choices.is_empty() {
+        return None;
+    }
+    let created = synthesis.created.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|duration| duration.as_secs() as i64)
+            .unwrap_or(0)
+    });
+
+    let choices = synthesis
+        .choices
+        .iter()
+        .map(|(index, choice)| {
+            json!({
+                "index": index,
+                "message": {
+                    "role": choice.role.clone().unwrap_or_else(|| "assistant".to_string()),
+                    "content": choice.content,
+                },
+                "finish_reason": choice.finish_reason.clone().unwrap_or(Value::Null),
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut out = serde_json::Map::new();
+    out.insert(
+        "id".to_string(),
+        Value::String(
+            synthesis
+                .id
+                .clone()
+                .unwrap_or_else(|| "chatcmpl_proxy".to_string()),
+        ),
+    );
+    out.insert(
+        "object".to_string(),
+        Value::String("chat.completion".to_string()),
+    );
+    out.insert("created".to_string(), Value::Number(created.into()));
+    out.insert(
+        "model".to_string(),
+        Value::String(
+            synthesis
+                .model
+                .clone()
+                .unwrap_or_else(|| "gpt-5.3-codex".to_string()),
+        ),
+    );
+    out.insert("choices".to_string(), Value::Array(choices));
+    if let Some(system_fingerprint) = synthesis.system_fingerprint.clone() {
+        out.insert("system_fingerprint".to_string(), system_fingerprint);
+    }
+    if let Some(usage) = synthesis.usage.clone() {
+        out.insert("usage".to_string(), usage);
+    }
+    serde_json::to_vec(&Value::Object(out)).ok()
 }
 
 fn parse_sse_frame_json(lines: &[String]) -> Option<Value> {
@@ -595,9 +818,12 @@ fn parse_sse_frame_json(lines: &[String]) -> Option<Value> {
     serde_json::from_str::<Value>(&data).ok()
 }
 
-fn collect_non_stream_json_from_sse_bytes(payload: &[u8]) -> (Option<Vec<u8>>, UpstreamResponseUsage) {
+fn collect_non_stream_json_from_sse_bytes(
+    payload: &[u8],
+) -> (Option<Vec<u8>>, UpstreamResponseUsage) {
     let mut usage = UpstreamResponseUsage::default();
     let mut completed_response: Option<Value> = None;
+    let mut chat_completion_synthesis = ChatCompletionSseSynthesis::default();
     let mut frame_lines: Vec<String> = Vec::new();
 
     let mut reader = BufReader::new(Cursor::new(payload));
@@ -620,6 +846,7 @@ fn collect_non_stream_json_from_sse_bytes(payload: &[u8]) -> (Option<Vec<u8>>, U
                 merge_usage(&mut usage, parsed_usage);
             }
             if let Some(value) = parse_sse_frame_json(&frame) {
+                update_chat_completion_sse_synthesis(&mut chat_completion_synthesis, &value);
                 if value
                     .get("type")
                     .and_then(Value::as_str)
@@ -641,6 +868,7 @@ fn collect_non_stream_json_from_sse_bytes(payload: &[u8]) -> (Option<Vec<u8>>, U
             merge_usage(&mut usage, parsed_usage);
         }
         if let Some(value) = parse_sse_frame_json(&frame_lines) {
+            update_chat_completion_sse_synthesis(&mut chat_completion_synthesis, &value);
             if value
                 .get("type")
                 .and_then(Value::as_str)
@@ -653,7 +881,9 @@ fn collect_non_stream_json_from_sse_bytes(payload: &[u8]) -> (Option<Vec<u8>>, U
         }
     }
 
-    let body = completed_response.and_then(|value| serde_json::to_vec(&value).ok());
+    let body = completed_response
+        .and_then(|value| serde_json::to_vec(&value).ok())
+        .or_else(|| synthesize_chat_completion_body(&chat_completion_synthesis));
     (body, usage)
 }
 
@@ -693,14 +923,25 @@ pub(super) fn respond_with_upstream(
                 .as_deref()
                 .map(|value| value.to_ascii_lowercase().starts_with("text/event-stream"))
                 .unwrap_or(false);
-            if is_json && !is_stream {
+            // 非 SSE 响应（即使客户端 stream=true）也按普通 body 回传，
+            // 避免把 JSON 错误体按 SSE 解析导致 "stream disconnected before completion" 误报。
+            if !is_sse {
                 let upstream_body = upstream
                     .bytes()
                     .map_err(|err| format!("read upstream body failed: {err}"))?;
-                let usage = serde_json::from_slice::<Value>(upstream_body.as_ref())
-                    .ok()
-                    .map(|value| parse_usage_from_json(&value))
-                    .unwrap_or_default();
+                let (_, sse_usage) = collect_non_stream_json_from_sse_bytes(upstream_body.as_ref());
+                let usage = if is_json {
+                    serde_json::from_slice::<Value>(upstream_body.as_ref())
+                        .ok()
+                        .map(|value| parse_usage_from_json(&value))
+                        .unwrap_or_default()
+                } else if usage_has_signal(&sse_usage) {
+                    sse_usage
+                } else {
+                    UpstreamResponseUsage::default()
+                };
+                let upstream_error_hint =
+                    extract_error_hint_from_body(status.0, upstream_body.as_ref());
                 let len = Some(upstream_body.len());
                 let response = Response::new(
                     status,
@@ -715,6 +956,34 @@ pub(super) fn respond_with_upstream(
                     stream_terminal_seen: true,
                     stream_terminal_error: None,
                     delivery_error,
+                    upstream_error_hint,
+                });
+            }
+            if is_json && !is_stream {
+                let upstream_body = upstream
+                    .bytes()
+                    .map_err(|err| format!("read upstream body failed: {err}"))?;
+                let usage = serde_json::from_slice::<Value>(upstream_body.as_ref())
+                    .ok()
+                    .map(|value| parse_usage_from_json(&value))
+                    .unwrap_or_default();
+                let upstream_error_hint =
+                    extract_error_hint_from_body(status.0, upstream_body.as_ref());
+                let len = Some(upstream_body.len());
+                let response = Response::new(
+                    status,
+                    headers,
+                    std::io::Cursor::new(upstream_body.to_vec()),
+                    len,
+                    None,
+                );
+                let delivery_error = request.respond(response).err().map(|err| err.to_string());
+                return Ok(UpstreamResponseBridgeResult {
+                    usage,
+                    stream_terminal_seen: true,
+                    stream_terminal_error: None,
+                    delivery_error,
+                    upstream_error_hint,
                 });
             }
             if is_sse && !is_stream {
@@ -727,6 +996,7 @@ pub(super) fn respond_with_upstream(
                 if let Ok(value) = serde_json::from_slice::<Value>(&body) {
                     merge_usage(&mut usage, parse_usage_from_json(&value));
                 }
+                let upstream_error_hint = extract_error_hint_from_body(status.0, &body);
                 headers.retain(|header| {
                     !header
                         .field
@@ -734,20 +1004,21 @@ pub(super) fn respond_with_upstream(
                         .as_str()
                         .eq_ignore_ascii_case("Content-Type")
                 });
-                if let Ok(content_type_header) = Header::from_bytes(
-                    b"Content-Type".as_slice(),
-                    b"application/json".as_slice(),
-                ) {
+                if let Ok(content_type_header) =
+                    Header::from_bytes(b"Content-Type".as_slice(), b"application/json".as_slice())
+                {
                     headers.push(content_type_header);
                 }
                 let len = Some(body.len());
-                let response = Response::new(status, headers, std::io::Cursor::new(body), len, None);
+                let response =
+                    Response::new(status, headers, std::io::Cursor::new(body), len, None);
                 let delivery_error = request.respond(response).err().map(|err| err.to_string());
                 return Ok(UpstreamResponseBridgeResult {
                     usage,
                     stream_terminal_seen: true,
                     stream_terminal_error: None,
                     delivery_error,
+                    upstream_error_hint,
                 });
             }
             if is_sse || is_stream {
@@ -760,12 +1031,16 @@ pub(super) fn respond_with_upstream(
                     None,
                 );
                 let delivery_error = request.respond(response).err().map(|err| err.to_string());
-                let collector = usage_collector.lock().map(|guard| guard.clone()).unwrap_or_default();
+                let collector = usage_collector
+                    .lock()
+                    .map(|guard| guard.clone())
+                    .unwrap_or_default();
                 return Ok(UpstreamResponseBridgeResult {
                     usage: collector.usage,
                     stream_terminal_seen: collector.saw_terminal,
                     stream_terminal_error: collector.terminal_error,
                     delivery_error,
+                    upstream_error_hint: None,
                 });
             }
             let len = upstream.content_length().map(|v| v as usize);
@@ -776,6 +1051,7 @@ pub(super) fn respond_with_upstream(
                 stream_terminal_seen: true,
                 stream_terminal_error: None,
                 delivery_error,
+                upstream_error_hint: None,
             })
         }
         super::ResponseAdapter::AnthropicJson | super::ResponseAdapter::AnthropicSse => {
@@ -807,10 +1083,9 @@ pub(super) fn respond_with_upstream(
                         .map(|value| value.to_ascii_lowercase().starts_with("text/event-stream"))
                         .unwrap_or(false))
             {
-                if let Ok(content_type_header) = Header::from_bytes(
-                    b"Content-Type".as_slice(),
-                    b"text/event-stream".as_slice(),
-                ) {
+                if let Ok(content_type_header) =
+                    Header::from_bytes(b"Content-Type".as_slice(), b"text/event-stream".as_slice())
+                {
                     headers.push(content_type_header);
                 }
                 let usage_collector = Arc::new(Mutex::new(UpstreamResponseUsage::default()));
@@ -831,6 +1106,7 @@ pub(super) fn respond_with_upstream(
                     stream_terminal_seen: true,
                     stream_terminal_error: None,
                     delivery_error,
+                    upstream_error_hint: None,
                 });
             }
 
@@ -864,11 +1140,14 @@ pub(super) fn respond_with_upstream(
             let len = Some(body.len());
             let response = Response::new(status, headers, std::io::Cursor::new(body), len, None);
             let delivery_error = request.respond(response).err().map(|err| err.to_string());
+            let upstream_error_hint =
+                extract_error_hint_from_body(status.0, upstream_body.as_ref());
             Ok(UpstreamResponseBridgeResult {
                 usage,
                 stream_terminal_seen: true,
                 stream_terminal_error: None,
                 delivery_error,
+                upstream_error_hint,
             })
         }
     }
@@ -931,9 +1210,9 @@ impl PassthroughSseUsageReader {
             }
             if let Ok(mut collector) = self.usage_collector.lock() {
                 if !collector.saw_terminal {
-                    collector.terminal_error.get_or_insert_with(|| {
-                        "stream disconnected before completion".to_string()
-                    });
+                    collector
+                        .terminal_error
+                        .get_or_insert_with(|| "stream disconnected before completion".to_string());
                 }
             }
             self.finished = true;
@@ -1056,7 +1335,10 @@ impl AnthropicSseReader {
         };
         match event_type {
             "response.output_text.delta" => {
-                let fragment = value.get("delta").and_then(Value::as_str).unwrap_or_default();
+                let fragment = value
+                    .get("delta")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 if fragment.is_empty() {
                     return Vec::new();
                 }
@@ -1157,7 +1439,10 @@ impl AnthropicSseReader {
                     let mut extracted_output_text = String::new();
                     collect_response_output_text(response, &mut extracted_output_text);
                     if !extracted_output_text.trim().is_empty() {
-                        append_output_text(&mut self.state.output_text, extracted_output_text.as_str());
+                        append_output_text(
+                            &mut self.state.output_text,
+                            extracted_output_text.as_str(),
+                        );
                         self.ensure_message_start(&mut out);
                         self.ensure_text_block_start(&mut out);
                         let text_index = self.state.text_block_index.unwrap_or(0);
@@ -1208,7 +1493,8 @@ impl AnthropicSseReader {
                     .and_then(|details| details.get("cached_tokens"))
                     .and_then(Value::as_i64)
                     .or_else(|| {
-                        usage.get("prompt_tokens_details")
+                        usage
+                            .get("prompt_tokens_details")
                             .and_then(Value::as_object)
                             .and_then(|details| details.get("cached_tokens"))
                             .and_then(Value::as_i64)
@@ -1229,7 +1515,8 @@ impl AnthropicSseReader {
                     .and_then(|details| details.get("reasoning_tokens"))
                     .and_then(Value::as_i64)
                     .or_else(|| {
-                        usage.get("completion_tokens_details")
+                        usage
+                            .get("completion_tokens_details")
                             .and_then(Value::as_object)
                             .and_then(|details| details.get("reasoning_tokens"))
                             .and_then(Value::as_i64)
@@ -1365,7 +1652,13 @@ fn append_sse_event(buffer: &mut String, event_name: &str, payload: &Value) {
 }
 
 fn extract_function_call_input(item_obj: &Map<String, Value>) -> Option<Value> {
-    const ARGUMENT_KEYS: [&str; 5] = ["arguments", "input", "arguments_json", "parsed_arguments", "args"];
+    const ARGUMENT_KEYS: [&str; 5] = [
+        "arguments",
+        "input",
+        "arguments_json",
+        "parsed_arguments",
+        "args",
+    ];
     for key in ARGUMENT_KEYS {
         let Some(value) = item_obj.get(key) else {
             continue;
@@ -1398,205 +1691,5 @@ fn tool_input_partial_json(value: Value) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        collect_non_stream_json_from_sse_bytes, inspect_sse_frame, parse_usage_from_json,
-        parse_usage_from_sse_frame,
-    };
-    use serde_json::json;
-
-    #[test]
-    fn parse_usage_from_json_reads_cached_and_reasoning_details() {
-        let payload = json!({
-            "usage": {
-                "input_tokens": 321,
-                "input_tokens_details": { "cached_tokens": 280 },
-                "output_tokens": 55,
-                "total_tokens": 376,
-                "output_tokens_details": { "reasoning_tokens": 21 }
-            }
-        });
-        let usage = parse_usage_from_json(&payload);
-        assert_eq!(usage.input_tokens, Some(321));
-        assert_eq!(usage.cached_input_tokens, Some(280));
-        assert_eq!(usage.output_tokens, Some(55));
-        assert_eq!(usage.total_tokens, Some(376));
-        assert_eq!(usage.reasoning_output_tokens, Some(21));
-    }
-
-    #[test]
-    fn parse_usage_from_json_reads_response_usage_compat_fields() {
-        let payload = json!({
-            "type": "response.completed",
-            "response": {
-                "usage": {
-                    "prompt_tokens": 100,
-                    "prompt_tokens_details": { "cached_tokens": 75 },
-                    "completion_tokens": 20,
-                    "total_tokens": 120,
-                    "completion_tokens_details": { "reasoning_tokens": 9 }
-                }
-            }
-        });
-        let usage = parse_usage_from_json(&payload);
-        assert_eq!(usage.input_tokens, Some(100));
-        assert_eq!(usage.cached_input_tokens, Some(75));
-        assert_eq!(usage.output_tokens, Some(20));
-        assert_eq!(usage.total_tokens, Some(120));
-        assert_eq!(usage.reasoning_output_tokens, Some(9));
-    }
-
-    #[test]
-    fn parse_usage_from_json_merges_response_usage_over_top_level_usage() {
-        let payload = json!({
-            "usage": {
-                "input_tokens": 11,
-                "output_tokens": 7,
-                "total_tokens": 18
-            },
-            "response": {
-                "usage": {
-                    "prompt_tokens": 13,
-                    "prompt_tokens_details": { "cached_tokens": 5 },
-                    "completion_tokens": 9,
-                    "total_tokens": 22
-                }
-            }
-        });
-        let usage = parse_usage_from_json(&payload);
-        assert_eq!(usage.input_tokens, Some(13));
-        assert_eq!(usage.cached_input_tokens, Some(5));
-        assert_eq!(usage.output_tokens, Some(9));
-        assert_eq!(usage.total_tokens, Some(22));
-        assert_eq!(usage.reasoning_output_tokens, None);
-    }
-
-    #[test]
-    fn parse_usage_from_sse_frame_reads_response_completed_usage() {
-        let frame_lines = vec![
-            "event: message\n".to_string(),
-            r#"data: {"type":"response.completed","response":{"usage":{"input_tokens":88,"input_tokens_details":{"cached_tokens":61},"output_tokens":17,"total_tokens":105,"output_tokens_details":{"reasoning_tokens":6}}}}"#
-                .to_string(),
-            "\n".to_string(),
-        ];
-        let usage = parse_usage_from_sse_frame(&frame_lines).expect("extract usage from sse frame");
-        assert_eq!(usage.input_tokens, Some(88));
-        assert_eq!(usage.cached_input_tokens, Some(61));
-        assert_eq!(usage.output_tokens, Some(17));
-        assert_eq!(usage.total_tokens, Some(105));
-        assert_eq!(usage.reasoning_output_tokens, Some(6));
-    }
-
-    #[test]
-    fn parse_usage_from_sse_frame_reads_top_level_and_response_usage() {
-        let frame_lines = vec![
-            "event: message\n".to_string(),
-            r#"data: {"type":"response.completed","usage":{"input_tokens":22,"input_tokens_details":{"cached_tokens":10},"output_tokens":11,"total_tokens":33,"output_tokens_details":{"reasoning_tokens":3}},"response":{"usage":{"prompt_tokens":26,"prompt_tokens_details":{"cached_tokens":12},"completion_tokens":15,"total_tokens":41,"completion_tokens_details":{"reasoning_tokens":4}}}}"#
-                .to_string(),
-            "\n".to_string(),
-        ];
-        let usage = parse_usage_from_sse_frame(&frame_lines).expect("extract usage from sse frame");
-        assert_eq!(usage.input_tokens, Some(26));
-        assert_eq!(usage.cached_input_tokens, Some(12));
-        assert_eq!(usage.output_tokens, Some(15));
-        assert_eq!(usage.total_tokens, Some(41));
-        assert_eq!(usage.reasoning_output_tokens, Some(4));
-    }
-
-    #[test]
-    fn parse_usage_from_sse_frame_caps_output_text() {
-        let limit = super::output_text_limit_bytes();
-        if limit == 0 || limit <= super::OUTPUT_TEXT_TRUNCATED_MARKER.len() {
-            return;
-        }
-
-        let long = "a".repeat(limit.saturating_mul(3));
-        let payload = json!({
-            "choices": [
-                {"delta": {"content": long}}
-            ]
-        });
-        let frame_lines = vec![
-            "event: message\n".to_string(),
-            format!("data: {}", payload.to_string()),
-            "\n".to_string(),
-        ];
-        let usage = parse_usage_from_sse_frame(&frame_lines).expect("extract usage from sse frame");
-        let text = usage.output_text.unwrap_or_default();
-        assert!(
-            text.len() <= limit,
-            "output_text exceeded limit: {} > {limit}",
-            text.len()
-        );
-        assert!(text.ends_with(super::OUTPUT_TEXT_TRUNCATED_MARKER));
-    }
-
-    #[test]
-    fn inspect_sse_frame_recognizes_done_marker() {
-        let frame_lines = vec![
-            "event: message\n".to_string(),
-            "data: [DONE]\n".to_string(),
-            "\n".to_string(),
-        ];
-        let inspection = inspect_sse_frame(&frame_lines);
-        assert!(inspection.terminal.is_some());
-    }
-
-    #[test]
-    fn inspect_sse_frame_recognizes_response_failed_as_terminal_error() {
-        let frame_lines = vec![
-            "event: response.failed\n".to_string(),
-            r#"data: {"type":"response.failed","error":{"message":"Internal server error"}}"#
-                .to_string(),
-            "\n".to_string(),
-        ];
-        let inspection = inspect_sse_frame(&frame_lines);
-        let err = inspection
-            .terminal
-            .as_ref()
-            .and_then(|t| match t {
-                super::SseTerminal::Ok => None,
-                super::SseTerminal::Err(msg) => Some(msg.as_str()),
-            })
-            .unwrap_or("");
-        assert!(err.contains("Internal server error"));
-    }
-
-    #[test]
-    fn inspect_sse_frame_recognizes_nested_response_error_message() {
-        let frame_lines = vec![
-            "event: response.failed\n".to_string(),
-            r#"data: {"type":"response.failed","response":{"status":"failed","error":{"message":"Model not found","type":"invalid_request_error","code":"model_not_found"}}}"#
-                .to_string(),
-            "\n".to_string(),
-        ];
-        let inspection = inspect_sse_frame(&frame_lines);
-        let err = inspection
-            .terminal
-            .as_ref()
-            .and_then(|t| match t {
-                super::SseTerminal::Ok => None,
-                super::SseTerminal::Err(msg) => Some(msg.as_str()),
-            })
-            .unwrap_or("");
-        assert!(err.contains("Model not found"), "unexpected err: {err}");
-        assert!(err.contains("model_not_found"), "unexpected err: {err}");
-    }
-
-    #[test]
-    fn collect_non_stream_json_from_sse_bytes_extracts_response_completed() {
-        let sse = concat!(
-            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n",
-            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-5.3-codex\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\"}]}],\"usage\":{\"input_tokens\":7,\"output_tokens\":3,\"total_tokens\":10}}}\n\n",
-            "data: [DONE]\n\n"
-        );
-        let (body, usage) = collect_non_stream_json_from_sse_bytes(sse.as_bytes());
-        let body = body.expect("synthesized response json");
-        let value: serde_json::Value = serde_json::from_slice(&body).expect("parse synthesized body");
-        assert_eq!(value["id"], "resp_1");
-        assert_eq!(value["output"][0]["role"], "assistant");
-        assert_eq!(usage.input_tokens, Some(7));
-        assert_eq!(usage.output_tokens, Some(3));
-        assert_eq!(usage.total_tokens, Some(10));
-    }
-}
+#[path = "tests/http_bridge_tests.rs"]
+mod tests;

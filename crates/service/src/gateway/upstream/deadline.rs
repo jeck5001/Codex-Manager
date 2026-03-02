@@ -54,55 +54,6 @@ pub(super) fn send_timeout(deadline: Option<Instant>, is_stream: bool) -> Option
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+#[path = "tests/deadline_tests.rs"]
+mod tests;
 
-    #[test]
-    fn effective_request_timeout_non_stream_uses_total_only() {
-        assert_eq!(
-            effective_request_timeout(
-                Some(Duration::from_secs(120)),
-                Some(Duration::from_secs(300)),
-                false
-            ),
-            Some(Duration::from_secs(120))
-        );
-        assert_eq!(
-            effective_request_timeout(None, Some(Duration::from_secs(300)), false),
-            None
-        );
-    }
-
-    #[test]
-    fn effective_request_timeout_stream_uses_max_total_and_stream() {
-        assert_eq!(
-            effective_request_timeout(
-                Some(Duration::from_secs(120)),
-                Some(Duration::from_secs(300)),
-                true
-            ),
-            Some(Duration::from_secs(300))
-        );
-        assert_eq!(
-            effective_request_timeout(
-                Some(Duration::from_secs(300)),
-                Some(Duration::from_secs(120)),
-                true
-            ),
-            Some(Duration::from_secs(300))
-        );
-    }
-
-    #[test]
-    fn effective_request_timeout_stream_falls_back_when_one_side_missing() {
-        assert_eq!(
-            effective_request_timeout(Some(Duration::from_secs(120)), None, true),
-            Some(Duration::from_secs(120))
-        );
-        assert_eq!(
-            effective_request_timeout(None, Some(Duration::from_secs(300)), true),
-            Some(Duration::from_secs(300))
-        );
-        assert_eq!(effective_request_timeout(None, None, true), None);
-    }
-}

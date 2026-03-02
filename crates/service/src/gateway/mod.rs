@@ -144,6 +144,10 @@ pub(crate) fn cpa_no_cookie_header_mode_enabled() -> bool {
     runtime_config::cpa_no_cookie_header_mode_enabled()
 }
 
+pub(crate) fn strict_request_param_allowlist_enabled() -> bool {
+    runtime_config::strict_request_param_allowlist_enabled()
+}
+
 pub(crate) fn set_cpa_no_cookie_header_mode(enabled: bool) -> bool {
     runtime_config::set_cpa_no_cookie_header_mode_enabled(enabled);
     std::env::set_var(
