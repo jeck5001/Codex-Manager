@@ -12,6 +12,72 @@ const EMPTY_REFRESH_PROGRESS = Object.freeze({
 
 let refreshAllProgress = { ...EMPTY_REFRESH_PROGRESS };
 
+function pickImportTokenField(record, keys) {
+  const source = record && typeof record === "object" ? record : null;
+  if (!source) return "";
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function normalizeSingleImportRecord(record) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    return record;
+  }
+  const tokens = record.tokens;
+  if (tokens && typeof tokens === "object" && !Array.isArray(tokens)) {
+    return record;
+  }
+
+  const accessToken = pickImportTokenField(record, ["access_token", "accessToken"]);
+  const idToken = pickImportTokenField(record, ["id_token", "idToken"]);
+  const refreshToken = pickImportTokenField(record, ["refresh_token", "refreshToken"]);
+  if (!accessToken || !idToken || !refreshToken) {
+    return record;
+  }
+
+  const accountIdHint = pickImportTokenField(record, [
+    "account_id",
+    "accountId",
+    "chatgpt_account_id",
+    "chatgptAccountId",
+  ]);
+  const normalizedTokens = {
+    access_token: accessToken,
+    id_token: idToken,
+    refresh_token: refreshToken,
+  };
+  if (accountIdHint) {
+    normalizedTokens.account_id = accountIdHint;
+  }
+
+  return {
+    ...record,
+    tokens: normalizedTokens,
+  };
+}
+
+function normalizeImportContentForCompatibility(rawContent) {
+  const text = String(rawContent || "").trim();
+  if (!text) return text;
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return JSON.stringify(parsed.map(normalizeSingleImportRecord));
+    }
+    if (parsed && typeof parsed === "object") {
+      return JSON.stringify(normalizeSingleImportRecord(parsed));
+    }
+    return text;
+  } catch {
+    return text;
+  }
+}
+
 function nextPaintTick() {
   return new Promise((resolve) => {
     const raf = typeof globalThis !== "undefined" ? globalThis.requestAnimationFrame : null;
@@ -246,7 +312,7 @@ export function createAccountActions({
       }
       const trimmed = String(text || "").trim();
       if (trimmed) {
-        contents.push(trimmed);
+        contents.push(normalizeImportContentForCompatibility(trimmed));
       }
       if ((index + 1) % yieldEvery === 0) {
         await nextPaintTick();
