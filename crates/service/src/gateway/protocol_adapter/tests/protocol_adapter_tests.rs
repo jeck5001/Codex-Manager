@@ -408,6 +408,32 @@ data: [DONE]
 }
 
 #[test]
+fn openai_chat_stream_response_done_only_still_outputs_text() {
+    let upstream = br#"data: {"type":"response.done","response":{"id":"resp_3_done","created":1700000003,"model":"gpt-5.3-codex","output":[{"type":"message","content":[{"type":"output_text","text":"done only text"}]}],"usage":{"input_tokens":8,"output_tokens":3,"total_tokens":11}}}
+
+data: [DONE]
+
+"#;
+    let (body, content_type) = adapt_upstream_response(
+        ResponseAdapter::OpenAIChatCompletionsJson,
+        Some("text/event-stream"),
+        upstream,
+    )
+    .expect("convert response");
+    let value: serde_json::Value = serde_json::from_slice(&body).expect("parse converted body");
+    assert_eq!(content_type, "application/json");
+    assert_eq!(
+        value
+            .get("choices")
+            .and_then(|choices| choices.get(0))
+            .and_then(|choice| choice.get("message"))
+            .and_then(|message| message.get("content"))
+            .and_then(serde_json::Value::as_str),
+        Some("done only text")
+    );
+}
+
+#[test]
 fn openai_completions_response_is_converted_from_responses_json() {
     let upstream = br#"{
         "id":"resp_1",
@@ -461,6 +487,31 @@ data: [DONE]
             .and_then(|choice| choice.get("text"))
             .and_then(serde_json::Value::as_str),
         Some("completed only completion text")
+    );
+}
+
+#[test]
+fn openai_completions_stream_done_only_still_outputs_text() {
+    let upstream = br#"data: {"type":"response.done","response":{"id":"resp_4_done","created":1700000004,"model":"gpt-5.3-codex","output":[{"type":"message","content":[{"type":"output_text","text":"done only completion text"}]}],"usage":{"input_tokens":9,"output_tokens":4,"total_tokens":13}}}
+
+data: [DONE]
+
+"#;
+    let (body, content_type) = adapt_upstream_response(
+        ResponseAdapter::OpenAICompletionsJson,
+        Some("text/event-stream"),
+        upstream,
+    )
+    .expect("convert response");
+    let value: serde_json::Value = serde_json::from_slice(&body).expect("parse converted body");
+    assert_eq!(content_type, "application/json");
+    assert_eq!(
+        value
+            .get("choices")
+            .and_then(|choices| choices.get(0))
+            .and_then(|choice| choice.get("text"))
+            .and_then(serde_json::Value::as_str),
+        Some("done only completion text")
     );
 }
 

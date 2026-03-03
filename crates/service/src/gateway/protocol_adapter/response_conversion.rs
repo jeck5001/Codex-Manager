@@ -11,6 +11,11 @@ use sse_conversion::{
 mod json_conversion;
 mod sse_conversion;
 
+fn is_response_completed_event_type(kind: &str) -> bool {
+    let normalized = kind.trim().to_ascii_lowercase();
+    normalized == "response.completed" || normalized == "response.done"
+}
+
 fn extract_chat_content_text(content: Option<&Value>) -> String {
     let Some(content) = content else {
         return String::new();
@@ -354,7 +359,7 @@ pub(super) fn convert_openai_completions_stream_chunk(value: &Value) -> Option<V
                 }
                 return Some(build_openai_completions_text_chunk(value, text.as_str()));
             }
-            "response.completed" => {
+            "response.completed" | "response.done" => {
                 let response = value.get("response").unwrap_or(&Value::Null);
                 let usage = response
                     .get("usage")
@@ -511,7 +516,7 @@ fn convert_openai_sse_to_completions_json(body: &[u8]) -> Result<(Vec<u8>, &'sta
         if value
             .get("type")
             .and_then(Value::as_str)
-            .is_some_and(|kind| kind == "response.completed")
+            .is_some_and(is_response_completed_event_type)
         {
             if let Some(response) = value.get("response") {
                 *completed_response = Some(response.clone());
@@ -858,7 +863,7 @@ pub(super) fn convert_openai_chat_stream_chunk(value: &Value) -> Option<Value> {
             "response.function_call_arguments.delta" | "response.function_call_arguments.done" => {
                 return map_response_event_to_openai_chat_tool_chunk(value);
             }
-            "response.completed" => {
+            "response.completed" | "response.done" => {
                 let response = value.get("response").unwrap_or(&Value::Null);
                 let fallback_id = stream_event_response_id(value);
                 let fallback_model = stream_event_model(value);
@@ -1007,7 +1012,7 @@ fn convert_openai_sse_to_chat_completions_json(
         if value
             .get("type")
             .and_then(Value::as_str)
-            .is_some_and(|kind| kind == "response.completed")
+            .is_some_and(is_response_completed_event_type)
         {
             if let Some(response) = value.get("response") {
                 *completed_response = Some(response.clone());

@@ -166,6 +166,17 @@ fn inspect_sse_frame_recognizes_response_failed_as_terminal_error() {
 }
 
 #[test]
+fn inspect_sse_frame_recognizes_response_done_as_terminal() {
+    let frame_lines = vec![
+        "event: response.done\n".to_string(),
+        r#"data: {"type":"response.done","response":{"id":"resp_done_1"}}"#.to_string(),
+        "\n".to_string(),
+    ];
+    let inspection = inspect_sse_frame(&frame_lines);
+    assert!(inspection.terminal.is_some());
+}
+
+#[test]
 fn inspect_sse_frame_recognizes_chat_completion_finish_reason_as_terminal() {
     let frame_lines = vec![
         "event: message\n".to_string(),
@@ -209,6 +220,23 @@ fn collect_non_stream_json_from_sse_bytes_extracts_response_completed() {
     let body = body.expect("synthesized response json");
     let value: serde_json::Value = serde_json::from_slice(&body).expect("parse synthesized body");
     assert_eq!(value["id"], "resp_1");
+    assert_eq!(value["output"][0]["role"], "assistant");
+    assert_eq!(usage.input_tokens, Some(7));
+    assert_eq!(usage.output_tokens, Some(3));
+    assert_eq!(usage.total_tokens, Some(10));
+}
+
+#[test]
+fn collect_non_stream_json_from_sse_bytes_extracts_response_done() {
+    let sse = concat!(
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n",
+        "data: {\"type\":\"response.done\",\"response\":{\"id\":\"resp_done_1\",\"model\":\"gpt-5.3-codex\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\"}]}],\"usage\":{\"input_tokens\":7,\"output_tokens\":3,\"total_tokens\":10}}}\n\n",
+        "data: [DONE]\n\n"
+    );
+    let (body, usage) = collect_non_stream_json_from_sse_bytes(sse.as_bytes());
+    let body = body.expect("synthesized response json");
+    let value: serde_json::Value = serde_json::from_slice(&body).expect("parse synthesized body");
+    assert_eq!(value["id"], "resp_done_1");
     assert_eq!(value["output"][0]["role"], "assistant");
     assert_eq!(usage.input_tokens, Some(7));
     assert_eq!(usage.output_tokens, Some(3));

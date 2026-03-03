@@ -415,10 +415,7 @@ fn classify_terminal_event_name(name: &str) -> Option<SseTerminal> {
     if normalized.is_empty() {
         return None;
     }
-    if normalized == "done"
-        || normalized == "response.completed"
-        || normalized.ends_with(".completed")
-    {
+    if normalized == "done" || is_response_completed_event_name(normalized.as_str()) || normalized.ends_with(".completed") {
         return Some(SseTerminal::Ok);
     }
     if normalized == "error"
@@ -432,6 +429,11 @@ fn classify_terminal_event_name(name: &str) -> Option<SseTerminal> {
         return Some(SseTerminal::Err(normalized));
     }
     None
+}
+
+fn is_response_completed_event_name(name: &str) -> bool {
+    let normalized = name.trim().to_ascii_lowercase();
+    normalized == "response.completed" || normalized == "response.done"
 }
 
 fn is_chat_completion_terminal_chunk(value: &Value) -> bool {
@@ -825,7 +827,7 @@ fn update_responses_sse_synthesis(synthesis: &mut ResponsesSseSynthesis, value: 
         append_output_text_raw(&mut synthesis.output_text, text_out.as_str());
     }
 
-    if event_type == "response.completed" {
+    if is_response_completed_event_name(event_type) {
         synthesis.saw_completed = true;
     }
 }
@@ -1144,7 +1146,7 @@ fn collect_non_stream_json_from_sse_bytes(
                 if value
                     .get("type")
                     .and_then(Value::as_str)
-                    .is_some_and(|kind| kind == "response.completed")
+                    .is_some_and(is_response_completed_event_name)
                 {
                     if let Some(response_obj) = value.get("response") {
                         completed_response = Some(response_obj.clone());
@@ -1167,7 +1169,7 @@ fn collect_non_stream_json_from_sse_bytes(
             if value
                 .get("type")
                 .and_then(Value::as_str)
-                .is_some_and(|kind| kind == "response.completed")
+                .is_some_and(is_response_completed_event_name)
             {
                 if let Some(response_obj) = value.get("response") {
                     completed_response = Some(response_obj.clone());
@@ -2239,7 +2241,7 @@ impl OpenAICompletionsSseReader {
         }
 
         let mut out = String::new();
-        if event_type == "response.completed" && !self.emitted_text_delta {
+        if is_response_completed_event_name(event_type) && !self.emitted_text_delta {
             if let Some(fallback_text) = extract_openai_completed_output_text(&value) {
                 let mut fallback_chunk =
                     build_completion_fallback_text_chunk(&self.stream_meta, fallback_text.as_str());
@@ -2264,7 +2266,7 @@ impl OpenAICompletionsSseReader {
             out.push_str(format!("data: {payload}\n\n").as_str());
         }
 
-        if event_type == "response.completed" {
+        if is_response_completed_event_name(event_type) {
             out.push_str("data: [DONE]\n\n");
             self.finished = true;
         }
@@ -2426,7 +2428,7 @@ impl OpenAIChatCompletionsSseReader {
         }
 
         let mut out = String::new();
-        if event_type == "response.completed" && !self.emitted_text_delta {
+        if is_response_completed_event_name(event_type) && !self.emitted_text_delta {
             if let Some(fallback_content) = extract_openai_completed_output_text(&value) {
                 let mut fallback_chunk =
                     build_chat_fallback_content_chunk(&self.stream_meta, fallback_content.as_str());
@@ -2456,7 +2458,7 @@ impl OpenAIChatCompletionsSseReader {
             out.push_str(format!("data: {payload}\n\n").as_str());
         }
 
-        if event_type == "response.completed" {
+        if is_response_completed_event_name(event_type) {
             out.push_str("data: [DONE]\n\n");
             self.finished = true;
         }
@@ -2716,7 +2718,7 @@ impl AnthropicSseReader {
             {
                 collect_output_text_from_event_fields(value, &mut self.state.output_text);
             }
-            "response.completed" => {
+            "response.completed" | "response.done" => {
                 if let Some(response) = value.get("response") {
                     let mut extracted_output_text = String::new();
                     collect_response_output_text(response, &mut extracted_output_text);

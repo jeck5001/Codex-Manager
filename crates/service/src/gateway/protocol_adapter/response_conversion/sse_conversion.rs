@@ -262,7 +262,7 @@ pub(super) fn convert_openai_sse_to_anthropic(
                     }
                     continue;
                 }
-                "response.completed" => {
+                "response.completed" | "response.done" => {
                     if let Some(response) = value.get("response") {
                         completed_response = Some(response.clone());
                         if response_id.is_none() {
