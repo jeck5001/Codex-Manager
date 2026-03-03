@@ -2,6 +2,8 @@ import { state } from "../state.js";
 import * as api from "../api.js";
 import { setStatus, setServiceHint } from "../ui/status.js";
 
+const LOOPBACK_PROXY_HINT = "若开启全局代理，请将 localhost/127.0.0.1/::1 设为直连";
+
 // 规范化端口/地址输入
 export function normalizeAddr(raw) {
   const trimmed = String(raw || "").trim();
@@ -44,17 +46,17 @@ function formatConnectError(err) {
     return "服务返回空响应（可能启动未完成、已异常退出或端口被占用）";
   }
   if (lower.includes("port is in use") || lower.includes("unexpected service responded")) {
-    return "端口已被占用或响应来源不是 CodexManager 服务";
+    return `端口已被占用或响应来源不是 CodexManager 服务（${LOOPBACK_PROXY_HINT}）`;
   }
   if (lower.includes("missing server_name")) {
-    return "响应缺少服务标识（疑似非 CodexManager 服务）";
+    return `响应缺少服务标识（疑似非 CodexManager 服务，${LOOPBACK_PROXY_HINT}）`;
   }
   if (
     lower.includes("unexpected rpc response")
     || lower.includes("expected value at line 1 column 1")
     || lower.includes("invalid chunked body")
   ) {
-    return "响应格式异常（疑似非 CodexManager 服务）";
+    return `响应格式异常（疑似非 CodexManager 服务，${LOOPBACK_PROXY_HINT}）`;
   }
   if (lower.includes("no address resolved")) return "地址解析失败";
   if (lower.includes("addr is empty")) return "地址为空";
@@ -154,7 +156,7 @@ export function createConnectionService(deps) {
       await apiClient.serviceStart(addr);
     } catch (err) {
       setStatusFn("", false);
-      setServiceHintFn(`启动失败：${String(err)}`, true);
+      setServiceHintFn(`启动失败：${formatConnectError(err)}`, true);
       return false;
     }
     const {
