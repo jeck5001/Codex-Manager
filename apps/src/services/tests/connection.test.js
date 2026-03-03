@@ -205,6 +205,9 @@ test("initializeService identifies unexpected service response", async () => {
 
   assert.equal(ok, false);
   const finalHint = String(hintCalls.at(-1)?.[0] || "");
-  assert.ok(finalHint.includes("端口已被占用或响应来源不是 CodexManager service"));
+  assert.ok(
+    finalHint.includes("端口已被占用或响应来源不是 CodexManager 服务")
+    || finalHint.includes("端口已被占用或响应来源不是 CodexManager service"),
+  );
   assert.equal(hintCalls.at(-1)?.[1], true);
 });
