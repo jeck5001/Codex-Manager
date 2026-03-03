@@ -156,7 +156,7 @@ export function bindModalActionEvents({
     if (!dom.apiKeyValue.value) return;
     const ok = await copyText(dom.apiKeyValue.value);
     if (ok) {
-      showToast("平台 Key 已复制");
+      showToast("平台密钥已复制");
     } else {
       showToast("复制失败，请手动复制", "error");
     }

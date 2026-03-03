@@ -139,18 +139,18 @@ fn resolve_update_repo() -> String {
 
 fn normalize_version(input: &str) -> Result<Version, String> {
   let normalized = input.trim().trim_start_matches(['v', 'V']);
-  Version::parse(normalized).map_err(|err| format!("invalid version '{input}': {err}"))
+  Version::parse(normalized).map_err(|err| format!("版本号无效 '{input}'：{err}"))
 }
 
 fn current_exe_path() -> Result<PathBuf, String> {
-  std::env::current_exe().map_err(|err| format!("resolve current exe failed: {err}"))
+  std::env::current_exe().map_err(|err| format!("解析当前可执行文件路径失败：{err}"))
 }
 
 fn current_mode_and_marker() -> Result<(String, bool, PathBuf, PathBuf), String> {
   let exe = current_exe_path()?;
   let exe_dir = exe
     .parent()
-    .ok_or_else(|| "resolve exe parent dir failed".to_string())?
+    .ok_or_else(|| "解析可执行文件所在目录失败".to_string())?
     .to_path_buf();
   let marker = exe_dir.join(PORTABLE_MARKER_FILE);
   let by_marker = marker.is_file();
@@ -168,7 +168,7 @@ fn http_client() -> Result<Client, String> {
   Client::builder()
     .timeout(Duration::from_secs(30))
     .build()
-    .map_err(|err| format!("build http client failed: {err}"))
+    .map_err(|err| format!("创建 HTTP 客户端失败：{err}"))
 }
 
 fn resolve_github_token() -> Option<String> {
@@ -265,6 +265,25 @@ fn parse_release_assets_from_html(html: &str, repo: &str) -> Vec<GitHubAsset> {
   assets
 }
 
+fn fetch_release_assets_from_expanded_fragment(
+  client: &Client,
+  repo: &str,
+  tag: &str,
+) -> Result<Vec<GitHubAsset>, String> {
+  let url = format!("https://github.com/{repo}/releases/expanded_assets/{tag}");
+  let html = client
+    .get(url)
+    .header(reqwest::header::USER_AGENT, USER_AGENT)
+    .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml")
+    .send()
+    .map_err(|err| format!("请求扩展资产列表失败：{err}"))?
+    .error_for_status()
+    .map_err(|err| format!("扩展资产列表响应异常：{err}"))?
+    .text()
+    .map_err(|err| format!("读取扩展资产列表失败：{err}"))?;
+  Ok(parse_release_assets_from_html(&html, repo))
+}
+
 fn fetch_latest_release_via_html(client: &Client, repo: &str) -> Result<GitHubRelease, String> {
   let url = format!("https://github.com/{repo}/releases/latest");
   let response = client
@@ -272,17 +291,24 @@ fn fetch_latest_release_via_html(client: &Client, repo: &str) -> Result<GitHubRe
     .header(reqwest::header::USER_AGENT, USER_AGENT)
     .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml")
     .send()
-    .map_err(|err| format!("request latest release redirect failed: {err}"))?
+    .map_err(|err| format!("请求最新发布页跳转失败：{err}"))?
     .error_for_status()
-    .map_err(|err| format!("latest release redirect response failed: {err}"))?;
+    .map_err(|err| format!("最新发布页跳转响应异常：{err}"))?;
 
   let final_url = response.url().as_str().to_string();
   let tag = extract_tag_from_release_url(&final_url)
-    .ok_or_else(|| format!("cannot parse latest tag from github releases url: {final_url}"))?;
+    .ok_or_else(|| format!("无法从 GitHub Releases 地址解析最新标签：{final_url}"))?;
   let html = response
     .text()
-    .map_err(|err| format!("read latest release page failed: {err}"))?;
-  let assets = parse_release_assets_from_html(&html, repo);
+    .map_err(|err| format!("读取最新发布页失败：{err}"))?;
+  let mut assets = parse_release_assets_from_html(&html, repo);
+  if assets.is_empty() {
+    if let Ok(expanded_assets) = fetch_release_assets_from_expanded_fragment(client, repo, &tag) {
+      if !expanded_assets.is_empty() {
+        assets = expanded_assets;
+      }
+    }
+  }
 
   Ok(GitHubRelease {
     tag_name: tag,
@@ -297,7 +323,7 @@ fn fetch_latest_release_via_html(client: &Client, repo: &str) -> Result<GitHubRe
 fn fetch_latest_release(client: &Client, repo: &str) -> Result<GitHubRelease, String> {
   if !repo.contains('/') {
     return Err(format!(
-      "invalid update repo '{repo}', expected owner/repo format"
+      "更新仓库配置无效 '{repo}'，应为 owner/repo 格式"
     ));
   }
   let url = format!("https://api.github.com/repos/{repo}/releases/latest");
@@ -313,11 +339,11 @@ fn fetch_latest_release(client: &Client, repo: &str) -> Result<GitHubRelease, St
     Ok(resp) => match resp.error_for_status() {
       Ok(ok_resp) => ok_resp
         .json::<GitHubRelease>()
-        .map_err(|err| format!("parse latest release payload failed: {err}"))?,
+        .map_err(|err| format!("解析最新发布数据失败：{err}"))?,
       Err(api_err) => {
         fetch_latest_release_via_html(client, repo).map_err(|fallback_err| {
           format!(
-            "latest release api failed ({api_err}); fallback release page parse failed ({fallback_err})"
+            "最新发布 API 请求失败（{api_err}）；回退解析发布页面也失败（{fallback_err}）"
           )
         })?
       }
@@ -325,14 +351,14 @@ fn fetch_latest_release(client: &Client, repo: &str) -> Result<GitHubRelease, St
     Err(api_transport_err) => {
       fetch_latest_release_via_html(client, repo).map_err(|fallback_err| {
         format!(
-          "latest release request failed ({api_transport_err}); fallback release page parse failed ({fallback_err})"
+          "最新发布请求失败（{api_transport_err}）；回退解析发布页面也失败（{fallback_err}）"
         )
       })?
     }
   };
 
   if release.draft || release.prerelease {
-    return Err("latest release must be a stable release".to_string());
+    return Err("最新发布必须是稳定版（非草稿/非预发布）".to_string());
   }
   Ok(release)
 }
@@ -428,13 +454,13 @@ fn resolve_update_context() -> Result<ResolvedUpdateContext, String> {
   let fetched_by_fallback = release.assets.is_empty();
 
   let reason = if !has_update {
-    Some("current version is already up to date".to_string())
+    Some("当前版本已是最新".to_string())
   } else if fetched_by_fallback {
     Some(
-      "new version found from GitHub releases page, but release asset metadata is unavailable (possibly GitHub API rate limit or page parsing drift); you can set CODEXMANAGER_GITHUB_TOKEN to improve one-click update stability".to_string(),
+      "已在 GitHub Releases 页面发现新版本，但发布资产元数据不可用（可能是 GitHub API 速率限制或页面解析偏移）；可设置 CODEXMANAGER_GITHUB_TOKEN 提高一键更新稳定性".to_string(),
     )
   } else if payload_asset.is_none() {
-    Some("release asset for current platform/mode not found".to_string())
+    Some("未找到当前平台/运行模式对应的发布资产".to_string())
   } else {
     None
   };
@@ -477,9 +503,9 @@ fn updates_root_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
   let mut root = app
     .path()
     .app_data_dir()
-    .map_err(|_| "app data dir not found".to_string())?;
+    .map_err(|_| "未找到应用数据目录".to_string())?;
   root.push("updates");
-  fs::create_dir_all(&root).map_err(|err| format!("create updates dir failed: {err}"))?;
+  fs::create_dir_all(&root).map_err(|err| format!("创建更新目录失败：{err}"))?;
   Ok(root)
 }
 
@@ -492,26 +518,26 @@ fn read_pending_update(app: &tauri::AppHandle) -> Result<Option<PendingUpdate>, 
   if !path.is_file() {
     return Ok(None);
   }
-  let bytes = fs::read(&path).map_err(|err| format!("read pending update failed: {err}"))?;
+  let bytes = fs::read(&path).map_err(|err| format!("读取待安装更新信息失败：{err}"))?;
   let parsed = serde_json::from_slice::<PendingUpdate>(&bytes)
-    .map_err(|err| format!("parse pending update failed: {err}"))?;
+    .map_err(|err| format!("解析待安装更新信息失败：{err}"))?;
   Ok(Some(parsed))
 }
 
 fn write_pending_update(app: &tauri::AppHandle, pending: &PendingUpdate) -> Result<(), String> {
   let path = pending_update_path(app)?;
   if let Some(parent) = path.parent() {
-    fs::create_dir_all(parent).map_err(|err| format!("create pending dir failed: {err}"))?;
+    fs::create_dir_all(parent).map_err(|err| format!("创建待安装信息目录失败：{err}"))?;
   }
   let bytes = serde_json::to_vec_pretty(pending)
-    .map_err(|err| format!("serialize pending update failed: {err}"))?;
-  fs::write(&path, bytes).map_err(|err| format!("write pending update failed: {err}"))
+    .map_err(|err| format!("序列化待安装更新信息失败：{err}"))?;
+  fs::write(&path, bytes).map_err(|err| format!("写入待安装更新信息失败：{err}"))
 }
 
 fn clear_pending_update(app: &tauri::AppHandle) -> Result<(), String> {
   let path = pending_update_path(app)?;
   if path.exists() {
-    fs::remove_file(&path).map_err(|err| format!("remove pending update failed: {err}"))?;
+    fs::remove_file(&path).map_err(|err| format!("删除待安装更新信息失败：{err}"))?;
   }
   Ok(())
 }
@@ -536,19 +562,19 @@ fn sanitize_tag(tag: &str) -> String {
 
 fn download_to_file(client: &Client, url: &str, target: &Path) -> Result<(), String> {
   if let Some(parent) = target.parent() {
-    fs::create_dir_all(parent).map_err(|err| format!("create download dir failed: {err}"))?;
+    fs::create_dir_all(parent).map_err(|err| format!("创建下载目录失败：{err}"))?;
   }
   let mut resp = client
     .get(url)
     .header(reqwest::header::USER_AGENT, USER_AGENT)
     .send()
-    .map_err(|err| format!("download request failed: {err}"))?
+    .map_err(|err| format!("发起下载请求失败：{err}"))?
     .error_for_status()
-    .map_err(|err| format!("download response failed: {err}"))?;
+    .map_err(|err| format!("下载响应异常：{err}"))?;
 
-  let mut file = File::create(target).map_err(|err| format!("create file failed: {err}"))?;
-  std::io::copy(&mut resp, &mut file).map_err(|err| format!("write file failed: {err}"))?;
-  file.flush().map_err(|err| format!("flush file failed: {err}"))
+  let mut file = File::create(target).map_err(|err| format!("创建文件失败：{err}"))?;
+  std::io::copy(&mut resp, &mut file).map_err(|err| format!("写入文件失败：{err}"))?;
+  file.flush().map_err(|err| format!("刷新文件缓冲区失败：{err}"))
 }
 
 fn portable_executable_candidates() -> &'static [&'static str] {
@@ -573,33 +599,33 @@ fn resolve_portable_restart_exe(staging_dir: &Path, current_exe_name: &str) -> R
   }
 
   Err(format!(
-    "portable package is invalid: no executable found in staging dir, expected one of [{}]",
+    "便携包无效：暂存目录中未找到可执行文件，期望名称之一为 [{}]",
     portable_executable_candidates().join(", ")
   ))
 }
 
 fn extract_zip_archive(zip_path: &Path, target_dir: &Path) -> Result<(), String> {
-  let file = File::open(zip_path).map_err(|err| format!("open zip failed: {err}"))?;
-  let mut archive = ZipArchive::new(file).map_err(|err| format!("read zip failed: {err}"))?;
+  let file = File::open(zip_path).map_err(|err| format!("打开 ZIP 包失败：{err}"))?;
+  let mut archive = ZipArchive::new(file).map_err(|err| format!("读取 ZIP 包失败：{err}"))?;
 
   for idx in 0..archive.len() {
     let mut entry = archive
       .by_index(idx)
-      .map_err(|err| format!("read zip entry failed: {err}"))?;
+      .map_err(|err| format!("读取 ZIP 条目失败：{err}"))?;
     let Some(relative_path) = entry.enclosed_name().map(|p| p.to_path_buf()) else {
       continue;
     };
     let out_path = target_dir.join(relative_path);
     if entry.is_dir() {
-      fs::create_dir_all(&out_path).map_err(|err| format!("create dir failed: {err}"))?;
+      fs::create_dir_all(&out_path).map_err(|err| format!("创建目录失败：{err}"))?;
       continue;
     }
 
     if let Some(parent) = out_path.parent() {
-      fs::create_dir_all(parent).map_err(|err| format!("create parent dir failed: {err}"))?;
+      fs::create_dir_all(parent).map_err(|err| format!("创建父目录失败：{err}"))?;
     }
-    let mut out_file = File::create(&out_path).map_err(|err| format!("create file failed: {err}"))?;
-    std::io::copy(&mut entry, &mut out_file).map_err(|err| format!("extract file failed: {err}"))?;
+    let mut out_file = File::create(&out_path).map_err(|err| format!("创建文件失败：{err}"))?;
+    std::io::copy(&mut entry, &mut out_file).map_err(|err| format!("解压文件失败：{err}"))?;
 
     #[cfg(unix)]
     if let Some(mode) = entry.unix_mode() {
@@ -615,23 +641,23 @@ fn prepare_update_impl(app: &tauri::AppHandle) -> Result<UpdatePrepareResponse, 
   set_last_check(context.check.clone());
 
   if !context.check.has_update {
-    return Err("current version is already up to date".to_string());
+    return Err("当前版本已是最新".to_string());
   }
   if !context.check.can_prepare {
     return Err(context
       .check
       .reason
       .clone()
-      .unwrap_or_else(|| "update is not ready to prepare".to_string()));
+      .unwrap_or_else(|| "更新尚未准备就绪".to_string()));
   }
 
   let payload_asset = context
     .payload_asset
     .clone()
-    .ok_or_else(|| "missing payload asset".to_string())?;
+    .ok_or_else(|| "缺少可下载安装的发布资产".to_string())?;
   let client = http_client()?;
   let release_dir = updates_root_dir(app)?.join(sanitize_tag(&context.check.release_tag));
-  fs::create_dir_all(&release_dir).map_err(|err| format!("create release dir failed: {err}"))?;
+  fs::create_dir_all(&release_dir).map_err(|err| format!("创建发布目录失败：{err}"))?;
 
   let payload_path = release_dir.join(&payload_asset.name);
   download_to_file(&client, &payload_asset.browser_download_url, &payload_path)?;
@@ -651,14 +677,14 @@ fn prepare_update_impl(app: &tauri::AppHandle) -> Result<UpdatePrepareResponse, 
   if context.check.mode == "portable" {
     let staging_dir = release_dir.join("staging");
     if staging_dir.is_dir() {
-      fs::remove_dir_all(&staging_dir).map_err(|err| format!("clean staging dir failed: {err}"))?;
+      fs::remove_dir_all(&staging_dir).map_err(|err| format!("清理暂存目录失败：{err}"))?;
     }
-    fs::create_dir_all(&staging_dir).map_err(|err| format!("create staging dir failed: {err}"))?;
+    fs::create_dir_all(&staging_dir).map_err(|err| format!("创建暂存目录失败：{err}"))?;
     extract_zip_archive(&payload_path, &staging_dir)?;
     let current_exe_name = current_exe_path()?
       .file_name()
       .and_then(|name| name.to_str())
-      .ok_or_else(|| "resolve current exe file name failed".to_string())?
+      .ok_or_else(|| "解析当前可执行文件名失败".to_string())?
       .to_string();
     let _ = resolve_portable_restart_exe(&staging_dir, &current_exe_name)?;
     pending.staging_dir = Some(staging_dir.display().to_string());
@@ -720,7 +746,7 @@ if (Test-Path -LiteralPath $PendingFile) {
 }
 Start-Process -FilePath (Join-Path $TargetDir $ExeName) | Out-Null
 "#;
-    fs::write(&script_path, script).map_err(|err| format!("write apply script failed: {err}"))?;
+    fs::write(&script_path, script).map_err(|err| format!("写入更新应用脚本失败：{err}"))?;
 
     let args = vec![
       "-TargetDir".to_string(),
@@ -748,7 +774,7 @@ Start-Process -FilePath (Join-Path $TargetDir $ExeName) | Out-Null
       cmd
         .spawn()
         .map(|_| ())
-        .map_err(|err| format!("spawn {shell} failed: {err}"))
+        .map_err(|err| format!("启动 {shell} 失败：{err}"))
     };
 
     if try_spawn("powershell.exe").is_ok() {
@@ -778,12 +804,12 @@ rm -f "$PENDING_FILE"
 chmod +x "$TARGET_DIR/$EXE_NAME" 2>/dev/null || true
 "$TARGET_DIR/$EXE_NAME" >/dev/null 2>&1 &
 "#;
-    fs::write(&script_path, script).map_err(|err| format!("write apply script failed: {err}"))?;
+    fs::write(&script_path, script).map_err(|err| format!("写入更新应用脚本失败：{err}"))?;
 
     #[cfg(unix)]
     {
       fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755))
-        .map_err(|err| format!("chmod apply script failed: {err}"))?;
+        .map_err(|err| format!("设置更新应用脚本权限失败：{err}"))?;
     }
 
     Command::new("sh")
@@ -794,7 +820,7 @@ chmod +x "$TARGET_DIR/$EXE_NAME" 2>/dev/null || true
       .arg(pending_path)
       .arg(pid_to_wait.to_string())
       .spawn()
-      .map_err(|err| format!("spawn apply script failed: {err}"))?;
+      .map_err(|err| format!("启动更新应用脚本失败：{err}"))?;
     Ok(())
   }
 }
@@ -808,7 +834,7 @@ fn schedule_app_exit(app: tauri::AppHandle) {
 
 fn launch_installer(installer_path: &Path) -> Result<(), String> {
   if !installer_path.is_file() {
-    return Err(format!("installer not found: {}", installer_path.display()));
+    return Err(format!("未找到安装包：{}", installer_path.display()));
   }
 
   #[cfg(target_os = "windows")]
@@ -816,7 +842,7 @@ fn launch_installer(installer_path: &Path) -> Result<(), String> {
     let mut cmd = Command::new(installer_path);
     cmd.creation_flags(CREATE_NO_WINDOW);
     cmd.spawn()
-      .map_err(|err| format!("launch installer failed: {err}"))?;
+      .map_err(|err| format!("启动安装包失败：{err}"))?;
     return Ok(());
   }
 
@@ -825,7 +851,7 @@ fn launch_installer(installer_path: &Path) -> Result<(), String> {
     Command::new("open")
       .arg(installer_path)
       .spawn()
-      .map_err(|err| format!("open installer failed: {err}"))?;
+      .map_err(|err| format!("打开安装包失败：{err}"))?;
     return Ok(());
   }
 
@@ -844,14 +870,14 @@ fn launch_installer(installer_path: &Path) -> Result<(), String> {
       }
       Command::new(installer_path)
         .spawn()
-        .map_err(|err| format!("launch AppImage failed: {err}"))?;
+        .map_err(|err| format!("启动 AppImage 失败：{err}"))?;
       return Ok(());
     }
 
     Command::new("xdg-open")
       .arg(installer_path)
       .spawn()
-      .map_err(|err| format!("open installer failed: {err}"))?;
+      .map_err(|err| format!("打开安装包失败：{err}"))?;
     Ok(())
   }
 }
@@ -869,7 +895,7 @@ pub async fn app_update_check() -> Result<UpdateCheckResponse, String> {
       Err(err)
     }
     Err(err) => {
-      let message = format!("app_update_check task failed: {err}");
+      let message = format!("app_update_check 任务失败：{err}");
       set_last_error(message.clone());
       Err(message)
     }
@@ -892,7 +918,7 @@ pub async fn app_update_prepare(app: tauri::AppHandle) -> Result<UpdatePrepareRe
       Err(err)
     }
     Err(err) => {
-      let message = format!("app_update_prepare task failed: {err}");
+      let message = format!("app_update_prepare 任务失败：{err}");
       set_last_error(message.clone());
       Err(message)
     }
@@ -902,31 +928,31 @@ pub async fn app_update_prepare(app: tauri::AppHandle) -> Result<UpdatePrepareRe
 #[tauri::command]
 pub fn app_update_apply_portable(app: tauri::AppHandle) -> Result<UpdateActionResponse, String> {
   let pending = read_pending_update(&app)?
-    .ok_or_else(|| "no prepared update found, call app_update_prepare first".to_string())?;
+    .ok_or_else(|| "未找到已准备更新，请先调用 app_update_prepare".to_string())?;
 
   if pending.mode != "portable" {
-    return Err("prepared update is not portable mode".to_string());
+    return Err("已准备更新并非便携模式".to_string());
   }
 
   let staging_dir = PathBuf::from(
     pending
       .staging_dir
       .as_ref()
-      .ok_or_else(|| "portable update staging dir is missing".to_string())?,
+      .ok_or_else(|| "便携更新缺少暂存目录".to_string())?,
   );
   if !staging_dir.is_dir() {
-    return Err(format!("staging dir not found: {}", staging_dir.display()));
+    return Err(format!("未找到暂存目录：{}", staging_dir.display()));
   }
 
   let exe_path = current_exe_path()?;
   let target_dir = exe_path
     .parent()
-    .ok_or_else(|| "resolve target app dir failed".to_string())?
+    .ok_or_else(|| "解析目标应用目录失败".to_string())?
     .to_path_buf();
   let exe_name = exe_path
     .file_name()
     .and_then(|name| name.to_str())
-    .ok_or_else(|| "resolve current exe file name failed".to_string())?
+    .ok_or_else(|| "解析当前可执行文件名失败".to_string())?
     .to_string();
   let restart_exe_name = resolve_portable_restart_exe(&staging_dir, &exe_name)?;
   let pending_path = pending_update_path(&app)?;
@@ -945,23 +971,23 @@ pub fn app_update_apply_portable(app: tauri::AppHandle) -> Result<UpdateActionRe
   schedule_app_exit(app);
   Ok(UpdateActionResponse {
     ok: true,
-    message: "portable update prepared, app will restart to finish replacement".to_string(),
+    message: "便携更新已就绪，应用将重启以完成替换".to_string(),
   })
 }
 
 #[tauri::command]
 pub fn app_update_launch_installer(app: tauri::AppHandle) -> Result<UpdateActionResponse, String> {
   let pending = read_pending_update(&app)?
-    .ok_or_else(|| "no prepared update found, call app_update_prepare first".to_string())?;
+    .ok_or_else(|| "未找到已准备更新，请先调用 app_update_prepare".to_string())?;
   if pending.mode != "installer" {
-    return Err("prepared update is not installer mode".to_string());
+    return Err("已准备更新并非安装包模式".to_string());
   }
 
   let installer_path = PathBuf::from(
     pending
       .installer_path
       .as_ref()
-      .ok_or_else(|| "installer path is missing in pending update".to_string())?,
+      .ok_or_else(|| "待安装更新中缺少安装包路径".to_string())?,
   );
 
   launch_installer(&installer_path)?;
@@ -969,7 +995,7 @@ pub fn app_update_launch_installer(app: tauri::AppHandle) -> Result<UpdateAction
 
   Ok(UpdateActionResponse {
     ok: true,
-    message: format!("installer launched: {}", installer_path.display()),
+    message: format!("已启动安装包：{}", installer_path.display()),
   })
 }
 
@@ -983,7 +1009,7 @@ pub fn app_update_status(app: tauri::AppHandle) -> Result<UpdateStatusResponse, 
   } else {
     (
       None,
-      Some("failed to read updater state lock".to_string()),
+      Some("读取更新器状态锁失败".to_string()),
     )
   };
 
@@ -999,3 +1025,4 @@ pub fn app_update_status(app: tauri::AppHandle) -> Result<UpdateStatusResponse, 
     last_error,
   })
 }
+

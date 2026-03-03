@@ -30,7 +30,7 @@ export function normalizeAddr(raw) {
 function formatConnectError(err) {
   const raw = err && typeof err === "object" && "message" in err ? err.message : String(err);
   const text = String(raw || "").trim();
-  if (!text) return "unknown";
+  if (!text) return "未知错误";
   const firstLine = text.split("\n")[0].trim();
   const normalized = firstLine
     .replace(/^service_initialize task failed:\s*/i, "")
@@ -44,17 +44,17 @@ function formatConnectError(err) {
     return "服务返回空响应（可能启动未完成、已异常退出或端口被占用）";
   }
   if (lower.includes("port is in use") || lower.includes("unexpected service responded")) {
-    return "端口已被占用或响应来源不是 CodexManager service";
+    return "端口已被占用或响应来源不是 CodexManager 服务";
   }
   if (lower.includes("missing server_name")) {
-    return "响应缺少服务标识（疑似非 CodexManager service）";
+    return "响应缺少服务标识（疑似非 CodexManager 服务）";
   }
   if (
     lower.includes("unexpected rpc response")
     || lower.includes("expected value at line 1 column 1")
     || lower.includes("invalid chunked body")
   ) {
-    return "响应格式异常（疑似非 CodexManager service）";
+    return "响应格式异常（疑似非 CodexManager 服务）";
   }
   if (lower.includes("no address resolved")) return "地址解析失败";
   if (lower.includes("addr is empty")) return "地址为空";
@@ -132,7 +132,7 @@ export function createConnectionService(deps) {
     setStatusFn("", false);
     if (!silent) {
       const reason = stateRef.serviceLastError ? `：${stateRef.serviceLastError}` : "";
-      setServiceHintFn(`连接失败${reason}，请检查端口或 service 状态`, true);
+      setServiceHintFn(`连接失败${reason}，请检查端口或服务状态`, true);
     }
     if (lastError) {
       return false;
@@ -206,3 +206,4 @@ export const ensureConnected = defaultService.ensureConnected;
 export const startService = defaultService.startService;
 export const stopService = defaultService.stopService;
 export const waitForConnection = defaultService.waitForConnection;
+

@@ -22,7 +22,7 @@
                 <nav class="pill-nav">
                     <button id="navDashboard" class="active">仪表盘</button>
                     <button id="navAccounts">账号管理</button>
-                    <button id="navApiKeys">平台 Key</button>
+                    <button id="navApiKeys">平台密钥</button>
                     <button id="navRequestLogs">请求日志</button>
                     <button id="navSettings">设置</button>
                 </nav>
@@ -90,7 +90,7 @@
                         <div class="stat-card">
                             <div class="stat-icon"></div>
                             <div class="stat-body">
-                                <h3>今日 Token</h3>
+                                <h3>今日令牌</h3>
                                 <div id="metricTodayTokens" class="stat">0</div>
                                 <div class="metric-sub">非缓存输入 + 输出</div>
                             </div>
@@ -98,7 +98,7 @@
                         <div class="stat-card">
                             <div class="stat-icon"></div>
                             <div class="stat-body">
-                                <h3>缓存 Token</h3>
+                                <h3>缓存令牌</h3>
                                 <div id="metricCachedInputTokens" class="stat">
                                     0
                                 </div>
@@ -108,7 +108,7 @@
                         <div class="stat-card">
                             <div class="stat-icon"></div>
                             <div class="stat-body">
-                                <h3>推理 Token</h3>
+                                <h3>推理令牌</h3>
                                 <div
                                     id="metricReasoningOutputTokens"
                                     class="stat"
@@ -142,7 +142,7 @@
                             <div class="search-field">
                                 <input
                                     id="accountSearch"
-                                    placeholder="搜索账号名 / ID..."
+                                    placeholder="搜索账号名 / 编号..."
                                 />
                             </div>
                             <div class="search-field">
@@ -201,7 +201,7 @@
                                         class="danger"
                                         type="button"
                                     >
-                                        一键移除不可用Free
+                                        一键移除不可用免费账号
                                     </button>
                                     <button
                                         id="exportAccounts"
@@ -245,7 +245,7 @@
                     <div class="panel">
                         <div class="panel-header">
                             <div>
-                                <h3>平台 Key</h3>
+                                <h3>平台密钥</h3>
                                 <p>创建/管理网关调用所需的 Key</p>
                             </div>
                             <div class="toolbar-actions api-keys-toolbar">
@@ -261,7 +261,7 @@
                             <table class="data-table api-table">
                                 <thead>
                                     <tr>
-                                        <th>Key ID</th>
+                                        <th>密钥编号</th>
                                         <th>名称</th>
                                         <th>协议</th>
                                         <th>绑定模型</th>
@@ -293,7 +293,7 @@
                                 </div>
                                 <input
                                     id="requestLogSearch"
-                                    placeholder="搜索，支持 method:GET / status:5xx / key:abc"
+                                    placeholder="搜索，支持 方法:GET / 状态:5xx / 密钥:abc"
                                 />
                                 <button id="clearRequestLogs" class="danger">
                                     清空日志
@@ -312,7 +312,7 @@
                                     <tr>
                                         <th>时间</th>
                                         <th>账号</th>
-                                        <th>Key ID</th>
+                                        <th>密钥编号</th>
                                         <th>方法</th>
                                         <th>路径</th>
                                         <th>模型</th>
@@ -414,8 +414,8 @@
                                                     class="settings-inline-tip"
                                                     tabindex="0"
                                                     role="note"
-                                                    title="开启后会移除高风险会话头，降低 Cloudflare/WAF challenge 命中。"
-                                                    aria-label="请求头收敛策略说明：开启后会移除高风险会话头，降低 Cloudflare/WAF challenge 命中。"
+                                                    title="开启后会移除高风险会话头，降低 Cloudflare/WAF 验证命中率。"
+                                                    aria-label="请求头收敛策略说明：开启后会移除高风险会话头，降低 Cloudflare/WAF 验证命中率。"
                                                     >?</span
                                                 >
                                             </span>
@@ -494,7 +494,7 @@
                                 <div class="panel-header">
                                     <div>
                                         <h3>后台任务</h3>
-                                        <p>轮询线程与 HTTP worker 参数</p>
+                                        <p>轮询线程与 HTTP 参数</p>
                                     </div>
                                 </div>
                                 <div class="settings-subtitle">
@@ -792,8 +792,8 @@
                     <label>分组</label>
                     <select id="inputGroup">
                         <option value="">请选择</option>
-                        <option value="TEAM">TEAM</option>
-                        <option value="PERSONAL">PERSONAL</option>
+                        <option value="TEAM">团队（TEAM）</option>
+                        <option value="PERSONAL">个人（PERSONAL）</option>
                     </select>
                     <div id="loginHint" class="hint">
                         点击登录后会打开浏览器完成授权。
@@ -842,7 +842,7 @@
         <div id="modalApiKey" class="modal">
             <div class="modal-card">
                 <div class="modal-header">
-                    <h3>创建平台 Key</h3>
+                    <h3>创建平台密钥</h3>
                 </div>
                 <div class="modal-body">
                     <label>名称（可选）</label>
@@ -853,9 +853,9 @@
                     <label>协议</label>
                     <select id="inputApiKeyProtocol">
                         <option value="openai_compat">
-                            OpenAI Compatible（默认）
+                            OpenAI 兼容（默认）
                         </option>
-                        <option value="azure_openai">Azure OpenAI</option>
+                        <option value="azure_openai">Azure OpenAI 兼容</option>
                         <option value="anthropic_native">
                             Claude Code 兼容
                         </option>
@@ -866,7 +866,7 @@
                         hidden
                     >
                         <div class="modal-field">
-                            <label for="inputApiKeyEndpoint">Endpoint</label>
+                            <label for="inputApiKeyEndpoint">接入地址</label>
                             <input
                                 id="inputApiKeyEndpoint"
                                 class="mono"
@@ -874,7 +874,7 @@
                             />
                         </div>
                         <div class="modal-field">
-                            <label for="inputApiKeyAzureApiKey">API Key</label>
+                            <label for="inputApiKeyAzureApiKey">接口密钥</label>
                             <input
                                 id="inputApiKeyAzureApiKey"
                                 class="mono"
@@ -889,12 +889,12 @@
                     <label>推理等级</label>
                     <select id="inputApiKeyReasoning">
                         <option value="">跟随请求等级（不覆盖）</option>
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                        <option value="xhigh">XHigh</option>
+                        <option value="low">低</option>
+                        <option value="medium">中</option>
+                        <option value="high">高</option>
+                        <option value="xhigh">极高</option>
                     </select>
-                    <label>平台 Key</label>
+                    <label>平台密钥</label>
                     <div class="login-url">
                         <input
                             id="apiKeyValue"
@@ -903,7 +903,7 @@
                             value=""
                         />
                         <button id="copyApiKey" class="secondary">
-                            复制Key
+                            复制密钥
                         </button>
                     </div>
                 </div>

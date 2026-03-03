@@ -22,7 +22,7 @@ export function createNavigationHandlers({ state, dom, closeThemePanel, onPageAc
         : page === "accounts"
           ? "账号管理"
           : page === "apikeys"
-            ? "平台 Key"
+            ? "平台密钥"
             : page === "requestlogs"
               ? "请求日志"
               : "设置";

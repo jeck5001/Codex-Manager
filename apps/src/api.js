@@ -10,7 +10,7 @@ function isTauriRuntime() {
 export async function invoke(method, params, options = {}) {
   const tauri = globalThis.window && window.__TAURI__;
   if (!tauri || !tauri.core || !tauri.core.invoke) {
-    throw new Error("Tauri API 不可用（请在桌面端运行）");
+    throw new Error("桌面接口不可用（请在桌面端运行）");
   }
   const invokeOptions = options && typeof options === "object" ? options : {};
   const res = await runWithControl(
@@ -118,7 +118,7 @@ async function rpcInvoke(method, params, options = {}) {
     },
   );
   if (!response.ok) {
-    throw new Error(`RPC HTTP ${response.status}`);
+    throw new Error(`RPC 请求失败（HTTP ${response.status}）`);
   }
   const payload = await response.json();
   const rpcError = unwrapRpcError(payload);
@@ -171,7 +171,7 @@ async function getRpcToken(options = {}) {
   });
   const normalized = String(token || "").trim();
   if (!normalized) {
-    throw new Error("RPC token unavailable");
+    throw new Error("RPC 令牌不可用");
   }
   rpcTokenCache = normalized;
   return rpcTokenCache;
@@ -214,7 +214,7 @@ async function requestlogListViaHttpRpc(query, limit, options = {}) {
     },
   );
   if (!response.ok) {
-    throw new Error(`RPC HTTP ${response.status}`);
+    throw new Error(`RPC 请求失败（HTTP ${response.status}）`);
   }
   const payload = await response.json();
   const rpcError = unwrapRpcError(payload);
@@ -255,14 +255,14 @@ function withAddr(extra) {
 // service 生命周期
 export async function serviceStart(addr) {
   if (!isTauriRuntime()) {
-    throw new Error("浏览器模式不支持启动/停止 service，请手动启动 codexmanager-service");
+    throw new Error("浏览器模式不支持启动/停止服务，请手动启动 codexmanager-service");
   }
   return invoke("service_start", { addr });
 }
 
 export async function serviceStop() {
   if (!isTauriRuntime()) {
-    throw new Error("浏览器模式不支持启动/停止 service，请手动停止 codexmanager-service");
+    throw new Error("浏览器模式不支持启动/停止服务，请手动停止 codexmanager-service");
   }
   return invoke("service_stop", {});
 }
@@ -319,7 +319,7 @@ export async function serviceAccountExportByAccountFiles() {
 
 export async function localAccountDelete(accountId) {
   if (!isTauriRuntime()) {
-    return { ok: false, error: "浏览器模式不支持本地删除（请升级 service 或使用桌面端）" };
+    return { ok: false, error: "浏览器模式不支持本地删除（请升级服务或使用桌面端）" };
   }
   return invoke("local_account_delete", { accountId });
 }
@@ -611,3 +611,5 @@ export async function updateStatus() {
   }
   return invokeFirst(["app_update_status", "update_status"], {});
 }
+
+

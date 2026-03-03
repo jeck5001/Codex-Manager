@@ -122,7 +122,7 @@ function createActionsCell(isDisabled) {
   btnCopy.className = "ghost";
   btnCopy.type = "button";
   btnCopy.setAttribute("data-action", APIKEY_ACTION_COPY);
-  btnCopy.textContent = "复制Key";
+  btnCopy.textContent = "复制密钥";
 
   const btnDisable = document.createElement("button");
   btnDisable.className = "secondary";
@@ -233,7 +233,7 @@ function renderEmptyRow() {
   const emptyRow = document.createElement("tr");
   const emptyCell = document.createElement("td");
   emptyCell.colSpan = 6;
-  emptyCell.textContent = "暂无平台 Key";
+  emptyCell.textContent = "暂无平台密钥";
   emptyRow.appendChild(emptyCell);
   dom.apiKeyRows.appendChild(emptyRow);
 }

@@ -34,7 +34,7 @@ export function createStartupMaskController({ dom, state }) {
       ? `；最近错误：${state.serviceLastError}`
       : "";
     dom.startupMaskDetail.hidden = false;
-    dom.startupMaskDetail.textContent = `启动耗时 ${elapsedSec}s，正在连接 ${addr}${reason}`;
+    dom.startupMaskDetail.textContent = `启动耗时 ${elapsedSec}秒，正在连接 ${addr}${reason}`;
   }
 
   function startStartupMaskWatchers() {

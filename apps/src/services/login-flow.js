@@ -38,7 +38,7 @@ async function waitForLogin(loginId, { dom, signal, api: apiClient }) {
     });
     if (res && res.status === "success") return true;
     if (res && res.status === "failed") {
-      dom.loginHint.textContent = `登录失败：${res.error || "unknown"}`;
+      dom.loginHint.textContent = `登录失败：${res.error || "未知错误"}`;
       return false;
     }
     await sleep(1500, signal);
@@ -124,7 +124,7 @@ export function createLoginFlow({
           return;
         }
         dom.loginUrl.value = "";
-        dom.loginHint.textContent = "登录失败，请检查 service 状态。";
+        dom.loginHint.textContent = "登录失败，请检查服务状态。";
       } finally {
         if (activeLoginAbortController === controller) {
           activeLoginAbortController = null;
@@ -173,3 +173,4 @@ export function createLoginFlow({
     handleManualCallback,
   };
 }
+

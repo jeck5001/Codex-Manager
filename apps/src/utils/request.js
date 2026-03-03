@@ -1,5 +1,5 @@
 function createAbortError(message) {
-  const msg = String(message || "The operation was aborted.");
+  const msg = String(message || "操作已取消。");
   try {
     return new DOMException(msg, "AbortError");
   } catch {
@@ -137,7 +137,7 @@ async function sleep(ms, signal) {
 
 async function runWithControl(task, options = {}) {
   if (typeof task !== "function") {
-    throw new Error("runWithControl requires task function");
+    throw new Error("请求控制参数错误：缺少任务函数");
   }
   const signal = options.signal || undefined;
   const timeoutMs = Math.max(0, Math.floor(Number(options.timeoutMs) || 0));
@@ -186,13 +186,13 @@ async function runWithControl(task, options = {}) {
     }
   }
 
-  throw new Error("runWithControl exhausted retries unexpectedly");
+  throw new Error("请求重试已耗尽");
 }
 
 async function fetchWithRetry(url, fetchOptions = {}, options = {}) {
   const fetchFn = options.fetch || globalThis.fetch;
   if (typeof fetchFn !== "function") {
-    throw new Error("fetch is not available");
+    throw new Error("当前环境不支持 fetch");
   }
   const signal = options.signal || undefined;
   const timeoutMs = Math.max(0, Math.floor(Number(options.timeoutMs) || 0));
@@ -248,7 +248,7 @@ async function fetchWithRetry(url, fetchOptions = {}, options = {}) {
     }
   }
 
-  throw new Error("fetchWithRetry exhausted retries unexpectedly");
+  throw new Error("网络请求重试已耗尽");
 }
 
 export {

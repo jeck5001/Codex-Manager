@@ -28,7 +28,7 @@ export function createApiKeyActions({
       renderApiKeyList();
       return true;
     } catch (err) {
-      showToast(`平台 Key 刷新失败：${err instanceof Error ? err.message : String(err)}`, "error");
+      showToast(`平台密钥刷新失败：${err instanceof Error ? err.message : String(err)}`, "error");
       return false;
     }
   };
@@ -89,9 +89,9 @@ export function createApiKeyActions({
         showToast(`模型列表刷新失败：${err instanceof Error ? err.message : String(err)}`, "error");
       }
       if (await refreshApiKeyList()) {
-        showToast("平台 Key 创建成功");
+        showToast("平台密钥创建成功");
       } else {
-        showToast("平台 Key 已创建，但列表刷新失败", "error");
+        showToast("平台密钥已创建，但列表刷新失败", "error");
       }
     });
   }
@@ -99,8 +99,8 @@ export function createApiKeyActions({
   async function deleteApiKey(item) {
     if (!item || !item.id) return;
     const confirmed = await showConfirmDialog({
-      title: "删除平台 Key",
-      message: `确定删除平台 Key ${item.id} 吗？`,
+      title: "删除平台密钥",
+      message: `确定删除平台密钥 ${item.id} 吗？`,
       confirmText: "删除",
       cancelText: "取消",
     });
@@ -109,11 +109,11 @@ export function createApiKeyActions({
     if (!ok) return;
     const res = await api.serviceApiKeyDelete(item.id);
     if (res && res.ok === false) {
-      showToast(res.error || "平台 Key 删除失败", "error");
+      showToast(res.error || "平台密钥删除失败", "error");
       return;
     }
     if (await refreshApiKeyList()) {
-      showToast("平台 Key 已删除");
+      showToast("平台密钥已删除");
     }
   }
 
@@ -129,11 +129,11 @@ export function createApiKeyActions({
       result = await api.serviceApiKeyDisable(item.id);
     }
     if (result && result.ok === false) {
-      showToast(result.error || "平台 Key 状态更新失败", "error");
+      showToast(result.error || "平台密钥状态更新失败", "error");
       return;
     }
     if (await refreshApiKeyList()) {
-      showToast(isDisabled ? "平台 Key 已启用" : "平台 Key 已禁用");
+      showToast(isDisabled ? "平台密钥已启用" : "平台密钥已禁用");
     }
   }
 
@@ -163,12 +163,12 @@ export function createApiKeyActions({
       const res = await api.serviceApiKeyReadSecret(item.id);
       const secret = res && typeof res.key === "string" ? res.key.trim() : "";
       if (!secret) {
-        showToast("该 Key 创建于旧版本，无法找回明文，请删除后重新创建", "error");
+        showToast("该密钥创建于旧版本，无法找回明文，请删除后重新创建", "error");
         return;
       }
       const copied = await copyText(secret);
       if (copied) {
-        showToast("完整 Key 已复制");
+        showToast("完整密钥已复制");
       } else {
         showToast("复制失败，请重试", "error");
       }

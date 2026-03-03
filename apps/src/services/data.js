@@ -111,7 +111,7 @@ export async function refreshUsageList(options = {}) {
 
 // 刷新 API Key 列表
 export async function refreshApiKeys() {
-  const res = ensureRpcSuccess(await api.serviceApiKeyList(), "读取平台 Key 列表失败");
+  const res = ensureRpcSuccess(await api.serviceApiKeyList(), "读取平台密钥列表失败");
   state.apiKeyList = Array.isArray(res.items) ? res.items : [];
 }
 

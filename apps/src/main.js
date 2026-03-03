@@ -142,7 +142,7 @@ function buildRefreshAllTasks(options = {}) {
     { name: "accounts", label: "账号列表", run: refreshAccounts },
     { name: "usage", label: "账号用量", run: () => refreshUsageList({ refreshRemote: refreshRemoteUsage }) },
     { name: "api-models", label: "模型列表", run: () => refreshApiModels({ refreshRemote: refreshRemoteModels }) },
-    { name: "api-keys", label: "平台 Key", run: refreshApiKeys },
+    { name: "api-keys", label: "平台密钥", run: refreshApiKeys },
     { name: "request-logs", label: "请求日志", run: () => refreshRequestLogs(state.requestLogQuery) },
     { name: "request-log-today-summary", label: "今日摘要", run: refreshRequestLogTodaySummary },
   ];
@@ -307,7 +307,7 @@ function updateRouteStrategyHint(strategy) {
   if (!dom.routeStrategyHint) return;
   let hintText = "按账号顺序优先请求，优先使用可用账号（不可用账号不会参与选路）。";
   if (normalizeRouteStrategy(strategy) === ROUTE_STRATEGY_BALANCED) {
-    hintText = "按 Key + 模型 均衡轮询起点，优先使用可用账号（不可用账号不会参与选路）。";
+    hintText = "按密钥 + 模型均衡轮询起点，优先使用可用账号（不可用账号不会参与选路）。";
   }
   dom.routeStrategyHint.title = hintText;
   dom.routeStrategyHint.setAttribute("aria-label", `网关选路策略说明：${hintText}`);
@@ -691,11 +691,11 @@ function readBackgroundTasksForm() {
     ["usagePollIntervalSecs", dom.backgroundUsagePollIntervalSecs, "用量轮询间隔"],
     ["gatewayKeepaliveIntervalSecs", dom.backgroundGatewayKeepaliveIntervalSecs, "网关保活间隔"],
     ["tokenRefreshPollIntervalSecs", dom.backgroundTokenRefreshPollIntervalSecs, "令牌刷新间隔"],
-    ["usageRefreshWorkers", dom.backgroundUsageRefreshWorkers, "用量刷新 worker 数"],
-    ["httpWorkerFactor", dom.backgroundHttpWorkerFactor, "HTTP worker 因子"],
-    ["httpWorkerMin", dom.backgroundHttpWorkerMin, "HTTP worker 最小值"],
-    ["httpStreamWorkerFactor", dom.backgroundHttpStreamWorkerFactor, "流式 worker 因子"],
-    ["httpStreamWorkerMin", dom.backgroundHttpStreamWorkerMin, "流式 worker 最小值"],
+    ["usageRefreshWorkers", dom.backgroundUsageRefreshWorkers, "用量刷新线程数"],
+    ["httpWorkerFactor", dom.backgroundHttpWorkerFactor, "普通请求线程因子"],
+    ["httpWorkerMin", dom.backgroundHttpWorkerMin, "普通请求最小线程数"],
+    ["httpStreamWorkerFactor", dom.backgroundHttpStreamWorkerFactor, "流式请求线程因子"],
+    ["httpStreamWorkerMin", dom.backgroundHttpStreamWorkerMin, "流式请求最小线程数"],
   ];
   const numbers = {};
   for (const [key, input, label] of integerFields) {
@@ -1058,7 +1058,7 @@ function setCurrentVersionText(version) {
 
 function setCheckUpdateButtonLabel() {
   if (!dom.checkUpdate) return;
-  if (pendingUpdateCandidate && pendingUpdateCandidate.version) {
+  if (pendingUpdateCandidate && pendingUpdateCandidate.version && pendingUpdateCandidate.canPrepare) {
     const version = String(pendingUpdateCandidate.version).trim();
     const display = version.startsWith("v") ? version : `v${version}`;
     dom.checkUpdate.textContent = `更新到 ${display}`;
@@ -1129,14 +1129,9 @@ async function runUpdateCheckFlow({ silentIfLatest = false } = {}) {
         return false;
       }
 
-      pendingUpdateCandidate = {
-        version: checkInfo.version,
-        isPortable: checkInfo.isPortable,
-        canPrepare: checkInfo.canPrepare,
-      };
-      setCheckUpdateButtonLabel();
-
       if (!checkInfo.canPrepare) {
+        pendingUpdateCandidate = null;
+        setCheckUpdateButtonLabel();
         const msg = checkInfo.reason || `发现新版本${buildVersionLabel(checkInfo.version)}，当前仅可查看版本`;
         setUpdateStatusText(msg);
         if (!silentIfLatest) {
@@ -1144,6 +1139,13 @@ async function runUpdateCheckFlow({ silentIfLatest = false } = {}) {
         }
         return true;
       }
+
+      pendingUpdateCandidate = {
+        version: checkInfo.version,
+        isPortable: checkInfo.isPortable,
+        canPrepare: true,
+      };
+      setCheckUpdateButtonLabel();
 
       const tip = `发现新版本${buildVersionLabel(checkInfo.version)}，再次点击可更新`;
       setUpdateStatusText(tip);
@@ -1196,7 +1198,9 @@ async function runUpdateApplyFlow() {
 }
 
 async function handleCheckUpdateClick() {
-  const hasPreparedCheck = Boolean(pendingUpdateCandidate && pendingUpdateCandidate.version);
+  const hasPreparedCheck = Boolean(
+    pendingUpdateCandidate && pendingUpdateCandidate.version && pendingUpdateCandidate.canPrepare
+  );
   const busyText = hasPreparedCheck ? "更新中..." : "检查中...";
   await withButtonBusy(dom.checkUpdate, busyText, async () => {
     await nextPaintTick();
@@ -1390,7 +1394,7 @@ async function refreshAll(options = {}) {
         showToast(`部分数据刷新失败：${failedLabelText}，已展示可用数据${detail}`, "error");
       } else {
         console.warn(
-          `[refreshAll] partial failure: ${failedLabelText}; first error: ${firstFailedMessage || "unknown"}`,
+          `[refreshAll] 部分失败：${failedLabelText}；首个错误：${firstFailedMessage || "未知"}`,
         );
       }
     }
@@ -1725,6 +1729,8 @@ function bootstrap() {
 }
 
 window.addEventListener("DOMContentLoaded", bootstrap);
+
+
 
 
 

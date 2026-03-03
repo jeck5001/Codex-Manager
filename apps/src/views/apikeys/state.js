@@ -1,9 +1,9 @@
 export const REASONING_OPTIONS = [
   { value: "", label: "跟随请求等级" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "XHigh" },
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+  { value: "xhigh", label: "极高" },
 ];
 
 export function mapReasoningEffortToSelectValue(reasoningEffort) {
@@ -14,11 +14,11 @@ export function mapReasoningEffortToSelectValue(reasoningEffort) {
 
 export function getProtocolProfileLabel(protocolType) {
   if (protocolType === "azure_openai") {
-    return "Azure OpenAI";
+    return "Azure OpenAI 兼容";
   }
   return protocolType === "anthropic_native"
     ? "Claude Code 兼容"
-    : "OpenAI Compatible";
+    : "OpenAI 兼容";
 }
 
 export function getStatusViewModel(status) {

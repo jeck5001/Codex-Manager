@@ -74,7 +74,7 @@ export function renderUsageSnapshot(snapshot) {
 
   const credits = parseCredits(snapshot.creditsJson);
   if (credits && credits.balance != null) {
-    dom.usageDetail.textContent = `Credits: ${credits.balance} (${credits.unlimited ? "unlimited" : "limited"})`;
+    dom.usageDetail.textContent = `额度：${credits.balance}（${credits.unlimited ? "无限制" : "有限制"}）`;
   } else {
     dom.usageDetail.textContent = "已刷新";
   }
@@ -88,7 +88,7 @@ function renderProgressRow(label, percent, resetsAt, level) {
   const left = document.createElement("span");
   left.textContent = label;
   const right = document.createElement("span");
-  right.textContent = percent == null ? "n/a" : `${percent}% left`;
+  right.textContent = percent == null ? "--" : `${percent}% 剩余`;
   rowLabel.appendChild(left);
   rowLabel.appendChild(right);
   const track = document.createElement("div");

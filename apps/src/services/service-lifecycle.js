@@ -99,7 +99,7 @@ export function createServiceLifecycle({
     updateServiceToggle();
     if (!ok) {
       const reason = state.serviceLastError ? `：${state.serviceLastError}` : "";
-      setServiceHint(`连接失败${reason}，请检查端口或 service 状态`, true);
+      setServiceHint(`连接失败${reason}，请检查端口或服务状态`, true);
       if (fromBootstrap) notifyStartupState(false);
       return false;
     }
@@ -128,7 +128,7 @@ export function createServiceLifecycle({
   async function handleServiceToggle() {
     if (state.serviceBusy) return;
     if (!isTauriRuntime()) {
-      setServiceHint("浏览器模式不支持启停 service，请手动启动 codexmanager-service", true);
+      setServiceHint("浏览器模式不支持启停服务，请手动启动 codexmanager-service", true);
       updateServiceToggle();
       return;
     }

@@ -234,8 +234,8 @@ export function createAccountActions({
 
   async function deleteUnavailableFreeAccounts() {
     const confirmed = await showConfirmDialog({
-      title: "一键移除不可用 Free 账号",
-      message: "将删除当前不可用且识别为 Free 计划的账号，此操作不可恢复。是否继续？",
+      title: "一键移除不可用免费账号",
+      message: "将删除当前不可用且识别为免费计划的账号，此操作不可恢复。是否继续？",
       confirmText: "立即移除",
       cancelText: "取消",
     });
@@ -256,12 +256,12 @@ export function createAccountActions({
 
       if (deleted > 0) {
         showToast(
-          `已移除 ${deleted} 个不可用 Free 账号（扫描${scanned}，可用跳过${skippedAvailable}，非Free跳过${skippedNonFree}）`,
+          `已移除 ${deleted} 个不可用免费账号（扫描${scanned}，可用跳过${skippedAvailable}，非免费跳过${skippedNonFree}）`,
         );
         return;
       }
       showToast(
-        `未移除账号（扫描${scanned}，可用${skippedAvailable}，非Free${skippedNonFree}，缺用量${skippedMissingUsage}，缺Token${skippedMissingToken}）`,
+        `未移除账号（扫描${scanned}，可用${skippedAvailable}，非免费${skippedNonFree}，缺用量${skippedMissingUsage}，缺令牌${skippedMissingToken}）`,
       );
     });
   }
@@ -344,7 +344,7 @@ export function createAccountActions({
       if (failed > 0 && Array.isArray(res?.errors) && res.errors.length > 0) {
         const first = res.errors[0];
         const index = Number(first?.index || 0);
-        const message = String(first?.message || "unknown error");
+        const message = String(first?.message || "未知错误");
         showToast(`首个失败项 #${index}: ${message}`, "error");
       }
     });
@@ -359,3 +359,4 @@ export function createAccountActions({
     exportAccountsByFile,
   };
 }
+
