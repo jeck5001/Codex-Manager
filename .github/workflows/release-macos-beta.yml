@@ -86,6 +86,14 @@ jobs:
     needs: verify
     if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
     runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            rust_target: aarch64-apple-darwin
+          - arch: x64
+            rust_target: x86_64-apple-darwin
 
     steps:
       - name: Checkout
@@ -140,6 +148,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -155,14 +165,15 @@ jobs:
 
       - name: Build macOS beta app bundle (unsigned)
         working-directory: apps
-        run: pnpm dlx @tauri-apps/cli@${{ env.TAURI_CLI_VERSION }} build --bundles app
+        run: pnpm dlx @tauri-apps/cli@${{ env.TAURI_CLI_VERSION }} build --bundles app --target ${{ matrix.rust_target }}
 
       - name: Stage macOS beta package
         shell: bash
         run: |
           set -euo pipefail
 
-          bundle_root="apps/src-tauri/target/release/bundle/macos"
+          release_root="apps/src-tauri/target/${{ matrix.rust_target }}/release"
+          bundle_root="$release_root/bundle/macos"
           if [[ ! -d "$bundle_root" ]]; then
             echo "bundle root not found: $bundle_root"
             exit 1
@@ -181,10 +192,10 @@ jobs:
           fi
           chmod +x "$app_exec"
 
-          portable_dir="apps/src-tauri/target/release/portable"
+          portable_dir="$release_root/portable"
           mkdir -p "$portable_dir"
 
-          readme_path="$portable_dir/MACOS-BETA-README.txt"
+          readme_path="$portable_dir/MACOS-BETA-README-${{ matrix.arch }}.txt"
           cat > "$readme_path" <<'EOF'
           CodexManager macOS 内测包（未签名/未公证）
 
@@ -197,7 +208,7 @@ jobs:
           若仍被拦截，请在“系统设置 -> 隐私与安全性”中点击“仍要打开”。
           EOF
 
-          zip_path="$portable_dir/CodexManager-macos-beta-unsigned.zip"
+          zip_path="$portable_dir/CodexManager-macos-beta-${{ matrix.arch }}-unsigned.zip"
           rm -f "$zip_path"
           # Preserve app bundle metadata/permissions; Compress-Archive can break macOS .app bundles.
           ditto -c -k --sequesterRsrc --keepParent "$app_bundle" "$zip_path"
@@ -206,10 +217,10 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: codexmanager-macos-beta
+          name: codexmanager-macos-beta-${{ matrix.arch }}
           path: |
-            apps/src-tauri/target/release/portable/CodexManager-macos-beta-unsigned.zip
-            apps/src-tauri/target/release/portable/MACOS-BETA-README.txt
+            apps/src-tauri/target/${{ matrix.rust_target }}/release/portable/CodexManager-macos-beta-${{ matrix.arch }}-unsigned.zip
+            apps/src-tauri/target/${{ matrix.rust_target }}/release/portable/MACOS-BETA-README-${{ matrix.arch }}.txt
           if-no-files-found: error
           compression-level: 0
 
@@ -221,7 +232,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: codexmanager-macos-beta
+          pattern: codexmanager-macos-beta-*
           merge-multiple: true
           path: release-assets
 

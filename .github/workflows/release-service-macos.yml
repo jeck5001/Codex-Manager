@@ -82,6 +82,16 @@ jobs:
     needs: verify
     if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
     runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            rust_target: aarch64-apple-darwin
+            arch_slug: arm64
+          - arch: x64
+            rust_target: x86_64-apple-darwin
+            arch_slug: x86_64
 
     steps:
       - name: Checkout
@@ -132,6 +142,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -149,36 +161,30 @@ jobs:
         run: pnpm run build
 
       - name: Build service binary
-        run: cargo build -p codexmanager-service --release
+        run: cargo build -p codexmanager-service --release --target ${{ matrix.rust_target }}
 
       - name: Build web binary
-        run: cargo build -p codexmanager-web --release --features embedded-ui
+        run: cargo build -p codexmanager-web --release --features embedded-ui --target ${{ matrix.rust_target }}
 
       - name: Build start binary
-        run: cargo build -p codexmanager-start --release
+        run: cargo build -p codexmanager-start --release --target ${{ matrix.rust_target }}
 
       - name: Stage service package
         shell: bash
         run: |
           set -euo pipefail
 
-          arch="$(uname -m)"
-          case "$arch" in
-            x86_64) arch_slug="x86_64" ;;
-            arm64|aarch64) arch_slug="arm64" ;;
-            *) arch_slug="$arch" ;;
-          esac
-
           stage_root="stage"
-          pkg_name="CodexManager-service-macos-${arch_slug}"
+          pkg_name="CodexManager-service-macos-${{ matrix.arch_slug }}"
           pkg_dir="${stage_root}/${pkg_name}"
 
           rm -rf "$pkg_dir"
           mkdir -p "$pkg_dir"
 
-          service_bin="target/release/codexmanager-service"
-          web_bin="target/release/codexmanager-web"
-          start_bin="target/release/codexmanager-start"
+          release_dir="target/${{ matrix.rust_target }}/release"
+          service_bin="$release_dir/codexmanager-service"
+          web_bin="$release_dir/codexmanager-web"
+          start_bin="$release_dir/codexmanager-start"
           test -f "$service_bin" || { echo "service binary not found: $service_bin"; exit 1; }
           test -f "$web_bin" || { echo "web binary not found: $web_bin"; exit 1; }
           test -f "$start_bin" || { echo "start binary not found: $start_bin"; exit 1; }
@@ -198,7 +204,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: codexmanager-service-macos
+          name: codexmanager-service-macos-${{ matrix.arch }}
           path: stage/*.zip
           if-no-files-found: error
           compression-level: 0
@@ -211,7 +217,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: codexmanager-service-macos
+          pattern: codexmanager-service-macos-*
           merge-multiple: true
           path: release-assets
 

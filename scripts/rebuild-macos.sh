@@ -5,6 +5,7 @@ BUNDLES="dmg"
 NO_BUNDLE=false
 CLEAN_DIST=false
 DRY_RUN=false
+TARGET=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,6 +24,14 @@ while [[ $# -gt 0 ]]; do
     --dry-run)
       DRY_RUN=true
       shift
+      ;;
+    --target)
+      TARGET="${2:-}"
+      if [[ -z "$TARGET" ]]; then
+        echo "--target requires a value" >&2
+        exit 2
+      fi
+      shift 2
       ;;
     *)
       echo "Unknown argument: $1" >&2
@@ -76,10 +85,14 @@ if [[ "$CLEAN_DIST" == "true" ]]; then
 fi
 
 pushd "$TAURI_DIR" >/dev/null
+target_args=()
+if [[ -n "$TARGET" ]]; then
+  target_args=(--target "$TARGET")
+fi
 if [[ "$NO_BUNDLE" == "true" ]]; then
-  run_cmd "cargo tauri build --no-bundle" cargo tauri build --no-bundle
+  run_cmd "cargo tauri build --no-bundle ${target_args[*]}" cargo tauri build --no-bundle "${target_args[@]}"
 else
-  run_cmd "cargo tauri build --bundles $BUNDLES" cargo tauri build --bundles "$BUNDLES"
+  run_cmd "cargo tauri build --bundles $BUNDLES ${target_args[*]}" cargo tauri build --bundles "$BUNDLES" "${target_args[@]}"
 fi
 popd >/dev/null
 
