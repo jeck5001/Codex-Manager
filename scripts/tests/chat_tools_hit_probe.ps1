@@ -34,7 +34,7 @@ function New-ChatBodyJson
         tools = @(
             @{
                 type = "function"
-                function = @{
+                "function" = @{
                     name = $ToolName
                     description = "Read file by path"
                     parameters = @{
@@ -52,7 +52,7 @@ function New-ChatBodyJson
         )
         tool_choice = @{
             type = "function"
-            function = @{
+            "function" = @{
                 name = $ToolName
             }
         }
@@ -83,8 +83,8 @@ function Print-NonStreamResult
     $toolArguments = ""
     if ($toolHit)
     {
-        $toolName = [string]$toolCalls[0].function.name
-        $toolArguments = [string]$toolCalls[0].function.arguments
+        $toolName = [string]$toolCalls[0].'function'.name
+        $toolArguments = [string]$toolCalls[0].'function'.arguments
     }
 
     $finishReason = ""
@@ -154,7 +154,7 @@ function Print-StreamResult
             if ($choice0.delta -and $choice0.delta.tool_calls -and $choice0.delta.tool_calls.Count -gt 0)
             {
                 $toolHit = $true
-                $name = [string]$choice0.delta.tool_calls[0].function.name
+                $name = [string]$choice0.delta.tool_calls[0].'function'.name
                 if (-not [string]::IsNullOrWhiteSpace($name))
                 {
                     $toolName = $name
@@ -250,4 +250,3 @@ try
     Write-Error ("chat tools probe failed: " + $_.Exception.Message)
     exit 1
 }
-
