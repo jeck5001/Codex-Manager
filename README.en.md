@@ -131,46 +131,9 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 -Bundle nsis -CleanDist -Porta
 ## GitHub Actions (Manual Only)
 All workflows are `workflow_dispatch` only.
 
-- `ci-verify.yml`
-  - Purpose: quality gate (Rust tests + frontend tests + frontend build)
-  - Trigger: manual only
-- `release-windows.yml`
-  - Purpose: one-click multi-platform release (order: Windows -> macOS beta unsigned -> Linux)
-  - Trigger: manual only
-  - Inputs:
-    - `tag` (required)
-    - `ref` (default: `main`)
-    - `run_verify` (default: `true`)
-- `release-linux.yml`
-  - Purpose: Linux single-platform packaging and release publishing (for patch re-runs)
-  - Trigger: manual only
-  - Inputs:
-    - `tag` (required)
-    - `ref` (default: `main`)
-    - `run_verify` (default: `true`)
-- `release-macos-beta.yml`
-  - Purpose: macOS single-platform beta release (unsigned, for internal testing only)
-  - Trigger: manual only
-  - Inputs:
-    - `tag` (required)
-    - `ref` (default: `main`)
-    - `run_verify` (default: `true`)
-- `release-service-windows.yml`
-  - Purpose: Windows Service edition packaging and release publishing (zip)
-  - Trigger: manual only
-  - Inputs:
-    - `tag` (required)
-    - `ref` (default: `main`)
-    - `run_verify` (default: `true`)
-- `release-service-linux.yml`
-  - Purpose: Linux Service edition packaging and release publishing (zip)
-  - Trigger: manual only
-  - Inputs:
-    - `tag` (required)
-    - `ref` (default: `main`)
-    - `run_verify` (default: `true`)
-- `release-service-macos.yml`
-  - Purpose: macOS Service edition packaging and release publishing (zip)
+- `release-all.yml`
+  - Purpose: one-click release for Desktop + Service artifacts across platforms
+  - Build order: `Windows -> macOS (beta unsigned) -> Linux`
   - Trigger: manual only
   - Inputs:
     - `tag` (required)
@@ -192,11 +155,11 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
   -GitRef main `
   -ReleaseTag v0.0.9 `
   -GithubToken <token> `
-  -WorkflowFile release-windows.yml
+  -WorkflowFile release-all.yml
 
 # Skip verify gate inside release workflow
 pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
-  -AllPlatforms -GitRef main -ReleaseTag v0.0.9 -GithubToken <token> -NoVerify -WorkflowFile release-windows.yml
+  -AllPlatforms -GitRef main -ReleaseTag v0.0.9 -GithubToken <token> -NoVerify -WorkflowFile release-all.yml
 ```
 
 Parameters (with defaults):
@@ -207,7 +170,7 @@ Parameters (with defaults):
 - `-PortableDir <path>`: portable output dir, default `portable/`
 - `-AllPlatforms`: dispatch the selected release workflow (`-WorkflowFile`)
 - `-GithubToken <token>`: GitHub token; falls back to `GITHUB_TOKEN`/`GH_TOKEN`
-- `-WorkflowFile <name>`: default `release-windows.yml` (recommended, one-click multi-platform); optionally use `release-linux.yml` / `release-macos-beta.yml` for single-platform patch re-runs
+- `-WorkflowFile <name>`: default `release-all.yml` (single one-click release entry)
 - `-GitRef <ref>`: workflow ref; defaults to current branch or current tag
 - `-ReleaseTag <tag>`: release tag; strongly recommended in `-AllPlatforms`
 - `-NoVerify`: sets workflow input `run_verify=false`

@@ -1,4 +1,4 @@
-name: release-windows
+name: release-all
 
 on:
   workflow_dispatch:
@@ -198,6 +198,47 @@ jobs:
           Compress-Archive -Path $portableBinary -DestinationPath $zipPath
           Write-Host "portable package: $zipPath"
 
+      - name: Build service binaries
+        shell: pwsh
+        run: |
+          cargo build -p codexmanager-service --release
+          cargo build -p codexmanager-web --release --features embedded-ui
+          cargo build -p codexmanager-start --release
+
+      - name: Stage service package
+        shell: pwsh
+        run: |
+          $arch = "${{ runner.arch }}"
+          $archSlug = switch ($arch) {
+            "X64" { "x86_64" }
+            "ARM64" { "arm64" }
+            Default { $arch.ToLowerInvariant() }
+          }
+
+          $stageRoot = "stage"
+          $pkgName = "CodexManager-service-windows-$archSlug"
+          $pkgDir = Join-Path $stageRoot $pkgName
+
+          Remove-Item -Recurse -Force $pkgDir -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $pkgDir | Out-Null
+
+          $serviceBin = "target/release/codexmanager-service.exe"
+          if (-not (Test-Path $serviceBin -PathType Leaf)) { throw "service binary not found: $serviceBin" }
+          Copy-Item -Force $serviceBin (Join-Path $pkgDir "codexmanager-service.exe")
+
+          $webBin = "target/release/codexmanager-web.exe"
+          if (-not (Test-Path $webBin -PathType Leaf)) { throw "web binary not found: $webBin" }
+          Copy-Item -Force $webBin (Join-Path $pkgDir "codexmanager-web.exe")
+
+          $startBin = "target/release/codexmanager-start.exe"
+          if (-not (Test-Path $startBin -PathType Leaf)) { throw "start binary not found: $startBin" }
+          Copy-Item -Force $startBin (Join-Path $pkgDir "codexmanager-start.exe")
+
+          $zipPath = Join-Path $stageRoot "$pkgName.zip"
+          if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
+          Compress-Archive -Path $pkgDir -DestinationPath $zipPath
+          Write-Host "service package: $zipPath"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -206,6 +247,14 @@ jobs:
             apps/src-tauri/target/release/bundle/**/*.exe
             apps/src-tauri/target/release/bundle/**/*.msi
             apps/src-tauri/target/release/portable/*.zip
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload service artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: codexmanager-service-windows
+          path: stage/*.zip
           if-no-files-found: error
           compression-level: 0
 
@@ -341,6 +390,42 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$app_bundle" "$zip_path"
           echo "beta package: $zip_path"
 
+      - name: Build service binaries
+        run: |
+          cargo build -p codexmanager-service --release --target ${{ matrix.rust_target }}
+          cargo build -p codexmanager-web --release --features embedded-ui --target ${{ matrix.rust_target }}
+          cargo build -p codexmanager-start --release --target ${{ matrix.rust_target }}
+
+      - name: Stage service package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          stage_root="stage"
+          pkg_name="CodexManager-service-macos-${{ matrix.arch }}"
+          pkg_dir="${stage_root}/${pkg_name}"
+
+          rm -rf "$pkg_dir"
+          mkdir -p "$pkg_dir"
+
+          release_dir="target/${{ matrix.rust_target }}/release"
+          service_bin="$release_dir/codexmanager-service"
+          web_bin="$release_dir/codexmanager-web"
+          start_bin="$release_dir/codexmanager-start"
+          test -f "$service_bin" || { echo "service binary not found: $service_bin"; exit 1; }
+          test -f "$web_bin" || { echo "web binary not found: $web_bin"; exit 1; }
+          test -f "$start_bin" || { echo "start binary not found: $start_bin"; exit 1; }
+
+          cp -f "$service_bin" "$pkg_dir/codexmanager-service"
+          cp -f "$web_bin" "$pkg_dir/codexmanager-web"
+          cp -f "$start_bin" "$pkg_dir/codexmanager-start"
+          chmod +x "$pkg_dir/codexmanager-service" "$pkg_dir/codexmanager-web" "$pkg_dir/codexmanager-start"
+
+          zip_path="${stage_root}/${pkg_name}.zip"
+          rm -f "$zip_path"
+          ditto -c -k --sequesterRsrc --keepParent "$pkg_dir" "$zip_path"
+          echo "service package: $zip_path"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -348,6 +433,14 @@ jobs:
           path: |
             apps/src-tauri/target/${{ matrix.rust_target }}/release/portable/CodexManager-macos-beta-${{ matrix.arch }}-unsigned.zip
             apps/src-tauri/target/${{ matrix.rust_target }}/release/portable/MACOS-BETA-README-${{ matrix.arch }}.txt
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload service artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: codexmanager-service-macos-${{ matrix.arch }}
+          path: stage/*.zip
           if-no-files-found: error
           compression-level: 0
 
@@ -437,7 +530,7 @@ jobs:
           path: |
             /var/cache/apt/archives
             /var/lib/apt/lists
-          key: ${{ runner.os }}-apt-jammy-tauri-${{ hashFiles('.github/workflows/release-windows.yml') }}
+          key: ${{ runner.os }}-apt-jammy-tauri-${{ hashFiles('.github/workflows/release-all.yml') }}
           restore-keys: |
             ${{ runner.os }}-apt-jammy-tauri-
 
@@ -496,6 +589,47 @@ jobs:
           )
           echo "portable package: $zip_path"
 
+      - name: Build service binaries
+        run: |
+          cargo build -p codexmanager-service --release
+          cargo build -p codexmanager-web --release --features embedded-ui
+          cargo build -p codexmanager-start --release
+
+      - name: Stage service package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          arch="$(uname -m)"
+          case "$arch" in
+            x86_64) arch_slug="x86_64" ;;
+            aarch64|arm64) arch_slug="arm64" ;;
+            *) arch_slug="$arch" ;;
+          esac
+
+          stage_root="stage"
+          pkg_name="CodexManager-service-linux-${arch_slug}"
+          pkg_dir="${stage_root}/${pkg_name}"
+
+          rm -rf "$pkg_dir"
+          mkdir -p "$pkg_dir"
+
+          service_bin="target/release/codexmanager-service"
+          web_bin="target/release/codexmanager-web"
+          start_bin="target/release/codexmanager-start"
+          test -f "$service_bin" || { echo "service binary not found: $service_bin"; exit 1; }
+          test -f "$web_bin" || { echo "web binary not found: $web_bin"; exit 1; }
+          test -f "$start_bin" || { echo "start binary not found: $start_bin"; exit 1; }
+
+          cp -f "$service_bin" "$pkg_dir/codexmanager-service"
+          cp -f "$web_bin" "$pkg_dir/codexmanager-web"
+          cp -f "$start_bin" "$pkg_dir/codexmanager-start"
+          chmod +x "$pkg_dir/codexmanager-service" "$pkg_dir/codexmanager-web" "$pkg_dir/codexmanager-start"
+
+          mkdir -p "$stage_root"
+          (cd "$stage_root" && zip -q -r "${pkg_name}.zip" "${pkg_name}")
+          echo "service package: ${stage_root}/${pkg_name}.zip"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -505,6 +639,14 @@ jobs:
             apps/src-tauri/target/release/bundle/**/*.deb
             apps/src-tauri/target/release/bundle/**/*.rpm
             apps/src-tauri/target/release/portable/*.zip
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload service artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: codexmanager-service-linux
+          path: stage/*.zip
           if-no-files-found: error
           compression-level: 0
 

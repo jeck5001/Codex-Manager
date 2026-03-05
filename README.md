@@ -131,46 +131,9 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 -Bundle nsis -CleanDist -Porta
 ## GitHub Actions（全部手动触发）
 当前 workflow 均为 `workflow_dispatch`，不会自动触发。
 
-- `ci-verify.yml`
-  - 用途：质量门（Rust tests + 前端 tests + 前端 build）
-  - 触发：手动
-- `release-windows.yml`
-  - 用途：多平台一键发布（执行顺序：Windows -> macOS 内测未签名 -> Linux）
-  - 触发：手动
-  - 输入：
-    - `tag`（必填）
-    - `ref`（默认 `main`）
-    - `run_verify`（默认 `true`，可关闭）
-- `release-linux.yml`
-  - 用途：Linux 单平台打包与 release 发布（按需补发）
-  - 触发：手动
-  - 输入：
-    - `tag`（必填）
-    - `ref`（默认 `main`）
-    - `run_verify`（默认 `true`，可关闭）
-- `release-macos-beta.yml`
-  - 用途：macOS 单平台内测包发布（未签名，仅内测）
-  - 触发：手动
-  - 输入：
-    - `tag`（必填）
-    - `ref`（默认 `main`）
-    - `run_verify`（默认 `true`，可关闭）
-- `release-service-windows.yml`
-  - 用途：Windows Service 版本打包与 release 发布（zip）
-  - 触发：手动
-  - 输入：
-    - `tag`（必填）
-    - `ref`（默认 `main`）
-    - `run_verify`（默认 `true`，可关闭）
-- `release-service-linux.yml`
-  - 用途：Linux Service 版本打包与 release 发布（zip）
-  - 触发：手动
-  - 输入：
-    - `tag`（必填）
-    - `ref`（默认 `main`）
-    - `run_verify`（默认 `true`，可关闭）
-- `release-service-macos.yml`
-  - 用途：macOS Service 版本打包与 release 发布（zip）
+- `release-all.yml`
+  - 用途：一键发布 Desktop + Service 全平台产物（单次触发）
+  - 构建顺序：`Windows -> macOS（beta 未签名） -> Linux`
   - 触发：手动
   - 输入：
     - `tag`（必填）
@@ -206,7 +169,7 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
 - `-PortableDir <path>`：便携版输出目录，默认 `portable/`
 - `-AllPlatforms`：触发指定 release workflow（由 `-WorkflowFile` 指定）
 - `-GithubToken <token>`：GitHub token；不传时尝试 `GITHUB_TOKEN`/`GH_TOKEN`
-- `-WorkflowFile <name>`：默认 `release-windows.yml`（推荐，多平台一键发布）；也可改为 `release-linux.yml` / `release-macos-beta.yml` 做单平台补发
+- `-WorkflowFile <name>`：默认 `release-all.yml`（单一一键发布入口）
 - `-GitRef <ref>`：workflow 构建 ref；默认当前分支或当前 tag
 - `-ReleaseTag <tag>`：发布 tag；`-AllPlatforms` 时建议显式传入
 - `-NoVerify`：将 workflow 输入 `run_verify` 设为 `false`

@@ -8,7 +8,7 @@ param(
   [string]$PortableDir,
   [switch]$AllPlatforms,
   [string]$GithubToken,
-  [string]$WorkflowFile = "release-windows.yml",
+  [string]$WorkflowFile = "release-all.yml",
   [string]$GitRef,
   [string]$ReleaseTag,
   [switch]$NoVerify,
@@ -226,6 +226,21 @@ function Invoke-AllPlatformBuild {
   }
   if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
     throw "release tag required for -AllPlatforms. Pass -ReleaseTag (e.g. v0.0.6)."
+  }
+
+  # 中文注释：历史脚本参数仍可能传旧 workflow 名称，这里统一映射到新的单一入口。
+  $workflowAlias = @{
+    "release-windows.yml"         = "release-all.yml"
+    "release-linux.yml"           = "release-all.yml"
+    "release-macos-beta.yml"      = "release-all.yml"
+    "release-service-windows.yml" = "release-all.yml"
+    "release-service-linux.yml"   = "release-all.yml"
+    "release-service-macos.yml"   = "release-all.yml"
+    "ci-verify.yml"               = "release-all.yml"
+  }
+  if ($workflowAlias.ContainsKey($WorkflowFile)) {
+    Write-Step "workflow alias: $WorkflowFile -> $($workflowAlias[$WorkflowFile])"
+    $WorkflowFile = $workflowAlias[$WorkflowFile]
   }
 
   $resolvedSha = (& git rev-parse --verify "$GitRef^{commit}" 2>$null) -join ""
