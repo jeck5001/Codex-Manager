@@ -58,7 +58,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: release-windows-rust-stable-v1
+          shared-key: release-all-platforms-rust-stable-v1
           workspaces: |
             . -> target
             apps/src-tauri -> target
@@ -144,7 +144,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: release-windows-rust-stable-v1
+          shared-key: release-all-platforms-rust-stable-v1
           workspaces: |
             . -> target
             apps/src-tauri -> target
@@ -209,15 +209,315 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+  build_macos_beta:
+    needs: [verify, build_windows]
+    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') && needs.build_windows.result == 'success' }}
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            rust_target: aarch64-apple-darwin
+          - arch: x64
+            rust_target: x86_64-apple-darwin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || 'main' }}
+
+      - name: Validate tag/version consistency
+        shell: pwsh
+        run: |
+          $tagInput = "${{ github.event.inputs.tag }}"
+          if ([string]::IsNullOrWhiteSpace($tagInput)) { throw "release tag is required" }
+
+          $normalizedTag = if ($tagInput.StartsWith("v")) { $tagInput } else { "v$tagInput" }
+          if ($normalizedTag -notmatch '^v(\d+\.\d+\.\d+)(?:[-+].*)?$') {
+            throw "tag must look like vX.Y.Z or vX.Y.Z-suffix, got: $normalizedTag"
+          }
+          $tagVersion = $Matches[1]
+
+          $cargoToml = Get-Content 'apps/src-tauri/Cargo.toml' -Raw
+          if ($cargoToml -notmatch '(?ms)\[package\].*?^\s*version\s*=\s*"([^"]+)"') {
+            throw "failed to read [package].version from apps/src-tauri/Cargo.toml"
+          }
+          $cargoVersion = $Matches[1]
+
+          $tauriConf = (Get-Content 'apps/src-tauri/tauri.conf.json' -Raw) | ConvertFrom-Json
+          $tauriVersion = $tauriConf.version
+
+          if ([string]::IsNullOrWhiteSpace($tauriVersion)) { throw "tauri.conf.json missing version" }
+
+          if ($cargoVersion -ne $tauriVersion) {
+            throw "version mismatch: apps/src-tauri/Cargo.toml=$cargoVersion apps/src-tauri/tauri.conf.json=$tauriVersion"
+          }
+          if ($cargoVersion -ne $tagVersion) {
+            throw "tag/version mismatch: tag=$normalizedTag expects $tagVersion, but app version is $cargoVersion"
+          }
+
+          Write-Host "Version OK: $cargoVersion (tag $normalizedTag)"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-all-platforms-rust-stable-v1
+          workspaces: |
+            . -> target
+            apps/src-tauri -> target
+
+      - name: Install frontend dependencies
+        working-directory: apps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build macOS beta app bundle (unsigned)
+        working-directory: apps
+        run: pnpm dlx @tauri-apps/cli@${{ env.TAURI_CLI_VERSION }} build --bundles app --target ${{ matrix.rust_target }}
+
+      - name: Stage macOS beta package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_root="apps/src-tauri/target/${{ matrix.rust_target }}/release"
+          bundle_root="$release_root/bundle/macos"
+          if [[ ! -d "$bundle_root" ]]; then
+            echo "bundle root not found: $bundle_root"
+            exit 1
+          fi
+
+          app_bundle="$(find "$bundle_root" -maxdepth 1 -type d -name '*.app' | head -n1)"
+          if [[ -z "${app_bundle:-}" || ! -d "$app_bundle" ]]; then
+            echo "macOS .app bundle not found under $bundle_root"
+            exit 1
+          fi
+
+          app_exec="$app_bundle/Contents/MacOS/CodexManager"
+          if [[ ! -f "$app_exec" ]]; then
+            echo "app executable not found: $app_exec"
+            exit 1
+          fi
+          chmod +x "$app_exec"
+
+          portable_dir="$release_root/portable"
+          mkdir -p "$portable_dir"
+
+          readme_path="$portable_dir/MACOS-BETA-README-${{ matrix.arch }}.txt"
+          cat > "$readme_path" <<'EOF'
+          CodexManager macOS beta package (unsigned / not notarized)
+
+          Before first launch, run in Terminal:
+          xattr -dr com.apple.quarantine /Applications/CodexManager.app
+
+          Then run:
+          open /Applications/CodexManager.app
+
+          If blocked, go to System Settings -> Privacy & Security and click Open Anyway.
+          EOF
+
+          zip_path="$portable_dir/CodexManager-macos-beta-${{ matrix.arch }}-unsigned.zip"
+          rm -f "$zip_path"
+          # Preserve app bundle metadata/permissions; Compress-Archive can break macOS .app bundles.
+          ditto -c -k --sequesterRsrc --keepParent "$app_bundle" "$zip_path"
+          echo "beta package: $zip_path"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: codexmanager-macos-beta-${{ matrix.arch }}
+          path: |
+            apps/src-tauri/target/${{ matrix.rust_target }}/release/portable/CodexManager-macos-beta-${{ matrix.arch }}-unsigned.zip
+            apps/src-tauri/target/${{ matrix.rust_target }}/release/portable/MACOS-BETA-README-${{ matrix.arch }}.txt
+          if-no-files-found: error
+          compression-level: 0
+
+  build_linux:
+    needs: [verify, build_macos_beta]
+    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') && needs.build_macos_beta.result == 'success' }}
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || 'main' }}
+
+      - name: Validate tag/version consistency
+        shell: pwsh
+        run: |
+          $tagInput = "${{ github.event.inputs.tag }}"
+          if ([string]::IsNullOrWhiteSpace($tagInput)) { throw "release tag is required" }
+
+          $normalizedTag = if ($tagInput.StartsWith("v")) { $tagInput } else { "v$tagInput" }
+          if ($normalizedTag -notmatch '^v(\d+\.\d+\.\d+)(?:[-+].*)?$') {
+            throw "tag must look like vX.Y.Z or vX.Y.Z-suffix, got: $normalizedTag"
+          }
+          $tagVersion = $Matches[1]
+
+          $cargoToml = Get-Content 'apps/src-tauri/Cargo.toml' -Raw
+          if ($cargoToml -notmatch '(?ms)\[package\].*?^\s*version\s*=\s*"([^"]+)"') {
+            throw "failed to read [package].version from apps/src-tauri/Cargo.toml"
+          }
+          $cargoVersion = $Matches[1]
+
+          $tauriConf = (Get-Content 'apps/src-tauri/tauri.conf.json' -Raw) | ConvertFrom-Json
+          $tauriVersion = $tauriConf.version
+
+          if ([string]::IsNullOrWhiteSpace($tauriVersion)) { throw "tauri.conf.json missing version" }
+
+          if ($cargoVersion -ne $tauriVersion) {
+            throw "version mismatch: apps/src-tauri/Cargo.toml=$cargoVersion apps/src-tauri/tauri.conf.json=$tauriVersion"
+          }
+          if ($cargoVersion -ne $tagVersion) {
+            throw "tag/version mismatch: tag=$normalizedTag expects $tagVersion, but app version is $cargoVersion"
+          }
+
+          Write-Host "Version OK: $cargoVersion (tag $normalizedTag)"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/pnpm-lock.yaml
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        shell: bash
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-node20-v1-${{ hashFiles('apps/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-node20-v1-
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-all-platforms-rust-stable-v1
+          workspaces: |
+            . -> target
+            apps/src-tauri -> target
+
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            /var/cache/apt/archives
+            /var/lib/apt/lists
+          key: ${{ runner.os }}-apt-jammy-tauri-${{ hashFiles('.github/workflows/release-windows.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-jammy-tauri-
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev zip
+
+      - name: Install frontend dependencies
+        working-directory: apps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri bundle (with retry)
+        working-directory: apps
+        shell: bash
+        run: |
+          max_attempts=3
+          attempt=1
+          while [ "$attempt" -le "$max_attempts" ]; do
+            echo "Build attempt $attempt/$max_attempts ..."
+            if pnpm dlx @tauri-apps/cli@${{ env.TAURI_CLI_VERSION }} build --bundles appimage,deb; then
+              exit 0
+            fi
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              delay=$((20 * attempt))
+              echo "Build failed on attempt $attempt, retry in ${delay}s..."
+              sleep "$delay"
+            fi
+            attempt=$((attempt + 1))
+          done
+          echo "Build failed after $max_attempts attempts."
+          exit 1
+
+      - name: Stage portable package
+        shell: bash
+        run: |
+          release_dir="apps/src-tauri/target/release"
+          portable_dir="$release_dir/portable"
+          mkdir -p "$portable_dir"
+
+          source_bin="$release_dir/CodexManager"
+          if [[ ! -f "$source_bin" ]]; then
+            echo "portable source binary not found: $source_bin"
+            exit 1
+          fi
+
+          portable_bin="$portable_dir/CodexManager-portable"
+          cp -f "$source_bin" "$portable_bin"
+          chmod +x "$portable_bin"
+
+          zip_path="$portable_dir/CodexManager-linux-portable.zip"
+          rm -f "$zip_path"
+          (
+            cd "$portable_dir"
+            zip -q "CodexManager-linux-portable.zip" "CodexManager-portable"
+          )
+          echo "portable package: $zip_path"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: codexmanager-linux
+          path: |
+            apps/src-tauri/target/release/bundle/**/*.AppImage
+            apps/src-tauri/target/release/bundle/**/*.deb
+            apps/src-tauri/target/release/bundle/**/*.rpm
+            apps/src-tauri/target/release/portable/*.zip
+          if-no-files-found: error
+          compression-level: 0
+
   release:
-    needs: build_windows
+    needs: [build_windows, build_macos_beta, build_linux]
+    if: ${{ needs.build_windows.result == 'success' && needs.build_macos_beta.result == 'success' && needs.build_linux.result == 'success' }}
     runs-on: ubuntu-22.04
 
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: codexmanager-windows
+          pattern: codexmanager-*
           merge-multiple: true
           path: release-assets
 
@@ -268,7 +568,6 @@ jobs:
 
           cd release-assets
 
-          # Checksums for assets only (exclude checksum/manifest files themselves).
           find . -type f ! -name 'SHA256SUMS' ! -name 'manifest.json' -print0 \
             | sort -z \
             | xargs -0 sha256sum \
@@ -280,11 +579,11 @@ jobs:
           import os
           from pathlib import Path
 
-          root = Path(".")
-          sums_path = root / "SHA256SUMS"
+          root = Path('.')
+          sums_path = root / 'SHA256SUMS'
           entries = []
 
-          for line in sums_path.read_text(encoding="utf-8").splitlines():
+          for line in sums_path.read_text(encoding='utf-8').splitlines():
             line = line.strip()
             if not line:
               continue
@@ -292,15 +591,15 @@ jobs:
             rel = rel.strip()
             p = root / rel
             if not p.is_file():
-              raise SystemExit(f"SHA256SUMS refers to missing file: {rel}")
-            entries.append({"path": rel.replace("\\\\", "/"), "sha256": sha, "bytes": p.stat().st_size})
+              raise SystemExit(f'SHA256SUMS refers to missing file: {rel}')
+            entries.append({'path': rel.replace('\\\\', '/'), 'sha256': sha, 'bytes': p.stat().st_size})
 
           manifest = {
-            "tag": os.environ.get("RELEASE_TAG", ""),
-            "files": sorted(entries, key=lambda x: x["path"]),
+            'tag': os.environ.get('RELEASE_TAG', ''),
+            'files': sorted(entries, key=lambda x: x['path']),
           }
 
-          (root / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          (root / 'manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8')
           PY
 
       - name: Publish GitHub Release
@@ -314,7 +613,7 @@ jobs:
           TITLE="CodexManager $TAG"
 
           mapfile -t FILES < <(find release-assets -type f \( \
-            -name '*.exe' -o -name '*.msi' -o -name '*.zip' -o -name 'SHA256SUMS' -o -name 'manifest.json' \
+            -name '*.exe' -o -name '*.msi' -o -name '*.zip' -o -name '*.txt' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'SHA256SUMS' -o -name 'manifest.json' \
           \) | sort)
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "No release assets found."
@@ -329,7 +628,7 @@ jobs:
             if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
               CREATE_ARGS+=(--prerelease)
             fi
-            # 中文注释：多平台 workflow 可能并行写同一个 tag；create 失败时降级为 edit+upload。
+            # Multi-platform runs can race on the same tag; fallback to edit+upload when create fails.
             if ! gh release create "$TAG" "${FILES[@]}" "${CREATE_ARGS[@]}"; then
               echo "release create failed, retrying as edit+upload..."
               gh release edit "$TAG" --repo "$GH_REPO" --title "$TITLE" --target "$TARGET_SHA"

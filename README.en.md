@@ -135,21 +135,21 @@ All workflows are `workflow_dispatch` only.
   - Purpose: quality gate (Rust tests + frontend tests + frontend build)
   - Trigger: manual only
 - `release-windows.yml`
-  - Purpose: Windows packaging and release publishing (installer + portable)
+  - Purpose: one-click multi-platform release (order: Windows -> macOS beta unsigned -> Linux)
   - Trigger: manual only
   - Inputs:
     - `tag` (required)
     - `ref` (default: `main`)
     - `run_verify` (default: `true`)
 - `release-linux.yml`
-  - Purpose: Linux packaging and release publishing (AppImage/deb/rpm + portable)
+  - Purpose: Linux single-platform packaging and release publishing (for patch re-runs)
   - Trigger: manual only
   - Inputs:
     - `tag` (required)
     - `ref` (default: `main`)
     - `run_verify` (default: `true`)
 - `release-macos-beta.yml`
-  - Purpose: macOS beta release (unsigned, for internal testing only)
+  - Purpose: macOS single-platform beta release (unsigned, for internal testing only)
   - Trigger: manual only
   - Inputs:
     - `tag` (required)
@@ -207,7 +207,7 @@ Parameters (with defaults):
 - `-PortableDir <path>`: portable output dir, default `portable/`
 - `-AllPlatforms`: dispatch the selected release workflow (`-WorkflowFile`)
 - `-GithubToken <token>`: GitHub token; falls back to `GITHUB_TOKEN`/`GH_TOKEN`
-- `-WorkflowFile <name>`: choose one of `release-windows.yml` / `release-linux.yml` / `release-macos-beta.yml`
+- `-WorkflowFile <name>`: default `release-windows.yml` (recommended, one-click multi-platform); optionally use `release-linux.yml` / `release-macos-beta.yml` for single-platform patch re-runs
 - `-GitRef <ref>`: workflow ref; defaults to current branch or current tag
 - `-ReleaseTag <tag>`: release tag; strongly recommended in `-AllPlatforms`
 - `-NoVerify`: sets workflow input `run_verify=false`

@@ -135,21 +135,21 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 -Bundle nsis -CleanDist -Porta
   - 用途：质量门（Rust tests + 前端 tests + 前端 build）
   - 触发：手动
 - `release-windows.yml`
-  - 用途：Windows 打包与 release 发布（安装包 + portable）
+  - 用途：多平台一键发布（执行顺序：Windows -> macOS 内测未签名 -> Linux）
   - 触发：手动
   - 输入：
     - `tag`（必填）
     - `ref`（默认 `main`）
     - `run_verify`（默认 `true`，可关闭）
 - `release-linux.yml`
-  - 用途：Linux 打包与 release 发布（AppImage/deb/rpm + portable）
+  - 用途：Linux 单平台打包与 release 发布（按需补发）
   - 触发：手动
   - 输入：
     - `tag`（必填）
     - `ref`（默认 `main`）
     - `run_verify`（默认 `true`，可关闭）
 - `release-macos-beta.yml`
-  - 用途：macOS 内测包发布（未签名，仅内测）
+  - 用途：macOS 单平台内测包发布（未签名，仅内测）
   - 触发：手动
   - 输入：
     - `tag`（必填）
@@ -206,7 +206,7 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
 - `-PortableDir <path>`：便携版输出目录，默认 `portable/`
 - `-AllPlatforms`：触发指定 release workflow（由 `-WorkflowFile` 指定）
 - `-GithubToken <token>`：GitHub token；不传时尝试 `GITHUB_TOKEN`/`GH_TOKEN`
-- `-WorkflowFile <name>`：默认由脚本配置决定，建议显式传入（如 `release-windows.yml`）
+- `-WorkflowFile <name>`：默认 `release-windows.yml`（推荐，多平台一键发布）；也可改为 `release-linux.yml` / `release-macos-beta.yml` 做单平台补发
 - `-GitRef <ref>`：workflow 构建 ref；默认当前分支或当前 tag
 - `-ReleaseTag <tag>`：发布 tag；`-AllPlatforms` 时建议显式传入
 - `-NoVerify`：将 workflow 输入 `run_verify` 设为 `false`
@@ -369,7 +369,8 @@ CODEXMANAGER_GATEWAY_KEEPALIVE_INTERVAL_SECS=180
 - `crates/service/src/gateway/upstream/transport.rs`
 
 ## 联系方式
-![个人](assets/images/personal.jpg)
-![交流群](assets/images/group.jpg)
+
+![交流群](assets/images/group.jpg) 
+TG: https://t.me/+8o2Eu7GPMIFjNDM1
 
 有兴趣的可以关注我微信公众号 七线牛马
