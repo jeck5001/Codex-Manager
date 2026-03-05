@@ -133,7 +133,7 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 -Bundle nsis -CleanDist -Porta
 
 - `release-all.yml`
   - 用途：一键发布 Desktop + Service 全平台产物（单次触发）
-  - 构建顺序：`Windows -> macOS（beta 未签名） -> Linux`
+  - 构建顺序：`Windows -> macOS（dmg） -> Linux`
   - 触发：手动
   - 输入：
     - `tag`（必填）

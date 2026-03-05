@@ -339,56 +339,9 @@ jobs:
         working-directory: apps
         run: pnpm install --frozen-lockfile
 
-      - name: Build macOS beta app bundle (unsigned)
+      - name: Build macOS app bundle (dmg)
         working-directory: apps
-        run: pnpm dlx @tauri-apps/cli@${{ env.TAURI_CLI_VERSION }} build --bundles app --target ${{ matrix.rust_target }}
-
-      - name: Stage macOS beta package
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          release_root="apps/src-tauri/target/${{ matrix.rust_target }}/release"
-          bundle_root="$release_root/bundle/macos"
-          if [[ ! -d "$bundle_root" ]]; then
-            echo "bundle root not found: $bundle_root"
-            exit 1
-          fi
-
-          app_bundle="$(find "$bundle_root" -maxdepth 1 -type d -name '*.app' | head -n1)"
-          if [[ -z "${app_bundle:-}" || ! -d "$app_bundle" ]]; then
-            echo "macOS .app bundle not found under $bundle_root"
-            exit 1
-          fi
-
-          app_exec="$app_bundle/Contents/MacOS/CodexManager"
-          if [[ ! -f "$app_exec" ]]; then
-            echo "app executable not found: $app_exec"
-            exit 1
-          fi
-          chmod +x "$app_exec"
-
-          portable_dir="$release_root/portable"
-          mkdir -p "$portable_dir"
-
-          readme_path="$portable_dir/MACOS-BETA-README-${{ matrix.arch }}.txt"
-          cat > "$readme_path" <<'EOF'
-          CodexManager macOS beta package (unsigned / not notarized)
-
-          Before first launch, run in Terminal:
-          xattr -dr com.apple.quarantine /Applications/CodexManager.app
-
-          Then run:
-          open /Applications/CodexManager.app
-
-          If blocked, go to System Settings -> Privacy & Security and click Open Anyway.
-          EOF
-
-          zip_path="$portable_dir/CodexManager-macos-beta-${{ matrix.arch }}-unsigned.zip"
-          rm -f "$zip_path"
-          # Preserve app bundle metadata/permissions; Compress-Archive can break macOS .app bundles.
-          ditto -c -k --sequesterRsrc --keepParent "$app_bundle" "$zip_path"
-          echo "beta package: $zip_path"
+        run: pnpm dlx @tauri-apps/cli@${{ env.TAURI_CLI_VERSION }} build --bundles dmg --target ${{ matrix.rust_target }}
 
       - name: Build service binaries
         run: |
@@ -429,10 +382,9 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: codexmanager-macos-beta-${{ matrix.arch }}
+          name: codexmanager-macos-${{ matrix.arch }}
           path: |
-            apps/src-tauri/target/${{ matrix.rust_target }}/release/portable/CodexManager-macos-beta-${{ matrix.arch }}-unsigned.zip
-            apps/src-tauri/target/${{ matrix.rust_target }}/release/portable/MACOS-BETA-README-${{ matrix.arch }}.txt
+            apps/src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg
           if-no-files-found: error
           compression-level: 0
 
@@ -701,49 +653,6 @@ jobs:
           echo "target_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
-      - name: Generate SHA256SUMS and manifest
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
-        run: |
-          set -euo pipefail
-
-          cd release-assets
-
-          find . -type f ! -name 'SHA256SUMS' ! -name 'manifest.json' -print0 \
-            | sort -z \
-            | xargs -0 sha256sum \
-            | sed 's|  \./|  |' \
-            > SHA256SUMS
-
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          root = Path('.')
-          sums_path = root / 'SHA256SUMS'
-          entries = []
-
-          for line in sums_path.read_text(encoding='utf-8').splitlines():
-            line = line.strip()
-            if not line:
-              continue
-            sha, rel = line.split(maxsplit=1)
-            rel = rel.strip()
-            p = root / rel
-            if not p.is_file():
-              raise SystemExit(f'SHA256SUMS refers to missing file: {rel}')
-            entries.append({'path': rel.replace('\\\\', '/'), 'sha256': sha, 'bytes': p.stat().st_size})
-
-          manifest = {
-            'tag': os.environ.get('RELEASE_TAG', ''),
-            'files': sorted(entries, key=lambda x: x['path']),
-          }
-
-          (root / 'manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8')
-          PY
-
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -755,7 +664,7 @@ jobs:
           TITLE="CodexManager $TAG"
 
           mapfile -t FILES < <(find release-assets -type f \( \
-            -name '*.exe' -o -name '*.msi' -o -name '*.zip' -o -name '*.txt' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'SHA256SUMS' -o -name 'manifest.json' \
+            -name '*.exe' -o -name '*.msi' -o -name '*.zip' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
           \) | sort)
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "No release assets found."

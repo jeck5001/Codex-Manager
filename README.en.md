@@ -133,7 +133,7 @@ All workflows are `workflow_dispatch` only.
 
 - `release-all.yml`
   - Purpose: one-click release for Desktop + Service artifacts across platforms
-  - Build order: `Windows -> macOS (beta unsigned) -> Linux`
+  - Build order: `Windows -> macOS (dmg) -> Linux`
   - Trigger: manual only
   - Inputs:
     - `tag` (required)
