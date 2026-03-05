@@ -489,13 +489,12 @@ fn collect_chat_tool_calls_from_message(
     }
 }
 
-fn build_openai_chat_tool_calls(tool_calls: &BTreeMap<usize, AggregatedChatToolCall>) -> Vec<Value> {
+fn build_openai_chat_tool_calls(
+    tool_calls: &BTreeMap<usize, AggregatedChatToolCall>,
+) -> Vec<Value> {
     let mut out = Vec::new();
     for (index, call) in tool_calls {
-        let id = call
-            .id
-            .clone()
-            .unwrap_or_else(|| format!("call_{index}"));
+        let id = call.id.clone().unwrap_or_else(|| format!("call_{index}"));
         let name = call.name.clone().unwrap_or_else(|| "tool".to_string());
         let arguments = if call.arguments.is_empty() {
             "{}".to_string()
@@ -1231,9 +1230,10 @@ fn convert_openai_sse_to_chat_completions_json(
                 *completed_response = Some(response.clone());
             }
         }
-        let Some(chunk) =
-            convert_openai_chat_stream_chunk_with_tool_name_restore_map(&value, tool_name_restore_map)
-        else {
+        let Some(chunk) = convert_openai_chat_stream_chunk_with_tool_name_restore_map(
+            &value,
+            tool_name_restore_map,
+        ) else {
             return;
         };
         if let Some(v) = chunk.get("id").and_then(Value::as_str) {
@@ -1304,7 +1304,8 @@ fn convert_openai_sse_to_chat_completions_json(
 
     if content.is_empty() {
         if let Some(response) = completed_response.as_ref() {
-            let completion = map_openai_response_to_chat_completion(response, tool_name_restore_map);
+            let completion =
+                map_openai_response_to_chat_completion(response, tool_name_restore_map);
             if let Some(v) = completion.get("id").and_then(Value::as_str) {
                 if !v.is_empty() {
                     id = v.to_string();

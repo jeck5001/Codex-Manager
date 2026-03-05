@@ -41,7 +41,9 @@ struct ExportMetaPayload {
     exported_at: i64,
 }
 
-pub(crate) fn export_accounts_to_directory(output_dir: &str) -> Result<AccountExportResult, String> {
+pub(crate) fn export_accounts_to_directory(
+    output_dir: &str,
+) -> Result<AccountExportResult, String> {
     let normalized_output_dir = output_dir.trim();
     if normalized_output_dir.is_empty() {
         return Err("missing outputDir".to_string());
@@ -90,7 +92,8 @@ pub(crate) fn export_accounts_to_directory(output_dir: &str) -> Result<AccountEx
             },
         };
 
-        let file_path = build_account_export_file_path(&output_path, &account, &mut file_name_counter);
+        let file_path =
+            build_account_export_file_path(&output_path, &account, &mut file_name_counter);
         let json = serde_json::to_vec_pretty(&payload)
             .map_err(|err| format!("encode export json failed: {err}"))?;
         std::fs::write(&file_path, json)
@@ -144,8 +147,8 @@ fn sanitize_file_stem(value: &str) -> String {
         if out.len() >= 96 {
             break;
         }
-        let invalid = matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
-            || ch.is_control();
+        let invalid =
+            matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control();
         if invalid {
             out.push('_');
             continue;

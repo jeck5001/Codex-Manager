@@ -138,7 +138,10 @@ fn build_openai_tool_name_map(obj: &serde_json::Map<String, Value>) -> BTreeMap<
     out
 }
 
-fn shorten_openai_tool_name_with_map(name: &str, tool_name_map: &BTreeMap<String, String>) -> String {
+fn shorten_openai_tool_name_with_map(
+    name: &str,
+    tool_name_map: &BTreeMap<String, String>,
+) -> String {
     tool_name_map
         .get(name)
         .cloned()

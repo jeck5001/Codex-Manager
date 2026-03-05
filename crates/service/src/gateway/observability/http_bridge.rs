@@ -415,7 +415,10 @@ fn classify_terminal_event_name(name: &str) -> Option<SseTerminal> {
     if normalized.is_empty() {
         return None;
     }
-    if normalized == "done" || is_response_completed_event_name(normalized.as_str()) || normalized.ends_with(".completed") {
+    if normalized == "done"
+        || is_response_completed_event_name(normalized.as_str())
+        || normalized.ends_with(".completed")
+    {
         return Some(SseTerminal::Ok);
     }
     if normalized == "error"
@@ -1406,31 +1409,30 @@ pub(super) fn respond_with_upstream(
                     headers.push(content_type_header);
                 }
                 let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
-                let delivery_error = if response_adapter
-                    == super::ResponseAdapter::OpenAIChatCompletionsSse
-                {
-                    let response = Response::new(
-                        status,
-                        headers,
-                        OpenAIChatCompletionsSseReader::new(
-                            upstream,
-                            Arc::clone(&usage_collector),
-                            tool_name_restore_map.cloned(),
-                        ),
-                        None,
-                        None,
-                    );
-                    request.respond(response).err().map(|err| err.to_string())
-                } else {
-                    let response = Response::new(
-                        status,
-                        headers,
-                        OpenAICompletionsSseReader::new(upstream, Arc::clone(&usage_collector)),
-                        None,
-                        None,
-                    );
-                    request.respond(response).err().map(|err| err.to_string())
-                };
+                let delivery_error =
+                    if response_adapter == super::ResponseAdapter::OpenAIChatCompletionsSse {
+                        let response = Response::new(
+                            status,
+                            headers,
+                            OpenAIChatCompletionsSseReader::new(
+                                upstream,
+                                Arc::clone(&usage_collector),
+                                tool_name_restore_map.cloned(),
+                            ),
+                            None,
+                            None,
+                        );
+                        request.respond(response).err().map(|err| err.to_string())
+                    } else {
+                        let response = Response::new(
+                            status,
+                            headers,
+                            OpenAICompletionsSseReader::new(upstream, Arc::clone(&usage_collector)),
+                            None,
+                            None,
+                        );
+                        request.respond(response).err().map(|err| err.to_string())
+                    };
                 let collector = usage_collector
                     .lock()
                     .map(|guard| guard.clone())

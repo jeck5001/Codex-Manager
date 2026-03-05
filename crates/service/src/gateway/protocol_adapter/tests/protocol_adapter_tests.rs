@@ -241,11 +241,9 @@ fn openai_chat_stream_chunk_restores_shortened_tool_name() {
             "name": "mcp__run_query_short"
         }
     });
-    let mapped = convert_openai_chat_stream_chunk_with_tool_name_restore_map(
-        &value,
-        Some(&restore_map),
-    )
-    .expect("map tool chunk");
+    let mapped =
+        convert_openai_chat_stream_chunk_with_tool_name_restore_map(&value, Some(&restore_map))
+            .expect("map tool chunk");
     assert_eq!(
         mapped
             .get("choices")
@@ -256,9 +254,7 @@ fn openai_chat_stream_chunk_restores_shortened_tool_name() {
             .and_then(|tool_call| tool_call.get("function"))
             .and_then(|function| function.get("name"))
             .and_then(serde_json::Value::as_str),
-        Some(
-            "mcp__tool_server_namespace_for_codex_manager_gateway_adapter_alignment__run_query"
-        )
+        Some("mcp__tool_server_namespace_for_codex_manager_gateway_adapter_alignment__run_query")
     );
 }
 

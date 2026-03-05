@@ -1,4 +1,6 @@
-use super::{extract_token_payload, resolve_logical_account_id, ExistingAccountIndex, ImportTokenPayload};
+use super::{
+    extract_token_payload, resolve_logical_account_id, ExistingAccountIndex, ImportTokenPayload,
+};
 use codexmanager_core::storage::{now_ts, Account, Storage};
 use serde_json::json;
 
