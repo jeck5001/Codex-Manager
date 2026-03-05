@@ -370,7 +370,9 @@ CODEXMANAGER_GATEWAY_KEEPALIVE_INTERVAL_SECS=180
 
 ## 联系方式
 
-![交流群](assets/images/group.jpg) 
-TG: https://t.me/+8o2Eu7GPMIFjNDM1
+<p align="center">
+  <img src="assets/images/group.jpg" alt="交流群二维码" width="280" />
+</p>
 
-有兴趣的可以关注我微信公众号 七线牛马
+- Telegram 交流群：<https://t.me/+8o2Eu7GPMIFjNDM1>
+- 微信公众号：七线牛马
