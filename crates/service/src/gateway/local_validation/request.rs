@@ -47,6 +47,7 @@ pub(super) fn build_local_validation_result(
     .map_err(|err| LocalValidationError::new(400, err))?;
     let mut path = adapted.path;
     let mut response_adapter = adapted.response_adapter;
+    let mut tool_name_restore_map = adapted.tool_name_restore_map;
     body = adapted.body;
     if api_key.protocol_type != PROTOCOL_ANTHROPIC_NATIVE
         && !normalized_path.starts_with("/v1/responses")
@@ -64,6 +65,7 @@ pub(super) fn build_local_validation_result(
         path = normalized_path.clone();
         body = original_body;
         response_adapter = super::super::ResponseAdapter::Passthrough;
+        tool_name_restore_map.clear();
     }
     // 中文注释：下游调用方的 stream 语义应在请求改写前确定；
     // 否则上游兼容改写（例如 /responses 强制 stream=true）会污染下游响应模式判断。
@@ -103,6 +105,7 @@ pub(super) fn build_local_validation_result(
         upstream_base_url: api_key.upstream_base_url,
         static_headers_json: api_key.static_headers_json,
         response_adapter,
+        tool_name_restore_map,
         request_method,
         key_id: api_key.id,
         model_for_log,

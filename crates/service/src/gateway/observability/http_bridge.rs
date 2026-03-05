@@ -1191,6 +1191,7 @@ pub(super) fn respond_with_upstream(
     upstream: reqwest::blocking::Response,
     _inflight_guard: AccountInFlightGuard,
     response_adapter: super::ResponseAdapter,
+    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
     is_stream: bool,
 ) -> Result<UpstreamResponseBridgeResult, String> {
     match response_adapter {
@@ -1411,7 +1412,11 @@ pub(super) fn respond_with_upstream(
                     let response = Response::new(
                         status,
                         headers,
-                        OpenAIChatCompletionsSseReader::new(upstream, Arc::clone(&usage_collector)),
+                        OpenAIChatCompletionsSseReader::new(
+                            upstream,
+                            Arc::clone(&usage_collector),
+                            tool_name_restore_map.cloned(),
+                        ),
                         None,
                         None,
                     );
@@ -1466,10 +1471,11 @@ pub(super) fn respond_with_upstream(
             if let Ok(value) = serde_json::from_slice::<Value>(upstream_body.as_ref()) {
                 merge_usage(&mut usage, parse_usage_from_json(&value));
             }
-            let (mut body, mut content_type) = match super::adapt_upstream_response(
+            let (mut body, mut content_type) = match super::adapt_upstream_response_with_tool_name_restore_map(
                 response_adapter,
                 upstream_content_type.as_deref(),
                 upstream_body.as_ref(),
+                tool_name_restore_map,
             ) {
                 Ok(result) => result,
                 Err(err) => (
@@ -2342,6 +2348,7 @@ struct OpenAIChatCompletionsSseReader {
     pending_frame_lines: Vec<String>,
     out_cursor: Cursor<Vec<u8>>,
     usage_collector: Arc<Mutex<PassthroughSseCollector>>,
+    tool_name_restore_map: Option<super::ToolNameRestoreMap>,
     stream_meta: OpenAIStreamMeta,
     emitted_text_delta: bool,
     emitted_assistant_role: bool,
@@ -2352,12 +2359,14 @@ impl OpenAIChatCompletionsSseReader {
     fn new(
         upstream: reqwest::blocking::Response,
         usage_collector: Arc<Mutex<PassthroughSseCollector>>,
+        tool_name_restore_map: Option<super::ToolNameRestoreMap>,
     ) -> Self {
         Self {
             upstream: BufReader::new(upstream),
             pending_frame_lines: Vec::new(),
             out_cursor: Cursor::new(Vec::new()),
             usage_collector,
+            tool_name_restore_map,
             stream_meta: OpenAIStreamMeta::default(),
             emitted_text_delta: false,
             emitted_assistant_role: false,
@@ -2448,7 +2457,10 @@ impl OpenAIChatCompletionsSseReader {
             return out.into_bytes();
         }
 
-        if let Some(mut mapped) = super::convert_openai_chat_stream_chunk(&value) {
+        if let Some(mut mapped) = super::convert_openai_chat_stream_chunk_with_tool_name_restore_map(
+            &value,
+            self.tool_name_restore_map.as_ref(),
+        ) {
             apply_openai_stream_meta_defaults(&mut mapped, &self.stream_meta);
             normalize_chat_chunk_delta_role(&mut mapped, &mut self.emitted_assistant_role);
             if map_chunk_has_chat_text(&mapped) {

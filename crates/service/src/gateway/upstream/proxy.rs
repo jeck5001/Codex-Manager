@@ -100,6 +100,7 @@ pub(in super::super) fn proxy_validated_request(
         upstream_base_url,
         static_headers_json,
         response_adapter,
+        tool_name_restore_map,
         request_method,
         key_id,
         model_for_log,
@@ -137,6 +138,7 @@ pub(in super::super) fn proxy_validated_request(
             &body,
             upstream_is_stream,
             response_adapter,
+            &tool_name_restore_map,
             model_for_log.as_deref(),
             reasoning_for_log.as_deref(),
             upstream_base_url.as_deref(),
@@ -520,6 +522,7 @@ pub(in super::super) fn proxy_validated_request(
                     resp,
                     guard,
                     response_adapter,
+                    Some(&tool_name_restore_map),
                     client_is_stream,
                 )?;
                 let bridge_output_text_len = bridge

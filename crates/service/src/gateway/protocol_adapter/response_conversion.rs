@@ -229,7 +229,59 @@ fn build_openai_chat_text_chunk(value: &Value, text: &str) -> Value {
     })
 }
 
-fn map_response_event_to_openai_chat_tool_chunk(value: &Value) -> Option<Value> {
+// 中文注释：请求侧可能把超长工具名缩短，这里在响应映射时按 restore_map 还原原始名称。
+fn restore_openai_tool_name(
+    name: &str,
+    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
+) -> String {
+    tool_name_restore_map
+        .and_then(|map| map.get(name))
+        .cloned()
+        .unwrap_or_else(|| name.to_string())
+}
+
+fn restore_openai_tool_name_in_tool_call(
+    tool_call: &mut Value,
+    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
+) {
+    let Some(function_obj) = tool_call.get_mut("function").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let Some(name) = function_obj.get("name").and_then(Value::as_str) else {
+        return;
+    };
+    let restored_name = restore_openai_tool_name(name, tool_name_restore_map);
+    function_obj.insert("name".to_string(), Value::String(restored_name));
+}
+
+fn restore_openai_tool_name_in_chat_choice(
+    choice: &mut Value,
+    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
+) {
+    if let Some(tool_calls) = choice
+        .get_mut("message")
+        .and_then(|message| message.get_mut("tool_calls"))
+        .and_then(Value::as_array_mut)
+    {
+        for tool_call in tool_calls {
+            restore_openai_tool_name_in_tool_call(tool_call, tool_name_restore_map);
+        }
+    }
+    if let Some(tool_calls) = choice
+        .get_mut("delta")
+        .and_then(|delta| delta.get_mut("tool_calls"))
+        .and_then(Value::as_array_mut)
+    {
+        for tool_call in tool_calls {
+            restore_openai_tool_name_in_tool_call(tool_call, tool_name_restore_map);
+        }
+    }
+}
+
+fn map_response_event_to_openai_chat_tool_chunk(
+    value: &Value,
+    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
+) -> Option<Value> {
     let chunk_type = value.get("type").and_then(Value::as_str)?;
     let tool_call = match chunk_type {
         "response.output_item.added" | "response.output_item.done" => {
@@ -254,8 +306,8 @@ fn map_response_event_to_openai_chat_tool_chunk(value: &Value) -> Option<Value> 
             let name = item
                 .get("name")
                 .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
+                .map(|raw| restore_openai_tool_name(raw, tool_name_restore_map))
+                .unwrap_or_default();
             let arguments = if chunk_type == "response.output_item.added" {
                 String::new()
             } else {
@@ -566,7 +618,7 @@ fn convert_openai_json_to_completions(body: &[u8]) -> Result<(Vec<u8>, &'static 
         .is_some_and(|kind| kind == "response")
         || value.get("output").is_some()
     {
-        let chat_mapped = map_openai_response_to_chat_completion(&value);
+        let chat_mapped = map_openai_response_to_chat_completion(&value, None);
         map_chat_response_to_completions(&chat_mapped)
     } else {
         map_chat_response_to_completions(&value)
@@ -716,7 +768,7 @@ fn convert_openai_sse_to_completions_json(body: &[u8]) -> Result<(Vec<u8>, &'sta
 
     if text_out.is_empty() {
         if let Some(response) = completed_response.as_ref() {
-            let chat_completion = map_openai_response_to_chat_completion(response);
+            let chat_completion = map_openai_response_to_chat_completion(response, None);
             let completion = map_chat_response_to_completions(&chat_completion);
             if let Some(v) = completion.get("id").and_then(Value::as_str) {
                 if !v.is_empty() {
@@ -838,13 +890,22 @@ fn append_text_from_response_output_item(item_obj: &Map<String, Value>, out: &mu
     }
 }
 
-fn map_openai_response_to_chat_completion(value: &Value) -> Value {
+fn map_openai_response_to_chat_completion(
+    value: &Value,
+    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
+) -> Value {
     if value
         .get("object")
         .and_then(Value::as_str)
         .is_some_and(|kind| kind == "chat.completion")
     {
-        return value.clone();
+        let mut cloned = value.clone();
+        if let Some(choices) = cloned.get_mut("choices").and_then(Value::as_array_mut) {
+            for choice in choices {
+                restore_openai_tool_name_in_chat_choice(choice, tool_name_restore_map);
+            }
+        }
+        return cloned;
     }
     let source = value.get("response").unwrap_or(value);
     let id = source
@@ -892,7 +953,7 @@ fn map_openai_response_to_chat_completion(value: &Value) -> Value {
                 let name = item_obj
                     .get("name")
                     .and_then(Value::as_str)
-                    .map(str::to_string)
+                    .map(|raw| restore_openai_tool_name(raw, tool_name_restore_map))
                     .unwrap_or_else(|| "tool".to_string());
                 let arguments = item_obj
                     .get("arguments")
@@ -956,13 +1017,27 @@ fn map_openai_response_to_chat_completion(value: &Value) -> Value {
     Value::Object(out)
 }
 
+#[allow(dead_code)]
 pub(super) fn convert_openai_chat_stream_chunk(value: &Value) -> Option<Value> {
+    convert_openai_chat_stream_chunk_with_tool_name_restore_map(value, None)
+}
+
+pub(super) fn convert_openai_chat_stream_chunk_with_tool_name_restore_map(
+    value: &Value,
+    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
+) -> Option<Value> {
     if value
         .get("object")
         .and_then(Value::as_str)
         .is_some_and(|kind| kind == "chat.completion.chunk")
     {
-        return Some(value.clone());
+        let mut cloned = value.clone();
+        if let Some(choices) = cloned.get_mut("choices").and_then(Value::as_array_mut) {
+            for choice in choices {
+                restore_openai_tool_name_in_chat_choice(choice, tool_name_restore_map);
+            }
+        }
+        return Some(cloned);
     }
 
     if let Some(chunk_type) = value.get("type").and_then(Value::as_str) {
@@ -979,7 +1054,9 @@ pub(super) fn convert_openai_chat_stream_chunk(value: &Value) -> Option<Value> {
                 return Some(build_openai_chat_text_chunk(value, text.as_str()));
             }
             "response.output_item.added" | "response.output_item.done" => {
-                if let Some(tool_chunk) = map_response_event_to_openai_chat_tool_chunk(value) {
+                if let Some(tool_chunk) =
+                    map_response_event_to_openai_chat_tool_chunk(value, tool_name_restore_map)
+                {
                     return Some(tool_chunk);
                 }
                 let text = extract_stream_event_text(value);
@@ -989,7 +1066,7 @@ pub(super) fn convert_openai_chat_stream_chunk(value: &Value) -> Option<Value> {
                 return Some(build_openai_chat_text_chunk(value, text.as_str()));
             }
             "response.function_call_arguments.delta" | "response.function_call_arguments.done" => {
-                return map_response_event_to_openai_chat_tool_chunk(value);
+                return map_response_event_to_openai_chat_tool_chunk(value, tool_name_restore_map);
             }
             "response.completed" | "response.done" => {
                 let response = value.get("response").unwrap_or(&Value::Null);
@@ -1050,7 +1127,9 @@ pub(super) fn convert_openai_chat_stream_chunk(value: &Value) -> Option<Value> {
             _ => {}
         }
 
-        if let Some(tool_chunk) = map_response_event_to_openai_chat_tool_chunk(value) {
+        if let Some(tool_chunk) =
+            map_response_event_to_openai_chat_tool_chunk(value, tool_name_restore_map)
+        {
             return Some(tool_chunk);
         }
         let text = extract_stream_event_text(value);
@@ -1061,10 +1140,13 @@ pub(super) fn convert_openai_chat_stream_chunk(value: &Value) -> Option<Value> {
     None
 }
 
-fn convert_openai_json_to_chat_completions(body: &[u8]) -> Result<(Vec<u8>, &'static str), String> {
+fn convert_openai_json_to_chat_completions(
+    body: &[u8],
+    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
+) -> Result<(Vec<u8>, &'static str), String> {
     let value: Value =
         serde_json::from_slice(body).map_err(|_| "invalid upstream json payload".to_string())?;
-    let mapped = map_openai_response_to_chat_completion(&value);
+    let mapped = map_openai_response_to_chat_completion(&value, tool_name_restore_map);
     let bytes = serde_json::to_vec(&mapped)
         .map_err(|err| format!("serialize chat.completion json failed: {err}"))?;
     Ok((bytes, "application/json"))
@@ -1072,6 +1154,7 @@ fn convert_openai_json_to_chat_completions(body: &[u8]) -> Result<(Vec<u8>, &'st
 
 fn convert_openai_sse_to_chat_completions_json(
     body: &[u8],
+    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
 ) -> Result<(Vec<u8>, &'static str), String> {
     let text = std::str::from_utf8(body).map_err(|_| "invalid upstream sse bytes".to_string())?;
     let mut id = String::new();
@@ -1148,7 +1231,9 @@ fn convert_openai_sse_to_chat_completions_json(
                 *completed_response = Some(response.clone());
             }
         }
-        let Some(chunk) = convert_openai_chat_stream_chunk(&value) else {
+        let Some(chunk) =
+            convert_openai_chat_stream_chunk_with_tool_name_restore_map(&value, tool_name_restore_map)
+        else {
             return;
         };
         if let Some(v) = chunk.get("id").and_then(Value::as_str) {
@@ -1219,7 +1304,7 @@ fn convert_openai_sse_to_chat_completions_json(
 
     if content.is_empty() {
         if let Some(response) = completed_response.as_ref() {
-            let completion = map_openai_response_to_chat_completion(response);
+            let completion = map_openai_response_to_chat_completion(response, tool_name_restore_map);
             if let Some(v) = completion.get("id").and_then(Value::as_str) {
                 if !v.is_empty() {
                     id = v.to_string();
@@ -1308,6 +1393,7 @@ pub(super) fn adapt_upstream_response(
     adapter: ResponseAdapter,
     upstream_content_type: Option<&str>,
     body: &[u8],
+    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
 ) -> Result<(Vec<u8>, &'static str), String> {
     match adapter {
         ResponseAdapter::Passthrough => Ok((body.to_vec(), "application/octet-stream")),
@@ -1350,9 +1436,9 @@ pub(super) fn adapt_upstream_response(
                 .map(|value| value.to_ascii_lowercase().starts_with("text/event-stream"))
                 .unwrap_or(false);
             if is_sse || looks_like_sse_payload(body) {
-                return convert_openai_sse_to_chat_completions_json(body);
+                return convert_openai_sse_to_chat_completions_json(body, tool_name_restore_map);
             }
-            convert_openai_json_to_chat_completions(body)
+            convert_openai_json_to_chat_completions(body, tool_name_restore_map)
         }
         ResponseAdapter::OpenAICompletionsJson | ResponseAdapter::OpenAICompletionsSse => {
             if upstream_content_type.is_some_and(is_html_content_type) {

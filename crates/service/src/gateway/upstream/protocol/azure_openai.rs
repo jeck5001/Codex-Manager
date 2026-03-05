@@ -56,6 +56,7 @@ pub(in super::super) fn proxy_azure_request(
     body: &Bytes,
     is_stream: bool,
     response_adapter: super::super::super::ResponseAdapter,
+    tool_name_restore_map: &super::super::super::ToolNameRestoreMap,
     model_for_log: Option<&str>,
     reasoning_for_log: Option<&str>,
     upstream_base_url: Option<&str>,
@@ -323,6 +324,7 @@ pub(in super::super) fn proxy_azure_request(
         upstream,
         inflight_guard,
         response_adapter,
+        Some(tool_name_restore_map),
         is_stream,
     )?;
     let bridge_ok = bridge.is_ok(is_stream);

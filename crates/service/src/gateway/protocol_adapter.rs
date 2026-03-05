@@ -5,6 +5,8 @@ mod prompt_cache;
 mod request_mapping;
 mod response_conversion;
 
+pub(super) type ToolNameRestoreMap = std::collections::BTreeMap<String, String>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ResponseAdapter {
     Passthrough,
@@ -21,6 +23,7 @@ pub(super) struct AdaptedGatewayRequest {
     pub(super) path: String,
     pub(super) body: Vec<u8>,
     pub(super) response_adapter: ResponseAdapter,
+    pub(super) tool_name_restore_map: ToolNameRestoreMap,
 }
 
 pub(super) fn adapt_request_for_protocol(
@@ -31,7 +34,7 @@ pub(super) fn adapt_request_for_protocol(
     if protocol_type == PROTOCOL_OPENAI_COMPAT
         && (path == "/v1/chat/completions" || path.starts_with("/v1/chat/completions?"))
     {
-        let (adapted_body, request_stream) =
+        let (adapted_body, request_stream, tool_name_restore_map) =
             request_mapping::convert_openai_chat_completions_request(&body)?;
         let adapted_path = if let Some(suffix) = path.strip_prefix("/v1/chat/completions") {
             format!("/v1/responses{suffix}")
@@ -46,6 +49,7 @@ pub(super) fn adapt_request_for_protocol(
             } else {
                 ResponseAdapter::OpenAIChatCompletionsJson
             },
+            tool_name_restore_map,
         });
     }
 
@@ -53,7 +57,7 @@ pub(super) fn adapt_request_for_protocol(
         && (path == "/v1/completions" || path.starts_with("/v1/completions?"))
     {
         let (chat_body, _) = request_mapping::convert_openai_completions_request(&body)?;
-        let (adapted_body, request_stream) =
+        let (adapted_body, request_stream, tool_name_restore_map) =
             request_mapping::convert_openai_chat_completions_request(&chat_body)?;
         let adapted_path = if let Some(suffix) = path.strip_prefix("/v1/completions") {
             format!("/v1/responses{suffix}")
@@ -68,6 +72,7 @@ pub(super) fn adapt_request_for_protocol(
             } else {
                 ResponseAdapter::OpenAICompletionsJson
             },
+            tool_name_restore_map,
         });
     }
 
@@ -76,6 +81,7 @@ pub(super) fn adapt_request_for_protocol(
             path: path.to_string(),
             body,
             response_adapter: ResponseAdapter::Passthrough,
+            tool_name_restore_map: ToolNameRestoreMap::new(),
         });
     }
 
@@ -93,6 +99,7 @@ pub(super) fn adapt_request_for_protocol(
             } else {
                 ResponseAdapter::AnthropicJson
             },
+            tool_name_restore_map: ToolNameRestoreMap::new(),
         });
     }
 
@@ -100,6 +107,7 @@ pub(super) fn adapt_request_for_protocol(
         path: path.to_string(),
         body,
         response_adapter: ResponseAdapter::Passthrough,
+        tool_name_restore_map: ToolNameRestoreMap::new(),
     })
 }
 
@@ -108,7 +116,21 @@ pub(super) fn adapt_upstream_response(
     upstream_content_type: Option<&str>,
     body: &[u8],
 ) -> Result<(Vec<u8>, &'static str), String> {
-    response_conversion::adapt_upstream_response(adapter, upstream_content_type, body)
+    response_conversion::adapt_upstream_response(adapter, upstream_content_type, body, None)
+}
+
+pub(super) fn adapt_upstream_response_with_tool_name_restore_map(
+    adapter: ResponseAdapter,
+    upstream_content_type: Option<&str>,
+    body: &[u8],
+    tool_name_restore_map: Option<&ToolNameRestoreMap>,
+) -> Result<(Vec<u8>, &'static str), String> {
+    response_conversion::adapt_upstream_response(
+        adapter,
+        upstream_content_type,
+        body,
+        tool_name_restore_map,
+    )
 }
 
 pub(super) fn build_anthropic_error_body(message: &str) -> Vec<u8> {
@@ -119,8 +141,19 @@ pub(super) fn convert_openai_completions_stream_chunk(value: &Value) -> Option<V
     response_conversion::convert_openai_completions_stream_chunk(value)
 }
 
+#[allow(dead_code)]
 pub(super) fn convert_openai_chat_stream_chunk(value: &Value) -> Option<Value> {
     response_conversion::convert_openai_chat_stream_chunk(value)
+}
+
+pub(super) fn convert_openai_chat_stream_chunk_with_tool_name_restore_map(
+    value: &Value,
+    tool_name_restore_map: Option<&ToolNameRestoreMap>,
+) -> Option<Value> {
+    response_conversion::convert_openai_chat_stream_chunk_with_tool_name_restore_map(
+        value,
+        tool_name_restore_map,
+    )
 }
 
 #[cfg(test)]

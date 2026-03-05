@@ -52,8 +52,9 @@ pub(crate) use metrics::{
     begin_rpc_request, duration_to_millis, gateway_metrics_prometheus, record_usage_refresh_outcome,
 };
 use protocol_adapter::{
-    adapt_request_for_protocol, adapt_upstream_response, build_anthropic_error_body,
-    convert_openai_chat_stream_chunk, convert_openai_completions_stream_chunk, ResponseAdapter,
+    adapt_request_for_protocol, adapt_upstream_response, adapt_upstream_response_with_tool_name_restore_map,
+    build_anthropic_error_body, convert_openai_chat_stream_chunk_with_tool_name_restore_map,
+    convert_openai_completions_stream_chunk, ResponseAdapter, ToolNameRestoreMap,
 };
 pub(super) use request_helpers::{
     is_html_content_type, is_upstream_challenge_response, normalize_models_path,

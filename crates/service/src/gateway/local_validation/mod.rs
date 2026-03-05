@@ -19,6 +19,7 @@ pub(super) struct LocalValidationResult {
     pub(super) upstream_base_url: Option<String>,
     pub(super) static_headers_json: Option<String>,
     pub(super) response_adapter: super::ResponseAdapter,
+    pub(super) tool_name_restore_map: super::ToolNameRestoreMap,
     pub(super) request_method: String,
     pub(super) key_id: String,
     pub(super) model_for_log: Option<String>,

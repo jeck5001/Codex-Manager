@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::prompt_cache;
 
@@ -9,6 +10,152 @@ const DEFAULT_ANTHROPIC_INSTRUCTIONS: &str =
 const MAX_ANTHROPIC_TOOLS: usize = 16;
 const DEFAULT_COMPLETIONS_PROMPT: &str = "Complete this:";
 const DEFAULT_OPENAI_REASONING: &str = "medium";
+const MAX_OPENAI_TOOL_NAME_LEN: usize = 64;
+
+fn shorten_openai_tool_name_candidate(name: &str) -> String {
+    if name.len() <= MAX_OPENAI_TOOL_NAME_LEN {
+        return name.to_string();
+    }
+    if name.starts_with("mcp__") {
+        if let Some(idx) = name.rfind("__") {
+            if idx > 0 {
+                let mut candidate = format!("mcp__{}", &name[idx + 2..]);
+                if candidate.len() > MAX_OPENAI_TOOL_NAME_LEN {
+                    candidate.truncate(MAX_OPENAI_TOOL_NAME_LEN);
+                }
+                return candidate;
+            }
+        }
+    }
+    name.chars().take(MAX_OPENAI_TOOL_NAME_LEN).collect()
+}
+
+fn collect_openai_tool_names(obj: &serde_json::Map<String, Value>) -> Vec<String> {
+    let mut names = Vec::new();
+
+    if let Some(tools) = obj.get("tools").and_then(Value::as_array) {
+        for tool in tools {
+            let Some(tool_obj) = tool.as_object() else {
+                continue;
+            };
+            let tool_type = tool_obj
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !tool_type.is_empty() && tool_type != "function" {
+                continue;
+            }
+            let name = tool_obj
+                .get("function")
+                .and_then(|function| function.get("name"))
+                .or_else(|| tool_obj.get("name"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            if let Some(name) = name {
+                names.push(name.to_string());
+            }
+        }
+    }
+
+    if let Some(name) = obj
+        .get("tool_choice")
+        .and_then(Value::as_object)
+        .and_then(|tool_choice| {
+            let tool_type = tool_choice
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if tool_type != "function" {
+                return None;
+            }
+            tool_choice
+                .get("function")
+                .and_then(|function| function.get("name"))
+                .or_else(|| tool_choice.get("name"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+    {
+        names.push(name.to_string());
+    }
+
+    if let Some(messages) = obj.get("messages").and_then(Value::as_array) {
+        for message in messages {
+            let Some(message_obj) = message.as_object() else {
+                continue;
+            };
+            if message_obj.get("role").and_then(Value::as_str) != Some("assistant") {
+                continue;
+            }
+            let Some(tool_calls) = message_obj.get("tool_calls").and_then(Value::as_array) else {
+                continue;
+            };
+            for tool_call in tool_calls {
+                let Some(name) = tool_call
+                    .get("function")
+                    .and_then(|function| function.get("name"))
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                else {
+                    continue;
+                };
+                names.push(name.to_string());
+            }
+        }
+    }
+
+    names
+}
+
+fn build_openai_tool_name_map(obj: &serde_json::Map<String, Value>) -> BTreeMap<String, String> {
+    let mut unique_names = BTreeSet::new();
+    for name in collect_openai_tool_names(obj) {
+        unique_names.insert(name);
+    }
+
+    let mut used = BTreeSet::new();
+    let mut out = BTreeMap::new();
+    for name in unique_names {
+        let base = shorten_openai_tool_name_candidate(name.as_str());
+        let mut candidate = base.clone();
+        let mut suffix = 1usize;
+        while used.contains(&candidate) {
+            let suffix_text = format!("_{suffix}");
+            let mut truncated = base.clone();
+            let limit = MAX_OPENAI_TOOL_NAME_LEN.saturating_sub(suffix_text.len());
+            if truncated.len() > limit {
+                truncated = truncated.chars().take(limit).collect();
+            }
+            candidate = format!("{truncated}{suffix_text}");
+            suffix += 1;
+        }
+        used.insert(candidate.clone());
+        out.insert(name, candidate);
+    }
+    out
+}
+
+fn shorten_openai_tool_name_with_map(name: &str, tool_name_map: &BTreeMap<String, String>) -> String {
+    tool_name_map
+        .get(name)
+        .cloned()
+        .unwrap_or_else(|| shorten_openai_tool_name_candidate(name))
+}
+
+fn build_openai_tool_name_restore_map(
+    tool_name_map: &BTreeMap<String, String>,
+) -> super::ToolNameRestoreMap {
+    let mut restore_map = super::ToolNameRestoreMap::new();
+    for (original, shortened) in tool_name_map {
+        if original != shortened {
+            restore_map.insert(shortened.clone(), original.clone());
+        }
+    }
+    restore_map
+}
 
 fn normalize_openai_role_for_responses(role: &str) -> Option<&'static str> {
     match role {
@@ -142,7 +289,10 @@ fn normalize_openai_chat_messages_for_responses(messages: &[Value]) -> Vec<Value
     normalized
 }
 
-fn map_openai_chat_tools_to_responses(obj: &serde_json::Map<String, Value>) -> Option<Vec<Value>> {
+fn map_openai_chat_tools_to_responses(
+    obj: &serde_json::Map<String, Value>,
+    tool_name_map: &BTreeMap<String, String>,
+) -> Option<Vec<Value>> {
     let tools = obj.get("tools")?.as_array()?;
     let mut out = Vec::new();
     for tool in tools {
@@ -168,9 +318,10 @@ fn map_openai_chat_tools_to_responses(obj: &serde_json::Map<String, Value>) -> O
         else {
             continue;
         };
+        let mapped_name = shorten_openai_tool_name_with_map(name, tool_name_map);
         let mut mapped = serde_json::Map::new();
         mapped.insert("type".to_string(), Value::String("function".to_string()));
-        mapped.insert("name".to_string(), Value::String(name.to_string()));
+        mapped.insert("name".to_string(), Value::String(mapped_name));
         if let Some(description) = function.get("description") {
             mapped.insert("description".to_string(), description.clone());
         }
@@ -185,7 +336,10 @@ fn map_openai_chat_tools_to_responses(obj: &serde_json::Map<String, Value>) -> O
     Some(out)
 }
 
-fn map_openai_chat_tool_choice_to_responses(value: &Value) -> Option<Value> {
+fn map_openai_chat_tool_choice_to_responses(
+    value: &Value,
+    tool_name_map: &BTreeMap<String, String>,
+) -> Option<Value> {
     if let Some(raw) = value.as_str() {
         return Some(Value::String(raw.to_string()));
     }
@@ -201,21 +355,23 @@ fn map_openai_chat_tool_choice_to_responses(value: &Value) -> Option<Value> {
         .or_else(|| obj.get("name").and_then(Value::as_str))
         .map(str::trim)
         .filter(|candidate| !candidate.is_empty())?;
+    let mapped_name = shorten_openai_tool_name_with_map(name, tool_name_map);
     Some(json!({
         "type": "function",
-        "name": name
+        "name": mapped_name
     }))
 }
 
 pub(super) fn convert_openai_chat_completions_request(
     body: &[u8],
-) -> Result<(Vec<u8>, bool), String> {
+) -> Result<(Vec<u8>, bool, super::ToolNameRestoreMap), String> {
     let payload: Value = serde_json::from_slice(body)
         .map_err(|_| "invalid chat.completions request json".to_string())?;
     let Some(obj) = payload.as_object() else {
         return Err("chat.completions request body must be an object".to_string());
     };
 
+    let tool_name_map = build_openai_tool_name_map(obj);
     let stream = obj.get("stream").and_then(Value::as_bool).unwrap_or(false);
     let source_messages = obj
         .get("messages")
@@ -223,7 +379,7 @@ pub(super) fn convert_openai_chat_completions_request(
         .ok_or_else(|| "chat.completions messages field is required".to_string())?;
     let normalized_messages = normalize_openai_chat_messages_for_responses(source_messages);
     let (instructions, input_items) =
-        convert_chat_messages_to_responses_input(&normalized_messages)?;
+        convert_chat_messages_to_responses_input(&normalized_messages, &tool_name_map)?;
 
     let mut out = serde_json::Map::new();
     if let Some(model) = obj.get("model") {
@@ -282,14 +438,14 @@ pub(super) fn convert_openai_chat_completions_request(
         )]),
     );
 
-    if let Some(tools) = map_openai_chat_tools_to_responses(obj) {
+    if let Some(tools) = map_openai_chat_tools_to_responses(obj, &tool_name_map) {
         if !tools.is_empty() {
             out.insert("tools".to_string(), Value::Array(tools));
         }
     }
     if let Some(tool_choice) = obj
         .get("tool_choice")
-        .and_then(map_openai_chat_tool_choice_to_responses)
+        .and_then(|value| map_openai_chat_tool_choice_to_responses(value, &tool_name_map))
     {
         out.insert("tool_choice".to_string(), tool_choice);
     }
@@ -297,8 +453,9 @@ pub(super) fn convert_openai_chat_completions_request(
         out.insert("text".to_string(), json!({ "format": text }));
     }
 
+    let tool_name_restore_map = build_openai_tool_name_restore_map(&tool_name_map);
     serde_json::to_vec(&Value::Object(out))
-        .map(|bytes| (bytes, stream))
+        .map(|bytes| (bytes, stream, tool_name_restore_map))
         .map_err(|err| format!("convert chat.completions request failed: {err}"))
 }
 
@@ -419,7 +576,9 @@ pub(super) fn convert_anthropic_messages_request(body: &[u8]) -> Result<(Vec<u8>
         }
     }
 
-    let (instructions, input_items) = convert_chat_messages_to_responses_input(&messages)?;
+    let empty_tool_name_map = BTreeMap::new();
+    let (instructions, input_items) =
+        convert_chat_messages_to_responses_input(&messages, &empty_tool_name_map)?;
     let mut out = serde_json::Map::new();
     let resolved_model = resolve_anthropic_upstream_model(obj);
     out.insert("model".to_string(), Value::String(resolved_model));
@@ -687,6 +846,7 @@ fn flush_user_text(messages: &mut Vec<Value>, pending_text: &mut String) {
 
 fn convert_chat_messages_to_responses_input(
     messages: &[Value],
+    tool_name_map: &BTreeMap<String, String>,
 ) -> Result<(Option<String>, Vec<Value>), String> {
     let mut instructions_parts = Vec::new();
     let mut input_items = Vec::new();
@@ -748,6 +908,8 @@ fn convert_chat_messages_to_responses_input(
                         else {
                             continue;
                         };
+                        let function_name =
+                            shorten_openai_tool_name_with_map(function_name, tool_name_map);
                         let arguments = tool_obj
                             .get("function")
                             .and_then(|value| value.get("arguments"))
