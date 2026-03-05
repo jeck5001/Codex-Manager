@@ -10,7 +10,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# 中文注释：使用超长工具名验证“请求侧缩短 + 响应侧还原”是否生效。
+# Use an intentionally long name to validate request-side shortening
+# and response-side name restoration.
 $LongToolName =
     "mcp__tool_server_namespace_for_codex_manager_gateway_adapter_alignment__very_long_tool_operation_name"
 
@@ -28,7 +29,7 @@ function New-ChatBodyJson
         messages = @(
             @{
                 role = "user"
-                content = "请调用指定工具，参数 path=README.md，并返回工具调用。"
+                content = 'Call the specified tool with {"path":"README.md"} and return tool call.'
             }
         )
         tools = @(
@@ -107,6 +108,19 @@ function Print-NonStreamResult
     Write-Output ($ResponseObject | ConvertTo-Json -Depth 100)
 }
 
+function Has-Property
+{
+    param(
+        $InputObject,
+        [string]$PropertyName
+    )
+    if ($null -eq $InputObject)
+    {
+        return $false
+    }
+    return ($InputObject.PSObject.Properties.Match($PropertyName).Count -gt 0)
+}
+
 function Print-StreamResult
 {
     param(
@@ -139,19 +153,25 @@ function Print-StreamResult
             continue
         }
 
-        if ($obj.usage)
+        if ((Has-Property -InputObject $obj -PropertyName "usage") -and $null -ne $obj.usage)
         {
             $usageSeen = $true
         }
 
-        if ($obj.choices -and $obj.choices.Count -gt 0)
+        if ((Has-Property -InputObject $obj -PropertyName "choices") -and $obj.choices -and $obj.choices.Count -gt 0)
         {
             $choice0 = $obj.choices[0]
-            if ($choice0.finish_reason)
+            if ((Has-Property -InputObject $choice0 -PropertyName "finish_reason") -and $choice0.finish_reason)
             {
                 $finishReason = [string]$choice0.finish_reason
             }
-            if ($choice0.delta -and $choice0.delta.tool_calls -and $choice0.delta.tool_calls.Count -gt 0)
+            if (
+                (Has-Property -InputObject $choice0 -PropertyName "delta") -and
+                $choice0.delta -and
+                (Has-Property -InputObject $choice0.delta -PropertyName "tool_calls") -and
+                $choice0.delta.tool_calls -and
+                $choice0.delta.tool_calls.Count -gt 0
+            )
             {
                 $toolHit = $true
                 $name = [string]$choice0.delta.tool_calls[0].'function'.name
@@ -177,6 +197,21 @@ function Print-StreamResult
     $Lines | ForEach-Object { Write-Output $_ }
 }
 
+function Join-BaseAndEndpoint
+{
+    param(
+        [string]$BaseUrl,
+        [string]$Path
+    )
+    $base = $BaseUrl.TrimEnd("/")
+    $endpoint = $Path
+    if ($base.ToLower().EndsWith("/v1") -and $endpoint.ToLower().StartsWith("/v1/"))
+    {
+        $endpoint = $endpoint.Substring(3)
+    }
+    return ($base + $endpoint)
+}
+
 function Invoke-ChatProbe
 {
     param(
@@ -189,7 +224,7 @@ function Invoke-ChatProbe
         [string]$ExpectedToolName
     )
 
-    $url = ($BaseUrl.TrimEnd("/") + $UrlPath)
+    $url = Join-BaseAndEndpoint -BaseUrl $BaseUrl -Path $UrlPath
     if (-not $EnableStream)
     {
         $headers = @{
@@ -200,7 +235,7 @@ function Invoke-ChatProbe
         return
     }
 
-    # 中文注释：流式场景使用 curl 读取 SSE 原始帧，便于观察 delta.tool_calls。
+    # Use curl for raw SSE frames to inspect delta.tool_calls.
     if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue))
     {
         throw "curl.exe not found"
@@ -211,7 +246,8 @@ function Invoke-ChatProbe
     $outFile = Join-Path $tempDir "stream.txt"
     try
     {
-        [System.IO.File]::WriteAllText($bodyFile, $BodyJson, [System.Text.Encoding]::UTF8)
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($bodyFile, $BodyJson, $utf8NoBom)
         $args = @(
             "-sS", "-N",
             "-o", $outFile,
