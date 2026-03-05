@@ -192,11 +192,7 @@ jobs:
 
           $portableBinary = Join-Path $portableDir "CodexManager-portable.exe"
           Copy-Item -Force $source $portableBinary
-
-          $zipPath = Join-Path $portableDir "CodexManager-windows-portable.zip"
-          if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
-          Compress-Archive -Path $portableBinary -DestinationPath $zipPath
-          Write-Host "portable package: $zipPath"
+          Write-Host "portable binary: $portableBinary"
 
       - name: Build service binaries
         shell: pwsh
@@ -246,7 +242,7 @@ jobs:
           path: |
             apps/src-tauri/target/release/bundle/**/*.exe
             apps/src-tauri/target/release/bundle/**/*.msi
-            apps/src-tauri/target/release/portable/*.zip
+            apps/src-tauri/target/release/portable/*.exe
           if-no-files-found: error
           compression-level: 0
 
