@@ -1310,8 +1310,13 @@ pub(super) fn respond_with_upstream(
                 let upstream_error_hint =
                     extract_error_hint_from_body(status.0, upstream_body.as_ref());
                 let len = Some(upstream_body.len());
-                let response =
-                    Response::new(status, headers, std::io::Cursor::new(upstream_body.to_vec()), len, None);
+                let response = Response::new(
+                    status,
+                    headers,
+                    std::io::Cursor::new(upstream_body.to_vec()),
+                    len,
+                    None,
+                );
                 let delivery_error = request.respond(response).err().map(|err| err.to_string());
                 return Ok(UpstreamResponseBridgeResult {
                     usage,

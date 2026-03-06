@@ -220,6 +220,7 @@ dependencies = [
 name = "codexmanager-start"
 version = "0.1.5"
 dependencies = [
+ "codexmanager-service",
  "ctrlc",
  "webbrowser",
  "winres",

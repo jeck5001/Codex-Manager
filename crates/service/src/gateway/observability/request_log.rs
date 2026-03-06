@@ -38,7 +38,10 @@ const MODEL_PRICE_PER_1K_TOKENS: &[(&str, f64, f64, f64)] = &[
     ("claude-3", 0.003, 0.003, 0.015),
 ];
 
-fn resolve_model_price_per_1k(normalized: &str, input_tokens_total: i64) -> Option<(f64, f64, f64)> {
+fn resolve_model_price_per_1k(
+    normalized: &str,
+    input_tokens_total: i64,
+) -> Option<(f64, f64, f64)> {
     // OpenAI 官方定价：gpt-5.4 / gpt-5.4-pro 在输入超过 272K 时切换到更高档位。
     // gpt-5.4-pro 官方未提供 cached input 单价，这里按普通输入价计算，避免低估费用。
     if normalized.starts_with("gpt-5.4-pro") {

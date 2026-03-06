@@ -2289,7 +2289,10 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
     assert!(!final_logs[0].trace_id.as_deref().unwrap_or("").is_empty());
     assert_eq!(final_logs[0].original_path.as_deref(), Some("/v1/messages"));
     assert_eq!(final_logs[0].adapted_path.as_deref(), Some("/v1/responses"));
-    assert_eq!(final_logs[0].response_adapter.as_deref(), Some("AnthropicJson"));
+    assert_eq!(
+        final_logs[0].response_adapter.as_deref(),
+        Some("AnthropicJson")
+    );
 
     let trace_text = fs::read_to_string(&trace_log_path).expect("read trace log");
     assert!(trace_text.contains("event=ATTEMPT_RESULT"));
