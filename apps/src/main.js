@@ -247,14 +247,18 @@ async function applyCloseToTrayOnCloseSetting(enabled, { silent = true } = {}) {
   try {
     const applied = await appCloseToTrayOnCloseSet(normalized);
     if (!silent) {
-      showToast(applied ? "已开启：关闭窗口将最小化到托盘" : "已关闭：关闭窗口将直接退出");
+      if (normalized && !applied) {
+        showToast("系统托盘不可用，无法启用关闭时最小化到托盘", "error");
+      } else {
+        showToast(applied ? "已开启：关闭窗口将最小化到托盘" : "已关闭：关闭窗口将直接退出");
+      }
     }
     return Boolean(applied);
   } catch (err) {
     if (!silent) {
       showToast(`设置失败：${normalizeErrorMessage(err)}`, "error");
     }
-    return normalized;
+    throw err;
   }
 }
 
@@ -276,7 +280,12 @@ async function initCloseToTrayOnCloseSetting() {
     }
   }
   setCloseToTrayOnCloseToggle(enabled);
-  const applied = await applyCloseToTrayOnCloseSetting(enabled, { silent: true });
+  let applied = enabled;
+  try {
+    applied = await applyCloseToTrayOnCloseSetting(enabled, { silent: true });
+  } catch {
+    applied = enabled;
+  }
   saveCloseToTrayOnCloseSetting(applied);
   setCloseToTrayOnCloseToggle(applied);
 }
@@ -1854,11 +1863,14 @@ function bindEvents() {
   if (dom.closeToTrayOnClose && dom.closeToTrayOnClose.dataset.bound !== "1") {
     dom.closeToTrayOnClose.dataset.bound = "1";
     dom.closeToTrayOnClose.addEventListener("change", () => {
+      const previousEnabled = readCloseToTrayOnCloseSetting();
       const enabled = Boolean(dom.closeToTrayOnClose.checked);
-      saveCloseToTrayOnCloseSetting(enabled);
       void applyCloseToTrayOnCloseSetting(enabled, { silent: false }).then((applied) => {
         saveCloseToTrayOnCloseSetting(applied);
         setCloseToTrayOnCloseToggle(applied);
+      }).catch(() => {
+        saveCloseToTrayOnCloseSetting(previousEnabled);
+        setCloseToTrayOnCloseToggle(previousEnabled);
       });
     });
   }

@@ -19,6 +19,7 @@ mod updater;
 const TRAY_MENU_SHOW_MAIN: &str = "tray_show_main";
 const TRAY_MENU_QUIT_APP: &str = "tray_quit_app";
 static APP_EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+static TRAY_AVAILABLE: AtomicBool = AtomicBool::new(false);
 static CLOSE_TO_TRAY_ON_CLOSE: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
@@ -469,11 +470,15 @@ async fn open_in_browser(url: String) -> Result<(), String> {
 
 #[tauri::command]
 fn app_close_to_tray_on_close_get() -> bool {
-  CLOSE_TO_TRAY_ON_CLOSE.load(Ordering::Relaxed)
+  CLOSE_TO_TRAY_ON_CLOSE.load(Ordering::Relaxed) && TRAY_AVAILABLE.load(Ordering::Relaxed)
 }
 
 #[tauri::command]
 fn app_close_to_tray_on_close_set(enabled: bool) -> bool {
+  if enabled && !TRAY_AVAILABLE.load(Ordering::Relaxed) {
+    CLOSE_TO_TRAY_ON_CLOSE.store(false, Ordering::Relaxed);
+    return false;
+  }
   CLOSE_TO_TRAY_ON_CLOSE.store(enabled, Ordering::Relaxed);
   enabled
 }
@@ -511,7 +516,12 @@ pub fn run() {
       if let Ok(log_dir) = app.path().app_log_dir() {
         log::info!("log dir: {}", log_dir.display());
       }
-      setup_tray(app.handle())?;
+      // 中文注释：系统托盘只是增强能力，初始化失败时不能阻塞主窗口启动。
+      if let Err(err) = setup_tray(app.handle()) {
+        TRAY_AVAILABLE.store(false, Ordering::Relaxed);
+        CLOSE_TO_TRAY_ON_CLOSE.store(false, Ordering::Relaxed);
+        log::warn!("tray setup unavailable, continue without tray: {}", err);
+      }
 
       Ok(())
     })
@@ -521,6 +531,10 @@ pub fn run() {
           return;
         }
         if !CLOSE_TO_TRAY_ON_CLOSE.load(Ordering::Relaxed) {
+          return;
+        }
+        if !TRAY_AVAILABLE.load(Ordering::Relaxed) {
+          CLOSE_TO_TRAY_ON_CLOSE.store(false, Ordering::Relaxed);
           return;
         }
         api.prevent_close();
@@ -587,20 +601,21 @@ pub fn run() {
     .build(tauri::generate_context!())
     .expect("error while building tauri application");
 
-  app.run(|app_handle, event| match event {
+  app.run(|_app_handle, event| match event {
     tauri::RunEvent::ExitRequested { .. } => {
       APP_EXIT_REQUESTED.store(true, Ordering::Relaxed);
       stop_service();
     }
     #[cfg(target_os = "macos")]
     tauri::RunEvent::Reopen { .. } => {
-      show_main_window(app_handle);
+      show_main_window(_app_handle);
     }
     _ => {}
   });
 }
 
 fn setup_tray(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
+  TRAY_AVAILABLE.store(false, Ordering::Relaxed);
   let show_main = MenuItem::with_id(app, TRAY_MENU_SHOW_MAIN, "显示主窗口", true, None::<&str>)?;
   let quit = MenuItem::with_id(app, TRAY_MENU_QUIT_APP, "退出", true, None::<&str>)?;
   let menu = Menu::with_items(app, &[&show_main, &quit])?;
@@ -632,6 +647,7 @@ fn setup_tray(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
     tray = tray.icon(icon.clone());
   }
   tray.build(app)?;
+  TRAY_AVAILABLE.store(true, Ordering::Relaxed);
   Ok(())
 }
 
