@@ -426,8 +426,11 @@ jobs:
           set -euo pipefail
 
           release_dir="apps/src-tauri/target/${{ matrix.rust_target }}/release"
-          bundle_dir="${release_dir}/bundle/macos/CodexManager.app"
-          test -d "$bundle_dir" || { echo "macOS app bundle not found: $bundle_dir"; exit 1; }
+          bundle_root="${release_dir}/bundle"
+          test -d "$bundle_root" || { echo "macOS bundle root not found: $bundle_root"; exit 1; }
+
+          bundle_dir="$(find "$bundle_root" -type d -name 'CodexManager.app' | head -n 1)"
+          test -n "$bundle_dir" || { echo "macOS app bundle not found under: $bundle_root"; exit 1; }
 
           portable_dir="${release_dir}/portable"
           mkdir -p "$portable_dir"
@@ -436,6 +439,7 @@ jobs:
           rm -f "$zip_path"
           ditto -c -k --sequesterRsrc --keepParent "$bundle_dir" "$zip_path"
           echo "legacy portable zip: $zip_path"
+          echo "source app bundle: $bundle_dir"
 
       - name: Build service binaries
         run: |
