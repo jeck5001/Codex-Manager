@@ -17,6 +17,15 @@ on:
         required: false
         default: true
         type: boolean
+      prerelease:
+        description: "Release channel override (auto/true/false)"
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - true
+          - false
 
 permissions:
   contents: write
@@ -241,7 +250,6 @@ jobs:
           name: codexmanager-windows
           path: |
             apps/src-tauri/target/release/bundle/**/*.exe
-            apps/src-tauri/target/release/bundle/**/*.msi
             apps/src-tauri/target/release/portable/*.exe
           if-no-files-found: error
           compression-level: 0
@@ -255,8 +263,8 @@ jobs:
           compression-level: 0
 
   build_macos_beta:
-    needs: [verify, build_windows]
-    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') && needs.build_windows.result == 'success' }}
+    needs: verify
+    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
     runs-on: macos-14
     strategy:
       fail-fast: false
@@ -393,8 +401,8 @@ jobs:
           compression-level: 0
 
   build_linux:
-    needs: [verify, build_macos_beta]
-    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') && needs.build_macos_beta.result == 'success' }}
+    needs: verify
+    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
     runs-on: ubuntu-22.04
 
     steps:
@@ -585,7 +593,6 @@ jobs:
           path: |
             apps/src-tauri/target/release/bundle/**/*.AppImage
             apps/src-tauri/target/release/bundle/**/*.deb
-            apps/src-tauri/target/release/bundle/**/*.rpm
             apps/src-tauri/target/release/portable/*.zip
           if-no-files-found: error
           compression-level: 0
@@ -623,6 +630,7 @@ jobs:
         run: |
           TAG="${{ github.event.inputs.tag }}"
           REF="${{ github.event.inputs.ref || 'main' }}"
+          PRERELEASE_INPUT="${{ github.event.inputs.prerelease || 'auto' }}"
 
           if [[ -z "$TAG" ]]; then
             echo "release tag is required"
@@ -638,11 +646,23 @@ jobs:
             exit 1
           fi
 
-          if [[ "$TAG" == *-* ]]; then
-            PRERELEASE="true"
-          else
-            PRERELEASE="false"
-          fi
+          # Manual override wins; "auto" falls back to prerelease tags.
+          case "$PRERELEASE_INPUT" in
+            true|false)
+              PRERELEASE="$PRERELEASE_INPUT"
+              ;;
+            auto)
+              if [[ "$TAG" == *-* ]]; then
+                PRERELEASE="true"
+              else
+                PRERELEASE="false"
+              fi
+              ;;
+            *)
+              echo "invalid prerelease input: $PRERELEASE_INPUT"
+              exit 1
+              ;;
+          esac
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
@@ -660,7 +680,7 @@ jobs:
           TITLE="CodexManager $TAG"
 
           mapfile -t FILES < <(find release-assets -type f \( \
-            -name '*.exe' -o -name '*.msi' -o -name '*.zip' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+            -name '*.exe' -o -name '*.zip' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' \
           \) | sort)
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "No release assets found."
