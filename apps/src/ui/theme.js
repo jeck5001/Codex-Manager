@@ -1,5 +1,6 @@
 const THEME_OPTIONS = [
   { id: "tech", label: "科技蓝" },
+  { id: "dark", label: "Dark" },
   { id: "business", label: "商务金" },
   { id: "mint", label: "薄荷绿" },
   { id: "sunset", label: "晚霞橙" },

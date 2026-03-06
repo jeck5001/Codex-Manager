@@ -705,6 +705,10 @@
     --theme-chip: #2563eb;
 }
 
+.settings-theme .theme-panel button[data-theme="dark"] {
+    --theme-chip: #4da3ff;
+}
+
 .settings-theme .theme-panel button[data-theme="business"] {
     --theme-chip: #c78d2f;
 }
