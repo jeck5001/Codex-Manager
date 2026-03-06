@@ -1,4 +1,4 @@
-use rusqlite::{Result, Row};
+use rusqlite::{params_from_iter, types::Value, Result, Row};
 
 use super::{now_ts, Account, Storage};
 
@@ -27,16 +27,38 @@ impl Storage {
             .query_row("SELECT COUNT(1) FROM accounts", [], |row| row.get(0))
     }
 
+    pub fn account_count_filtered(
+        &self,
+        query: Option<&str>,
+        group_name: Option<&str>,
+    ) -> Result<i64> {
+        let mut params = Vec::new();
+        let where_clause = build_account_where_clause(query, group_name, &mut params);
+        let sql = format!("SELECT COUNT(1) FROM accounts{where_clause}");
+        self.conn
+            .query_row(&sql, params_from_iter(params), |row| row.get(0))
+    }
+
     pub fn list_accounts(&self) -> Result<Vec<Account>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, label, issuer, chatgpt_account_id, workspace_id, group_name, sort, status, created_at, updated_at FROM accounts ORDER BY sort ASC, updated_at DESC",
-        )?;
-        let mut rows = stmt.query([])?;
-        let mut out = Vec::new();
-        while let Some(row) = rows.next()? {
-            out.push(map_account_row(row)?);
-        }
-        Ok(out)
+        self.list_accounts_filtered(None, None)
+    }
+
+    pub fn list_accounts_filtered(
+        &self,
+        query: Option<&str>,
+        group_name: Option<&str>,
+    ) -> Result<Vec<Account>> {
+        self.query_accounts(query, group_name, None)
+    }
+
+    pub fn list_accounts_paginated(
+        &self,
+        query: Option<&str>,
+        group_name: Option<&str>,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<Account>> {
+        self.query_accounts(query, group_name, Some((offset, limit)))
     }
 
     pub fn find_account_by_id(&self, account_id: &str) -> Result<Option<Account>> {
@@ -99,6 +121,67 @@ impl Storage {
         self.ensure_column("login_sessions", "tags", "TEXT")?;
         self.ensure_column("login_sessions", "group_name", "TEXT")?;
         Ok(())
+    }
+
+    fn query_accounts(
+        &self,
+        query: Option<&str>,
+        group_name: Option<&str>,
+        pagination: Option<(i64, i64)>,
+    ) -> Result<Vec<Account>> {
+        let mut params = Vec::new();
+        let where_clause = build_account_where_clause(query, group_name, &mut params);
+        let mut sql = format!(
+            "SELECT id, label, issuer, chatgpt_account_id, workspace_id, group_name, sort, status, created_at, updated_at FROM accounts{where_clause} ORDER BY sort ASC, updated_at DESC"
+        );
+
+        if let Some((offset, limit)) = pagination {
+            sql.push_str(" LIMIT ? OFFSET ?");
+            params.push(Value::Integer(limit.max(1)));
+            params.push(Value::Integer(offset.max(0)));
+        }
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut rows = stmt.query(params_from_iter(params))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next()? {
+            out.push(map_account_row(row)?);
+        }
+        Ok(out)
+    }
+}
+
+fn normalize_optional_filter(value: Option<&str>) -> Option<String> {
+    let trimmed = value.map(str::trim).unwrap_or_default();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn build_account_where_clause(
+    query: Option<&str>,
+    group_name: Option<&str>,
+    params: &mut Vec<Value>,
+) -> String {
+    let mut clauses = Vec::new();
+
+    if let Some(keyword) = normalize_optional_filter(query) {
+        let pattern = format!("%{keyword}%");
+        clauses.push("(LOWER(label) LIKE LOWER(?) OR LOWER(id) LIKE LOWER(?))".to_string());
+        params.push(Value::Text(pattern.clone()));
+        params.push(Value::Text(pattern));
+    }
+
+    if let Some(group) = normalize_optional_filter(group_name) {
+        clauses.push("group_name = ?".to_string());
+        params.push(Value::Text(group));
+    }
+
+    if clauses.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", clauses.join(" AND "))
     }
 }
 

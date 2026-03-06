@@ -38,6 +38,7 @@ import {
 } from "./services/connection";
 import {
   refreshAccounts,
+  refreshAccountsPage,
   refreshUsageList,
   refreshApiKeys,
   refreshApiModels,
@@ -80,11 +81,44 @@ function renderCurrentPageView(page = state.currentPage) {
   renderCurrentView(page, buildMainRenderActions());
 }
 
+async function reloadAccountsPage(options = {}) {
+  const silent = options.silent === true;
+  const render = options.render !== false;
+  const ensureConnection = options.ensureConnection !== false;
+
+  if (ensureConnection) {
+    const ok = await ensureConnected();
+    serviceLifecycle.updateServiceToggle();
+    if (!ok) {
+      return false;
+    }
+  }
+
+  try {
+    const applied = await refreshAccountsPage({ latestOnly: options.latestOnly !== false });
+    if (applied !== false && render) {
+      renderAccountsView();
+    }
+    return applied !== false;
+  } catch (err) {
+    console.error("[accounts] page refresh failed", err);
+    if (!silent) {
+      showToast(`账号分页刷新失败：${normalizeErrorMessage(err)}`, "error");
+    }
+    return false;
+  }
+}
+
 const { switchPage, updateRequestLogFilterButtons } = createNavigationHandlers({
   state,
   dom,
   closeThemePanel,
-  onPageActivated: renderCurrentPageView,
+  onPageActivated: (page) => {
+    renderCurrentPageView(page);
+    if (page === "accounts") {
+      void reloadAccountsPage({ silent: true, latestOnly: true });
+    }
+  },
 });
 
 const { setStartupMask } = createStartupMaskController({ dom, state });
@@ -1641,12 +1675,13 @@ async function handleRefreshAllClick() {
       return;
     }
     let accounts = Array.isArray(state.accountList) ? state.accountList.filter((item) => item && item.id) : [];
-    if (accounts.length === 0) {
-      try {
-        await refreshAccounts();
-      } catch (err) {
-        console.error("[refreshUsageOnly] load accounts failed", err);
-      }
+  if (accounts.length === 0) {
+    try {
+      await refreshAccounts();
+      await refreshAccountsPage({ latestOnly: true }).catch(() => false);
+    } catch (err) {
+      console.error("[refreshUsageOnly] load accounts failed", err);
+    }
       accounts = Array.isArray(state.accountList) ? state.accountList.filter((item) => item && item.id) : [];
     }
     const total = accounts.length;
@@ -1715,6 +1750,7 @@ async function handleRefreshAllClick() {
 async function refreshAccountsAndUsage() {
   const options = arguments[0] || {};
   const includeUsage = options.includeUsage !== false;
+  const includeAccountPage = options.includeAccountPage !== false && state.currentPage === "accounts";
   const ok = await ensureConnected();
   serviceLifecycle.updateServiceToggle();
   if (!ok) return false;
@@ -1729,7 +1765,19 @@ async function refreshAccountsAndUsage() {
       console.error(`[refreshAccountsAndUsage] ${taskName} failed`, err);
     },
   );
-  return !results.some((item) => item.status === "rejected");
+  const failed = results.some((item) => item.status === "rejected");
+  if (failed) {
+    return false;
+  }
+  if (includeAccountPage) {
+    try {
+      await refreshAccountsPage({ latestOnly: true });
+    } catch (err) {
+      console.error("[refreshAccountsAndUsage] account-page failed", err);
+      return false;
+    }
+  }
+  return true;
 }
 
 const serviceLifecycle = createServiceLifecycle({
@@ -1802,6 +1850,7 @@ function buildMainRenderActions() {
     handleOpenUsageModal,
     setManualPreferredAccount,
     deleteAccount,
+    refreshAccountsPage: () => reloadAccountsPage({ latestOnly: true, silent: false }),
     toggleApiKeyStatus,
     deleteApiKey,
     updateApiKeyModel,
@@ -1846,6 +1895,7 @@ function bindEvents() {
     setTheme,
     handleServiceToggle: serviceLifecycle.handleServiceToggle,
     renderAccountsView,
+    refreshAccountsPage: (options) => reloadAccountsPage(options),
     updateRequestLogFilterButtons,
   });
 

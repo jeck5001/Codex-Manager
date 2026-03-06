@@ -1,9 +1,11 @@
 .app-shell {
+    height: 100vh;
+    height: 100dvh;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     position: relative;
-    overflow-x: hidden;
+    overflow: hidden;
 }
 
 .app-shell::before,
@@ -67,15 +69,19 @@
 }
 
 .content {
+    flex: 1 1 auto;
+    min-height: 0;
     width: 100%;
     max-width: var(--content-max-width, none);
     margin: 0 auto;
     padding: 86px clamp(14px, 1.8vw, 26px) 28px;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 18px;
     position: relative;
     z-index: 1;
+    overflow: hidden;
 }
 
 .page-head {

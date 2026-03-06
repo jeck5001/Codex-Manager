@@ -245,6 +245,51 @@
                                 <tbody id="accountRows"></tbody>
                             </table>
                         </div>
+                        <div id="accountPagination" class="account-pagination">
+                            <div
+                                id="accountPaginationSummary"
+                                class="account-pagination-summary"
+                            >
+                                共 0 个账号
+                            </div>
+                            <div class="account-pagination-controls">
+                                <label class="account-pagination-size">
+                                    <span>每页</span>
+                                    <select
+                                        id="accountPageSize"
+                                        class="inline-select account-pagination-select"
+                                    >
+                                        <option value="5" selected>5</option>
+                                        <option value="10">10</option>
+                                        <option value="20">20</option>
+                                        <option value="50">50</option>
+                                        <option value="80">80</option>
+                                        <option value="120">120</option>
+                                        <option value="500">500</option>
+                                    </select>
+                                </label>
+                                <button
+                                    id="accountPagePrev"
+                                    class="secondary"
+                                    type="button"
+                                >
+                                    上一页
+                                </button>
+                                <div
+                                    id="accountPageInfo"
+                                    class="account-pagination-info"
+                                >
+                                    第 1 / 1 页
+                                </div>
+                                <button
+                                    id="accountPageNext"
+                                    class="secondary"
+                                    type="button"
+                                >
+                                    下一页
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </section>
 

@@ -128,8 +128,45 @@ async fn service_stop() -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn service_account_list(addr: Option<String>) -> Result<serde_json::Value, String> {
-  rpc_call_in_background("account/list", addr, None).await
+async fn service_account_list(
+  addr: Option<String>,
+  page: Option<i64>,
+  page_size: Option<i64>,
+  query: Option<String>,
+  filter: Option<String>,
+  group_filter: Option<String>,
+) -> Result<serde_json::Value, String> {
+  let mut params = serde_json::Map::new();
+  if let Some(value) = page {
+    params.insert("page".to_string(), serde_json::json!(value));
+  }
+  if let Some(value) = page_size {
+    params.insert("pageSize".to_string(), serde_json::json!(value));
+  }
+  if let Some(value) = query {
+    let trimmed = value.trim();
+    if !trimmed.is_empty() {
+      params.insert("query".to_string(), serde_json::json!(trimmed));
+    }
+  }
+  if let Some(value) = filter {
+    let trimmed = value.trim();
+    if !trimmed.is_empty() {
+      params.insert("filter".to_string(), serde_json::json!(trimmed));
+    }
+  }
+  if let Some(value) = group_filter {
+    let trimmed = value.trim();
+    if !trimmed.is_empty() && trimmed != "all" {
+      params.insert("groupFilter".to_string(), serde_json::json!(trimmed));
+    }
+  }
+  let payload = if params.is_empty() {
+    None
+  } else {
+    Some(serde_json::Value::Object(params))
+  };
+  rpc_call_in_background("account/list", addr, payload).await
 }
 
 #[tauri::command]

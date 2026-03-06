@@ -275,11 +275,40 @@ export async function serviceInitialize() {
 }
 
 // 账号
-export async function serviceAccountList() {
-  if (!isTauriRuntime()) {
-    return rpcInvoke("account/list");
+function normalizeAccountListOptions(options = {}) {
+  const source = options && typeof options === "object" ? options : {};
+  const normalized = {};
+  const page = Number(source.page);
+  const pageSize = Number(source.pageSize);
+  const query = typeof source.query === "string" ? source.query.trim() : "";
+  const filter = typeof source.filter === "string" ? source.filter.trim() : "";
+  const groupFilter = typeof source.groupFilter === "string" ? source.groupFilter.trim() : "";
+
+  if (Number.isFinite(page) && page > 0) {
+    normalized.page = Math.trunc(page);
   }
-  return invoke("service_account_list", withAddr());
+  if (Number.isFinite(pageSize) && pageSize > 0) {
+    normalized.pageSize = Math.trunc(pageSize);
+  }
+  if (query) {
+    normalized.query = query;
+  }
+  if (filter) {
+    normalized.filter = filter;
+  }
+  if (groupFilter && groupFilter !== "all") {
+    normalized.groupFilter = groupFilter;
+  }
+  return normalized;
+}
+
+export async function serviceAccountList(options = {}) {
+  const params = normalizeAccountListOptions(options);
+  const payload = Object.keys(params).length > 0 ? params : undefined;
+  if (!isTauriRuntime()) {
+    return rpcInvoke("account/list", payload);
+  }
+  return invoke("service_account_list", payload ? withAddr(payload) : withAddr());
 }
 
 export async function serviceAccountDelete(accountId) {
