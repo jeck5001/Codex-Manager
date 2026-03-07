@@ -13,23 +13,14 @@
 A local desktop + service toolkit for managing a Codex-compatible ChatGPT account pool, usage, and platform keys, with a built-in local gateway.
 
 ## Recent Changes
-### 2026-03-06 (v0.1.5, latest)
-- Further aligned the gateway protocol adapter with Codex CLI: both `/v1/chat/completions` and `/v1/responses` now converge on Codex `responses` semantics, with upstream streaming/non-streaming behavior closer to the official implementation and better compatibility for OpenAI-style clients such as Cherry Studio.
-- Fixed `tool_calls` / `tools` regressions: preserved tool calls in the chat aggregation path and completed the tool-name shortening + response restoration chain, preventing dropped or mismatched tool calls in OpenAI-compatible JSON, streaming deltas, and adapter conversions.
-- Improved OpenClaw / Anthropic-compatible response adaptation so tool calls, SSE deltas, and non-stream JSON payloads are restored correctly in compatible formats.
-- Added "Import by Folder": the desktop app can now pick a directory, recursively scan `.json` files inside it, and bulk-import accounts.
-- Added direct OpenAI upstream proxy configuration and the header-compaction toggle in Settings; both apply immediately after saving and help reduce some Cloudflare / WAF challenge hits.
-- Reworked the top area of the Settings page into a consistent three-column row layout, aligned the upstream proxy row to the same pattern, and added support for minimizing to the system tray on window close.
-- Expanded request-log tracing with original path, adapted path, and more context so `/v1/chat/completions -> /v1/responses` forwarding and protocol-adapter issues are easier to diagnose.
-- Consolidated release automation into a single one-click multi-platform workflow with the order `Windows -> macOS -> Linux`; asset outputs were also simplified, with portable exe on Windows and DMG-based distribution on macOS.
-- Added and fixed the chat-tools probe script so tool-call hit behavior can be verified locally.
+- Current latest version: `v0.1.6` (2026-03-07)
+- This release mainly fixes the `release-all.yml` fallback path when `run_verify=false`, continues to simplify Windows release artifacts, and improves SOCKS5 upstream proxy support plus settings hints.
+- Full version history is now maintained in [CHANGELOG.md](CHANGELOG.md).
 
-### 2026-03-03 (v0.1.4)
-- Consolidated account action buttons into a single "Account Actions" dropdown to reduce toolbar clutter.
-- Added "Remove unavailable Free accounts": bulk cleanup for accounts matched as unavailable + free plan, with summary counts (scanned/skipped/deleted).
-- Added "Export users": choose a local folder and export one JSON file per account.
-- Import compatibility upgrade: supports `tokens.*`, flat top-level token fields, and camelCase variants (`accessToken/idToken/refreshToken`) with auto-detection.
-- Backward compatibility for older service builds: frontend now normalizes flat token payloads before import to avoid `missing field: tokens`.
+## Maintenance Docs
+- Version history: [CHANGELOG.md](CHANGELOG.md)
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Architecture overview: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Features
 - Account pool management: group, tag, sort, note
@@ -157,16 +148,17 @@ xattr -dr com.apple.quarantine /Applications/CodexManager.app
 - If macOS still blocks it, right-click `CodexManager.app` and choose `Open` once.
 
 ## GitHub Actions (Manual Only)
-All workflows are `workflow_dispatch` only.
+The current release entry is `release-all.yml`. It is `workflow_dispatch` only and never runs automatically.
 
 - `release-all.yml`
   - Purpose: one-click release for Desktop + Service artifacts across platforms
-  - Build order: `Windows -> macOS (dmg) -> Linux`
+  - Target platforms: `Windows`, `macOS (dmg)`, `Linux`
   - Trigger: manual only
   - Inputs:
     - `tag` (required)
     - `ref` (default: `main`)
     - `run_verify` (default: `true`)
+    - `prerelease` (default: `auto`, supports `auto|true|false`)
 
 ## Release Asset List (`release-all.yml`)
 ### Desktop
@@ -180,8 +172,10 @@ All workflows are `workflow_dispatch` only.
 - Linux: `CodexManager-service-linux-x86_64.zip`
 
 ### Release Type
-- Tag containing `-` (for example `v0.1.5-beta.1`) is published as **pre-release**
-- Tag without `-` (for example `v0.1.5`) is published as a stable release
+- With `prerelease=auto`, a tag containing `-` (for example `v0.1.6-beta.1`) is published as a **pre-release**
+- With `prerelease=auto`, a tag without `-` (for example `v0.1.6`) is published as a stable release
+- `prerelease=true|false` overrides the automatic tag-based rule
+- Re-running the same tag re-syncs release metadata to the current inputs, so the `prerelease` flag does not drift
 - GitHub will still auto-attach `Source code (zip/tar.gz)`
 
 ## Script Reference
@@ -198,12 +192,15 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
   -AllPlatforms `
   -GitRef main `
   -ReleaseTag v0.0.9 `
-  -GithubToken <token> `
-  -WorkflowFile release-all.yml
+  -GithubToken <token>
 
 # Skip verify gate inside release workflow
 pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
-  -AllPlatforms -GitRef main -ReleaseTag v0.0.9 -GithubToken <token> -NoVerify -WorkflowFile release-all.yml
+  -AllPlatforms -GitRef main -ReleaseTag v0.0.9 -GithubToken <token> -NoVerify
+
+# Force a pre-release build
+pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
+  -AllPlatforms -GitRef main -ReleaseTag v0.0.9-beta.1 -GithubToken <token> -Prerelease true
 ```
 
 Parameters (with defaults):
@@ -218,6 +215,7 @@ Parameters (with defaults):
 - `-GitRef <ref>`: workflow ref; defaults to current branch or current tag
 - `-ReleaseTag <tag>`: release tag; strongly recommended in `-AllPlatforms`
 - `-NoVerify`: sets workflow input `run_verify=false`
+- `-Prerelease <auto|true|false>`: default `auto`; forwarded to the workflow `prerelease` input
 - `-DownloadArtifacts <bool>`: default `true`
 - `-ArtifactsDir <path>`: artifact download dir, default `artifacts/`
 - `-PollIntervalSec <n>`: polling interval, default `10`
@@ -228,7 +226,7 @@ Parameters (with defaults):
 Use this to bump release version in one command instead of editing multiple files manually.
 
 ```powershell
-pwsh -NoLogo -NoProfile -File scripts/bump-version.ps1 -Version 0.1.5
+pwsh -NoLogo -NoProfile -File scripts/bump-version.ps1 -Version 0.1.6
 ```
 
 It updates:

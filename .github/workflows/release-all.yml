@@ -120,35 +120,7 @@ jobs:
 
       - name: Validate tag/version consistency
         shell: pwsh
-        run: |
-          $tagInput = "${{ github.event.inputs.tag }}"
-          if ([string]::IsNullOrWhiteSpace($tagInput)) { throw "release tag is required" }
-
-          $normalizedTag = if ($tagInput.StartsWith("v")) { $tagInput } else { "v$tagInput" }
-          if ($normalizedTag -notmatch '^v(\d+\.\d+\.\d+)(?:[-+].*)?$') {
-            throw "tag must look like vX.Y.Z or vX.Y.Z-suffix, got: $normalizedTag"
-          }
-          $tagVersion = $Matches[1]
-
-          $cargoToml = Get-Content 'apps/src-tauri/Cargo.toml' -Raw
-          if ($cargoToml -notmatch '(?ms)\[package\].*?^\s*version\s*=\s*"([^"]+)"') {
-            throw "failed to read [package].version from apps/src-tauri/Cargo.toml"
-          }
-          $cargoVersion = $Matches[1]
-
-          $tauriConf = (Get-Content 'apps/src-tauri/tauri.conf.json' -Raw) | ConvertFrom-Json
-          $tauriVersion = $tauriConf.version
-
-          if ([string]::IsNullOrWhiteSpace($tauriVersion)) { throw "tauri.conf.json missing version" }
-
-          if ($cargoVersion -ne $tauriVersion) {
-            throw "version mismatch: apps/src-tauri/Cargo.toml=$cargoVersion apps/src-tauri/tauri.conf.json=$tauriVersion"
-          }
-          if ($cargoVersion -ne $tagVersion) {
-            throw "tag/version mismatch: tag=$normalizedTag expects $tagVersion, but app version is $cargoVersion"
-          }
-
-          Write-Host "Version OK: $cargoVersion (tag $normalizedTag)"
+        run: ./scripts/release/assert-release-version.ps1 -Tag "${{ github.event.inputs.tag }}"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -207,14 +179,7 @@ jobs:
 
       - name: Disable redundant frontend rebuild for Tauri bundle
         shell: pwsh
-        run: |
-          $configPath = "apps/src-tauri/tauri.conf.json"
-          $config = Get-Content $configPath -Raw | ConvertFrom-Json
-          if (-not $config.build) {
-            throw "tauri.conf.json missing build section"
-          }
-          $config.build.PSObject.Properties.Remove("beforeBuildCommand")
-          $config | ConvertTo-Json -Depth 100 | Set-Content $configPath
+        run: ./scripts/release/disable-tauri-before-build.ps1
 
       - name: Build Tauri bundle (with retry)
         working-directory: apps
@@ -337,35 +302,7 @@ jobs:
 
       - name: Validate tag/version consistency
         shell: pwsh
-        run: |
-          $tagInput = "${{ github.event.inputs.tag }}"
-          if ([string]::IsNullOrWhiteSpace($tagInput)) { throw "release tag is required" }
-
-          $normalizedTag = if ($tagInput.StartsWith("v")) { $tagInput } else { "v$tagInput" }
-          if ($normalizedTag -notmatch '^v(\d+\.\d+\.\d+)(?:[-+].*)?$') {
-            throw "tag must look like vX.Y.Z or vX.Y.Z-suffix, got: $normalizedTag"
-          }
-          $tagVersion = $Matches[1]
-
-          $cargoToml = Get-Content 'apps/src-tauri/Cargo.toml' -Raw
-          if ($cargoToml -notmatch '(?ms)\[package\].*?^\s*version\s*=\s*"([^"]+)"') {
-            throw "failed to read [package].version from apps/src-tauri/Cargo.toml"
-          }
-          $cargoVersion = $Matches[1]
-
-          $tauriConf = (Get-Content 'apps/src-tauri/tauri.conf.json' -Raw) | ConvertFrom-Json
-          $tauriVersion = $tauriConf.version
-
-          if ([string]::IsNullOrWhiteSpace($tauriVersion)) { throw "tauri.conf.json missing version" }
-
-          if ($cargoVersion -ne $tauriVersion) {
-            throw "version mismatch: apps/src-tauri/Cargo.toml=$cargoVersion apps/src-tauri/tauri.conf.json=$tauriVersion"
-          }
-          if ($cargoVersion -ne $tagVersion) {
-            throw "tag/version mismatch: tag=$normalizedTag expects $tagVersion, but app version is $cargoVersion"
-          }
-
-          Write-Host "Version OK: $cargoVersion (tag $normalizedTag)"
+        run: ./scripts/release/assert-release-version.ps1 -Tag "${{ github.event.inputs.tag }}"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -426,14 +363,7 @@ jobs:
 
       - name: Disable redundant frontend rebuild for Tauri bundle
         shell: pwsh
-        run: |
-          $configPath = "apps/src-tauri/tauri.conf.json"
-          $config = Get-Content $configPath -Raw | ConvertFrom-Json
-          if (-not $config.build) {
-            throw "tauri.conf.json missing build section"
-          }
-          $config.build.PSObject.Properties.Remove("beforeBuildCommand")
-          $config | ConvertTo-Json -Depth 100 | Set-Content $configPath
+        run: ./scripts/release/disable-tauri-before-build.ps1
 
       - name: Build macOS app bundle
         working-directory: apps
@@ -567,35 +497,7 @@ jobs:
 
       - name: Validate tag/version consistency
         shell: pwsh
-        run: |
-          $tagInput = "${{ github.event.inputs.tag }}"
-          if ([string]::IsNullOrWhiteSpace($tagInput)) { throw "release tag is required" }
-
-          $normalizedTag = if ($tagInput.StartsWith("v")) { $tagInput } else { "v$tagInput" }
-          if ($normalizedTag -notmatch '^v(\d+\.\d+\.\d+)(?:[-+].*)?$') {
-            throw "tag must look like vX.Y.Z or vX.Y.Z-suffix, got: $normalizedTag"
-          }
-          $tagVersion = $Matches[1]
-
-          $cargoToml = Get-Content 'apps/src-tauri/Cargo.toml' -Raw
-          if ($cargoToml -notmatch '(?ms)\[package\].*?^\s*version\s*=\s*"([^"]+)"') {
-            throw "failed to read [package].version from apps/src-tauri/Cargo.toml"
-          }
-          $cargoVersion = $Matches[1]
-
-          $tauriConf = (Get-Content 'apps/src-tauri/tauri.conf.json' -Raw) | ConvertFrom-Json
-          $tauriVersion = $tauriConf.version
-
-          if ([string]::IsNullOrWhiteSpace($tauriVersion)) { throw "tauri.conf.json missing version" }
-
-          if ($cargoVersion -ne $tauriVersion) {
-            throw "version mismatch: apps/src-tauri/Cargo.toml=$cargoVersion apps/src-tauri/tauri.conf.json=$tauriVersion"
-          }
-          if ($cargoVersion -ne $tagVersion) {
-            throw "tag/version mismatch: tag=$normalizedTag expects $tagVersion, but app version is $cargoVersion"
-          }
-
-          Write-Host "Version OK: $cargoVersion (tag $normalizedTag)"
+        run: ./scripts/release/assert-release-version.ps1 -Tag "${{ github.event.inputs.tag }}"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -667,14 +569,7 @@ jobs:
 
       - name: Disable redundant frontend rebuild for Tauri bundle
         shell: pwsh
-        run: |
-          $configPath = "apps/src-tauri/tauri.conf.json"
-          $config = Get-Content $configPath -Raw | ConvertFrom-Json
-          if (-not $config.build) {
-            throw "tauri.conf.json missing build section"
-          }
-          $config.build.PSObject.Properties.Remove("beforeBuildCommand")
-          $config | ConvertTo-Json -Depth 100 | Set-Content $configPath
+        run: ./scripts/release/disable-tauri-before-build.ps1
 
       - name: Build Tauri bundle (with retry)
         working-directory: apps
@@ -854,6 +749,7 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           TARGET_SHA="${{ steps.meta.outputs.target_sha }}"
+          PRERELEASE="${{ steps.meta.outputs.prerelease }}"
           TITLE="CodexManager $TAG"
 
           mapfile -t FILES < <(find release-assets -type f \( \
@@ -864,18 +760,34 @@ jobs:
             exit 1
           fi
 
+          sync_release_meta() {
+            local release_id payload
+            release_id="$(gh api "repos/$GH_REPO/releases/tags/$TAG" --jq .id)"
+            if [[ -z "$release_id" ]]; then
+              echo "failed to resolve release id for tag: $TAG"
+              exit 1
+            fi
+            payload="$(jq -n \
+              --arg name "$TITLE" \
+              --arg target_commitish "$TARGET_SHA" \
+              --argjson prerelease "$PRERELEASE" \
+              '{name: $name, target_commitish: $target_commitish, prerelease: $prerelease}')"
+            printf '%s' "$payload" | gh api "repos/$GH_REPO/releases/$release_id" --method PATCH --input -
+          }
+
           if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
-            gh release edit "$TAG" --repo "$GH_REPO" --title "$TITLE" --target "$TARGET_SHA"
+            sync_release_meta
             gh release upload "$TAG" "${FILES[@]}" --repo "$GH_REPO" --clobber
           else
             CREATE_ARGS=(--repo "$GH_REPO" --title "$TITLE" --target "$TARGET_SHA" --generate-notes)
-            if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
+            if [ "$PRERELEASE" = "true" ]; then
               CREATE_ARGS+=(--prerelease)
             fi
             # Multi-platform runs can race on the same tag; fallback to edit+upload when create fails.
             if ! gh release create "$TAG" "${FILES[@]}" "${CREATE_ARGS[@]}"; then
               echo "release create failed, retrying as edit+upload..."
-              gh release edit "$TAG" --repo "$GH_REPO" --title "$TITLE" --target "$TARGET_SHA"
+              sync_release_meta
               gh release upload "$TAG" "${FILES[@]}" --repo "$GH_REPO" --clobber
             fi
           fi
+

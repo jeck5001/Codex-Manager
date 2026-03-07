@@ -1,6 +1,6 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
-$scriptPath = Join-Path $PSScriptRoot "rebuild.ps1"
+$scriptPath = Join-Path (Split-Path -Parent $PSScriptRoot) "rebuild.ps1"
 if (-not (Test-Path $scriptPath)) {
   throw "missing rebuild.ps1 at $scriptPath"
 }
@@ -37,10 +37,10 @@ $multiOutput = & $scriptPath -DryRun -AllPlatforms -GitRef $currentRef -ReleaseT
 if (-not $?) {
   throw "rebuild.ps1 -AllPlatforms dry-run failed to run"
 }
-if ($multiOutput -notlike "*dispatch workflow release-multi-platform.yml*") {
+if ($multiOutput -notlike "*dispatch workflow release-all.yml*") {
   throw "expected all-platform dispatch output"
 }
-if ($multiOutput -notlike "*repos/*/actions/workflows/release-multi-platform.yml/dispatches*") {
+if ($multiOutput -notlike "*repos/*/actions/workflows/release-all.yml/dispatches*") {
   throw "expected github dispatch url in dry-run output"
 }
 if ($multiOutput -notmatch '"tag":"v0.0.0-test"') {
@@ -49,9 +49,22 @@ if ($multiOutput -notmatch '"tag":"v0.0.0-test"') {
 if ($multiOutput -notmatch '"run_verify":"true"') {
   throw "expected run_verify=true in workflow dispatch payload"
 }
+if ($multiOutput -notmatch '"prerelease":"auto"') {
+  throw "expected prerelease=auto in workflow dispatch payload"
+}
 $escapedRef = [regex]::Escape($currentRef)
 if ($multiOutput -notmatch ('"ref":"' + $escapedRef + '"')) {
   throw "expected git ref in workflow dispatch payload"
 }
 
 Write-Host "rebuild.ps1 all-platform dry-run output looks ok"
+
+$prereleaseOutput = & $scriptPath -DryRun -AllPlatforms -GitRef $currentRef -ReleaseTag "v0.0.0-test" -GithubToken "dummy" -Prerelease false 2>&1 | Out-String
+if (-not $?) {
+  throw "rebuild.ps1 -AllPlatforms -Prerelease false dry-run failed to run"
+}
+if ($prereleaseOutput -notmatch '"prerelease":"false"') {
+  throw "expected prerelease=false in workflow dispatch payload"
+}
+
+Write-Host "rebuild.ps1 prerelease input output looks ok"

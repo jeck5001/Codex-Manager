@@ -60,6 +60,7 @@ import {
 import { createServiceLifecycle } from "./services/service-lifecycle";
 import { createLoginFlow } from "./services/login-flow";
 import { createManagementActions } from "./services/management-actions";
+import { createUpdateController } from "./services/update-controller.js";
 import { openAccountModal, closeAccountModal } from "./views/accounts";
 import { renderAccountsRefreshProgress } from "./views/accounts/render";
 import {
@@ -73,8 +74,21 @@ import { renderAccountsOnly, renderCurrentView } from "./views/renderers";
 import { buildRenderActions } from "./views/render-actions";
 import { createNavigationHandlers } from "./views/navigation";
 import { bindMainEvents } from "./views/event-bindings";
+import { bindSettingsEvents } from "./settings/bind-settings-events.js";
+import { createSettingsController } from "./settings/controller.js";
+import { createSettingsServiceSync } from "./settings/service-sync.js";
 
 const { showToast, showConfirmDialog } = createFeedbackHandlers({ dom });
+let settingsController = null;
+let settingsServiceSync = null;
+
+function saveAppSettingsPatch(patch = {}) {
+  if (!settingsController) {
+    throw new Error("settings controller is not ready");
+  }
+  return settingsController.saveAppSettingsPatch(patch);
+}
+
 const {
   renderThemeButtons,
   setTheme,
@@ -131,1506 +145,109 @@ const { switchPage, updateRequestLogFilterButtons } = createNavigationHandlers({
 });
 
 const { setStartupMask } = createStartupMaskController({ dom, state });
-const UI_LOW_TRANSPARENCY_BODY_CLASS = "cm-low-transparency";
-const UI_LOW_TRANSPARENCY_TOGGLE_ID = "lowTransparencyMode";
-const UI_LOW_TRANSPARENCY_CARD_ID = "settingsLowTransparencyCard";
-const ROUTE_STRATEGY_ORDERED = "ordered";
-const ROUTE_STRATEGY_BALANCED = "balanced";
-const SERVICE_LISTEN_MODE_LOOPBACK = "loopback";
-const SERVICE_LISTEN_MODE_ALL_INTERFACES = "all_interfaces";
-const UPSTREAM_PROXY_HINT_TEXT = "支持 http/https/socks5，留空直连，socks 会自动按 socks5h 处理。";
-const DEFAULT_BACKGROUND_TASKS_SETTINGS = {
-  usagePollingEnabled: true,
-  usagePollIntervalSecs: 600,
-  gatewayKeepaliveEnabled: true,
-  gatewayKeepaliveIntervalSecs: 180,
-  tokenRefreshPollingEnabled: true,
-  tokenRefreshPollIntervalSecs: 60,
-  usageRefreshWorkers: 4,
-  httpWorkerFactor: 4,
-  httpWorkerMin: 8,
-  httpStreamWorkerFactor: 1,
-  httpStreamWorkerMin: 2,
-};
-const BACKGROUND_TASKS_RESTART_KEYS_DEFAULT = [
-  "usageRefreshWorkers",
-  "httpWorkerFactor",
-  "httpWorkerMin",
-  "httpStreamWorkerFactor",
-  "httpStreamWorkerMin",
-];
-const BACKGROUND_TASKS_RESTART_KEY_LABELS = {
-  usageRefreshWorkers: "用量刷新并发线程数",
-  httpWorkerFactor: "普通请求并发因子",
-  httpWorkerMin: "普通请求最小并发",
-  httpStreamWorkerFactor: "流式请求并发因子",
-  httpStreamWorkerMin: "流式请求最小并发",
-};
 const API_MODELS_REMOTE_REFRESH_STORAGE_KEY = "codexmanager.apikey.models.last_remote_refresh_at";
 const API_MODELS_REMOTE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const UPDATE_CHECK_DELAY_MS = 1200;
 let refreshAllInFlight = null;
 let refreshAllProgressClearTimer = null;
-let updateCheckInFlight = null;
-let pendingUpdateCandidate = null;
-let serviceListenModeSyncInFlight = null;
-let routeStrategySyncInFlight = null;
-let routeStrategySyncedProbeId = -1;
-let cpaNoCookieHeaderModeSyncInFlight = null;
-let cpaNoCookieHeaderModeSyncedProbeId = -1;
-let upstreamProxySyncInFlight = null;
-let upstreamProxySyncedProbeId = -1;
-let backgroundTasksSyncInFlight = null;
-let backgroundTasksSyncedProbeId = -1;
 let apiModelsRemoteRefreshInFlight = null;
-let envOverrideSelectedKey = "";
-let appSettingsSnapshot = buildDefaultAppSettingsSnapshot();
-
-function buildDefaultAppSettingsSnapshot() {
-  return {
-    updateAutoCheck: true,
-    closeToTrayOnClose: false,
-    closeToTraySupported: isTauriRuntime(),
-    lightweightModeOnCloseToTray: false,
-    lowTransparency: false,
-    theme: "tech",
-    serviceAddr: "localhost:48760",
-    serviceListenMode: normalizeServiceListenMode(null),
-    routeStrategy: normalizeRouteStrategy(null),
-    cpaNoCookieHeaderModeEnabled: false,
-    upstreamProxyUrl: "",
-    backgroundTasks: normalizeBackgroundTasksSettings(DEFAULT_BACKGROUND_TASKS_SETTINGS),
-    envOverrides: {},
-    envOverrideCatalog: [],
-    envOverrideReservedKeys: [],
-    envOverrideUnsupportedKeys: [],
-    webAccessPasswordConfigured: false,
-  };
-}
-
-function normalizeThemeSetting(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  return normalized || "tech";
-}
-
-function normalizeAppSettingsSnapshot(source) {
-  const payload = source && typeof source === "object" ? source : {};
-  const defaults = buildDefaultAppSettingsSnapshot();
-  let serviceAddr = defaults.serviceAddr;
-  try {
-    serviceAddr = normalizeAddr(payload.serviceAddr || defaults.serviceAddr);
-  } catch {
-    serviceAddr = defaults.serviceAddr;
-  }
-  return {
-    updateAutoCheck: normalizeBooleanSetting(payload.updateAutoCheck, defaults.updateAutoCheck),
-    closeToTrayOnClose: normalizeBooleanSetting(
-      payload.closeToTrayOnClose,
-      defaults.closeToTrayOnClose,
-    ),
-    closeToTraySupported: normalizeBooleanSetting(
-      payload.closeToTraySupported,
-      defaults.closeToTraySupported,
-    ),
-    lightweightModeOnCloseToTray: normalizeBooleanSetting(
-      payload.lightweightModeOnCloseToTray,
-      defaults.lightweightModeOnCloseToTray,
-    ),
-    lowTransparency: normalizeBooleanSetting(payload.lowTransparency, defaults.lowTransparency),
-    theme: normalizeThemeSetting(payload.theme),
-    serviceAddr,
-    serviceListenMode: normalizeServiceListenMode(payload.serviceListenMode),
-    routeStrategy: normalizeRouteStrategy(payload.routeStrategy),
-    cpaNoCookieHeaderModeEnabled: normalizeCpaNoCookieHeaderMode(
-      payload.cpaNoCookieHeaderModeEnabled,
-    ),
-    upstreamProxyUrl: normalizeUpstreamProxyUrl(payload.upstreamProxyUrl),
-    backgroundTasks: normalizeBackgroundTasksSettings(payload.backgroundTasks),
-    envOverrides: normalizeEnvOverrides(payload.envOverrides),
-    envOverrideCatalog: normalizeEnvOverrideCatalog(payload.envOverrideCatalog),
-    envOverrideReservedKeys: normalizeStringList(payload.envOverrideReservedKeys),
-    envOverrideUnsupportedKeys: normalizeStringList(payload.envOverrideUnsupportedKeys),
-    webAccessPasswordConfigured: normalizeBooleanSetting(
-      payload.webAccessPasswordConfigured,
-      defaults.webAccessPasswordConfigured,
-    ),
-  };
-}
-
-function setAppSettingsSnapshot(snapshot) {
-  appSettingsSnapshot = normalizeAppSettingsSnapshot(snapshot);
-  state.serviceAddr = appSettingsSnapshot.serviceAddr;
-  return appSettingsSnapshot;
-}
-
-function patchAppSettingsSnapshot(patch = {}) {
-  const next = {
-    ...appSettingsSnapshot,
-    ...(patch && typeof patch === "object" ? patch : {}),
-  };
-  if (patch && Object.prototype.hasOwnProperty.call(patch, "backgroundTasks")) {
-    next.backgroundTasks = patch.backgroundTasks;
-  }
-  if (patch && Object.prototype.hasOwnProperty.call(patch, "envOverrides")) {
-    next.envOverrides = patch.envOverrides;
-  }
-  if (patch && Object.prototype.hasOwnProperty.call(patch, "envOverrideCatalog")) {
-    next.envOverrideCatalog = patch.envOverrideCatalog;
-  }
-  if (patch && Object.prototype.hasOwnProperty.call(patch, "envOverrideReservedKeys")) {
-    next.envOverrideReservedKeys = patch.envOverrideReservedKeys;
-  }
-  if (patch && Object.prototype.hasOwnProperty.call(patch, "envOverrideUnsupportedKeys")) {
-    next.envOverrideUnsupportedKeys = patch.envOverrideUnsupportedKeys;
-  }
-  return setAppSettingsSnapshot(next);
-}
-
-async function loadAppSettings() {
-  try {
-    return setAppSettingsSnapshot(await appSettingsGet());
-  } catch (err) {
-    console.warn("[app-settings] load failed", err);
-    return setAppSettingsSnapshot(appSettingsSnapshot);
-  }
-}
-
-async function saveAppSettingsPatch(patch = {}) {
-  const payload = patch && typeof patch === "object" ? patch : {};
-  return setAppSettingsSnapshot(await appSettingsSet(payload));
-}
-function buildRefreshAllTasks(options = {}) {
-  const refreshRemoteUsage = options.refreshRemoteUsage === true;
-  const refreshRemoteModels = options.refreshRemoteModels === true;
-  return [
-    { name: "accounts", label: "账号列表", run: refreshAccounts },
-    { name: "usage", label: "账号用量", run: () => refreshUsageList({ refreshRemote: refreshRemoteUsage }) },
-    { name: "api-models", label: "模型列表", run: () => refreshApiModels({ refreshRemote: refreshRemoteModels }) },
-    { name: "api-keys", label: "平台密钥", run: refreshApiKeys },
-    { name: "request-logs", label: "请求日志", run: () => refreshRequestLogs(state.requestLogQuery) },
-    { name: "request-log-today-summary", label: "今日摘要", run: refreshRequestLogTodaySummary },
-  ];
-}
 
 function isTauriRuntime() {
   return Boolean(window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke);
 }
 
-function applyBrowserModeUi() {
-  if (isTauriRuntime()) {
-    return false;
-  }
-  if (typeof document !== "undefined" && document.body) {
-    document.body.classList.add("cm-browser");
-  }
-
-  // 中文注释：浏览器模式不支持桌面端启停与更新，隐藏相关 UI，避免误操作。
-  const serviceSetup = dom.serviceAddrInput ? dom.serviceAddrInput.closest(".service-setup") : null;
-  if (serviceSetup) {
-    serviceSetup.style.display = "none";
-  }
-  const updateCard = dom.checkUpdate ? dom.checkUpdate.closest(".settings-top-item, .settings-card") : null;
-  if (updateCard) {
-    updateCard.style.display = "none";
-  }
-  const closeToTrayCard = dom.closeToTrayOnClose ? dom.closeToTrayOnClose.closest(".settings-top-item, .settings-card") : null;
-  if (closeToTrayCard) {
-    closeToTrayCard.style.display = "none";
-  }
-  const lightweightModeCard = dom.lightweightModeOnCloseToTray
-    ? dom.lightweightModeOnCloseToTray.closest(".settings-top-item, .settings-card")
-    : null;
-  if (lightweightModeCard) {
-    lightweightModeCard.style.display = "none";
-  }
-
-  return true;
-}
-
-function readUpdateAutoCheckSetting() {
-  return Boolean(appSettingsSnapshot.updateAutoCheck);
-}
-
-function saveUpdateAutoCheckSetting(enabled) {
-  patchAppSettingsSnapshot({ updateAutoCheck: Boolean(enabled) });
-}
-
-function initUpdateAutoCheckSetting() {
-  const enabled = readUpdateAutoCheckSetting();
-  if (dom.autoCheckUpdate) {
-    dom.autoCheckUpdate.checked = enabled;
-  }
-}
-
-function readCloseToTrayOnCloseSetting() {
-  return Boolean(appSettingsSnapshot.closeToTrayOnClose);
-}
-
-function saveCloseToTrayOnCloseSetting(enabled) {
-  patchAppSettingsSnapshot({ closeToTrayOnClose: Boolean(enabled) });
-}
-
-function setCloseToTrayOnCloseToggle(enabled) {
-  if (dom.closeToTrayOnClose) {
-    dom.closeToTrayOnClose.checked = Boolean(enabled);
-  }
-}
-
-function readLightweightModeOnCloseToTraySetting() {
-  return Boolean(appSettingsSnapshot.lightweightModeOnCloseToTray);
-}
-
-function saveLightweightModeOnCloseToTraySetting(enabled) {
-  patchAppSettingsSnapshot({ lightweightModeOnCloseToTray: Boolean(enabled) });
-}
-
-function setLightweightModeOnCloseToTrayToggle(enabled) {
-  if (dom.lightweightModeOnCloseToTray) {
-    dom.lightweightModeOnCloseToTray.checked = Boolean(enabled);
-  }
-}
-
-function syncLightweightModeOnCloseToTrayAvailability() {
-  if (!dom.lightweightModeOnCloseToTray) {
-    return;
-  }
-  dom.lightweightModeOnCloseToTray.disabled = !Boolean(appSettingsSnapshot.closeToTraySupported)
-    || !Boolean(appSettingsSnapshot.closeToTrayOnClose);
-}
-
-async function applyCloseToTrayOnCloseSetting(enabled, { silent = true } = {}) {
-  const normalized = Boolean(enabled);
-  try {
-    const settings = await saveAppSettingsPatch({
-      closeToTrayOnClose: normalized,
-    });
-    const applied = Boolean(settings.closeToTrayOnClose);
-    const supported = Boolean(settings.closeToTraySupported);
-    if (dom.closeToTrayOnClose) {
-      dom.closeToTrayOnClose.disabled = !supported;
-    }
-    saveCloseToTrayOnCloseSetting(applied);
-    setCloseToTrayOnCloseToggle(applied);
-    syncLightweightModeOnCloseToTrayAvailability();
-    if (!silent) {
-      if (normalized && !applied && !supported) {
-        showToast("系统托盘不可用，无法启用关闭时最小化到托盘", "error");
-      } else {
-        showToast(applied ? "已开启：关闭窗口将最小化到托盘" : "已关闭：关闭窗口将直接退出");
-      }
-    }
-    return Boolean(applied);
-  } catch (err) {
-    if (!silent) {
-      showToast(`设置失败：${normalizeErrorMessage(err)}`, "error");
-    }
-    throw err;
-  }
-}
-
-function initCloseToTrayOnCloseSetting() {
-  const enabled = readCloseToTrayOnCloseSetting();
-  setCloseToTrayOnCloseToggle(enabled);
-  if (dom.closeToTrayOnClose) {
-    dom.closeToTrayOnClose.disabled = !Boolean(appSettingsSnapshot.closeToTraySupported);
-  }
-  syncLightweightModeOnCloseToTrayAvailability();
-}
-
-async function applyLightweightModeOnCloseToTraySetting(enabled, { silent = true } = {}) {
-  const normalized = Boolean(enabled);
-  try {
-    const settings = await saveAppSettingsPatch({
-      lightweightModeOnCloseToTray: normalized,
-    });
-    const applied = Boolean(settings.lightweightModeOnCloseToTray);
-    saveLightweightModeOnCloseToTraySetting(applied);
-    setLightweightModeOnCloseToTrayToggle(applied);
-    syncLightweightModeOnCloseToTrayAvailability();
-    if (!silent) {
-      showToast(
-        applied
-          ? "已开启：关闭到托盘时会释放窗口内存，再次打开会稍慢"
-          : "已关闭：托盘隐藏时继续保留窗口内存，再次打开更快",
-      );
-    }
-    return applied;
-  } catch (err) {
-    if (!silent) {
-      showToast(`设置失败：${normalizeErrorMessage(err)}`, "error");
-    }
-    throw err;
-  }
-}
-
-function initLightweightModeOnCloseToTraySetting() {
-  const enabled = readLightweightModeOnCloseToTraySetting();
-  setLightweightModeOnCloseToTrayToggle(enabled);
-  syncLightweightModeOnCloseToTrayAvailability();
-}
-
-function readLowTransparencySetting() {
-  return Boolean(appSettingsSnapshot.lowTransparency);
-}
-
-function saveLowTransparencySetting(enabled) {
-  patchAppSettingsSnapshot({ lowTransparency: Boolean(enabled) });
-}
-
-function applyLowTransparencySetting(enabled) {
-  if (typeof document === "undefined" || !document.body) {
-    return;
-  }
-  document.body.classList.toggle(UI_LOW_TRANSPARENCY_BODY_CLASS, enabled);
-}
-
-function ensureLowTransparencySettingCard() {
-  if (typeof document === "undefined") {
-    return null;
-  }
-  const existing = document.getElementById(UI_LOW_TRANSPARENCY_TOGGLE_ID);
-  if (existing) {
-    return existing;
-  }
-
-  const settingsGrid = document.querySelector("#pageSettings .settings-grid");
-  if (!settingsGrid) {
-    return null;
-  }
-
-  const existingCard = document.getElementById(UI_LOW_TRANSPARENCY_CARD_ID);
-  if (existingCard) {
-    return document.getElementById(UI_LOW_TRANSPARENCY_TOGGLE_ID);
-  }
-
-  const card = document.createElement("div");
-  card.className = "panel settings-card settings-card-span-2";
-  card.id = UI_LOW_TRANSPARENCY_CARD_ID;
-  card.innerHTML = `
-    <div class="panel-header">
-      <div>
-        <h3>视觉性能</h3>
-        <p>减少模糊/透明特效，降低掉帧</p>
-      </div>
-    </div>
-    <div class="settings-row">
-      <label class="update-auto-check switch-control" for="${UI_LOW_TRANSPARENCY_TOGGLE_ID}">
-        <input id="${UI_LOW_TRANSPARENCY_TOGGLE_ID}" type="checkbox" />
-        <span class="switch-track" aria-hidden="true">
-          <span class="switch-thumb"></span>
-        </span>
-        <span>性能模式/低透明度</span>
-      </label>
-    </div>
-    <div class="hint">开启后会关闭/降级 blur、backdrop-filter 等效果（更省 GPU，但质感会更“硬”）。</div>
-  `;
-
-  const themeCard = document.getElementById("themePanel")?.closest(".settings-card");
-  if (themeCard && themeCard.parentElement === settingsGrid) {
-    settingsGrid.insertBefore(card, themeCard);
-  } else {
-    settingsGrid.appendChild(card);
-  }
-
-  return document.getElementById(UI_LOW_TRANSPARENCY_TOGGLE_ID);
-}
-
-function initLowTransparencySetting() {
-  const enabled = readLowTransparencySetting();
-  applyLowTransparencySetting(enabled);
-  const toggle = ensureLowTransparencySettingCard();
-  if (toggle) {
-    toggle.checked = enabled;
-  }
-}
-
-function normalizeServiceListenMode(value) {
-  const raw = String(value || "").trim().toLowerCase();
-  if (["all_interfaces", "all-interfaces", "all", "0.0.0.0"].includes(raw)) {
-    return SERVICE_LISTEN_MODE_ALL_INTERFACES;
-  }
-  return SERVICE_LISTEN_MODE_LOOPBACK;
-}
-
-function serviceListenModeLabel(mode) {
-  return normalizeServiceListenMode(mode) === SERVICE_LISTEN_MODE_ALL_INTERFACES
-    ? "全部网卡（0.0.0.0）"
-    : "仅本机（localhost / 127.0.0.1）";
-}
-
-function buildServiceListenModeHint(mode, requiresRestart = true) {
-  const normalized = normalizeServiceListenMode(mode);
-  const suffix = normalized === SERVICE_LISTEN_MODE_ALL_INTERFACES
-    ? "局域网访问请使用本机实际 IP。"
-    : "外部设备将无法直接访问。";
-  if (requiresRestart) {
-    return `已保存为${serviceListenModeLabel(normalized)}，重启服务后生效；${suffix}`;
-  }
-  return `当前为${serviceListenModeLabel(normalized)}；${suffix}`;
-}
-
-function setServiceListenModeSelect(mode) {
-  if (!dom.serviceListenModeSelect) {
-    return;
-  }
-  dom.serviceListenModeSelect.value = normalizeServiceListenMode(mode);
-}
-
-function setServiceListenModeHint(message) {
-  if (!dom.serviceListenModeHint) {
-    return;
-  }
-  dom.serviceListenModeHint.textContent = String(message || "").trim()
-    || "保存后重启服务生效；局域网访问请使用本机实际 IP。";
-}
-
-function initServiceListenModeSetting() {
-  const mode = normalizeServiceListenMode(appSettingsSnapshot.serviceListenMode);
-  setServiceListenModeSelect(mode);
-  setServiceListenModeHint(buildServiceListenModeHint(mode, true));
-}
-
-async function applyServiceListenModeToService(mode, { silent = true } = {}) {
-  const normalized = normalizeServiceListenMode(mode);
-  if (serviceListenModeSyncInFlight) {
-    return serviceListenModeSyncInFlight;
-  }
-  serviceListenModeSyncInFlight = (async () => {
-    const settings = await saveAppSettingsPatch({
-      serviceListenMode: normalized,
-    });
-    const resolved = {
-      mode: normalizeServiceListenMode(settings.serviceListenMode),
-      requiresRestart: true,
-    };
-    setServiceListenModeSelect(resolved.mode);
-    setServiceListenModeHint(buildServiceListenModeHint(resolved.mode, resolved.requiresRestart));
-    if (!silent) {
-      showToast(`监听模式已保存为${serviceListenModeLabel(resolved.mode)}，重启服务后生效`);
-    }
-    return true;
-  })();
-
-  try {
-    return await serviceListenModeSyncInFlight;
-  } catch (err) {
-    if (!silent) {
-      showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
-      setServiceListenModeHint(`保存失败：${normalizeErrorMessage(err)}`);
-    }
-    return false;
-  } finally {
-    serviceListenModeSyncInFlight = null;
-  }
-}
-
-async function syncServiceListenModeOnStartup() {
-  initServiceListenModeSetting();
-}
-
-function normalizeRouteStrategy(strategy) {
-  const raw = String(strategy || "").trim().toLowerCase();
-  if (["balanced", "round_robin", "round-robin", "rr"].includes(raw)) {
-    return ROUTE_STRATEGY_BALANCED;
-  }
-  return ROUTE_STRATEGY_ORDERED;
-}
-
-function routeStrategyLabel(strategy) {
-  return normalizeRouteStrategy(strategy) === ROUTE_STRATEGY_BALANCED ? "均衡轮询" : "顺序优先";
-}
-
-function updateRouteStrategyHint(strategy) {
-  if (!dom.routeStrategyHint) return;
-  let hintText = "按账号顺序优先请求，优先使用可用账号（不可用账号不会参与选路）。";
-  if (normalizeRouteStrategy(strategy) === ROUTE_STRATEGY_BALANCED) {
-    hintText = "按密钥 + 模型均衡轮询起点，优先使用可用账号（不可用账号不会参与选路）。";
-  }
-  dom.routeStrategyHint.title = hintText;
-  dom.routeStrategyHint.setAttribute("aria-label", `网关选路策略说明：${hintText}`);
-}
-
-function readRouteStrategySetting() {
-  return normalizeRouteStrategy(appSettingsSnapshot.routeStrategy);
-}
-
-function saveRouteStrategySetting(strategy) {
-  patchAppSettingsSnapshot({
-    routeStrategy: normalizeRouteStrategy(strategy),
-  });
-}
-
-function setRouteStrategySelect(strategy) {
-  const normalized = normalizeRouteStrategy(strategy);
-  if (dom.routeStrategySelect) {
-    dom.routeStrategySelect.value = normalized;
-  }
-  updateRouteStrategyHint(normalized);
-}
-
-function initRouteStrategySetting() {
-  const mode = readRouteStrategySetting();
-  setRouteStrategySelect(mode);
-}
-
-function resolveRouteStrategyFromPayload(payload) {
-  const picked = pickFirstValue(payload, ["strategy", "result.strategy"]);
-  return normalizeRouteStrategy(picked);
-}
-
-async function applyRouteStrategyToService(strategy, { silent = true } = {}) {
-  const normalized = normalizeRouteStrategy(strategy);
-  if (routeStrategySyncInFlight) {
-    return routeStrategySyncInFlight;
-  }
-  routeStrategySyncInFlight = (async () => {
-    const connected = await ensureConnected();
-    serviceLifecycle.updateServiceToggle();
-    if (!connected) {
-      if (!silent) {
-        showToast("服务未连接，稍后会自动应用选路策略", "error");
-      }
-      return false;
-    }
-    const response = await serviceGatewayRouteStrategySet(normalized);
-    const applied = resolveRouteStrategyFromPayload(response);
-    saveRouteStrategySetting(applied);
-    setRouteStrategySelect(applied);
-    routeStrategySyncedProbeId = state.serviceProbeId;
-    if (!silent) {
-      showToast(`已切换为${routeStrategyLabel(applied)}`);
-    }
-    return true;
-  })();
-
-  try {
-    return await routeStrategySyncInFlight;
-  } catch (err) {
-    if (!silent) {
-      showToast(`切换失败：${normalizeErrorMessage(err)}`, "error");
-    }
-    return false;
-  } finally {
-    routeStrategySyncInFlight = null;
-  }
-}
-
-async function syncRouteStrategyOnStartup() {
-  if (!isTauriRuntime()) {
-    return;
-  }
-  await applyRouteStrategyToService(readRouteStrategySetting(), { silent: true });
-}
-
-function normalizeCpaNoCookieHeaderMode(value) {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number") {
-    return value !== 0;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["1", "true", "yes", "on"].includes(normalized)) {
-      return true;
-    }
-    if (["0", "false", "no", "off"].includes(normalized)) {
-      return false;
-    }
-  }
-  return false;
-}
-
-function readCpaNoCookieHeaderModeSetting() {
-  return normalizeCpaNoCookieHeaderMode(appSettingsSnapshot.cpaNoCookieHeaderModeEnabled);
-}
-
-function saveCpaNoCookieHeaderModeSetting(enabled) {
-  patchAppSettingsSnapshot({
-    cpaNoCookieHeaderModeEnabled: normalizeCpaNoCookieHeaderMode(enabled),
-  });
-}
-
-function setCpaNoCookieHeaderModeToggle(enabled) {
-  if (dom.cpaNoCookieHeaderMode) {
-    dom.cpaNoCookieHeaderMode.checked = Boolean(enabled);
-  }
-}
-
-function initCpaNoCookieHeaderModeSetting() {
-  const enabled = readCpaNoCookieHeaderModeSetting();
-  setCpaNoCookieHeaderModeToggle(enabled);
-}
-
-function resolveCpaNoCookieHeaderModeFromPayload(payload) {
-  const value = pickBooleanValue(payload, [
-    "cpaNoCookieHeaderModeEnabled",
-    "enabled",
-    "result.cpaNoCookieHeaderModeEnabled",
-    "result.enabled",
-  ]);
-  return Boolean(value);
-}
-
-async function applyCpaNoCookieHeaderModeToService(enabled, { silent = true } = {}) {
-  const normalized = normalizeCpaNoCookieHeaderMode(enabled);
-  if (cpaNoCookieHeaderModeSyncInFlight) {
-    return cpaNoCookieHeaderModeSyncInFlight;
-  }
-  cpaNoCookieHeaderModeSyncInFlight = (async () => {
-    const connected = await ensureConnected();
-    serviceLifecycle.updateServiceToggle();
-    if (!connected) {
-      if (!silent) {
-        showToast("服务未连接，稍后会自动应用头策略开关", "error");
-      }
-      return false;
-    }
-    const response = await serviceGatewayHeaderPolicySet(normalized);
-    const applied = resolveCpaNoCookieHeaderModeFromPayload(response);
-    saveCpaNoCookieHeaderModeSetting(applied);
-    setCpaNoCookieHeaderModeToggle(applied);
-    cpaNoCookieHeaderModeSyncedProbeId = state.serviceProbeId;
-    if (!silent) {
-      showToast(applied ? "已启用请求头收敛策略" : "已关闭请求头收敛策略");
-    }
-    return true;
-  })();
-
-  try {
-    return await cpaNoCookieHeaderModeSyncInFlight;
-  } catch (err) {
-    if (!silent) {
-      showToast(`切换失败：${normalizeErrorMessage(err)}`, "error");
-    }
-    return false;
-  } finally {
-    cpaNoCookieHeaderModeSyncInFlight = null;
-  }
-}
-
-async function syncCpaNoCookieHeaderModeOnStartup() {
-  if (!isTauriRuntime()) {
-    return;
-  }
-  await applyCpaNoCookieHeaderModeToService(readCpaNoCookieHeaderModeSetting(), { silent: true });
-}
-
-function readUpstreamProxyUrlSetting() {
-  return normalizeUpstreamProxyUrl(appSettingsSnapshot.upstreamProxyUrl);
-}
-
-function saveUpstreamProxyUrlSetting(value) {
-  patchAppSettingsSnapshot({
-    upstreamProxyUrl: normalizeUpstreamProxyUrl(value),
-  });
-}
-
-function setUpstreamProxyInput(value) {
-  if (!dom.upstreamProxyUrlInput) {
-    return;
-  }
-  dom.upstreamProxyUrlInput.value = normalizeUpstreamProxyUrl(value);
-}
-
-function setUpstreamProxyHint(message) {
-  if (!dom.upstreamProxyHint) {
-    return;
-  }
-  dom.upstreamProxyHint.textContent = message;
-}
-
-function initUpstreamProxySetting() {
-  const proxyUrl = readUpstreamProxyUrlSetting();
-  setUpstreamProxyInput(proxyUrl);
-  setUpstreamProxyHint(UPSTREAM_PROXY_HINT_TEXT);
-}
-
-function resolveUpstreamProxyUrlFromPayload(payload) {
-  const picked = pickFirstValue(payload, ["proxyUrl", "result.proxyUrl", "url", "result.url"]);
-  return normalizeUpstreamProxyUrl(picked);
-}
-
-async function applyUpstreamProxyToService(proxyUrl, { silent = true } = {}) {
-  const normalized = normalizeUpstreamProxyUrl(proxyUrl);
-  if (upstreamProxySyncInFlight) {
-    return upstreamProxySyncInFlight;
-  }
-  upstreamProxySyncInFlight = (async () => {
-    const connected = await ensureConnected();
-    serviceLifecycle.updateServiceToggle();
-    if (!connected) {
-      if (!silent) {
-        showToast("服务未连接，稍后会自动应用上游代理", "error");
-      }
-      return false;
-    }
-    const response = await serviceGatewayUpstreamProxySet(normalized || null);
-    const applied = resolveUpstreamProxyUrlFromPayload(response);
-    saveUpstreamProxyUrlSetting(applied);
-    setUpstreamProxyInput(applied);
-    setUpstreamProxyHint(UPSTREAM_PROXY_HINT_TEXT);
-    upstreamProxySyncedProbeId = state.serviceProbeId;
-    if (!silent) {
-      showToast(applied ? "上游代理已保存并生效" : "已清空上游代理，恢复直连");
-    }
-    return true;
-  })();
-
-  try {
-    return await upstreamProxySyncInFlight;
-  } catch (err) {
-    if (!silent) {
-      showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
-      setUpstreamProxyHint(`保存失败：${normalizeErrorMessage(err)}`);
-    }
-    return false;
-  } finally {
-    upstreamProxySyncInFlight = null;
-  }
-}
-
-async function syncUpstreamProxyOnStartup() {
-  if (!isTauriRuntime()) {
-    return;
-  }
-  await applyUpstreamProxyToService(readUpstreamProxyUrlSetting(), { silent: true });
-}
-
-function normalizeBooleanSetting(value, fallback = false) {
-  if (value == null) {
-    return Boolean(fallback);
-  }
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number") {
-    return value !== 0;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["1", "true", "yes", "on"].includes(normalized)) {
-      return true;
-    }
-    if (["0", "false", "no", "off"].includes(normalized)) {
-      return false;
-    }
-  }
-  return Boolean(fallback);
-}
-
-function normalizePositiveInteger(value, fallback, min = 1) {
-  const fallbackValue = Math.max(min, Math.floor(Number(fallback) || min));
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return fallbackValue;
-  }
-  const intValue = Math.floor(numeric);
-  if (intValue < min) {
-    return min;
-  }
-  return intValue;
-}
-
-function normalizeBackgroundTasksSettings(input) {
-  const source = input && typeof input === "object" ? input : {};
-  return {
-    usagePollingEnabled: normalizeBooleanSetting(
-      source.usagePollingEnabled,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.usagePollingEnabled,
-    ),
-    usagePollIntervalSecs: normalizePositiveInteger(
-      source.usagePollIntervalSecs,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.usagePollIntervalSecs,
-      1,
-    ),
-    gatewayKeepaliveEnabled: normalizeBooleanSetting(
-      source.gatewayKeepaliveEnabled,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.gatewayKeepaliveEnabled,
-    ),
-    gatewayKeepaliveIntervalSecs: normalizePositiveInteger(
-      source.gatewayKeepaliveIntervalSecs,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.gatewayKeepaliveIntervalSecs,
-      1,
-    ),
-    tokenRefreshPollingEnabled: normalizeBooleanSetting(
-      source.tokenRefreshPollingEnabled,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.tokenRefreshPollingEnabled,
-    ),
-    tokenRefreshPollIntervalSecs: normalizePositiveInteger(
-      source.tokenRefreshPollIntervalSecs,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.tokenRefreshPollIntervalSecs,
-      1,
-    ),
-    usageRefreshWorkers: normalizePositiveInteger(
-      source.usageRefreshWorkers,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.usageRefreshWorkers,
-      1,
-    ),
-    httpWorkerFactor: normalizePositiveInteger(
-      source.httpWorkerFactor,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.httpWorkerFactor,
-      1,
-    ),
-    httpWorkerMin: normalizePositiveInteger(
-      source.httpWorkerMin,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.httpWorkerMin,
-      1,
-    ),
-    httpStreamWorkerFactor: normalizePositiveInteger(
-      source.httpStreamWorkerFactor,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.httpStreamWorkerFactor,
-      1,
-    ),
-    httpStreamWorkerMin: normalizePositiveInteger(
-      source.httpStreamWorkerMin,
-      DEFAULT_BACKGROUND_TASKS_SETTINGS.httpStreamWorkerMin,
-      1,
-    ),
-  };
-}
-
-function readBackgroundTasksSetting() {
-  return normalizeBackgroundTasksSettings(appSettingsSnapshot.backgroundTasks);
-}
-
-function saveBackgroundTasksSetting(settings) {
-  patchAppSettingsSnapshot({
-    backgroundTasks: normalizeBackgroundTasksSettings(settings),
-  });
-}
-
-function setBackgroundTasksForm(settings) {
-  const normalized = normalizeBackgroundTasksSettings(settings);
-  if (dom.backgroundUsagePollingEnabled) {
-    dom.backgroundUsagePollingEnabled.checked = normalized.usagePollingEnabled;
-  }
-  if (dom.backgroundUsagePollIntervalSecs) {
-    dom.backgroundUsagePollIntervalSecs.value = String(normalized.usagePollIntervalSecs);
-  }
-  if (dom.backgroundGatewayKeepaliveEnabled) {
-    dom.backgroundGatewayKeepaliveEnabled.checked = normalized.gatewayKeepaliveEnabled;
-  }
-  if (dom.backgroundGatewayKeepaliveIntervalSecs) {
-    dom.backgroundGatewayKeepaliveIntervalSecs.value = String(normalized.gatewayKeepaliveIntervalSecs);
-  }
-  if (dom.backgroundTokenRefreshPollingEnabled) {
-    dom.backgroundTokenRefreshPollingEnabled.checked = normalized.tokenRefreshPollingEnabled;
-  }
-  if (dom.backgroundTokenRefreshPollIntervalSecs) {
-    dom.backgroundTokenRefreshPollIntervalSecs.value = String(normalized.tokenRefreshPollIntervalSecs);
-  }
-  if (dom.backgroundUsageRefreshWorkers) {
-    dom.backgroundUsageRefreshWorkers.value = String(normalized.usageRefreshWorkers);
-  }
-  if (dom.backgroundHttpWorkerFactor) {
-    dom.backgroundHttpWorkerFactor.value = String(normalized.httpWorkerFactor);
-  }
-  if (dom.backgroundHttpWorkerMin) {
-    dom.backgroundHttpWorkerMin.value = String(normalized.httpWorkerMin);
-  }
-  if (dom.backgroundHttpStreamWorkerFactor) {
-    dom.backgroundHttpStreamWorkerFactor.value = String(normalized.httpStreamWorkerFactor);
-  }
-  if (dom.backgroundHttpStreamWorkerMin) {
-    dom.backgroundHttpStreamWorkerMin.value = String(normalized.httpStreamWorkerMin);
-  }
-}
-
-function readBackgroundTasksForm() {
-  const integerFields = [
-    ["usagePollIntervalSecs", dom.backgroundUsagePollIntervalSecs, "用量轮询间隔"],
-    ["gatewayKeepaliveIntervalSecs", dom.backgroundGatewayKeepaliveIntervalSecs, "网关保活间隔"],
-    ["tokenRefreshPollIntervalSecs", dom.backgroundTokenRefreshPollIntervalSecs, "令牌刷新间隔"],
-    ["usageRefreshWorkers", dom.backgroundUsageRefreshWorkers, "用量刷新线程数"],
-    ["httpWorkerFactor", dom.backgroundHttpWorkerFactor, "普通请求线程因子"],
-    ["httpWorkerMin", dom.backgroundHttpWorkerMin, "普通请求最小线程数"],
-    ["httpStreamWorkerFactor", dom.backgroundHttpStreamWorkerFactor, "流式请求线程因子"],
-    ["httpStreamWorkerMin", dom.backgroundHttpStreamWorkerMin, "流式请求最小线程数"],
-  ];
-  const numbers = {};
-  for (const [key, input, label] of integerFields) {
-    const raw = input ? String(input.value || "").trim() : "";
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed <= 0 || Math.floor(parsed) !== parsed) {
-      return { ok: false, error: `${label} 需填写正整数` };
-    }
-    numbers[key] = parsed;
-  }
-  return {
-    ok: true,
-    settings: normalizeBackgroundTasksSettings({
-      usagePollingEnabled: dom.backgroundUsagePollingEnabled
-        ? Boolean(dom.backgroundUsagePollingEnabled.checked)
-        : DEFAULT_BACKGROUND_TASKS_SETTINGS.usagePollingEnabled,
-      usagePollIntervalSecs: numbers.usagePollIntervalSecs,
-      gatewayKeepaliveEnabled: dom.backgroundGatewayKeepaliveEnabled
-        ? Boolean(dom.backgroundGatewayKeepaliveEnabled.checked)
-        : DEFAULT_BACKGROUND_TASKS_SETTINGS.gatewayKeepaliveEnabled,
-      gatewayKeepaliveIntervalSecs: numbers.gatewayKeepaliveIntervalSecs,
-      tokenRefreshPollingEnabled: dom.backgroundTokenRefreshPollingEnabled
-        ? Boolean(dom.backgroundTokenRefreshPollingEnabled.checked)
-        : DEFAULT_BACKGROUND_TASKS_SETTINGS.tokenRefreshPollingEnabled,
-      tokenRefreshPollIntervalSecs: numbers.tokenRefreshPollIntervalSecs,
-      usageRefreshWorkers: numbers.usageRefreshWorkers,
-      httpWorkerFactor: numbers.httpWorkerFactor,
-      httpWorkerMin: numbers.httpWorkerMin,
-      httpStreamWorkerFactor: numbers.httpStreamWorkerFactor,
-      httpStreamWorkerMin: numbers.httpStreamWorkerMin,
-    }),
-  };
-}
-
-function resolveBackgroundTasksSettingsFromPayload(payload) {
-  return normalizeBackgroundTasksSettings({
-    usagePollingEnabled: pickBooleanValue(payload, [
-      "usagePollingEnabled",
-      "result.usagePollingEnabled",
-    ]),
-    usagePollIntervalSecs: pickFirstValue(payload, [
-      "usagePollIntervalSecs",
-      "result.usagePollIntervalSecs",
-    ]),
-    gatewayKeepaliveEnabled: pickBooleanValue(payload, [
-      "gatewayKeepaliveEnabled",
-      "result.gatewayKeepaliveEnabled",
-    ]),
-    gatewayKeepaliveIntervalSecs: pickFirstValue(payload, [
-      "gatewayKeepaliveIntervalSecs",
-      "result.gatewayKeepaliveIntervalSecs",
-    ]),
-    tokenRefreshPollingEnabled: pickBooleanValue(payload, [
-      "tokenRefreshPollingEnabled",
-      "result.tokenRefreshPollingEnabled",
-    ]),
-    tokenRefreshPollIntervalSecs: pickFirstValue(payload, [
-      "tokenRefreshPollIntervalSecs",
-      "result.tokenRefreshPollIntervalSecs",
-    ]),
-    usageRefreshWorkers: pickFirstValue(payload, [
-      "usageRefreshWorkers",
-      "result.usageRefreshWorkers",
-    ]),
-    httpWorkerFactor: pickFirstValue(payload, [
-      "httpWorkerFactor",
-      "result.httpWorkerFactor",
-    ]),
-    httpWorkerMin: pickFirstValue(payload, [
-      "httpWorkerMin",
-      "result.httpWorkerMin",
-    ]),
-    httpStreamWorkerFactor: pickFirstValue(payload, [
-      "httpStreamWorkerFactor",
-      "result.httpStreamWorkerFactor",
-    ]),
-    httpStreamWorkerMin: pickFirstValue(payload, [
-      "httpStreamWorkerMin",
-      "result.httpStreamWorkerMin",
-    ]),
-  });
-}
-
-function resolveBackgroundTasksRestartKeys(payload) {
-  const raw = pickFirstValue(payload, [
-    "requiresRestartKeys",
-    "result.requiresRestartKeys",
-  ]);
-  if (!Array.isArray(raw)) {
-    return [...BACKGROUND_TASKS_RESTART_KEYS_DEFAULT];
-  }
-  return raw
-    .map((item) => String(item || "").trim())
-    .filter((item) => item.length > 0);
-}
-
-function updateBackgroundTasksHint(requiresRestartKeys) {
-  if (!dom.backgroundTasksHint) {
-    return;
-  }
-  const keys = Array.isArray(requiresRestartKeys) ? requiresRestartKeys : [];
-  if (keys.length === 0) {
-    dom.backgroundTasksHint.textContent = "保存后立即生效。";
-    return;
-  }
-  const labels = keys.map((key) => BACKGROUND_TASKS_RESTART_KEY_LABELS[key] || key);
-  dom.backgroundTasksHint.textContent = `已保存。以下参数需重启服务生效：${labels.join("、")}。`;
-}
-
-function initBackgroundTasksSetting() {
-  const settings = readBackgroundTasksSetting();
-  setBackgroundTasksForm(settings);
-  updateBackgroundTasksHint(BACKGROUND_TASKS_RESTART_KEYS_DEFAULT);
-}
-
-async function applyBackgroundTasksToService(settings, { silent = true } = {}) {
-  const normalized = normalizeBackgroundTasksSettings(settings);
-  if (backgroundTasksSyncInFlight) {
-    return backgroundTasksSyncInFlight;
-  }
-  backgroundTasksSyncInFlight = (async () => {
-    const connected = await ensureConnected();
-    serviceLifecycle.updateServiceToggle();
-    if (!connected) {
-      if (!silent) {
-        showToast("服务未连接，稍后会自动应用后台任务配置", "error");
-      }
-      return false;
-    }
-    const response = await serviceGatewayBackgroundTasksSet(normalized);
-    const applied = resolveBackgroundTasksSettingsFromPayload(response);
-    const restartKeys = resolveBackgroundTasksRestartKeys(response);
-    saveBackgroundTasksSetting(applied);
-    setBackgroundTasksForm(applied);
-    updateBackgroundTasksHint(restartKeys);
-    backgroundTasksSyncedProbeId = state.serviceProbeId;
-    if (!silent) {
-      showToast("后台任务配置已保存");
-    }
-    return true;
-  })();
-
-  try {
-    return await backgroundTasksSyncInFlight;
-  } catch (err) {
-    if (!silent) {
-      showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
-    }
-    return false;
-  } finally {
-    backgroundTasksSyncInFlight = null;
-  }
-}
-
-async function syncBackgroundTasksOnStartup() {
-  if (!isTauriRuntime()) {
-    return;
-  }
-  await applyBackgroundTasksToService(readBackgroundTasksSetting(), { silent: true });
-}
-
-function readEnvOverridesSetting() {
-  return normalizeEnvOverrides(appSettingsSnapshot.envOverrides);
-}
-
-function saveEnvOverridesSetting(value) {
-  patchAppSettingsSnapshot({
-    envOverrides: normalizeEnvOverrides(value),
-  });
-}
-
-function setEnvOverridesHint(message) {
-  if (!dom.envOverridesHint) {
-    return;
-  }
-  dom.envOverridesHint.textContent = String(message || "").trim()
-    || "选择变量后可直接修改值；恢复默认会回退到启动时环境值或内置默认值。";
-}
-
-function setEnvOverrideDescription(message) {
-  if (!dom.envOverrideDescription) {
-    return;
-  }
-  dom.envOverrideDescription.textContent = String(message || "").trim()
-    || "这里会显示当前变量的作用说明。";
-}
-
-function readEnvOverrideCatalog() {
-  return normalizeEnvOverrideCatalog(appSettingsSnapshot.envOverrideCatalog);
-}
-
-function findEnvOverrideCatalogItem(key, catalog = readEnvOverrideCatalog()) {
-  const normalizedKey = String(key || "").trim().toUpperCase();
-  return catalog.find((item) => item.key === normalizedKey) || null;
-}
-
-function resolveEnvOverrideSelection(preferredKey) {
-  const catalog = filterEnvOverrideCatalog(
-    readEnvOverrideCatalog(),
-    dom.envOverrideSearchInput ? dom.envOverrideSearchInput.value : "",
-  );
-  const nextKey = [preferredKey, envOverrideSelectedKey]
-    .map((item) => String(item || "").trim().toUpperCase())
-    .find((key) => key && catalog.some((item) => item.key === key))
-    || (catalog[0] ? catalog[0].key : "");
-
-  envOverrideSelectedKey = nextKey;
-  return {
-    catalog,
-    selectedItem: catalog.find((item) => item.key === nextKey) || null,
-  };
-}
-
-function buildEnvOverrideHint(item, currentValue, prefix = "") {
-  if (!item) {
-    return prefix || "请输入搜索词并从下拉中选择一个变量。";
-  }
-  const scopeLabel = item.scope === "web"
-    ? "Web"
-    : item.scope === "desktop"
-      ? "桌面端"
-      : "服务端";
-  const parts = [];
-  if (prefix) {
-    parts.push(prefix);
-  }
-  parts.push(`默认值：${formatEnvOverrideDisplayValue(item.defaultValue)}`);
-  parts.push(`当前值：${formatEnvOverrideDisplayValue(currentValue)}`);
-  parts.push(`作用域：${scopeLabel}`);
-  parts.push(item.applyMode === "restart" ? "保存后需重启相关进程" : "保存后热生效");
-  return parts.join("；");
-}
-
-function renderEnvOverrideSelector(preferredKey = envOverrideSelectedKey) {
-  const { catalog, selectedItem } = resolveEnvOverrideSelection(preferredKey);
-  if (!dom.envOverrideSelect) {
-    return selectedItem;
-  }
-
-  dom.envOverrideSelect.replaceChildren();
-  if (catalog.length === 0) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "未匹配到变量";
-    dom.envOverrideSelect.appendChild(option);
-    dom.envOverrideSelect.disabled = true;
-    dom.envOverrideSelect.value = "";
-    return null;
-  }
-
-  for (const item of catalog) {
-    const option = document.createElement("option");
-    option.value = item.key;
-    option.textContent = buildEnvOverrideOptionLabel(item);
-    dom.envOverrideSelect.appendChild(option);
-  }
-  dom.envOverrideSelect.disabled = false;
-  dom.envOverrideSelect.value = selectedItem ? selectedItem.key : catalog[0].key;
-  return selectedItem;
-}
-
-function renderEnvOverrideEditor(preferredKey = envOverrideSelectedKey, hint = "") {
-  const item = renderEnvOverrideSelector(preferredKey);
-  const overrides = readEnvOverridesSetting();
-  const currentValue = item ? (overrides[item.key] ?? item.defaultValue ?? "") : "";
-
-  if (dom.envOverrideNameValue) {
-    dom.envOverrideNameValue.textContent = item ? item.label : "未选择";
-  }
-  if (dom.envOverrideKeyValue) {
-    dom.envOverrideKeyValue.textContent = item ? item.key : "-";
-  }
-  if (dom.envOverrideMeta) {
-    const scopeLabel = item?.scope === "web"
-      ? "Web"
-      : item?.scope === "desktop"
-        ? "桌面端"
-        : "服务端";
-    dom.envOverrideMeta.textContent = item
-      ? `${scopeLabel} · ${item.applyMode === "restart" ? "重启生效" : "热生效"}`
-      : "请先选择变量";
-  }
-  if (dom.envOverrideValueInput) {
-    dom.envOverrideValueInput.disabled = !item;
-    dom.envOverrideValueInput.value = item ? currentValue : "";
-    dom.envOverrideValueInput.placeholder = item
-      ? "留空并保存可恢复默认值"
-      : "请先选择变量";
-  }
-  if (dom.envOverridesSave) {
-    dom.envOverridesSave.disabled = !item;
-  }
-  if (dom.envOverrideReset) {
-    dom.envOverrideReset.disabled = !item;
-  }
-
-  setEnvOverridesHint(hint || buildEnvOverrideHint(item, currentValue));
-  setEnvOverrideDescription(buildEnvOverrideDescription(item));
-  return item;
-}
-
-function initEnvOverridesSetting() {
-  envOverrideSelectedKey = "";
-  renderEnvOverrideEditor("", "选择变量后可直接修改值；恢复默认会回退到启动时环境值或内置默认值。");
-}
-
-function buildWebAccessPasswordStatusText(configured) {
-  return configured
-    ? "当前已启用 Web 访问密码。修改后会立即覆盖旧密码。"
-    : "当前未启用 Web 访问密码。";
-}
-
-function updateWebAccessPasswordState(configured) {
-  const enabled = Boolean(configured);
-  patchAppSettingsSnapshot({ webAccessPasswordConfigured: enabled });
-  const text = buildWebAccessPasswordStatusText(enabled);
-  if (dom.webAccessPasswordHint) {
-    dom.webAccessPasswordHint.textContent = text;
-  }
-  if (dom.webAccessPasswordQuickStatus) {
-    dom.webAccessPasswordQuickStatus.textContent = text;
-  }
-}
-
-function readWebAccessPasswordPair(source = "settings") {
-  const useQuick = source === "quick";
-  const password = useQuick
-    ? (dom.webAccessPasswordQuickInput ? dom.webAccessPasswordQuickInput.value : "")
-    : (dom.webAccessPasswordInput ? dom.webAccessPasswordInput.value : "");
-  const confirm = useQuick
-    ? (dom.webAccessPasswordQuickConfirm ? dom.webAccessPasswordQuickConfirm.value : "")
-    : (dom.webAccessPasswordConfirm ? dom.webAccessPasswordConfirm.value : "");
-  return {
-    password: String(password || ""),
-    confirm: String(confirm || ""),
-  };
-}
-
-function syncWebAccessPasswordInputs(source = "settings") {
-  const pair = readWebAccessPasswordPair(source);
-  if (dom.webAccessPasswordInput) {
-    dom.webAccessPasswordInput.value = pair.password;
-  }
-  if (dom.webAccessPasswordConfirm) {
-    dom.webAccessPasswordConfirm.value = pair.confirm;
-  }
-  if (dom.webAccessPasswordQuickInput) {
-    dom.webAccessPasswordQuickInput.value = pair.password;
-  }
-  if (dom.webAccessPasswordQuickConfirm) {
-    dom.webAccessPasswordQuickConfirm.value = pair.confirm;
-  }
-}
-
-function clearWebAccessPasswordInputs() {
-  if (dom.webAccessPasswordInput) {
-    dom.webAccessPasswordInput.value = "";
-  }
-  if (dom.webAccessPasswordConfirm) {
-    dom.webAccessPasswordConfirm.value = "";
-  }
-  if (dom.webAccessPasswordQuickInput) {
-    dom.webAccessPasswordQuickInput.value = "";
-  }
-  if (dom.webAccessPasswordQuickConfirm) {
-    dom.webAccessPasswordQuickConfirm.value = "";
-  }
-}
-
-function openWebSecurityModal() {
-  if (!dom.modalWebSecurity) {
-    return;
-  }
-  syncWebAccessPasswordInputs("settings");
-  updateWebAccessPasswordState(appSettingsSnapshot.webAccessPasswordConfigured);
-  dom.modalWebSecurity.classList.add("active");
-}
-
-function closeWebSecurityModal() {
-  if (!dom.modalWebSecurity) {
-    return;
-  }
-  dom.modalWebSecurity.classList.remove("active");
-}
-
-async function saveWebAccessPassword(source = "settings") {
-  const pair = readWebAccessPasswordPair(source);
-  const password = pair.password.trim();
-  if (!password) {
-    showToast("请输入 Web 访问密码；如需关闭保护请点击清除", "error");
-    return false;
-  }
-  if (pair.password !== pair.confirm) {
-    showToast("两次输入的 Web 访问密码不一致", "error");
-    return false;
-  }
-  try {
-    const settings = await saveAppSettingsPatch({
-      webAccessPassword: pair.password,
-    });
-    updateWebAccessPasswordState(settings.webAccessPasswordConfigured);
-    clearWebAccessPasswordInputs();
-    if (source === "quick") {
-      closeWebSecurityModal();
-    }
-    showToast("Web 访问密码已保存");
-    return true;
-  } catch (err) {
-    showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
-    return false;
-  }
-}
-
-async function clearWebAccessPassword(source = "settings") {
-  try {
-    const settings = await saveAppSettingsPatch({
-      webAccessPassword: "",
-    });
-    updateWebAccessPasswordState(settings.webAccessPasswordConfigured);
-    clearWebAccessPasswordInputs();
-    if (source === "quick") {
-      closeWebSecurityModal();
-    }
-    showToast("Web 访问密码已清除");
-    return true;
-  } catch (err) {
-    showToast(`清除失败：${normalizeErrorMessage(err)}`, "error");
-    return false;
-  }
-}
-
-function getPathValue(source, path) {
-  const steps = String(path).split(".");
-  let cursor = source;
-  for (const step of steps) {
-    if (!cursor || typeof cursor !== "object" || !(step in cursor)) {
-      return undefined;
-    }
-    cursor = cursor[step];
-  }
-  return cursor;
-}
-
-function pickFirstValue(source, paths) {
-  for (const path of paths) {
-    const value = getPathValue(source, path);
-    if (value !== undefined && value !== null && String(value) !== "") {
-      return value;
-    }
-  }
-  return null;
-}
-
-function pickBooleanValue(source, paths) {
-  const value = pickFirstValue(source, paths);
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number") {
-    return value !== 0;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["1", "true", "yes", "on"].includes(normalized)) {
-      return true;
-    }
-    if (["0", "false", "no", "off"].includes(normalized)) {
-      return false;
-    }
-  }
-  return null;
-}
-
-function normalizeUpdateInfo(source) {
-  const payload = source && typeof source === "object" ? source : {};
-  const explicitAvailable = pickBooleanValue(payload, [
-    "hasUpdate",
-    "available",
-    "updateAvailable",
-    "has_upgrade",
-    "has_update",
-    "needUpdate",
-    "need_update",
-    "result.hasUpdate",
-    "result.available",
-    "result.updateAvailable",
-  ]);
-  const explicitlyLatest = pickBooleanValue(payload, [
-    "isLatest",
-    "upToDate",
-    "noUpdate",
-    "result.isLatest",
-    "result.upToDate",
-  ]);
-  const hintedVersion = pickFirstValue(payload, [
-    "targetVersion",
-    "latestVersion",
-    "newVersion",
-    "release.version",
-    "manifest.version",
-    "result.targetVersion",
-    "result.latestVersion",
-  ]);
-  let available = explicitAvailable;
-  if (available == null) {
-    if (explicitlyLatest === true) {
-      available = false;
-    } else {
-      available = hintedVersion != null;
-    }
-  }
-
-  const packageTypeValue = pickFirstValue(payload, [
-    "packageType",
-    "package_type",
-    "distributionType",
-    "distribution_type",
-    "updateType",
-    "update_type",
-    "installType",
-    "install_type",
-    "release.packageType",
-    "result.packageType",
-  ]);
-  const packageType = packageTypeValue == null ? "" : String(packageTypeValue).toLowerCase();
-  const portableFlag = pickBooleanValue(payload, [
-    "isPortable",
-    "portable",
-    "release.isPortable",
-    "result.isPortable",
-  ]);
-  const hasPortableHint = portableFlag != null || Boolean(packageType);
-  const isPortable = portableFlag === true || packageType.includes("portable");
-  const versionValue = pickFirstValue(payload, [
-    "latestVersion",
-    "targetVersion",
-    "newVersion",
-    "version",
-    "release.version",
-    "manifest.version",
-    "result.latestVersion",
-    "result.targetVersion",
-    "result.version",
-  ]);
-  const downloaded = pickBooleanValue(payload, [
-    "downloaded",
-    "isDownloaded",
-    "readyToInstall",
-    "ready",
-    "result.downloaded",
-    "result.readyToInstall",
-  ]) === true;
-  const canPrepareValue = pickBooleanValue(payload, [
-    "canPrepare",
-    "result.canPrepare",
-  ]);
-  const reasonValue = pickFirstValue(payload, [
-    "reason",
-    "message",
-    "error",
-    "result.reason",
-    "result.message",
-  ]);
-  return {
-    available: Boolean(available),
-    version: versionValue == null ? "" : String(versionValue).trim(),
-    isPortable,
-    hasPortableHint,
-    downloaded,
-    canPrepare: canPrepareValue !== false,
-    reason: reasonValue == null ? "" : String(reasonValue),
-  };
-}
-
-function buildVersionLabel(version) {
-  if (!version) {
-    return "";
-  }
-  const clean = String(version).trim();
-  if (!clean) {
-    return "";
-  }
-  return clean.startsWith("v") ? ` ${clean}` : ` v${clean}`;
-}
+settingsController = createSettingsController({
+  dom,
+  state,
+  appSettingsGet,
+  appSettingsSet,
+  showToast,
+  normalizeErrorMessage,
+  isTauriRuntime,
+  normalizeAddr,
+  normalizeUpstreamProxyUrl,
+  buildEnvOverrideDescription,
+  buildEnvOverrideOptionLabel,
+  filterEnvOverrideCatalog,
+  formatEnvOverrideDisplayValue,
+  normalizeEnvOverrideCatalog,
+  normalizeEnvOverrides,
+  normalizeStringList,
+});
+
+const {
+  loadAppSettings,
+  getAppSettingsSnapshot,
+  applyBrowserModeUi,
+  readUpdateAutoCheckSetting,
+  saveUpdateAutoCheckSetting,
+  initUpdateAutoCheckSetting,
+  readCloseToTrayOnCloseSetting,
+  saveCloseToTrayOnCloseSetting,
+  setCloseToTrayOnCloseToggle,
+  applyCloseToTrayOnCloseSetting,
+  initCloseToTrayOnCloseSetting,
+  readLightweightModeOnCloseToTraySetting,
+  saveLightweightModeOnCloseToTraySetting,
+  setLightweightModeOnCloseToTrayToggle,
+  syncLightweightModeOnCloseToTrayAvailability,
+  applyLightweightModeOnCloseToTraySetting,
+  initLightweightModeOnCloseToTraySetting,
+  readLowTransparencySetting,
+  saveLowTransparencySetting,
+  applyLowTransparencySetting,
+  initLowTransparencySetting,
+  normalizeServiceListenMode,
+  serviceListenModeLabel,
+  buildServiceListenModeHint,
+  setServiceListenModeSelect,
+  setServiceListenModeHint,
+  readServiceListenModeSetting,
+  initServiceListenModeSetting,
+  applyServiceListenModeToService,
+  syncServiceListenModeOnStartup,
+  normalizeRouteStrategy,
+  routeStrategyLabel,
+  readRouteStrategySetting,
+  saveRouteStrategySetting,
+  setRouteStrategySelect,
+  initRouteStrategySetting,
+  normalizeCpaNoCookieHeaderMode,
+  readCpaNoCookieHeaderModeSetting,
+  saveCpaNoCookieHeaderModeSetting,
+  setCpaNoCookieHeaderModeToggle,
+  initCpaNoCookieHeaderModeSetting,
+  readUpstreamProxyUrlSetting,
+  saveUpstreamProxyUrlSetting,
+  setUpstreamProxyInput,
+  setUpstreamProxyHint,
+  initUpstreamProxySetting,
+  normalizeBackgroundTasksSettings,
+  readBackgroundTasksSetting,
+  saveBackgroundTasksSetting,
+  setBackgroundTasksForm,
+  readBackgroundTasksForm,
+  updateBackgroundTasksHint,
+  initBackgroundTasksSetting,
+  getEnvOverrideSelectedKey,
+  findEnvOverrideCatalogItem,
+  setEnvOverridesHint,
+  readEnvOverridesSetting,
+  buildEnvOverrideHint,
+  saveEnvOverridesSetting,
+  renderEnvOverrideEditor,
+  initEnvOverridesSetting,
+  updateWebAccessPasswordState,
+  syncWebAccessPasswordInputs,
+  saveWebAccessPassword,
+  clearWebAccessPassword,
+  openWebSecurityModal,
+  closeWebSecurityModal,
+  persistServiceAddrInput,
+  uiLowTransparencyToggleId,
+  upstreamProxyHintText,
+  backgroundTasksRestartKeysDefault,
+} = settingsController;
 
 function normalizeErrorMessage(err) {
   const raw = String(err && err.message ? err.message : err).trim();
@@ -1640,209 +257,26 @@ function normalizeErrorMessage(err) {
   return raw.length > 120 ? `${raw.slice(0, 120)}...` : raw;
 }
 
-function setUpdateStatusText(message) {
-  if (!dom.updateStatusText) return;
-  dom.updateStatusText.textContent = message || "尚未检查更新";
-}
-
-function setCurrentVersionText(version) {
-  if (!dom.updateCurrentVersion) return;
-  const clean = version == null ? "" : String(version).trim();
-  if (!clean) {
-    dom.updateCurrentVersion.textContent = "--";
-    return;
-  }
-  dom.updateCurrentVersion.textContent = clean.startsWith("v") ? clean : `v${clean}`;
-}
-
-function setCheckUpdateButtonLabel() {
-  if (!dom.checkUpdate) return;
-  if (pendingUpdateCandidate && pendingUpdateCandidate.version && pendingUpdateCandidate.canPrepare) {
-    const version = String(pendingUpdateCandidate.version).trim();
-    const display = version.startsWith("v") ? version : `v${version}`;
-    dom.checkUpdate.textContent = `更新到 ${display}`;
-    return;
-  }
-  dom.checkUpdate.textContent = "检查更新";
-}
-
-async function promptUpdateReady(info) {
-  const versionLabel = buildVersionLabel(info.version);
-  if (info.isPortable) {
-    const shouldRestart = await showConfirmDialog({
-      title: "更新已下载",
-      message: `新版本${versionLabel}已下载完成，重启应用即可更新。是否现在重启？`,
-      confirmText: "立即重启",
-      cancelText: "稍后",
-    });
-    if (!shouldRestart) {
-      return;
-    }
-    try {
-      await updateRestart();
-    } catch (err) {
-      console.error("[update] restart failed", err);
-      showToast(`重启更新失败：${normalizeErrorMessage(err)}`, "error");
-    }
-    return;
-  }
-
-  const shouldInstall = await showConfirmDialog({
-    title: "更新已下载",
-    message: `新版本${versionLabel}已下载完成，是否立即安装更新？`,
-    confirmText: "立即安装",
-    cancelText: "稍后",
-  });
-  if (!shouldInstall) {
-    return;
-  }
-  try {
-    await updateInstall();
-  } catch (err) {
-    console.error("[update] install failed", err);
-    showToast(`安装更新失败：${normalizeErrorMessage(err)}`, "error");
-  }
-}
-
-async function runUpdateCheckFlow({ silentIfLatest = false } = {}) {
-  if (!isTauriRuntime()) {
-    if (!silentIfLatest) {
-      showToast("仅桌面端支持检查更新");
-    }
-    return false;
-  }
-  if (updateCheckInFlight) {
-    return updateCheckInFlight;
-  }
-  updateCheckInFlight = (async () => {
-    try {
-      const checkResult = await updateCheck();
-      const checkInfo = normalizeUpdateInfo(checkResult);
-      if (!checkInfo.available) {
-        pendingUpdateCandidate = null;
-        setCheckUpdateButtonLabel();
-        setUpdateStatusText("当前已是最新版本");
-        if (!silentIfLatest) {
-          showToast("当前已是最新版本");
-        }
-        return false;
-      }
-
-      if (!checkInfo.canPrepare) {
-        pendingUpdateCandidate = null;
-        setCheckUpdateButtonLabel();
-        const msg = checkInfo.reason || `发现新版本${buildVersionLabel(checkInfo.version)}，当前仅可查看版本`;
-        setUpdateStatusText(msg);
-        if (!silentIfLatest) {
-          showToast(msg);
-        }
-        return true;
-      }
-
-      pendingUpdateCandidate = {
-        version: checkInfo.version,
-        isPortable: checkInfo.isPortable,
-        canPrepare: true,
-      };
-      setCheckUpdateButtonLabel();
-
-      const tip = `发现新版本${buildVersionLabel(checkInfo.version)}，再次点击可更新`;
-      setUpdateStatusText(tip);
-      if (!silentIfLatest) {
-        showToast(tip);
-      }
-      return true;
-    } catch (err) {
-      console.error("[update] check/download failed", err);
-      pendingUpdateCandidate = null;
-      setCheckUpdateButtonLabel();
-      setUpdateStatusText(`检查失败：${normalizeErrorMessage(err)}`);
-      showToast(`检查更新失败：${normalizeErrorMessage(err)}`, "error");
-      return false;
-    }
-  })();
-
-  try {
-    return await updateCheckInFlight;
-  } finally {
-    updateCheckInFlight = null;
-  }
-}
-
-async function runUpdateApplyFlow() {
-  if (!pendingUpdateCandidate || !pendingUpdateCandidate.canPrepare) {
-    showToast("当前更新只支持版本检查，请稍后重试");
-    return false;
-  }
-  const checkVersionLabel = buildVersionLabel(pendingUpdateCandidate.version);
-  try {
-    showToast(`正在下载新版本${checkVersionLabel}...`);
-    const downloadResult = await updateDownload();
-    const downloadInfo = normalizeUpdateInfo(downloadResult);
-    const finalInfo = {
-      version: downloadInfo.version || pendingUpdateCandidate.version,
-      isPortable: downloadInfo.hasPortableHint ? downloadInfo.isPortable : pendingUpdateCandidate.isPortable,
-    };
-    setUpdateStatusText(`新版本 ${finalInfo.version || ""} 已下载，等待安装`);
-    await promptUpdateReady(finalInfo);
-    pendingUpdateCandidate = null;
-    setCheckUpdateButtonLabel();
-    return true;
-  } catch (err) {
-    console.error("[update] apply failed", err);
-    setUpdateStatusText(`更新失败：${normalizeErrorMessage(err)}`);
-    showToast(`更新失败：${normalizeErrorMessage(err)}`, "error");
-    return false;
-  }
-}
-
-async function handleCheckUpdateClick() {
-  const hasPreparedCheck = Boolean(
-    pendingUpdateCandidate && pendingUpdateCandidate.version && pendingUpdateCandidate.canPrepare
-  );
-  const busyText = hasPreparedCheck ? "更新中..." : "检查中...";
-  await withButtonBusy(dom.checkUpdate, busyText, async () => {
-    await nextPaintTick();
-    if (hasPreparedCheck) {
-      await runUpdateApplyFlow();
-      return;
-    }
-    await runUpdateCheckFlow({ silentIfLatest: false });
-  });
-  setCheckUpdateButtonLabel();
-}
-
-function scheduleStartupUpdateCheck() {
-  if (!readUpdateAutoCheckSetting()) {
-    return;
-  }
-  setTimeout(() => {
-    void runUpdateCheckFlow({ silentIfLatest: true });
-  }, UPDATE_CHECK_DELAY_MS);
-}
-
-async function bootstrapUpdateStatus() {
-  if (!isTauriRuntime()) {
-    setCurrentVersionText("--");
-    setUpdateStatusText("仅桌面端支持更新");
-    return;
-  }
-  try {
-    const status = await updateStatus();
-    const current = status && status.currentVersion ? String(status.currentVersion) : "";
-    setCurrentVersionText(current);
-    if (current) {
-      setUpdateStatusText("尚未检查更新");
-    } else {
-      setUpdateStatusText("尚未检查更新");
-    }
-    setCheckUpdateButtonLabel();
-  } catch {
-    setCurrentVersionText("--");
-    setUpdateStatusText("尚未检查更新");
-    setCheckUpdateButtonLabel();
-  }
-}
+const {
+  handleCheckUpdateClick,
+  scheduleStartupUpdateCheck,
+  bootstrapUpdateStatus,
+} = createUpdateController({
+  dom,
+  showToast,
+  showConfirmDialog,
+  normalizeErrorMessage,
+  isTauriRuntime,
+  readUpdateAutoCheckSetting,
+  updateCheck,
+  updateDownload,
+  updateInstall,
+  updateRestart,
+  updateStatus,
+  withButtonBusy,
+  nextPaintTick,
+  updateCheckDelayMs: UPDATE_CHECK_DELAY_MS,
+});
 
 function nextPaintTick() {
   return new Promise((resolve) => {
@@ -1868,6 +302,19 @@ function writeLastApiModelsRemoteRefreshAt(ts = Date.now()) {
     return;
   }
   localStorage.setItem(API_MODELS_REMOTE_REFRESH_STORAGE_KEY, String(Math.max(0, Math.floor(ts))));
+}
+
+function buildRefreshAllTasks(options = {}) {
+  const refreshRemoteUsage = options.refreshRemoteUsage === true;
+  const refreshRemoteModels = options.refreshRemoteModels === true;
+  return [
+    { name: "accounts", label: "账号列表", run: refreshAccounts },
+    { name: "usage", label: "账号用量", run: () => refreshUsageList({ refreshRemote: refreshRemoteUsage }) },
+    { name: "api-models", label: "模型列表", run: () => refreshApiModels({ refreshRemote: refreshRemoteModels }) },
+    { name: "api-keys", label: "平台密钥", run: refreshApiKeys },
+    { name: "request-logs", label: "请求日志", run: () => refreshRequestLogs(state.requestLogQuery) },
+    { name: "request-log-today-summary", label: "今日摘要", run: refreshRequestLogTodaySummary },
+  ];
 }
 
 function shouldRefreshApiModelsRemote(force = false) {
@@ -1934,18 +381,7 @@ async function refreshAll(options = {}) {
     const ok = await ensureConnected();
     serviceLifecycle.updateServiceToggle();
     if (!ok) return [];
-    if (isTauriRuntime() && routeStrategySyncedProbeId !== state.serviceProbeId) {
-      await applyRouteStrategyToService(readRouteStrategySetting(), { silent: true });
-    }
-    if (isTauriRuntime() && cpaNoCookieHeaderModeSyncedProbeId !== state.serviceProbeId) {
-      await applyCpaNoCookieHeaderModeToService(readCpaNoCookieHeaderModeSetting(), { silent: true });
-    }
-    if (isTauriRuntime() && upstreamProxySyncedProbeId !== state.serviceProbeId) {
-      await applyUpstreamProxyToService(readUpstreamProxyUrlSetting(), { silent: true });
-    }
-    if (isTauriRuntime() && backgroundTasksSyncedProbeId !== state.serviceProbeId) {
-      await applyBackgroundTasksToService(readBackgroundTasksSetting(), { silent: true });
-    }
+    await syncRuntimeSettingsForCurrentProbe();
 
     // 中文注释：全并发会制造瞬时抖动（同时多次 RPC/DOM 更新）；这里改为有限并发并统一限流上限。
     const results = await runRefreshTasks(
@@ -1973,6 +409,7 @@ async function refreshAll(options = {}) {
       },
       {
         concurrency: options.concurrency,
+        taskTimeoutMs: options.taskTimeoutMs ?? 8000,
       },
     );
     if (options.refreshRemoteModels === true) {
@@ -2127,6 +564,9 @@ async function refreshAccountsAndUsage() {
     (taskName, err) => {
       console.error(`[refreshAccountsAndUsage] ${taskName} failed`, err);
     },
+    {
+      taskTimeoutMs: options.taskTimeoutMs ?? 8000,
+    },
   );
   const failed = results.some((item) => item.status === "rejected");
   if (failed) {
@@ -2157,6 +597,71 @@ const serviceLifecycle = createServiceLifecycle({
   stopAutoRefreshTimer,
   onStartupState: (loading, message) => setStartupMask(loading, message),
 });
+
+settingsServiceSync = createSettingsServiceSync({
+  state,
+  showToast,
+  normalizeErrorMessage,
+  isTauriRuntime,
+  ensureConnected,
+  serviceLifecycle,
+  serviceGatewayRouteStrategySet,
+  serviceGatewayHeaderPolicySet,
+  serviceGatewayUpstreamProxySet,
+  serviceGatewayBackgroundTasksSet,
+  readRouteStrategySetting,
+  saveRouteStrategySetting,
+  setRouteStrategySelect,
+  normalizeRouteStrategy,
+  routeStrategyLabel,
+  readCpaNoCookieHeaderModeSetting,
+  saveCpaNoCookieHeaderModeSetting,
+  setCpaNoCookieHeaderModeToggle,
+  normalizeCpaNoCookieHeaderMode,
+  readUpstreamProxyUrlSetting,
+  saveUpstreamProxyUrlSetting,
+  setUpstreamProxyInput,
+  setUpstreamProxyHint,
+  normalizeUpstreamProxyUrl,
+  upstreamProxyHintText,
+  readBackgroundTasksSetting,
+  saveBackgroundTasksSetting,
+  setBackgroundTasksForm,
+  normalizeBackgroundTasksSettings,
+  updateBackgroundTasksHint,
+  backgroundTasksRestartKeysDefault,
+});
+
+function requireSettingsServiceSync() {
+  if (!settingsServiceSync) {
+    throw new Error("settings service sync is not ready");
+  }
+  return settingsServiceSync;
+}
+
+async function applyRouteStrategyToService(strategy, options) {
+  return requireSettingsServiceSync().applyRouteStrategyToService(strategy, options);
+}
+
+async function applyCpaNoCookieHeaderModeToService(enabled, options) {
+  return requireSettingsServiceSync().applyCpaNoCookieHeaderModeToService(enabled, options);
+}
+
+async function applyUpstreamProxyToService(proxyUrl, options) {
+  return requireSettingsServiceSync().applyUpstreamProxyToService(proxyUrl, options);
+}
+
+async function applyBackgroundTasksToService(settings, options) {
+  return requireSettingsServiceSync().applyBackgroundTasksToService(settings, options);
+}
+
+async function syncRuntimeSettingsForCurrentProbe() {
+  return requireSettingsServiceSync().syncRuntimeSettingsForCurrentProbe();
+}
+
+async function syncRuntimeSettingsOnStartup() {
+  return requireSettingsServiceSync().syncRuntimeSettingsOnStartup();
+}
 
 const loginFlow = createLoginFlow({
   dom,
@@ -2226,35 +731,6 @@ function renderAccountsView() {
   renderAccountsOnly(buildMainRenderActions());
 }
 
-async function persistServiceAddrInput({ silent = true } = {}) {
-  if (!dom.serviceAddrInput) {
-    return false;
-  }
-  let normalized = "";
-  try {
-    normalized = normalizeAddr(dom.serviceAddrInput.value || "");
-  } catch (err) {
-    if (!silent) {
-      showToast(`服务地址格式不正确：${normalizeErrorMessage(err)}`, "error");
-    }
-    return false;
-  }
-  dom.serviceAddrInput.value = normalized;
-  state.serviceAddr = normalized;
-  patchAppSettingsSnapshot({ serviceAddr: normalized });
-  try {
-    await saveAppSettingsPatch({
-      serviceAddr: normalized,
-    });
-    return true;
-  } catch (err) {
-    if (!silent) {
-      showToast(`保存服务地址失败：${normalizeErrorMessage(err)}`, "error");
-    }
-    return false;
-  }
-}
-
 function bindEvents() {
   bindMainEvents({
     dom,
@@ -2293,390 +769,77 @@ function bindEvents() {
     updateRequestLogFilterButtons,
   });
 
-  if (dom.autoCheckUpdate && dom.autoCheckUpdate.dataset.bound !== "1") {
-    dom.autoCheckUpdate.dataset.bound = "1";
-    dom.autoCheckUpdate.addEventListener("change", () => {
-      const previousEnabled = readUpdateAutoCheckSetting();
-      const enabled = Boolean(dom.autoCheckUpdate.checked);
-      saveUpdateAutoCheckSetting(enabled);
-      void saveAppSettingsPatch({
-        updateAutoCheck: enabled,
-      }).catch((err) => {
-        saveUpdateAutoCheckSetting(previousEnabled);
-        dom.autoCheckUpdate.checked = previousEnabled;
-        showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
-      });
-    });
-  }
-  if (dom.checkUpdate && dom.checkUpdate.dataset.bound !== "1") {
-    dom.checkUpdate.dataset.bound = "1";
-    dom.checkUpdate.addEventListener("click", () => {
-      void handleCheckUpdateClick();
-    });
-  }
-  if (dom.closeToTrayOnClose && dom.closeToTrayOnClose.dataset.bound !== "1") {
-    dom.closeToTrayOnClose.dataset.bound = "1";
-    dom.closeToTrayOnClose.addEventListener("change", () => {
-      const previousEnabled = readCloseToTrayOnCloseSetting();
-      const enabled = Boolean(dom.closeToTrayOnClose.checked);
-      void applyCloseToTrayOnCloseSetting(enabled, { silent: false }).then((applied) => {
-        saveCloseToTrayOnCloseSetting(applied);
-        setCloseToTrayOnCloseToggle(applied);
-      }).catch(() => {
-        saveCloseToTrayOnCloseSetting(previousEnabled);
-        setCloseToTrayOnCloseToggle(previousEnabled);
-      });
-    });
-  }
-  if (dom.lightweightModeOnCloseToTray && dom.lightweightModeOnCloseToTray.dataset.bound !== "1") {
-    dom.lightweightModeOnCloseToTray.dataset.bound = "1";
-    dom.lightweightModeOnCloseToTray.addEventListener("change", () => {
-      const previousEnabled = readLightweightModeOnCloseToTraySetting();
-      const enabled = Boolean(dom.lightweightModeOnCloseToTray.checked);
-      void applyLightweightModeOnCloseToTraySetting(enabled, { silent: false }).catch(() => {
-        saveLightweightModeOnCloseToTraySetting(previousEnabled);
-        setLightweightModeOnCloseToTrayToggle(previousEnabled);
-        syncLightweightModeOnCloseToTrayAvailability();
-      });
-    });
-  }
-  if (dom.routeStrategySelect && dom.routeStrategySelect.dataset.bound !== "1") {
-    dom.routeStrategySelect.dataset.bound = "1";
-    dom.routeStrategySelect.addEventListener("change", () => {
-      const previousSelected = readRouteStrategySetting();
-      const selected = normalizeRouteStrategy(dom.routeStrategySelect.value);
-      saveRouteStrategySetting(selected);
-      setRouteStrategySelect(selected);
-      void saveAppSettingsPatch({
-        routeStrategy: selected,
-      }).then((settings) => {
-        const resolved = normalizeRouteStrategy(settings.routeStrategy);
-        saveRouteStrategySetting(resolved);
-        setRouteStrategySelect(resolved);
-        if (isTauriRuntime()) {
-          return applyRouteStrategyToService(resolved, { silent: false });
-        }
-        showToast(`已切换为${routeStrategyLabel(resolved)}`);
-        return true;
-      }).catch((err) => {
-        saveRouteStrategySetting(previousSelected);
-        setRouteStrategySelect(previousSelected);
-        showToast(`切换失败：${normalizeErrorMessage(err)}`, "error");
-      });
-    });
-  }
-  if (dom.serviceListenModeSelect && dom.serviceListenModeSelect.dataset.bound !== "1") {
-    dom.serviceListenModeSelect.dataset.bound = "1";
-    dom.serviceListenModeSelect.addEventListener("change", () => {
-      const previousSelected = normalizeServiceListenMode(appSettingsSnapshot.serviceListenMode);
-      const selected = normalizeServiceListenMode(dom.serviceListenModeSelect.value);
-      setServiceListenModeSelect(selected);
-      setServiceListenModeHint(buildServiceListenModeHint(selected, true));
-      void applyServiceListenModeToService(selected, { silent: false }).then((ok) => {
-        if (!ok) {
-          setServiceListenModeSelect(previousSelected);
-          setServiceListenModeHint(buildServiceListenModeHint(previousSelected, true));
-        }
-      });
-    });
-  }
-  if (dom.cpaNoCookieHeaderMode && dom.cpaNoCookieHeaderMode.dataset.bound !== "1") {
-    dom.cpaNoCookieHeaderMode.dataset.bound = "1";
-    dom.cpaNoCookieHeaderMode.addEventListener("change", () => {
-      const previousEnabled = readCpaNoCookieHeaderModeSetting();
-      const enabled = Boolean(dom.cpaNoCookieHeaderMode.checked);
-      saveCpaNoCookieHeaderModeSetting(enabled);
-      setCpaNoCookieHeaderModeToggle(enabled);
-      void saveAppSettingsPatch({
-        cpaNoCookieHeaderModeEnabled: enabled,
-      }).then((settings) => {
-        const resolved = normalizeCpaNoCookieHeaderMode(settings.cpaNoCookieHeaderModeEnabled);
-        saveCpaNoCookieHeaderModeSetting(resolved);
-        setCpaNoCookieHeaderModeToggle(resolved);
-        if (isTauriRuntime()) {
-          return applyCpaNoCookieHeaderModeToService(resolved, { silent: false });
-        }
-        showToast(resolved ? "已启用请求头收敛策略" : "已关闭请求头收敛策略");
-        return true;
-      }).catch((err) => {
-        saveCpaNoCookieHeaderModeSetting(previousEnabled);
-        setCpaNoCookieHeaderModeToggle(previousEnabled);
-        showToast(`切换失败：${normalizeErrorMessage(err)}`, "error");
-      });
-    });
-  }
-  if (dom.upstreamProxySave && dom.upstreamProxySave.dataset.bound !== "1") {
-    dom.upstreamProxySave.dataset.bound = "1";
-    dom.upstreamProxySave.addEventListener("click", () => {
-      void withButtonBusy(dom.upstreamProxySave, "保存中...", async () => {
-        const previousValue = readUpstreamProxyUrlSetting();
-        const value = normalizeUpstreamProxyUrl(dom.upstreamProxyUrlInput ? dom.upstreamProxyUrlInput.value : "");
-        saveUpstreamProxyUrlSetting(value);
-        setUpstreamProxyInput(value);
-        try {
-          const settings = await saveAppSettingsPatch({
-            upstreamProxyUrl: value,
-          });
-          const resolved = normalizeUpstreamProxyUrl(settings.upstreamProxyUrl);
-          saveUpstreamProxyUrlSetting(resolved);
-          setUpstreamProxyInput(resolved);
-          if (isTauriRuntime()) {
-            await applyUpstreamProxyToService(resolved, { silent: false });
-            return;
-          }
-          setUpstreamProxyHint(UPSTREAM_PROXY_HINT_TEXT);
-          showToast(resolved ? "上游代理已保存并生效" : "已清空上游代理，恢复直连");
-        } catch (err) {
-          saveUpstreamProxyUrlSetting(previousValue);
-          setUpstreamProxyInput(previousValue);
-          setUpstreamProxyHint(`保存失败：${normalizeErrorMessage(err)}`);
-          showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
-        }
-      });
-    });
-  }
-  if (dom.backgroundTasksSave && dom.backgroundTasksSave.dataset.bound !== "1") {
-    dom.backgroundTasksSave.dataset.bound = "1";
-    dom.backgroundTasksSave.addEventListener("click", () => {
-      void withButtonBusy(dom.backgroundTasksSave, "保存中...", async () => {
-        const previousSettings = readBackgroundTasksSetting();
-        const parsed = readBackgroundTasksForm();
-        if (!parsed.ok) {
-          showToast(parsed.error, "error");
-          return;
-        }
-        const nextSettings = parsed.settings;
-        saveBackgroundTasksSetting(nextSettings);
-        setBackgroundTasksForm(nextSettings);
-        try {
-          const settings = await saveAppSettingsPatch({
-            backgroundTasks: nextSettings,
-          });
-          const resolved = normalizeBackgroundTasksSettings(settings.backgroundTasks);
-          saveBackgroundTasksSetting(resolved);
-          setBackgroundTasksForm(resolved);
-          if (isTauriRuntime()) {
-            await applyBackgroundTasksToService(resolved, { silent: false });
-            return;
-          }
-          updateBackgroundTasksHint([]);
-          showToast("后台任务配置已保存");
-        } catch (err) {
-          saveBackgroundTasksSetting(previousSettings);
-          setBackgroundTasksForm(previousSettings);
-          updateBackgroundTasksHint(BACKGROUND_TASKS_RESTART_KEYS_DEFAULT);
-          showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
-        }
-      });
-    });
-  }
-  if (dom.envOverridesSave && dom.envOverridesSave.dataset.bound !== "1") {
-    dom.envOverridesSave.dataset.bound = "1";
-    dom.envOverridesSave.addEventListener("click", () => {
-      void withButtonBusy(dom.envOverridesSave, "保存中...", async () => {
-        const item = findEnvOverrideCatalogItem(envOverrideSelectedKey);
-        if (!item) {
-          const message = "请先选择一个环境变量";
-          setEnvOverridesHint(message);
-          showToast(message, "error");
-          return;
-        }
-        const nextValue = dom.envOverrideValueInput
-          ? dom.envOverrideValueInput.value.trim()
-          : "";
-        const currentValue = readEnvOverridesSetting()[item.key] ?? item.defaultValue ?? "";
-        if (nextValue === currentValue) {
-          const message = buildEnvOverrideHint(item, currentValue, "配置未变化");
-          setEnvOverridesHint(message);
-          showToast("配置未变化");
-          return;
-        }
-        try {
-          const settings = await saveAppSettingsPatch({
-            envOverrides: {
-              [item.key]: nextValue,
-            },
-          });
-          const resolved = normalizeEnvOverrides(settings.envOverrides);
-          saveEnvOverridesSetting(resolved);
-          renderEnvOverrideEditor(
-            item.key,
-            buildEnvOverrideHint(
-              findEnvOverrideCatalogItem(item.key, normalizeEnvOverrideCatalog(settings.envOverrideCatalog))
-                || item,
-              resolved[item.key] ?? nextValue,
-              "已保存",
-            ),
-          );
-          showToast("高级环境变量已保存");
-        } catch (err) {
-          setEnvOverridesHint(`保存失败：${normalizeErrorMessage(err)}`);
-          showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
-        }
-      });
-    });
-  }
-  if (dom.envOverrideReset && dom.envOverrideReset.dataset.bound !== "1") {
-    dom.envOverrideReset.dataset.bound = "1";
-    dom.envOverrideReset.addEventListener("click", () => {
-      void withButtonBusy(dom.envOverrideReset, "恢复中...", async () => {
-        const item = findEnvOverrideCatalogItem(envOverrideSelectedKey);
-        if (!item) {
-          const message = "请先选择一个环境变量";
-          setEnvOverridesHint(message);
-          showToast(message, "error");
-          return;
-        }
-        try {
-          const settings = await saveAppSettingsPatch({
-            envOverrides: {
-              [item.key]: "",
-            },
-          });
-          const resolved = normalizeEnvOverrides(settings.envOverrides);
-          saveEnvOverridesSetting(resolved);
-          renderEnvOverrideEditor(
-            item.key,
-            buildEnvOverrideHint(item, resolved[item.key] ?? item.defaultValue ?? "", "已恢复默认"),
-          );
-          showToast("已恢复默认值");
-        } catch (err) {
-          setEnvOverridesHint(`恢复默认失败：${normalizeErrorMessage(err)}`);
-          showToast(`恢复默认失败：${normalizeErrorMessage(err)}`, "error");
-        }
-      });
-    });
-  }
-  if (dom.envOverrideSearchInput && dom.envOverrideSearchInput.dataset.bound !== "1") {
-    dom.envOverrideSearchInput.dataset.bound = "1";
-    dom.envOverrideSearchInput.addEventListener("input", () => {
-      renderEnvOverrideEditor("");
-    });
-  }
-  if (dom.envOverrideSelect && dom.envOverrideSelect.dataset.bound !== "1") {
-    dom.envOverrideSelect.dataset.bound = "1";
-    dom.envOverrideSelect.addEventListener("change", () => {
-      renderEnvOverrideEditor(dom.envOverrideSelect ? dom.envOverrideSelect.value : "");
-    });
-  }
-  if (dom.envOverrideValueInput && dom.envOverrideValueInput.dataset.bound !== "1") {
-    dom.envOverrideValueInput.dataset.bound = "1";
-    dom.envOverrideValueInput.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") {
-        return;
-      }
-      event.preventDefault();
-      dom.envOverridesSave?.click();
-    });
-  }
-  if (dom.serviceAddrInput && dom.serviceAddrInput.dataset.bound !== "1") {
-    dom.serviceAddrInput.dataset.bound = "1";
-    dom.serviceAddrInput.addEventListener("change", () => {
-      void persistServiceAddrInput({ silent: false });
-    });
-    dom.serviceAddrInput.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") {
-        return;
-      }
-      event.preventDefault();
-      void persistServiceAddrInput({ silent: false });
-    });
-  }
-  const lowTransparencyToggle = typeof document === "undefined"
-    ? null
-    : document.getElementById(UI_LOW_TRANSPARENCY_TOGGLE_ID);
-  if (lowTransparencyToggle && lowTransparencyToggle.dataset.bound !== "1") {
-    lowTransparencyToggle.dataset.bound = "1";
-    lowTransparencyToggle.addEventListener("change", () => {
-      const previousEnabled = readLowTransparencySetting();
-      const enabled = Boolean(lowTransparencyToggle.checked);
-      saveLowTransparencySetting(enabled);
-      applyLowTransparencySetting(enabled);
-      void saveAppSettingsPatch({
-        lowTransparency: enabled,
-      }).catch((err) => {
-        saveLowTransparencySetting(previousEnabled);
-        lowTransparencyToggle.checked = previousEnabled;
-        applyLowTransparencySetting(previousEnabled);
-        showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
-      });
-    });
-  }
-  const syncPairs = [
-    [dom.webAccessPasswordInput, "settings"],
-    [dom.webAccessPasswordConfirm, "settings"],
-    [dom.webAccessPasswordQuickInput, "quick"],
-    [dom.webAccessPasswordQuickConfirm, "quick"],
-  ];
-  for (const [input, source] of syncPairs) {
-    if (!input || input.dataset.bound === "1") {
-      continue;
-    }
-    input.dataset.bound = "1";
-    input.addEventListener("input", () => {
-      syncWebAccessPasswordInputs(source);
-    });
-  }
-  if (dom.webAccessPasswordSave && dom.webAccessPasswordSave.dataset.bound !== "1") {
-    dom.webAccessPasswordSave.dataset.bound = "1";
-    dom.webAccessPasswordSave.addEventListener("click", () => {
-      void withButtonBusy(dom.webAccessPasswordSave, "保存中...", async () => {
-        await saveWebAccessPassword("settings");
-      });
-    });
-  }
-  if (dom.webAccessPasswordClear && dom.webAccessPasswordClear.dataset.bound !== "1") {
-    dom.webAccessPasswordClear.dataset.bound = "1";
-    dom.webAccessPasswordClear.addEventListener("click", () => {
-      void withButtonBusy(dom.webAccessPasswordClear, "清除中...", async () => {
-        await clearWebAccessPassword("settings");
-      });
-    });
-  }
-  if (dom.webAccessPasswordQuickSave && dom.webAccessPasswordQuickSave.dataset.bound !== "1") {
-    dom.webAccessPasswordQuickSave.dataset.bound = "1";
-    dom.webAccessPasswordQuickSave.addEventListener("click", () => {
-      void withButtonBusy(dom.webAccessPasswordQuickSave, "保存中...", async () => {
-        await saveWebAccessPassword("quick");
-      });
-    });
-  }
-  if (dom.webAccessPasswordQuickClear && dom.webAccessPasswordQuickClear.dataset.bound !== "1") {
-    dom.webAccessPasswordQuickClear.dataset.bound = "1";
-    dom.webAccessPasswordQuickClear.addEventListener("click", () => {
-      void withButtonBusy(dom.webAccessPasswordQuickClear, "清除中...", async () => {
-        await clearWebAccessPassword("quick");
-      });
-    });
-  }
-  if (dom.webSecurityQuickAction && dom.webSecurityQuickAction.dataset.bound !== "1") {
-    dom.webSecurityQuickAction.dataset.bound = "1";
-    dom.webSecurityQuickAction.addEventListener("click", () => {
-      openWebSecurityModal();
-    });
-  }
-  if (dom.closeWebSecurityModal && dom.closeWebSecurityModal.dataset.bound !== "1") {
-    dom.closeWebSecurityModal.dataset.bound = "1";
-    dom.closeWebSecurityModal.addEventListener("click", () => {
-      closeWebSecurityModal();
-    });
-  }
-  if (dom.modalWebSecurity && dom.modalWebSecurity.dataset.bound !== "1") {
-    dom.modalWebSecurity.dataset.bound = "1";
-    dom.modalWebSecurity.addEventListener("click", (event) => {
-      if (event.target === dom.modalWebSecurity) {
-        closeWebSecurityModal();
-      }
-    });
-  }
-  if (typeof document !== "undefined" && document.body && document.body.dataset.webSecurityBound !== "1") {
-    document.body.dataset.webSecurityBound = "1";
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && dom.modalWebSecurity?.classList.contains("active")) {
-        closeWebSecurityModal();
-      }
-    });
-  }
+  bindSettingsEvents({
+    dom,
+    showToast,
+    withButtonBusy,
+    normalizeErrorMessage,
+    saveAppSettingsPatch,
+    handleCheckUpdateClick,
+    isTauriRuntime,
+    readUpdateAutoCheckSetting,
+    saveUpdateAutoCheckSetting,
+    readCloseToTrayOnCloseSetting,
+    saveCloseToTrayOnCloseSetting,
+    setCloseToTrayOnCloseToggle,
+    applyCloseToTrayOnCloseSetting,
+    readLightweightModeOnCloseToTraySetting,
+    saveLightweightModeOnCloseToTraySetting,
+    setLightweightModeOnCloseToTrayToggle,
+    syncLightweightModeOnCloseToTrayAvailability,
+    applyLightweightModeOnCloseToTraySetting,
+    readRouteStrategySetting,
+    normalizeRouteStrategy,
+    saveRouteStrategySetting,
+    setRouteStrategySelect,
+    applyRouteStrategyToService,
+    routeStrategyLabel,
+    readServiceListenModeSetting,
+    normalizeServiceListenMode,
+    setServiceListenModeSelect,
+    setServiceListenModeHint,
+    buildServiceListenModeHint,
+    applyServiceListenModeToService,
+    readCpaNoCookieHeaderModeSetting,
+    saveCpaNoCookieHeaderModeSetting,
+    setCpaNoCookieHeaderModeToggle,
+    normalizeCpaNoCookieHeaderMode,
+    applyCpaNoCookieHeaderModeToService,
+    readUpstreamProxyUrlSetting,
+    saveUpstreamProxyUrlSetting,
+    setUpstreamProxyInput,
+    setUpstreamProxyHint,
+    normalizeUpstreamProxyUrl,
+    applyUpstreamProxyToService,
+    upstreamProxyHintText,
+    readBackgroundTasksSetting,
+    readBackgroundTasksForm,
+    saveBackgroundTasksSetting,
+    setBackgroundTasksForm,
+    normalizeBackgroundTasksSettings,
+    updateBackgroundTasksHint,
+    applyBackgroundTasksToService,
+    backgroundTasksRestartKeysDefault,
+    getEnvOverrideSelectedKey,
+    findEnvOverrideCatalogItem,
+    setEnvOverridesHint,
+    readEnvOverridesSetting,
+    buildEnvOverrideHint,
+    normalizeEnvOverrides,
+    normalizeEnvOverrideCatalog,
+    saveEnvOverridesSetting,
+    renderEnvOverrideEditor,
+    persistServiceAddrInput,
+    uiLowTransparencyToggleId,
+    readLowTransparencySetting,
+    saveLowTransparencySetting,
+    applyLowTransparencySetting,
+    syncWebAccessPasswordInputs,
+    saveWebAccessPassword,
+    clearWebAccessPassword,
+    openWebSecurityModal,
+    closeWebSecurityModal,
+  });
 }
 
 async function bootstrap() {
@@ -2686,7 +849,8 @@ async function bootstrap() {
   const browserMode = applyBrowserModeUi();
   setServiceHint(browserMode ? "浏览器模式：请先启动 codexmanager-service" : "请输入端口并点击启动", false);
   renderThemeButtons();
-  restoreTheme(appSettingsSnapshot.theme);
+  const initialSettings = getAppSettingsSnapshot();
+  restoreTheme(initialSettings.theme);
   initLowTransparencySetting();
   initUpdateAutoCheckSetting();
   initCloseToTrayOnCloseSetting();
@@ -2697,7 +861,7 @@ async function bootstrap() {
   initUpstreamProxySetting();
   initBackgroundTasksSetting();
   initEnvOverridesSetting();
-  updateWebAccessPasswordState(appSettingsSnapshot.webAccessPasswordConfigured);
+  updateWebAccessPasswordState(initialSettings.webAccessPasswordConfigured);
   void bootstrapUpdateStatus();
   serviceLifecycle.restoreServiceAddr();
   serviceLifecycle.updateServiceToggle();
@@ -2705,14 +869,19 @@ async function bootstrap() {
   renderCurrentPageView();
   updateRequestLogFilterButtons();
   scheduleStartupUpdateCheck();
-  void serviceLifecycle.autoStartService().finally(() => {
-    void syncServiceListenModeOnStartup();
-    void syncRouteStrategyOnStartup();
-    void syncCpaNoCookieHeaderModeOnStartup();
-    void syncUpstreamProxyOnStartup();
-    void syncBackgroundTasksOnStartup();
-    setStartupMask(false);
-  });
+  void serviceLifecycle.autoStartService()
+    .catch((err) => {
+      console.error("[bootstrap] autoStartService failed", err);
+    })
+    .finally(() => {
+      setStartupMask(false);
+      void syncServiceListenModeOnStartup().catch((err) => {
+        console.error("[bootstrap] syncServiceListenModeOnStartup failed", err);
+      });
+      void syncRuntimeSettingsOnStartup().catch((err) => {
+        console.error("[bootstrap] syncRuntimeSettingsOnStartup failed", err);
+      });
+    });
 }
 
 window.addEventListener("DOMContentLoaded", () => {

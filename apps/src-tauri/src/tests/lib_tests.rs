@@ -1,4 +1,5 @@
 use super::*;
+use crate::settings_commands::effective_lightweight_mode_on_close_to_tray;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;

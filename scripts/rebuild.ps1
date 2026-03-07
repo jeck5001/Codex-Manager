@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
   [ValidateSet("nsis", "msi")]
   [string]$Bundle = "nsis",
@@ -12,6 +12,8 @@ param(
   [string]$GitRef,
   [string]$ReleaseTag,
   [switch]$NoVerify,
+  [ValidateSet("auto", "true", "false")]
+  [string]$Prerelease = "auto",
   [bool]$DownloadArtifacts = $true,
   [string]$ArtifactsDir,
   [ValidateRange(5, 300)]
@@ -228,7 +230,7 @@ function Invoke-AllPlatformBuild {
     throw "release tag required for -AllPlatforms. Pass -ReleaseTag (e.g. v0.0.6)."
   }
 
-  # 中文注释：历史脚本参数仍可能传旧 workflow 名称，这里统一映射到新的单一入口。
+  # Map legacy workflow names to the single release entry for backward compatibility.
   $workflowAlias = @{
     "release-windows.yml"         = "release-all.yml"
     "release-linux.yml"           = "release-all.yml"
@@ -248,23 +250,23 @@ function Invoke-AllPlatformBuild {
     throw "cannot resolve git ref to commit: $GitRef"
   }
 
-  $workflow = Resolve-WorkflowDefinition -Repo $repo -Token $token -WorkflowFile $WorkflowFile
-  Write-Step "using workflow: $($workflow.path)"
-
   $dispatchUri = "https://api.github.com/repos/$($repo.owner)/$($repo.repo)/actions/workflows/$WorkflowFile/dispatches"
   $runsUri = "https://api.github.com/repos/$($repo.owner)/$($repo.repo)/actions/workflows/$WorkflowFile/runs?event=workflow_dispatch&per_page=50"
   $runVerifyInput = if ($NoVerify) { "false" } else { "true" }
+  $prereleaseInput = $Prerelease.ToLowerInvariant()
   $dispatchBody = @{
     ref = $GitRef
     inputs = @{
-      tag        = $ReleaseTag
-      ref        = $GitRef
-      run_verify = $runVerifyInput
+      tag         = $ReleaseTag
+      ref         = $GitRef
+      run_verify  = $runVerifyInput
+      prerelease  = $prereleaseInput
     }
   }
 
   if ($DryRun) {
-    Write-Step "DRY RUN: dispatch workflow $WorkflowFile on ref=$GitRef tag=$ReleaseTag run_verify=$runVerifyInput"
+    Write-Step "DRY RUN: using workflow .github/workflows/$WorkflowFile"
+    Write-Step "DRY RUN: dispatch workflow $WorkflowFile on ref=$GitRef tag=$ReleaseTag run_verify=$runVerifyInput prerelease=$prereleaseInput"
     Write-Step "DRY RUN: resolved target sha $resolvedSha"
     Write-Step "DRY RUN: POST $dispatchUri"
     Write-Step "DRY RUN: payload $($dispatchBody | ConvertTo-Json -Depth 10 -Compress)"
@@ -274,7 +276,9 @@ function Invoke-AllPlatformBuild {
     return
   }
 
-  Write-Step "dispatching workflow: $WorkflowFile (ref=$GitRef tag=$ReleaseTag run_verify=$runVerifyInput)"
+  $workflow = Resolve-WorkflowDefinition -Repo $repo -Token $token -WorkflowFile $WorkflowFile
+  Write-Step "using workflow: $($workflow.path)"
+  Write-Step "dispatching workflow: $WorkflowFile (ref=$GitRef tag=$ReleaseTag run_verify=$runVerifyInput prerelease=$prereleaseInput)"
   Invoke-GitHubApi -Method POST -Uri $dispatchUri -Token $token -Body $dispatchBody | Out-Null
 
   $deadline = (Get-Date).ToUniversalTime().AddMinutes($TimeoutMin)

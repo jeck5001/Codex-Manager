@@ -13,28 +13,14 @@
 本地桌面端 + 服务进程的 Codex 账号池管理器，用于统一管理账号、用量与平台 Key，并提供本地网关能力。
 
 ## 最近变更
-### 2026-03-07（v0.1.6，最新）
-- 修复 `release-all.yml` 在手动关闭 `run_verify` 时仍强依赖预构建前端工件的问题；现在会在各平台任务内自动回退到本地 `pnpm install + build`，避免因缺少 `codexmanager-frontend-dist` 而直接失败。
-- 工作流与产物收敛继续对齐：Windows 桌面端仅保留 `CodexManager-portable.exe` 便携版，不再额外生成 `CodexManager-windows-portable.zip`。
-- 吸收并整合近期主线更新：完善 SOCKS5 上游代理支持与归一化，同时补充设置页代理协议提示文案。
+- 当前最新版本：`v0.1.6`（2026-03-07）
+- 本次版本重点修复了 `release-all.yml` 在 `run_verify=false` 时的前端工件回退构建，继续收敛 Windows 发布产物，并完善了 SOCKS5 上游代理支持与提示文案。
+- 完整版本历史请查看 [CHANGELOG.md](CHANGELOG.md)。
 
-### 2026-03-06（v0.1.5）
-- 网关协议适配进一步对齐 Codex CLI：`/v1/chat/completions` 与 `/v1/responses` 两条链路统一收敛到 Codex `responses` 语义，上游流式/非流式行为与官方更接近，兼容 Cherry Studio 等客户端的 OpenAI 兼容调用。
-- 修复 `tool_calls` / `tools` 相关回归：补齐 chat 聚合路径中的工具调用保留、工具名缩短与响应还原链路，避免工具调用在 OpenAI 兼容返回、流式增量和适配转换中丢失或名称错乱。
-- 完善 OpenClaw / Anthropic 兼容返回适配，确保工具调用、SSE 增量和非流式 JSON 响应都能按兼容格式正确还原。
-- 新增“按文件夹导入”：桌面端可直接选择目录，递归扫描其中 `.json` 文件并批量导入账号。
-- 新增 OpenAI 上游代理配置与请求头收敛策略开关，可在设置页直接保存并即时生效，并降低部分 Cloudflare / WAF challenge 命中率。
-- 设置页顶部常用配置改为统一的三列行布局，代理配置与其保持一致；同时支持关闭窗口后隐藏到系统托盘运行。
-- 请求日志追踪增强：补充原始路径、适配路径和更多上下文，便于定位 `/v1/chat/completions -> /v1/responses` 转发与协议适配问题。
-- 发布流程整合为单一一键多平台 workflow，按 `Windows -> macOS -> Linux` 顺序发布；同时收敛产物形态，Windows 直接提供 portable exe，macOS 统一使用 DMG 分发。
-- 补充 chat tools 命中探针脚本与相关修复，便于本地验证工具调用是否真正命中与透传。
-
-### 2026-03-03（v0.1.4）
-- 账号管理页操作区整合为单一“账号操作”下拉菜单，替代右侧多按钮堆叠，界面更简洁。
-- 新增“一键移除不可用 Free 账号”：批量清理“不可用 + free 计划”账号，并返回扫描/跳过/删除统计。
-- 新增“导出用户”：支持选择本地目录并按“一个账号一个 JSON 文件”导出。
-- 导入兼容增强：支持 `tokens.*`、顶层 `*_token`、camelCase 字段（如 `accessToken/idToken/refreshToken`）自动识别。
-- 兼容旧 service：前端导入前会自动归一化顶层 token 格式，避免旧版后端报 `missing field: tokens`。
+## 协作与维护
+- 版本历史：[CHANGELOG.md](CHANGELOG.md)
+- 协作约定：[CONTRIBUTING.md](CONTRIBUTING.md)
+- 架构说明：[ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## 功能概览
 - 账号池管理：分组、标签、排序、备注
@@ -162,16 +148,17 @@ xattr -dr com.apple.quarantine /Applications/CodexManager.app
 - 如果仍被拦截，再对 `CodexManager.app` 执行一次“右键 -> 打开”。
 
 ## GitHub Actions（全部手动触发）
-当前 workflow 均为 `workflow_dispatch`，不会自动触发。
+当前发布入口为 `release-all.yml`，触发方式为 `workflow_dispatch`，不会自动触发。
 
 - `release-all.yml`
   - 用途：一键发布 Desktop + Service 全平台产物（单次触发）
-  - 构建顺序：`Windows -> macOS（dmg） -> Linux`
+  - 构建平台：`Windows`、`macOS（dmg）`、`Linux`
   - 触发：手动
   - 输入：
     - `tag`（必填）
     - `ref`（默认 `main`）
     - `run_verify`（默认 `true`，可关闭）
+    - `prerelease`（默认 `auto`，可选 `auto|true|false`）
 
 ## Release 产物清单（`release-all.yml`）
 ### Desktop
@@ -185,8 +172,10 @@ xattr -dr com.apple.quarantine /Applications/CodexManager.app
 - Linux：`CodexManager-service-linux-x86_64.zip`
 
 ### 发布类型
-- `tag` 包含 `-`（例如 `v0.1.6-beta.1`）会发布为 **pre-release**
-- 不包含 `-`（例如 `v0.1.6`）会发布为正式版
+- `prerelease=auto` 时，`tag` 包含 `-`（例如 `v0.1.6-beta.1`）会发布为 **pre-release**
+- `prerelease=auto` 时，不包含 `-`（例如 `v0.1.6`）会发布为正式版
+- `prerelease=true|false` 时，会覆盖基于 tag 的自动判断
+- 重跑同一 `tag` 时，会按当前输入同步 Release 元数据，避免 `prerelease` 状态漂移
 - GitHub 仍会自动附带 `Source code (zip/tar.gz)`
 
 ## 脚本说明
@@ -208,6 +197,10 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
 # 跳过 workflow 内质量门
 pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
   -AllPlatforms -GitRef main -ReleaseTag v0.0.9 -GithubToken <token> -NoVerify
+
+# 强制发布为 pre-release
+pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
+  -AllPlatforms -GitRef main -ReleaseTag v0.0.9-beta.1 -GithubToken <token> -Prerelease true
 ```
 
 参数（含默认值）：
@@ -222,6 +215,7 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 `
 - `-GitRef <ref>`：workflow 构建 ref；默认当前分支或当前 tag
 - `-ReleaseTag <tag>`：发布 tag；`-AllPlatforms` 时建议显式传入
 - `-NoVerify`：将 workflow 输入 `run_verify` 设为 `false`
+- `-Prerelease <auto|true|false>`：默认 `auto`；传给 workflow 的 `prerelease` 输入
 - `-DownloadArtifacts <bool>`：默认 `true`
 - `-ArtifactsDir <path>`：工件下载目录，默认 `artifacts/`
 - `-PollIntervalSec <n>`：轮询间隔，默认 `10`

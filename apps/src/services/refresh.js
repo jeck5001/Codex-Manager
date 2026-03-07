@@ -9,12 +9,40 @@ function normalizeConcurrency(value, fallback) {
   return Math.min(8, int);
 }
 
+function normalizeTimeoutMs(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  const int = Math.floor(parsed);
+  return int > 0 ? int : 0;
+}
+
+async function runTaskWithTimeout(task, timeoutMs) {
+  const taskPromise = Promise.resolve().then(() => task.run());
+  if (timeoutMs <= 0) {
+    return taskPromise;
+  }
+  let timerId = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timerId = setTimeout(() => {
+      reject(new Error(`task timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([taskPromise, timeoutPromise]);
+  } finally {
+    if (timerId) {
+      clearTimeout(timerId);
+    }
+  }
+}
+
 export async function runRefreshTasks(tasks, onTaskError, options = {}) {
   const taskList = Array.isArray(tasks) ? tasks : [];
   const concurrency = Math.min(
     taskList.length,
     normalizeConcurrency(options.concurrency, DEFAULT_REFRESH_TASK_CONCURRENCY),
   );
+  const taskTimeoutMs = normalizeTimeoutMs(options.taskTimeoutMs);
 
   const results = new Array(taskList.length);
   if (taskList.length === 0) {
@@ -26,7 +54,7 @@ export async function runRefreshTasks(tasks, onTaskError, options = {}) {
   async function runOne(index) {
     const item = taskList[index];
     try {
-      const value = await Promise.resolve().then(() => item.run());
+      const value = await runTaskWithTimeout(item, taskTimeoutMs);
       results[index] = { status: "fulfilled", value };
     } catch (reason) {
       results[index] = { status: "rejected", reason };

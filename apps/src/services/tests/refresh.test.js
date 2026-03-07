@@ -36,6 +36,32 @@ test("runRefreshTasks continues when one task fails", async () => {
   assert.deepEqual(errors, [["usage", "usage failed"]]);
 });
 
+test("runRefreshTasks times out stalled tasks and keeps other tasks completed", async () => {
+  const errors = [];
+  const results = await runRefreshTasks(
+    [
+      {
+        name: "accounts",
+        run: async () => "ok",
+      },
+      {
+        name: "request-logs",
+        run: async () => new Promise(() => {}),
+      },
+    ],
+    (name, err) => errors.push([name, err && err.message]),
+    { taskTimeoutMs: 20 },
+  );
+
+  assert.equal(results.length, 2);
+  assert.equal(results[0].status, "fulfilled");
+  assert.equal(results[1].status, "rejected");
+  assert.match(String(results[1].reason && results[1].reason.message), /timed out/i);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0][0], "request-logs");
+  assert.match(String(errors[0][1]), /timed out/i);
+});
+
 test("ensureAutoRefreshTimer creates one timer only", async () => {
   const state = { autoRefreshTimer: null };
   let tickCount = 0;
