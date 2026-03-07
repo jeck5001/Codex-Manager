@@ -654,18 +654,72 @@ async fn open_in_browser(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn app_close_to_tray_on_close_get() -> bool {
-    CLOSE_TO_TRAY_ON_CLOSE.load(Ordering::Relaxed) && TRAY_AVAILABLE.load(Ordering::Relaxed)
+fn app_close_to_tray_on_close_get(app: tauri::AppHandle) -> bool {
+    apply_runtime_storage_env(&app);
+    if let Ok(mut settings) = codexmanager_service::app_settings_get() {
+        sync_close_to_tray_state_from_settings(&mut settings);
+    }
+    CLOSE_TO_TRAY_ON_CLOSE.load(Ordering::Relaxed)
 }
 
 #[tauri::command]
-fn app_close_to_tray_on_close_set(enabled: bool) -> bool {
-    if enabled && !TRAY_AVAILABLE.load(Ordering::Relaxed) {
-        CLOSE_TO_TRAY_ON_CLOSE.store(false, Ordering::Relaxed);
-        return false;
+fn app_close_to_tray_on_close_set(app: tauri::AppHandle, enabled: bool) -> bool {
+    apply_runtime_storage_env(&app);
+    let payload = serde_json::json!({
+        "closeToTrayOnClose": enabled
+    });
+    if let Ok(mut settings) = codexmanager_service::app_settings_set(Some(&payload)) {
+        sync_close_to_tray_state_from_settings(&mut settings);
     }
-    CLOSE_TO_TRAY_ON_CLOSE.store(enabled, Ordering::Relaxed);
-    enabled
+    CLOSE_TO_TRAY_ON_CLOSE.load(Ordering::Relaxed)
+}
+
+#[tauri::command]
+async fn app_settings_get(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    apply_runtime_storage_env(&app);
+    let mut settings = tauri::async_runtime::spawn_blocking(move || {
+        codexmanager_service::app_settings_get_with_overrides(
+            Some(codexmanager_service::current_close_to_tray_on_close_setting()
+                && TRAY_AVAILABLE.load(Ordering::Relaxed)),
+            Some(TRAY_AVAILABLE.load(Ordering::Relaxed)),
+        )
+    })
+    .await
+    .map_err(|err| format!("app_settings_get task failed: {err}"))??;
+    sync_close_to_tray_state_from_settings(&mut settings);
+    Ok(settings)
+}
+
+#[tauri::command]
+async fn app_settings_set(
+    app: tauri::AppHandle,
+    patch: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    apply_runtime_storage_env(&app);
+    let mut settings = tauri::async_runtime::spawn_blocking(move || {
+        codexmanager_service::app_settings_set(Some(&patch))
+    })
+    .await
+    .map_err(|err| format!("app_settings_set task failed: {err}"))??;
+    sync_close_to_tray_state_from_settings(&mut settings);
+    Ok(settings)
+}
+
+fn sync_close_to_tray_state_from_settings(settings: &mut serde_json::Value) {
+    let requested = settings
+        .get("closeToTrayOnClose")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let supported = settings
+        .get("closeToTraySupported")
+        .and_then(|value| value.as_bool())
+        .unwrap_or_else(|| TRAY_AVAILABLE.load(Ordering::Relaxed));
+    let effective = requested && supported;
+    if let Some(object) = settings.as_object_mut() {
+        object.insert("closeToTrayOnClose".to_string(), serde_json::json!(effective));
+        object.insert("closeToTraySupported".to_string(), serde_json::json!(supported));
+    }
+    CLOSE_TO_TRAY_ON_CLOSE.store(effective, Ordering::Relaxed);
 }
 
 fn open_in_browser_blocking(url: &str) -> Result<(), String> {
@@ -706,6 +760,14 @@ pub fn run() {
                 TRAY_AVAILABLE.store(false, Ordering::Relaxed);
                 CLOSE_TO_TRAY_ON_CLOSE.store(false, Ordering::Relaxed);
                 log::warn!("tray setup unavailable, continue without tray: {}", err);
+            }
+            codexmanager_service::sync_runtime_settings_from_storage();
+            if let Ok(mut settings) = codexmanager_service::app_settings_get_with_overrides(
+                Some(codexmanager_service::current_close_to_tray_on_close_setting()
+                    && TRAY_AVAILABLE.load(Ordering::Relaxed)),
+                Some(TRAY_AVAILABLE.load(Ordering::Relaxed)),
+            ) {
+                sync_close_to_tray_state_from_settings(&mut settings);
             }
 
             Ok(())
@@ -779,6 +841,8 @@ pub fn run() {
             service_apikey_disable,
             service_apikey_enable,
             open_in_browser,
+            app_settings_get,
+            app_settings_set,
             app_close_to_tray_on_close_get,
             app_close_to_tray_on_close_set,
             updater::app_update_check,

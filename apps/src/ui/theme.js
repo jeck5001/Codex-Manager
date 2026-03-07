@@ -12,7 +12,9 @@ const THEME_OPTIONS = [
   { id: "aurora", label: "极光青" },
 ];
 
-export function createThemeController({ dom }) {
+export function createThemeController({ dom, onThemeChange = null }) {
+  const validThemes = new Set(THEME_OPTIONS.map((item) => item.id));
+
   function renderThemeButtons() {
     if (!dom.themePanel) return;
     dom.themePanel.innerHTML = "";
@@ -26,11 +28,9 @@ export function createThemeController({ dom }) {
     });
   }
 
-  function setTheme(theme) {
-    const validThemes = new Set(THEME_OPTIONS.map((item) => item.id));
+  function applyTheme(theme) {
     const nextTheme = validThemes.has(theme) ? theme : "tech";
     document.body.dataset.theme = nextTheme;
-    localStorage.setItem("codexmanager.ui.theme", nextTheme);
     if (dom.themePanel) {
       dom.themePanel.querySelectorAll("button[data-theme]").forEach((button) => {
         button.classList.toggle("is-active", button.dataset.theme === nextTheme);
@@ -40,11 +40,22 @@ export function createThemeController({ dom }) {
       const activeTheme = THEME_OPTIONS.find((item) => item.id === nextTheme);
       dom.themeToggle.textContent = activeTheme ? `主题 · ${activeTheme.label}` : "主题";
     }
+    return nextTheme;
   }
 
-  function restoreTheme() {
-    const savedTheme = localStorage.getItem("codexmanager.ui.theme");
-    setTheme(savedTheme || "tech");
+  function setTheme(theme, options = {}) {
+    const nextTheme = applyTheme(theme);
+    const persist = !options || options.persist !== false;
+    if (persist && onThemeChange) {
+      Promise.resolve(onThemeChange(nextTheme)).catch((err) => {
+        console.error("[theme] persist failed", err);
+      });
+    }
+    return nextTheme;
+  }
+
+  function restoreTheme(theme = "tech") {
+    setTheme(theme, { persist: false });
   }
 
   function closeThemePanel() {

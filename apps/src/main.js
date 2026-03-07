@@ -5,17 +5,11 @@ import "./styles/responsive.css";
 import "./styles/performance.css";
 
 import {
-  appCloseToTrayOnCloseGet,
-  appCloseToTrayOnCloseSet,
-  serviceListenConfigGet,
-  serviceListenConfigSet,
-  serviceGatewayBackgroundTasksGet,
+  appSettingsGet,
+  appSettingsSet,
   serviceGatewayBackgroundTasksSet,
-  serviceGatewayHeaderPolicyGet,
   serviceGatewayHeaderPolicySet,
-  serviceGatewayUpstreamProxyGet,
   serviceGatewayUpstreamProxySet,
-  serviceGatewayRouteStrategyGet,
   serviceGatewayRouteStrategySet,
   serviceUsageRefresh,
   updateCheck,
@@ -29,6 +23,13 @@ import { dom } from "./ui/dom";
 import { setStatus, setServiceHint } from "./ui/status";
 import { createFeedbackHandlers } from "./ui/feedback";
 import { createThemeController } from "./ui/theme";
+import {
+  formatEnvOverridesText,
+  normalizeEnvOverrideCatalog,
+  normalizeEnvOverrides,
+  normalizeStringList,
+  parseEnvOverridesText,
+} from "./ui/env-overrides";
 import { withButtonBusy } from "./ui/button-busy";
 import { createStartupMaskController } from "./ui/startup-mask";
 import {
@@ -77,7 +78,10 @@ const {
   restoreTheme,
   closeThemePanel,
   toggleThemePanel,
-} = createThemeController({ dom });
+} = createThemeController({
+  dom,
+  onThemeChange: (theme) => saveAppSettingsPatch({ theme }),
+});
 
 function renderCurrentPageView(page = state.currentPage) {
   renderCurrentView(page, buildMainRenderActions());
@@ -124,20 +128,13 @@ const { switchPage, updateRequestLogFilterButtons } = createNavigationHandlers({
 });
 
 const { setStartupMask } = createStartupMaskController({ dom, state });
-const UPDATE_AUTO_CHECK_STORAGE_KEY = "codexmanager.update.auto_check";
-const CLOSE_TO_TRAY_ON_CLOSE_STORAGE_KEY = "codexmanager.app.close_to_tray_on_close";
-const UI_LOW_TRANSPARENCY_STORAGE_KEY = "codexmanager.ui.low_transparency";
 const UI_LOW_TRANSPARENCY_BODY_CLASS = "cm-low-transparency";
 const UI_LOW_TRANSPARENCY_TOGGLE_ID = "lowTransparencyMode";
 const UI_LOW_TRANSPARENCY_CARD_ID = "settingsLowTransparencyCard";
-const ROUTE_STRATEGY_STORAGE_KEY = "codexmanager.gateway.route_strategy";
 const ROUTE_STRATEGY_ORDERED = "ordered";
 const ROUTE_STRATEGY_BALANCED = "balanced";
 const SERVICE_LISTEN_MODE_LOOPBACK = "loopback";
 const SERVICE_LISTEN_MODE_ALL_INTERFACES = "all_interfaces";
-const CPA_NO_COOKIE_HEADER_MODE_STORAGE_KEY = "codexmanager.gateway.cpa_no_cookie_header_mode";
-const UPSTREAM_PROXY_URL_STORAGE_KEY = "codexmanager.gateway.upstream_proxy_url";
-const BACKGROUND_TASKS_SETTINGS_STORAGE_KEY = "codexmanager.gateway.background_tasks";
 const DEFAULT_BACKGROUND_TASKS_SETTINGS = {
   usagePollingEnabled: true,
   usagePollIntervalSecs: 600,
@@ -182,6 +179,116 @@ let upstreamProxySyncedProbeId = -1;
 let backgroundTasksSyncInFlight = null;
 let backgroundTasksSyncedProbeId = -1;
 let apiModelsRemoteRefreshInFlight = null;
+let appSettingsSnapshot = buildDefaultAppSettingsSnapshot();
+
+function buildDefaultAppSettingsSnapshot() {
+  return {
+    updateAutoCheck: true,
+    closeToTrayOnClose: false,
+    closeToTraySupported: isTauriRuntime(),
+    lowTransparency: false,
+    theme: "tech",
+    serviceAddr: "localhost:48760",
+    serviceListenMode: normalizeServiceListenMode(null),
+    routeStrategy: normalizeRouteStrategy(null),
+    cpaNoCookieHeaderModeEnabled: false,
+    upstreamProxyUrl: "",
+    backgroundTasks: normalizeBackgroundTasksSettings(DEFAULT_BACKGROUND_TASKS_SETTINGS),
+    envOverrides: {},
+    envOverrideCatalog: [],
+    envOverrideReservedKeys: [],
+    envOverrideUnsupportedKeys: [],
+    webAccessPasswordConfigured: false,
+  };
+}
+
+function normalizeThemeSetting(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized || "tech";
+}
+
+function normalizeAppSettingsSnapshot(source) {
+  const payload = source && typeof source === "object" ? source : {};
+  const defaults = buildDefaultAppSettingsSnapshot();
+  let serviceAddr = defaults.serviceAddr;
+  try {
+    serviceAddr = normalizeAddr(payload.serviceAddr || defaults.serviceAddr);
+  } catch {
+    serviceAddr = defaults.serviceAddr;
+  }
+  return {
+    updateAutoCheck: normalizeBooleanSetting(payload.updateAutoCheck, defaults.updateAutoCheck),
+    closeToTrayOnClose: normalizeBooleanSetting(
+      payload.closeToTrayOnClose,
+      defaults.closeToTrayOnClose,
+    ),
+    closeToTraySupported: normalizeBooleanSetting(
+      payload.closeToTraySupported,
+      defaults.closeToTraySupported,
+    ),
+    lowTransparency: normalizeBooleanSetting(payload.lowTransparency, defaults.lowTransparency),
+    theme: normalizeThemeSetting(payload.theme),
+    serviceAddr,
+    serviceListenMode: normalizeServiceListenMode(payload.serviceListenMode),
+    routeStrategy: normalizeRouteStrategy(payload.routeStrategy),
+    cpaNoCookieHeaderModeEnabled: normalizeCpaNoCookieHeaderMode(
+      payload.cpaNoCookieHeaderModeEnabled,
+    ),
+    upstreamProxyUrl: normalizeUpstreamProxyUrl(payload.upstreamProxyUrl),
+    backgroundTasks: normalizeBackgroundTasksSettings(payload.backgroundTasks),
+    envOverrides: normalizeEnvOverrides(payload.envOverrides),
+    envOverrideCatalog: normalizeEnvOverrideCatalog(payload.envOverrideCatalog),
+    envOverrideReservedKeys: normalizeStringList(payload.envOverrideReservedKeys),
+    envOverrideUnsupportedKeys: normalizeStringList(payload.envOverrideUnsupportedKeys),
+    webAccessPasswordConfigured: normalizeBooleanSetting(
+      payload.webAccessPasswordConfigured,
+      defaults.webAccessPasswordConfigured,
+    ),
+  };
+}
+
+function setAppSettingsSnapshot(snapshot) {
+  appSettingsSnapshot = normalizeAppSettingsSnapshot(snapshot);
+  state.serviceAddr = appSettingsSnapshot.serviceAddr;
+  return appSettingsSnapshot;
+}
+
+function patchAppSettingsSnapshot(patch = {}) {
+  const next = {
+    ...appSettingsSnapshot,
+    ...(patch && typeof patch === "object" ? patch : {}),
+  };
+  if (patch && Object.prototype.hasOwnProperty.call(patch, "backgroundTasks")) {
+    next.backgroundTasks = patch.backgroundTasks;
+  }
+  if (patch && Object.prototype.hasOwnProperty.call(patch, "envOverrides")) {
+    next.envOverrides = patch.envOverrides;
+  }
+  if (patch && Object.prototype.hasOwnProperty.call(patch, "envOverrideCatalog")) {
+    next.envOverrideCatalog = patch.envOverrideCatalog;
+  }
+  if (patch && Object.prototype.hasOwnProperty.call(patch, "envOverrideReservedKeys")) {
+    next.envOverrideReservedKeys = patch.envOverrideReservedKeys;
+  }
+  if (patch && Object.prototype.hasOwnProperty.call(patch, "envOverrideUnsupportedKeys")) {
+    next.envOverrideUnsupportedKeys = patch.envOverrideUnsupportedKeys;
+  }
+  return setAppSettingsSnapshot(next);
+}
+
+async function loadAppSettings() {
+  try {
+    return setAppSettingsSnapshot(await appSettingsGet());
+  } catch (err) {
+    console.warn("[app-settings] load failed", err);
+    return setAppSettingsSnapshot(appSettingsSnapshot);
+  }
+}
+
+async function saveAppSettingsPatch(patch = {}) {
+  const payload = patch && typeof patch === "object" ? patch : {};
+  return setAppSettingsSnapshot(await appSettingsSet(payload));
+}
 function buildRefreshAllTasks(options = {}) {
   const refreshRemoteUsage = options.refreshRemoteUsage === true;
   const refreshRemoteModels = options.refreshRemoteModels === true;
@@ -225,51 +332,26 @@ function applyBrowserModeUi() {
 }
 
 function readUpdateAutoCheckSetting() {
-  if (typeof localStorage === "undefined") {
-    return true;
-  }
-  const raw = localStorage.getItem(UPDATE_AUTO_CHECK_STORAGE_KEY);
-  if (raw == null) {
-    return true;
-  }
-  const normalized = String(raw).trim().toLowerCase();
-  return !["0", "false", "off", "no"].includes(normalized);
+  return Boolean(appSettingsSnapshot.updateAutoCheck);
 }
 
 function saveUpdateAutoCheckSetting(enabled) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  localStorage.setItem(UPDATE_AUTO_CHECK_STORAGE_KEY, enabled ? "1" : "0");
+  patchAppSettingsSnapshot({ updateAutoCheck: Boolean(enabled) });
 }
 
 function initUpdateAutoCheckSetting() {
   const enabled = readUpdateAutoCheckSetting();
-  if (typeof localStorage !== "undefined" && localStorage.getItem(UPDATE_AUTO_CHECK_STORAGE_KEY) == null) {
-    saveUpdateAutoCheckSetting(enabled);
-  }
   if (dom.autoCheckUpdate) {
     dom.autoCheckUpdate.checked = enabled;
   }
 }
 
 function readCloseToTrayOnCloseSetting() {
-  if (typeof localStorage === "undefined") {
-    return false;
-  }
-  const raw = localStorage.getItem(CLOSE_TO_TRAY_ON_CLOSE_STORAGE_KEY);
-  if (raw == null) {
-    return false;
-  }
-  const normalized = String(raw).trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(normalized);
+  return Boolean(appSettingsSnapshot.closeToTrayOnClose);
 }
 
 function saveCloseToTrayOnCloseSetting(enabled) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  localStorage.setItem(CLOSE_TO_TRAY_ON_CLOSE_STORAGE_KEY, enabled ? "1" : "0");
+  patchAppSettingsSnapshot({ closeToTrayOnClose: Boolean(enabled) });
 }
 
 function setCloseToTrayOnCloseToggle(enabled) {
@@ -280,13 +362,19 @@ function setCloseToTrayOnCloseToggle(enabled) {
 
 async function applyCloseToTrayOnCloseSetting(enabled, { silent = true } = {}) {
   const normalized = Boolean(enabled);
-  if (!isTauriRuntime()) {
-    return normalized;
-  }
   try {
-    const applied = await appCloseToTrayOnCloseSet(normalized);
+    const settings = await saveAppSettingsPatch({
+      closeToTrayOnClose: normalized,
+    });
+    const applied = Boolean(settings.closeToTrayOnClose);
+    const supported = Boolean(settings.closeToTraySupported);
+    if (dom.closeToTrayOnClose) {
+      dom.closeToTrayOnClose.disabled = !supported;
+    }
+    saveCloseToTrayOnCloseSetting(applied);
+    setCloseToTrayOnCloseToggle(applied);
     if (!silent) {
-      if (normalized && !applied) {
+      if (normalized && !applied && !supported) {
         showToast("系统托盘不可用，无法启用关闭时最小化到托盘", "error");
       } else {
         showToast(applied ? "已开启：关闭窗口将最小化到托盘" : "已关闭：关闭窗口将直接退出");
@@ -301,51 +389,20 @@ async function applyCloseToTrayOnCloseSetting(enabled, { silent = true } = {}) {
   }
 }
 
-async function initCloseToTrayOnCloseSetting() {
-  const hasLocalSetting = typeof localStorage !== "undefined"
-    && localStorage.getItem(CLOSE_TO_TRAY_ON_CLOSE_STORAGE_KEY) != null;
-  let enabled = readCloseToTrayOnCloseSetting();
-  if (!hasLocalSetting) {
-    saveCloseToTrayOnCloseSetting(enabled);
-  }
-  if (isTauriRuntime()) {
-    try {
-      const serviceValue = await appCloseToTrayOnCloseGet();
-      if (!hasLocalSetting) {
-        enabled = serviceValue === true;
-      }
-    } catch {
-      // ignore and fallback to local value
-    }
-  }
+function initCloseToTrayOnCloseSetting() {
+  const enabled = readCloseToTrayOnCloseSetting();
   setCloseToTrayOnCloseToggle(enabled);
-  let applied = enabled;
-  try {
-    applied = await applyCloseToTrayOnCloseSetting(enabled, { silent: true });
-  } catch {
-    applied = enabled;
+  if (dom.closeToTrayOnClose) {
+    dom.closeToTrayOnClose.disabled = !Boolean(appSettingsSnapshot.closeToTraySupported);
   }
-  saveCloseToTrayOnCloseSetting(applied);
-  setCloseToTrayOnCloseToggle(applied);
 }
 
 function readLowTransparencySetting() {
-  if (typeof localStorage === "undefined") {
-    return false;
-  }
-  const raw = localStorage.getItem(UI_LOW_TRANSPARENCY_STORAGE_KEY);
-  if (raw == null) {
-    return false;
-  }
-  const normalized = String(raw).trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(normalized);
+  return Boolean(appSettingsSnapshot.lowTransparency);
 }
 
 function saveLowTransparencySetting(enabled) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  localStorage.setItem(UI_LOW_TRANSPARENCY_STORAGE_KEY, enabled ? "1" : "0");
+  patchAppSettingsSnapshot({ lowTransparency: Boolean(enabled) });
 }
 
 function applyLowTransparencySetting(enabled) {
@@ -408,9 +465,6 @@ function ensureLowTransparencySettingCard() {
 
 function initLowTransparencySetting() {
   const enabled = readLowTransparencySetting();
-  if (typeof localStorage !== "undefined" && localStorage.getItem(UI_LOW_TRANSPARENCY_STORAGE_KEY) == null) {
-    saveLowTransparencySetting(enabled);
-  }
   applyLowTransparencySetting(enabled);
   const toggle = ensureLowTransparencySettingCard();
   if (toggle) {
@@ -459,26 +513,9 @@ function setServiceListenModeHint(message) {
 }
 
 function initServiceListenModeSetting() {
-  const mode = normalizeServiceListenMode(null);
+  const mode = normalizeServiceListenMode(appSettingsSnapshot.serviceListenMode);
   setServiceListenModeSelect(mode);
-  setServiceListenModeHint("保存后重启服务生效；局域网访问请使用本机实际 IP。");
-}
-
-function resolveServiceListenConfigFromPayload(payload) {
-  const mode = normalizeServiceListenMode(pickFirstValue(payload, [
-    "mode",
-    "result.mode",
-    "bindMode",
-    "result.bindMode",
-  ]));
-  const requiresRestart = pickBooleanValue(payload, [
-    "requiresRestart",
-    "result.requiresRestart",
-  ]);
-  return {
-    mode,
-    requiresRestart: requiresRestart == null ? true : requiresRestart,
-  };
+  setServiceListenModeHint(buildServiceListenModeHint(mode, true));
 }
 
 async function applyServiceListenModeToService(mode, { silent = true } = {}) {
@@ -487,8 +524,13 @@ async function applyServiceListenModeToService(mode, { silent = true } = {}) {
     return serviceListenModeSyncInFlight;
   }
   serviceListenModeSyncInFlight = (async () => {
-    const response = await serviceListenConfigSet(normalized);
-    const resolved = resolveServiceListenConfigFromPayload(response);
+    const settings = await saveAppSettingsPatch({
+      serviceListenMode: normalized,
+    });
+    const resolved = {
+      mode: normalizeServiceListenMode(settings.serviceListenMode),
+      requiresRestart: true,
+    };
     setServiceListenModeSelect(resolved.mode);
     setServiceListenModeHint(buildServiceListenModeHint(resolved.mode, resolved.requiresRestart));
     if (!silent) {
@@ -511,14 +553,7 @@ async function applyServiceListenModeToService(mode, { silent = true } = {}) {
 }
 
 async function syncServiceListenModeOnStartup() {
-  try {
-    const response = await serviceListenConfigGet();
-    const resolved = resolveServiceListenConfigFromPayload(response);
-    setServiceListenModeSelect(resolved.mode);
-    setServiceListenModeHint(buildServiceListenModeHint(resolved.mode, resolved.requiresRestart));
-  } catch {
-    initServiceListenModeSetting();
-  }
+  initServiceListenModeSetting();
 }
 
 function normalizeRouteStrategy(strategy) {
@@ -544,17 +579,13 @@ function updateRouteStrategyHint(strategy) {
 }
 
 function readRouteStrategySetting() {
-  if (typeof localStorage === "undefined") {
-    return ROUTE_STRATEGY_ORDERED;
-  }
-  return normalizeRouteStrategy(localStorage.getItem(ROUTE_STRATEGY_STORAGE_KEY));
+  return normalizeRouteStrategy(appSettingsSnapshot.routeStrategy);
 }
 
 function saveRouteStrategySetting(strategy) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  localStorage.setItem(ROUTE_STRATEGY_STORAGE_KEY, normalizeRouteStrategy(strategy));
+  patchAppSettingsSnapshot({
+    routeStrategy: normalizeRouteStrategy(strategy),
+  });
 }
 
 function setRouteStrategySelect(strategy) {
@@ -567,9 +598,6 @@ function setRouteStrategySelect(strategy) {
 
 function initRouteStrategySetting() {
   const mode = readRouteStrategySetting();
-  if (typeof localStorage !== "undefined" && localStorage.getItem(ROUTE_STRATEGY_STORAGE_KEY) == null) {
-    saveRouteStrategySetting(mode);
-  }
   setRouteStrategySelect(mode);
 }
 
@@ -616,28 +644,10 @@ async function applyRouteStrategyToService(strategy, { silent = true } = {}) {
 }
 
 async function syncRouteStrategyOnStartup() {
-  const connected = await ensureConnected();
-  serviceLifecycle.updateServiceToggle();
-  if (!connected) {
+  if (!isTauriRuntime()) {
     return;
   }
-
-  const hasLocalSetting = typeof localStorage !== "undefined"
-    && localStorage.getItem(ROUTE_STRATEGY_STORAGE_KEY) != null;
-  if (hasLocalSetting) {
-    await applyRouteStrategyToService(readRouteStrategySetting(), { silent: true });
-    return;
-  }
-
-  try {
-    const response = await serviceGatewayRouteStrategyGet();
-    const strategy = resolveRouteStrategyFromPayload(response);
-    saveRouteStrategySetting(strategy);
-    setRouteStrategySelect(strategy);
-    routeStrategySyncedProbeId = state.serviceProbeId;
-  } catch {
-    setRouteStrategySelect(readRouteStrategySetting());
-  }
+  await applyRouteStrategyToService(readRouteStrategySetting(), { silent: true });
 }
 
 function normalizeCpaNoCookieHeaderMode(value) {
@@ -660,20 +670,13 @@ function normalizeCpaNoCookieHeaderMode(value) {
 }
 
 function readCpaNoCookieHeaderModeSetting() {
-  if (typeof localStorage === "undefined") {
-    return false;
-  }
-  return normalizeCpaNoCookieHeaderMode(localStorage.getItem(CPA_NO_COOKIE_HEADER_MODE_STORAGE_KEY));
+  return normalizeCpaNoCookieHeaderMode(appSettingsSnapshot.cpaNoCookieHeaderModeEnabled);
 }
 
 function saveCpaNoCookieHeaderModeSetting(enabled) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  localStorage.setItem(
-    CPA_NO_COOKIE_HEADER_MODE_STORAGE_KEY,
-    normalizeCpaNoCookieHeaderMode(enabled) ? "1" : "0",
-  );
+  patchAppSettingsSnapshot({
+    cpaNoCookieHeaderModeEnabled: normalizeCpaNoCookieHeaderMode(enabled),
+  });
 }
 
 function setCpaNoCookieHeaderModeToggle(enabled) {
@@ -684,9 +687,6 @@ function setCpaNoCookieHeaderModeToggle(enabled) {
 
 function initCpaNoCookieHeaderModeSetting() {
   const enabled = readCpaNoCookieHeaderModeSetting();
-  if (typeof localStorage !== "undefined" && localStorage.getItem(CPA_NO_COOKIE_HEADER_MODE_STORAGE_KEY) == null) {
-    saveCpaNoCookieHeaderModeSetting(enabled);
-  }
   setCpaNoCookieHeaderModeToggle(enabled);
 }
 
@@ -738,28 +738,10 @@ async function applyCpaNoCookieHeaderModeToService(enabled, { silent = true } = 
 }
 
 async function syncCpaNoCookieHeaderModeOnStartup() {
-  const connected = await ensureConnected();
-  serviceLifecycle.updateServiceToggle();
-  if (!connected) {
+  if (!isTauriRuntime()) {
     return;
   }
-
-  const hasLocalSetting = typeof localStorage !== "undefined"
-    && localStorage.getItem(CPA_NO_COOKIE_HEADER_MODE_STORAGE_KEY) != null;
-  if (hasLocalSetting) {
-    await applyCpaNoCookieHeaderModeToService(readCpaNoCookieHeaderModeSetting(), { silent: true });
-    return;
-  }
-
-  try {
-    const response = await serviceGatewayHeaderPolicyGet();
-    const enabled = resolveCpaNoCookieHeaderModeFromPayload(response);
-    saveCpaNoCookieHeaderModeSetting(enabled);
-    setCpaNoCookieHeaderModeToggle(enabled);
-    cpaNoCookieHeaderModeSyncedProbeId = state.serviceProbeId;
-  } catch {
-    setCpaNoCookieHeaderModeToggle(readCpaNoCookieHeaderModeSetting());
-  }
+  await applyCpaNoCookieHeaderModeToService(readCpaNoCookieHeaderModeSetting(), { silent: true });
 }
 
 function normalizeUpstreamProxyUrl(value) {
@@ -770,17 +752,13 @@ function normalizeUpstreamProxyUrl(value) {
 }
 
 function readUpstreamProxyUrlSetting() {
-  if (typeof localStorage === "undefined") {
-    return "";
-  }
-  return normalizeUpstreamProxyUrl(localStorage.getItem(UPSTREAM_PROXY_URL_STORAGE_KEY));
+  return normalizeUpstreamProxyUrl(appSettingsSnapshot.upstreamProxyUrl);
 }
 
 function saveUpstreamProxyUrlSetting(value) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  localStorage.setItem(UPSTREAM_PROXY_URL_STORAGE_KEY, normalizeUpstreamProxyUrl(value));
+  patchAppSettingsSnapshot({
+    upstreamProxyUrl: normalizeUpstreamProxyUrl(value),
+  });
 }
 
 function setUpstreamProxyInput(value) {
@@ -799,9 +777,6 @@ function setUpstreamProxyHint(message) {
 
 function initUpstreamProxySetting() {
   const proxyUrl = readUpstreamProxyUrlSetting();
-  if (typeof localStorage !== "undefined" && localStorage.getItem(UPSTREAM_PROXY_URL_STORAGE_KEY) == null) {
-    saveUpstreamProxyUrlSetting(proxyUrl);
-  }
   setUpstreamProxyInput(proxyUrl);
   setUpstreamProxyHint("保存后立即生效。");
 }
@@ -851,29 +826,10 @@ async function applyUpstreamProxyToService(proxyUrl, { silent = true } = {}) {
 }
 
 async function syncUpstreamProxyOnStartup() {
-  const connected = await ensureConnected();
-  serviceLifecycle.updateServiceToggle();
-  if (!connected) {
+  if (!isTauriRuntime()) {
     return;
   }
-
-  const hasLocalSetting = typeof localStorage !== "undefined"
-    && localStorage.getItem(UPSTREAM_PROXY_URL_STORAGE_KEY) != null;
-  if (hasLocalSetting) {
-    await applyUpstreamProxyToService(readUpstreamProxyUrlSetting(), { silent: true });
-    return;
-  }
-
-  try {
-    const response = await serviceGatewayUpstreamProxyGet();
-    const proxyUrl = resolveUpstreamProxyUrlFromPayload(response);
-    saveUpstreamProxyUrlSetting(proxyUrl);
-    setUpstreamProxyInput(proxyUrl);
-    setUpstreamProxyHint("保存后立即生效。");
-    upstreamProxySyncedProbeId = state.serviceProbeId;
-  } catch {
-    setUpstreamProxyInput(readUpstreamProxyUrlSetting());
-  }
+  await applyUpstreamProxyToService(readUpstreamProxyUrlSetting(), { silent: true });
 }
 
 function normalizeBooleanSetting(value, fallback = false) {
@@ -970,27 +926,13 @@ function normalizeBackgroundTasksSettings(input) {
 }
 
 function readBackgroundTasksSetting() {
-  if (typeof localStorage === "undefined") {
-    return normalizeBackgroundTasksSettings(DEFAULT_BACKGROUND_TASKS_SETTINGS);
-  }
-  const raw = localStorage.getItem(BACKGROUND_TASKS_SETTINGS_STORAGE_KEY);
-  if (!raw) {
-    return normalizeBackgroundTasksSettings(DEFAULT_BACKGROUND_TASKS_SETTINGS);
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    return normalizeBackgroundTasksSettings(parsed);
-  } catch {
-    return normalizeBackgroundTasksSettings(DEFAULT_BACKGROUND_TASKS_SETTINGS);
-  }
+  return normalizeBackgroundTasksSettings(appSettingsSnapshot.backgroundTasks);
 }
 
 function saveBackgroundTasksSetting(settings) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  const normalized = normalizeBackgroundTasksSettings(settings);
-  localStorage.setItem(BACKGROUND_TASKS_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+  patchAppSettingsSnapshot({
+    backgroundTasks: normalizeBackgroundTasksSettings(settings),
+  });
 }
 
 function setBackgroundTasksForm(settings) {
@@ -1151,9 +1093,6 @@ function updateBackgroundTasksHint(requiresRestartKeys) {
 
 function initBackgroundTasksSetting() {
   const settings = readBackgroundTasksSetting();
-  if (typeof localStorage !== "undefined" && localStorage.getItem(BACKGROUND_TASKS_SETTINGS_STORAGE_KEY) == null) {
-    saveBackgroundTasksSetting(settings);
-  }
   setBackgroundTasksForm(settings);
   updateBackgroundTasksHint(BACKGROUND_TASKS_RESTART_KEYS_DEFAULT);
 }
@@ -1198,28 +1137,270 @@ async function applyBackgroundTasksToService(settings, { silent = true } = {}) {
 }
 
 async function syncBackgroundTasksOnStartup() {
-  const connected = await ensureConnected();
-  serviceLifecycle.updateServiceToggle();
-  if (!connected) {
+  if (!isTauriRuntime()) {
     return;
   }
-  const hasLocalSetting = typeof localStorage !== "undefined"
-    && localStorage.getItem(BACKGROUND_TASKS_SETTINGS_STORAGE_KEY) != null;
-  if (hasLocalSetting) {
-    await applyBackgroundTasksToService(readBackgroundTasksSetting(), { silent: true });
+  await applyBackgroundTasksToService(readBackgroundTasksSetting(), { silent: true });
+}
+
+function readEnvOverridesSetting() {
+  return normalizeEnvOverrides(appSettingsSnapshot.envOverrides);
+}
+
+function saveEnvOverridesSetting(value) {
+  patchAppSettingsSnapshot({
+    envOverrides: normalizeEnvOverrides(value),
+  });
+}
+
+function setEnvOverridesInput(value) {
+  if (!dom.envOverridesInput) {
     return;
+  }
+  dom.envOverridesInput.value = formatEnvOverridesText(value);
+}
+
+function setEnvOverridesHint(message) {
+  if (!dom.envOverridesHint) {
+    return;
+  }
+  dom.envOverridesHint.textContent = String(message || "").trim()
+    || "保存后会回灌到当前 service 进程；启动类配置通常需要重启。";
+}
+
+function renderEnvOverrideChipList(element, entries, { mode } = {}) {
+  if (!element) {
+    return;
+  }
+  element.replaceChildren();
+  const items = Array.isArray(entries) ? entries : [];
+  if (items.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "hint";
+    empty.textContent = "无";
+    element.appendChild(empty);
+    return;
+  }
+  for (const item of items) {
+    const chip = document.createElement("code");
+    chip.className = "settings-env-chip";
+    chip.textContent = item.key || item;
+    if (item && typeof item === "object") {
+      chip.dataset.mode = item.applyMode || mode || "";
+      chip.dataset.scope = item.scope || "";
+      chip.title = `${item.scope || "service"} / ${item.applyMode || mode || "runtime"}`;
+    } else if (mode) {
+      chip.dataset.mode = mode;
+    }
+    element.appendChild(chip);
+  }
+}
+
+function renderEnvOverrideCatalog() {
+  const catalog = Array.isArray(appSettingsSnapshot.envOverrideCatalog)
+    ? appSettingsSnapshot.envOverrideCatalog
+    : [];
+  renderEnvOverrideChipList(
+    dom.envOverrideCatalogRuntime,
+    catalog.filter((item) => item.applyMode === "runtime"),
+    { mode: "runtime" },
+  );
+  renderEnvOverrideChipList(
+    dom.envOverrideCatalogRestart,
+    catalog.filter((item) => item.applyMode === "restart"),
+    { mode: "restart" },
+  );
+  renderEnvOverrideChipList(dom.envOverrideReservedKeys, appSettingsSnapshot.envOverrideReservedKeys);
+  renderEnvOverrideChipList(dom.envOverrideUnsupportedKeys, appSettingsSnapshot.envOverrideUnsupportedKeys);
+}
+
+function validateEnvOverridesForSave(overrides) {
+  const keys = Object.keys(normalizeEnvOverrides(overrides));
+  const unsupported = new Set(appSettingsSnapshot.envOverrideUnsupportedKeys || []);
+  const reserved = new Set(appSettingsSnapshot.envOverrideReservedKeys || []);
+  const unsupportedKeys = keys.filter((key) => unsupported.has(key));
+  if (unsupportedKeys.length > 0) {
+    return `以下键不能改为数据库配置：${unsupportedKeys.join("、")}`;
+  }
+  const reservedKeys = keys.filter((key) => reserved.has(key));
+  if (reservedKeys.length > 0) {
+    return `以下键已有专用设置项，请在对应卡片中修改：${reservedKeys.join("、")}`;
+  }
+  return "";
+}
+
+function buildEnvOverridesSaveHint(previousOverrides, nextOverrides) {
+  const previous = normalizeEnvOverrides(previousOverrides);
+  const next = normalizeEnvOverrides(nextOverrides);
+  const changedKeys = [...new Set([...Object.keys(previous), ...Object.keys(next)])]
+    .filter((key) => previous[key] !== next[key]);
+  if (changedKeys.length === 0) {
+    return "配置未变化。";
+  }
+
+  const catalog = new Map(
+    (Array.isArray(appSettingsSnapshot.envOverrideCatalog) ? appSettingsSnapshot.envOverrideCatalog : [])
+      .map((item) => [item.key, item]),
+  );
+  const restartKeys = [];
+  const unknownKeys = [];
+  for (const key of changedKeys) {
+    const item = catalog.get(key);
+    if (!item) {
+      unknownKeys.push(key);
+      continue;
+    }
+    if (item.applyMode === "restart") {
+      restartKeys.push(key);
+    }
+  }
+
+  if (restartKeys.length === 0 && unknownKeys.length === 0) {
+    return "已保存并回灌到当前 service 进程。";
+  }
+
+  const parts = ["已保存"];
+  if (restartKeys.length > 0) {
+    const preview = restartKeys.slice(0, 6).join("、");
+    const suffix = restartKeys.length > 6 ? ` 等 ${restartKeys.length} 项` : "";
+    parts.push(`以下键需重启相关进程后完整生效：${preview}${suffix}`);
+  }
+  if (unknownKeys.length > 0) {
+    const preview = unknownKeys.slice(0, 4).join("、");
+    const suffix = unknownKeys.length > 4 ? ` 等 ${unknownKeys.length} 项` : "";
+    parts.push(`未识别键会按原样保存：${preview}${suffix}`);
+  }
+  return `${parts.join("；")}。`;
+}
+
+function initEnvOverridesSetting() {
+  setEnvOverridesInput(readEnvOverridesSetting());
+  renderEnvOverrideCatalog();
+  setEnvOverridesHint("保存后会回灌到当前 service 进程；启动类配置通常需要重启。");
+}
+
+function buildWebAccessPasswordStatusText(configured) {
+  return configured
+    ? "当前已启用 Web 访问密码。修改后会立即覆盖旧密码。"
+    : "当前未启用 Web 访问密码。";
+}
+
+function updateWebAccessPasswordState(configured) {
+  const enabled = Boolean(configured);
+  patchAppSettingsSnapshot({ webAccessPasswordConfigured: enabled });
+  const text = buildWebAccessPasswordStatusText(enabled);
+  if (dom.webAccessPasswordHint) {
+    dom.webAccessPasswordHint.textContent = text;
+  }
+  if (dom.webAccessPasswordQuickStatus) {
+    dom.webAccessPasswordQuickStatus.textContent = text;
+  }
+}
+
+function readWebAccessPasswordPair(source = "settings") {
+  const useQuick = source === "quick";
+  const password = useQuick
+    ? (dom.webAccessPasswordQuickInput ? dom.webAccessPasswordQuickInput.value : "")
+    : (dom.webAccessPasswordInput ? dom.webAccessPasswordInput.value : "");
+  const confirm = useQuick
+    ? (dom.webAccessPasswordQuickConfirm ? dom.webAccessPasswordQuickConfirm.value : "")
+    : (dom.webAccessPasswordConfirm ? dom.webAccessPasswordConfirm.value : "");
+  return {
+    password: String(password || ""),
+    confirm: String(confirm || ""),
+  };
+}
+
+function syncWebAccessPasswordInputs(source = "settings") {
+  const pair = readWebAccessPasswordPair(source);
+  if (dom.webAccessPasswordInput) {
+    dom.webAccessPasswordInput.value = pair.password;
+  }
+  if (dom.webAccessPasswordConfirm) {
+    dom.webAccessPasswordConfirm.value = pair.confirm;
+  }
+  if (dom.webAccessPasswordQuickInput) {
+    dom.webAccessPasswordQuickInput.value = pair.password;
+  }
+  if (dom.webAccessPasswordQuickConfirm) {
+    dom.webAccessPasswordQuickConfirm.value = pair.confirm;
+  }
+}
+
+function clearWebAccessPasswordInputs() {
+  if (dom.webAccessPasswordInput) {
+    dom.webAccessPasswordInput.value = "";
+  }
+  if (dom.webAccessPasswordConfirm) {
+    dom.webAccessPasswordConfirm.value = "";
+  }
+  if (dom.webAccessPasswordQuickInput) {
+    dom.webAccessPasswordQuickInput.value = "";
+  }
+  if (dom.webAccessPasswordQuickConfirm) {
+    dom.webAccessPasswordQuickConfirm.value = "";
+  }
+}
+
+function openWebSecurityModal() {
+  if (!dom.modalWebSecurity) {
+    return;
+  }
+  syncWebAccessPasswordInputs("settings");
+  updateWebAccessPasswordState(appSettingsSnapshot.webAccessPasswordConfigured);
+  dom.modalWebSecurity.classList.add("active");
+}
+
+function closeWebSecurityModal() {
+  if (!dom.modalWebSecurity) {
+    return;
+  }
+  dom.modalWebSecurity.classList.remove("active");
+}
+
+async function saveWebAccessPassword(source = "settings") {
+  const pair = readWebAccessPasswordPair(source);
+  const password = pair.password.trim();
+  if (!password) {
+    showToast("请输入 Web 访问密码；如需关闭保护请点击清除", "error");
+    return false;
+  }
+  if (pair.password !== pair.confirm) {
+    showToast("两次输入的 Web 访问密码不一致", "error");
+    return false;
   }
   try {
-    const response = await serviceGatewayBackgroundTasksGet();
-    const settings = resolveBackgroundTasksSettingsFromPayload(response);
-    const restartKeys = resolveBackgroundTasksRestartKeys(response);
-    saveBackgroundTasksSetting(settings);
-    setBackgroundTasksForm(settings);
-    updateBackgroundTasksHint(restartKeys);
-    backgroundTasksSyncedProbeId = state.serviceProbeId;
-  } catch {
-    setBackgroundTasksForm(readBackgroundTasksSetting());
-    updateBackgroundTasksHint(BACKGROUND_TASKS_RESTART_KEYS_DEFAULT);
+    const settings = await saveAppSettingsPatch({
+      webAccessPassword: pair.password,
+    });
+    updateWebAccessPasswordState(settings.webAccessPasswordConfigured);
+    clearWebAccessPasswordInputs();
+    if (source === "quick") {
+      closeWebSecurityModal();
+    }
+    showToast("Web 访问密码已保存");
+    return true;
+  } catch (err) {
+    showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
+    return false;
+  }
+}
+
+async function clearWebAccessPassword(source = "settings") {
+  try {
+    const settings = await saveAppSettingsPatch({
+      webAccessPassword: "",
+    });
+    updateWebAccessPasswordState(settings.webAccessPasswordConfigured);
+    clearWebAccessPasswordInputs();
+    if (source === "quick") {
+      closeWebSecurityModal();
+    }
+    showToast("Web 访问密码已清除");
+    return true;
+  } catch (err) {
+    showToast(`清除失败：${normalizeErrorMessage(err)}`, "error");
+    return false;
   }
 }
 
@@ -1679,16 +1860,16 @@ async function refreshAll(options = {}) {
     const ok = await ensureConnected();
     serviceLifecycle.updateServiceToggle();
     if (!ok) return [];
-    if (routeStrategySyncedProbeId !== state.serviceProbeId) {
+    if (isTauriRuntime() && routeStrategySyncedProbeId !== state.serviceProbeId) {
       await applyRouteStrategyToService(readRouteStrategySetting(), { silent: true });
     }
-    if (cpaNoCookieHeaderModeSyncedProbeId !== state.serviceProbeId) {
+    if (isTauriRuntime() && cpaNoCookieHeaderModeSyncedProbeId !== state.serviceProbeId) {
       await applyCpaNoCookieHeaderModeToService(readCpaNoCookieHeaderModeSetting(), { silent: true });
     }
-    if (upstreamProxySyncedProbeId !== state.serviceProbeId) {
+    if (isTauriRuntime() && upstreamProxySyncedProbeId !== state.serviceProbeId) {
       await applyUpstreamProxyToService(readUpstreamProxyUrlSetting(), { silent: true });
     }
-    if (backgroundTasksSyncedProbeId !== state.serviceProbeId) {
+    if (isTauriRuntime() && backgroundTasksSyncedProbeId !== state.serviceProbeId) {
       await applyBackgroundTasksToService(readBackgroundTasksSetting(), { silent: true });
     }
 
@@ -1971,6 +2152,35 @@ function renderAccountsView() {
   renderAccountsOnly(buildMainRenderActions());
 }
 
+async function persistServiceAddrInput({ silent = true } = {}) {
+  if (!dom.serviceAddrInput) {
+    return false;
+  }
+  let normalized = "";
+  try {
+    normalized = normalizeAddr(dom.serviceAddrInput.value || "");
+  } catch (err) {
+    if (!silent) {
+      showToast(`服务地址格式不正确：${normalizeErrorMessage(err)}`, "error");
+    }
+    return false;
+  }
+  dom.serviceAddrInput.value = normalized;
+  state.serviceAddr = normalized;
+  patchAppSettingsSnapshot({ serviceAddr: normalized });
+  try {
+    await saveAppSettingsPatch({
+      serviceAddr: normalized,
+    });
+    return true;
+  } catch (err) {
+    if (!silent) {
+      showToast(`保存服务地址失败：${normalizeErrorMessage(err)}`, "error");
+    }
+    return false;
+  }
+}
+
 function bindEvents() {
   bindMainEvents({
     dom,
@@ -2012,8 +2222,16 @@ function bindEvents() {
   if (dom.autoCheckUpdate && dom.autoCheckUpdate.dataset.bound !== "1") {
     dom.autoCheckUpdate.dataset.bound = "1";
     dom.autoCheckUpdate.addEventListener("change", () => {
+      const previousEnabled = readUpdateAutoCheckSetting();
       const enabled = Boolean(dom.autoCheckUpdate.checked);
       saveUpdateAutoCheckSetting(enabled);
+      void saveAppSettingsPatch({
+        updateAutoCheck: enabled,
+      }).catch((err) => {
+        saveUpdateAutoCheckSetting(previousEnabled);
+        dom.autoCheckUpdate.checked = previousEnabled;
+        showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
+      });
     });
   }
   if (dom.checkUpdate && dom.checkUpdate.dataset.bound !== "1") {
@@ -2039,36 +2257,95 @@ function bindEvents() {
   if (dom.routeStrategySelect && dom.routeStrategySelect.dataset.bound !== "1") {
     dom.routeStrategySelect.dataset.bound = "1";
     dom.routeStrategySelect.addEventListener("change", () => {
+      const previousSelected = readRouteStrategySetting();
       const selected = normalizeRouteStrategy(dom.routeStrategySelect.value);
       saveRouteStrategySetting(selected);
       setRouteStrategySelect(selected);
-      void applyRouteStrategyToService(selected, { silent: false });
+      void saveAppSettingsPatch({
+        routeStrategy: selected,
+      }).then((settings) => {
+        const resolved = normalizeRouteStrategy(settings.routeStrategy);
+        saveRouteStrategySetting(resolved);
+        setRouteStrategySelect(resolved);
+        if (isTauriRuntime()) {
+          return applyRouteStrategyToService(resolved, { silent: false });
+        }
+        showToast(`已切换为${routeStrategyLabel(resolved)}`);
+        return true;
+      }).catch((err) => {
+        saveRouteStrategySetting(previousSelected);
+        setRouteStrategySelect(previousSelected);
+        showToast(`切换失败：${normalizeErrorMessage(err)}`, "error");
+      });
     });
   }
   if (dom.serviceListenModeSelect && dom.serviceListenModeSelect.dataset.bound !== "1") {
     dom.serviceListenModeSelect.dataset.bound = "1";
     dom.serviceListenModeSelect.addEventListener("change", () => {
+      const previousSelected = normalizeServiceListenMode(appSettingsSnapshot.serviceListenMode);
       const selected = normalizeServiceListenMode(dom.serviceListenModeSelect.value);
       setServiceListenModeSelect(selected);
-      void applyServiceListenModeToService(selected, { silent: false });
+      setServiceListenModeHint(buildServiceListenModeHint(selected, true));
+      void applyServiceListenModeToService(selected, { silent: false }).then((ok) => {
+        if (!ok) {
+          setServiceListenModeSelect(previousSelected);
+          setServiceListenModeHint(buildServiceListenModeHint(previousSelected, true));
+        }
+      });
     });
   }
   if (dom.cpaNoCookieHeaderMode && dom.cpaNoCookieHeaderMode.dataset.bound !== "1") {
     dom.cpaNoCookieHeaderMode.dataset.bound = "1";
     dom.cpaNoCookieHeaderMode.addEventListener("change", () => {
+      const previousEnabled = readCpaNoCookieHeaderModeSetting();
       const enabled = Boolean(dom.cpaNoCookieHeaderMode.checked);
       saveCpaNoCookieHeaderModeSetting(enabled);
       setCpaNoCookieHeaderModeToggle(enabled);
-      void applyCpaNoCookieHeaderModeToService(enabled, { silent: false });
+      void saveAppSettingsPatch({
+        cpaNoCookieHeaderModeEnabled: enabled,
+      }).then((settings) => {
+        const resolved = normalizeCpaNoCookieHeaderMode(settings.cpaNoCookieHeaderModeEnabled);
+        saveCpaNoCookieHeaderModeSetting(resolved);
+        setCpaNoCookieHeaderModeToggle(resolved);
+        if (isTauriRuntime()) {
+          return applyCpaNoCookieHeaderModeToService(resolved, { silent: false });
+        }
+        showToast(resolved ? "已启用请求头收敛策略" : "已关闭请求头收敛策略");
+        return true;
+      }).catch((err) => {
+        saveCpaNoCookieHeaderModeSetting(previousEnabled);
+        setCpaNoCookieHeaderModeToggle(previousEnabled);
+        showToast(`切换失败：${normalizeErrorMessage(err)}`, "error");
+      });
     });
   }
   if (dom.upstreamProxySave && dom.upstreamProxySave.dataset.bound !== "1") {
     dom.upstreamProxySave.dataset.bound = "1";
     dom.upstreamProxySave.addEventListener("click", () => {
       void withButtonBusy(dom.upstreamProxySave, "保存中...", async () => {
+        const previousValue = readUpstreamProxyUrlSetting();
         const value = normalizeUpstreamProxyUrl(dom.upstreamProxyUrlInput ? dom.upstreamProxyUrlInput.value : "");
         saveUpstreamProxyUrlSetting(value);
-        await applyUpstreamProxyToService(value, { silent: false });
+        setUpstreamProxyInput(value);
+        try {
+          const settings = await saveAppSettingsPatch({
+            upstreamProxyUrl: value,
+          });
+          const resolved = normalizeUpstreamProxyUrl(settings.upstreamProxyUrl);
+          saveUpstreamProxyUrlSetting(resolved);
+          setUpstreamProxyInput(resolved);
+          if (isTauriRuntime()) {
+            await applyUpstreamProxyToService(resolved, { silent: false });
+            return;
+          }
+          setUpstreamProxyHint("保存后立即生效。");
+          showToast(resolved ? "上游代理已保存并生效" : "已清空上游代理，恢复直连");
+        } catch (err) {
+          saveUpstreamProxyUrlSetting(previousValue);
+          setUpstreamProxyInput(previousValue);
+          setUpstreamProxyHint(`保存失败：${normalizeErrorMessage(err)}`);
+          showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
+        }
       });
     });
   }
@@ -2076,6 +2353,7 @@ function bindEvents() {
     dom.backgroundTasksSave.dataset.bound = "1";
     dom.backgroundTasksSave.addEventListener("click", () => {
       void withButtonBusy(dom.backgroundTasksSave, "保存中...", async () => {
+        const previousSettings = readBackgroundTasksSetting();
         const parsed = readBackgroundTasksForm();
         if (!parsed.ok) {
           showToast(parsed.error, "error");
@@ -2083,8 +2361,78 @@ function bindEvents() {
         }
         const nextSettings = parsed.settings;
         saveBackgroundTasksSetting(nextSettings);
-        await applyBackgroundTasksToService(nextSettings, { silent: false });
+        setBackgroundTasksForm(nextSettings);
+        try {
+          const settings = await saveAppSettingsPatch({
+            backgroundTasks: nextSettings,
+          });
+          const resolved = normalizeBackgroundTasksSettings(settings.backgroundTasks);
+          saveBackgroundTasksSetting(resolved);
+          setBackgroundTasksForm(resolved);
+          if (isTauriRuntime()) {
+            await applyBackgroundTasksToService(resolved, { silent: false });
+            return;
+          }
+          updateBackgroundTasksHint([]);
+          showToast("后台任务配置已保存");
+        } catch (err) {
+          saveBackgroundTasksSetting(previousSettings);
+          setBackgroundTasksForm(previousSettings);
+          updateBackgroundTasksHint(BACKGROUND_TASKS_RESTART_KEYS_DEFAULT);
+          showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
+        }
       });
+    });
+  }
+  if (dom.envOverridesSave && dom.envOverridesSave.dataset.bound !== "1") {
+    dom.envOverridesSave.dataset.bound = "1";
+    dom.envOverridesSave.addEventListener("click", () => {
+      void withButtonBusy(dom.envOverridesSave, "保存中...", async () => {
+        const previousOverrides = readEnvOverridesSetting();
+        const parsed = parseEnvOverridesText(dom.envOverridesInput ? dom.envOverridesInput.value : "");
+        if (!parsed.ok) {
+          setEnvOverridesHint(parsed.error);
+          showToast(parsed.error, "error");
+          return;
+        }
+        const validationError = validateEnvOverridesForSave(parsed.overrides);
+        if (validationError) {
+          setEnvOverridesHint(validationError);
+          showToast(validationError, "error");
+          return;
+        }
+        saveEnvOverridesSetting(parsed.overrides);
+        setEnvOverridesInput(parsed.overrides);
+        try {
+          const settings = await saveAppSettingsPatch({
+            envOverrides: parsed.overrides,
+          });
+          const resolved = normalizeEnvOverrides(settings.envOverrides);
+          saveEnvOverridesSetting(resolved);
+          setEnvOverridesInput(resolved);
+          renderEnvOverrideCatalog();
+          setEnvOverridesHint(buildEnvOverridesSaveHint(previousOverrides, resolved));
+          showToast("高级环境变量已保存");
+        } catch (err) {
+          saveEnvOverridesSetting(previousOverrides);
+          setEnvOverridesInput(previousOverrides);
+          setEnvOverridesHint(`保存失败：${normalizeErrorMessage(err)}`);
+          showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
+        }
+      });
+    });
+  }
+  if (dom.serviceAddrInput && dom.serviceAddrInput.dataset.bound !== "1") {
+    dom.serviceAddrInput.dataset.bound = "1";
+    dom.serviceAddrInput.addEventListener("change", () => {
+      void persistServiceAddrInput({ silent: false });
+    });
+    dom.serviceAddrInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      void persistServiceAddrInput({ silent: false });
     });
   }
   const lowTransparencyToggle = typeof document === "undefined"
@@ -2093,28 +2441,115 @@ function bindEvents() {
   if (lowTransparencyToggle && lowTransparencyToggle.dataset.bound !== "1") {
     lowTransparencyToggle.dataset.bound = "1";
     lowTransparencyToggle.addEventListener("change", () => {
+      const previousEnabled = readLowTransparencySetting();
       const enabled = Boolean(lowTransparencyToggle.checked);
       saveLowTransparencySetting(enabled);
       applyLowTransparencySetting(enabled);
+      void saveAppSettingsPatch({
+        lowTransparency: enabled,
+      }).catch((err) => {
+        saveLowTransparencySetting(previousEnabled);
+        lowTransparencyToggle.checked = previousEnabled;
+        applyLowTransparencySetting(previousEnabled);
+        showToast(`保存失败：${normalizeErrorMessage(err)}`, "error");
+      });
+    });
+  }
+  const syncPairs = [
+    [dom.webAccessPasswordInput, "settings"],
+    [dom.webAccessPasswordConfirm, "settings"],
+    [dom.webAccessPasswordQuickInput, "quick"],
+    [dom.webAccessPasswordQuickConfirm, "quick"],
+  ];
+  for (const [input, source] of syncPairs) {
+    if (!input || input.dataset.bound === "1") {
+      continue;
+    }
+    input.dataset.bound = "1";
+    input.addEventListener("input", () => {
+      syncWebAccessPasswordInputs(source);
+    });
+  }
+  if (dom.webAccessPasswordSave && dom.webAccessPasswordSave.dataset.bound !== "1") {
+    dom.webAccessPasswordSave.dataset.bound = "1";
+    dom.webAccessPasswordSave.addEventListener("click", () => {
+      void withButtonBusy(dom.webAccessPasswordSave, "保存中...", async () => {
+        await saveWebAccessPassword("settings");
+      });
+    });
+  }
+  if (dom.webAccessPasswordClear && dom.webAccessPasswordClear.dataset.bound !== "1") {
+    dom.webAccessPasswordClear.dataset.bound = "1";
+    dom.webAccessPasswordClear.addEventListener("click", () => {
+      void withButtonBusy(dom.webAccessPasswordClear, "清除中...", async () => {
+        await clearWebAccessPassword("settings");
+      });
+    });
+  }
+  if (dom.webAccessPasswordQuickSave && dom.webAccessPasswordQuickSave.dataset.bound !== "1") {
+    dom.webAccessPasswordQuickSave.dataset.bound = "1";
+    dom.webAccessPasswordQuickSave.addEventListener("click", () => {
+      void withButtonBusy(dom.webAccessPasswordQuickSave, "保存中...", async () => {
+        await saveWebAccessPassword("quick");
+      });
+    });
+  }
+  if (dom.webAccessPasswordQuickClear && dom.webAccessPasswordQuickClear.dataset.bound !== "1") {
+    dom.webAccessPasswordQuickClear.dataset.bound = "1";
+    dom.webAccessPasswordQuickClear.addEventListener("click", () => {
+      void withButtonBusy(dom.webAccessPasswordQuickClear, "清除中...", async () => {
+        await clearWebAccessPassword("quick");
+      });
+    });
+  }
+  if (dom.webSecurityQuickAction && dom.webSecurityQuickAction.dataset.bound !== "1") {
+    dom.webSecurityQuickAction.dataset.bound = "1";
+    dom.webSecurityQuickAction.addEventListener("click", () => {
+      openWebSecurityModal();
+    });
+  }
+  if (dom.closeWebSecurityModal && dom.closeWebSecurityModal.dataset.bound !== "1") {
+    dom.closeWebSecurityModal.dataset.bound = "1";
+    dom.closeWebSecurityModal.addEventListener("click", () => {
+      closeWebSecurityModal();
+    });
+  }
+  if (dom.modalWebSecurity && dom.modalWebSecurity.dataset.bound !== "1") {
+    dom.modalWebSecurity.dataset.bound = "1";
+    dom.modalWebSecurity.addEventListener("click", (event) => {
+      if (event.target === dom.modalWebSecurity) {
+        closeWebSecurityModal();
+      }
+    });
+  }
+  if (typeof document !== "undefined" && document.body && document.body.dataset.webSecurityBound !== "1") {
+    document.body.dataset.webSecurityBound = "1";
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && dom.modalWebSecurity?.classList.contains("active")) {
+        closeWebSecurityModal();
+      }
     });
   }
 }
 
-function bootstrap() {
+async function bootstrap() {
   setStartupMask(true, "正在初始化界面...");
   setStatus("", false);
+  await loadAppSettings();
   const browserMode = applyBrowserModeUi();
   setServiceHint(browserMode ? "浏览器模式：请先启动 codexmanager-service" : "请输入端口并点击启动", false);
   renderThemeButtons();
-  restoreTheme();
+  restoreTheme(appSettingsSnapshot.theme);
   initLowTransparencySetting();
   initUpdateAutoCheckSetting();
-  void initCloseToTrayOnCloseSetting();
+  initCloseToTrayOnCloseSetting();
   initServiceListenModeSetting();
   initRouteStrategySetting();
   initCpaNoCookieHeaderModeSetting();
   initUpstreamProxySetting();
   initBackgroundTasksSetting();
+  initEnvOverridesSetting();
+  updateWebAccessPasswordState(appSettingsSnapshot.webAccessPasswordConfigured);
   void bootstrapUpdateStatus();
   serviceLifecycle.restoreServiceAddr();
   serviceLifecycle.updateServiceToggle();
@@ -2132,7 +2567,9 @@ function bootstrap() {
   });
 }
 
-window.addEventListener("DOMContentLoaded", bootstrap);
+window.addEventListener("DOMContentLoaded", () => {
+  void bootstrap();
+});
 
 
 

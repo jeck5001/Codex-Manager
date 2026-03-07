@@ -271,7 +271,10 @@ fn rpc_account_delete_many_deletes_requested_accounts() {
 
     let storage = Storage::open(ctx.db_path()).expect("open db");
     let remaining = storage.list_accounts().expect("list remaining");
-    let ids = remaining.into_iter().map(|item| item.id).collect::<Vec<_>>();
+    let ids = remaining
+        .into_iter()
+        .map(|item| item.id)
+        .collect::<Vec<_>>();
     assert_eq!(ids, vec!["acc-0", "acc-2"]);
 }
 

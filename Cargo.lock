@@ -236,6 +236,8 @@ dependencies = [
  "include_dir",
  "mime_guess",
  "reqwest",
+ "serde",
+ "serde_json",
  "tokio",
  "tower-http",
  "webbrowser",

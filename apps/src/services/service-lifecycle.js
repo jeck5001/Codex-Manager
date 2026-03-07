@@ -57,7 +57,7 @@ export function createServiceLifecycle({
   }
 
   function restoreServiceAddr() {
-    const savedAddr = localStorage.getItem("codexmanager.service.addr");
+    const savedAddr = typeof state.serviceAddr === "string" ? state.serviceAddr.trim() : "";
     if (savedAddr) {
       state.serviceAddr = savedAddr;
       dom.serviceAddrInput.value = savedAddr;
@@ -78,7 +78,6 @@ export function createServiceLifecycle({
       skipInitialize: true,
     });
     dom.serviceAddrInput.value = state.serviceAddr;
-    localStorage.setItem("codexmanager.service.addr", state.serviceAddr);
     if (!started) {
       setServiceBusy(false);
       updateServiceToggle();

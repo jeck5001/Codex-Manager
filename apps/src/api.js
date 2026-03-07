@@ -668,6 +668,21 @@ export async function appCloseToTrayOnCloseSet(enabled) {
   return value === true;
 }
 
+export async function appSettingsGet() {
+  if (!isTauriRuntime()) {
+    return rpcInvoke("appSettings/get");
+  }
+  return invoke("app_settings_get", {});
+}
+
+export async function appSettingsSet(patch = {}) {
+  const payload = patch && typeof patch === "object" ? patch : {};
+  if (!isTauriRuntime()) {
+    return rpcInvoke("appSettings/set", payload);
+  }
+  return invoke("app_settings_set", { patch: payload });
+}
+
 // 应用更新
 export async function updateCheck() {
   if (!isTauriRuntime()) {

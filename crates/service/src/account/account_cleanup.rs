@@ -65,7 +65,9 @@ pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFree
 
         let plan_type = extract_plan_type_from_id_token(&token.id_token);
         if !is_free_plan_type(plan_type.as_deref())
-            && !is_free_plan_from_credits_json(snapshot.and_then(|item| item.credits_json.as_deref()))
+            && !is_free_plan_from_credits_json(
+                snapshot.and_then(|item| item.credits_json.as_deref()),
+            )
         {
             result.skipped_non_free += 1;
             continue;

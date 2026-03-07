@@ -7,6 +7,7 @@ use crate::storage_helpers;
 
 mod account;
 mod apikey;
+mod app_settings;
 mod gateway;
 mod requestlog;
 mod service_config;
@@ -85,6 +86,9 @@ pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
         return resp;
     }
     if let Some(resp) = apikey::try_handle(&req) {
+        return resp;
+    }
+    if let Some(resp) = app_settings::try_handle(&req) {
         return resp;
     }
     if let Some(resp) = usage::try_handle(&req) {

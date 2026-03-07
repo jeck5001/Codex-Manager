@@ -50,23 +50,11 @@ class FakeThemePanel {
   }
 }
 
-function createStorage() {
-  const store = new Map();
-  return {
-    getItem(key) {
-      return store.has(key) ? store.get(key) : null;
-    },
-    setItem(key, value) {
-      store.set(key, String(value));
-    },
-  };
-}
-
 test("createThemeController registers dark theme and keeps fallback logic", () => {
   const originalDocument = globalThis.document;
-  const originalLocalStorage = globalThis.localStorage;
   const themePanel = new FakeThemePanel();
   const themeToggle = { textContent: "" };
+  const persistedThemes = [];
 
   globalThis.document = {
     body: { dataset: {} },
@@ -75,13 +63,15 @@ test("createThemeController registers dark theme and keeps fallback logic", () =
       return new FakeButton();
     },
   };
-  globalThis.localStorage = createStorage();
 
   try {
     const controller = createThemeController({
       dom: {
         themePanel,
         themeToggle,
+      },
+      onThemeChange(theme) {
+        persistedThemes.push(theme);
       },
     });
 
@@ -90,15 +80,14 @@ test("createThemeController registers dark theme and keeps fallback logic", () =
 
     controller.setTheme("dark");
     assert.equal(globalThis.document.body.dataset.theme, "dark");
-    assert.equal(globalThis.localStorage.getItem("codexmanager.ui.theme"), "dark");
     assert.match(themeToggle.textContent, /暗夜黑/);
+    assert.equal(persistedThemes.at(-1), "dark");
     assert.equal(themePanel.buttons.find((button) => button.dataset.theme === "dark")?.classList.contains("is-active"), true);
 
     controller.setTheme("unknown-theme");
     assert.equal(globalThis.document.body.dataset.theme, "tech");
-    assert.equal(globalThis.localStorage.getItem("codexmanager.ui.theme"), "tech");
+    assert.equal(persistedThemes.at(-1), "tech");
   } finally {
     globalThis.document = originalDocument;
-    globalThis.localStorage = originalLocalStorage;
   }
 });

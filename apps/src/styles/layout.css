@@ -126,6 +126,15 @@
     display: none;
 }
 
+.top-quick-action {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    padding: var(--btn-pad-y) var(--btn-pad-x);
+    font-size: var(--btn-font-size);
+    line-height: var(--btn-line-height);
+    white-space: nowrap;
+}
+
 .service-setup {
     display: flex;
     align-items: center;
@@ -517,6 +526,27 @@
     min-width: 0;
 }
 
+.settings-top-item-security .settings-top-main {
+    align-items: stretch;
+}
+
+.settings-security-main {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.settings-security-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+}
+
+.settings-security-actions .hint {
+    flex: 1 1 240px;
+}
+
 .settings-top-item-window .settings-top-aside,
 .settings-top-item-visual .settings-top-aside {
     align-items: flex-start;
@@ -525,6 +555,81 @@
 .settings-top-item-proxy .settings-inline-input {
     flex: 1 1 0;
     width: auto;
+}
+
+.settings-card-env {
+    gap: 10px;
+}
+
+.settings-inline-textarea {
+    width: 100%;
+    min-height: 176px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #fff;
+    font-size: 12px;
+    line-height: 1.55;
+    resize: vertical;
+}
+
+.settings-env-details {
+    border: 1px dashed color-mix(in srgb, var(--accent) 22%, var(--border));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) 4%, #ffffff);
+    padding: 10px 12px 12px;
+}
+
+.settings-env-details > summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    user-select: none;
+}
+
+.settings-env-sections {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+    margin-top: 10px;
+}
+
+.settings-env-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.settings-env-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+
+.settings-env-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+    background: color-mix(in srgb, var(--surface-2) 84%, #ffffff);
+    color: var(--ink);
+    font-size: 11px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.settings-env-chip[data-mode="restart"] {
+    border-style: dashed;
+}
+
+.settings-env-chip[data-scope="web"],
+.settings-env-chip[data-scope="desktop"] {
+    background: color-mix(in srgb, var(--accent) 7%, #ffffff);
 }
 
 .settings-card-background {
@@ -817,6 +922,7 @@ body[data-theme="dark"] #pageSettings .settings-poll-item {
 }
 
 body[data-theme="dark"] #pageSettings .settings-inline-input,
+body[data-theme="dark"] #pageSettings .settings-inline-textarea,
 body[data-theme="dark"] #pageSettings .settings-inline-number,
 body[data-theme="dark"] #pageSettings .settings-inline-select {
     color: var(--ink);
@@ -826,8 +932,24 @@ body[data-theme="dark"] #pageSettings .settings-inline-select {
 }
 
 body[data-theme="dark"] #pageSettings .settings-inline-input::placeholder,
+body[data-theme="dark"] #pageSettings .settings-inline-textarea::placeholder,
 body[data-theme="dark"] #pageSettings .settings-inline-number::placeholder {
     color: color-mix(in srgb, var(--muted) 82%, #becbdb);
+}
+
+body[data-theme="dark"] #pageSettings .settings-env-details {
+    border-color: color-mix(in srgb, var(--accent) 20%, var(--border));
+    background: linear-gradient(180deg, #131f30, #0f1827);
+}
+
+body[data-theme="dark"] #pageSettings .settings-env-details > summary,
+body[data-theme="dark"] #pageSettings .settings-env-chip {
+    color: var(--ink);
+}
+
+body[data-theme="dark"] #pageSettings .settings-env-chip {
+    border-color: color-mix(in srgb, var(--accent) 16%, var(--border));
+    background: linear-gradient(180deg, #162335, #101927);
 }
 
 body[data-theme="dark"] #pageSettings .settings-row-actions .hint {
