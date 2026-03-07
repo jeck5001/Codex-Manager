@@ -34,6 +34,7 @@ import {
 } from "./ui/env-overrides";
 import { withButtonBusy } from "./ui/button-busy";
 import { createStartupMaskController } from "./ui/startup-mask";
+import { normalizeUpstreamProxyUrl } from "./utils/upstream-proxy.js";
 import {
   ensureConnected,
   normalizeAddr,
@@ -812,13 +813,6 @@ async function syncCpaNoCookieHeaderModeOnStartup() {
     return;
   }
   await applyCpaNoCookieHeaderModeToService(readCpaNoCookieHeaderModeSetting(), { silent: true });
-}
-
-function normalizeUpstreamProxyUrl(value) {
-  if (value == null) {
-    return "";
-  }
-  return String(value).trim();
 }
 
 function readUpstreamProxyUrlSetting() {
