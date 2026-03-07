@@ -105,6 +105,41 @@ fn anthropic_tools_request_maps_to_openai_tools_and_tool_choice() {
 }
 
 #[test]
+fn anthropic_tools_request_respects_disable_parallel_tool_use() {
+    let body = serde_json::json!({
+        "model": "claude-sonnet-4",
+        "messages": [
+            { "role": "user", "content": "请读取README" }
+        ],
+        "tools": [
+            {
+                "name": "read_file",
+                "description": "读取文件",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" }
+                    },
+                    "required": ["path"]
+                }
+            }
+        ],
+        "tool_choice": {
+            "type": "auto",
+            "disable_parallel_tool_use": true
+        },
+        "stream": false
+    });
+    let body = serde_json::to_vec(&body).expect("serialize request");
+
+    let adapted = adapt_request_for_protocol("anthropic_native", "/v1/messages", body)
+        .expect("adapt request");
+    let value: serde_json::Value = serde_json::from_slice(&adapted.body).expect("adapted json");
+    assert_eq!(value["tool_choice"], "auto");
+    assert_eq!(value["parallel_tool_calls"], false);
+}
+
+#[test]
 fn anthropic_tools_request_accepts_type_only_tool_definition() {
     let body = serde_json::json!({
         "model": "claude-sonnet-4",
