@@ -548,6 +548,7 @@
 }
 
 .settings-top-item-window .settings-top-aside,
+.settings-top-item-window-memory .settings-top-aside,
 .settings-top-item-visual .settings-top-aside {
     align-items: flex-start;
 }

@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
+use tauri::WebviewWindowBuilder;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
@@ -18,9 +19,12 @@ mod updater;
 
 const TRAY_MENU_SHOW_MAIN: &str = "tray_show_main";
 const TRAY_MENU_QUIT_APP: &str = "tray_quit_app";
+const MAIN_WINDOW_LABEL: &str = "main";
 static APP_EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 static TRAY_AVAILABLE: AtomicBool = AtomicBool::new(false);
 static CLOSE_TO_TRAY_ON_CLOSE: AtomicBool = AtomicBool::new(false);
+static LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+static KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 async fn service_initialize(addr: Option<String>) -> Result<serde_json::Value, String> {
@@ -657,7 +661,7 @@ async fn open_in_browser(url: String) -> Result<(), String> {
 fn app_close_to_tray_on_close_get(app: tauri::AppHandle) -> bool {
     apply_runtime_storage_env(&app);
     if let Ok(mut settings) = codexmanager_service::app_settings_get() {
-        sync_close_to_tray_state_from_settings(&mut settings);
+        sync_window_runtime_state_from_settings(&mut settings);
     }
     CLOSE_TO_TRAY_ON_CLOSE.load(Ordering::Relaxed)
 }
@@ -669,7 +673,7 @@ fn app_close_to_tray_on_close_set(app: tauri::AppHandle, enabled: bool) -> bool 
         "closeToTrayOnClose": enabled
     });
     if let Ok(mut settings) = codexmanager_service::app_settings_set(Some(&payload)) {
-        sync_close_to_tray_state_from_settings(&mut settings);
+        sync_window_runtime_state_from_settings(&mut settings);
     }
     CLOSE_TO_TRAY_ON_CLOSE.load(Ordering::Relaxed)
 }
@@ -686,7 +690,7 @@ async fn app_settings_get(app: tauri::AppHandle) -> Result<serde_json::Value, St
     })
     .await
     .map_err(|err| format!("app_settings_get task failed: {err}"))??;
-    sync_close_to_tray_state_from_settings(&mut settings);
+    sync_window_runtime_state_from_settings(&mut settings);
     Ok(settings)
 }
 
@@ -701,12 +705,16 @@ async fn app_settings_set(
     })
     .await
     .map_err(|err| format!("app_settings_set task failed: {err}"))??;
-    sync_close_to_tray_state_from_settings(&mut settings);
+    sync_window_runtime_state_from_settings(&mut settings);
     Ok(settings)
 }
 
-fn sync_close_to_tray_state_from_settings(settings: &mut serde_json::Value) {
-    let requested = settings
+fn effective_lightweight_mode_on_close_to_tray(requested: bool, close_to_tray_effective: bool) -> bool {
+    requested && close_to_tray_effective
+}
+
+fn sync_window_runtime_state_from_settings(settings: &mut serde_json::Value) {
+    let requested_close_to_tray = settings
         .get("closeToTrayOnClose")
         .and_then(|value| value.as_bool())
         .unwrap_or(false);
@@ -714,12 +722,31 @@ fn sync_close_to_tray_state_from_settings(settings: &mut serde_json::Value) {
         .get("closeToTraySupported")
         .and_then(|value| value.as_bool())
         .unwrap_or_else(|| TRAY_AVAILABLE.load(Ordering::Relaxed));
-    let effective = requested && supported;
+    let requested_lightweight_mode = settings
+        .get("lightweightModeOnCloseToTray")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let effective_close_to_tray = requested_close_to_tray && supported;
+    let effective_lightweight_mode = effective_lightweight_mode_on_close_to_tray(
+        requested_lightweight_mode,
+        effective_close_to_tray,
+    );
     if let Some(object) = settings.as_object_mut() {
-        object.insert("closeToTrayOnClose".to_string(), serde_json::json!(effective));
+        object.insert(
+            "closeToTrayOnClose".to_string(),
+            serde_json::json!(effective_close_to_tray),
+        );
         object.insert("closeToTraySupported".to_string(), serde_json::json!(supported));
+        object.insert(
+            "lightweightModeOnCloseToTray".to_string(),
+            serde_json::json!(requested_lightweight_mode),
+        );
     }
-    CLOSE_TO_TRAY_ON_CLOSE.store(effective, Ordering::Relaxed);
+    CLOSE_TO_TRAY_ON_CLOSE.store(effective_close_to_tray, Ordering::Relaxed);
+    LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY.store(effective_lightweight_mode, Ordering::Relaxed);
+    if !effective_lightweight_mode {
+        KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.store(false, Ordering::Relaxed);
+    }
 }
 
 fn open_in_browser_blocking(url: &str) -> Result<(), String> {
@@ -767,12 +794,15 @@ pub fn run() {
                     && TRAY_AVAILABLE.load(Ordering::Relaxed)),
                 Some(TRAY_AVAILABLE.load(Ordering::Relaxed)),
             ) {
-                sync_close_to_tray_state_from_settings(&mut settings);
+                sync_window_runtime_state_from_settings(&mut settings);
             }
 
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() != MAIN_WINDOW_LABEL {
+                return;
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if APP_EXIT_REQUESTED.load(Ordering::Relaxed) {
                     return;
@@ -784,6 +814,13 @@ pub fn run() {
                     CLOSE_TO_TRAY_ON_CLOSE.store(false, Ordering::Relaxed);
                     return;
                 }
+                if LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY.load(Ordering::Relaxed) {
+                    KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.store(true, Ordering::Relaxed);
+                    log::info!(
+                        "window close intercepted; lightweight mode enabled, closing main window to release webview"
+                    );
+                    return;
+                }
                 api.prevent_close();
                 if let Err(err) = window.hide() {
                     log::warn!("hide window to tray failed: {}", err);
@@ -793,6 +830,10 @@ pub fn run() {
                 return;
             }
             if let tauri::WindowEvent::Destroyed = event {
+                if should_keep_alive_for_lightweight_close() {
+                    log::info!("main window destroyed for lightweight tray mode");
+                    return;
+                }
                 stop_service();
             }
         })
@@ -855,8 +896,14 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|_app_handle, event| match event {
-        tauri::RunEvent::ExitRequested { .. } => {
+        tauri::RunEvent::ExitRequested { api, .. } => {
+            if should_keep_alive_for_lightweight_close() {
+                api.prevent_exit();
+                log::info!("prevented app exit for lightweight tray mode");
+                return;
+            }
             APP_EXIT_REQUESTED.store(true, Ordering::Relaxed);
+            KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.store(false, Ordering::Relaxed);
             stop_service();
         }
         #[cfg(target_os = "macos")]
@@ -881,6 +928,7 @@ fn setup_tray(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
             }
             TRAY_MENU_QUIT_APP => {
                 APP_EXIT_REQUESTED.store(true, Ordering::Relaxed);
+                KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.store(false, Ordering::Relaxed);
                 stop_service();
                 app.exit(0);
             }
@@ -905,7 +953,8 @@ fn setup_tray(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
-    let Some(window) = app.get_webview_window("main") else {
+    KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.store(false, Ordering::Relaxed);
+    let Some(window) = ensure_main_window(app) else {
         return;
     };
     if let Err(err) = window.show() {
@@ -914,6 +963,38 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
     let _ = window.unminimize();
     let _ = window.set_focus();
+}
+
+fn ensure_main_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        return Some(window);
+    }
+
+    let mut config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == MAIN_WINDOW_LABEL)
+        .cloned()
+        .or_else(|| app.config().app.windows.first().cloned())?;
+    config.label = MAIN_WINDOW_LABEL.to_string();
+
+    match WebviewWindowBuilder::from_config(app, &config).and_then(|builder| builder.build()) {
+        Ok(window) => Some(window),
+        Err(err) => {
+            if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+                return Some(window);
+            }
+            log::warn!("create main window failed: {}", err);
+            None
+        }
+    }
+}
+
+fn should_keep_alive_for_lightweight_close() -> bool {
+    !APP_EXIT_REQUESTED.load(Ordering::Relaxed)
+        && KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.load(Ordering::Relaxed)
 }
 
 fn load_env_from_exe_dir() {

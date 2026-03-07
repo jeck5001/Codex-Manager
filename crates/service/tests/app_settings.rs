@@ -24,6 +24,7 @@ fn reset_runtime_defaults() {
     );
     let _ = codexmanager_service::app_settings_set(Some(&json!({
         "routeStrategy": "ordered",
+        "lightweightModeOnCloseToTray": false,
         "cpaNoCookieHeaderModeEnabled": false,
         "upstreamProxyUrl": "",
         "envOverrides": {},
@@ -135,6 +136,7 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         let snapshot = codexmanager_service::app_settings_set(Some(&json!({
             "updateAutoCheck": false,
             "closeToTrayOnClose": true,
+            "lightweightModeOnCloseToTray": true,
             "lowTransparency": true,
             "theme": "dark",
             "serviceAddr": "127.0.0.1:4999",
@@ -172,6 +174,12 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             Some(true)
         );
         assert_eq!(
+            snapshot
+                .get("lightweightModeOnCloseToTray")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
             snapshot.get("theme").and_then(|value| value.as_str()),
             Some("dark")
         );
@@ -198,6 +206,14 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         ));
 
         let storage = Storage::open(db_path).expect("open storage");
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY
+                )
+                .expect("read lightweight close to tray"),
+            Some("1".to_string())
+        );
         let stored_password = storage
             .get_app_setting(codexmanager_service::APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY)
             .expect("read password hash");

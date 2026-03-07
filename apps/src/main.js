@@ -189,6 +189,7 @@ function buildDefaultAppSettingsSnapshot() {
     updateAutoCheck: true,
     closeToTrayOnClose: false,
     closeToTraySupported: isTauriRuntime(),
+    lightweightModeOnCloseToTray: false,
     lowTransparency: false,
     theme: "tech",
     serviceAddr: "localhost:48760",
@@ -228,6 +229,10 @@ function normalizeAppSettingsSnapshot(source) {
     closeToTraySupported: normalizeBooleanSetting(
       payload.closeToTraySupported,
       defaults.closeToTraySupported,
+    ),
+    lightweightModeOnCloseToTray: normalizeBooleanSetting(
+      payload.lightweightModeOnCloseToTray,
+      defaults.lightweightModeOnCloseToTray,
     ),
     lowTransparency: normalizeBooleanSetting(payload.lowTransparency, defaults.lowTransparency),
     theme: normalizeThemeSetting(payload.theme),
@@ -330,6 +335,12 @@ function applyBrowserModeUi() {
   if (closeToTrayCard) {
     closeToTrayCard.style.display = "none";
   }
+  const lightweightModeCard = dom.lightweightModeOnCloseToTray
+    ? dom.lightweightModeOnCloseToTray.closest(".settings-top-item, .settings-card")
+    : null;
+  if (lightweightModeCard) {
+    lightweightModeCard.style.display = "none";
+  }
 
   return true;
 }
@@ -363,6 +374,28 @@ function setCloseToTrayOnCloseToggle(enabled) {
   }
 }
 
+function readLightweightModeOnCloseToTraySetting() {
+  return Boolean(appSettingsSnapshot.lightweightModeOnCloseToTray);
+}
+
+function saveLightweightModeOnCloseToTraySetting(enabled) {
+  patchAppSettingsSnapshot({ lightweightModeOnCloseToTray: Boolean(enabled) });
+}
+
+function setLightweightModeOnCloseToTrayToggle(enabled) {
+  if (dom.lightweightModeOnCloseToTray) {
+    dom.lightweightModeOnCloseToTray.checked = Boolean(enabled);
+  }
+}
+
+function syncLightweightModeOnCloseToTrayAvailability() {
+  if (!dom.lightweightModeOnCloseToTray) {
+    return;
+  }
+  dom.lightweightModeOnCloseToTray.disabled = !Boolean(appSettingsSnapshot.closeToTraySupported)
+    || !Boolean(appSettingsSnapshot.closeToTrayOnClose);
+}
+
 async function applyCloseToTrayOnCloseSetting(enabled, { silent = true } = {}) {
   const normalized = Boolean(enabled);
   try {
@@ -376,6 +409,7 @@ async function applyCloseToTrayOnCloseSetting(enabled, { silent = true } = {}) {
     }
     saveCloseToTrayOnCloseSetting(applied);
     setCloseToTrayOnCloseToggle(applied);
+    syncLightweightModeOnCloseToTrayAvailability();
     if (!silent) {
       if (normalized && !applied && !supported) {
         showToast("系统托盘不可用，无法启用关闭时最小化到托盘", "error");
@@ -398,6 +432,39 @@ function initCloseToTrayOnCloseSetting() {
   if (dom.closeToTrayOnClose) {
     dom.closeToTrayOnClose.disabled = !Boolean(appSettingsSnapshot.closeToTraySupported);
   }
+  syncLightweightModeOnCloseToTrayAvailability();
+}
+
+async function applyLightweightModeOnCloseToTraySetting(enabled, { silent = true } = {}) {
+  const normalized = Boolean(enabled);
+  try {
+    const settings = await saveAppSettingsPatch({
+      lightweightModeOnCloseToTray: normalized,
+    });
+    const applied = Boolean(settings.lightweightModeOnCloseToTray);
+    saveLightweightModeOnCloseToTraySetting(applied);
+    setLightweightModeOnCloseToTrayToggle(applied);
+    syncLightweightModeOnCloseToTrayAvailability();
+    if (!silent) {
+      showToast(
+        applied
+          ? "已开启：关闭到托盘时会释放窗口内存，再次打开会稍慢"
+          : "已关闭：托盘隐藏时继续保留窗口内存，再次打开更快",
+      );
+    }
+    return applied;
+  } catch (err) {
+    if (!silent) {
+      showToast(`设置失败：${normalizeErrorMessage(err)}`, "error");
+    }
+    throw err;
+  }
+}
+
+function initLightweightModeOnCloseToTraySetting() {
+  const enabled = readLightweightModeOnCloseToTraySetting();
+  setLightweightModeOnCloseToTrayToggle(enabled);
+  syncLightweightModeOnCloseToTrayAvailability();
 }
 
 function readLowTransparencySetting() {
@@ -2266,6 +2333,18 @@ function bindEvents() {
       });
     });
   }
+  if (dom.lightweightModeOnCloseToTray && dom.lightweightModeOnCloseToTray.dataset.bound !== "1") {
+    dom.lightweightModeOnCloseToTray.dataset.bound = "1";
+    dom.lightweightModeOnCloseToTray.addEventListener("change", () => {
+      const previousEnabled = readLightweightModeOnCloseToTraySetting();
+      const enabled = Boolean(dom.lightweightModeOnCloseToTray.checked);
+      void applyLightweightModeOnCloseToTraySetting(enabled, { silent: false }).catch(() => {
+        saveLightweightModeOnCloseToTraySetting(previousEnabled);
+        setLightweightModeOnCloseToTrayToggle(previousEnabled);
+        syncLightweightModeOnCloseToTrayAvailability();
+      });
+    });
+  }
   if (dom.routeStrategySelect && dom.routeStrategySelect.dataset.bound !== "1") {
     dom.routeStrategySelect.dataset.bound = "1";
     dom.routeStrategySelect.addEventListener("change", () => {
@@ -2616,6 +2695,7 @@ async function bootstrap() {
   initLowTransparencySetting();
   initUpdateAutoCheckSetting();
   initCloseToTrayOnCloseSetting();
+  initLightweightModeOnCloseToTraySetting();
   initServiceListenModeSetting();
   initRouteStrategySetting();
   initCpaNoCookieHeaderModeSetting();

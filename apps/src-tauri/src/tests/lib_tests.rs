@@ -14,6 +14,13 @@ fn normalize_addr_defaults_to_localhost() {
 }
 
 #[test]
+fn lightweight_close_to_tray_requires_close_to_tray_mode() {
+    assert!(!effective_lightweight_mode_on_close_to_tray(false, true));
+    assert!(!effective_lightweight_mode_on_close_to_tray(true, false));
+    assert!(effective_lightweight_mode_on_close_to_tray(true, true));
+}
+
+#[test]
 fn rpc_call_tolerates_slow_response() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");

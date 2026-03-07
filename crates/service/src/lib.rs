@@ -199,6 +199,8 @@ pub fn listener_bind_addr(addr: &str) -> String {
 
 pub const APP_SETTING_UPDATE_AUTO_CHECK_KEY: &str = "app.update.auto_check";
 pub const APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY: &str = "app.close_to_tray_on_close";
+pub const APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY: &str =
+    "app.lightweight_mode_on_close_to_tray";
 pub const APP_SETTING_UI_LOW_TRANSPARENCY_KEY: &str = "ui.low_transparency";
 pub const APP_SETTING_UI_THEME_KEY: &str = "ui.theme";
 pub const APP_SETTING_SERVICE_ADDR_KEY: &str = "app.service_addr";
@@ -674,6 +676,7 @@ impl BackgroundTasksInput {
 struct AppSettingsPatch {
     update_auto_check: Option<bool>,
     close_to_tray_on_close: Option<bool>,
+    lightweight_mode_on_close_to_tray: Option<bool>,
     low_transparency: Option<bool>,
     theme: Option<String>,
     service_addr: Option<String>,
@@ -796,12 +799,11 @@ fn env_override_original_process_value(key: &str) -> Option<String> {
 }
 
 fn env_override_default_value(key: &str) -> String {
-    env_override_original_process_value(key)
-        .unwrap_or_else(|| {
-            env_override_catalog_item(key)
-                .map(|item| item.default_value.to_string())
-                .unwrap_or_default()
-        })
+    env_override_original_process_value(key).unwrap_or_else(|| {
+        env_override_catalog_item(key)
+            .map(|item| item.default_value.to_string())
+            .unwrap_or_default()
+    })
 }
 
 fn env_override_default_snapshot() -> BTreeMap<String, String> {
@@ -1061,6 +1063,17 @@ pub fn set_close_to_tray_on_close_setting(enabled: bool) -> Result<bool, String>
     Ok(enabled)
 }
 
+pub fn current_lightweight_mode_on_close_to_tray_setting() -> bool {
+    get_persisted_app_setting(APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY)
+        .map(|value| parse_bool_with_default(&value, false))
+        .unwrap_or(false)
+}
+
+pub fn set_lightweight_mode_on_close_to_tray_setting(enabled: bool) -> Result<bool, String> {
+    save_persisted_bool_setting(APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, enabled)?;
+    Ok(enabled)
+}
+
 pub fn current_ui_low_transparency_enabled() -> bool {
     get_persisted_app_setting(APP_SETTING_UI_LOW_TRANSPARENCY_KEY)
         .map(|value| parse_bool_with_default(&value, false))
@@ -1253,6 +1266,7 @@ pub fn app_settings_get_with_overrides(
     let update_auto_check = current_update_auto_check_enabled();
     let persisted_close_to_tray = current_close_to_tray_on_close_setting();
     let close_to_tray = close_to_tray_on_close.unwrap_or(persisted_close_to_tray);
+    let lightweight_mode_on_close_to_tray = current_lightweight_mode_on_close_to_tray_setting();
     let low_transparency = current_ui_low_transparency_enabled();
     let theme = current_ui_theme();
     let service_addr = current_saved_service_addr();
@@ -1268,6 +1282,10 @@ pub fn app_settings_get_with_overrides(
     let _ = save_persisted_bool_setting(
         APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
         persisted_close_to_tray,
+    );
+    let _ = save_persisted_bool_setting(
+        APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY,
+        lightweight_mode_on_close_to_tray,
     );
     let _ = save_persisted_bool_setting(APP_SETTING_UI_LOW_TRANSPARENCY_KEY, low_transparency);
     let _ = save_persisted_app_setting(APP_SETTING_UI_THEME_KEY, Some(&theme));
@@ -1295,6 +1313,7 @@ pub fn app_settings_get_with_overrides(
         "updateAutoCheck": update_auto_check,
         "closeToTrayOnClose": close_to_tray,
         "closeToTraySupported": close_to_tray_supported,
+        "lightweightModeOnCloseToTray": lightweight_mode_on_close_to_tray,
         "lowTransparency": low_transparency,
         "theme": theme,
         "serviceAddr": service_addr,
@@ -1329,6 +1348,9 @@ pub fn app_settings_set(params: Option<&Value>) -> Result<Value, String> {
     }
     if let Some(enabled) = patch.close_to_tray_on_close {
         set_close_to_tray_on_close_setting(enabled)?;
+    }
+    if let Some(enabled) = patch.lightweight_mode_on_close_to_tray {
+        set_lightweight_mode_on_close_to_tray_setting(enabled)?;
     }
     if let Some(enabled) = patch.low_transparency {
         set_ui_low_transparency_enabled(enabled)?;
