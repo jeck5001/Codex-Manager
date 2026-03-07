@@ -796,11 +796,12 @@ fn env_override_original_process_value(key: &str) -> Option<String> {
 }
 
 fn env_override_default_value(key: &str) -> String {
-    env_override_original_process_value(key).unwrap_or_else(|| {
-        env_override_catalog_item(key)
-            .map(|item| item.default_value.to_string())
-            .unwrap_or_default()
-    })
+    env_override_original_process_value(key)
+        .unwrap_or_else(|| {
+            env_override_catalog_item(key)
+                .map(|item| item.default_value.to_string())
+                .unwrap_or_default()
+        })
 }
 
 fn env_override_default_snapshot() -> BTreeMap<String, String> {
@@ -811,8 +812,7 @@ fn env_override_default_snapshot() -> BTreeMap<String, String> {
     snapshot
 }
 
-pub fn current_env_overrides() -> BTreeMap<String, String> {
-    let mut normalized = env_override_default_snapshot();
+fn persisted_env_overrides(mut normalized: BTreeMap<String, String>) -> BTreeMap<String, String> {
     let Some(raw) = get_persisted_app_setting(APP_SETTING_ENV_OVERRIDES_KEY) else {
         return normalized;
     };
@@ -838,6 +838,14 @@ pub fn current_env_overrides() -> BTreeMap<String, String> {
         }
     }
     normalized
+}
+
+fn persisted_env_overrides_only() -> BTreeMap<String, String> {
+    persisted_env_overrides(BTreeMap::new())
+}
+
+pub fn current_env_overrides() -> BTreeMap<String, String> {
+    persisted_env_overrides(env_override_default_snapshot())
 }
 
 fn save_env_overrides_value(overrides: &BTreeMap<String, String>) -> Result<(), String> {
@@ -1194,8 +1202,10 @@ fn hex_encode(bytes: &[u8]) -> String {
 
 pub fn sync_runtime_settings_from_storage() {
     let settings = list_app_settings_map();
-    let env_overrides = current_env_overrides();
-    apply_env_overrides_to_process(&env_overrides, &env_overrides);
+    let env_overrides = persisted_env_overrides_only();
+    if !env_overrides.is_empty() {
+        apply_env_overrides_to_process(&env_overrides, &env_overrides);
+    }
     reload_runtime_after_env_override_apply();
 
     if let Some(mode) = settings.get(SERVICE_BIND_MODE_SETTING_KEY) {

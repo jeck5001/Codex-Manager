@@ -305,6 +305,10 @@ impl Storage {
             "029_app_settings",
             include_str!("../../migrations/029_app_settings.sql"),
         )?;
+        self.apply_sql_migration(
+            "030_accounts_scale_indexes",
+            include_str!("../../migrations/030_accounts_scale_indexes.sql"),
+        )?;
         self.ensure_request_token_stats_table()?;
         Ok(())
     }

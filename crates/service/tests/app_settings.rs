@@ -101,6 +101,35 @@ fn read_env_overrides_map(db_path: &PathBuf) -> serde_json::Map<String, serde_js
 }
 
 #[test]
+fn sync_runtime_settings_from_storage_preserves_process_env_when_override_not_persisted() {
+    with_temp_db(|db_path| {
+        let storage = Storage::open(db_path).expect("open storage");
+        storage
+            .set_app_setting(
+                codexmanager_service::APP_SETTING_ENV_OVERRIDES_KEY,
+                "",
+                now_ts(),
+            )
+            .expect("clear env overrides");
+        drop(storage);
+
+        let _env = override_env_vars(&[(
+            "CODEXMANAGER_UPSTREAM_BASE_URL",
+            Some("http://127.0.0.1:41002"),
+        )]);
+
+        codexmanager_service::sync_runtime_settings_from_storage();
+
+        assert_eq!(
+            std::env::var("CODEXMANAGER_UPSTREAM_BASE_URL")
+                .ok()
+                .as_deref(),
+            Some("http://127.0.0.1:41002")
+        );
+    });
+}
+
+#[test]
 fn app_settings_set_persists_snapshot_and_password_hash() {
     with_temp_db(|db_path| {
         let snapshot = codexmanager_service::app_settings_set(Some(&json!({

@@ -1,14 +1,9 @@
-use std::collections::HashMap;
-
 use codexmanager_core::{
     rpc::types::{AccountListParams, AccountListResult, AccountSummary},
-    storage::{Account, UsageSnapshotRecord},
+    storage::Account,
 };
 
-use crate::{
-    account_availability::{evaluate_snapshot, Availability},
-    storage_helpers::open_storage,
-};
+use crate::storage_helpers::open_storage;
 
 const DEFAULT_ACCOUNT_PAGE_SIZE: i64 = 5;
 const MAX_ACCOUNT_PAGE_SIZE: i64 = 500;
@@ -72,27 +67,19 @@ pub(crate) fn read_accounts(
         });
     }
 
-    let usage_by_account: HashMap<String, UsageSnapshotRecord> = storage
-        .latest_usage_snapshots_by_account()
-        .map_err(|err| format!("list usage snapshots failed: {err}"))?
-        .into_iter()
-        .map(|item| (item.account_id.clone(), item))
-        .collect();
-    let mut accounts = storage
-        .list_accounts_filtered(query.as_deref(), group_filter.as_deref())
-        .map_err(|err| format!("list accounts failed: {err}"))?;
-    accounts.retain(|account| matches_filter(filter, account, usage_by_account.get(&account.id)));
-
-    let total = accounts.len() as i64;
     if pagination_requested {
+        let total =
+            filtered_account_count(&storage, filter, query.as_deref(), group_filter.as_deref())?;
         let page_size = normalize_page_size(params.page_size);
         let page = clamp_page(params.page, total, page_size);
-        let offset = ((page - 1) * page_size) as usize;
-        let paged = accounts
-            .into_iter()
-            .skip(offset)
-            .take(page_size as usize)
-            .collect::<Vec<_>>();
+        let offset = (page - 1) * page_size;
+        let paged = filtered_accounts(
+            &storage,
+            filter,
+            query.as_deref(),
+            group_filter.as_deref(),
+            Some((offset, page_size)),
+        )?;
         return Ok(AccountListResult {
             items: paged.into_iter().map(to_account_summary).collect(),
             total,
@@ -100,6 +87,15 @@ pub(crate) fn read_accounts(
             page_size,
         });
     }
+
+    let accounts = filtered_accounts(
+        &storage,
+        filter,
+        query.as_deref(),
+        group_filter.as_deref(),
+        None,
+    )?;
+    let total = accounts.len() as i64;
 
     Ok(AccountListResult {
         items: accounts.into_iter().map(to_account_summary).collect(),
@@ -148,34 +144,48 @@ fn clamp_page(page: i64, total: i64, page_size: i64) -> i64 {
     normalized_page.min(total_pages)
 }
 
-fn matches_filter(
+fn filtered_account_count(
+    storage: &codexmanager_core::storage::Storage,
     filter: AccountFilter,
-    account: &Account,
-    snapshot: Option<&UsageSnapshotRecord>,
-) -> bool {
+    query: Option<&str>,
+    group_filter: Option<&str>,
+) -> Result<i64, String> {
     match filter {
-        AccountFilter::All => true,
-        AccountFilter::Active => {
-            if account.status.trim().eq_ignore_ascii_case("inactive") {
-                return false;
-            }
-            snapshot
-                .map(|item| matches!(evaluate_snapshot(item), Availability::Available))
-                .unwrap_or(false)
-        }
-        AccountFilter::Low => snapshot.map(is_low_quota).unwrap_or(false),
+        AccountFilter::All => storage
+            .account_count_filtered(query, group_filter)
+            .map_err(|err| format!("count accounts failed: {err}")),
+        AccountFilter::Active => storage
+            .account_count_active_available(query, group_filter)
+            .map_err(|err| format!("count active accounts failed: {err}")),
+        AccountFilter::Low => storage
+            .account_count_low_quota(query, group_filter)
+            .map_err(|err| format!("count low quota accounts failed: {err}")),
     }
 }
 
-fn is_low_quota(snapshot: &UsageSnapshotRecord) -> bool {
-    snapshot
-        .used_percent
-        .map(|value| value >= 80.0)
-        .unwrap_or(false)
-        || snapshot
-            .secondary_used_percent
-            .map(|value| value >= 80.0)
-            .unwrap_or(false)
+fn filtered_accounts(
+    storage: &codexmanager_core::storage::Storage,
+    filter: AccountFilter,
+    query: Option<&str>,
+    group_filter: Option<&str>,
+    pagination: Option<(i64, i64)>,
+) -> Result<Vec<Account>, String> {
+    match filter {
+        AccountFilter::All => match pagination {
+            Some((offset, limit)) => storage
+                .list_accounts_paginated(query, group_filter, offset, limit)
+                .map_err(|err| format!("list accounts failed: {err}")),
+            None => storage
+                .list_accounts_filtered(query, group_filter)
+                .map_err(|err| format!("list accounts failed: {err}")),
+        },
+        AccountFilter::Active => storage
+            .list_accounts_active_available(query, group_filter, pagination)
+            .map_err(|err| format!("list active accounts failed: {err}")),
+        AccountFilter::Low => storage
+            .list_accounts_low_quota(query, group_filter, pagination)
+            .map_err(|err| format!("list low quota accounts failed: {err}")),
+    }
 }
 
 fn to_account_summary(acc: Account) -> AccountSummary {

@@ -1,5 +1,5 @@
 use codexmanager_core::rpc::types::JsonRpcRequest;
-use codexmanager_core::storage::{now_ts, Account, Storage};
+use codexmanager_core::storage::{now_ts, Account, Storage, UsageSnapshotRecord};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -232,6 +232,87 @@ fn rpc_account_list_supports_pagination() {
         items[0].get("status").and_then(|value| value.as_str()),
         Some("active")
     );
+}
+
+#[test]
+fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
+    let ctx = RpcTestContext::new("rpc-account-list-active-filter");
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let now = now_ts();
+    let accounts = [
+        ("acc-active-1", "active", 0_i64, Some(20.0)),
+        ("acc-active-2", "healthy", 1_i64, Some(30.0)),
+        ("acc-low-1", "active", 2_i64, Some(85.0)),
+        ("acc-inactive-1", "inactive", 3_i64, Some(10.0)),
+        ("acc-no-snapshot", "active", 4_i64, None),
+    ];
+    for (id, status, sort, used_percent) in accounts {
+        storage
+            .insert_account(&Account {
+                id: id.to_string(),
+                label: id.to_string(),
+                issuer: "https://auth.openai.com".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: Some("group-a".to_string()),
+                sort,
+                status: status.to_string(),
+                created_at: now + sort,
+                updated_at: now + sort,
+            })
+            .expect("insert account");
+        if let Some(used_percent) = used_percent {
+            storage
+                .insert_usage_snapshot(&UsageSnapshotRecord {
+                    account_id: id.to_string(),
+                    used_percent: Some(used_percent),
+                    window_minutes: Some(300),
+                    resets_at: None,
+                    secondary_used_percent: None,
+                    secondary_window_minutes: None,
+                    secondary_resets_at: None,
+                    credits_json: None,
+                    captured_at: now + sort,
+                })
+                .expect("insert usage snapshot");
+        }
+    }
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 30,
+        method: "account/list".to_string(),
+        params: Some(serde_json::json!({
+            "page": 1,
+            "pageSize": 2,
+            "filter": "active",
+            "groupFilter": "group-a"
+        })),
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+    let items = result
+        .get("items")
+        .and_then(|value| value.as_array())
+        .expect("items array");
+
+    assert_eq!(items.len(), 2, "unexpected filtered page size: {result}");
+    assert_eq!(
+        result.get("total").and_then(|value| value.as_i64()),
+        Some(3)
+    );
+    let ids = items
+        .iter()
+        .map(|value| {
+            value
+                .get("id")
+                .and_then(|value| value.as_str())
+                .expect("item id")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(ids, vec!["acc-active-1", "acc-active-2"]);
 }
 
 #[test]
