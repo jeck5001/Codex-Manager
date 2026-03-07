@@ -1,4 +1,4 @@
-use super::{merge_upstream_headers, text_response};
+use super::{merge_upstream_headers, text_error_response, text_response};
 use axum::body::Body;
 use axum::http::header::CONTENT_TYPE;
 use axum::http::StatusCode;
@@ -13,6 +13,18 @@ fn text_response_sets_status_and_plain_text_header() {
             .get(CONTENT_TYPE)
             .and_then(|value| value.to_str().ok()),
         Some("text/plain; charset=utf-8")
+    );
+}
+
+#[test]
+fn text_error_response_sets_error_code_header() {
+    let response = text_error_response(StatusCode::BAD_GATEWAY, "backend proxy error: refused");
+    assert_eq!(
+        response
+            .headers()
+            .get(crate::error_codes::ERROR_CODE_HEADER_NAME)
+            .and_then(|value| value.to_str().ok()),
+        Some("backend_proxy_error")
     );
 }
 

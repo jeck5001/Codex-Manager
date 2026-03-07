@@ -41,21 +41,9 @@ export async function invoke(method, params, options = {}) {
   }
 
   const throwIfBusinessError = (payload) => {
-    if (!payload || typeof payload !== "object") return;
-    // 业务约定：ok=false + error 代表本次动作失败（如 usage refresh）。
-    if (payload.ok === false) {
-      const msg = typeof payload.error === "string" && payload.error.trim()
-        ? payload.error
-        : "操作失败";
+    const msg = resolveBusinessErrorMessage(payload);
+    if (msg) {
       throw new Error(msg);
-    }
-    // 兼容 value_or_error: 仅包含 error 字段时视为失败。
-    if (
-      typeof payload.error === "string"
-      && payload.error.trim()
-      && Object.keys(payload).length === 1
-    ) {
-      throw new Error(payload.error);
     }
   };
 
@@ -127,11 +115,9 @@ async function rpcInvoke(method, params, options = {}) {
   }
   if (payload && Object.prototype.hasOwnProperty.call(payload, "result")) {
     const result = payload.result;
-    if (result && typeof result === "object" && result.ok === false) {
-      const msg = typeof result.error === "string" && result.error.trim()
-        ? result.error
-        : "操作失败";
-      throw new Error(msg);
+    const businessError = resolveBusinessErrorMessage(result);
+    if (businessError) {
+      throw new Error(businessError);
     }
     return result;
   }
@@ -154,6 +140,27 @@ function unwrapRpcError(payload) {
     return err.message;
   }
   return JSON.stringify(err);
+}
+
+function resolveBusinessErrorMessage(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  const err = payload.error;
+  if (payload.ok === false) {
+    if (typeof err === "string" && err.trim()) {
+      return err;
+    }
+    if (err && typeof err === "object" && typeof err.message === "string" && err.message.trim()) {
+      return err.message;
+    }
+    return "操作失败";
+  }
+  if (typeof err === "string" && err.trim()) {
+    return err;
+  }
+  if (err && typeof err === "object" && typeof err.message === "string" && err.message.trim()) {
+    return err.message;
+  }
+  return "";
 }
 
 async function getRpcToken(options = {}) {

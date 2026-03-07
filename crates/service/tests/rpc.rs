@@ -235,6 +235,43 @@ fn rpc_account_list_supports_pagination() {
 }
 
 #[test]
+fn rpc_app_settings_set_invalid_payload_returns_structured_error() {
+    let _ctx = RpcTestContext::new("rpc-app-settings-invalid-payload");
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+
+    let req = JsonRpcRequest {
+        id: 30,
+        method: "appSettings/set".to_string(),
+        params: Some(serde_json::json!("invalid-payload")),
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+
+    let message = result
+        .get("error")
+        .and_then(|value| value.as_str())
+        .expect("error message");
+    assert!(
+        message.starts_with("invalid app settings payload:"),
+        "unexpected message: {message}"
+    );
+    assert_eq!(
+        result.get("errorCode").and_then(|value| value.as_str()),
+        Some("invalid_settings_payload")
+    );
+    let detail = result.get("errorDetail").expect("errorDetail");
+    assert_eq!(
+        detail.get("code").and_then(|value| value.as_str()),
+        Some("invalid_settings_payload")
+    );
+    assert_eq!(
+        detail.get("message").and_then(|value| value.as_str()),
+        Some(message)
+    );
+}
+
+#[test]
 fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
     let ctx = RpcTestContext::new("rpc-account-list-active-filter");
     let storage = Storage::open(ctx.db_path()).expect("open db");

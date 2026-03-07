@@ -1,7 +1,7 @@
 use crate::apikey_profile::{PROTOCOL_ANTHROPIC_NATIVE, PROTOCOL_AZURE_OPENAI};
 use serde_json::Value;
 use std::time::{Duration, Instant};
-use tiny_http::{Request, Response};
+use tiny_http::Request;
 
 use super::super::local_validation::LocalValidationResult;
 use super::super::request_log::RequestLogUsage;
@@ -48,8 +48,14 @@ fn strip_encrypted_content_from_body(body: &[u8]) -> Option<Vec<u8>> {
     serde_json::to_vec(&value).ok()
 }
 
-fn respond_terminal(request: Request, status_code: u16, message: String) -> Result<(), String> {
-    let response = Response::from_string(message).with_status_code(status_code);
+fn respond_terminal(
+    request: Request,
+    status_code: u16,
+    message: String,
+    trace_id: Option<&str>,
+) -> Result<(), String> {
+    let response =
+        super::super::error_response::terminal_text_response(status_code, message, trace_id);
     let _ = request.respond(response);
     Ok(())
 }
@@ -68,6 +74,7 @@ fn is_client_disconnect_error(message: &str) -> bool {
 fn respond_total_timeout(
     request: Request,
     context: &GatewayUpstreamExecutionContext<'_>,
+    trace_id: &str,
     started_at: Instant,
 ) -> Result<(), String> {
     let message = "upstream total timeout exceeded".to_string();
@@ -79,7 +86,7 @@ fn respond_total_timeout(
         Some(message.as_str()),
         started_at.elapsed().as_millis(),
     );
-    respond_terminal(request, 504, message)
+    respond_terminal(request, 504, message, Some(trace_id))
 }
 
 pub(in super::super) fn proxy_validated_request(
@@ -292,7 +299,7 @@ pub(in super::super) fn proxy_validated_request(
             let request = request
                 .take()
                 .expect("request should be available before timeout response");
-            return respond_total_timeout(request, &context, started_at);
+            return respond_total_timeout(request, &context, trace_id.as_str(), started_at);
         }
         // 中文注释：Claude 兼容入口命中 prompt_cache_key 时，优先保持会话粘性；
         // failover 时若强制重置 Session/Conversation，更容易触发 upstream challenge。
@@ -416,7 +423,7 @@ pub(in super::super) fn proxy_validated_request(
                 let request = request
                     .take()
                     .expect("request should be available before terminal response");
-                return respond_terminal(request, status_code, message);
+                return respond_terminal(request, status_code, message, Some(trace_id.as_str()));
             }
             CandidateUpstreamDecision::RespondUpstream(mut resp) => {
                 let mut status_code = resp.status().as_u16();
@@ -502,7 +509,12 @@ pub(in super::super) fn proxy_validated_request(
                             let request = request
                                 .take()
                                 .expect("request should be available before terminal response");
-                            return respond_terminal(request, status_code, message);
+                            return respond_terminal(
+                                request,
+                                status_code,
+                                message,
+                                Some(trace_id.as_str()),
+                            );
                         }
                     }
                 }
@@ -529,6 +541,7 @@ pub(in super::super) fn proxy_validated_request(
                     response_adapter,
                     Some(&tool_name_restore_map),
                     client_is_stream,
+                    Some(trace_id.as_str()),
                 )?;
                 let bridge_output_text_len = bridge
                     .usage
@@ -646,5 +659,10 @@ pub(in super::super) fn proxy_validated_request(
     let request = request
         .take()
         .ok_or_else(|| "request already consumed".to_string())?;
-    respond_terminal(request, 503, "no available account".to_string())
+    respond_terminal(
+        request,
+        503,
+        "no available account".to_string(),
+        Some(trace_id.as_str()),
+    )
 }

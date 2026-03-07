@@ -99,15 +99,18 @@ pub(super) fn maybe_respond_local_count_tokens(
                 },
                 None,
             );
-            let response = Response::from_string(output)
-                .with_status_code(200)
-                .with_header(
-                    tiny_http::Header::from_bytes(
-                        b"content-type".as_slice(),
-                        b"application/json".as_slice(),
-                    )
-                    .map_err(|_| "build content-type header failed".to_string())?,
-                );
+            let response = super::error_response::with_trace_id_header(
+                Response::from_string(output)
+                    .with_status_code(200)
+                    .with_header(
+                        tiny_http::Header::from_bytes(
+                            b"content-type".as_slice(),
+                            b"application/json".as_slice(),
+                        )
+                        .map_err(|_| "build content-type header failed".to_string())?,
+                    ),
+                Some(trace_id),
+            );
             let _ = request.respond(response);
             Ok(None)
         }
@@ -134,7 +137,8 @@ pub(super) fn maybe_respond_local_count_tokens(
                 super::request_log::RequestLogUsage::default(),
                 Some(err.as_str()),
             );
-            let response = Response::from_string(err.clone()).with_status_code(400);
+            let response =
+                super::error_response::terminal_text_response(400, err.clone(), Some(trace_id));
             let _ = request.respond(response);
             Ok(None)
         }

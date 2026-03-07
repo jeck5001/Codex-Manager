@@ -1,4 +1,5 @@
 use super::*;
+use reqwest::header::HeaderValue;
 
 #[test]
 fn status_404_with_more_candidates_triggers_failover() {
@@ -62,4 +63,50 @@ fn status_429_on_last_candidate_keeps_upstream_response() {
         |_, _, _| {},
     );
     assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
+}
+
+#[test]
+fn challenge_with_more_candidates_triggers_failover() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let content_type = HeaderValue::from_static("text/html; charset=utf-8");
+    let decision = decide_upstream_outcome(
+        &storage,
+        "acc-challenge",
+        reqwest::StatusCode::FORBIDDEN,
+        Some(&content_type),
+        "https://chatgpt.com/backend-api/codex/responses",
+        true,
+        |_, _, _| {},
+    );
+    assert!(matches!(decision, UpstreamOutcomeDecision::Failover));
+}
+
+#[test]
+fn challenge_on_last_candidate_returns_terminal_502() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let content_type = HeaderValue::from_static("text/html; charset=utf-8");
+    let decision = decide_upstream_outcome(
+        &storage,
+        "acc-challenge",
+        reqwest::StatusCode::FORBIDDEN,
+        Some(&content_type),
+        "https://chatgpt.com/backend-api/codex/responses",
+        false,
+        |_, _, _| {},
+    );
+    match decision {
+        UpstreamOutcomeDecision::Terminal {
+            status_code,
+            message,
+        } => {
+            assert_eq!(status_code, 502);
+            assert!(
+                message.contains("Cloudflare/WAF"),
+                "unexpected message: {message}"
+            );
+        }
+        _ => panic!("expected terminal challenge block"),
+    }
 }

@@ -1,0 +1,46 @@
+use super::{terminal_text_response, with_trace_id_header};
+use tiny_http::Response;
+
+#[test]
+fn terminal_text_response_sets_error_code_header() {
+    let response = terminal_text_response(503, "no available account", Some("trc_test_1"));
+    let header = response
+        .headers()
+        .iter()
+        .find(|item| {
+            item.field
+                .as_str()
+                .as_str()
+                .eq_ignore_ascii_case(crate::error_codes::ERROR_CODE_HEADER_NAME)
+        })
+        .map(|item| item.value.as_str().to_string());
+
+    assert_eq!(header.as_deref(), Some("no_available_account"));
+    let trace_header = response
+        .headers()
+        .iter()
+        .find(|item| {
+            item.field
+                .as_str()
+                .as_str()
+                .eq_ignore_ascii_case(crate::error_codes::TRACE_ID_HEADER_NAME)
+        })
+        .map(|item| item.value.as_str().to_string());
+    assert_eq!(trace_header.as_deref(), Some("trc_test_1"));
+}
+
+#[test]
+fn with_trace_id_header_appends_trace_header() {
+    let response = with_trace_id_header(Response::from_string("ok"), Some("trc_ok_1"));
+    let trace_header = response
+        .headers()
+        .iter()
+        .find(|item| {
+            item.field
+                .as_str()
+                .as_str()
+                .eq_ignore_ascii_case(crate::error_codes::TRACE_ID_HEADER_NAME)
+        })
+        .map(|item| item.value.as_str().to_string());
+    assert_eq!(trace_header.as_deref(), Some("trc_ok_1"));
+}

@@ -378,13 +378,15 @@ pub(crate) fn log_attempt_result(
 ) {
     let ts = now_ts();
     let url = upstream_url.unwrap_or("-");
+    let code = crate::error_codes::code_or_dash(error);
     let error = error.unwrap_or("-");
     let line = format!(
-        "ts={ts} event=ATTEMPT_RESULT trace_id={} account_id={} status={} upstream_url={} error={}",
+        "ts={ts} event=ATTEMPT_RESULT trace_id={} account_id={} status={} upstream_url={} code={} error={}",
         sanitize_text(trace_id),
         sanitize_text(account_id),
         status_code,
         sanitize_text(url),
+        sanitize_text(code),
         sanitize_text(error),
     );
     append_trace_line(line, false);
@@ -478,14 +480,16 @@ pub(crate) fn log_request_final(
     let ts = now_ts();
     let account_id = final_account_id.unwrap_or("-");
     let upstream_url = upstream_url.unwrap_or("-");
+    let code = crate::error_codes::code_or_dash(error);
     let error = error.unwrap_or("-");
     let line = format!(
-        "ts={ts} event=REQUEST_FINAL trace_id={} status={} account_id={} upstream_url={} elapsed_ms={} error={}",
+        "ts={ts} event=REQUEST_FINAL trace_id={} status={} account_id={} upstream_url={} elapsed_ms={} code={} error={}",
         sanitize_text(trace_id),
         status_code,
         sanitize_text(account_id),
         sanitize_text(upstream_url),
         elapsed_ms,
+        sanitize_text(code),
         sanitize_text(error),
     );
     append_trace_line(line, true);

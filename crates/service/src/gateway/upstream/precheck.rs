@@ -1,5 +1,5 @@
 use codexmanager_core::storage::{Account, Storage, Token};
-use tiny_http::{Request, Response};
+use tiny_http::Request;
 
 pub(super) enum CandidatePrecheckResult {
     Ready {
@@ -45,7 +45,11 @@ pub(super) fn prepare_candidates_for_proxy(
                 super::super::request_log::RequestLogUsage::default(),
                 Some(err_text.as_str()),
             );
-            let response = Response::from_string(err_text.clone()).with_status_code(500);
+            let response = super::super::error_response::terminal_text_response(
+                500,
+                err_text.clone(),
+                Some(trace_id),
+            );
             let _ = request.respond(response);
             super::super::trace_log::log_request_final(
                 trace_id,
@@ -79,7 +83,11 @@ pub(super) fn prepare_candidates_for_proxy(
             super::super::request_log::RequestLogUsage::default(),
             Some("no available account"),
         );
-        let response = Response::from_string("no available account").with_status_code(503);
+        let response = super::super::error_response::terminal_text_response(
+            503,
+            "no available account",
+            Some(trace_id),
+        );
         let _ = request.respond(response);
         super::super::trace_log::log_request_final(
             trace_id,

@@ -14,6 +14,16 @@ pub(crate) fn text_response(status: StatusCode, body: impl Into<String>) -> Resp
     response
 }
 
+pub(crate) fn text_error_response(status: StatusCode, body: impl Into<String>) -> Response<Body> {
+    let body = body.into();
+    let mut response = text_response(status, body.clone());
+    response.headers_mut().insert(
+        crate::error_codes::ERROR_CODE_HEADER_NAME,
+        HeaderValue::from_static(crate::error_codes::code_for_message(body.as_str())),
+    );
+    response
+}
+
 pub(crate) fn merge_upstream_headers(
     mut builder: axum::http::response::Builder,
     headers: &reqwest::header::HeaderMap,

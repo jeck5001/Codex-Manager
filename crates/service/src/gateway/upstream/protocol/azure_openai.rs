@@ -2,7 +2,7 @@ use bytes::Bytes;
 use codexmanager_core::storage::Storage;
 use reqwest::header::{HeaderName, HeaderValue};
 use std::time::Instant;
-use tiny_http::{Request, Response};
+use tiny_http::Request;
 
 use crate::apikey_profile::PROTOCOL_AZURE_OPENAI;
 
@@ -39,8 +39,12 @@ fn has_api_key_header(headers: &[(HeaderName, HeaderValue)]) -> bool {
         .any(|(name, _)| name.as_str().eq_ignore_ascii_case("api-key"))
 }
 
-fn respond_error(request: Request, status: u16, message: &str) {
-    let response = Response::from_string(message.to_string()).with_status_code(status);
+fn respond_error(request: Request, status: u16, message: &str, trace_id: Option<&str>) {
+    let response = super::super::super::error_response::terminal_text_response(
+        status,
+        message.to_string(),
+        trace_id,
+    );
     let _ = request.respond(response);
 }
 
@@ -98,7 +102,7 @@ pub(in super::super) fn proxy_azure_request(
             super::super::super::request_log::RequestLogUsage::default(),
             Some(message),
         );
-        respond_error(request, 400, message);
+        respond_error(request, 400, message, Some(trace_id));
         return Ok(());
     };
 
@@ -137,7 +141,7 @@ pub(in super::super) fn proxy_azure_request(
                 super::super::super::request_log::RequestLogUsage::default(),
                 Some(err.as_str()),
             );
-            respond_error(request, 400, err.as_str());
+            respond_error(request, 400, err.as_str(), Some(trace_id));
             return Ok(());
         }
     };
@@ -180,7 +184,7 @@ pub(in super::super) fn proxy_azure_request(
                     super::super::super::request_log::RequestLogUsage::default(),
                     Some(message),
                 );
-                respond_error(request, 403, message);
+                respond_error(request, 403, message, Some(trace_id));
                 return Ok(());
             }
             Err(err) => {
@@ -217,7 +221,7 @@ pub(in super::super) fn proxy_azure_request(
                     super::super::super::request_log::RequestLogUsage::default(),
                     Some(message.as_str()),
                 );
-                respond_error(request, 500, message.as_str());
+                respond_error(request, 500, message.as_str(), Some(trace_id));
                 return Ok(());
             }
         };
@@ -336,7 +340,7 @@ pub(in super::super) fn proxy_azure_request(
                         super::super::super::request_log::RequestLogUsage::default(),
                         Some(message.as_str()),
                     );
-                    respond_error(request, 502, message.as_str());
+                    respond_error(request, 502, message.as_str(), Some(trace_id));
                     return Ok(());
                 }
             }
@@ -357,6 +361,7 @@ pub(in super::super) fn proxy_azure_request(
         response_adapter,
         Some(tool_name_restore_map),
         is_stream,
+        Some(trace_id),
     )?;
     let bridge_ok = bridge.is_ok(is_stream);
     let bridge_error = bridge.error_message(is_stream);

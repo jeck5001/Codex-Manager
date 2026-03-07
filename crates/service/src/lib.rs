@@ -53,6 +53,7 @@ mod auth_callback;
 mod auth_login;
 #[path = "auth/auth_tokens.rs"]
 mod auth_tokens;
+mod error_codes;
 mod gateway;
 mod http;
 mod lock_utils;

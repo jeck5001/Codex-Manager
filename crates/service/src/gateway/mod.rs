@@ -2,6 +2,7 @@ use crate::storage_helpers::open_storage;
 
 #[path = "routing/cooldown.rs"]
 mod cooldown;
+mod error_response;
 #[path = "routing/failover.rs"]
 mod failover;
 #[path = "observability/http_bridge.rs"]

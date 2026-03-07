@@ -16,6 +16,21 @@ const OUTPUT_TEXT_TRUNCATED_MARKER: &str = "[output_text truncated]";
 static OUTPUT_TEXT_LIMIT_BYTES: AtomicUsize = AtomicUsize::new(DEFAULT_OUTPUT_TEXT_LIMIT_BYTES);
 static OUTPUT_TEXT_LIMIT_LOADED: OnceLock<()> = OnceLock::new();
 
+fn push_trace_id_header(headers: &mut Vec<Header>, trace_id: &str) {
+    let Some(trace_id) = Some(trace_id)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return;
+    };
+    if let Ok(header) = Header::from_bytes(
+        crate::error_codes::TRACE_ID_HEADER_NAME.as_bytes(),
+        trace_id.as_bytes(),
+    ) {
+        headers.push(header);
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub(super) struct UpstreamResponseUsage {
     pub input_tokens: Option<i64>,
@@ -1225,6 +1240,7 @@ pub(super) fn respond_with_upstream(
     response_adapter: super::ResponseAdapter,
     tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
     is_stream: bool,
+    trace_id: Option<&str>,
 ) -> Result<UpstreamResponseBridgeResult, String> {
     match response_adapter {
         super::ResponseAdapter::Passthrough => {
@@ -1246,6 +1262,9 @@ pub(super) fn respond_with_upstream(
                 if let Ok(header) = Header::from_bytes(name_str.as_bytes(), value.as_bytes()) {
                     headers.push(header);
                 }
+            }
+            if let Some(trace_id) = trace_id {
+                push_trace_id_header(&mut headers, trace_id);
             }
             let is_json = upstream_content_type
                 .as_deref()
@@ -1381,6 +1400,9 @@ pub(super) fn respond_with_upstream(
                 if let Ok(header) = Header::from_bytes(name_str.as_bytes(), value.as_bytes()) {
                     headers.push(header);
                 }
+            }
+            if let Some(trace_id) = trace_id {
+                push_trace_id_header(&mut headers, trace_id);
             }
             let upstream_content_type = upstream
                 .headers()
@@ -1557,6 +1579,9 @@ pub(super) fn respond_with_upstream(
                 if let Ok(header) = Header::from_bytes(name_str.as_bytes(), value.as_bytes()) {
                     headers.push(header);
                 }
+            }
+            if let Some(trace_id) = trace_id {
+                push_trace_id_header(&mut headers, trace_id);
             }
             let upstream_content_type = upstream
                 .headers()
