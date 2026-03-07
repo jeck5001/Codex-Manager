@@ -269,6 +269,11 @@ fn anthropic_json_response_maps_from_openai_responses_shape() {
     assert_eq!(value["role"], "assistant");
     assert_eq!(value["usage"]["input_tokens"], 8);
     assert_eq!(value["usage"]["output_tokens"], 5);
+    assert_eq!(
+        value["content"].as_array().map(|items| items.len()),
+        Some(1)
+    );
+    assert_eq!(value["content"][0]["text"], "已完成");
 }
 
 #[test]
@@ -449,6 +454,45 @@ fn anthropic_sse_response_maps_openai_responses_completed_event() {
     assert!(text.contains("event: message_start"));
     assert!(text.contains("event: content_block_delta"));
     assert!(text.contains("event: message_stop"));
+    assert_eq!(text.matches("\"text\":\"你好\"").count(), 1);
+}
+
+#[test]
+fn anthropic_json_response_deduplicates_consecutive_identical_text_blocks() {
+    let upstream = serde_json::json!({
+        "id": "resp_dup_1",
+        "model": "gpt-5.3-codex",
+        "status": "completed",
+        "output": [
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    { "type": "output_text", "text": "重复计划" },
+                    { "type": "output_text", "text": "重复计划" }
+                ]
+            }
+        ],
+        "usage": {
+            "input_tokens": 3,
+            "output_tokens": 2
+        }
+    });
+    let upstream = serde_json::to_vec(&upstream).expect("serialize upstream");
+    let (body, content_type) = adapt_upstream_response(
+        ResponseAdapter::AnthropicJson,
+        Some("application/json"),
+        &upstream,
+    )
+    .expect("adapt response");
+    assert_eq!(content_type, "application/json");
+
+    let value: serde_json::Value = serde_json::from_slice(&body).expect("anthropic response");
+    assert_eq!(
+        value["content"].as_array().map(|items| items.len()),
+        Some(1)
+    );
+    assert_eq!(value["content"][0]["text"], "重复计划");
 }
 
 #[test]
