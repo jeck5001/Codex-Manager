@@ -605,13 +605,8 @@ async fn run_web_server(
     serve_on_listener(listener, app, shutdown_rx).await
 }
 
-#[tokio::main]
-async fn main() {
+async fn async_main() {
     // 先加载同目录 env / 默认 DB / RPC token 文件，做到“解压即用”。
-    codexmanager_service::portable::bootstrap_current_process();
-    let _ = codexmanager_service::initialize_storage_if_needed();
-    codexmanager_service::sync_runtime_settings_from_storage();
-
     let service_addr = resolve_service_addr();
     let web_addr = resolve_web_addr();
     let web_root = resolve_web_root();
@@ -677,7 +672,7 @@ async fn main() {
     let app = Router::new()
         .route("/__login", get(login_page).post(login_submit))
         .route("/__logout", get(logout))
-        .nest("/", protected_app)
+        .merge(protected_app)
         .with_state(state);
 
     println!("codexmanager-web listening on {web_addr} (service={service_addr})");
@@ -691,4 +686,15 @@ async fn main() {
         eprintln!("web stopped: {err}");
         std::process::exit(1);
     }
+}
+
+fn main() {
+    // 中文注释：这里会触发基于 reqwest::blocking 的运行时重载，必须放在 Tokio runtime 外执行，
+    // 否则 reqwest 内部 runtime drop 会在异步上下文里 panic。
+    codexmanager_service::portable::bootstrap_current_process();
+    let _ = codexmanager_service::initialize_storage_if_needed();
+    codexmanager_service::sync_runtime_settings_from_storage();
+
+    let runtime = tokio::runtime::Runtime::new().expect("create tokio runtime");
+    runtime.block_on(async_main());
 }
