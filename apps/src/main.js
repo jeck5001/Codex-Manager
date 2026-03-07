@@ -138,6 +138,7 @@ const ROUTE_STRATEGY_ORDERED = "ordered";
 const ROUTE_STRATEGY_BALANCED = "balanced";
 const SERVICE_LISTEN_MODE_LOOPBACK = "loopback";
 const SERVICE_LISTEN_MODE_ALL_INTERFACES = "all_interfaces";
+const UPSTREAM_PROXY_HINT_TEXT = "支持 http/https/socks5，留空直连，socks 会自动按 socks5h 处理。";
 const DEFAULT_BACKGROUND_TASKS_SETTINGS = {
   usagePollingEnabled: true,
   usagePollIntervalSecs: 600,
@@ -842,7 +843,7 @@ function setUpstreamProxyHint(message) {
 function initUpstreamProxySetting() {
   const proxyUrl = readUpstreamProxyUrlSetting();
   setUpstreamProxyInput(proxyUrl);
-  setUpstreamProxyHint("保存后立即生效。");
+  setUpstreamProxyHint(UPSTREAM_PROXY_HINT_TEXT);
 }
 
 function resolveUpstreamProxyUrlFromPayload(payload) {
@@ -868,7 +869,7 @@ async function applyUpstreamProxyToService(proxyUrl, { silent = true } = {}) {
     const applied = resolveUpstreamProxyUrlFromPayload(response);
     saveUpstreamProxyUrlSetting(applied);
     setUpstreamProxyInput(applied);
-    setUpstreamProxyHint("保存后立即生效。");
+    setUpstreamProxyHint(UPSTREAM_PROXY_HINT_TEXT);
     upstreamProxySyncedProbeId = state.serviceProbeId;
     if (!silent) {
       showToast(applied ? "上游代理已保存并生效" : "已清空上游代理，恢复直连");
@@ -2423,7 +2424,7 @@ function bindEvents() {
             await applyUpstreamProxyToService(resolved, { silent: false });
             return;
           }
-          setUpstreamProxyHint("保存后立即生效。");
+          setUpstreamProxyHint(UPSTREAM_PROXY_HINT_TEXT);
           showToast(resolved ? "上游代理已保存并生效" : "已清空上游代理，恢复直连");
         } catch (err) {
           saveUpstreamProxyUrlSetting(previousValue);
