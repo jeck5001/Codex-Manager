@@ -1,5 +1,8 @@
-use crate::app_settings::{get_persisted_app_setting, save_persisted_app_setting};
-use crate::{constant_time_eq, normalize_optional_text, APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY};
+use crate::app_settings::{
+    get_persisted_app_setting, normalize_optional_text, save_persisted_app_setting,
+    APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY,
+};
+use crate::rpc_auth::constant_time_eq;
 use rand::RngCore;
 use serde_json::Value;
 use sha2::{Digest, Sha256};

@@ -23,8 +23,9 @@
 /.worktrees/
 /.tmp-antigravity-manager*/
 
-# Docs/specs (keep repo clean)
-/docs/
+# Docs/specs
+/docs/**/*.tmp.md
+/docs/**/*.local.md
 /specs/
 
 # Logs & local data

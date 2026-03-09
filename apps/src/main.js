@@ -77,6 +77,8 @@ import { bindMainEvents } from "./views/event-bindings";
 import { bindSettingsEvents } from "./settings/bind-settings-events.js";
 import { createSettingsController } from "./settings/controller.js";
 import { createSettingsServiceSync } from "./settings/service-sync.js";
+import { createAppRuntime } from "./runtime/app-runtime.js";
+import { createBootstrapRunner } from "./runtime/app-bootstrap.js";
 
 const { showToast, showConfirmDialog } = createFeedbackHandlers({ dom });
 let settingsController = null;
@@ -145,15 +147,18 @@ const { switchPage, updateRequestLogFilterButtons } = createNavigationHandlers({
 });
 
 const { setStartupMask } = createStartupMaskController({ dom, state });
-const API_MODELS_REMOTE_REFRESH_STORAGE_KEY = "codexmanager.apikey.models.last_remote_refresh_at";
-const API_MODELS_REMOTE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const UPDATE_CHECK_DELAY_MS = 1200;
-let refreshAllInFlight = null;
-let refreshAllProgressClearTimer = null;
-let apiModelsRemoteRefreshInFlight = null;
 
 function isTauriRuntime() {
   return Boolean(window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke);
+}
+
+function normalizeErrorMessage(err) {
+  const raw = String(err && err.message ? err.message : err).trim();
+  if (!raw) {
+    return "未知错误";
+  }
+  return raw.length > 120 ? `${raw.slice(0, 120)}...` : raw;
 }
 
 settingsController = createSettingsController({
@@ -249,13 +254,49 @@ const {
   backgroundTasksRestartKeysDefault,
 } = settingsController;
 
-function normalizeErrorMessage(err) {
-  const raw = String(err && err.message ? err.message : err).trim();
-  if (!raw) {
-    return "未知错误";
-  }
-  return raw.length > 120 ? `${raw.slice(0, 120)}...` : raw;
-}
+const serviceLifecycle = createServiceLifecycle({
+  state,
+  dom,
+  setServiceHint,
+  normalizeAddr,
+  startService,
+  stopService,
+  waitForConnection,
+  refreshAll: () => refreshAll(),
+  maybeRefreshApiModelsCache: (options) => maybeRefreshApiModelsCache(options),
+  ensureAutoRefreshTimer,
+  stopAutoRefreshTimer,
+  onStartupState: (loading, message) => setStartupMask(loading, message),
+});
+
+const {
+  nextPaintTick,
+  maybeRefreshApiModelsCache,
+  refreshAll,
+  handleRefreshAllClick,
+  refreshAccountsAndUsage,
+} = createAppRuntime({
+  state,
+  dom,
+  ensureConnected,
+  refreshAccounts,
+  refreshAccountsPage,
+  refreshUsageList,
+  refreshApiKeys,
+  refreshApiModels,
+  refreshRequestLogs,
+  refreshRequestLogTodaySummary,
+  serviceUsageRefresh,
+  runRefreshTasks,
+  renderAccountsRefreshProgress,
+  setRefreshAllProgress,
+  clearRefreshAllProgress,
+  renderCurrentPageView,
+  showToast,
+  serviceLifecycle,
+  syncRuntimeSettingsForCurrentProbe,
+  populateApiKeyModelSelect,
+});
 
 const {
   handleCheckUpdateClick,
@@ -276,326 +317,6 @@ const {
   withButtonBusy,
   nextPaintTick,
   updateCheckDelayMs: UPDATE_CHECK_DELAY_MS,
-});
-
-function nextPaintTick() {
-  return new Promise((resolve) => {
-    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-      window.requestAnimationFrame(() => resolve());
-      return;
-    }
-    setTimeout(resolve, 0);
-  });
-}
-
-function readLastApiModelsRemoteRefreshAt() {
-  if (typeof localStorage === "undefined") {
-    return 0;
-  }
-  const raw = localStorage.getItem(API_MODELS_REMOTE_REFRESH_STORAGE_KEY);
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-function writeLastApiModelsRemoteRefreshAt(ts = Date.now()) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  localStorage.setItem(API_MODELS_REMOTE_REFRESH_STORAGE_KEY, String(Math.max(0, Math.floor(ts))));
-}
-
-function buildRefreshAllTasks(options = {}) {
-  const refreshRemoteUsage = options.refreshRemoteUsage === true;
-  const refreshRemoteModels = options.refreshRemoteModels === true;
-  return [
-    { name: "accounts", label: "账号列表", run: refreshAccounts },
-    { name: "usage", label: "账号用量", run: () => refreshUsageList({ refreshRemote: refreshRemoteUsage }) },
-    { name: "api-models", label: "模型列表", run: () => refreshApiModels({ refreshRemote: refreshRemoteModels }) },
-    { name: "api-keys", label: "平台密钥", run: refreshApiKeys },
-    { name: "request-logs", label: "请求日志", run: () => refreshRequestLogs(state.requestLogQuery) },
-    { name: "request-log-today-summary", label: "今日摘要", run: refreshRequestLogTodaySummary },
-  ];
-}
-
-function shouldRefreshApiModelsRemote(force = false) {
-  if (force) {
-    return true;
-  }
-  const hasLocalCache = Array.isArray(state.apiModelOptions) && state.apiModelOptions.length > 0;
-  if (!hasLocalCache) {
-    return true;
-  }
-  const lastRefreshAt = readLastApiModelsRemoteRefreshAt();
-  if (lastRefreshAt <= 0) {
-    return true;
-  }
-  return (Date.now() - lastRefreshAt) >= API_MODELS_REMOTE_REFRESH_INTERVAL_MS;
-}
-
-async function maybeRefreshApiModelsCache(options = {}) {
-  const force = options && options.force === true;
-  if (!shouldRefreshApiModelsRemote(force)) {
-    return false;
-  }
-  if (apiModelsRemoteRefreshInFlight) {
-    return apiModelsRemoteRefreshInFlight;
-  }
-  apiModelsRemoteRefreshInFlight = (async () => {
-    const connected = await ensureConnected();
-    if (!connected) {
-      return false;
-    }
-    await refreshApiModels({ refreshRemote: true });
-    writeLastApiModelsRemoteRefreshAt(Date.now());
-    if (dom.modalApiKey && dom.modalApiKey.classList.contains("active")) {
-      populateApiKeyModelSelect();
-    }
-    if (state.currentPage === "apikeys") {
-      renderCurrentPageView("apikeys");
-    }
-    return true;
-  })();
-  try {
-    return await apiModelsRemoteRefreshInFlight;
-  } catch (err) {
-    console.error("[api-models] remote refresh failed", err);
-    return false;
-  } finally {
-    apiModelsRemoteRefreshInFlight = null;
-  }
-}
-
-async function refreshAll(options = {}) {
-  if (refreshAllInFlight) {
-    return refreshAllInFlight;
-  }
-  refreshAllInFlight = (async () => {
-    const tasks = buildRefreshAllTasks(options);
-    const total = tasks.length;
-    let completed = 0;
-    const setProgress = (next) => {
-      renderAccountsRefreshProgress(setRefreshAllProgress(next));
-    };
-    setProgress({ active: true, manual: false, total, completed: 0, remaining: total, lastTaskLabel: "" });
-
-    const ok = await ensureConnected();
-    serviceLifecycle.updateServiceToggle();
-    if (!ok) return [];
-    await syncRuntimeSettingsForCurrentProbe();
-
-    // 中文注释：全并发会制造瞬时抖动（同时多次 RPC/DOM 更新）；这里改为有限并发并统一限流上限。
-    const results = await runRefreshTasks(
-      tasks.map((task) => ({
-        ...task,
-        run: async () => {
-          try {
-            return await task.run();
-          } finally {
-            completed += 1;
-            setProgress({
-              active: true,
-              manual: false,
-              total,
-              completed,
-              remaining: total - completed,
-              lastTaskLabel: task.label || task.name,
-            });
-            await nextPaintTick();
-          }
-        },
-      })),
-      (taskName, err) => {
-        console.error(`[refreshAll] ${taskName} failed`, err);
-      },
-      {
-        concurrency: options.concurrency,
-        taskTimeoutMs: options.taskTimeoutMs ?? 8000,
-      },
-    );
-    if (options.refreshRemoteModels === true) {
-      const modelTask = results.find((item) => item.name === "api-models");
-      if (modelTask && modelTask.status === "fulfilled") {
-        writeLastApiModelsRemoteRefreshAt(Date.now());
-      }
-    }
-    // 中文注释：并行刷新时允许“部分失败部分成功”，否则某个慢/失败接口会拖垮整页刷新体验。
-    const failedTasks = results.filter((item) => item.status === "rejected");
-    if (failedTasks.length > 0) {
-      const taskLabelMap = new Map(tasks.map((task) => [task.name, task.label || task.name]));
-      const failedLabels = [...new Set(failedTasks.map((task) => taskLabelMap.get(task.name) || task.name))];
-      const failedLabelText = failedLabels.length > 3
-        ? `${failedLabels.slice(0, 3).join("、")} 等${failedLabels.length}项`
-        : failedLabels.join("、");
-      const firstFailedMessage = normalizeErrorMessage(failedTasks[0].reason);
-      // 中文注释：自动刷新触发的失败仅记日志，避免每分钟弹错打断；手动刷新才提示具体失败项。
-      if (options.manual === true) {
-        const detail = firstFailedMessage ? `（示例错误：${firstFailedMessage}）` : "";
-        showToast(`部分数据刷新失败：${failedLabelText}，已展示可用数据${detail}`, "error");
-      } else {
-        console.warn(
-          `[refreshAll] 部分失败：${failedLabelText}；首个错误：${firstFailedMessage || "未知"}`,
-        );
-      }
-    }
-    renderCurrentPageView();
-  })();
-  try {
-    return await refreshAllInFlight;
-  } finally {
-    refreshAllInFlight = null;
-    if (refreshAllProgressClearTimer) {
-      clearTimeout(refreshAllProgressClearTimer);
-    }
-    refreshAllProgressClearTimer = setTimeout(() => {
-      renderAccountsRefreshProgress(clearRefreshAllProgress());
-      refreshAllProgressClearTimer = null;
-    }, 450);
-  }
-}
-
-async function handleRefreshAllClick() {
-  await withButtonBusy(dom.refreshAll, "刷新中...", async () => {
-    // 中文注释：先让浏览器绘制 loading 态，避免用户感知“点击后卡住”。
-    if (refreshAllProgressClearTimer) {
-      clearTimeout(refreshAllProgressClearTimer);
-      refreshAllProgressClearTimer = null;
-    }
-    renderAccountsRefreshProgress(setRefreshAllProgress({
-      active: true,
-      manual: true,
-      total: 1,
-      completed: 0,
-      remaining: 1,
-      lastTaskLabel: "",
-    }));
-    await nextPaintTick();
-    const ok = await ensureConnected();
-    serviceLifecycle.updateServiceToggle();
-    if (!ok) {
-      return;
-    }
-    let accounts = Array.isArray(state.accountList) ? state.accountList.filter((item) => item && item.id) : [];
-  if (accounts.length === 0) {
-    try {
-      await refreshAccounts();
-      await refreshAccountsPage({ latestOnly: true }).catch(() => false);
-    } catch (err) {
-      console.error("[refreshUsageOnly] load accounts failed", err);
-    }
-      accounts = Array.isArray(state.accountList) ? state.accountList.filter((item) => item && item.id) : [];
-    }
-    const total = accounts.length;
-    if (total <= 0) {
-      renderAccountsRefreshProgress(setRefreshAllProgress({
-        active: true,
-        manual: true,
-        total: 1,
-        completed: 1,
-        remaining: 0,
-        lastTaskLabel: "无可刷新账号",
-      }));
-      return;
-    }
-    renderAccountsRefreshProgress(setRefreshAllProgress({
-      active: true,
-      manual: true,
-      total,
-      completed: 0,
-      remaining: total,
-      lastTaskLabel: "",
-    }));
-
-    let completed = 0;
-    let failed = 0;
-    try {
-      for (const account of accounts) {
-        const label = String(account.label || account.id || "").trim() || "未知账号";
-        try {
-          await serviceUsageRefresh(account.id);
-        } catch (err) {
-          failed += 1;
-          console.error(`[refreshUsageOnly] account refresh failed: ${account.id}`, err);
-        } finally {
-          completed += 1;
-          renderAccountsRefreshProgress(setRefreshAllProgress({
-            active: true,
-            manual: true,
-            total,
-            completed,
-            remaining: Math.max(0, total - completed),
-            lastTaskLabel: label,
-          }));
-        }
-      }
-      await refreshUsageList({ refreshRemote: false });
-      renderCurrentPageView("accounts");
-      if (failed > 0) {
-        showToast(`用量刷新完成，失败 ${failed}/${total}`, "error");
-      }
-    } catch (err) {
-      console.error("[refreshUsageOnly] failed", err);
-      showToast("账号用量刷新失败，请稍后重试", "error");
-    } finally {
-      if (refreshAllProgressClearTimer) {
-        clearTimeout(refreshAllProgressClearTimer);
-      }
-      refreshAllProgressClearTimer = setTimeout(() => {
-        renderAccountsRefreshProgress(clearRefreshAllProgress());
-        refreshAllProgressClearTimer = null;
-      }, 450);
-    }
-  });
-}
-
-async function refreshAccountsAndUsage() {
-  const options = arguments[0] || {};
-  const includeUsage = options.includeUsage !== false;
-  const includeAccountPage = options.includeAccountPage !== false && state.currentPage === "accounts";
-  const ok = await ensureConnected();
-  serviceLifecycle.updateServiceToggle();
-  if (!ok) return false;
-
-  const tasks = [{ name: "accounts", run: refreshAccounts }];
-  if (includeUsage) {
-    tasks.push({ name: "usage", run: refreshUsageList });
-  }
-  const results = await runRefreshTasks(
-    tasks,
-    (taskName, err) => {
-      console.error(`[refreshAccountsAndUsage] ${taskName} failed`, err);
-    },
-    {
-      taskTimeoutMs: options.taskTimeoutMs ?? 8000,
-    },
-  );
-  const failed = results.some((item) => item.status === "rejected");
-  if (failed) {
-    return false;
-  }
-  if (includeAccountPage) {
-    try {
-      await refreshAccountsPage({ latestOnly: true });
-    } catch (err) {
-      console.error("[refreshAccountsAndUsage] account-page failed", err);
-      return false;
-    }
-  }
-  return true;
-}
-
-const serviceLifecycle = createServiceLifecycle({
-  state,
-  dom,
-  setServiceHint,
-  normalizeAddr,
-  startService,
-  stopService,
-  waitForConnection,
-  refreshAll,
-  maybeRefreshApiModelsCache,
-  ensureAutoRefreshTimer,
-  stopAutoRefreshTimer,
-  onStartupState: (loading, message) => setStartupMask(loading, message),
 });
 
 settingsServiceSync = createSettingsServiceSync({
@@ -842,47 +563,35 @@ function bindEvents() {
   });
 }
 
-async function bootstrap() {
-  setStartupMask(true, "正在初始化界面...");
-  setStatus("", false);
-  await loadAppSettings();
-  const browserMode = applyBrowserModeUi();
-  setServiceHint(browserMode ? "浏览器模式：请先启动 codexmanager-service" : "请输入端口并点击启动", false);
-  renderThemeButtons();
-  const initialSettings = getAppSettingsSnapshot();
-  restoreTheme(initialSettings.theme);
-  initLowTransparencySetting();
-  initUpdateAutoCheckSetting();
-  initCloseToTrayOnCloseSetting();
-  initLightweightModeOnCloseToTraySetting();
-  initServiceListenModeSetting();
-  initRouteStrategySetting();
-  initCpaNoCookieHeaderModeSetting();
-  initUpstreamProxySetting();
-  initBackgroundTasksSetting();
-  initEnvOverridesSetting();
-  updateWebAccessPasswordState(initialSettings.webAccessPasswordConfigured);
-  void bootstrapUpdateStatus();
-  serviceLifecycle.restoreServiceAddr();
-  serviceLifecycle.updateServiceToggle();
-  bindEvents();
-  renderCurrentPageView();
-  updateRequestLogFilterButtons();
-  scheduleStartupUpdateCheck();
-  void serviceLifecycle.autoStartService()
-    .catch((err) => {
-      console.error("[bootstrap] autoStartService failed", err);
-    })
-    .finally(() => {
-      setStartupMask(false);
-      void syncServiceListenModeOnStartup().catch((err) => {
-        console.error("[bootstrap] syncServiceListenModeOnStartup failed", err);
-      });
-      void syncRuntimeSettingsOnStartup().catch((err) => {
-        console.error("[bootstrap] syncRuntimeSettingsOnStartup failed", err);
-      });
-    });
-}
+const bootstrap = createBootstrapRunner({
+  setStartupMask,
+  setStatus,
+  loadAppSettings,
+  applyBrowserModeUi,
+  setServiceHint,
+  renderThemeButtons,
+  getAppSettingsSnapshot,
+  restoreTheme,
+  initLowTransparencySetting,
+  initUpdateAutoCheckSetting,
+  initCloseToTrayOnCloseSetting,
+  initLightweightModeOnCloseToTraySetting,
+  initServiceListenModeSetting,
+  initRouteStrategySetting,
+  initCpaNoCookieHeaderModeSetting,
+  initUpstreamProxySetting,
+  initBackgroundTasksSetting,
+  initEnvOverridesSetting,
+  updateWebAccessPasswordState,
+  bootstrapUpdateStatus,
+  serviceLifecycle,
+  bindEvents,
+  renderCurrentPageView,
+  updateRequestLogFilterButtons,
+  scheduleStartupUpdateCheck,
+  syncServiceListenModeOnStartup,
+  syncRuntimeSettingsOnStartup,
+});
 
 window.addEventListener("DOMContentLoaded", () => {
   void bootstrap();

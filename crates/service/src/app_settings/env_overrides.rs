@@ -537,7 +537,7 @@ fn env_override_original_process_value(key: &str) -> Option<String> {
         return value.clone();
     }
     drop(baseline);
-    crate::normalize_optional_text(std::env::var(key).ok().as_deref())
+    super::normalize_optional_text(std::env::var(key).ok().as_deref())
 }
 
 fn env_override_default_value(key: &str) -> String {
@@ -557,7 +557,7 @@ fn env_override_default_snapshot() -> BTreeMap<String, String> {
 }
 
 fn persisted_env_overrides(mut normalized: BTreeMap<String, String>) -> BTreeMap<String, String> {
-    let Some(raw) = super::get_persisted_app_setting(crate::APP_SETTING_ENV_OVERRIDES_KEY) else {
+    let Some(raw) = super::get_persisted_app_setting(super::APP_SETTING_ENV_OVERRIDES_KEY) else {
         return normalized;
     };
     let Ok(parsed) = serde_json::from_str::<serde_json::Map<String, Value>>(&raw) else {
@@ -595,7 +595,7 @@ pub(crate) fn current_env_overrides() -> BTreeMap<String, String> {
 pub(crate) fn save_env_overrides_value(overrides: &BTreeMap<String, String>) -> Result<(), String> {
     let raw = serde_json::to_string(overrides)
         .map_err(|err| format!("serialize env overrides failed: {err}"))?;
-    super::save_persisted_app_setting(crate::APP_SETTING_ENV_OVERRIDES_KEY, Some(&raw))
+    super::save_persisted_app_setting(super::APP_SETTING_ENV_OVERRIDES_KEY, Some(&raw))
 }
 
 pub(crate) fn apply_env_overrides_to_process(
@@ -614,7 +614,7 @@ pub(crate) fn apply_env_overrides_to_process(
     for key in &all_keys {
         baseline
             .entry(key.clone())
-            .or_insert_with(|| crate::normalize_optional_text(std::env::var(key).ok().as_deref()));
+            .or_insert_with(|| super::normalize_optional_text(std::env::var(key).ok().as_deref()));
     }
 
     for key in all_keys {

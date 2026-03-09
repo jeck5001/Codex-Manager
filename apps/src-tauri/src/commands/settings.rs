@@ -1,8 +1,11 @@
-use crate::{
-    apply_runtime_storage_env, rpc_call_in_background, CLOSE_TO_TRAY_ON_CLOSE,
-    KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE, LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY, TRAY_AVAILABLE,
-};
 use std::sync::atomic::Ordering;
+
+use crate::app_shell::{
+    CLOSE_TO_TRAY_ON_CLOSE, KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE,
+    LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY, TRAY_AVAILABLE,
+};
+use crate::app_storage::apply_runtime_storage_env;
+use crate::commands::shared::rpc_call_in_background;
 
 #[tauri::command]
 pub async fn service_listen_config_get(
