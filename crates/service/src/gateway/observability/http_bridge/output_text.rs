@@ -338,3 +338,116 @@ pub(super) fn parse_usage_from_json(value: &Value) -> UpstreamResponseUsage {
     usage.output_text = extract_output_text_from_json(value);
     usage
 }
+
+pub(super) fn extract_error_message_from_json(value: &Value) -> Option<String> {
+    fn extract_message_from_error_map(err_obj: &Map<String, Value>) -> Option<String> {
+        let message = err_obj
+            .get("message")
+            .and_then(Value::as_str)
+            .or_else(|| err_obj.get("error").and_then(Value::as_str))
+            .map(str::trim)
+            .filter(|msg| !msg.is_empty());
+        let code = err_obj
+            .get("code")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        let kind = err_obj
+            .get("type")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        let param = err_obj
+            .get("param")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+
+        if let Some(message) = message {
+            let mut prefixes = Vec::new();
+            if let Some(code) = code {
+                prefixes.push(format!("code={code}"));
+            }
+            if let Some(kind) = kind {
+                prefixes.push(format!("type={kind}"));
+            }
+            if let Some(param) = param {
+                prefixes.push(format!("param={param}"));
+            }
+            return if prefixes.is_empty() {
+                Some(message.to_string())
+            } else {
+                Some(format!("{} {}", prefixes.join(" "), message))
+            };
+        }
+
+        serde_json::to_string(err_obj)
+            .ok()
+            .map(|text| text.trim().to_string())
+            .filter(|v| !v.is_empty())
+    }
+
+    fn extract_message_from_error_value(err_value: Option<&Value>) -> Option<String> {
+        let err_value = err_value?;
+        if let Some(message) = err_value.as_str() {
+            let msg = message.trim();
+            if !msg.is_empty() {
+                return Some(msg.to_string());
+            }
+            return None;
+        }
+        if let Some(err_obj) = err_value.as_object() {
+            return extract_message_from_error_map(err_obj);
+        }
+        None
+    }
+
+    if let Some(message) = extract_message_from_error_value(value.get("error")) {
+        return Some(message);
+    }
+    if let Some(message) = extract_message_from_error_value(value.pointer("/response/error")) {
+        return Some(message);
+    }
+    if let Some(message) =
+        extract_message_from_error_value(value.pointer("/response/status_details/error"))
+    {
+        return Some(message);
+    }
+    if value
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|t| t.eq_ignore_ascii_case("error"))
+    {
+        if let Some(message) = value.get("message").and_then(Value::as_str) {
+            let msg = message.trim();
+            if !msg.is_empty() {
+                return Some(msg.to_string());
+            }
+        }
+    }
+    None
+}
+
+pub(super) fn extract_error_hint_from_body(status_code: u16, body: &[u8]) -> Option<String> {
+    if status_code < 400 || body.is_empty() {
+        return None;
+    }
+    if let Ok(value) = serde_json::from_slice::<Value>(body) {
+        if let Some(message) = extract_error_message_from_json(&value) {
+            return Some(message);
+        }
+    }
+    std::str::from_utf8(body)
+        .ok()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(|text| {
+            let mut chars = text.chars();
+            let snippet = chars.by_ref().take(240).collect::<String>();
+            if chars.next().is_some() {
+                format!("{snippet}...")
+            } else {
+                snippet
+            }
+        })
+}
