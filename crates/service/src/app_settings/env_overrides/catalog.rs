@@ -1,7 +1,5 @@
 use codexmanager_core::auth::{DEFAULT_CLIENT_ID, DEFAULT_ISSUER, DEFAULT_ORIGINATOR};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::sync::{Mutex, OnceLock};
 
 const ENV_OVERRIDE_SCOPE_SERVICE: &str = "service";
 const ENV_OVERRIDE_SCOPE_DESKTOP: &str = "desktop";
@@ -34,23 +32,13 @@ const APP_SETTINGS_ENV_RESERVED_KEYS: &[&str] = &[
     "CODEXMANAGER_HTTP_STREAM_WORKER_MIN",
 ];
 
-pub(crate) fn env_override_reserved_keys() -> &'static [&'static str] {
-    APP_SETTINGS_ENV_RESERVED_KEYS
-}
-
-pub(crate) fn env_override_unsupported_keys() -> &'static [&'static str] {
-    APP_SETTINGS_ENV_UNSUPPORTED_KEYS
-}
-
-static ENV_OVERRIDE_BASELINE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
-
 #[derive(Clone, Copy)]
-struct EnvOverrideCatalogItem {
-    key: &'static str,
-    label: &'static str,
-    scope: &'static str,
-    apply_mode: &'static str,
-    default_value: &'static str,
+pub(super) struct EnvOverrideCatalogItem {
+    pub(super) key: &'static str,
+    pub(super) label: &'static str,
+    pub(super) scope: &'static str,
+    pub(super) apply_mode: &'static str,
+    pub(super) default_value: &'static str,
 }
 
 impl EnvOverrideCatalogItem {
@@ -71,7 +59,7 @@ impl EnvOverrideCatalogItem {
     }
 }
 
-const ENV_OVERRIDE_CATALOG: &[EnvOverrideCatalogItem] = &[
+pub(super) const ENV_OVERRIDE_CATALOG: &[EnvOverrideCatalogItem] = &[
     EnvOverrideCatalogItem::new(
         "CODEXMANAGER_ACCOUNT_IMPORT_BATCH_SIZE",
         "账号导入批大小",
@@ -431,6 +419,36 @@ const ENV_OVERRIDE_CATALOG: &[EnvOverrideCatalogItem] = &[
     ),
 ];
 
+pub(crate) fn env_override_reserved_keys() -> &'static [&'static str] {
+    APP_SETTINGS_ENV_RESERVED_KEYS
+}
+
+pub(crate) fn env_override_unsupported_keys() -> &'static [&'static str] {
+    APP_SETTINGS_ENV_UNSUPPORTED_KEYS
+}
+
+pub(super) fn env_override_catalog_item(key: &str) -> Option<&'static EnvOverrideCatalogItem> {
+    ENV_OVERRIDE_CATALOG
+        .iter()
+        .find(|item| item.key.eq_ignore_ascii_case(key))
+}
+
+pub(super) fn is_env_override_catalog_key(key: &str) -> bool {
+    env_override_catalog_item(key).is_some()
+}
+
+pub(super) fn is_env_override_unsupported_key(key: &str) -> bool {
+    APP_SETTINGS_ENV_UNSUPPORTED_KEYS
+        .iter()
+        .any(|item| item.eq_ignore_ascii_case(key))
+}
+
+pub(super) fn is_env_override_reserved_key(key: &str) -> bool {
+    APP_SETTINGS_ENV_RESERVED_KEYS
+        .iter()
+        .any(|item| item.eq_ignore_ascii_case(key))
+}
+
 pub(crate) fn env_override_catalog_value() -> Vec<Value> {
     ENV_OVERRIDE_CATALOG
         .iter()
@@ -440,238 +458,8 @@ pub(crate) fn env_override_catalog_value() -> Vec<Value> {
                 "label": item.label,
                 "scope": item.scope,
                 "applyMode": item.apply_mode,
-                "defaultValue": env_override_default_value(item.key),
+                "defaultValue": super::snapshot::env_override_default_value(item.key),
             })
         })
         .collect()
-}
-
-fn env_override_baseline() -> &'static Mutex<HashMap<String, Option<String>>> {
-    ENV_OVERRIDE_BASELINE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn env_override_catalog_item(key: &str) -> Option<&'static EnvOverrideCatalogItem> {
-    ENV_OVERRIDE_CATALOG
-        .iter()
-        .find(|item| item.key.eq_ignore_ascii_case(key))
-}
-
-fn is_env_override_catalog_key(key: &str) -> bool {
-    env_override_catalog_item(key).is_some()
-}
-
-fn is_env_override_unsupported_key(key: &str) -> bool {
-    APP_SETTINGS_ENV_UNSUPPORTED_KEYS
-        .iter()
-        .any(|item| item.eq_ignore_ascii_case(key))
-}
-
-fn is_env_override_reserved_key(key: &str) -> bool {
-    APP_SETTINGS_ENV_RESERVED_KEYS
-        .iter()
-        .any(|item| item.eq_ignore_ascii_case(key))
-}
-
-fn normalize_env_override_key(raw: &str) -> Result<String, String> {
-    let normalized = raw.trim().to_ascii_uppercase();
-    if normalized.is_empty() {
-        return Err("environment variable key is empty".to_string());
-    }
-    if !normalized.starts_with("CODEXMANAGER_") {
-        return Err(format!("{normalized} must start with CODEXMANAGER_"));
-    }
-    if !normalized
-        .chars()
-        .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
-    {
-        return Err(format!("{normalized} contains unsupported characters"));
-    }
-    if is_env_override_unsupported_key(&normalized) {
-        return Err(format!(
-            "{normalized} must stay in process/.env because it is required before app_settings can be loaded"
-        ));
-    }
-    if is_env_override_reserved_key(&normalized) {
-        return Err(format!(
-            "{normalized} is already managed by an existing settings card; update it there instead"
-        ));
-    }
-    Ok(normalized)
-}
-
-fn normalize_env_override_patch_value(raw: Option<&str>) -> Option<String> {
-    raw.map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-}
-
-fn normalize_saved_env_override_text(raw: &str) -> String {
-    raw.trim().to_string()
-}
-
-fn normalize_env_overrides_patch(
-    overrides: HashMap<String, String>,
-) -> Result<BTreeMap<String, Option<String>>, String> {
-    let mut normalized = BTreeMap::new();
-    for (raw_key, raw_value) in overrides {
-        let key = normalize_env_override_key(&raw_key)?;
-        normalized.insert(key, normalize_env_override_patch_value(Some(&raw_value)));
-    }
-    Ok(normalized)
-}
-
-fn parse_saved_env_override_value(value: &Value) -> Option<String> {
-    match value {
-        Value::String(text) => Some(normalize_saved_env_override_text(text)),
-        Value::Number(number) => Some(number.to_string()),
-        Value::Bool(flag) => Some(if *flag { "1" } else { "0" }.to_string()),
-        Value::Null => None,
-        _ => None,
-    }
-}
-
-fn env_override_original_process_value(key: &str) -> Option<String> {
-    let baseline =
-        crate::lock_utils::lock_recover(env_override_baseline(), "env_override_baseline");
-    if let Some(value) = baseline.get(key) {
-        return value.clone();
-    }
-    drop(baseline);
-    super::normalize_optional_text(std::env::var(key).ok().as_deref())
-}
-
-fn env_override_default_value(key: &str) -> String {
-    env_override_original_process_value(key).unwrap_or_else(|| {
-        env_override_catalog_item(key)
-            .map(|item| item.default_value.to_string())
-            .unwrap_or_default()
-    })
-}
-
-fn env_override_default_snapshot() -> BTreeMap<String, String> {
-    let mut snapshot = BTreeMap::new();
-    for item in ENV_OVERRIDE_CATALOG {
-        snapshot.insert(item.key.to_string(), env_override_default_value(item.key));
-    }
-    snapshot
-}
-
-fn persisted_env_overrides(mut normalized: BTreeMap<String, String>) -> BTreeMap<String, String> {
-    let Some(raw) = super::get_persisted_app_setting(super::APP_SETTING_ENV_OVERRIDES_KEY) else {
-        return normalized;
-    };
-    let Ok(parsed) = serde_json::from_str::<serde_json::Map<String, Value>>(&raw) else {
-        log::warn!("parse persisted env overrides failed: invalid json");
-        return normalized;
-    };
-
-    for (raw_key, raw_value) in parsed {
-        let Ok(key) = normalize_env_override_key(&raw_key) else {
-            log::warn!(
-                "skip persisted env override: key={} invalid",
-                raw_key.trim()
-            );
-            continue;
-        };
-        if let Some(value) = parse_saved_env_override_value(&raw_value) {
-            if is_env_override_catalog_key(&key) || !value.is_empty() {
-                normalized.insert(key, value);
-            } else {
-                normalized.remove(&key);
-            }
-        }
-    }
-    normalized
-}
-
-pub(crate) fn persisted_env_overrides_only() -> BTreeMap<String, String> {
-    persisted_env_overrides(BTreeMap::new())
-}
-
-pub(crate) fn current_env_overrides() -> BTreeMap<String, String> {
-    persisted_env_overrides(env_override_default_snapshot())
-}
-
-pub(crate) fn save_env_overrides_value(overrides: &BTreeMap<String, String>) -> Result<(), String> {
-    let raw = serde_json::to_string(overrides)
-        .map_err(|err| format!("serialize env overrides failed: {err}"))?;
-    super::save_persisted_app_setting(super::APP_SETTING_ENV_OVERRIDES_KEY, Some(&raw))
-}
-
-pub(crate) fn apply_env_overrides_to_process(
-    previous: &BTreeMap<String, String>,
-    next: &BTreeMap<String, String>,
-) {
-    let mut all_keys = BTreeSet::new();
-    all_keys.extend(previous.keys().cloned());
-    all_keys.extend(next.keys().cloned());
-    if all_keys.is_empty() {
-        return;
-    }
-
-    let mut baseline =
-        crate::lock_utils::lock_recover(env_override_baseline(), "env_override_baseline");
-    for key in &all_keys {
-        baseline
-            .entry(key.clone())
-            .or_insert_with(|| super::normalize_optional_text(std::env::var(key).ok().as_deref()));
-    }
-
-    for key in all_keys {
-        if let Some(value) = next.get(&key) {
-            if value.trim().is_empty() {
-                if let Some(original) = baseline.get(&key).and_then(|value| value.clone()) {
-                    std::env::set_var(&key, original);
-                } else {
-                    std::env::remove_var(&key);
-                }
-            } else {
-                std::env::set_var(&key, value);
-            }
-            continue;
-        }
-        if let Some(original) = baseline.get(&key).and_then(|value| value.clone()) {
-            std::env::set_var(&key, original);
-        } else {
-            std::env::remove_var(&key);
-        }
-    }
-}
-
-pub(crate) fn reload_runtime_after_env_override_apply() {
-    crate::gateway::reload_runtime_config_from_env();
-    crate::usage_refresh::reload_background_tasks_runtime_from_env();
-    crate::usage_http::reload_usage_http_client_from_env();
-}
-
-pub(crate) fn set_env_overrides(
-    overrides: HashMap<String, String>,
-) -> Result<BTreeMap<String, String>, String> {
-    let previous = current_env_overrides();
-    let patch = normalize_env_overrides_patch(overrides)?;
-    let mut next = if patch.is_empty() {
-        env_override_default_snapshot()
-    } else {
-        previous.clone()
-    };
-
-    for (key, value) in patch {
-        if let Some(value) = value {
-            next.insert(key, value);
-        } else if is_env_override_catalog_key(&key) {
-            next.insert(key.clone(), env_override_default_value(&key));
-        } else {
-            next.remove(&key);
-        }
-    }
-
-    for item in ENV_OVERRIDE_CATALOG {
-        next.entry(item.key.to_string())
-            .or_insert_with(|| env_override_default_value(item.key));
-    }
-
-    save_env_overrides_value(&next)?;
-    apply_env_overrides_to_process(&previous, &next);
-    reload_runtime_after_env_override_apply();
-    Ok(next)
 }
