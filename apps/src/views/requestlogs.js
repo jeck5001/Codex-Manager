@@ -15,6 +15,12 @@ import {
   resolveAccountDisplayName,
   resolveDisplayRequestPath,
 } from "./requestlogs/selectors.js";
+import {
+  appendAtLeastOneBatch,
+  appendNearBottomBatches,
+  appendRequestLogBatch,
+  isNearBottom,
+} from "./requestlogs/virtual-list.js";
 
 const REQUEST_LOG_BATCH_SIZE = 80;
 const REQUEST_LOG_DOM_LIMIT = 240;
@@ -42,39 +48,7 @@ const requestLogWindowState = {
   hasRendered: false,
 };
 
-function getRowHeight(row) {
-  if (!row) return REQUEST_LOG_FALLBACK_ROW_HEIGHT;
-  if (typeof row.getBoundingClientRect === "function") {
-    const rectHeight = Number(row.getBoundingClientRect().height);
-    if (Number.isFinite(rectHeight) && rectHeight > 0) {
-      return rectHeight;
-    }
-  }
-  const offsetHeight = Number(row.offsetHeight);
-  if (Number.isFinite(offsetHeight) && offsetHeight > 0) {
-    return offsetHeight;
-  }
-  return REQUEST_LOG_FALLBACK_ROW_HEIGHT;
-}
-
-function updateTopSpacer() {
-  const spacerRow = requestLogWindowState.topSpacerRow;
-  const spacerCell = requestLogWindowState.topSpacerCell;
-  if (!spacerRow || !spacerCell) return;
-  const height = Math.max(0, Math.round(requestLogWindowState.topSpacerHeight));
-  spacerRow.hidden = height <= 0;
-  spacerCell.style.height = `${height}px`;
-}
-
-function appendRequestLogBatch() {
-  if (!dom.requestLogRows) return false;
-  const start = requestLogWindowState.nextIndex;
-  if (start >= requestLogWindowState.filtered.length) return false;
-  const end = Math.min(
-    start + REQUEST_LOG_BATCH_SIZE,
-    requestLogWindowState.filtered.length,
-  );
-  const fragment = document.createDocumentFragment();
+function createRowRenderer() {
   const accountLabelById = requestLogWindowState.accountLabelById;
   const rowRenderHelpers = {
     resolveAccountDisplayName: (item) =>
@@ -83,75 +57,19 @@ function appendRequestLogBatch() {
     resolveDisplayRequestPath,
     buildRequestRouteMeta,
   };
-  for (let i = start; i < end; i += 1) {
-    fragment.appendChild(
-      createRequestLogRow(requestLogWindowState.filtered[i], i, rowRenderHelpers),
-    );
-  }
-  dom.requestLogRows.appendChild(fragment);
-  requestLogWindowState.nextIndex = end;
-  recycleLogRowsIfNeeded();
-  return true;
+  return (item, index) => createRequestLogRow(item, index, rowRenderHelpers);
 }
 
-function appendNearBottomBatches(scroller, maxBatches = REQUEST_LOG_NEAR_BOTTOM_MAX_BATCHES) {
-  let appended = false;
-  let rounds = 0;
-  while (
-    rounds < maxBatches &&
-    isNearBottom(scroller) &&
-    appendRequestLogBatch()
-  ) {
-    appended = true;
-    rounds += 1;
-  }
-  return appended;
-}
-
-function appendAtLeastOneBatch(scroller, extraMaxBatches = REQUEST_LOG_NEAR_BOTTOM_MAX_BATCHES - 1) {
-  const appended = appendRequestLogBatch();
-  if (!appended) return false;
-  if (extraMaxBatches > 0) {
-    appendNearBottomBatches(scroller, extraMaxBatches);
-  }
-  return true;
-}
-
-function recycleLogRowsIfNeeded() {
-  if (!dom.requestLogRows) return;
-  const rows = [];
-  for (const child of dom.requestLogRows.children) {
-    if (child?.dataset?.logRow === "1") {
-      rows.push(child);
-    }
-  }
-  if (rows.length <= REQUEST_LOG_DOM_LIMIT) {
-    return;
-  }
-  const removeCount = rows.length - REQUEST_LOG_DOM_RECYCLE_TO;
-  // 中文注释：避免对每一行调用 getBoundingClientRect/offsetHeight（强制同步布局，滚动时很容易卡顿）。
-  // 这里抽样一行高度来估算回收高度即可；配合 error/path 的摘要展示，行高波动很小。
-  const sampleHeight = getRowHeight(rows[0]);
-  if (Number.isFinite(sampleHeight) && sampleHeight > 0) {
-    requestLogWindowState.recycledRowHeight = sampleHeight;
-  }
-  const removedHeight = requestLogWindowState.recycledRowHeight * removeCount;
-  for (let i = 0; i < removeCount; i += 1) {
-    rows[i].remove();
-  }
-  requestLogWindowState.topSpacerHeight += removedHeight;
-  updateTopSpacer();
-}
-
-function isNearBottom(scroller) {
-  if (!scroller) return false;
-  const scrollTop = Number(scroller.scrollTop);
-  const clientHeight = Number(scroller.clientHeight);
-  const scrollHeight = Number(scroller.scrollHeight);
-  if (!Number.isFinite(scrollTop) || !Number.isFinite(clientHeight) || !Number.isFinite(scrollHeight)) {
-    return false;
-  }
-  return scrollTop + clientHeight >= scrollHeight - REQUEST_LOG_SCROLL_BUFFER;
+function appendRequestLogBatchLocal() {
+  return appendRequestLogBatch({
+    rowsEl: dom.requestLogRows,
+    windowState: requestLogWindowState,
+    batchSize: REQUEST_LOG_BATCH_SIZE,
+    createRow: createRowRenderer(),
+    domLimit: REQUEST_LOG_DOM_LIMIT,
+    domRecycleTo: REQUEST_LOG_DOM_RECYCLE_TO,
+    fallbackRowHeight: REQUEST_LOG_FALLBACK_ROW_HEIGHT,
+  });
 }
 
 function resolveRequestLogScroller(rowsEl) {
@@ -196,10 +114,15 @@ function onRequestLogScroll() {
   const flush = () => {
     requestLogWindowState.scrollTickHandle = null;
     requestLogWindowState.scrollTickMode = "";
-    if (!isNearBottom(requestLogWindowState.boundScrollerEl)) {
+    if (!isNearBottom(requestLogWindowState.boundScrollerEl, REQUEST_LOG_SCROLL_BUFFER)) {
       return;
     }
-    appendNearBottomBatches(requestLogWindowState.boundScrollerEl);
+    appendNearBottomBatches({
+      scroller: requestLogWindowState.boundScrollerEl,
+      maxBatches: REQUEST_LOG_NEAR_BOTTOM_MAX_BATCHES,
+      scrollBuffer: REQUEST_LOG_SCROLL_BUFFER,
+      appendRequestLogBatch: appendRequestLogBatchLocal,
+    });
   };
   if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
     requestLogWindowState.scrollTickMode = "raf";
@@ -297,9 +220,14 @@ export function renderRequestLogs() {
     requestLogWindowState.filter = filter;
     if (
       requestLogWindowState.nextIndex >= previousLength ||
-      isNearBottom(requestLogWindowState.boundScrollerEl)
+      isNearBottom(requestLogWindowState.boundScrollerEl, REQUEST_LOG_SCROLL_BUFFER)
     ) {
-      appendAtLeastOneBatch(requestLogWindowState.boundScrollerEl);
+      appendAtLeastOneBatch({
+        scroller: requestLogWindowState.boundScrollerEl,
+        scrollBuffer: REQUEST_LOG_SCROLL_BUFFER,
+        nearBottomMaxBatches: REQUEST_LOG_NEAR_BOTTOM_MAX_BATCHES,
+        appendRequestLogBatch: appendRequestLogBatchLocal,
+      });
     }
     return;
   }
@@ -324,5 +252,11 @@ export function renderRequestLogs() {
       windowState: requestLogWindowState,
     }),
   );
-  appendAtLeastOneBatch(requestLogWindowState.boundScrollerEl, 1);
+  appendAtLeastOneBatch({
+    scroller: requestLogWindowState.boundScrollerEl,
+    extraMaxBatches: 1,
+    scrollBuffer: REQUEST_LOG_SCROLL_BUFFER,
+    nearBottomMaxBatches: REQUEST_LOG_NEAR_BOTTOM_MAX_BATCHES,
+    appendRequestLogBatch: appendRequestLogBatchLocal,
+  });
 }
