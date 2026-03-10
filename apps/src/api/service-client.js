@@ -29,6 +29,17 @@ export async function serviceInitialize() {
   return invoke("service_initialize", withAddr());
 }
 
+export async function serviceStartupSnapshot(options = {}) {
+  const requestLogLimit = Number(options && options.requestLogLimit);
+  const payload = Number.isFinite(requestLogLimit) && requestLogLimit > 0
+    ? { requestLogLimit: Math.trunc(requestLogLimit) }
+    : undefined;
+  if (!isTauriRuntime()) {
+    return rpcInvoke("startup/snapshot", payload);
+  }
+  return invoke("service_startup_snapshot", payload ? withAddr(payload) : withAddr());
+}
+
 export async function serviceListenConfigGet() {
   if (!isTauriRuntime()) {
     return rpcInvoke("service/listenConfig/get");

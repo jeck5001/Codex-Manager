@@ -6,6 +6,7 @@ pub mod service;
 pub mod shared;
 pub mod settings;
 pub mod system;
+pub mod startup;
 pub mod updater;
 pub mod usage;
 mod registry;

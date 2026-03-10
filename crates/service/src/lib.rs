@@ -12,6 +12,7 @@ mod requestlog;
 mod rpc_dispatch;
 mod runtime;
 mod storage;
+mod startup_snapshot;
 mod usage;
 
 pub(crate) use usage::account_meta as usage_account_meta;

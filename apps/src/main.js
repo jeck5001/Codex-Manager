@@ -47,6 +47,7 @@ import {
   refreshApiModels,
   refreshRequestLogs,
   refreshRequestLogTodaySummary,
+  hydrateFromStartupSnapshot,
   clearRequestLogs,
 } from "./services/data";
 import {
@@ -115,9 +116,7 @@ const {
   saveAppSettingsPatch,
   onPageActivated: (page) => {
     renderCurrentPageView(page);
-    if (page === "accounts") {
-      void reloadAccountsPage({ silent: true, latestOnly: true });
-    }
+    void refreshPageDataForView(page, { silent: true });
   },
 });
 
@@ -208,6 +207,7 @@ serviceLifecycle = createServiceLifecycle({
   stopService,
   waitForConnection,
   refreshAll: () => refreshAll(),
+  hydrateStartupData: () => hydrateStartupData(),
   maybeRefreshApiModelsCache: (options) => maybeRefreshApiModelsCache(options),
   ensureAutoRefreshTimer,
   stopAutoRefreshTimer,
@@ -322,6 +322,7 @@ settingsRuntime = createMainSettingsRuntime({
 const {
   buildMainRenderActions,
   reloadAccountsPage,
+  renderAllPageViews,
   renderAccountsView,
   renderCurrentPageView,
 } = createAccountsPageCoordinator({
@@ -372,6 +373,80 @@ const {
   syncRuntimeSettingsForCurrentProbe,
   populateApiKeyModelSelect,
 });
+
+let pageDataRefreshSeq = 0;
+
+async function refreshPageDataForView(page = state.currentPage, options = {}) {
+  const silent = options.silent === true;
+  const seq = ++pageDataRefreshSeq;
+  const ok = await ensureConnected();
+  serviceLifecycle?.updateServiceToggle();
+  if (!ok) {
+    return false;
+  }
+
+  try {
+    if (page === "accounts") {
+      await Promise.all([
+        refreshAccounts(),
+        refreshUsageList({ refreshRemote: false }),
+      ]);
+      await reloadAccountsPage({
+        silent: true,
+        latestOnly: true,
+        ensureConnection: false,
+      });
+    } else if (page === "dashboard") {
+      await Promise.all([
+        refreshAccounts(),
+        refreshUsageList({ refreshRemote: false }),
+        refreshRequestLogTodaySummary(),
+        refreshRequestLogs(state.requestLogQuery, { latestOnly: true }),
+      ]);
+    } else if (page === "apikeys") {
+      await Promise.all([
+        refreshApiKeys(),
+        refreshApiModels({ refreshRemote: false }),
+      ]);
+    } else if (page === "requestlogs") {
+      await Promise.all([
+        refreshAccounts(),
+        refreshRequestLogs(state.requestLogQuery, { latestOnly: true }),
+      ]);
+    }
+    if (seq !== pageDataRefreshSeq) {
+      return false;
+    }
+    renderCurrentPageView(page);
+    return true;
+  } catch (err) {
+    console.error(`[page-data] ${page} refresh failed`, err);
+    if (!silent) {
+      showToast(`页面数据刷新失败：${normalizeErrorMessage(err)}`, "error");
+    }
+    return false;
+  }
+}
+
+async function hydrateStartupData() {
+  try {
+    await hydrateFromStartupSnapshot({ requestLogLimit: 300 });
+  } catch (err) {
+    console.warn("[startup-snapshot] fallback to multi-request hydration", err);
+    const tasks = [
+      refreshAccounts(),
+      refreshUsageList({ refreshRemote: false }),
+      refreshRequestLogTodaySummary(),
+      refreshApiKeys(),
+      refreshAccountsPage({ latestOnly: false }).catch(() => false),
+    ];
+    if (!Array.isArray(state.requestLogList) || state.requestLogList.length === 0) {
+      tasks.push(refreshRequestLogs(state.requestLogQuery, { latestOnly: false }));
+    }
+    await Promise.allSettled(tasks);
+  }
+  renderAllPageViews();
+}
 
 const { handleCheckUpdateClick, scheduleStartupUpdateCheck, bootstrapUpdateStatus } = createUpdateController({
   dom,

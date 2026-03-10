@@ -1,4 +1,4 @@
-import { renderAccountsOnly, renderCurrentView } from "../views/renderers";
+import { renderAccountsOnly, renderAllViews, renderCurrentView } from "../views/renderers";
 import { buildRenderActions } from "../views/render-actions";
 
 export function createAccountsPageCoordinator({
@@ -42,6 +42,10 @@ export function createAccountsPageCoordinator({
     renderAccountsOnly(buildMainRenderActions());
   }
 
+  function renderAllPageViews() {
+    renderAllViews(buildMainRenderActions());
+  }
+
   async function reloadAccountsPage(options = {}) {
     const silent = options.silent === true;
     const render = options.render !== false;
@@ -76,6 +80,7 @@ export function createAccountsPageCoordinator({
     reloadAccountsPage,
     renderAccountsRefreshProgress,
     renderAccountsView,
+    renderAllPageViews,
     renderCurrentPageView,
     setRefreshAllProgress,
   };

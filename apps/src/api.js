@@ -21,6 +21,7 @@ export {
   serviceInitialize,
   serviceListenConfigGet,
   serviceListenConfigSet,
+  serviceStartupSnapshot,
   serviceRequestLogClear,
   serviceRequestLogList,
   serviceRequestLogTodaySummary,
