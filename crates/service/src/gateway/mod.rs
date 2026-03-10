@@ -133,7 +133,7 @@ pub(crate) fn reload_runtime_config_from_env() {
     upstream::config::reload_from_env();
     trace_log::reload_from_env();
     http_bridge::reload_from_env();
-    protocol_adapter::reload_env_dependent_state();
+    protocol_adapter::prompt_cache::reload_runtime_state();
 }
 
 pub(crate) fn current_route_strategy() -> &'static str {
