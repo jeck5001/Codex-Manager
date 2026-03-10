@@ -15,7 +15,10 @@ pub(crate) fn set_env_overrides(
         if let Some(value) = value {
             next.insert(key, value);
         } else if super::catalog::is_env_override_catalog_key(&key) {
-            next.insert(key.clone(), super::snapshot::env_override_default_value(&key));
+            next.insert(
+                key.clone(),
+                super::snapshot::env_override_default_value(&key),
+            );
         } else {
             next.remove(&key);
         }

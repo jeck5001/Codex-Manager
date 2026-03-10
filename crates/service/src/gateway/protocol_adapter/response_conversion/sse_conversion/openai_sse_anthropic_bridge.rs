@@ -1,12 +1,11 @@
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
-use super::anthropic_sse_writer::convert_anthropic_json_to_sse;
 use super::super::json_conversion::{
     convert_openai_json_to_anthropic, extract_function_call_arguments_raw,
     extract_responses_reasoning_text, map_finish_reason, parse_tool_arguments_as_object,
 };
-
+use super::anthropic_sse_writer::convert_anthropic_json_to_sse;
 
 pub(super) fn convert_openai_sse_to_anthropic(
     body: &[u8],
@@ -565,5 +564,3 @@ fn append_sse_event(buffer: &mut String, event_name: &str, payload: &Value) {
     buffer.push_str(&data);
     buffer.push_str("\n\n");
 }
-
-

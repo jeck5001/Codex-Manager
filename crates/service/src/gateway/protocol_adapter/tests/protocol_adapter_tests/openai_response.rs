@@ -631,4 +631,3 @@ data: [DONE]
         Some("done only completion text")
     );
 }
-

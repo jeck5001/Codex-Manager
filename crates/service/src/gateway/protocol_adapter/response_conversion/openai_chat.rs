@@ -6,9 +6,7 @@ use super::tool_mapping::{
     collect_chat_tool_calls_from_message, map_response_event_to_openai_chat_tool_chunk,
     restore_openai_tool_name, restore_openai_tool_name_in_chat_choice, AggregatedChatToolCall,
 };
-use super::{is_response_completed_event_type, parse_openai_sse_event_value};
-
-type ToolNameRestoreMap = super::super::ToolNameRestoreMap;
+use super::{is_response_completed_event_type, parse_openai_sse_event_value, ToolNameRestoreMap};
 
 pub(super) fn extract_chat_content_text(content: Option<&Value>) -> String {
     let Some(content) = content else {

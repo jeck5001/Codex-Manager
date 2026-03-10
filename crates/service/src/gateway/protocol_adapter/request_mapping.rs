@@ -9,11 +9,11 @@ const DEFAULT_ANTHROPIC_REASONING: &str = "high";
 const DEFAULT_ANTHROPIC_INSTRUCTIONS: &str =
     "You are Codex, a coding assistant that responds clearly and safely.";
 const MAX_ANTHROPIC_TOOLS: usize = 16;
+pub(super) use self::anthropic::convert_anthropic_messages_request;
+use self::openai::shorten_openai_tool_name_with_map;
 pub(super) use self::openai::{
     convert_openai_chat_completions_request, convert_openai_completions_request,
 };
-pub(super) use self::anthropic::convert_anthropic_messages_request;
-use self::openai::shorten_openai_tool_name_with_map;
 
 fn convert_chat_messages_to_responses_input(
     messages: &[Value],

@@ -4,8 +4,7 @@ use serde::Deserialize;
 
 use super::{
     normalize_optional_text, save_persisted_app_setting, save_persisted_bool_setting,
-    APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
-    APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
+    APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
 };
 
@@ -65,7 +64,9 @@ pub fn set_gateway_upstream_proxy_url(proxy_url: Option<&str>) -> Result<Option<
     Ok(applied)
 }
 
-pub fn set_gateway_background_tasks(input: BackgroundTasksInput) -> Result<serde_json::Value, String> {
+pub fn set_gateway_background_tasks(
+    input: BackgroundTasksInput,
+) -> Result<serde_json::Value, String> {
     let applied = usage_refresh::set_background_tasks_settings(input.into_patch());
     let raw = serde_json::to_string(&applied)
         .map_err(|err| format!("serialize background tasks failed: {err}"))?;

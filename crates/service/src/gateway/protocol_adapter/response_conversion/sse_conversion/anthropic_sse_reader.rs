@@ -201,4 +201,3 @@ pub(super) fn convert_anthropic_sse_to_json(
         .map_err(|err| format!("serialize anthropic json failed: {err}"))?;
     Ok((bytes, "application/json"))
 }
-

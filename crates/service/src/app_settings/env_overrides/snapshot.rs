@@ -18,7 +18,7 @@ pub(super) fn env_override_default_snapshot() -> BTreeMap<String, String> {
 }
 
 fn persisted_env_overrides(mut normalized: BTreeMap<String, String>) -> BTreeMap<String, String> {
-    let Some(raw) = super::super::get_persisted_app_setting(super::super::APP_SETTING_ENV_OVERRIDES_KEY) else {
+    let Some(raw) = super::get_persisted_app_setting(super::APP_SETTING_ENV_OVERRIDES_KEY) else {
         return normalized;
     };
     let Ok(parsed) = serde_json::from_str::<serde_json::Map<String, Value>>(&raw) else {
@@ -28,7 +28,10 @@ fn persisted_env_overrides(mut normalized: BTreeMap<String, String>) -> BTreeMap
 
     for (raw_key, raw_value) in parsed {
         let Ok(key) = super::normalize::normalize_env_override_key(&raw_key) else {
-            log::warn!("skip persisted env override: key={} invalid", raw_key.trim());
+            log::warn!(
+                "skip persisted env override: key={} invalid",
+                raw_key.trim()
+            );
             continue;
         };
         if let Some(value) = super::normalize::parse_saved_env_override_value(&raw_value) {
@@ -53,8 +56,5 @@ pub(crate) fn current_env_overrides() -> BTreeMap<String, String> {
 pub(crate) fn save_env_overrides_value(overrides: &BTreeMap<String, String>) -> Result<(), String> {
     let raw = serde_json::to_string(overrides)
         .map_err(|err| format!("serialize env overrides failed: {err}"))?;
-    super::super::save_persisted_app_setting(
-        super::super::APP_SETTING_ENV_OVERRIDES_KEY,
-        Some(&raw),
-    )
+    super::save_persisted_app_setting(super::APP_SETTING_ENV_OVERRIDES_KEY, Some(&raw))
 }

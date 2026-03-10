@@ -346,7 +346,8 @@ fn append_user_messages(messages: &mut Vec<Value>, content: &Value) -> Result<()
                 }
             }
             "image" => {
-                if let Some(image_item) = super::map_anthropic_image_block_to_responses_item(block_obj)
+                if let Some(image_item) =
+                    super::map_anthropic_image_block_to_responses_item(block_obj)
                 {
                     pending_parts.push(image_item);
                 }

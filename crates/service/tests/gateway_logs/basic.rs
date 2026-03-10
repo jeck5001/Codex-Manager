@@ -75,4 +75,3 @@ fn gateway_tolerates_non_ascii_turn_metadata_header() {
     );
     assert_eq!(status, 403, "response body: {body}");
 }
-

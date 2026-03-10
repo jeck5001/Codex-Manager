@@ -451,4 +451,3 @@ fn anthropic_tool_result_with_image_maps_to_function_call_output_items() {
         Some("data:image/png;base64,ZmFrZV9pbWFnZQ==")
     );
 }
-

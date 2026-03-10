@@ -1,4 +1,4 @@
-use super::*;
+use super::{Arc, Mutex, UpstreamResponseUsage};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PassthroughSseCollector {

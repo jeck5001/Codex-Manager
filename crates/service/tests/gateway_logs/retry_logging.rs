@@ -124,7 +124,6 @@ fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content
     );
 }
 
-
 #[test]
 fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
     let _lock = lock_env();

@@ -353,4 +353,3 @@ fn gateway_cpa_no_cookie_header_mode_skips_post_retries_on_404() {
 
     upstream_join.join().expect("join upstream");
 }
-

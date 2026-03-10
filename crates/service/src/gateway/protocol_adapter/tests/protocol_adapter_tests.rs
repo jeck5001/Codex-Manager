@@ -6,11 +6,11 @@ use super::{
 };
 use crate::apikey_profile::{PROTOCOL_ANTHROPIC_NATIVE, PROTOCOL_OPENAI_COMPAT};
 
-#[path = "protocol_adapter_tests/openai_request.rs"]
-mod openai_request;
-#[path = "protocol_adapter_tests/openai_response.rs"]
-mod openai_response;
 #[path = "protocol_adapter_tests/anthropic_request.rs"]
 mod anthropic_request;
 #[path = "protocol_adapter_tests/anthropic_response.rs"]
 mod anthropic_response;
+#[path = "protocol_adapter_tests/openai_request.rs"]
+mod openai_request;
+#[path = "protocol_adapter_tests/openai_response.rs"]
+mod openai_response;

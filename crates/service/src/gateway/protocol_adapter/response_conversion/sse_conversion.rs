@@ -1,7 +1,7 @@
-#[path = "sse_conversion/anthropic_sse_writer.rs"]
-mod anthropic_sse_writer;
 #[path = "sse_conversion/anthropic_sse_reader.rs"]
 mod anthropic_sse_reader;
+#[path = "sse_conversion/anthropic_sse_writer.rs"]
+mod anthropic_sse_writer;
 #[path = "sse_conversion/openai_sse_anthropic_bridge.rs"]
 mod openai_sse_anthropic_bridge;
 

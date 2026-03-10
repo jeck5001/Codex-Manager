@@ -214,30 +214,30 @@ pub(crate) fn respond_with_upstream(
                     headers.push(content_type_header);
                 }
                 let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
-                let delivery_error = if response_adapter == ResponseAdapter::OpenAIChatCompletionsSse
-                {
-                    let response = Response::new(
-                        status,
-                        headers,
-                        OpenAIChatCompletionsSseReader::new(
-                            upstream,
-                            Arc::clone(&usage_collector),
-                            tool_name_restore_map.cloned(),
-                        ),
-                        None,
-                        None,
-                    );
-                    request.respond(response).err().map(|err| err.to_string())
-                } else {
-                    let response = Response::new(
-                        status,
-                        headers,
-                        OpenAICompletionsSseReader::new(upstream, Arc::clone(&usage_collector)),
-                        None,
-                        None,
-                    );
-                    request.respond(response).err().map(|err| err.to_string())
-                };
+                let delivery_error =
+                    if response_adapter == ResponseAdapter::OpenAIChatCompletionsSse {
+                        let response = Response::new(
+                            status,
+                            headers,
+                            OpenAIChatCompletionsSseReader::new(
+                                upstream,
+                                Arc::clone(&usage_collector),
+                                tool_name_restore_map.cloned(),
+                            ),
+                            None,
+                            None,
+                        );
+                        request.respond(response).err().map(|err| err.to_string())
+                    } else {
+                        let response = Response::new(
+                            status,
+                            headers,
+                            OpenAICompletionsSseReader::new(upstream, Arc::clone(&usage_collector)),
+                            None,
+                            None,
+                        );
+                        request.respond(response).err().map(|err| err.to_string())
+                    };
                 let collector = usage_collector
                     .lock()
                     .map(|guard| guard.clone())
@@ -441,4 +441,3 @@ pub(crate) fn respond_with_upstream(
         }
     }
 }
-

@@ -5,9 +5,8 @@ use super::{
     apply_env_overrides_to_process, list_app_settings_map, normalize_optional_text,
     parse_bool_with_default, persisted_env_overrides_only, reload_runtime_after_env_override_apply,
     set_service_bind_mode, BackgroundTasksInput, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
-    APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
-    APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
-    SERVICE_BIND_MODE_SETTING_KEY,
+    APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
+    APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY, SERVICE_BIND_MODE_SETTING_KEY,
 };
 
 pub fn sync_runtime_settings_from_storage() {

@@ -175,7 +175,6 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
     assert_eq!(log.reasoning_output_tokens, None);
 }
 
-
 #[test]
 fn gateway_claude_failover_cross_workspace_strips_session_affinity_headers() {
     let _lock = lock_env();
@@ -518,4 +517,3 @@ fn gateway_claude_failover_same_workspace_preserves_session_affinity_headers() {
         Some("conv_same_ws")
     );
 }
-

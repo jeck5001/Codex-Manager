@@ -640,4 +640,3 @@ fn gateway_openai_fallback_strips_turn_state_headers() {
         "fallback attempt should still send a session_id"
     );
 }
-

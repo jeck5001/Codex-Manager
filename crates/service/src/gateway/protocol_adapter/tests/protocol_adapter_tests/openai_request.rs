@@ -320,4 +320,3 @@ fn openai_completions_stream_uses_sse_adapter() {
         ResponseAdapter::OpenAICompletionsSse
     );
 }
-

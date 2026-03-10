@@ -14,7 +14,7 @@ pub(super) fn env_override_original_process_value(key: &str) -> Option<String> {
         return value.clone();
     }
     drop(baseline);
-    super::super::normalize_optional_text(std::env::var(key).ok().as_deref())
+    super::normalize_optional_text(std::env::var(key).ok().as_deref())
 }
 
 pub(crate) fn apply_env_overrides_to_process(
@@ -32,7 +32,7 @@ pub(crate) fn apply_env_overrides_to_process(
         crate::lock_utils::lock_recover(env_override_baseline(), "env_override_baseline");
     for key in &all_keys {
         baseline.entry(key.clone()).or_insert_with(|| {
-            super::super::normalize_optional_text(std::env::var(key).ok().as_deref())
+            super::normalize_optional_text(std::env::var(key).ok().as_deref())
         });
     }
 
