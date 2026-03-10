@@ -85,11 +85,6 @@ export function createApiKeyActions({
         return;
       }
       dom.apiKeyValue.value = res && res.key ? res.key : "";
-      try {
-        await refreshApiModelsNow({ silent: true, button: null });
-      } catch (err) {
-        showToast(`模型列表刷新失败：${err instanceof Error ? err.message : String(err)}`, "error");
-      }
       closeApiKeyModal?.();
       if (await refreshApiKeyList()) {
         showToast("平台密钥创建成功");

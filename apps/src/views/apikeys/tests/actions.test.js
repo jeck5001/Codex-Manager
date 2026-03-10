@@ -139,7 +139,7 @@ test("createApiKey closes modal after successful creation", async () => {
     assert.equal(dom.apiKeyValue.value, "sk-test");
     assert.equal(closed, 1);
     assert.equal(calls.refreshKeys, 1);
-    assert.equal(calls.render, 2);
+    assert.equal(calls.render, 1);
     assert.equal(calls.toast.at(-1)?.message, "平台密钥创建成功");
   } finally {
     dom.submitApiKey = previousSubmit;
