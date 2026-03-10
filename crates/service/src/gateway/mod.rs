@@ -115,7 +115,7 @@ use runtime_config::{
     account_max_inflight_limit, fresh_upstream_client, fresh_upstream_client_for_account,
     request_gate_wait_timeout, trace_body_preview_max_bytes, upstream_client,
     upstream_client_for_account, upstream_cookie, upstream_stream_timeout, upstream_total_timeout,
-    DEFAULT_GATEWAY_DEBUG, DEFAULT_MODELS_CLIENT_VERSION,
+    DEFAULT_GATEWAY_DEBUG,
 };
 use selection::collect_gateway_candidates;
 #[cfg(test)]
