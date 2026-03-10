@@ -471,6 +471,7 @@ const loginFlow = createLoginFlow({
   withButtonBusy,
   ensureConnected,
   refreshAll,
+  refreshAccountsPage: reloadAccountsPage,
   closeAccountModal,
 });
 
