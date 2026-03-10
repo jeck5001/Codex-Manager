@@ -1,5 +1,5 @@
 use crate::apikey_profile::{PROTOCOL_ANTHROPIC_NATIVE, PROTOCOL_AZURE_OPENAI};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tiny_http::Request;
 
 use super::super::local_validation::LocalValidationResult;
@@ -10,6 +10,7 @@ use super::payload_rewrite::{
     body_has_encrypted_content_hint, strip_encrypted_content_from_body,
 };
 use super::precheck::{prepare_candidates_for_proxy, CandidatePrecheckResult};
+use super::request_gate::acquire_request_gate;
 
 fn respond_terminal(
     request: Request,
@@ -181,70 +182,13 @@ pub(in super::super) fn proxy_validated_request(
     let disable_challenge_stateless_retry = !(protocol_type == PROTOCOL_ANTHROPIC_NATIVE
         && body.len() <= 2 * 1024)
         && !path.starts_with("/v1/responses");
-    let request_gate_lock =
-        super::super::request_gate_lock(&key_id, &path, model_for_log.as_deref());
-    let request_gate_wait_timeout = super::super::request_gate_wait_timeout();
-    super::super::trace_log::log_request_gate_wait(
+    let _request_gate_guard = acquire_request_gate(
         trace_id.as_str(),
         key_id.as_str(),
         path.as_str(),
         model_for_log.as_deref(),
+        request_deadline,
     );
-    let gate_wait_started_at = Instant::now();
-    let _request_gate_guard = match request_gate_lock.try_acquire() {
-        Ok(Some(guard)) => {
-            super::super::trace_log::log_request_gate_acquired(
-                trace_id.as_str(),
-                key_id.as_str(),
-                path.as_str(),
-                model_for_log.as_deref(),
-                0,
-            );
-            Some(guard)
-        }
-        Ok(None) => {
-            let effective_wait =
-                super::deadline::cap_wait(request_gate_wait_timeout, request_deadline)
-                    .unwrap_or(Duration::from_millis(0));
-            let wait_result = if effective_wait.is_zero() {
-                Ok(None)
-            } else {
-                request_gate_lock.acquire_with_timeout(effective_wait)
-            };
-            if let Ok(Some(guard)) = wait_result {
-                super::super::trace_log::log_request_gate_acquired(
-                    trace_id.as_str(),
-                    key_id.as_str(),
-                    path.as_str(),
-                    model_for_log.as_deref(),
-                    gate_wait_started_at.elapsed().as_millis(),
-                );
-                Some(guard)
-            } else {
-                match wait_result {
-                    Err(super::super::RequestGateAcquireError::Poisoned) => {
-                        super::super::trace_log::log_request_gate_skip(
-                            trace_id.as_str(),
-                            "lock_poisoned",
-                        );
-                    }
-                    _ => {
-                        let reason = if super::deadline::is_expired(request_deadline) {
-                            "total_timeout"
-                        } else {
-                            "gate_wait_timeout"
-                        };
-                        super::super::trace_log::log_request_gate_skip(trace_id.as_str(), reason);
-                    }
-                }
-                None
-            }
-        }
-        Err(super::super::RequestGateAcquireError::Poisoned) => {
-            super::super::trace_log::log_request_gate_skip(trace_id.as_str(), "lock_poisoned");
-            None
-        }
-    };
     let has_sticky_fallback_session =
         super::header_profile::derive_sticky_session_id_from_headers(&incoming_headers).is_some();
     let has_sticky_fallback_conversation =

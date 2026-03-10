@@ -15,6 +15,7 @@ pub(super) mod primary_attempt;
 pub(super) mod primary_flow;
 pub(super) mod protocol;
 pub(super) mod proxy;
+pub(super) mod request_gate;
 pub(super) mod retry;
 pub(super) mod stateless_retry;
 pub(super) mod transport;
