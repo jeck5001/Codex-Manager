@@ -1,6 +1,7 @@
 use codexmanager_core::rpc::types::{JsonRpcRequest, JsonRpcResponse};
 
 mod account;
+mod account_identity;
 mod apikey;
 pub(crate) mod app_settings;
 mod auth;
