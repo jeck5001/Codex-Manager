@@ -511,6 +511,7 @@ const {
   refreshApiKeys,
   populateApiKeyModelSelect,
   renderApiKeys,
+  closeApiKeyModal,
 });
 
 const bootstrap = createBootstrapRunner({

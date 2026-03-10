@@ -165,6 +165,7 @@ export function createSettingsController(deps = {}) {
     saveUpstreamProxyUrlSetting: runtimeSettings.saveUpstreamProxyUrlSetting,
     setUpstreamProxyInput: runtimeSettings.setUpstreamProxyInput,
     setUpstreamProxyHint: runtimeSettings.setUpstreamProxyHint,
+    normalizeUpstreamProxyUrl,
     initUpstreamProxySetting: runtimeSettings.initUpstreamProxySetting,
     normalizeBackgroundTasksSettings: snapshotStore.normalizeBackgroundTasksSettings,
     readBackgroundTasksSetting: runtimeSettings.readBackgroundTasksSetting,

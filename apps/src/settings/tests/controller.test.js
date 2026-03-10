@@ -107,4 +107,5 @@ test("createSettingsController exposes service listen mode actions used by main.
 
   assert.equal(typeof controller.applyServiceListenModeToService, "function");
   assert.equal(typeof controller.syncServiceListenModeOnStartup, "function");
+  assert.equal(typeof controller.normalizeUpstreamProxyUrl, "function");
 });
