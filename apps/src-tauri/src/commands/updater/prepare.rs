@@ -42,6 +42,67 @@ pub(super) fn portable_asset_names_for_platform(latest_version: &str) -> Vec<Str
     }
 }
 
+fn macos_current_arch_tokens() -> &'static [&'static str] {
+    if cfg!(target_arch = "aarch64") {
+        &["aarch64", "arm64"]
+    } else if cfg!(target_arch = "x86_64") {
+        &["x64", "x86_64"]
+    } else {
+        &[]
+    }
+}
+
+fn is_dmg_asset(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".dmg")
+}
+
+fn dmg_name_has_arch_suffix(name: &str, suffix: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let suffix = suffix.to_ascii_lowercase();
+    lower.ends_with(&format!("_{suffix}.dmg"))
+        || lower.ends_with(&format!("-{suffix}.dmg"))
+        || lower.ends_with(&format!(".{suffix}.dmg"))
+}
+
+fn select_macos_dmg_asset_for_arch(
+    assets: &[GitHubAsset],
+    arch_tokens: &[&str],
+) -> Option<GitHubAsset> {
+    let dmg_assets = assets
+        .iter()
+        .filter(|asset| is_dmg_asset(&asset.name))
+        .cloned()
+        .collect::<Vec<_>>();
+    if dmg_assets.is_empty() {
+        return None;
+    }
+
+    for arch in arch_tokens {
+        if let Some(asset) = dmg_assets
+            .iter()
+            .find(|asset| dmg_name_has_arch_suffix(&asset.name, arch))
+        {
+            return Some(asset.clone());
+        }
+    }
+
+    for universal in ["universal", "universal2"] {
+        if let Some(asset) = dmg_assets
+            .iter()
+            .find(|asset| dmg_name_has_arch_suffix(&asset.name, universal))
+        {
+            return Some(asset.clone());
+        }
+    }
+
+    let known_arch_suffixes = ["aarch64", "arm64", "x64", "x86_64", "universal", "universal2"];
+    dmg_assets.into_iter().find(|asset| {
+        !known_arch_suffixes
+            .iter()
+            .any(|suffix| dmg_name_has_arch_suffix(&asset.name, suffix))
+    })
+}
+
 fn select_payload_asset(
     mode: &str,
     latest_version: &str,
@@ -77,10 +138,7 @@ fn select_payload_asset(
     }
 
     if cfg!(target_os = "macos") {
-        return assets
-            .iter()
-            .find(|asset| asset.name.to_ascii_lowercase().ends_with(".dmg"))
-            .cloned();
+        return select_macos_dmg_asset_for_arch(assets, macos_current_arch_tokens());
     }
 
     if let Some(appimage) = assets
@@ -318,7 +376,10 @@ pub(super) fn prepare_update_impl(app: &tauri::AppHandle) -> Result<UpdatePrepar
 
 #[cfg(test)]
 mod tests {
-    use super::{portable_asset_names_for_platform, sanitize_tag};
+    use super::{
+        portable_asset_names_for_platform, sanitize_tag, select_macos_dmg_asset_for_arch,
+    };
+    use crate::commands::updater::model::GitHubAsset;
 
     #[test]
     fn portable_asset_names_include_current_workflow_artifact() {
@@ -339,5 +400,41 @@ mod tests {
     #[test]
     fn sanitize_tag_replaces_unsafe_characters() {
         assert_eq!(sanitize_tag("v0.1.7/beta"), "v0.1.7_beta");
+    }
+
+    #[test]
+    fn macos_dmg_selection_prefers_matching_arch_suffix() {
+        let assets = vec![
+            GitHubAsset {
+                name: "CodexManager_0.1.7_aarch64.dmg".to_string(),
+                browser_download_url: "https://example.com/arm.dmg".to_string(),
+            },
+            GitHubAsset {
+                name: "CodexManager_0.1.7_x64.dmg".to_string(),
+                browser_download_url: "https://example.com/x64.dmg".to_string(),
+            },
+        ];
+
+        let selected =
+            select_macos_dmg_asset_for_arch(&assets, &["x64", "x86_64"]).expect("x64 dmg");
+        assert_eq!(selected.name, "CodexManager_0.1.7_x64.dmg");
+    }
+
+    #[test]
+    fn macos_dmg_selection_falls_back_to_generic_dmg() {
+        let assets = vec![
+            GitHubAsset {
+                name: "CodexManager_0.1.7_aarch64.dmg".to_string(),
+                browser_download_url: "https://example.com/arm.dmg".to_string(),
+            },
+            GitHubAsset {
+                name: "CodexManager_0.1.7.dmg".to_string(),
+                browser_download_url: "https://example.com/generic.dmg".to_string(),
+            },
+        ];
+
+        let selected =
+            select_macos_dmg_asset_for_arch(&assets, &["x64", "x86_64"]).expect("generic dmg");
+        assert_eq!(selected.name, "CodexManager_0.1.7.dmg");
     }
 }
