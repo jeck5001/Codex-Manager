@@ -75,8 +75,8 @@ jobs:
                       # Git short SHA
                       type=sha,prefix=sha-
                   labels: |
-                      org.opencontainers.image.title=Slider Recognize
-                      org.opencontainers.image.description=滑块验证码距离计算 HTTP 服务
+                      org.opencontainers.image.title=CodexManager
+                      org.opencontainers.image.description=CodexManager service container image
                       org.opencontainers.image.vendor=${{ github.repository_owner }}
 
             - name: Build and push Docker image
@@ -100,7 +100,7 @@ jobs:
             - name: Generate build summary
               if: github.event_name != 'pull_request'
               run: |
-                  echo "## Docker Image Published" >> $GITHUB_STEP_SUMMARY
+                  echo "## CodexManager Docker Image Published" >> $GITHUB_STEP_SUMMARY
                   echo "" >> $GITHUB_STEP_SUMMARY
                   echo "**Registry:** \`${{ env.REGISTRY }}\`" >> $GITHUB_STEP_SUMMARY
                   echo "" >> $GITHUB_STEP_SUMMARY
