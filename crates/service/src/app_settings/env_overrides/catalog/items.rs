@@ -324,13 +324,6 @@ pub(crate) const ENV_OVERRIDE_CATALOG: &[EnvOverrideCatalogItem] = &[
         "",
     ),
     EnvOverrideCatalogItem::new(
-        "CODEXMANAGER_UPSTREAM_FALLBACK_BASE_URL",
-        "上游回退地址",
-        ENV_OVERRIDE_SCOPE_SERVICE,
-        ENV_OVERRIDE_APPLY_MODE_RUNTIME,
-        "",
-    ),
-    EnvOverrideCatalogItem::new(
         "CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS",
         "上游流式超时（毫秒）",
         ENV_OVERRIDE_SCOPE_SERVICE,

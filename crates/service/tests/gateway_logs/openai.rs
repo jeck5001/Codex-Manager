@@ -513,21 +513,15 @@ fn gateway_models_returns_cached_without_upstream() {
 }
 
 #[test]
-fn gateway_openai_fallback_strips_turn_state_headers() {
+fn gateway_chatgpt_primary_preserves_turn_state_headers_without_openai_fallback() {
     let _lock = lock_env();
-    let dir = new_test_dir("codexmanager-gateway-openai-fallback-strip-turn-state");
+    let dir = new_test_dir("codexmanager-gateway-chatgpt-primary-turn-state");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
     let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
 
-    let first_response = serde_json::json!({
-        "error": {
-            "message": "rate limited",
-            "type": "rate_limit_error"
-        }
-    });
-    let second_response = serde_json::json!({
-        "id": "resp_fallback_ok",
+    let upstream_response = serde_json::json!({
+        "id": "resp_primary_ok",
         "model": "gpt-5.3-codex",
         "output": [{
             "type": "message",
@@ -536,17 +530,12 @@ fn gateway_openai_fallback_strips_turn_state_headers() {
         }],
         "usage": { "input_tokens": 3, "output_tokens": 2, "total_tokens": 5 }
     });
-    let err_body = serde_json::to_string(&first_response).expect("serialize first response");
-    let ok_body = serde_json::to_string(&second_response).expect("serialize second response");
+    let ok_body = serde_json::to_string(&upstream_response).expect("serialize upstream response");
     let (upstream_addr, upstream_rx, upstream_join) =
-        start_mock_upstream_sequence(vec![(429, err_body), (200, ok_body)]);
+        start_mock_upstream_sequence(vec![(200, ok_body)]);
 
-    // Make the primary base look like a ChatGPT backend base so fallback logic is enabled,
-    // while still routing to the local mock upstream server.
     let upstream_base = format!("http://{upstream_addr}/chatgpt.com/backend-api/codex");
-    let fallback_base = format!("http://{upstream_addr}/v1");
     let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
-    let _fallback_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_FALLBACK_BASE_URL", &fallback_base);
 
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
@@ -554,11 +543,11 @@ fn gateway_openai_fallback_strips_turn_state_headers() {
 
     storage
         .insert_account(&Account {
-            id: "acc_fallback".to_string(),
-            label: "fallback".to_string(),
+            id: "acc_primary".to_string(),
+            label: "primary".to_string(),
             issuer: "https://auth.openai.com".to_string(),
             chatgpt_account_id: None,
-            workspace_id: Some("ws_fallback".to_string()),
+            workspace_id: Some("ws_primary".to_string()),
             group_name: None,
             sort: 1,
             status: "active".to_string(),
@@ -568,20 +557,20 @@ fn gateway_openai_fallback_strips_turn_state_headers() {
         .expect("insert account");
     storage
         .insert_token(&Token {
-            account_id: "acc_fallback".to_string(),
+            account_id: "acc_primary".to_string(),
             id_token: String::new(),
-            access_token: "access_token_fallback".to_string(),
+            access_token: "access_token_primary".to_string(),
             refresh_token: String::new(),
-            api_key_access_token: Some("api_access_token_fallback".to_string()),
+            api_key_access_token: Some("api_access_token_primary".to_string()),
             last_refresh: now,
         })
         .expect("insert token");
 
-    let platform_key = "pk_openai_fallback_strip_turn_state";
+    let platform_key = "pk_chatgpt_primary_turn_state";
     storage
         .insert_api_key(&ApiKey {
-            id: "gk_openai_fallback_strip_turn_state".to_string(),
-            name: Some("fallback-strip-turn-state".to_string()),
+            id: "gk_chatgpt_primary_turn_state".to_string(),
+            name: Some("chatgpt-primary-turn-state".to_string()),
             model_slug: Some("gpt-5.3-codex".to_string()),
             reasoning_effort: None,
             client_type: "codex".to_string(),
@@ -612,31 +601,21 @@ fn gateway_openai_fallback_strips_turn_state_headers() {
     server.join();
     assert_eq!(status, 200, "gateway response: {response_body}");
 
-    // Primary attempt + fallback attempt should both be captured.
     let first = upstream_rx
         .recv_timeout(Duration::from_secs(2))
         .expect("receive primary upstream request");
-    let second = upstream_rx
-        .recv_timeout(Duration::from_secs(2))
-        .expect("receive fallback upstream request");
     upstream_join.join().expect("join mock upstream");
 
     assert!(
         first.headers.contains_key("x-codex-turn-state"),
-        "primary attempt should forward turn_state for same-account flow"
-    );
-
-    assert_eq!(second.path, "/v1/responses");
-    assert!(
-        !second.headers.contains_key("x-codex-turn-state"),
-        "fallback attempt must strip org-scoped turn_state to avoid invalid_encrypted_content"
+        "primary request should forward turn_state for same-account flow"
     );
     assert!(
-        !second.headers.contains_key("conversation_id"),
-        "fallback attempt must strip conversation_id when stripping session affinity"
+        first.headers.contains_key("conversation_id"),
+        "primary request should preserve conversation_id without fallback rewriting"
     );
     assert!(
-        second.headers.contains_key("session_id"),
-        "fallback attempt should still send a session_id"
+        first.headers.contains_key("session_id"),
+        "primary request should still send a session_id"
     );
 }

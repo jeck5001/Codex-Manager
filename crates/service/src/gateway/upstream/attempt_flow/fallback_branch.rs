@@ -42,7 +42,7 @@ pub(super) fn handle_openai_fallback_branch<F>(
 where
     F: FnMut(Option<&str>, u16, Option<&str>),
 {
-    if !allow_openai_fallback {
+    if !allow_openai_fallback || fallback_base.is_none() {
         return FallbackBranchResult::NotTriggered;
     }
 
@@ -57,110 +57,90 @@ where
         return FallbackBranchResult::NotTriggered;
     }
 
-    if let Some(fallback_base) = fallback_base {
-        if debug {
-            log::warn!(
-                "event=gateway_upstream_fallback path={} status={} account_id={} from={} to={}",
-                path,
-                status.as_u16(),
-                account.id,
-                upstream_base,
-                fallback_base
-            );
-        }
-        match super::super::super::try_openai_fallback(
-            client,
-            storage,
-            method,
+    let fallback_base = fallback_base.expect("fallback base already checked");
+    if debug {
+        log::warn!(
+            "event=gateway_upstream_fallback path={} status={} account_id={} from={} to={}",
             path,
-            request,
-            incoming_headers,
-            body,
-            is_stream,
-            fallback_base,
-            account,
-            token,
-            upstream_cookie,
-            strip_session_affinity,
-            debug,
-        ) {
-            Ok(Some(resp)) => {
-                if resp.status().is_success() {
-                    super::super::super::clear_account_cooldown(&account.id);
-                    log_gateway_result(Some(fallback_base), resp.status().as_u16(), None);
-                    return FallbackBranchResult::RespondUpstream(resp);
-                }
-                let fallback_status = resp.status().as_u16();
-                super::super::super::mark_account_cooldown_for_status(&account.id, fallback_status);
-                let fallback_error = format!(
-                    "upstream fallback non-success(primary_status={})",
-                    status.as_u16()
-                );
-                log_gateway_result(
-                    Some(fallback_base),
-                    fallback_status,
-                    Some(fallback_error.as_str()),
-                );
-                // 中文注释：仅对“可能账号相关/可恢复”的状态继续 failover；
-                // 例如 5xx 这类上游服务端错误直接回传，避免单次请求在大量候选账号上长时间轮询。
-                if should_failover_after_fallback_non_success(fallback_status, has_more_candidates)
-                {
-                    FallbackBranchResult::Failover
-                } else {
-                    FallbackBranchResult::RespondUpstream(resp)
-                }
+            status.as_u16(),
+            account.id,
+            upstream_base,
+            fallback_base
+        );
+    }
+    match super::super::super::try_openai_fallback(
+        client,
+        storage,
+        method,
+        path,
+        request,
+        incoming_headers,
+        body,
+        is_stream,
+        fallback_base,
+        account,
+        token,
+        upstream_cookie,
+        strip_session_affinity,
+        debug,
+    ) {
+        Ok(Some(resp)) => {
+            if resp.status().is_success() {
+                super::super::super::clear_account_cooldown(&account.id);
+                log_gateway_result(Some(fallback_base), resp.status().as_u16(), None);
+                return FallbackBranchResult::RespondUpstream(resp);
             }
-            Ok(None) => {
-                super::super::super::mark_account_cooldown(
-                    &account.id,
-                    super::super::super::CooldownReason::Network,
-                );
-                log_gateway_result(
-                    Some(fallback_base),
-                    502,
-                    Some("upstream fallback unavailable"),
-                );
-                if has_more_candidates {
-                    FallbackBranchResult::Failover
-                } else {
-                    FallbackBranchResult::Terminal {
-                        status_code: 502,
-                        message: "upstream blocked by Cloudflare; set CODEXMANAGER_UPSTREAM_COOKIE or enable OpenAI API-key fallback".to_string(),
-                    }
-                }
+            let fallback_status = resp.status().as_u16();
+            super::super::super::mark_account_cooldown_for_status(&account.id, fallback_status);
+            let fallback_error = format!(
+                "upstream fallback non-success(primary_status={})",
+                status.as_u16()
+            );
+            log_gateway_result(
+                Some(fallback_base),
+                fallback_status,
+                Some(fallback_error.as_str()),
+            );
+            // 中文注释：仅对“可能账号相关/可恢复”的状态继续 failover；
+            // 例如 5xx 这类上游服务端错误直接回传，避免单次请求在大量候选账号上长时间轮询。
+            if should_failover_after_fallback_non_success(fallback_status, has_more_candidates) {
+                FallbackBranchResult::Failover
+            } else {
+                FallbackBranchResult::RespondUpstream(resp)
             }
-            Err(err) => {
-                super::super::super::mark_account_cooldown(
-                    &account.id,
-                    super::super::super::CooldownReason::Network,
-                );
-                log_gateway_result(Some(fallback_base), 502, Some(err.as_str()));
-                if has_more_candidates {
-                    FallbackBranchResult::Failover
-                } else {
-                    FallbackBranchResult::Terminal {
-                        status_code: 502,
-                        message: format!("upstream fallback error: {err}"),
-                    }
+        }
+        Ok(None) => {
+            super::super::super::mark_account_cooldown(
+                &account.id,
+                super::super::super::CooldownReason::Network,
+            );
+            log_gateway_result(
+                Some(fallback_base),
+                502,
+                Some("upstream fallback unavailable"),
+            );
+            if has_more_candidates {
+                FallbackBranchResult::Failover
+            } else {
+                FallbackBranchResult::Terminal {
+                    status_code: 502,
+                    message: "upstream blocked by Cloudflare; set CODEXMANAGER_UPSTREAM_COOKIE".to_string(),
                 }
             }
         }
-    } else {
-        super::super::super::mark_account_cooldown(
-            &account.id,
-            super::super::super::CooldownReason::Challenge,
-        );
-        log_gateway_result(
-            Some(upstream_base),
-            502,
-            Some("upstream returned HTML challenge"),
-        );
-        if has_more_candidates {
-            FallbackBranchResult::Failover
-        } else {
-            FallbackBranchResult::Terminal {
-                status_code: 502,
-                message: "upstream returned HTML challenge; configure CODEXMANAGER_UPSTREAM_COOKIE or CODEXMANAGER_UPSTREAM_FALLBACK_BASE_URL".to_string(),
+        Err(err) => {
+            super::super::super::mark_account_cooldown(
+                &account.id,
+                super::super::super::CooldownReason::Network,
+            );
+            log_gateway_result(Some(fallback_base), 502, Some(err.as_str()));
+            if has_more_candidates {
+                FallbackBranchResult::Failover
+            } else {
+                FallbackBranchResult::Terminal {
+                    status_code: 502,
+                    message: format!("upstream fallback error: {err}"),
+                }
             }
         }
     }
