@@ -8,6 +8,37 @@ use super::super::support::retry::{retry_with_alternate_path, AltPathRetryResult
 use super::fallback_branch::{handle_openai_fallback_branch, FallbackBranchResult};
 use super::stateless_retry::{retry_stateless_then_optional_alt, StatelessRetryResult};
 
+fn try_refresh_chatgpt_access_token(
+    storage: &Storage,
+    upstream_base: &str,
+    account: &Account,
+    token: &mut Token,
+) -> Result<Option<String>, String> {
+    if super::super::super::is_openai_api_base(upstream_base) {
+        return Ok(None);
+    }
+    if token.refresh_token.trim().is_empty() {
+        return Ok(None);
+    }
+    let issuer = if account.issuer.trim().is_empty() {
+        super::super::super::runtime_config::token_exchange_default_issuer()
+    } else {
+        account.issuer.clone()
+    };
+    let client_id = super::super::super::runtime_config::token_exchange_client_id();
+    crate::usage_token_refresh::refresh_and_persist_access_token(
+        storage,
+        token,
+        issuer.as_str(),
+        client_id.as_str(),
+    )?;
+    let refreshed = token.access_token.trim();
+    if refreshed.is_empty() {
+        return Err("refreshed chatgpt access token is empty".to_string());
+    }
+    Ok(Some(refreshed.to_string()))
+}
+
 pub(super) enum PostRetryFlowDecision {
     Failover,
     Terminal { status_code: u16, message: String },
@@ -44,6 +75,7 @@ pub(super) fn process_upstream_post_retry_flow<F>(
 where
     F: FnMut(Option<&str>, u16, Option<&str>),
 {
+    let mut current_auth_token = auth_token.to_string();
     let mut status = upstream.status();
     // 中文注释：CPA 无 cookie 兼容模式下尽量保持“单跳上游”语义，避免多次 retry 反而触发 challenge。
     let compact_no_cookie_mode =
@@ -57,6 +89,56 @@ where
     }
 
     if !compact_no_cookie_mode {
+        if status.as_u16() == 401 {
+            match try_refresh_chatgpt_access_token(storage, upstream_base, account, token) {
+                Ok(Some(refreshed_auth_token)) => {
+                    current_auth_token = refreshed_auth_token;
+                    if debug {
+                        log::warn!(
+                            "event=gateway_upstream_unauthorized_refresh_retry path={} account_id={}",
+                            path,
+                            account.id
+                        );
+                    }
+                    match super::transport::send_upstream_request(
+                        client,
+                        method,
+                        url,
+                        request_deadline,
+                        request,
+                        incoming_headers,
+                        body,
+                        is_stream,
+                        upstream_cookie,
+                        current_auth_token.as_str(),
+                        account,
+                        strip_session_affinity,
+                    ) {
+                        Ok(resp) => {
+                            upstream = resp;
+                            status = upstream.status();
+                        }
+                        Err(err) => {
+                            log::warn!(
+                                "event=gateway_upstream_unauthorized_refresh_retry_error path={} status=502 account_id={} err={}",
+                                path,
+                                account.id,
+                                err
+                            );
+                        }
+                    }
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    log::warn!(
+                        "event=gateway_upstream_unauthorized_refresh_failed path={} account_id={} err={}",
+                        path,
+                        account.id,
+                        err
+                    );
+                }
+            }
+        }
         if let Some(alt_url) = url_alt {
             match retry_with_alternate_path(
                 client,
@@ -68,7 +150,7 @@ where
                 body,
                 is_stream,
                 upstream_cookie,
-                auth_token,
+                current_auth_token.as_str(),
                 account,
                 strip_session_affinity,
                 status,
@@ -106,7 +188,7 @@ where
             body,
             is_stream,
             upstream_cookie,
-            auth_token,
+            current_auth_token.as_str(),
             account,
             strip_session_affinity,
             status,

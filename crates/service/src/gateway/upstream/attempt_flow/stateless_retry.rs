@@ -22,9 +22,9 @@ fn should_trigger_stateless_retry(
         return !disable_challenge_stateless_retry && matches!(status, 403 | 429);
     }
     if disable_challenge_stateless_retry {
-        return matches!(status, 401 | 404);
+        return matches!(status, 404);
     }
-    matches!(status, 401 | 403 | 404 | 429)
+    matches!(status, 403 | 404 | 429)
 }
 
 #[allow(clippy::too_many_arguments)]
