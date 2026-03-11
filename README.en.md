@@ -22,11 +22,12 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 
 ## Recent Changes
 - Current latest version: `v0.1.6` (2026-03-07)
-- The current `main` branch continues to harden the Web auth flow: `codexmanager-web` still persists the password, but authenticated sessions are now scoped to the current Web process, so old cookies no longer survive a full close-and-reopen cycle.
-- Protocol adaptation keeps moving closer to Codex / OpenAI-compatible behavior: `/v1/chat/completions` and `/v1/responses` forwarding are more aligned, and the `tools` / `tool_calls` aggregation, shortened tool-name mapping, and response restoration paths are now preserved across Cherry Studio, OpenClaw, Claude Code, and similar clients.
-- Gateway diagnostics are richer: failure responses now expose structured `errorCode` / `errorDetail` fields, plus `X-CodexManager-Error-Code` and `X-CodexManager-Trace-Id` headers.
-- The release pipeline remains consolidated under `release-all.yml` for one-click Windows / macOS / Linux publishing.
-- Full history is available in [CHANGELOG.md](CHANGELOG.md).
+- The `main` branch has continued moving after `v0.1.6`; see the `Unreleased` section in [CHANGELOG.md](CHANGELOG.md) for the full post-`v0.1.6` history.
+- Protocol compatibility keeps tightening around Codex / OpenAI behavior: `/v1/chat/completions`, `/v1/responses`, and Claude `/v1/messages` are now more closely aligned, including multi-MCP tool preservation, long tool-name shortening, and response restoration for Cherry Studio, OpenClaw, Claude Code, and similar clients.
+- Gateway runtime and diagnostics are stronger: failure responses expose structured `errorCode` / `errorDetail` fields and trace headers, long-running SSE turns are more resilient to idle disconnects, and the Settings page now exposes upstream stream timeout and SSE keepalive controls with runtime hot reload.
+- Desktop behavior was tightened as well: startup now restores dashboard / account / request-log snapshots earlier, successful login refreshes the accounts table automatically, and platform-key creation plus upstream-proxy save flows were cleaned up.
+- The Web auth flow is safer: `codexmanager-web` still persists the password, but authenticated sessions are now scoped to the current Web process, so old cookies do not survive a full close-and-reopen cycle.
+- The release pipeline stays consolidated under `release-all.yml` for one-click Windows / macOS / Linux publishing, with local frontend build fallback when prebuilt artifacts are unavailable.
 
 ## Features
 - Account pool management: groups, tags, sorting, notes
@@ -80,6 +81,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 | [Release assets guide](docs/release/20260309195355216_发布与产物说明.md) | Platform artifacts, naming, release vs pre-release |
 | [Script and release responsibility matrix](docs/report/20260309195735631_脚本与发布职责对照.md) | Which script owns which step |
 | [Protocol regression checklist](docs/report/20260309195735632_协议兼容回归清单.md) | `/v1/chat/completions`, `/v1/responses`, tools regression items |
+| [CHANGELOG.md](CHANGELOG.md) | Post-`v0.1.6` unreleased changes and full version history |
 
 ## Project Structure
 ```text
@@ -95,16 +97,16 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 │  └─ web                # Service Web UI (optional embedded assets + /api/rpc proxy)
 ├─ docs/                # Formal project documentation
 ├─ scripts/             # Build and release scripts
-├─ portable/            # Portable output directory
 └─ README.en.md
 ```
 
 ## Acknowledgements And References
 
 - CPA (CLIProxyAPI): this project references its protocol adaptation, request forwarding, and compatibility design <https://github.com/router-for-me/CLIProxyAPI>
-- Related implementation:
+- Main reference areas:
 - `crates/service/src/gateway/protocol_adapter/request_mapping.rs`
-- `crates/service/src/gateway/upstream/transport.rs`
+- `crates/service/src/gateway/protocol_adapter/response_conversion/`
+- `crates/service/src/gateway/upstream/`
 
 ## Contact
 
