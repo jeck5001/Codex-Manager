@@ -83,7 +83,7 @@ fn challenge_with_more_candidates_triggers_failover() {
 }
 
 #[test]
-fn challenge_on_last_candidate_returns_terminal_502() {
+fn challenge_on_last_candidate_keeps_upstream_response() {
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
     let content_type = HeaderValue::from_static("text/html; charset=utf-8");
@@ -96,17 +96,5 @@ fn challenge_on_last_candidate_returns_terminal_502() {
         false,
         |_, _, _| {},
     );
-    match decision {
-        UpstreamOutcomeDecision::Terminal {
-            status_code,
-            message,
-        } => {
-            assert_eq!(status_code, 502);
-            assert!(
-                message.contains("Cloudflare/WAF"),
-                "unexpected message: {message}"
-            );
-        }
-        _ => panic!("expected terminal challenge block"),
-    }
+    assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
 }

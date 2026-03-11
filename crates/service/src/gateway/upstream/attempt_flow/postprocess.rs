@@ -181,13 +181,6 @@ where
         &mut log_gateway_result,
     ) {
         UpstreamOutcomeDecision::Failover => PostRetryFlowDecision::Failover,
-        UpstreamOutcomeDecision::Terminal {
-            status_code,
-            message,
-        } => PostRetryFlowDecision::Terminal {
-            status_code,
-            message,
-        },
         UpstreamOutcomeDecision::RespondUpstream => {
             PostRetryFlowDecision::RespondUpstream(upstream)
         }

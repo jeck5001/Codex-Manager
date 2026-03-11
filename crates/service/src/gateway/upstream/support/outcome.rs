@@ -3,7 +3,6 @@ use reqwest::header::HeaderValue;
 
 pub(in super::super) enum UpstreamOutcomeDecision {
     Failover,
-    Terminal { status_code: u16, message: String },
     RespondUpstream,
 }
 
@@ -63,10 +62,7 @@ where
         if has_more_candidates {
             return UpstreamOutcomeDecision::Failover;
         }
-        return UpstreamOutcomeDecision::Terminal {
-            status_code: 502,
-            message: "upstream blocked by Cloudflare/WAF; please refresh account auth or configure CODEXMANAGER_UPSTREAM_COOKIE".to_string(),
-        };
+        return UpstreamOutcomeDecision::RespondUpstream;
     }
 
     let _ = crate::usage_refresh::enqueue_usage_refresh_for_account(account_id);
