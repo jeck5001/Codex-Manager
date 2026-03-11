@@ -1,5 +1,8 @@
 #[allow(unused_imports)]
-use super::{adapt_request_for_protocol, adapt_upstream_response, ResponseAdapter};
+use super::{
+    adapt_request_for_protocol, adapt_upstream_response,
+    adapt_upstream_response_with_tool_name_restore_map, ResponseAdapter,
+};
 use crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE;
 
 #[test]
@@ -140,4 +143,92 @@ fn anthropic_chat_completions_still_passthrough() {
     assert_eq!(adapted.path, "/v1/chat/completions");
     assert_eq!(adapted.body, body);
     assert_eq!(adapted.response_adapter, ResponseAdapter::Passthrough);
+}
+
+#[test]
+fn anthropic_json_response_restores_shortened_tool_name() {
+    let original_tool_name =
+        "mcp__plugin_super_long_workspace_namespace__tool_server_namespace_for_codex_manager_gateway_adapter_alignment__very_long_tool_operation_name";
+    let request = serde_json::json!({
+        "model": "claude-sonnet-4-5",
+        "messages": [{ "role": "user", "content": "hi" }],
+        "tools": [{
+            "name": original_tool_name,
+            "description": "long tool",
+            "input_schema": { "type": "object", "properties": {} }
+        }]
+    });
+    let adapted = adapt_request_for_protocol(
+        PROTOCOL_ANTHROPIC_NATIVE,
+        "/v1/messages",
+        serde_json::to_vec(&request).expect("serialize request"),
+    )
+    .expect("adapt request");
+    let adapted_value: serde_json::Value =
+        serde_json::from_slice(&adapted.body).expect("parse adapted body");
+    let shortened_name = adapted_value
+        .get("tools")
+        .and_then(|tools| tools.get(0))
+        .and_then(|tool| tool.get("name"))
+        .and_then(serde_json::Value::as_str)
+        .expect("tools[0].name");
+    let upstream = serde_json::json!({
+        "id": "resp_restore_1",
+        "object": "response",
+        "created": 1700001000,
+        "model": "gpt-5.3-codex",
+        "output": [{
+            "type": "function_call",
+            "call_id": "call_restore_1",
+            "name": shortened_name,
+            "arguments": "{}"
+        }]
+    });
+    let upstream_body = serde_json::to_vec(&upstream).expect("serialize upstream");
+    let (body, content_type) = adapt_upstream_response_with_tool_name_restore_map(
+        ResponseAdapter::AnthropicJson,
+        Some("application/json"),
+        &upstream_body,
+        Some(&adapted.tool_name_restore_map),
+    )
+    .expect("convert response");
+    let value: serde_json::Value = serde_json::from_slice(&body).expect("parse converted body");
+    assert_eq!(content_type, "application/json");
+    assert_eq!(
+        value
+            .get("content")
+            .and_then(|content| content.get(0))
+            .and_then(|block| block.get("name"))
+            .and_then(serde_json::Value::as_str),
+        Some(original_tool_name)
+    );
+}
+
+#[test]
+fn anthropic_sse_response_restores_shortened_tool_name() {
+    let mut restore_map = super::ToolNameRestoreMap::new();
+    restore_map.insert(
+        "mcp__very_long_tool_operation_name".to_string(),
+        "mcp__plugin_super_long_workspace_namespace__tool_server_namespace_for_codex_manager_gateway_adapter_alignment__very_long_tool_operation_name"
+            .to_string(),
+    );
+    let upstream = r#"data: {"type":"response.output_item.added","response_id":"resp_stream_restore_1","created":1700001100,"model":"gpt-5.3-codex","output_index":0,"item":{"type":"function_call","call_id":"call_restore_stream_1","name":"mcp__very_long_tool_operation_name"}}
+
+data: {"type":"response.output_item.done","response_id":"resp_stream_restore_1","created":1700001100,"model":"gpt-5.3-codex","output_index":0,"item":{"type":"function_call","call_id":"call_restore_stream_1","name":"mcp__very_long_tool_operation_name","arguments":"{}"}}
+
+data: {"type":"response.completed","response":{"id":"resp_stream_restore_1","model":"gpt-5.3-codex","usage":{"input_tokens":3,"output_tokens":2}}}
+
+data: [DONE]
+
+"#;
+    let (body, content_type) = adapt_upstream_response_with_tool_name_restore_map(
+        ResponseAdapter::AnthropicSse,
+        Some("text/event-stream"),
+        upstream.as_bytes(),
+        Some(&restore_map),
+    )
+    .expect("convert response");
+    let text = String::from_utf8(body).expect("parse sse body");
+    assert_eq!(content_type, "text/event-stream");
+    assert!(text.contains("mcp__plugin_super_long_workspace_namespace__tool_server_namespace_for_codex_manager_gateway_adapter_alignment__very_long_tool_operation_name"));
 }

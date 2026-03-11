@@ -1,3 +1,5 @@
+use super::ToolNameRestoreMap;
+
 #[path = "sse_conversion/anthropic_sse_reader.rs"]
 mod anthropic_sse_reader;
 #[path = "sse_conversion/anthropic_sse_writer.rs"]
@@ -13,8 +15,9 @@ pub(super) fn convert_anthropic_json_to_sse(
 
 pub(super) fn convert_openai_sse_to_anthropic(
     body: &[u8],
+    tool_name_restore_map: Option<&ToolNameRestoreMap>,
 ) -> Result<(Vec<u8>, &'static str), String> {
-    openai_sse_anthropic_bridge::convert_openai_sse_to_anthropic(body)
+    openai_sse_anthropic_bridge::convert_openai_sse_to_anthropic(body, tool_name_restore_map)
 }
 
 pub(super) fn convert_anthropic_sse_to_json(

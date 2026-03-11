@@ -54,9 +54,9 @@ impl PassthroughSseUsageReader {
             Ok(UpstreamSseFramePumpItem::Eof) => {
                 if let Ok(mut collector) = self.usage_collector.lock() {
                     if !collector.saw_terminal {
-                        collector
-                            .terminal_error
-                            .get_or_insert_with(|| "stream disconnected before completion".to_string());
+                        collector.terminal_error.get_or_insert_with(|| {
+                            "stream disconnected before completion".to_string()
+                        });
                     }
                 }
                 self.finished = true;
@@ -76,9 +76,9 @@ impl PassthroughSseUsageReader {
             }
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 if let Ok(mut collector) = self.usage_collector.lock() {
-                    collector
-                        .terminal_error
-                        .get_or_insert_with(|| "stream reader disconnected unexpectedly".to_string());
+                    collector.terminal_error.get_or_insert_with(|| {
+                        "stream reader disconnected unexpectedly".to_string()
+                    });
                 }
                 self.finished = true;
                 Ok(Vec::new())

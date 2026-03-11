@@ -57,7 +57,10 @@ impl UpstreamResponseBridgeResult {
     }
 }
 
-pub(in super::super) fn merge_usage(target: &mut UpstreamResponseUsage, source: UpstreamResponseUsage) {
+pub(in super::super) fn merge_usage(
+    target: &mut UpstreamResponseUsage,
+    source: UpstreamResponseUsage,
+) {
     if source.input_tokens.is_some() {
         target.input_tokens = source.input_tokens;
     }
@@ -428,7 +431,10 @@ pub(in super::super) fn extract_error_message_from_json(value: &Value) -> Option
     None
 }
 
-pub(in super::super) fn extract_error_hint_from_body(status_code: u16, body: &[u8]) -> Option<String> {
+pub(in super::super) fn extract_error_hint_from_body(
+    status_code: u16,
+    body: &[u8],
+) -> Option<String> {
     if status_code < 400 || body.is_empty() {
         return None;
     }

@@ -5,10 +5,13 @@ use super::super::json_conversion::{
     convert_openai_json_to_anthropic, extract_function_call_arguments_raw,
     extract_responses_reasoning_text, map_finish_reason, parse_tool_arguments_as_object,
 };
+use super::super::tool_mapping::restore_openai_tool_name;
+use super::super::ToolNameRestoreMap;
 use super::anthropic_sse_writer::convert_anthropic_json_to_sse;
 
 pub(super) fn convert_openai_sse_to_anthropic(
     body: &[u8],
+    tool_name_restore_map: Option<&ToolNameRestoreMap>,
 ) -> Result<(Vec<u8>, &'static str), String> {
     let text = std::str::from_utf8(body).map_err(|_| "invalid upstream sse bytes".to_string())?;
 
@@ -263,7 +266,8 @@ pub(super) fn convert_openai_sse_to_anthropic(
                 .is_some_and(|items| !items.is_empty());
         let response_bytes = serde_json::to_vec(&response)
             .map_err(|err| format!("serialize completed response failed: {err}"))?;
-        let (anthropic_json, _) = convert_openai_json_to_anthropic(&response_bytes)?;
+        let (anthropic_json, _) =
+            convert_openai_json_to_anthropic(&response_bytes, tool_name_restore_map)?;
         if completed_has_effective_output
             || (content_text.is_empty() && tool_calls.is_empty() && reasoning_blocks.is_empty())
         {
@@ -343,7 +347,10 @@ pub(super) fn convert_openai_sse_to_anthropic(
     }
 
     for (idx, tool_call) in tool_calls {
-        let tool_name = tool_call.name.clone().unwrap_or_else(|| "tool".to_string());
+        let tool_name = restore_openai_tool_name(
+            tool_call.name.as_deref().unwrap_or("tool"),
+            tool_name_restore_map,
+        );
         let tool_use_id = tool_call
             .id
             .clone()

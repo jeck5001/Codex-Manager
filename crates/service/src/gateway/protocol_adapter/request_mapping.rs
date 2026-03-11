@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 mod anthropic;
 mod openai;
@@ -10,7 +10,6 @@ const DEFAULT_ANTHROPIC_MODEL: &str = "gpt-5.3-codex";
 const DEFAULT_ANTHROPIC_REASONING: &str = "high";
 const DEFAULT_ANTHROPIC_INSTRUCTIONS: &str =
     "You are Codex, a coding assistant that responds clearly and safely.";
-const MAX_ANTHROPIC_TOOLS: usize = 16;
 pub(super) use self::anthropic::convert_anthropic_messages_request;
 use self::openai::shorten_openai_tool_name_with_map;
 pub(super) use self::openai::{
@@ -22,6 +21,45 @@ fn resolve_prompt_cache_key(
     model: Option<&Value>,
 ) -> Option<String> {
     super::prompt_cache::resolve_prompt_cache_key(obj, model)
+}
+
+fn build_shortened_tool_name_maps<I>(names: I) -> (BTreeMap<String, String>, ToolNameRestoreMap)
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut unique_names = BTreeSet::new();
+    for name in names {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        unique_names.insert(trimmed.to_string());
+    }
+
+    let mut used = BTreeSet::new();
+    let mut tool_name_map = BTreeMap::new();
+    let mut restore_map = ToolNameRestoreMap::new();
+    for original in unique_names {
+        let base = openai::shorten_openai_tool_name_candidate(original.as_str());
+        let mut candidate = base.clone();
+        let mut suffix = 1usize;
+        while used.contains(&candidate) {
+            let suffix_text = format!("_{suffix}");
+            let mut truncated = base.clone();
+            let limit = openai::MAX_OPENAI_TOOL_NAME_LEN.saturating_sub(suffix_text.len());
+            if truncated.len() > limit {
+                truncated = truncated.chars().take(limit).collect();
+            }
+            candidate = format!("{truncated}{suffix_text}");
+            suffix += 1;
+        }
+        used.insert(candidate.clone());
+        if original != candidate {
+            restore_map.insert(candidate.clone(), original.clone());
+        }
+        tool_name_map.insert(original, candidate);
+    }
+    (tool_name_map, restore_map)
 }
 
 fn convert_chat_messages_to_responses_input(
@@ -489,7 +527,10 @@ fn extract_tool_result_output(value: Option<&Value>) -> Result<Value, String> {
     convert_tool_message_content_to_responses_output(value)
 }
 
-fn map_anthropic_tool_definition(value: &Value) -> Option<Value> {
+fn map_anthropic_tool_definition(
+    value: &Value,
+    tool_name_map: &BTreeMap<String, String>,
+) -> Option<Value> {
     let Some(obj) = value.as_object() else {
         return None;
     };
@@ -508,10 +549,11 @@ fn map_anthropic_tool_definition(value: &Value) -> Option<Value> {
         .get("input_schema")
         .cloned()
         .unwrap_or_else(|| json!({ "type": "object", "properties": {} }));
+    let mapped_name = shorten_openai_tool_name_with_map(name, tool_name_map);
 
     let mut tool_obj = serde_json::Map::new();
     tool_obj.insert("type".to_string(), Value::String("function".to_string()));
-    tool_obj.insert("name".to_string(), Value::String(name.to_string()));
+    tool_obj.insert("name".to_string(), Value::String(mapped_name));
     if !description.is_empty() {
         tool_obj.insert("description".to_string(), Value::String(description));
     }
@@ -520,7 +562,10 @@ fn map_anthropic_tool_definition(value: &Value) -> Option<Value> {
     Some(Value::Object(tool_obj))
 }
 
-fn map_anthropic_tool_choice(value: &Value) -> Option<Value> {
+fn map_anthropic_tool_choice(
+    value: &Value,
+    tool_name_map: &BTreeMap<String, String>,
+) -> Option<Value> {
     if let Some(text) = value.as_str() {
         return Some(Value::String(text.to_string()));
     }
@@ -538,9 +583,10 @@ fn map_anthropic_tool_choice(value: &Value) -> Option<Value> {
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|value| !value.is_empty())?;
+            let mapped_name = shorten_openai_tool_name_with_map(name, tool_name_map);
             Some(json!({
                 "type": "function",
-                "name": name
+                "name": mapped_name
             }))
         }
         _ => None,

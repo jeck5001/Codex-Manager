@@ -5,8 +5,8 @@ use super::{
     is_response_completed_event_name, map_chunk_has_chat_text, mark_collector_terminal_success,
     merge_usage, normalize_chat_chunk_delta_role, parse_sse_frame_json,
     should_skip_chat_live_text_event, sse_keepalive_interval, update_openai_stream_meta, Arc,
-    Cursor, Mutex, OpenAIStreamMeta, PassthroughSseCollector, Read, SseKeepAliveFrame,
-    SseTerminal, ToolNameRestoreMap, UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
+    Cursor, Mutex, OpenAIStreamMeta, PassthroughSseCollector, Read, SseKeepAliveFrame, SseTerminal,
+    ToolNameRestoreMap, UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
 };
 
 pub(crate) struct OpenAIChatCompletionsSseReader {
@@ -183,9 +183,9 @@ impl OpenAIChatCompletionsSseReader {
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                     if let Ok(mut collector) = self.usage_collector.lock() {
-                        collector
-                            .terminal_error
-                            .get_or_insert_with(|| "stream reader disconnected unexpectedly".to_string());
+                        collector.terminal_error.get_or_insert_with(|| {
+                            "stream reader disconnected unexpectedly".to_string()
+                        });
                     }
                     self.finished = true;
                     return Ok(Vec::new());

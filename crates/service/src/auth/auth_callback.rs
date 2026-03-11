@@ -1,8 +1,8 @@
 use std::io;
+use tiny_http::Header;
 use tiny_http::Request;
 use tiny_http::Response;
 use tiny_http::Server;
-use tiny_http::Header;
 use url::Url;
 
 use crate::auth_tokens::complete_login;
@@ -51,9 +51,8 @@ pub(crate) fn handle_login_request(request: Request) -> Result<(), String> {
             let _ = request.respond(html_response(build_callback_success_page()));
         }
         Err(err) => {
-            let _ = request.respond(
-                html_response(build_callback_error_page(&err)).with_status_code(500),
-            );
+            let _ = request
+                .respond(html_response(build_callback_error_page(&err)).with_status_code(500));
         }
     }
     Ok(())

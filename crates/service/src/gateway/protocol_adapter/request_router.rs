@@ -46,7 +46,7 @@ pub(crate) fn adapt_request_for_protocol(
     if protocol_type == PROTOCOL_ANTHROPIC_NATIVE
         && (path == "/v1/messages" || path.starts_with("/v1/messages?"))
     {
-        let (adapted_body, request_stream) =
+        let (adapted_body, request_stream, tool_name_restore_map) =
             request_mapping::convert_anthropic_messages_request(&body)?;
         return Ok(AdaptedGatewayRequest {
             // 说明：non-stream 也统一走 /v1/responses。
@@ -58,7 +58,7 @@ pub(crate) fn adapt_request_for_protocol(
             } else {
                 ResponseAdapter::AnthropicJson
             },
-            tool_name_restore_map: ToolNameRestoreMap::new(),
+            tool_name_restore_map,
         });
     }
 

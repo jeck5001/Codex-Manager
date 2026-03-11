@@ -31,9 +31,9 @@ pub(crate) fn apply_env_overrides_to_process(
     let mut baseline =
         crate::lock_utils::lock_recover(env_override_baseline(), "env_override_baseline");
     for key in &all_keys {
-        baseline.entry(key.clone()).or_insert_with(|| {
-            super::normalize_optional_text(std::env::var(key).ok().as_deref())
-        });
+        baseline
+            .entry(key.clone())
+            .or_insert_with(|| super::normalize_optional_text(std::env::var(key).ok().as_deref()));
     }
 
     for key in all_keys {

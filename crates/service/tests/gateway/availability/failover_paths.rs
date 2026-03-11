@@ -76,7 +76,10 @@ fn normalize_upstream_base_url_keeps_existing_backend_path() {
 #[test]
 fn normalize_models_path_keeps_original_path() {
     assert_eq!(normalize_models_path("/v1/models"), "/v1/models");
-    assert_eq!(normalize_models_path("/v1/models?foo=1"), "/v1/models?foo=1");
+    assert_eq!(
+        normalize_models_path("/v1/models?foo=1"),
+        "/v1/models?foo=1"
+    );
 }
 
 #[test]

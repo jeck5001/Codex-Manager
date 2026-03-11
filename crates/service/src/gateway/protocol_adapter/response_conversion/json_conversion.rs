@@ -1,5 +1,8 @@
 use serde_json::{json, Value};
 
+use super::tool_mapping::restore_openai_tool_name;
+use super::ToolNameRestoreMap;
+
 fn map_openai_error_to_anthropic(value: &Value) -> Option<Value> {
     let error = value.get("error")?.as_object()?;
     let message = error
@@ -31,6 +34,7 @@ fn map_openai_error_to_anthropic(value: &Value) -> Option<Value> {
 
 pub(super) fn convert_openai_json_to_anthropic(
     body: &[u8],
+    tool_name_restore_map: Option<&ToolNameRestoreMap>,
 ) -> Result<(Vec<u8>, &'static str), String> {
     let value: Value =
         serde_json::from_slice(body).map_err(|_| "invalid upstream json response".to_string())?;
@@ -41,9 +45,9 @@ pub(super) fn convert_openai_json_to_anthropic(
     }
 
     let payload = if value.get("choices").is_some() {
-        build_anthropic_message_from_chat_completions(&value)?
+        build_anthropic_message_from_chat_completions(&value, tool_name_restore_map)?
     } else {
-        build_anthropic_message_from_responses(&value)?
+        build_anthropic_message_from_responses(&value, tool_name_restore_map)?
     };
 
     serde_json::to_vec(&payload)
@@ -51,7 +55,10 @@ pub(super) fn convert_openai_json_to_anthropic(
         .map_err(|err| format!("serialize claude response failed: {err}"))
 }
 
-fn build_anthropic_message_from_chat_completions(value: &Value) -> Result<Value, String> {
+fn build_anthropic_message_from_chat_completions(
+    value: &Value,
+    tool_name_restore_map: Option<&ToolNameRestoreMap>,
+) -> Result<Value, String> {
     let model = value
         .get("model")
         .and_then(Value::as_str)
@@ -107,6 +114,7 @@ fn build_anthropic_message_from_chat_completions(value: &Value) -> Result<Value,
             .and_then(|item| item.get("name"))
             .and_then(Value::as_str)
             .ok_or_else(|| "missing tool call function name".to_string())?;
+        let function_name = restore_openai_tool_name(function_name, tool_name_restore_map);
         let arguments_raw = tool_call
             .get("function")
             .and_then(|item| item.get("arguments"))
@@ -163,7 +171,10 @@ fn build_anthropic_message_from_chat_completions(value: &Value) -> Result<Value,
     }))
 }
 
-fn build_anthropic_message_from_responses(value: &Value) -> Result<Value, String> {
+fn build_anthropic_message_from_responses(
+    value: &Value,
+    tool_name_restore_map: Option<&ToolNameRestoreMap>,
+) -> Result<Value, String> {
     let model = value
         .get("model")
         .and_then(Value::as_str)
@@ -223,6 +234,8 @@ fn build_anthropic_message_from_responses(value: &Value) -> Result<Value, String
                     else {
                         continue;
                     };
+                    let function_name =
+                        restore_openai_tool_name(function_name, tool_name_restore_map);
                     let input = extract_function_call_input_object(item_obj);
                     content_blocks.push(json!({
                         "type": "tool_use",

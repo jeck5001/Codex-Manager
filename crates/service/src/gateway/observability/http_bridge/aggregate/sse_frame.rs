@@ -7,7 +7,9 @@ use output_text::{
 };
 
 #[cfg(test)]
-pub(in super::super) fn parse_usage_from_sse_frame(lines: &[String]) -> Option<UpstreamResponseUsage> {
+pub(in super::super) fn parse_usage_from_sse_frame(
+    lines: &[String],
+) -> Option<UpstreamResponseUsage> {
     let mut data_lines = Vec::new();
     for line in lines {
         let trimmed = line.trim_end_matches(['\r', '\n']);

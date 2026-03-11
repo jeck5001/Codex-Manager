@@ -2,6 +2,7 @@ use serde_json::json;
 
 use crate::gateway::request_helpers::is_html_content_type;
 
+use super::super::ResponseAdapter;
 use super::json_conversion::convert_openai_json_to_anthropic;
 use super::openai_chat::{
     convert_openai_json_to_chat_completions, convert_openai_sse_to_chat_completions_json,
@@ -13,7 +14,6 @@ use super::sse_conversion::{
     convert_anthropic_json_to_sse, convert_anthropic_sse_to_json, convert_openai_sse_to_anthropic,
 };
 use super::ToolNameRestoreMap;
-use super::super::ResponseAdapter;
 
 pub(super) fn adapt_upstream_response(
     adapter: ResponseAdapter,
@@ -26,18 +26,20 @@ pub(super) fn adapt_upstream_response(
         ResponseAdapter::AnthropicJson => {
             reject_html_challenge(upstream_content_type)?;
             if is_sse_payload(upstream_content_type, body) {
-                let (anthropic_sse, _) = convert_openai_sse_to_anthropic(body)?;
+                let (anthropic_sse, _) =
+                    convert_openai_sse_to_anthropic(body, tool_name_restore_map)?;
                 return convert_anthropic_sse_to_json(&anthropic_sse);
             }
-            convert_openai_json_to_anthropic(body)
+            convert_openai_json_to_anthropic(body, tool_name_restore_map)
         }
         ResponseAdapter::AnthropicSse => {
             reject_html_challenge(upstream_content_type)?;
             if is_json_payload(upstream_content_type) {
-                let (anthropic_json, _) = convert_openai_json_to_anthropic(body)?;
+                let (anthropic_json, _) =
+                    convert_openai_json_to_anthropic(body, tool_name_restore_map)?;
                 return convert_anthropic_json_to_sse(&anthropic_json);
             }
-            convert_openai_sse_to_anthropic(body)
+            convert_openai_sse_to_anthropic(body, tool_name_restore_map)
         }
         ResponseAdapter::OpenAIChatCompletionsJson | ResponseAdapter::OpenAIChatCompletionsSse => {
             reject_html_challenge(upstream_content_type)?;

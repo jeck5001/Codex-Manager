@@ -4,9 +4,9 @@ use super::{
     extract_openai_completed_output_text, extract_sse_frame_payload, inspect_sse_frame,
     is_response_completed_event_name, map_chunk_has_completion_text,
     mark_collector_terminal_success, merge_usage, parse_sse_frame_json,
-    should_skip_completion_live_text_event, sse_keepalive_interval, update_openai_stream_meta,
-    Arc, Cursor, Mutex, OpenAIStreamMeta, PassthroughSseCollector, Read, SseKeepAliveFrame,
-    SseTerminal, UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
+    should_skip_completion_live_text_event, sse_keepalive_interval, update_openai_stream_meta, Arc,
+    Cursor, Mutex, OpenAIStreamMeta, PassthroughSseCollector, Read, SseKeepAliveFrame, SseTerminal,
+    UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
 };
 
 pub(crate) struct OpenAICompletionsSseReader {
@@ -169,9 +169,9 @@ impl OpenAICompletionsSseReader {
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                     if let Ok(mut collector) = self.usage_collector.lock() {
-                        collector
-                            .terminal_error
-                            .get_or_insert_with(|| "stream reader disconnected unexpectedly".to_string());
+                        collector.terminal_error.get_or_insert_with(|| {
+                            "stream reader disconnected unexpectedly".to_string()
+                        });
                     }
                     self.finished = true;
                     return Ok(Vec::new());

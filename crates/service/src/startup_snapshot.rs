@@ -1,11 +1,13 @@
 use codexmanager_core::rpc::types::{AccountListParams, StartupSnapshotResult};
 
 use crate::{
-    account_list, apikey_list, apikey_models, gateway, requestlog_list,
-    requestlog_today_summary, usage_list,
+    account_list, apikey_list, apikey_models, gateway, requestlog_list, requestlog_today_summary,
+    usage_list,
 };
 
-pub(crate) fn read_startup_snapshot(request_log_limit: Option<i64>) -> Result<StartupSnapshotResult, String> {
+pub(crate) fn read_startup_snapshot(
+    request_log_limit: Option<i64>,
+) -> Result<StartupSnapshotResult, String> {
     let accounts = account_list::read_accounts(AccountListParams::default(), false)?.items;
     let usage_snapshots = usage_list::read_usage_snapshots()?;
     let api_keys = apikey_list::read_api_keys()?;

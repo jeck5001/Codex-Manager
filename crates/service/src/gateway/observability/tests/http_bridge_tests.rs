@@ -17,7 +17,9 @@ use std::time::Duration;
 static TEST_ENV_MUTEX: Mutex<()> = Mutex::new(());
 
 fn test_env_guard() -> MutexGuard<'static, ()> {
-    TEST_ENV_MUTEX.lock().expect("lock http bridge test env mutex")
+    TEST_ENV_MUTEX
+        .lock()
+        .expect("lock http bridge test env mutex")
 }
 
 struct EnvGuard {
@@ -81,9 +83,8 @@ fn open_streaming_mock_http_response(
         let (mut stream, _) = listener.accept().expect("accept mock client");
         let mut request_buf = [0_u8; 2048];
         let _ = stream.read(&mut request_buf);
-        let response_header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nConnection: close\r\n\r\n"
-        );
+        let response_header =
+            format!("HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nConnection: close\r\n\r\n");
         stream
             .write_all(response_header.as_bytes())
             .expect("write streaming response headers");

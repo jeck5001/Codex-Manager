@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const DEFAULT_COMPLETIONS_PROMPT: &str = "Complete this:";
 const DEFAULT_OPENAI_REASONING: &str = "medium";
-const MAX_OPENAI_TOOL_NAME_LEN: usize = 64;
+pub(super) const MAX_OPENAI_TOOL_NAME_LEN: usize = 64;
 
-fn shorten_openai_tool_name_candidate(name: &str) -> String {
+pub(super) fn shorten_openai_tool_name_candidate(name: &str) -> String {
     if name.len() <= MAX_OPENAI_TOOL_NAME_LEN {
         return name.to_string();
     }

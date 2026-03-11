@@ -1,7 +1,8 @@
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
 
-pub(crate) fn convert_anthropic_messages_request(body: &[u8]) -> Result<(Vec<u8>, bool), String> {
+pub(crate) fn convert_anthropic_messages_request(
+    body: &[u8],
+) -> Result<(Vec<u8>, bool, super::ToolNameRestoreMap), String> {
     let payload: Value =
         serde_json::from_slice(body).map_err(|_| "invalid claude request json".to_string())?;
     let Some(obj) = payload.as_object() else {
@@ -43,9 +44,10 @@ pub(crate) fn convert_anthropic_messages_request(body: &[u8]) -> Result<(Vec<u8>
         }
     }
 
-    let empty_tool_name_map = BTreeMap::new();
+    let (tool_name_map, tool_name_restore_map) =
+        super::build_shortened_tool_name_maps(collect_anthropic_tool_names(obj, source_messages));
     let (instructions, input_items) =
-        super::convert_chat_messages_to_responses_input(&messages, &empty_tool_name_map)?;
+        super::convert_chat_messages_to_responses_input(&messages, &tool_name_map)?;
     let mut out = serde_json::Map::new();
     let resolved_model = resolve_anthropic_upstream_model(obj);
     out.insert("model".to_string(), Value::String(resolved_model));
@@ -93,8 +95,7 @@ pub(crate) fn convert_anthropic_messages_request(body: &[u8]) -> Result<(Vec<u8>
     if let Some(tools) = obj.get("tools").and_then(Value::as_array) {
         let mapped_tools = tools
             .iter()
-            .filter_map(super::map_anthropic_tool_definition)
-            .take(super::MAX_ANTHROPIC_TOOLS)
+            .filter_map(|tool| super::map_anthropic_tool_definition(tool, &tool_name_map))
             .collect::<Vec<_>>();
         if !mapped_tools.is_empty() {
             out.insert("tools".to_string(), Value::Array(mapped_tools));
@@ -105,7 +106,9 @@ pub(crate) fn convert_anthropic_messages_request(body: &[u8]) -> Result<(Vec<u8>
     }
     if let Some(tool_choice) = obj.get("tool_choice") {
         if !tool_choice.is_null() {
-            if let Some(mapped_tool_choice) = super::map_anthropic_tool_choice(tool_choice) {
+            if let Some(mapped_tool_choice) =
+                super::map_anthropic_tool_choice(tool_choice, &tool_name_map)
+            {
                 out.insert("tool_choice".to_string(), mapped_tool_choice);
             }
         }
@@ -125,8 +128,83 @@ pub(crate) fn convert_anthropic_messages_request(body: &[u8]) -> Result<(Vec<u8>
     );
 
     serde_json::to_vec(&Value::Object(out))
-        .map(|bytes| (bytes, request_stream))
+        .map(|bytes| (bytes, request_stream, tool_name_restore_map))
         .map_err(|err| format!("convert claude request failed: {err}"))
+}
+
+fn collect_anthropic_tool_names(
+    obj: &serde_json::Map<String, Value>,
+    source_messages: &[Value],
+) -> Vec<String> {
+    let mut names = Vec::new();
+
+    if let Some(tools) = obj.get("tools").and_then(Value::as_array) {
+        for tool in tools {
+            let Some(tool_obj) = tool.as_object() else {
+                continue;
+            };
+            let Some(name) = tool_obj
+                .get("name")
+                .and_then(Value::as_str)
+                .or_else(|| tool_obj.get("type").and_then(Value::as_str))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            names.push(name.to_string());
+        }
+    }
+
+    if let Some(name) = obj
+        .get("tool_choice")
+        .and_then(Value::as_object)
+        .and_then(|tool_choice| {
+            if tool_choice.get("type").and_then(Value::as_str) != Some("tool") {
+                return None;
+            }
+            tool_choice
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+    {
+        names.push(name.to_string());
+    }
+
+    for message in source_messages {
+        let Some(message_obj) = message.as_object() else {
+            continue;
+        };
+        let Some(content) = message_obj.get("content") else {
+            continue;
+        };
+        let items = if let Some(array) = content.as_array() {
+            array
+        } else {
+            continue;
+        };
+        for item in items {
+            let Some(item_obj) = item.as_object() else {
+                continue;
+            };
+            if item_obj.get("type").and_then(Value::as_str) != Some("tool_use") {
+                continue;
+            }
+            let Some(name) = item_obj
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            names.push(name.to_string());
+        }
+    }
+
+    names
 }
 
 fn resolve_anthropic_upstream_model(source: &serde_json::Map<String, Value>) -> String {

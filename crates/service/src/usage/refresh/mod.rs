@@ -124,9 +124,7 @@ use self::errors::{
 #[cfg(test)]
 use self::queue::clear_pending_usage_refresh_tasks_for_tests;
 pub(crate) use self::queue::enqueue_usage_refresh_with_worker;
-use self::runner::{
-    gateway_keepalive_loop, token_refresh_polling_loop, usage_polling_loop,
-};
+use self::runner::{gateway_keepalive_loop, token_refresh_polling_loop, usage_polling_loop};
 use self::settings::ensure_background_tasks_config_loaded;
 pub(crate) use self::settings::{
     background_tasks_settings, reload_background_tasks_runtime_from_env,

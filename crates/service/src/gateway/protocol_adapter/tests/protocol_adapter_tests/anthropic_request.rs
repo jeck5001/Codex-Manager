@@ -453,3 +453,126 @@ fn anthropic_tool_result_with_image_maps_to_function_call_output_items() {
         Some("data:image/png;base64,ZmFrZV9pbWFnZQ==")
     );
 }
+
+#[test]
+fn anthropic_messages_preserve_all_tools_across_multiple_mcp_servers() {
+    let mut tools = Vec::new();
+    for index in 0..16 {
+        tools.push(serde_json::json!({
+            "name": format!("mcp__server_alpha__tool_{index:02}"),
+            "description": "alpha",
+            "input_schema": { "type": "object", "properties": {} }
+        }));
+    }
+    tools.push(serde_json::json!({
+        "name": "mcp__server_beta__lookup",
+        "description": "beta lookup",
+        "input_schema": { "type": "object", "properties": {} }
+    }));
+    tools.push(serde_json::json!({
+        "name": "mcp__server_beta__fetch",
+        "description": "beta fetch",
+        "input_schema": { "type": "object", "properties": {} }
+    }));
+
+    let body = serde_json::json!({
+        "model": "claude-sonnet-4-5",
+        "messages": [{ "role": "user", "content": "同时使用两个 MCP server" }],
+        "tools": tools
+    });
+    let adapted = adapt_request_for_protocol(
+        PROTOCOL_ANTHROPIC_NATIVE,
+        "/v1/messages",
+        serde_json::to_vec(&body).expect("serialize body"),
+    )
+    .expect("adapt request");
+    let value: serde_json::Value =
+        serde_json::from_slice(&adapted.body).expect("parse adapted body");
+    let mapped_tools = value
+        .get("tools")
+        .and_then(serde_json::Value::as_array)
+        .expect("tools array");
+
+    assert_eq!(mapped_tools.len(), 18);
+    assert!(mapped_tools.iter().any(|tool| {
+        tool.get("name").and_then(serde_json::Value::as_str) == Some("mcp__server_beta__lookup")
+    }));
+    assert!(mapped_tools.iter().any(|tool| {
+        tool.get("name").and_then(serde_json::Value::as_str) == Some("mcp__server_beta__fetch")
+    }));
+}
+
+#[test]
+fn anthropic_messages_shorten_long_tool_names_and_build_restore_map() {
+    let original_tool_name =
+        "mcp__plugin_super_long_workspace_namespace__tool_server_namespace_for_codex_manager_gateway_adapter_alignment__very_long_tool_operation_name";
+    let body = serde_json::json!({
+        "model": "claude-sonnet-4-5",
+        "messages": [
+            {
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "toolu_long_1",
+                    "name": original_tool_name,
+                    "input": { "path": "README.md" }
+                }]
+            },
+            {
+                "role": "user",
+                "content": "继续"
+            }
+        ],
+        "tools": [{
+            "name": original_tool_name,
+            "description": "long tool",
+            "input_schema": { "type": "object", "properties": {} }
+        }],
+        "tool_choice": {
+            "type": "tool",
+            "name": original_tool_name
+        }
+    });
+    let adapted = adapt_request_for_protocol(
+        PROTOCOL_ANTHROPIC_NATIVE,
+        "/v1/messages",
+        serde_json::to_vec(&body).expect("serialize body"),
+    )
+    .expect("adapt request");
+    let value: serde_json::Value =
+        serde_json::from_slice(&adapted.body).expect("parse adapted body");
+    let shortened_name = value
+        .get("tools")
+        .and_then(|tools| tools.get(0))
+        .and_then(|tool| tool.get("name"))
+        .and_then(serde_json::Value::as_str)
+        .expect("tools[0].name")
+        .to_string();
+
+    assert_ne!(shortened_name, original_tool_name);
+    assert!(shortened_name.len() <= 64);
+    assert_eq!(
+        adapted.tool_name_restore_map.get(&shortened_name),
+        Some(&original_tool_name.to_string())
+    );
+    assert_eq!(
+        value
+            .get("tool_choice")
+            .and_then(|tool_choice| tool_choice.get("name"))
+            .and_then(serde_json::Value::as_str),
+        Some(shortened_name.as_str())
+    );
+    assert_eq!(
+        value
+            .get("input")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|items| {
+                items.iter().find(|item| {
+                    item.get("type").and_then(serde_json::Value::as_str) == Some("function_call")
+                })
+            })
+            .and_then(|item| item.get("name"))
+            .and_then(serde_json::Value::as_str),
+        Some(shortened_name.as_str())
+    );
+}

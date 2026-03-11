@@ -7,10 +7,7 @@ pub(super) fn is_response_completed_event_type(kind: &str) -> bool {
     normalized == "response.completed" || normalized == "response.done"
 }
 
-pub(super) fn parse_openai_sse_event_value(
-    data: &str,
-    event_name: Option<&str>,
-) -> Option<Value> {
+pub(super) fn parse_openai_sse_event_value(data: &str, event_name: Option<&str>) -> Option<Value> {
     let mut value = serde_json::from_str::<Value>(data).ok()?;
     let event_name = event_name
         .map(str::trim)

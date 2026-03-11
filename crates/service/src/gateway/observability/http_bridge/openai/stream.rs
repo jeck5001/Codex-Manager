@@ -72,7 +72,10 @@ pub(in super::super) fn update_openai_stream_meta(meta: &mut OpenAIStreamMeta, v
     }
 }
 
-pub(in super::super) fn apply_openai_stream_meta_defaults(mapped: &mut Value, meta: &OpenAIStreamMeta) {
+pub(in super::super) fn apply_openai_stream_meta_defaults(
+    mapped: &mut Value,
+    meta: &OpenAIStreamMeta,
+) {
     let Some(mapped_obj) = mapped.as_object_mut() else {
         return;
     };
@@ -169,7 +172,10 @@ pub(in super::super) fn should_skip_chat_live_text_event(event_type: &str, value
     }
 }
 
-pub(in super::super) fn should_skip_completion_live_text_event(event_type: &str, value: &Value) -> bool {
+pub(in super::super) fn should_skip_completion_live_text_event(
+    event_type: &str,
+    value: &Value,
+) -> bool {
     match event_type {
         "response.output_text.done"
         | "response.content_part.added"
@@ -182,7 +188,10 @@ pub(in super::super) fn should_skip_completion_live_text_event(event_type: &str,
     }
 }
 
-pub(in super::super) fn normalize_chat_chunk_delta_role(mapped: &mut Value, role_emitted: &mut bool) {
+pub(in super::super) fn normalize_chat_chunk_delta_role(
+    mapped: &mut Value,
+    role_emitted: &mut bool,
+) {
     let Some(choices) = mapped.get_mut("choices").and_then(Value::as_array_mut) else {
         return;
     };
@@ -204,7 +213,10 @@ pub(in super::super) fn normalize_chat_chunk_delta_role(mapped: &mut Value, role
     }
 }
 
-pub(in super::super) fn build_chat_fallback_content_chunk(meta: &OpenAIStreamMeta, content: &str) -> Value {
+pub(in super::super) fn build_chat_fallback_content_chunk(
+    meta: &OpenAIStreamMeta,
+    content: &str,
+) -> Value {
     json!({
         "id": meta.response_id.clone().unwrap_or_default(),
         "object": "chat.completion.chunk",
@@ -221,7 +233,10 @@ pub(in super::super) fn build_chat_fallback_content_chunk(meta: &OpenAIStreamMet
     })
 }
 
-pub(in super::super) fn build_completion_fallback_text_chunk(meta: &OpenAIStreamMeta, text: &str) -> Value {
+pub(in super::super) fn build_completion_fallback_text_chunk(
+    meta: &OpenAIStreamMeta,
+    text: &str,
+) -> Value {
     json!({
         "id": meta.response_id.clone().unwrap_or_default(),
         "object": "text_completion",
