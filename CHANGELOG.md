@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-03-11
+
+### Fixed
+- Removed the default `https://api.openai.com/v1` fallback path for ChatGPT-backed requests; upstream `challenge` and `403` outcomes are now returned from the primary login-account path instead of being rewritten into local fallback errors.
+- ChatGPT login-account requests now recover from `401` by refreshing the local `access_token` with the stored `refresh_token` and retrying the current request once.
+
+### Changed
+- ChatGPT login-account turns now use `access_token` directly on the primary upstream path and no longer mix in `api_key_access_token` semantics.
+- Synthetic gateway terminal failures now return structured OpenAI-style `error.message / error.type / error.code` payloads while keeping the existing trace and error-code headers.
+
 ## [0.1.7] - 2026-03-11
 
 ### Added
@@ -69,7 +79,8 @@
 ### Changed
 - 账号管理页操作区整合为单一“账号操作”下拉菜单，替代右侧多按钮堆叠，界面更简洁。
 
-[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.8
 [0.1.7]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.7
 [0.1.6]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.6
 [0.1.5]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.5

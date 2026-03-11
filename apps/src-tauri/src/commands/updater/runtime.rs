@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn prerelease_channel_defaults_follow_current_version() {
-        let stable = Version::parse("0.1.7").expect("stable version");
+        let stable = Version::parse("0.1.8").expect("stable version");
         let beta = Version::parse("0.1.8-beta.1").expect("beta version");
 
         assert!(!should_include_prerelease_updates_with_override(&stable, None));
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn normalize_version_accepts_v_prefix() {
-        let version = normalize_version(" v0.1.7 ").expect("normalized version");
-        assert_eq!(version, Version::parse("0.1.7").expect("expected version"));
+        let version = normalize_version(" v0.1.8 ").expect("normalized version");
+        assert_eq!(version, Version::parse("0.1.8").expect("expected version"));
     }
 }

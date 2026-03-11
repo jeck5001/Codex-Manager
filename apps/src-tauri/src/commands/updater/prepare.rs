@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     fn portable_asset_names_include_current_workflow_artifact() {
-        let names = portable_asset_names_for_platform("0.1.7");
+        let names = portable_asset_names_for_platform("0.1.8");
         if cfg!(target_os = "windows") {
             assert!(names.iter().any(|name| name == "CodexManager-portable.exe"));
         } else if cfg!(target_os = "linux") {
@@ -399,42 +399,42 @@ mod tests {
 
     #[test]
     fn sanitize_tag_replaces_unsafe_characters() {
-        assert_eq!(sanitize_tag("v0.1.7/beta"), "v0.1.7_beta");
+        assert_eq!(sanitize_tag("v0.1.8/beta"), "v0.1.8_beta");
     }
 
     #[test]
     fn macos_dmg_selection_prefers_matching_arch_suffix() {
         let assets = vec![
             GitHubAsset {
-                name: "CodexManager_0.1.7_aarch64.dmg".to_string(),
+                name: "CodexManager_0.1.8_aarch64.dmg".to_string(),
                 browser_download_url: "https://example.com/arm.dmg".to_string(),
             },
             GitHubAsset {
-                name: "CodexManager_0.1.7_x64.dmg".to_string(),
+                name: "CodexManager_0.1.8_x64.dmg".to_string(),
                 browser_download_url: "https://example.com/x64.dmg".to_string(),
             },
         ];
 
         let selected =
             select_macos_dmg_asset_for_arch(&assets, &["x64", "x86_64"]).expect("x64 dmg");
-        assert_eq!(selected.name, "CodexManager_0.1.7_x64.dmg");
+        assert_eq!(selected.name, "CodexManager_0.1.8_x64.dmg");
     }
 
     #[test]
     fn macos_dmg_selection_falls_back_to_generic_dmg() {
         let assets = vec![
             GitHubAsset {
-                name: "CodexManager_0.1.7_aarch64.dmg".to_string(),
+                name: "CodexManager_0.1.8_aarch64.dmg".to_string(),
                 browser_download_url: "https://example.com/arm.dmg".to_string(),
             },
             GitHubAsset {
-                name: "CodexManager_0.1.7.dmg".to_string(),
+                name: "CodexManager_0.1.8.dmg".to_string(),
                 browser_download_url: "https://example.com/generic.dmg".to_string(),
             },
         ];
 
         let selected =
             select_macos_dmg_asset_for_arch(&assets, &["x64", "x86_64"]).expect("generic dmg");
-        assert_eq!(selected.name, "CodexManager_0.1.7.dmg");
+        assert_eq!(selected.name, "CodexManager_0.1.8.dmg");
     }
 }

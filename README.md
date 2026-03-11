@@ -21,10 +21,12 @@
 | 本地构建、打包、发版、脚本调用 | [构建发布与脚本说明](docs/release/20260310122606851_构建发布与脚本说明.md) |
 
 ## 最近变更
-- 当前最新版本：`v0.1.7`（2026-03-11）
-- 本次发版已收敛最近一轮协议兼容、桌面交互、Web 安全和长期维护治理；完整历史请看 [CHANGELOG.md](CHANGELOG.md)。
+- 当前最新版本：`v0.1.8`（2026-03-11）
+- 本次发版已收敛最近一轮协议兼容、登录链路、网关错误响应、桌面交互、Web 安全和长期维护治理；完整历史请看 [CHANGELOG.md](CHANGELOG.md)。
 - 协议兼容继续收敛：进一步统一 `/v1/chat/completions`、`/v1/responses`、Claude `/v1/messages`；补齐多 MCP server 工具保留、长工具名缩短与响应还原，并继续覆盖 Cherry Studio、OpenClaw、Claude Code 等兼容场景。
-- 网关运行与诊断增强：失败响应增加结构化 `errorCode` / `errorDetail` 与追踪响应头；长输出场景的 SSE 空闲断流重连更稳定；设置页新增上游流式超时和 SSE keepalive 配置并支持热生效。
+- Codex 登录账号链路继续对齐：ChatGPT 登录账号主请求已统一改为直接使用 `access_token`，不再混入 `api_key_access_token` 语义；默认 `https://api.openai.com/v1` fallback 已移除，challenge / 403 不再被本地硬改成额外的 fallback 错误。
+- 401 恢复链路已补齐：当 ChatGPT 登录账号请求命中 `401` 时，会使用本地 `refresh_token` 刷新 `access_token`，并对当前请求执行一次单次重试；不再继续沿用旧的 401 stateless retry。
+- 网关运行与诊断增强：gateway 自合成失败响应已改成结构化 OpenAI 风格 `error.message / error.type / error.code`，同时保留错误码与 trace 响应头；长输出场景的 SSE 空闲断流重连更稳定；设置页新增上游流式超时和 SSE keepalive 配置并支持热生效。
 - 桌面体验继续修正：启动后会优先恢复仪表盘 / 账号 / 请求日志快照；登录成功后账号表格会自动刷新；平台密钥创建与上游代理保存流程也做了收口。
 - Web 安全链路已补齐：`codexmanager-web` 的访问密码仍会持久化，但登录会话会绑定当前 Web 进程；关闭并重新打开后，旧 Cookie 不再继续生效，必须重新验证密码。
 - 项目内部也在持续做长期维护向重构：前端主入口、设置页、请求日志、Tauri 命令层、service 生命周期、gateway protocol adapter、HTTP bridge 和 upstream 流程都已继续拆分，目录边界和模块职责更清晰。
