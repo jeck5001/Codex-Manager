@@ -764,6 +764,39 @@ fn passthrough_sse_reader_emits_keepalive_for_responses_stream() {
 }
 
 #[test]
+fn passthrough_sse_reader_captures_raw_html_error_body() {
+    let (upstream, server) = open_streaming_mock_http_response(
+        "text/html",
+        &[("<html><title>Just a moment...</title><body>cf</body></html>", 0)],
+    );
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = PassthroughSseUsageReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        SseKeepAliveFrame::OpenAIResponses,
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read passthrough html body");
+    server.join().expect("join html mock upstream");
+
+    let collector = usage_collector
+        .lock()
+        .expect("lock usage collector")
+        .clone();
+    assert!(mapped.contains("Just a moment"));
+    assert_eq!(
+        collector.upstream_error_hint.as_deref(),
+        Some("Cloudflare 安全验证页（title=Just a moment...）")
+    );
+    assert_eq!(
+        collector.terminal_error.as_deref(),
+        Some("上游流中途中断（未正常结束）")
+    );
+}
+
+#[test]
 fn openai_chat_sse_reader_emits_keepalive_chunk_during_idle_gap() {
     let _guard = test_env_guard();
     let _keepalive_guard = EnvGuard::set("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS", "15");

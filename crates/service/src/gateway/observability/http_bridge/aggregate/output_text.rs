@@ -7,6 +7,7 @@ const DEFAULT_OUTPUT_TEXT_LIMIT_BYTES: usize = 128 * 1024;
 pub(in super::super) const OUTPUT_TEXT_TRUNCATED_MARKER: &str = "[output_text truncated]";
 static OUTPUT_TEXT_LIMIT_BYTES: AtomicUsize = AtomicUsize::new(DEFAULT_OUTPUT_TEXT_LIMIT_BYTES);
 static OUTPUT_TEXT_LIMIT_LOADED: OnceLock<()> = OnceLock::new();
+const UPSTREAM_ERROR_HINT_LIMIT_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct UpstreamResponseUsage {
@@ -439,24 +440,36 @@ pub(in super::super) fn extract_error_hint_from_body(
         return None;
     }
     if let Ok(value) = serde_json::from_slice::<Value>(body) {
+        let compact_json = serde_json::to_string(&value).ok();
         if let Some(message) = extract_error_message_from_json(&value) {
-            return Some(summarize_upstream_error_hint(status_code, &message));
+            return Some(limit_upstream_error_hint(message.as_str()));
+        }
+        if let Some(json_text) = compact_json
+            .as_deref()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+        {
+            return Some(limit_upstream_error_hint(json_text));
         }
     }
     std::str::from_utf8(body)
         .ok()
         .map(str::trim)
         .filter(|text| !text.is_empty())
-        .map(|text| {
-            let mut chars = text.chars();
-            let snippet = chars.by_ref().take(240).collect::<String>();
-            if chars.next().is_some() {
-                format!("{snippet}...")
-            } else {
-                snippet
-            }
-        })
-        .map(|text| summarize_upstream_error_hint(status_code, &text))
+        .map(|text| summarize_upstream_error_hint(status_code, text))
+}
+
+fn limit_upstream_error_hint(raw: &str) -> String {
+    let text = raw.trim();
+    if text.is_empty() {
+        return String::new();
+    }
+    if text.len() <= UPSTREAM_ERROR_HINT_LIMIT_BYTES {
+        return text.to_string();
+    }
+    let mut snippet = truncate_str_to_bytes(text, UPSTREAM_ERROR_HINT_LIMIT_BYTES).to_string();
+    snippet.push_str("...[truncated]");
+    snippet
 }
 
 fn summarize_upstream_error_hint(status_code: u16, raw: &str) -> String {
@@ -480,10 +493,10 @@ fn summarize_upstream_error_hint(status_code: u16, raw: &str) -> String {
         || normalized.contains("waf");
 
     if looks_like_challenge || (looks_like_html && matches!(status_code, 401 | 403)) {
-        return "上游被安全验证拦截（Cloudflare/WAF）".to_string();
+        return summarize_cloudflare_challenge(text);
     }
     if looks_like_html {
-        return "上游返回了网页内容而不是接口数据，可能是验证页或错误页".to_string();
+        return summarize_html_error_page(text);
     }
     if normalized.contains("timed out") || normalized.contains("timeout") {
         return "上游请求超时".to_string();
@@ -499,15 +512,73 @@ fn summarize_upstream_error_hint(status_code: u16, raw: &str) -> String {
     text.to_string()
 }
 
+fn summarize_cloudflare_challenge(raw: &str) -> String {
+    let title = extract_html_title(raw);
+    let ray = extract_object_string_field(raw, "cRay");
+    let zone = extract_object_string_field(raw, "cZone");
+    let mut details = Vec::new();
+    if let Some(title) = title.as_deref().filter(|text| !text.is_empty()) {
+        details.push(format!("title={title}"));
+    }
+    if let Some(ray) = ray.as_deref().filter(|text| !text.is_empty()) {
+        details.push(format!("ray={ray}"));
+    }
+    if let Some(zone) = zone.as_deref().filter(|text| !text.is_empty()) {
+        details.push(format!("zone={zone}"));
+    }
+    if details.is_empty() {
+        "Cloudflare 安全验证页".to_string()
+    } else {
+        format!("Cloudflare 安全验证页（{}）", details.join(", "))
+    }
+}
+
+fn summarize_html_error_page(raw: &str) -> String {
+    if let Some(title) = extract_html_title(raw) {
+        if !title.is_empty() {
+            return format!("上游返回 HTML 错误页（title={title}）");
+        }
+    }
+    "上游返回 HTML 错误页".to_string()
+}
+
+fn extract_html_title(raw: &str) -> Option<String> {
+    let lower = raw.to_ascii_lowercase();
+    let start_tag = "<title>";
+    let end_tag = "</title>";
+    let start = lower.find(start_tag)? + start_tag.len();
+    let end = lower[start..].find(end_tag)? + start;
+    let title = raw.get(start..end)?.trim();
+    (!title.is_empty()).then(|| title.to_string())
+}
+
+fn extract_object_string_field(raw: &str, key: &str) -> Option<String> {
+    let start = raw.find(key)?;
+    let after_key = raw.get(start + key.len()..)?;
+    let colon = after_key.find(':')?;
+    let after_colon = after_key.get(colon + 1..)?.trim_start();
+    let quote = after_colon.chars().next()?;
+    if quote != '\'' && quote != '"' {
+        return None;
+    }
+    let value = after_colon.get(1..)?;
+    let end = value.find(quote)?;
+    let extracted = value.get(..end)?.trim();
+    (!extracted.is_empty()).then(|| extracted.to_string())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{extract_error_hint_from_body, summarize_upstream_error_hint, UpstreamResponseBridgeResult};
+    use super::{
+        extract_error_hint_from_body, limit_upstream_error_hint, summarize_upstream_error_hint,
+        UpstreamResponseBridgeResult, UPSTREAM_ERROR_HINT_LIMIT_BYTES,
+    };
 
     #[test]
     fn summarize_upstream_error_hint_recognizes_challenge_html() {
         assert_eq!(
             summarize_upstream_error_hint(403, "<html><title>Just a moment...</title>"),
-            "上游被安全验证拦截（Cloudflare/WAF）"
+            "Cloudflare 安全验证页（title=Just a moment...）"
         );
     }
 
@@ -515,7 +586,7 @@ mod tests {
     fn summarize_upstream_error_hint_recognizes_generic_html() {
         assert_eq!(
             summarize_upstream_error_hint(502, "<!doctype html><html><body>error</body></html>"),
-            "上游返回了网页内容而不是接口数据，可能是验证页或错误页"
+            "上游返回 HTML 错误页"
         );
     }
 
@@ -523,8 +594,25 @@ mod tests {
     fn extract_error_hint_from_body_summarizes_html_body() {
         assert_eq!(
             extract_error_hint_from_body(403, b"<html><body>Cloudflare</body></html>").as_deref(),
-            Some("上游被安全验证拦截（Cloudflare/WAF）")
+            Some("Cloudflare 安全验证页")
         );
+    }
+
+    #[test]
+    fn extract_error_hint_from_body_prefers_json_message() {
+        let body = br#"{"error":{"message":"forbidden","type":"permission_error"}}"#;
+        assert_eq!(
+            extract_error_hint_from_body(403, body).as_deref(),
+            Some("type=permission_error forbidden")
+        );
+    }
+
+    #[test]
+    fn limit_upstream_error_hint_truncates_large_body() {
+        let raw = "x".repeat(UPSTREAM_ERROR_HINT_LIMIT_BYTES + 32);
+        let text = limit_upstream_error_hint(&raw);
+        assert!(text.ends_with("...[truncated]"));
+        assert!(text.len() > UPSTREAM_ERROR_HINT_LIMIT_BYTES);
     }
 
     #[test]

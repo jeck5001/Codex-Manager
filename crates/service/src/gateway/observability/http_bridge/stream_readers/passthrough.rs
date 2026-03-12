@@ -4,6 +4,7 @@ use super::{
     PassthroughSseCollector, Read, SseKeepAliveFrame, SseTerminal, UpstreamSseFramePump,
     UpstreamSseFramePumpItem,
 };
+use crate::gateway::http_bridge::extract_error_hint_from_body;
 
 pub(crate) struct PassthroughSseUsageReader {
     upstream: UpstreamSseFramePump,
@@ -30,10 +31,29 @@ impl PassthroughSseUsageReader {
 
     fn update_usage_from_frame(&self, lines: &[String]) {
         let inspection = inspect_sse_frame(lines);
-        if inspection.usage.is_none() && inspection.terminal.is_none() {
-            return;
-        }
         if let Ok(mut collector) = self.usage_collector.lock() {
+            if inspection.usage.is_none() && inspection.terminal.is_none() {
+                if collector.upstream_error_hint.is_none() {
+                    let raw_frame = lines.concat();
+                    let trimmed = raw_frame.trim();
+                    let looks_like_sse_frame = lines.iter().any(|line| {
+                        let line = line.trim_start();
+                        line.starts_with("data:")
+                            || line.starts_with("event:")
+                            || line.starts_with("id:")
+                            || line.starts_with("retry:")
+                            || line.starts_with(':')
+                    });
+                    if !looks_like_sse_frame && !trimmed.is_empty() {
+                        collector.upstream_error_hint = extract_error_hint_from_body(
+                            400,
+                            raw_frame.as_bytes(),
+                        )
+                        .or_else(|| Some(trimmed.to_string()));
+                    }
+                }
+                return;
+            }
             if let Some(parsed) = inspection.usage {
                 merge_usage(&mut collector.usage, parsed);
             }

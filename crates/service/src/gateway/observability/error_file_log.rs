@@ -154,14 +154,14 @@ mod tests {
             model: Some("gpt-5.3-codex"),
             reasoning_effort: Some("xhigh"),
             status_code: Some(502),
-            error: Some("上游被安全验证拦截（Cloudflare/WAF）"),
+            error: Some("<html><title>Just a moment...</title></html>"),
         });
         assert!(line.contains("trace_id=trc_1"));
         assert!(line.contains("account_id=acc_1"));
         assert!(line.contains("path=/v1/responses"));
         assert!(line.contains("model=gpt-5.3-codex"));
         assert!(line.contains("status=502"));
-        assert!(line.contains("error=上游被安全验证拦截（Cloudflare/WAF）"));
+        assert!(line.contains("error=<html><title>Just a moment...</title></html>"));
     }
 
     #[test]
