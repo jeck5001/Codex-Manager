@@ -15,6 +15,7 @@ pub(crate) struct PassthroughSseCollector {
     pub(crate) usage: UpstreamResponseUsage,
     pub(crate) saw_terminal: bool,
     pub(crate) terminal_error: Option<String>,
+    pub(crate) upstream_error_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
