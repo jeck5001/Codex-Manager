@@ -349,6 +349,7 @@ pub(in super::super) fn extract_error_message_from_json(value: &Value) -> Option
             .get("message")
             .and_then(Value::as_str)
             .or_else(|| err_obj.get("error").and_then(Value::as_str))
+            .or_else(|| err_obj.get("detail").and_then(Value::as_str))
             .map(str::trim)
             .filter(|msg| !msg.is_empty());
         let code = err_obj
@@ -409,6 +410,12 @@ pub(in super::super) fn extract_error_message_from_json(value: &Value) -> Option
     if let Some(message) = extract_message_from_error_value(value.get("error")) {
         return Some(message);
     }
+    if let Some(message) = value.get("detail").and_then(Value::as_str) {
+        let msg = message.trim();
+        if !msg.is_empty() {
+            return Some(msg.to_string());
+        }
+    }
     if let Some(message) = extract_message_from_error_value(value.pointer("/response/error")) {
         return Some(message);
     }
@@ -442,14 +449,18 @@ pub(in super::super) fn extract_error_hint_from_body(
     if let Ok(value) = serde_json::from_slice::<Value>(body) {
         let compact_json = serde_json::to_string(&value).ok();
         if let Some(message) = extract_error_message_from_json(&value) {
-            return Some(limit_upstream_error_hint(message.as_str()));
+            return Some(limit_upstream_error_hint(
+                summarize_upstream_error_hint(status_code, message.as_str()).as_str(),
+            ));
         }
         if let Some(json_text) = compact_json
             .as_deref()
             .map(str::trim)
             .filter(|text| !text.is_empty())
         {
-            return Some(limit_upstream_error_hint(json_text));
+            return Some(limit_upstream_error_hint(
+                summarize_upstream_error_hint(status_code, json_text).as_str(),
+            ));
         }
     }
     std::str::from_utf8(body)
@@ -498,6 +509,9 @@ fn summarize_upstream_error_hint(status_code: u16, raw: &str) -> String {
     if looks_like_html {
         return summarize_html_error_page(text);
     }
+    if let Some(summary) = summarize_model_not_supported(text) {
+        return summary;
+    }
     if normalized.contains("timed out") || normalized.contains("timeout") {
         return "上游请求超时".to_string();
     }
@@ -510,6 +524,26 @@ fn summarize_upstream_error_hint(status_code: u16, raw: &str) -> String {
         return "上游连接中断".to_string();
     }
     text.to_string()
+}
+
+fn summarize_model_not_supported(raw: &str) -> Option<String> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    let looks_unsupported = normalized.contains("model_not_found")
+        || normalized.contains("model not found")
+        || normalized.contains("unsupported model")
+        || normalized.contains("not support")
+        || normalized.contains("not supported")
+        || normalized.contains("does not support")
+        || normalized.contains("does not exist")
+        || normalized.contains("unknown model");
+    if !looks_unsupported {
+        return None;
+    }
+    let model = extract_model_name(raw);
+    Some(match model {
+        Some(model) => format!("模型不支持（{model}）"),
+        None => "模型不支持".to_string(),
+    })
 }
 
 fn summarize_cloudflare_challenge(raw: &str) -> String {
@@ -567,6 +601,78 @@ fn extract_object_string_field(raw: &str, key: &str) -> Option<String> {
     (!extracted.is_empty()).then(|| extracted.to_string())
 }
 
+fn extract_model_name(raw: &str) -> Option<String> {
+    let lowered = raw.to_ascii_lowercase();
+    if let Some(model) = extract_quoted_model_before_keyword(raw, &lowered) {
+        return Some(model);
+    }
+    for marker in [
+        "the model ",
+        "model=",
+        "model:",
+        "model ",
+        "unsupported model ",
+        "unknown model ",
+    ] {
+        if let Some(start) = lowered.find(marker) {
+            let offset = start + marker.len();
+            if let Some(fragment) = raw.get(offset..) {
+                if let Some(model) = extract_model_token(fragment.trim_start()) {
+                    return Some(model);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_quoted_model_before_keyword(raw: &str, lowered: &str) -> Option<String> {
+    for keyword in [" model", " models"] {
+        let keyword_idx = lowered.find(keyword)?;
+        let prefix = raw.get(..keyword_idx)?.trim_end();
+        for quote in ['\'', '"', '`'] {
+            let end = prefix.rfind(quote)?;
+            let before_end = prefix.get(..end)?;
+            let start = before_end.rfind(quote)?;
+            let model = before_end.get(start + 1..)?.trim();
+            if !model.is_empty() {
+                return Some(model.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn extract_model_token(fragment: &str) -> Option<String> {
+    let fragment = fragment.trim_start_matches(|c: char| {
+        c.is_whitespace() || matches!(c, '=' | ':' | '(' | '[')
+    });
+    let mut chars = fragment.chars();
+    let first = chars.next()?;
+    let token = if first == '\'' || first == '"' || first == '`' {
+        let end = fragment.get(1..)?.find(first)? + 1;
+        fragment.get(1..end)?.trim()
+    } else {
+        let end = fragment
+            .char_indices()
+            .find(|(_, ch)| {
+                !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':' | '/'))
+            })
+            .map(|(idx, _)| idx)
+            .unwrap_or(fragment.len());
+        fragment.get(..end)?.trim()
+    };
+    if token.is_empty()
+        || token.eq_ignore_ascii_case("is")
+        || token.eq_ignore_ascii_case("not")
+        || token.eq_ignore_ascii_case("found")
+        || token.eq_ignore_ascii_case("unsupported")
+    {
+        return None;
+    }
+    Some(token.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -591,6 +697,21 @@ mod tests {
     }
 
     #[test]
+    fn summarize_upstream_error_hint_recognizes_unsupported_model() {
+        assert_eq!(
+            summarize_upstream_error_hint(
+                400,
+                "code=model_not_found type=invalid_request_error The model 'gpt-5.4' does not exist"
+            ),
+            "模型不支持（gpt-5.4）"
+        );
+        assert_eq!(
+            summarize_upstream_error_hint(400, "unsupported model"),
+            "模型不支持"
+        );
+    }
+
+    #[test]
     fn extract_error_hint_from_body_summarizes_html_body() {
         assert_eq!(
             extract_error_hint_from_body(403, b"<html><body>Cloudflare</body></html>").as_deref(),
@@ -604,6 +725,24 @@ mod tests {
         assert_eq!(
             extract_error_hint_from_body(403, body).as_deref(),
             Some("type=permission_error forbidden")
+        );
+    }
+
+    #[test]
+    fn extract_error_hint_from_body_summarizes_unsupported_model_json() {
+        let body = br#"{"error":{"message":"The model 'gpt-5.4' does not exist","type":"invalid_request_error","code":"model_not_found"}}"#;
+        assert_eq!(
+            extract_error_hint_from_body(400, body).as_deref(),
+            Some("模型不支持（gpt-5.4）")
+        );
+    }
+
+    #[test]
+    fn extract_error_hint_from_body_summarizes_unsupported_model_detail_json() {
+        let body = br#"{"detail":"The 'gpt-5.4' model is not supported when using Codex with a ChatGPT account."}"#;
+        assert_eq!(
+            extract_error_hint_from_body(400, body).as_deref(),
+            Some("模型不支持（gpt-5.4）")
         );
     }
 

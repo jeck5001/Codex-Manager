@@ -119,6 +119,9 @@ pub(crate) fn classify_message(message: &str) -> ErrorCode {
     {
         return ErrorCode::UpstreamNonSuccess;
     }
+    if normalized.starts_with("模型不支持") {
+        return ErrorCode::UpstreamNonSuccess;
+    }
     if normalized.starts_with("invalid upstream ")
         || (normalized.contains("serialize") && normalized.contains("json"))
         || normalized.contains("sse bytes")
@@ -204,6 +207,10 @@ mod tests {
         assert_eq!(
             classify_message("上游流中途中断（未正常结束）"),
             ErrorCode::StreamInterrupted
+        );
+        assert_eq!(
+            classify_message("模型不支持（gpt-5.4）"),
+            ErrorCode::UpstreamNonSuccess
         );
     }
 }
