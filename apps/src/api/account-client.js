@@ -146,6 +146,13 @@ export async function serviceUsageList() {
   return invoke("service_usage_list", withAddr());
 }
 
+export async function serviceUsageAggregate() {
+  if (!isTauriRuntime()) {
+    return rpcInvoke("account/usage/aggregate");
+  }
+  return invoke("service_usage_aggregate", withAddr());
+}
+
 export async function serviceUsageRefresh(accountId) {
   if (!isTauriRuntime()) {
     return rpcInvoke("account/usage/refresh", accountId ? { accountId } : undefined);

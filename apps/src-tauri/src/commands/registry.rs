@@ -22,6 +22,7 @@ macro_rules! invoke_handler {
             // usage
             crate::commands::usage::service_usage_read,
             crate::commands::usage::service_usage_list,
+            crate::commands::usage::service_usage_aggregate,
             crate::commands::usage::service_usage_refresh,
 
             // request log
