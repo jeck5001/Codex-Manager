@@ -2,27 +2,10 @@ use codexmanager_core::rpc::types::RequestLogSummary;
 
 use crate::storage_helpers::open_storage;
 
-fn sanitize_upstream_url_for_display(raw: Option<&str>) -> Option<String> {
-    let trimmed = raw.map(str::trim).filter(|value| !value.is_empty())?;
-    let lower = trimmed.to_ascii_lowercase();
-
-    if lower.contains("localhost")
-        || lower.contains("127.0.0.1")
-        || lower.contains("0.0.0.0")
-        || lower.contains("[::1]")
-    {
-        return Some("本地".to_string());
-    }
-
-    if lower.contains("chatgpt.com")
-        || lower.contains("chat.openai.com")
-        || lower.contains("api.openai.com")
-        || lower.contains("/backend-api/codex")
-    {
-        return Some("默认".to_string());
-    }
-
-    Some("自定义".to_string())
+fn normalize_upstream_url(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 pub(crate) fn read_request_logs(
@@ -46,7 +29,7 @@ pub(crate) fn read_request_logs(
             model: item.model,
             reasoning_effort: item.reasoning_effort,
             response_adapter: item.response_adapter,
-            upstream_url: sanitize_upstream_url_for_display(item.upstream_url.as_deref()),
+            upstream_url: normalize_upstream_url(item.upstream_url.as_deref()),
             status_code: item.status_code,
             duration_ms: item.duration_ms,
             input_tokens: item.input_tokens,
@@ -63,41 +46,51 @@ pub(crate) fn read_request_logs(
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_upstream_url_for_display;
+    use super::normalize_upstream_url;
 
     #[test]
-    fn sanitize_upstream_url_masks_official_domains() {
+    fn normalize_upstream_url_keeps_official_domains() {
         assert_eq!(
-            sanitize_upstream_url_for_display(Some(
+            normalize_upstream_url(Some(
                 "https://chatgpt.com/backend-api/codex/responses"
             ))
             .as_deref(),
-            Some("默认")
+            Some("https://chatgpt.com/backend-api/codex/responses")
         );
         assert_eq!(
-            sanitize_upstream_url_for_display(Some("https://api.openai.com/v1/responses"))
+            normalize_upstream_url(Some("https://api.openai.com/v1/responses"))
                 .as_deref(),
-            Some("默认")
+            Some("https://api.openai.com/v1/responses")
         );
     }
 
     #[test]
-    fn sanitize_upstream_url_masks_local_addresses() {
+    fn normalize_upstream_url_keeps_local_addresses() {
         assert_eq!(
-            sanitize_upstream_url_for_display(Some("http://127.0.0.1:3000/relay")).as_deref(),
-            Some("本地")
+            normalize_upstream_url(Some("http://127.0.0.1:3000/relay")).as_deref(),
+            Some("http://127.0.0.1:3000/relay")
         );
         assert_eq!(
-            sanitize_upstream_url_for_display(Some("http://localhost:3000/relay")).as_deref(),
-            Some("本地")
+            normalize_upstream_url(Some("http://localhost:3000/relay")).as_deref(),
+            Some("http://localhost:3000/relay")
         );
     }
 
     #[test]
-    fn sanitize_upstream_url_masks_custom_addresses() {
+    fn normalize_upstream_url_keeps_custom_addresses() {
         assert_eq!(
-            sanitize_upstream_url_for_display(Some("https://gateway.example.com/v1")).as_deref(),
-            Some("自定义")
+            normalize_upstream_url(Some("https://gateway.example.com/v1")).as_deref(),
+            Some("https://gateway.example.com/v1")
+        );
+    }
+
+    #[test]
+    fn normalize_upstream_url_trims_empty_values() {
+        assert_eq!(normalize_upstream_url(None), None);
+        assert_eq!(normalize_upstream_url(Some("   ")), None);
+        assert_eq!(
+            normalize_upstream_url(Some(" https://api.openai.com/v1/responses ")).as_deref(),
+            Some("https://api.openai.com/v1/responses")
         );
     }
 }

@@ -243,7 +243,12 @@ export default function AccountsPage() {
           <div className="flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger>
-                <Button variant="outline" className="h-10 gap-2" nativeButton={false}>
+                <Button
+                  variant="outline"
+                  className="h-10 gap-2"
+                  render={<span />}
+                  nativeButton={false}
+                >
                   账号操作 <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -419,7 +424,13 @@ export default function AccountsPage() {
                         </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" nativeButton={false}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              render={<span />}
+                              nativeButton={false}
+                            >
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>

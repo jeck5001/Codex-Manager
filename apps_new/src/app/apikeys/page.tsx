@@ -275,7 +275,13 @@ export default function ApiKeysPage() {
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" nativeButton={false}>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                render={<span />}
+                                nativeButton={false}
+                              >
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
