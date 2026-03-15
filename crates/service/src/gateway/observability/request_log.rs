@@ -142,7 +142,7 @@ pub(super) fn write_request_log(
     let created_at = now_ts();
     let estimated_cost_usd =
         estimate_cost_usd(model, input_tokens, cached_input_tokens, output_tokens);
-    super::trace_log::log_request_record(
+    super::trace_log::log_failed_request(
         created_at,
         trace_context.trace_id,
         key_id,
@@ -153,8 +153,10 @@ pub(super) fn write_request_log(
         Some(adapted_path),
         model,
         reasoning_effort,
+        upstream_url,
         status_code,
         error,
+        duration_ms,
     );
     let success = status_code
         .map(|status| (200..300).contains(&status))
