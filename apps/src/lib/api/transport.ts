@@ -190,14 +190,28 @@ function resolveBusinessErrorMessage(payload: unknown): string {
 }
 
 export async function requestlogListViaHttpRpc<T>(
-  query: string,
-  limit: number,
+  params: {
+    query?: string;
+    statusFilter?: string;
+    page?: number;
+    pageSize?: number;
+  },
   addr: string,
   options: RequestOptions = {}
 ): Promise<T> {
   // Desktop environment should use Tauri invoke for reliability
   if (isTauriRuntime()) {
-    return invoke<T>("service_requestlog_list", { query, limit, addr }, options);
+    return invoke<T>(
+      "service_requestlog_list",
+      {
+        query: params.query || "",
+        statusFilter: params.statusFilter || "all",
+        page: params.page ?? 1,
+        pageSize: params.pageSize ?? 20,
+        addr,
+      },
+      options
+    );
   }
 
   // Fallback for web mode if needed (though not primary for this app)
@@ -205,7 +219,12 @@ export async function requestlogListViaHttpRpc<T>(
     jsonrpc: "2.0",
     id: Date.now(),
     method: "requestlog/list",
-    params: { query, limit },
+    params: {
+      query: params.query || "",
+      statusFilter: params.statusFilter || "all",
+      page: params.page ?? 1,
+      pageSize: params.pageSize ?? 20,
+    },
   });
 
   const response = await fetchWithRetry(

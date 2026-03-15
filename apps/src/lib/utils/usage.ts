@@ -20,6 +20,11 @@ const COMPACT_NUMBER_UNITS = [
   { value: 1e6, suffix: "M" },
   { value: 1e3, suffix: "K" },
 ];
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
+const WINDOW_ROUNDING_BIAS_MINUTES = 3;
+
+type UsageWindowDisplayMode = "primary-only" | "secondary-only" | "dual" | "unknown";
 
 export function toNullableNumber(value: unknown): number | null {
   if (typeof value === "number") {
@@ -80,6 +85,120 @@ export function remainingPercent(value: number | null | undefined): number | nul
   return Math.max(0, Math.min(100, Math.round(100 - parsed)));
 }
 
+function hasSecondarySignal(usage?: Partial<AccountUsage> | null): boolean {
+  return (
+    toNullableNumber(usage?.secondaryUsedPercent) != null ||
+    toNullableNumber(usage?.secondaryWindowMinutes) != null
+  );
+}
+
+function isLongWindow(windowMinutes: number | null | undefined): boolean {
+  const parsed = toNullableNumber(windowMinutes);
+  return parsed != null && parsed > MINUTES_PER_DAY + WINDOW_ROUNDING_BIAS_MINUTES;
+}
+
+function parseCreditsJson(raw: string | null | undefined): unknown | null {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function extractPlanTypeRecursive(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = extractPlanTypeRecursive(item);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const source = value as Record<string, unknown>;
+  for (const key of [
+    "plan_type",
+    "planType",
+    "subscription_tier",
+    "subscriptionTier",
+    "tier",
+    "account_type",
+    "accountType",
+    "type",
+  ]) {
+    const text = typeof source[key] === "string" ? source[key].trim().toLowerCase() : "";
+    if (text) return text;
+  }
+
+  for (const nested of Object.values(source)) {
+    const result = extractPlanTypeRecursive(nested);
+    if (result) return result;
+  }
+
+  return null;
+}
+
+function isFreePlanUsage(raw: string | null | undefined): boolean {
+  const credits = parseCreditsJson(raw);
+  const planType = extractPlanTypeRecursive(credits);
+  return Boolean(planType && planType.includes("free"));
+}
+
+export function getUsageWindowDisplayMode(
+  usage?: Partial<AccountUsage> | null
+): UsageWindowDisplayMode {
+  const hasPrimarySignal =
+    toNullableNumber(usage?.usedPercent) != null || toNullableNumber(usage?.windowMinutes) != null;
+  const secondarySignal = hasSecondarySignal(usage);
+
+  if (!hasPrimarySignal && !secondarySignal) {
+    return "unknown";
+  }
+  if (
+    hasPrimarySignal &&
+    !secondarySignal &&
+    (isLongWindow(usage?.windowMinutes) || isFreePlanUsage(usage?.creditsJson))
+  ) {
+    return "secondary-only";
+  }
+  if (hasPrimarySignal && !secondarySignal) {
+    return "primary-only";
+  }
+  return "dual";
+}
+
+export function getUsageDisplayBuckets(usage?: Partial<AccountUsage> | null): {
+  mode: UsageWindowDisplayMode;
+  primaryRemainPercent: number | null;
+  primaryResetsAt: number | null;
+  secondaryRemainPercent: number | null;
+  secondaryResetsAt: number | null;
+} {
+  const mode = getUsageWindowDisplayMode(usage);
+  if (mode === "secondary-only") {
+    return {
+      mode,
+      primaryRemainPercent: null,
+      primaryResetsAt: null,
+      secondaryRemainPercent: remainingPercent(usage?.usedPercent),
+      secondaryResetsAt: toNullableNumber(usage?.resetsAt),
+    };
+  }
+
+  return {
+    mode,
+    primaryRemainPercent: remainingPercent(usage?.usedPercent),
+    primaryResetsAt: toNullableNumber(usage?.resetsAt),
+    secondaryRemainPercent: remainingPercent(usage?.secondaryUsedPercent),
+    secondaryResetsAt: toNullableNumber(usage?.secondaryResetsAt),
+  };
+}
+
 export function calcAvailability(
   usage?: Partial<AccountUsage> | null,
   account?: { status?: string } | null
@@ -94,11 +213,15 @@ export function calcAvailability(
   const normalizedStatus = String(usage.availabilityStatus || "")
     .trim()
     .toLowerCase();
+  const displayMode = getUsageWindowDisplayMode(usage);
   if (normalizedStatus === "available") {
     return { text: "可用", level: "ok" };
   }
   if (normalizedStatus === "primary_window_available_only") {
-    return { text: "单窗口可用", level: "ok" };
+    return {
+      text: displayMode === "secondary-only" ? "仅7天额度" : "7天窗口未提供",
+      level: "ok",
+    };
   }
   if (normalizedStatus === "unavailable") {
     return { text: "不可用", level: "bad" };
@@ -119,10 +242,16 @@ export function calcAvailability(
 
   if (primaryMissing) return { text: "用量缺失", level: "bad" };
   if ((usage.usedPercent ?? 0) >= 100) {
-    return { text: "5小时已用尽", level: "warn" };
+    return {
+      text: displayMode === "secondary-only" ? "7天已用尽" : "5小时已用尽",
+      level: displayMode === "secondary-only" ? "bad" : "warn",
+    };
   }
   if (!secondaryPresent) {
-    return { text: "单窗口可用", level: "ok" };
+    return {
+      text: displayMode === "secondary-only" ? "仅7天额度" : "7天窗口未提供",
+      level: "ok",
+    };
   }
   if (secondaryMissing) {
     return { text: "用量缺失", level: "bad" };
@@ -133,9 +262,22 @@ export function calcAvailability(
   return { text: "可用", level: "ok" };
 }
 
+export function isPrimaryWindowOnlyUsage(
+  usage?: Partial<AccountUsage> | null
+): boolean {
+  return getUsageWindowDisplayMode(usage) === "primary-only";
+}
+
+export function isSecondaryWindowOnlyUsage(
+  usage?: Partial<AccountUsage> | null
+): boolean {
+  return getUsageWindowDisplayMode(usage) === "secondary-only";
+}
+
 export function isLowQuotaUsage(usage?: Partial<AccountUsage> | null): boolean {
-  const primaryRemain = remainingPercent(usage?.usedPercent);
-  const secondaryRemain = remainingPercent(usage?.secondaryUsedPercent);
+  const buckets = getUsageDisplayBuckets(usage);
+  const primaryRemain = buckets.primaryRemainPercent;
+  const secondaryRemain = buckets.secondaryRemainPercent;
   return (
     (primaryRemain != null && primaryRemain <= 20) ||
     (secondaryRemain != null && secondaryRemain <= 20)

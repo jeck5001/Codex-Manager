@@ -268,3 +268,113 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
         "successful retried request should not leave gateway trace log"
     );
 }
+
+#[test]
+fn gateway_error_logging_writes_only_trace_log_file() {
+    let _lock = lock_env();
+    let dir = new_test_dir("codexmanager-gateway-single-log-file");
+    let db_path: PathBuf = dir.join("codexmanager.db");
+    let trace_log_path: PathBuf = dir.join("gateway-trace.log");
+    let error_log_path: PathBuf = dir.join("gateway-error.txt");
+    let _ = fs::remove_file(&trace_log_path);
+    let _ = fs::remove_file(&error_log_path);
+
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+
+    let upstream_error = serde_json::json!({
+        "error": {
+            "message": "upstream unavailable",
+            "type": "server_error"
+        }
+    });
+    let (upstream_addr, upstream_rx, upstream_join) = start_mock_upstream_sequence(vec![(
+        502,
+        serde_json::to_string(&upstream_error).expect("serialize upstream error"),
+    )]);
+    let upstream_base = format!("http://{upstream_addr}/backend-api/codex");
+    let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
+
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init db");
+    let now = now_ts();
+
+    storage
+        .insert_account(&Account {
+            id: "acc_single_log_error".to_string(),
+            label: "single-log-error".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_acc_single_log_error".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 1,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_single_log_error".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_single_log_error".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: Some("api_access_token_single_log_error".to_string()),
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let platform_key = "pk_single_log_error";
+    storage
+        .insert_api_key(&ApiKey {
+            id: "gk_single_log_error".to_string(),
+            name: Some("single-log-error".to_string()),
+            model_slug: Some("gpt-5.4".to_string()),
+            reasoning_effort: Some("high".to_string()),
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: hash_platform_key_for_test(platform_key),
+            status: "active".to_string(),
+            created_at: now,
+            last_used_at: None,
+        })
+        .expect("insert api key");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req_body =
+        serde_json::json!({ "model": "gpt-5.4", "input": "hello", "stream": false }).to_string();
+    let (status, response_body) = post_http_raw(
+        &server.addr,
+        "/v1/responses",
+        &req_body,
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", &format!("Bearer {platform_key}")),
+        ],
+    );
+    server.join();
+    assert_eq!(status, 502, "gateway response: {response_body}");
+
+    let _ = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive upstream request");
+    upstream_join.join().expect("join upstream");
+
+    assert!(
+        trace_log_path.exists(),
+        "failed request should leave gateway trace log"
+    );
+    assert!(
+        !error_log_path.exists(),
+        "failed request should not leave standalone gateway error log"
+    );
+
+    let trace_content = fs::read_to_string(&trace_log_path).expect("read gateway trace log");
+    assert!(trace_content.contains("event=REQUEST_FINAL"));
+    assert!(trace_content.contains("event=REQUEST_RECORD"));
+    assert!(trace_content.contains("trace_id="));
+    assert!(trace_content.contains("request_path=/v1/responses"));
+    assert!(trace_content.contains("status=502"));
+}

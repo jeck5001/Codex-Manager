@@ -114,6 +114,21 @@ export interface RequestLog {
   createdAt: number | null;
 }
 
+export interface RequestLogListResult {
+  items: RequestLog[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface RequestLogFilterSummary {
+  totalCount: number;
+  filteredCount: number;
+  successCount: number;
+  errorCount: number;
+  totalTokens: number;
+}
+
 export interface LoginStatusResult {
   status: string;
   error: string;

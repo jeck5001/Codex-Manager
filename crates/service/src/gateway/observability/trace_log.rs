@@ -579,9 +579,49 @@ pub(crate) fn log_request_final(
     clear_trace_error(trace_id);
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn log_request_record(
+    ts: i64,
+    trace_id: Option<&str>,
+    key_id: Option<&str>,
+    account_id: Option<&str>,
+    method: &str,
+    request_path: &str,
+    original_path: Option<&str>,
+    adapted_path: Option<&str>,
+    model: Option<&str>,
+    reasoning_effort: Option<&str>,
+    status_code: Option<u16>,
+    error: Option<&str>,
+) {
+    if !status_code.is_some_and(|status| status >= 400) && !has_error_text(error) {
+        return;
+    }
+    let line = format!(
+        "ts={ts} event=REQUEST_RECORD trace_id={} key_id={} account_id={} method={} request_path={} original_path={} adapted_path={} model={} reasoning={} status={} error={}",
+        sanitize_text(trace_id.unwrap_or("-")),
+        sanitize_text(key_id.unwrap_or("-")),
+        sanitize_text(account_id.unwrap_or("-")),
+        sanitize_text(method),
+        sanitize_text(request_path),
+        sanitize_text(original_path.unwrap_or("-")),
+        sanitize_text(adapted_path.unwrap_or("-")),
+        sanitize_text(model.unwrap_or("-")),
+        sanitize_text(reasoning_effort.unwrap_or("-")),
+        status_code
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        sanitize_text(error.unwrap_or("-")),
+    );
+    append_trace_line(line, true);
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{clear_trace_error, has_error_text, mark_trace_has_error, trace_has_error};
+    use super::{
+        clear_trace_error, has_error_text, log_request_record, mark_trace_has_error,
+        trace_has_error,
+    };
 
     #[test]
     fn has_error_text_ignores_empty_and_dash() {
@@ -600,5 +640,23 @@ mod tests {
         assert!(trace_has_error(trace_id));
         clear_trace_error(trace_id);
         assert!(!trace_has_error(trace_id));
+    }
+
+    #[test]
+    fn request_record_ignores_success_without_error() {
+        log_request_record(
+            1_772_000_000,
+            Some("trc_success"),
+            Some("gk_success"),
+            Some("acc_success"),
+            "POST",
+            "/v1/responses",
+            Some("/v1/responses"),
+            Some("/v1/responses"),
+            Some("gpt-5.4"),
+            Some("high"),
+            Some(200),
+            None,
+        );
     }
 }

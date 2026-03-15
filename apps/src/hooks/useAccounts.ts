@@ -85,11 +85,22 @@ export function useAccounts() {
     ]);
   };
 
-  const refreshMutation = useMutation({
-    mutationFn: (accountId?: string) => accountClient.refreshUsage(accountId),
-    onSuccess: async (_, accountId) => {
+  const refreshAccountMutation = useMutation({
+    mutationFn: (accountId: string) => accountClient.refreshUsage(accountId),
+    onSuccess: async () => {
       await invalidateAll();
-      toast.success(accountId ? "账号用量已刷新" : "全部账号用量已刷新");
+      toast.success("账号用量已刷新");
+    },
+    onError: (error: unknown) => {
+      toast.error(`刷新失败: ${getErrorMessage(error)}`);
+    },
+  });
+
+  const refreshAllMutation = useMutation({
+    mutationFn: () => accountClient.refreshUsage(),
+    onSuccess: async () => {
+      await invalidateAll();
+      toast.success("全部账号用量已刷新");
     },
     onError: (error: unknown) => {
       toast.error(`刷新失败: ${getErrorMessage(error)}`);
@@ -212,8 +223,8 @@ export function useAccounts() {
     total: accountsQuery.data?.total || accounts.length,
     isLoading: accountsQuery.isLoading || usagesQuery.isLoading,
     manualPreferredAccountId: manualPreferredAccountQuery.data || "",
-    refreshAccount: (accountId: string) => refreshMutation.mutate(accountId),
-    refreshAllAccounts: () => refreshMutation.mutate(undefined),
+    refreshAccount: (accountId: string) => refreshAccountMutation.mutate(accountId),
+    refreshAllAccounts: () => refreshAllMutation.mutate(),
     deleteAccount: (accountId: string) => deleteMutation.mutate(accountId),
     deleteManyAccounts: (accountIds: string[]) => deleteManyMutation.mutate(accountIds),
     deleteUnavailableFree: () => deleteUnavailableFreeMutation.mutate(),
@@ -222,7 +233,11 @@ export function useAccounts() {
     exportAccounts: () => exportMutation.mutate(),
     setPreferredAccount: (accountId: string) => setManualPreferredMutation.mutate(accountId),
     clearPreferredAccount: () => clearManualPreferredMutation.mutate(),
-    isRefreshing: refreshMutation.isPending,
+    isRefreshingAccountId:
+      refreshAccountMutation.isPending && typeof refreshAccountMutation.variables === "string"
+        ? refreshAccountMutation.variables
+        : "",
+    isRefreshingAllAccounts: refreshAllMutation.isPending,
     isExporting: exportMutation.isPending,
     isDeletingMany: deleteManyMutation.isPending,
     isUpdatingPreferred:

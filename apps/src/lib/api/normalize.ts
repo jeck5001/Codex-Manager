@@ -14,14 +14,16 @@ import {
   LoginStartResult,
   ModelOption,
   RequestLog,
+  RequestLogFilterSummary,
+  RequestLogListResult,
   RequestLogTodaySummary,
   StartupSnapshot,
   UsageAggregateSummary,
 } from "@/types";
 import {
   calcAvailability,
+  getUsageDisplayBuckets,
   isLowQuotaUsage,
-  remainingPercent,
   toNullableNumber,
 } from "@/lib/utils/usage";
 
@@ -158,6 +160,7 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
   const groupName = asString(source.groupName ?? source.group_name);
   const status = asString(source.status);
   const availability = calcAvailability(usage, { status });
+  const usageBuckets = getUsageDisplayBuckets(usage);
 
   return {
     id,
@@ -173,8 +176,8 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     lastRefreshAt: usage?.capturedAt ?? null,
     availabilityText: availability.text,
     availabilityLevel: availability.level,
-    primaryRemainPercent: remainingPercent(usage?.usedPercent),
-    secondaryRemainPercent: remainingPercent(usage?.secondaryUsedPercent),
+    primaryRemainPercent: usageBuckets.primaryRemainPercent,
+    secondaryRemainPercent: usageBuckets.secondaryRemainPercent,
     usage: usage ?? null,
   };
 }
@@ -363,6 +366,30 @@ export function normalizeRequestLogs(payload: unknown): RequestLog[] {
   return items
     .map((item) => normalizeRequestLog(item))
     .filter((item): item is RequestLog => Boolean(item));
+}
+
+export function normalizeRequestLogListResult(payload: unknown): RequestLogListResult {
+  const source = asObject(payload);
+  const items = normalizeRequestLogs(source.items ?? payload);
+  return {
+    items,
+    total: asInteger(source.total, items.length, 0),
+    page: asInteger(source.page, 1, 1),
+    pageSize: asInteger(source.pageSize, items.length || 20, 1),
+  };
+}
+
+export function normalizeRequestLogFilterSummary(
+  payload: unknown
+): RequestLogFilterSummary {
+  const source = asObject(payload);
+  return {
+    totalCount: asInteger(source.totalCount, 0, 0),
+    filteredCount: asInteger(source.filteredCount, 0, 0),
+    successCount: asInteger(source.successCount, 0, 0),
+    errorCount: asInteger(source.errorCount, 0, 0),
+    totalTokens: asInteger(source.totalTokens, 0, 0),
+  };
 }
 
 export function normalizeBackgroundTasks(payload: unknown): BackgroundTaskSettings {

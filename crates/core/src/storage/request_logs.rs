@@ -1,6 +1,9 @@
-use rusqlite::{Result, Row};
+use rusqlite::{params_from_iter, types::Value, Result, Row};
 
-use super::{request_log_query, RequestLog, RequestLogTodaySummary, RequestTokenStat, Storage};
+use super::{
+    request_log_query, RequestLog, RequestLogQuerySummary, RequestLogTodaySummary,
+    RequestTokenStat, Storage,
+};
 
 impl Storage {
     fn ensure_request_logs_indexes(&self) -> Result<()> {
@@ -124,140 +127,101 @@ impl Storage {
     }
 
     pub fn list_request_logs(&self, query: Option<&str>, limit: i64) -> Result<Vec<RequestLog>> {
-        let normalized_limit = if limit <= 0 { 200 } else { limit.min(1000) };
+        self.list_request_logs_paginated(query, None, 0, limit)
+    }
+
+    pub fn list_request_logs_paginated(
+        &self,
+        query: Option<&str>,
+        status_filter: Option<&str>,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<RequestLog>> {
+        let normalized_limit = normalize_request_log_limit(limit);
+        let normalized_offset = offset.max(0);
+        let filters = build_request_log_filters(query, status_filter);
+        let sql = format!(
+            "SELECT
+                r.trace_id, r.key_id, r.account_id, r.request_path, r.original_path, r.adapted_path,
+                r.method, r.model, r.reasoning_effort, r.response_adapter, r.upstream_url, r.status_code, r.duration_ms,
+                t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
+                r.error, r.created_at
+             FROM request_logs r
+             LEFT JOIN request_token_stats t ON t.request_log_id = r.id
+             {where_clause}
+             ORDER BY r.created_at DESC, r.id DESC
+             LIMIT ? OFFSET ?",
+            where_clause = filters.where_clause
+        );
+        let mut params = filters.params;
+        params.push(Value::Integer(normalized_limit));
+        params.push(Value::Integer(normalized_offset));
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut rows = stmt.query(params_from_iter(params.iter()))?;
         let mut out = Vec::new();
-
-        match request_log_query::parse_request_log_query(query) {
-            request_log_query::RequestLogQuery::All => {
-                let mut stmt = self.conn.prepare(
-                    "SELECT
-                        r.trace_id, r.key_id, r.account_id, r.request_path, r.original_path, r.adapted_path,
-                        r.method, r.model, r.reasoning_effort, r.response_adapter, r.upstream_url, r.status_code, r.duration_ms,
-                        t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
-                        r.error, r.created_at
-                     FROM request_logs r
-                     LEFT JOIN request_token_stats t ON t.request_log_id = r.id
-                     ORDER BY r.created_at DESC, r.id DESC
-                     LIMIT ?1",
-                )?;
-                let mut rows = stmt.query([normalized_limit])?;
-                while let Some(row) = rows.next()? {
-                    out.push(map_request_log_row(row)?);
-                }
-            }
-            request_log_query::RequestLogQuery::FieldLike { column, pattern } => {
-                let sql = format!(
-                    "SELECT
-                        r.trace_id, r.key_id, r.account_id, r.request_path, r.original_path, r.adapted_path,
-                        r.method, r.model, r.reasoning_effort, r.response_adapter, r.upstream_url, r.status_code, r.duration_ms,
-                        t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
-                        r.error, r.created_at
-                     FROM request_logs r
-                     LEFT JOIN request_token_stats t ON t.request_log_id = r.id
-                     WHERE IFNULL(r.{column}, '') LIKE ?1
-                     ORDER BY r.created_at DESC, r.id DESC
-                     LIMIT ?2"
-                );
-                let mut stmt = self.conn.prepare(&sql)?;
-                let mut rows = stmt.query((pattern, normalized_limit))?;
-                while let Some(row) = rows.next()? {
-                    out.push(map_request_log_row(row)?);
-                }
-            }
-            request_log_query::RequestLogQuery::FieldExact { column, value } => {
-                let sql = format!(
-                    "SELECT
-                        r.trace_id, r.key_id, r.account_id, r.request_path, r.original_path, r.adapted_path,
-                        r.method, r.model, r.reasoning_effort, r.response_adapter, r.upstream_url, r.status_code, r.duration_ms,
-                        t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
-                        r.error, r.created_at
-                     FROM request_logs r
-                     LEFT JOIN request_token_stats t ON t.request_log_id = r.id
-                     WHERE r.{column} = ?1
-                     ORDER BY r.created_at DESC, r.id DESC
-                     LIMIT ?2"
-                );
-                let mut stmt = self.conn.prepare(&sql)?;
-                let mut rows = stmt.query((value, normalized_limit))?;
-                while let Some(row) = rows.next()? {
-                    out.push(map_request_log_row(row)?);
-                }
-            }
-            request_log_query::RequestLogQuery::StatusExact(status) => {
-                let mut stmt = self.conn.prepare(
-                    "SELECT
-                        r.trace_id, r.key_id, r.account_id, r.request_path, r.original_path, r.adapted_path,
-                        r.method, r.model, r.reasoning_effort, r.response_adapter, r.upstream_url, r.status_code, r.duration_ms,
-                        t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
-                        r.error, r.created_at
-                     FROM request_logs r
-                     LEFT JOIN request_token_stats t ON t.request_log_id = r.id
-                     WHERE r.status_code = ?1
-                     ORDER BY r.created_at DESC, r.id DESC
-                     LIMIT ?2",
-                )?;
-                let mut rows = stmt.query((status, normalized_limit))?;
-                while let Some(row) = rows.next()? {
-                    out.push(map_request_log_row(row)?);
-                }
-            }
-            request_log_query::RequestLogQuery::StatusRange(start, end) => {
-                let mut stmt = self.conn.prepare(
-                    "SELECT
-                        r.trace_id, r.key_id, r.account_id, r.request_path, r.original_path, r.adapted_path,
-                        r.method, r.model, r.reasoning_effort, r.response_adapter, r.upstream_url, r.status_code, r.duration_ms,
-                        t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
-                        r.error, r.created_at
-                     FROM request_logs r
-                     LEFT JOIN request_token_stats t ON t.request_log_id = r.id
-                     WHERE r.status_code >= ?1 AND r.status_code <= ?2
-                     ORDER BY r.created_at DESC, r.id DESC
-                     LIMIT ?3",
-                )?;
-                let mut rows = stmt.query((start, end, normalized_limit))?;
-                while let Some(row) = rows.next()? {
-                    out.push(map_request_log_row(row)?);
-                }
-            }
-            request_log_query::RequestLogQuery::GlobalLike(pattern) => {
-                let mut stmt = self.conn.prepare(
-                    "SELECT
-                        r.trace_id, r.key_id, r.account_id, r.request_path, r.original_path, r.adapted_path,
-                        r.method, r.model, r.reasoning_effort, r.response_adapter, r.upstream_url, r.status_code, r.duration_ms,
-                        t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
-                        r.error, r.created_at
-                     FROM request_logs r
-                     LEFT JOIN request_token_stats t ON t.request_log_id = r.id
-                     WHERE r.request_path LIKE ?1
-                        OR IFNULL(r.original_path,'') LIKE ?1
-                        OR IFNULL(r.adapted_path,'') LIKE ?1
-                        OR r.method LIKE ?1
-                        OR IFNULL(r.account_id,'') LIKE ?1
-                        OR IFNULL(r.model,'') LIKE ?1
-                        OR IFNULL(r.reasoning_effort,'') LIKE ?1
-                        OR IFNULL(r.response_adapter,'') LIKE ?1
-                        OR IFNULL(r.error,'') LIKE ?1
-                        OR IFNULL(r.key_id,'') LIKE ?1
-                        OR IFNULL(r.trace_id,'') LIKE ?1
-                        OR IFNULL(r.upstream_url,'') LIKE ?1
-                        OR IFNULL(CAST(r.status_code AS TEXT),'') LIKE ?1
-                        OR IFNULL(CAST(t.input_tokens AS TEXT),'') LIKE ?1
-                        OR IFNULL(CAST(t.cached_input_tokens AS TEXT),'') LIKE ?1
-                        OR IFNULL(CAST(t.output_tokens AS TEXT),'') LIKE ?1
-                        OR IFNULL(CAST(t.total_tokens AS TEXT),'') LIKE ?1
-                        OR IFNULL(CAST(t.reasoning_output_tokens AS TEXT),'') LIKE ?1
-                        OR IFNULL(CAST(t.estimated_cost_usd AS TEXT),'') LIKE ?1
-                     ORDER BY r.created_at DESC, r.id DESC
-                     LIMIT ?2",
-                )?;
-                let mut rows = stmt.query((pattern, normalized_limit))?;
-                while let Some(row) = rows.next()? {
-                    out.push(map_request_log_row(row)?);
-                }
-            }
+        while let Some(row) = rows.next()? {
+            out.push(map_request_log_row(row)?);
         }
-
         Ok(out)
+    }
+
+    pub fn count_request_logs(
+        &self,
+        query: Option<&str>,
+        status_filter: Option<&str>,
+    ) -> Result<i64> {
+        let filters = build_request_log_filters(query, status_filter);
+        let sql = format!(
+            "SELECT COUNT(1)
+             FROM request_logs r
+             LEFT JOIN request_token_stats t ON t.request_log_id = r.id
+             {where_clause}",
+            where_clause = filters.where_clause
+        );
+        self.conn
+            .query_row(&sql, params_from_iter(filters.params.iter()), |row| {
+                row.get(0)
+            })
+    }
+
+    pub fn summarize_request_logs_filtered(
+        &self,
+        query: Option<&str>,
+        status_filter: Option<&str>,
+    ) -> Result<RequestLogQuerySummary> {
+        let filters = build_request_log_filters(query, status_filter);
+        let sql = format!(
+            "SELECT
+                COUNT(1),
+                IFNULL(SUM(CASE WHEN r.status_code >= 200 AND r.status_code <= 299 THEN 1 ELSE 0 END), 0),
+                IFNULL(SUM(CASE WHEN IFNULL(r.status_code, 0) >= 400 OR TRIM(IFNULL(r.error, '')) <> '' THEN 1 ELSE 0 END), 0),
+                IFNULL(SUM(
+                    CASE
+                        WHEN t.total_tokens IS NOT NULL THEN
+                            CASE WHEN t.total_tokens > 0 THEN t.total_tokens ELSE 0 END
+                        ELSE
+                            CASE
+                                WHEN IFNULL(t.input_tokens, 0) - IFNULL(t.cached_input_tokens, 0) + IFNULL(t.output_tokens, 0) > 0
+                                    THEN IFNULL(t.input_tokens, 0) - IFNULL(t.cached_input_tokens, 0) + IFNULL(t.output_tokens, 0)
+                                ELSE 0
+                            END
+                    END
+                ), 0)
+             FROM request_logs r
+             LEFT JOIN request_token_stats t ON t.request_log_id = r.id
+             {where_clause}",
+            where_clause = filters.where_clause
+        );
+        self.conn
+            .query_row(&sql, params_from_iter(filters.params.iter()), |row| {
+                Ok(RequestLogQuerySummary {
+                    count: row.get(0)?,
+                    success_count: row.get(1)?,
+                    error_count: row.get(2)?,
+                    total_tokens: row.get(3)?,
+                })
+            })
     }
 
     pub fn clear_request_logs(&self) -> Result<()> {
@@ -425,6 +389,126 @@ fn map_request_log_row(row: &Row<'_>) -> Result<RequestLog> {
         error: row.get(19)?,
         created_at: row.get(20)?,
     })
+}
+
+struct RequestLogSqlFilters {
+    where_clause: String,
+    params: Vec<Value>,
+}
+
+fn normalize_request_log_limit(value: i64) -> i64 {
+    if value <= 0 {
+        200
+    } else {
+        value.min(1000)
+    }
+}
+
+fn build_request_log_filters(
+    query: Option<&str>,
+    status_filter: Option<&str>,
+) -> RequestLogSqlFilters {
+    let mut clauses = Vec::new();
+    let mut params = Vec::new();
+
+    append_request_log_query_clause(
+        request_log_query::parse_request_log_query(query),
+        &mut clauses,
+        &mut params,
+    );
+    append_status_filter_clause(status_filter, &mut clauses, &mut params);
+
+    RequestLogSqlFilters {
+        where_clause: if clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", clauses.join(" AND "))
+        },
+        params,
+    }
+}
+
+fn append_request_log_query_clause(
+    query: request_log_query::RequestLogQuery,
+    clauses: &mut Vec<String>,
+    params: &mut Vec<Value>,
+) {
+    match query {
+        request_log_query::RequestLogQuery::All => {}
+        request_log_query::RequestLogQuery::FieldLike { column, pattern } => {
+            clauses.push(format!("IFNULL(r.{column}, '') LIKE ?"));
+            params.push(Value::Text(pattern));
+        }
+        request_log_query::RequestLogQuery::FieldExact { column, value } => {
+            clauses.push(format!("r.{column} = ?"));
+            params.push(Value::Text(value));
+        }
+        request_log_query::RequestLogQuery::StatusExact(status) => {
+            clauses.push("r.status_code = ?".to_string());
+            params.push(Value::Integer(status));
+        }
+        request_log_query::RequestLogQuery::StatusRange(start, end) => {
+            clauses.push("r.status_code >= ? AND r.status_code <= ?".to_string());
+            params.push(Value::Integer(start));
+            params.push(Value::Integer(end));
+        }
+        request_log_query::RequestLogQuery::GlobalLike(pattern) => {
+            clauses.push(
+                "(r.request_path LIKE ?
+                    OR IFNULL(r.original_path,'') LIKE ?
+                    OR IFNULL(r.adapted_path,'') LIKE ?
+                    OR r.method LIKE ?
+                    OR IFNULL(r.account_id,'') LIKE ?
+                    OR IFNULL(r.model,'') LIKE ?
+                    OR IFNULL(r.reasoning_effort,'') LIKE ?
+                    OR IFNULL(r.response_adapter,'') LIKE ?
+                    OR IFNULL(r.error,'') LIKE ?
+                    OR IFNULL(r.key_id,'') LIKE ?
+                    OR IFNULL(r.trace_id,'') LIKE ?
+                    OR IFNULL(r.upstream_url,'') LIKE ?
+                    OR IFNULL(CAST(r.status_code AS TEXT),'') LIKE ?
+                    OR IFNULL(CAST(t.input_tokens AS TEXT),'') LIKE ?
+                    OR IFNULL(CAST(t.cached_input_tokens AS TEXT),'') LIKE ?
+                    OR IFNULL(CAST(t.output_tokens AS TEXT),'') LIKE ?
+                    OR IFNULL(CAST(t.total_tokens AS TEXT),'') LIKE ?
+                    OR IFNULL(CAST(t.reasoning_output_tokens AS TEXT),'') LIKE ?
+                    OR IFNULL(CAST(t.estimated_cost_usd AS TEXT),'') LIKE ?)"
+                    .to_string(),
+            );
+            for _ in 0..19 {
+                params.push(Value::Text(pattern.clone()));
+            }
+        }
+    }
+}
+
+fn append_status_filter_clause(
+    status_filter: Option<&str>,
+    clauses: &mut Vec<String>,
+    params: &mut Vec<Value>,
+) {
+    let normalized = status_filter
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match normalized.as_str() {
+        "" | "all" => {}
+        "2xx" => {
+            clauses.push("r.status_code >= ? AND r.status_code <= ?".to_string());
+            params.push(Value::Integer(200));
+            params.push(Value::Integer(299));
+        }
+        "4xx" => {
+            clauses.push("r.status_code >= ? AND r.status_code <= ?".to_string());
+            params.push(Value::Integer(400));
+            params.push(Value::Integer(499));
+        }
+        "5xx" => {
+            clauses.push("r.status_code >= ?".to_string());
+            params.push(Value::Integer(500));
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]

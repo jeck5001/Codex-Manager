@@ -175,3 +175,136 @@ fn token_stat_failure_still_commits_request_log() {
         .expect("count request_logs");
     assert_eq!(count, 1);
 }
+
+#[test]
+fn request_logs_support_backend_pagination_and_status_filters() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+
+    for index in 0..5_i64 {
+        let created_at = 1_000 + index;
+        let status_code = match index {
+            0 | 1 => Some(200),
+            2 => Some(404),
+            _ => Some(502),
+        };
+        let error = if status_code.unwrap_or_default() >= 500 {
+            Some("upstream interrupted".to_string())
+        } else {
+            None
+        };
+        let request_log_id = storage
+            .insert_request_log(&RequestLog {
+                trace_id: Some(format!("trc-{index}")),
+                key_id: Some("gk-log".to_string()),
+                account_id: Some("acc-log".to_string()),
+                request_path: format!("/v1/responses/{index}"),
+                original_path: Some("/v1/responses".to_string()),
+                adapted_path: Some("/v1/responses".to_string()),
+                method: "POST".to_string(),
+                model: Some("gpt-5".to_string()),
+                reasoning_effort: Some("high".to_string()),
+                response_adapter: Some("Passthrough".to_string()),
+                upstream_url: Some("https://chatgpt.com/backend-api/codex/responses".to_string()),
+                status_code,
+                duration_ms: Some(200 + index),
+                input_tokens: None,
+                cached_input_tokens: None,
+                output_tokens: None,
+                total_tokens: None,
+                reasoning_output_tokens: None,
+                estimated_cost_usd: None,
+                error,
+                created_at,
+            })
+            .expect("insert request log");
+        storage
+            .insert_request_token_stat(&RequestTokenStat {
+                request_log_id,
+                key_id: Some("gk-log".to_string()),
+                account_id: Some("acc-log".to_string()),
+                model: Some("gpt-5".to_string()),
+                input_tokens: Some(10 + index),
+                cached_input_tokens: Some(1),
+                output_tokens: Some(2),
+                total_tokens: Some(20 + index),
+                reasoning_output_tokens: Some(0),
+                estimated_cost_usd: Some(0.01),
+                created_at,
+            })
+            .expect("insert token stat");
+    }
+
+    let page = storage
+        .list_request_logs_paginated(None, Some("5xx"), 0, 1)
+        .expect("list paginated logs");
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0].trace_id.as_deref(), Some("trc-4"));
+
+    let total_5xx = storage
+        .count_request_logs(None, Some("5xx"))
+        .expect("count 5xx logs");
+    assert_eq!(total_5xx, 2);
+}
+
+#[test]
+fn request_logs_filtered_summary_aggregates_counts_and_tokens() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+
+    for (index, status_code, total_tokens, error) in [
+        (0_i64, Some(200_i64), Some(30_i64), None),
+        (1_i64, Some(200_i64), Some(50_i64), None),
+        (2_i64, Some(502_i64), Some(70_i64), Some("upstream error")),
+    ] {
+        let created_at = 2_000 + index;
+        let request_log_id = storage
+            .insert_request_log(&RequestLog {
+                trace_id: Some(format!("trc-sum-{index}")),
+                key_id: Some("gk-sum".to_string()),
+                account_id: Some("acc-sum".to_string()),
+                request_path: "/v1/responses".to_string(),
+                original_path: Some("/v1/responses".to_string()),
+                adapted_path: Some("/v1/responses".to_string()),
+                method: "POST".to_string(),
+                model: Some("gpt-5".to_string()),
+                reasoning_effort: Some("medium".to_string()),
+                response_adapter: Some("Passthrough".to_string()),
+                upstream_url: Some("https://chatgpt.com/backend-api/codex/responses".to_string()),
+                status_code,
+                duration_ms: Some(900),
+                input_tokens: None,
+                cached_input_tokens: None,
+                output_tokens: None,
+                total_tokens: None,
+                reasoning_output_tokens: None,
+                estimated_cost_usd: None,
+                error: error.map(|value| value.to_string()),
+                created_at,
+            })
+            .expect("insert request log");
+        storage
+            .insert_request_token_stat(&RequestTokenStat {
+                request_log_id,
+                key_id: Some("gk-sum".to_string()),
+                account_id: Some("acc-sum".to_string()),
+                model: Some("gpt-5".to_string()),
+                input_tokens: None,
+                cached_input_tokens: None,
+                output_tokens: None,
+                total_tokens,
+                reasoning_output_tokens: Some(0),
+                estimated_cost_usd: Some(0.01),
+                created_at,
+            })
+            .expect("insert token stat");
+    }
+
+    let summary = storage
+        .summarize_request_logs_filtered(None, Some("all"))
+        .expect("summarize filtered logs");
+    assert_eq!(summary.count, 3);
+    assert_eq!(summary.success_count, 2);
+    assert_eq!(summary.error_count, 1);
+    assert_eq!(summary.total_tokens, 150);
+}
