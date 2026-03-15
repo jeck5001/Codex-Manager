@@ -1,13 +1,15 @@
 import { invoke, withAddr } from "./transport";
 import {
   normalizeAppSettings,
-  normalizeRequestLogs,
+  normalizeRequestLogFilterSummary,
+  normalizeRequestLogListResult,
   normalizeStartupSnapshot,
   normalizeTodaySummary,
 } from "./normalize";
 import {
   BackgroundTaskSettings,
-  RequestLog,
+  RequestLogFilterSummary,
+  RequestLogListResult,
   RequestLogTodaySummary,
   ServiceInitializationResult,
   StartupSnapshot,
@@ -74,12 +76,35 @@ export const serviceClient = {
       withAddr({ ...(settings as unknown as Record<string, unknown>) })
     ),
 
-  async listRequestLogs(query: string, limit: number): Promise<RequestLog[]> {
+  async listRequestLogs(params?: {
+    query?: string;
+    statusFilter?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<RequestLogListResult> {
     const result = await invoke<unknown>(
       "service_requestlog_list",
-      withAddr({ query, limit })
+      withAddr({
+        query: params?.query || "",
+        statusFilter: params?.statusFilter || "all",
+        page: params?.page ?? 1,
+        pageSize: params?.pageSize ?? 20,
+      })
     );
-    return normalizeRequestLogs(result);
+    return normalizeRequestLogListResult(result);
+  },
+  async getRequestLogSummary(params?: {
+    query?: string;
+    statusFilter?: string;
+  }): Promise<RequestLogFilterSummary> {
+    const result = await invoke<unknown>(
+      "service_requestlog_summary",
+      withAddr({
+        query: params?.query || "",
+        statusFilter: params?.statusFilter || "all",
+      })
+    );
+    return normalizeRequestLogFilterSummary(result);
   },
   clearRequestLogs: () => invoke("service_requestlog_clear", withAddr()),
   async getTodaySummary(): Promise<RequestLogTodaySummary> {

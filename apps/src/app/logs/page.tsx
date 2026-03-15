@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,6 +20,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -398,7 +405,10 @@ function LogsPageContent() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState(() => searchParams.get("query") || "");
   const [filter, setFilter] = useState<StatusFilter>("all");
+  const [pageSize, setPageSize] = useState("20");
+  const [page, setPage] = useState(1);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const pageSizeNumber = Number(pageSize) || 20;
 
   const { data: accountsResult } = useQuery({
     queryKey: ["accounts", "lookup"],
@@ -408,12 +418,32 @@ function LogsPageContent() {
     retry: 1,
   });
 
-  const { data: logs = [], isLoading } = useQuery({
-    queryKey: ["logs", search],
-    queryFn: () => serviceClient.listRequestLogs(search, 100),
+  const { data: logsResult, isLoading } = useQuery({
+    queryKey: ["logs", "list", search, filter, page, pageSizeNumber],
+    queryFn: () =>
+      serviceClient.listRequestLogs({
+        query: search,
+        statusFilter: filter,
+        page,
+        pageSize: pageSizeNumber,
+      }),
     enabled: serviceStatus.connected,
     refetchInterval: 5000,
     retry: 1,
+    placeholderData: (previousData) => previousData,
+  });
+
+  const { data: summaryResult } = useQuery({
+    queryKey: ["logs", "summary", search, filter],
+    queryFn: () =>
+      serviceClient.getRequestLogSummary({
+        query: search,
+        statusFilter: filter,
+      }),
+    enabled: serviceStatus.connected,
+    refetchInterval: 5000,
+    retry: 1,
+    placeholderData: (previousData) => previousData,
   });
 
   const clearMutation = useMutation({
@@ -431,6 +461,12 @@ function LogsPageContent() {
     },
   });
 
+  useEffect(() => {
+    if (logsResult && logsResult.page !== page) {
+      setPage(logsResult.page);
+    }
+  }, [logsResult, page]);
+
   const accountNameMap = useMemo(() => {
     return new Map(
       (accountsResult?.items || []).map((account) => [
@@ -440,39 +476,18 @@ function LogsPageContent() {
     );
   }, [accountsResult?.items]);
 
-  const filteredLogs = useMemo(() => {
-    return logs.filter((log: RequestLog) => {
-      if (filter === "all") return true;
-      const statusCode = log.statusCode ?? 0;
-      if (filter === "2xx") return statusCode >= 200 && statusCode < 300;
-      if (filter === "4xx") return statusCode >= 400 && statusCode < 500;
-      if (filter === "5xx") return statusCode >= 500;
-      return true;
-    });
-  }, [filter, logs]);
-
-  const summary = useMemo(() => {
-    const successCount = filteredLogs.filter((log) => {
-      const statusCode = log.statusCode ?? 0;
-      return statusCode >= 200 && statusCode < 300;
-    }).length;
-    const errorCount = filteredLogs.filter((log) => {
-      const statusCode = log.statusCode ?? 0;
-      return statusCode >= 400 || Boolean(String(log.error || "").trim());
-    }).length;
-    const totalTokens = filteredLogs.reduce(
-      (sum, log) => sum + (log.totalTokens ?? 0),
-      0,
-    );
-
-    return {
-      total: logs.length,
-      visible: filteredLogs.length,
-      successCount,
-      errorCount,
-      totalTokens,
-    };
-  }, [filteredLogs, logs.length]);
+  const logs = logsResult?.items || [];
+  const summary = summaryResult || {
+    totalCount: logsResult?.total || 0,
+    filteredCount: logsResult?.total || 0,
+    successCount: 0,
+    errorCount: 0,
+    totalTokens: 0,
+  };
+  const totalPages = Math.max(
+    1,
+    Math.ceil((logsResult?.total || 0) / pageSizeNumber),
+  );
 
   const currentFilterLabel =
     filter === "all"
@@ -482,7 +497,7 @@ function LogsPageContent() {
         : filter === "4xx"
           ? "客户端错误"
           : "服务端错误";
-  const compactMetaText = `${summary.visible}/${summary.total} 条 · ${currentFilterLabel} · ${
+  const compactMetaText = `${summary.filteredCount}/${summary.totalCount} 条 · ${currentFilterLabel} · ${
     serviceStatus.connected ? "5 秒刷新" : "服务未连接"
   }`;
 
@@ -496,14 +511,20 @@ function LogsPageContent() {
               placeholder="搜索路径、账号或密钥..."
               className="glass-card h-10 rounded-xl pl-10"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
             />
           </div>
           <div className="flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-muted/30 p-1">
             {["all", "2xx", "4xx", "5xx"].map((item) => (
               <button
                 key={item}
-                onClick={() => setFilter(item as StatusFilter)}
+                onClick={() => {
+                  setFilter(item as StatusFilter);
+                  setPage(1);
+                }}
                 className={cn(
                   "rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all",
                   filter === item
@@ -547,8 +568,8 @@ function LogsPageContent() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           title="当前结果"
-          value={`${summary.visible}`}
-          description={`总日志 ${summary.total} 条`}
+          value={`${summary.filteredCount}`}
+          description={`总日志 ${summary.totalCount} 条`}
           icon={Zap}
           toneClass="bg-primary/12 text-primary"
         />
@@ -650,7 +671,7 @@ function LogsPageContent() {
                     </TableCell>
                   </TableRow>
                 ))
-              ) : filteredLogs.length === 0 ? (
+              ) : logs.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={8}
@@ -662,7 +683,7 @@ function LogsPageContent() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredLogs.map((log) => (
+                logs.map((log: RequestLog) => (
                   <TableRow
                     key={log.id}
                     className="group text-xs hover:bg-muted/20"
@@ -712,6 +733,62 @@ function LogsPageContent() {
           </Table>
         </CardContent>
       </Card>
+
+      <div className="flex items-center justify-between px-2">
+        <div className="text-xs text-muted-foreground">
+          共 {summary.filteredCount} 条匹配日志
+        </div>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="whitespace-nowrap text-xs text-muted-foreground">
+              每页显示
+            </span>
+            <Select
+              value={pageSize}
+              onValueChange={(value) => {
+                setPageSize(value || "10");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[78px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["5", "10", "20", "50", "100", "200"].map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {value}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-xs"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              上一页
+            </Button>
+            <div className="min-w-[68px] text-center text-xs font-medium">
+              第 {logsResult?.page || page} / {totalPages} 页
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-xs"
+              disabled={page >= totalPages}
+              onClick={() =>
+                setPage((current) => Math.min(totalPages, current + 1))
+              }
+            >
+              下一页
+            </Button>
+          </div>
+        </div>
+      </div>
 
       <ConfirmDialog
         open={clearConfirmOpen}

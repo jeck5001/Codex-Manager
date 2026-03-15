@@ -18,7 +18,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { formatTsFromSeconds } from "@/lib/utils/usage";
+import {
+  formatTsFromSeconds,
+  getUsageDisplayBuckets,
+  isPrimaryWindowOnlyUsage,
+  isSecondaryWindowOnlyUsage,
+} from "@/lib/utils/usage";
 import { Account } from "@/types";
 
 interface UsageModalProps {
@@ -35,6 +40,8 @@ interface UsageDetailRowProps {
   resetsAt: number | null | undefined;
   icon: LucideIcon;
   tone: "green" | "blue";
+  emptyText?: string;
+  emptyResetText?: string;
 }
 
 function UsageDetailRow({
@@ -43,6 +50,8 @@ function UsageDetailRow({
   resetsAt,
   icon: Icon,
   tone,
+  emptyText = "--",
+  emptyResetText = "未知",
 }: UsageDetailRowProps) {
   const value = remainPercent ?? 0;
   const iconToneClass =
@@ -60,8 +69,12 @@ function UsageDetailRow({
           <span className="font-semibold">{label}</span>
         </div>
         <div className="text-right">
-          <span className="text-lg font-bold">{remainPercent == null ? "--" : `${value}%`}</span>
-          <span className="ml-1 text-xs text-muted-foreground">剩余</span>
+          <span className="text-lg font-bold">
+            {remainPercent == null ? emptyText : `${value}%`}
+          </span>
+          <span className="ml-1 text-xs text-muted-foreground">
+            {remainPercent == null ? "" : "剩余"}
+          </span>
         </div>
       </div>
 
@@ -75,7 +88,7 @@ function UsageDetailRow({
         <span>已使用 {remainPercent == null ? "--" : `${Math.max(0, 100 - value)}%`}</span>
         <span className="flex items-center gap-1">
           <Clock className="h-2.5 w-2.5" />
-          重置时间: {formatTsFromSeconds(resetsAt, "未知")}
+          重置时间: {formatTsFromSeconds(resetsAt, emptyResetText)}
         </span>
       </div>
     </div>
@@ -90,6 +103,9 @@ export default function UsageModal({
   isRefreshing,
 }: UsageModalProps) {
   if (!account) return null;
+  const primaryWindowOnly = isPrimaryWindowOnlyUsage(account.usage);
+  const secondaryWindowOnly = isSecondaryWindowOnlyUsage(account.usage);
+  const usageBuckets = getUsageDisplayBuckets(account.usage);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -109,18 +125,22 @@ export default function UsageModal({
         <div className="grid gap-4 py-4">
           <UsageDetailRow
             label="5小时额度"
-            remainPercent={account.primaryRemainPercent}
-            resetsAt={account.usage?.resetsAt}
+            remainPercent={usageBuckets.primaryRemainPercent}
+            resetsAt={usageBuckets.primaryResetsAt}
             icon={Clock}
             tone="green"
+            emptyText={secondaryWindowOnly ? "未提供" : "--"}
+            emptyResetText={secondaryWindowOnly ? "未提供" : "未知"}
           />
 
           <UsageDetailRow
             label="7天周期额度"
-            remainPercent={account.secondaryRemainPercent}
-            resetsAt={account.usage?.secondaryResetsAt}
+            remainPercent={usageBuckets.secondaryRemainPercent}
+            resetsAt={usageBuckets.secondaryResetsAt}
             icon={Calendar}
             tone="blue"
+            emptyText={primaryWindowOnly ? "未提供" : "--"}
+            emptyResetText={primaryWindowOnly ? "未提供" : "未知"}
           />
 
           <div className="text-center">

@@ -225,9 +225,58 @@ pub struct RequestLogSummary {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RequestLogListParams {
+    pub page: i64,
+    pub page_size: i64,
+    pub query: Option<String>,
+    pub status_filter: Option<String>,
+}
+
+impl Default for RequestLogListParams {
+    fn default() -> Self {
+        Self {
+            page: 1,
+            page_size: 20,
+            query: None,
+            status_filter: None,
+        }
+    }
+}
+
+impl RequestLogListParams {
+    pub fn normalized(self) -> Self {
+        Self {
+            page: if self.page < 1 { 1 } else { self.page },
+            page_size: if self.page_size < 1 {
+                20
+            } else {
+                self.page_size
+            },
+            query: self.query,
+            status_filter: self.status_filter,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RequestLogListResult {
     pub items: Vec<RequestLogSummary>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestLogFilterSummaryResult {
+    pub total_count: i64,
+    pub filtered_count: i64,
+    pub success_count: i64,
+    pub error_count: i64,
+    pub total_tokens: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

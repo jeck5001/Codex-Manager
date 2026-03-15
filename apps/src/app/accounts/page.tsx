@@ -54,7 +54,11 @@ import {
 } from "@/components/ui/table";
 import { useAccounts } from "@/hooks/useAccounts";
 import { cn } from "@/lib/utils";
-import { formatTsFromSeconds } from "@/lib/utils/usage";
+import {
+  formatTsFromSeconds,
+  isPrimaryWindowOnlyUsage,
+  isSecondaryWindowOnlyUsage,
+} from "@/lib/utils/usage";
 import { Account } from "@/types";
 
 type StatusFilter = "all" | "available" | "low_quota";
@@ -64,9 +68,16 @@ interface QuotaProgressProps {
   remainPercent: number | null;
   icon: LucideIcon;
   tone: "green" | "blue";
+  emptyText?: string;
 }
 
-function QuotaProgress({ label, remainPercent, icon: Icon, tone }: QuotaProgressProps) {
+function QuotaProgress({
+  label,
+  remainPercent,
+  icon: Icon,
+  tone,
+  emptyText = "--",
+}: QuotaProgressProps) {
   const value = remainPercent ?? 0;
   const trackClassName = tone === "blue" ? "bg-blue-500/20" : "bg-green-500/20";
   const indicatorClassName = tone === "blue" ? "bg-blue-500" : "bg-green-500";
@@ -78,7 +89,7 @@ function QuotaProgress({ label, remainPercent, icon: Icon, tone }: QuotaProgress
           <Icon className="h-3 w-3" />
           <span>{label}</span>
         </div>
-        <span className="font-medium">{remainPercent == null ? "--" : `${value}%`}</span>
+        <span className="font-medium">{remainPercent == null ? emptyText : `${value}%`}</span>
       </div>
       <Progress
         value={value}
@@ -103,7 +114,8 @@ export default function AccountsPage() {
     importByFile,
     importByDirectory,
     exportAccounts,
-    isRefreshing,
+    isRefreshingAccountId,
+    isRefreshingAllAccounts,
     isExporting,
     isDeletingMany,
     manualPreferredAccountId,
@@ -326,9 +338,15 @@ export default function AccountsPage() {
                   <DropdownMenuLabel className="px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
                     批量操作
                   </DropdownMenuLabel>
-                  <DropdownMenuItem className="h-9 rounded-lg px-2" onClick={() => refreshAllAccounts()}>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={isRefreshingAllAccounts}
+                    onClick={() => refreshAllAccounts()}
+                  >
                     <RefreshCw className="mr-2 h-4 w-4" /> 刷新所有账号
-                    <DropdownMenuShortcut>{isRefreshing ? "..." : "ALL"}</DropdownMenuShortcut>
+                    <DropdownMenuShortcut>
+                      {isRefreshingAllAccounts ? "..." : "ALL"}
+                    </DropdownMenuShortcut>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
@@ -358,9 +376,11 @@ export default function AccountsPage() {
             <Button
               className="h-10 gap-2 shadow-lg shadow-primary/20"
               onClick={() => refreshAllAccounts()}
-              disabled={isRefreshing}
+              disabled={isRefreshingAllAccounts}
             >
-              <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+              <RefreshCw
+                className={cn("h-4 w-4", isRefreshingAllAccounts && "animate-spin")}
+              />
               刷新所有
             </Button>
           </div>
@@ -412,8 +432,11 @@ export default function AccountsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                visibleAccounts.map((account) => (
-                  <TableRow key={account.id} className="group transition-colors hover:bg-muted/30">
+                visibleAccounts.map((account) => {
+                  const primaryWindowOnly = isPrimaryWindowOnlyUsage(account.usage);
+                  const secondaryWindowOnly = isSecondaryWindowOnlyUsage(account.usage);
+                  return (
+                    <TableRow key={account.id} className="group transition-colors hover:bg-muted/30">
                     <TableCell className="text-center">
                       <Checkbox
                         checked={effectiveSelectedIds.includes(account.id)}
@@ -453,6 +476,7 @@ export default function AccountsPage() {
                         remainPercent={account.primaryRemainPercent}
                         icon={RefreshCw}
                         tone="green"
+                        emptyText={secondaryWindowOnly ? "未提供" : "--"}
                       />
                     </TableCell>
                     <TableCell>
@@ -461,6 +485,7 @@ export default function AccountsPage() {
                         remainPercent={account.secondaryRemainPercent}
                         icon={RefreshCw}
                         tone="blue"
+                        emptyText={primaryWindowOnly ? "未提供" : "--"}
                       />
                     </TableCell>
                     <TableCell>
@@ -543,8 +568,9 @@ export default function AccountsPage() {
                         </DropdownMenu>
                       </div>
                     </TableCell>
-                  </TableRow>
-                ))
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -608,7 +634,10 @@ export default function AccountsPage() {
         open={usageModalOpen}
         onOpenChange={setUsageModalOpen}
         onRefresh={refreshAccount}
-        isRefreshing={isRefreshing}
+        isRefreshing={
+          isRefreshingAllAccounts ||
+          (!!selectedAccount && isRefreshingAccountId === selectedAccount.id)
+        }
       />
       <ConfirmDialog
         open={Boolean(deleteDialogState)}

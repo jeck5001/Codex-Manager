@@ -123,6 +123,14 @@ pub struct RequestLogTodaySummary {
 }
 
 #[derive(Debug, Clone)]
+pub struct RequestLogQuerySummary {
+    pub count: i64,
+    pub success_count: i64,
+    pub error_count: i64,
+    pub total_tokens: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct ApiKeyTokenUsageSummary {
     pub key_id: String,
     pub total_tokens: i64,

@@ -1,5 +1,7 @@
 use codexmanager_core::rpc::types::JsonRpcRequest;
-use codexmanager_core::storage::{now_ts, Account, Storage, UsageSnapshotRecord};
+use codexmanager_core::storage::{
+    now_ts, Account, RequestLog, RequestTokenStat, Storage, UsageSnapshotRecord,
+};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -834,6 +836,135 @@ fn rpc_usage_aggregate_returns_backend_summary() {
             .get("secondaryRemainPercent")
             .and_then(|value| value.as_i64()),
         Some(70)
+    );
+}
+
+#[test]
+fn rpc_requestlog_list_and_summary_support_pagination() {
+    let ctx = RpcTestContext::new("rpc-requestlog-page");
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+
+    for index in 0..4_i64 {
+        let created_at = now_ts() + index;
+        let status_code = if index < 2 { Some(200) } else { Some(502) };
+        let request_log_id = storage
+            .insert_request_log(&RequestLog {
+                trace_id: Some(format!("trc-page-{index}")),
+                key_id: Some("gk-page".to_string()),
+                account_id: Some("acc-page".to_string()),
+                request_path: "/v1/responses".to_string(),
+                original_path: Some("/v1/responses".to_string()),
+                adapted_path: Some("/v1/responses".to_string()),
+                method: "POST".to_string(),
+                model: Some("gpt-5".to_string()),
+                reasoning_effort: Some("medium".to_string()),
+                response_adapter: Some("Passthrough".to_string()),
+                upstream_url: Some("https://chatgpt.com/backend-api/codex/responses".to_string()),
+                status_code,
+                duration_ms: Some(500 + index),
+                input_tokens: None,
+                cached_input_tokens: None,
+                output_tokens: None,
+                total_tokens: None,
+                reasoning_output_tokens: None,
+                estimated_cost_usd: None,
+                error: if status_code == Some(502) {
+                    Some("stream interrupted".to_string())
+                } else {
+                    None
+                },
+                created_at,
+            })
+            .expect("insert request log");
+        storage
+            .insert_request_token_stat(&RequestTokenStat {
+                request_log_id,
+                key_id: Some("gk-page".to_string()),
+                account_id: Some("acc-page".to_string()),
+                model: Some("gpt-5".to_string()),
+                input_tokens: Some(10),
+                cached_input_tokens: Some(1),
+                output_tokens: Some(2),
+                total_tokens: Some(20 + index),
+                reasoning_output_tokens: Some(0),
+                estimated_cost_usd: Some(0.01),
+                created_at,
+            })
+            .expect("insert token stat");
+    }
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let list_req = JsonRpcRequest {
+        id: 72,
+        method: "requestlog/list".to_string(),
+        params: Some(serde_json::json!({
+            "page": 2,
+            "pageSize": 1,
+            "statusFilter": "5xx"
+        })),
+    };
+    let list_json = serde_json::to_string(&list_req).expect("serialize requestlog list");
+    let list_resp = post_rpc(&server.addr, &list_json);
+    let list_result = list_resp.get("result").expect("requestlog list result");
+    assert_eq!(
+        list_result.get("total").and_then(|value| value.as_i64()),
+        Some(2)
+    );
+    assert_eq!(
+        list_result.get("page").and_then(|value| value.as_i64()),
+        Some(2)
+    );
+    assert_eq!(
+        list_result.get("pageSize").and_then(|value| value.as_i64()),
+        Some(1)
+    );
+    let items = list_result
+        .get("items")
+        .and_then(|value| value.as_array())
+        .expect("requestlog items");
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0].get("traceId").and_then(|value| value.as_str()),
+        Some("trc-page-2")
+    );
+
+    let summary_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let summary_req = JsonRpcRequest {
+        id: 73,
+        method: "requestlog/summary".to_string(),
+        params: Some(serde_json::json!({
+            "statusFilter": "5xx"
+        })),
+    };
+    let summary_json = serde_json::to_string(&summary_req).expect("serialize requestlog summary");
+    let summary_resp = post_rpc(&summary_server.addr, &summary_json);
+    let summary_result = summary_resp
+        .get("result")
+        .expect("requestlog summary result");
+    assert_eq!(
+        summary_result
+            .get("totalCount")
+            .and_then(|value| value.as_i64()),
+        Some(4)
+    );
+    assert_eq!(
+        summary_result
+            .get("filteredCount")
+            .and_then(|value| value.as_i64()),
+        Some(2)
+    );
+    assert_eq!(
+        summary_result
+            .get("errorCount")
+            .and_then(|value| value.as_i64()),
+        Some(2)
+    );
+    assert_eq!(
+        summary_result
+            .get("totalTokens")
+            .and_then(|value| value.as_i64()),
+        Some(45)
     );
 }
 
