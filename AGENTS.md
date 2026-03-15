@@ -1,4 +1,4 @@
-# Frontend Engineering Standards (apps_new)
+# Frontend Engineering Standards (apps)
 
 This document outlines the architectural constraints and coding conventions for the refactored Next.js frontend.
 

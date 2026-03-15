@@ -4,7 +4,7 @@ version.workspace = true
 edition = "2021"
 
 [features]
-# 发行物/容器内使用：将前端静态资源（apps/dist）打进二进制，做到“单文件启动”。
+# 发行物/容器内使用：将前端静态资源（apps/out）打进二进制，做到“单文件启动”。
 embedded-ui = ["dep:include_dir", "dep:mime_guess"]
 
 [dependencies]

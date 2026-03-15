@@ -43,10 +43,11 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APPS_ROOT="$ROOT/apps"
+FRONTEND_ROOT="$APPS_ROOT"
 TAURI_DIR="$APPS_ROOT/src-tauri"
 ROOT_TARGET="$ROOT/target"
 TAURI_TARGET="$TAURI_DIR/target"
-DIST_DIR="$APPS_ROOT/dist"
+DIST_DIR="$FRONTEND_ROOT/out"
 
 step() { echo "$*"; }
 

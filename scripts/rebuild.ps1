@@ -28,10 +28,11 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $scriptDir
 $appsRoot = Join-Path $root "apps"
+$frontendRoot = $appsRoot
 $tauriDir = Join-Path $appsRoot "src-tauri"
 $rootTarget = Join-Path $root "target"
 $tauriTarget = Join-Path $tauriDir "target"
-$distDir = Join-Path $appsRoot "dist"
+$distDir = Join-Path $frontendRoot "out"
 $tauriConfig = Join-Path $tauriDir "tauri.conf.json"
 
 $appName = "CodexManager"

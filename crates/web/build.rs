@@ -8,7 +8,7 @@ fn main() {
 }
 
 fn emit_embedded_ui_tracking(manifest_dir: &Path) {
-    let dist_dir = manifest_dir.join("../../apps/dist");
+    let dist_dir = manifest_dir.join("../../apps/out");
     println!("cargo:rerun-if-changed={}", dist_dir.display());
 
     let fingerprint = if dist_dir.is_dir() {

@@ -63,25 +63,21 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace
 
-      - name: Frontend unit tests
+      - name: Frontend lint
         working-directory: apps
-        run: pnpm run test
-
-      - name: Frontend structure tests
-        working-directory: apps
-        run: pnpm run test:ui
+        run: pnpm lint
 
       - name: Frontend build
         working-directory: apps
-        run: pnpm run build
+        run: pnpm run build:desktop
 
       - name: Pack frontend dist artifact
         shell: bash
         run: |
           set -euo pipefail
-          test -f apps/dist/index.html || { echo "apps/dist/index.html not found"; exit 1; }
+          test -f apps/out/index.html || { echo "apps/out/index.html not found"; exit 1; }
           rm -f frontend-dist.tar.gz
-          tar -czf frontend-dist.tar.gz -C apps dist
+          tar -czf frontend-dist.tar.gz -C apps out
 
       - name: Upload frontend dist artifact
         uses: actions/upload-artifact@v4

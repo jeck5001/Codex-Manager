@@ -2,14 +2,13 @@
 use include_dir::{include_dir, Dir};
 
 #[cfg(feature = "embedded-ui")]
-static DIST_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../apps/dist");
-
+static DIST_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../apps/out");
 #[cfg(feature = "embedded-ui")]
 const _DIST_FINGERPRINT: &str = env!("CODEXMANAGER_WEB_DIST_FINGERPRINT");
 
 #[cfg(feature = "embedded-ui")]
 pub fn has_embedded_ui() -> bool {
-    // apps/dist 至少应包含 index.html
+    // apps/out 至少应包含 index.html
     DIST_DIR.get_file("index.html").is_some()
 }
 
