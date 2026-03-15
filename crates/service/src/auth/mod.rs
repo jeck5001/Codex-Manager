@@ -1,3 +1,5 @@
+#[path = "auth_account.rs"]
+pub(crate) mod account;
 #[path = "auth_callback.rs"]
 pub(crate) mod callback;
 #[path = "auth_login.rs"]

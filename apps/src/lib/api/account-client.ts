@@ -16,6 +16,8 @@ import {
   ApiKey,
   ApiKeyCreateResult,
   ApiKeyUsageStat,
+  ChatgptAuthTokensRefreshResult,
+  CurrentAccessTokenAccountReadResult,
   LoginStatusResult,
   LoginStartResult,
   ModelOption,
@@ -51,6 +53,15 @@ interface LoginStartPayload {
   group?: string | null;
   groupName?: string | null;
   workspaceId?: string | null;
+}
+
+interface ChatgptAuthTokensLoginPayload {
+  accessToken: string;
+  refreshToken?: string | null;
+  idToken?: string | null;
+  chatgptAccountId?: string | null;
+  workspaceId?: string | null;
+  chatgptPlanType?: string | null;
 }
 
 interface ApiKeyPayload {
@@ -173,6 +184,58 @@ export const accountClient = {
   },
   completeLogin: (state: string, code: string, redirectUri: string) =>
     invoke("service_login_complete", withAddr({ state, code, redirectUri })),
+  loginWithChatgptAuthTokens: (params: ChatgptAuthTokensLoginPayload) =>
+    invoke("service_login_chatgpt_auth_tokens", withAddr({
+      accessToken: params.accessToken,
+      refreshToken: params.refreshToken || null,
+      idToken: params.idToken || null,
+      chatgptAccountId: params.chatgptAccountId || null,
+      workspaceId: params.workspaceId || null,
+      chatgptPlanType: params.chatgptPlanType || null,
+    })),
+  async readCurrentAccessTokenAccount(
+    refreshToken = false
+  ): Promise<CurrentAccessTokenAccountReadResult> {
+    const result = await invoke<unknown>(
+      "service_account_read",
+      withAddr({ refreshToken })
+    );
+    const source =
+      result && typeof result === "object" && !Array.isArray(result)
+        ? (result as Record<string, unknown>)
+        : {};
+    return {
+      account:
+        source.account && typeof source.account === "object" && !Array.isArray(source.account)
+          ? (source.account as CurrentAccessTokenAccountReadResult["account"])
+          : null,
+      authMode: typeof source.authMode === "string" ? source.authMode : null,
+      requiresOpenaiAuth: Boolean(source.requiresOpenaiAuth),
+    };
+  },
+  logoutCurrentAccessTokenAccount: () =>
+    invoke("service_account_logout", withAddr()),
+  async refreshChatgptAuthTokens(
+    previousAccountId?: string
+  ): Promise<ChatgptAuthTokensRefreshResult> {
+    const result = await invoke<unknown>(
+      "service_chatgpt_auth_tokens_refresh",
+      withAddr({ previousAccountId: previousAccountId || null })
+    );
+    const source =
+      result && typeof result === "object" && !Array.isArray(result)
+        ? (result as Record<string, unknown>)
+        : {};
+    return {
+      accountId: String(source.accountId || "").trim(),
+      accessToken: String(source.accessToken || "").trim(),
+      chatgptAccountId: String(source.chatgptAccountId || "").trim(),
+      chatgptPlanType:
+        typeof source.chatgptPlanType === "string"
+          ? source.chatgptPlanType.trim()
+          : null,
+    };
+  },
 
   async listApiKeys(): Promise<ApiKey[]> {
     const result = await invoke<unknown>("service_apikey_list", withAddr());

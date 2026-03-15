@@ -111,13 +111,6 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 - `crates/service/src/gateway/protocol_adapter/response_conversion/`
 - `crates/service/src/gateway/upstream/`
 
-## Contact
-
-<p align="center">
-  <img src="assets/images/group.jpg" alt="Telegram Group QR Code" width="280" />
-  <img src="assets/images/qq_group.jpg" alt="QQ Group QR Code" width="280" />
-</p>
-
-- Telegram group: <https://t.me/+8o2Eu7GPMIFjNDM1>
-- QQ group: scan the QR code
-- WeChat Official Account: 七线牛马
+## Contact Information
+- Official Account: 七线牛马
+- WeChat: ProsperGao

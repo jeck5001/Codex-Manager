@@ -9,6 +9,7 @@ import {
   FileUp,
   FolderOpen,
   MoreVertical,
+  Pin,
   Plus,
   RefreshCw,
   Search,
@@ -105,6 +106,10 @@ export default function AccountsPage() {
     isRefreshing,
     isExporting,
     isDeletingMany,
+    manualPreferredAccountId,
+    setPreferredAccount,
+    clearPreferredAccount,
+    isUpdatingPreferred,
   } = useAccounts();
 
   const [search, setSearch] = useState("");
@@ -425,6 +430,14 @@ export default function AccountsPage() {
                           >
                             {account.group || "默认"}
                           </Badge>
+                          {manualPreferredAccountId === account.id ? (
+                            <Badge
+                              variant="secondary"
+                              className="h-4 shrink-0 bg-amber-500/15 px-1.5 text-[9px] text-amber-700 dark:text-amber-300"
+                            >
+                              优先
+                            </Badge>
+                          ) : null}
                         </div>
                         <span className="truncate font-mono text-[10px] uppercase text-muted-foreground opacity-60">
                           {account.id.slice(0, 16)}...
@@ -501,12 +514,25 @@ export default function AccountsPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               className="gap-2"
+                              disabled={isUpdatingPreferred}
+                              onClick={() =>
+                                manualPreferredAccountId === account.id
+                                  ? clearPreferredAccount()
+                                  : setPreferredAccount(account.id)
+                              }
+                            >
+                              <Pin className="h-4 w-4" />
+                              {manualPreferredAccountId === account.id ? "取消优先" : "设为优先"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2"
                               onClick={() =>
                                 router.push(`/logs?query=${encodeURIComponent(account.id)}`)
                               }
                             >
                               <ExternalLink className="h-4 w-4" /> 详情与日志
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="gap-2 text-red-500"
                               onClick={() => handleDeleteSingle(account)}

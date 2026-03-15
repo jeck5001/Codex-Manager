@@ -51,15 +51,12 @@ mod tests {
     #[test]
     fn normalize_upstream_url_keeps_official_domains() {
         assert_eq!(
-            normalize_upstream_url(Some(
-                "https://chatgpt.com/backend-api/codex/responses"
-            ))
-            .as_deref(),
+            normalize_upstream_url(Some("https://chatgpt.com/backend-api/codex/responses"))
+                .as_deref(),
             Some("https://chatgpt.com/backend-api/codex/responses")
         );
         assert_eq!(
-            normalize_upstream_url(Some("https://api.openai.com/v1/responses"))
-                .as_deref(),
+            normalize_upstream_url(Some("https://api.openai.com/v1/responses")).as_deref(),
             Some("https://api.openai.com/v1/responses")
         );
     }

@@ -6,6 +6,9 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard};
+use std::thread;
+use std::time::Duration;
+use tiny_http::{Header, Response, Server, StatusCode};
 
 struct EnvGuard {
     key: &'static str,
@@ -140,6 +143,91 @@ fn post_rpc(addr: &str, body: &str) -> serde_json::Value {
     );
     assert_eq!(status, 200, "unexpected status {status}: {body}");
     serde_json::from_str(&body).expect("parse response")
+}
+
+fn encode_base64url(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::new();
+    let mut index = 0;
+    while index + 3 <= bytes.len() {
+        let chunk = ((bytes[index] as u32) << 16)
+            | ((bytes[index + 1] as u32) << 8)
+            | (bytes[index + 2] as u32);
+        out.push(TABLE[((chunk >> 18) & 0x3f) as usize] as char);
+        out.push(TABLE[((chunk >> 12) & 0x3f) as usize] as char);
+        out.push(TABLE[((chunk >> 6) & 0x3f) as usize] as char);
+        out.push(TABLE[(chunk & 0x3f) as usize] as char);
+        index += 3;
+    }
+    match bytes.len().saturating_sub(index) {
+        1 => {
+            let chunk = (bytes[index] as u32) << 16;
+            out.push(TABLE[((chunk >> 18) & 0x3f) as usize] as char);
+            out.push(TABLE[((chunk >> 12) & 0x3f) as usize] as char);
+        }
+        2 => {
+            let chunk = ((bytes[index] as u32) << 16) | ((bytes[index + 1] as u32) << 8);
+            out.push(TABLE[((chunk >> 18) & 0x3f) as usize] as char);
+            out.push(TABLE[((chunk >> 12) & 0x3f) as usize] as char);
+            out.push(TABLE[((chunk >> 6) & 0x3f) as usize] as char);
+        }
+        _ => {}
+    }
+    out
+}
+
+fn build_access_token(
+    subject: &str,
+    email: &str,
+    chatgpt_account_id: &str,
+    plan_type: &str,
+) -> String {
+    let header = encode_base64url(br#"{"alg":"none","typ":"JWT"}"#);
+    let payload = serde_json::json!({
+        "sub": subject,
+        "email": email,
+        "workspace_id": chatgpt_account_id,
+        "https://api.openai.com/auth": {
+            "chatgpt_account_id": chatgpt_account_id,
+            "chatgpt_plan_type": plan_type
+        }
+    });
+    let payload = encode_base64url(
+        serde_json::to_string(&payload)
+            .expect("serialize jwt payload")
+            .as_bytes(),
+    );
+    format!("{header}.{payload}.sig")
+}
+
+fn start_mock_oauth_token_server(
+    status: u16,
+    response_body: String,
+) -> (
+    String,
+    std::sync::mpsc::Receiver<String>,
+    thread::JoinHandle<()>,
+) {
+    let server = Server::http("127.0.0.1:0").expect("start mock oauth server");
+    let addr = format!("http://{}", server.server_addr());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = thread::spawn(move || {
+        let mut request = server.recv().expect("receive oauth request");
+        let mut body = String::new();
+        request
+            .as_reader()
+            .read_to_string(&mut body)
+            .expect("read oauth request body");
+        tx.send(body).expect("send oauth request body");
+        let response = Response::from_string(response_body)
+            .with_status_code(StatusCode(status))
+            .with_header(
+                Header::from_bytes("Content-Type", "application/json")
+                    .expect("content-type header"),
+            );
+        request.respond(response).expect("respond oauth request");
+    });
+    (addr, rx, handle)
 }
 
 #[test]
@@ -413,6 +501,186 @@ fn rpc_login_start_returns_url() {
     let login_id = result.get("loginId").and_then(|v| v.as_str()).unwrap();
     assert!(auth_url.contains("oauth/authorize"));
     assert!(!login_id.is_empty());
+}
+
+#[test]
+fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
+    let ctx = RpcTestContext::new("rpc-chatgpt-auth-tokens-roundtrip");
+    let access_token = build_access_token(
+        "sub-external",
+        "embedded@example.com",
+        "org-embedded",
+        "pro",
+    );
+
+    let login_req = JsonRpcRequest {
+        id: 41,
+        method: "account/login/start".to_string(),
+        params: Some(serde_json::json!({
+            "type": "chatgptAuthTokens",
+            "accessToken": access_token,
+            "chatgptAccountId": "org-embedded",
+            "chatgptPlanType": "pro"
+        })),
+    };
+    let login_json = serde_json::to_string(&login_req).expect("serialize login");
+    let login_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let login_resp = post_rpc(&login_server.addr, &login_json);
+    let login_result = login_resp.get("result").expect("login result");
+    let account_id = login_result
+        .get("accountId")
+        .and_then(|value| value.as_str())
+        .expect("account id")
+        .to_string();
+    assert_eq!(
+        login_result.get("type").and_then(|value| value.as_str()),
+        Some("chatgptAuthTokens")
+    );
+
+    let read_req = JsonRpcRequest {
+        id: 42,
+        method: "account/read".to_string(),
+        params: Some(serde_json::json!({ "refreshToken": false })),
+    };
+    let read_json = serde_json::to_string(&read_req).expect("serialize read");
+    let read_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let read_resp = post_rpc(&read_server.addr, &read_json);
+    let read_result = read_resp.get("result").expect("read result");
+    let account = read_result.get("account").expect("current account");
+    assert_eq!(
+        read_result.get("authMode").and_then(|value| value.as_str()),
+        Some("chatgptAuthTokens")
+    );
+    assert_eq!(
+        account.get("email").and_then(|value| value.as_str()),
+        Some("embedded@example.com")
+    );
+    assert_eq!(
+        account.get("planType").and_then(|value| value.as_str()),
+        Some("pro")
+    );
+    assert_eq!(
+        account
+            .get("chatgptAccountId")
+            .and_then(|value| value.as_str()),
+        Some("org-embedded")
+    );
+
+    let logout_req = JsonRpcRequest {
+        id: 43,
+        method: "account/logout".to_string(),
+        params: None,
+    };
+    let logout_json = serde_json::to_string(&logout_req).expect("serialize logout");
+    let logout_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let logout_resp = post_rpc(&logout_server.addr, &logout_json);
+    let logout_result = logout_resp.get("result").expect("logout result");
+    assert_eq!(
+        logout_result.get("ok").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        logout_result
+            .get("accountId")
+            .and_then(|value| value.as_str()),
+        Some(account_id.as_str())
+    );
+
+    let read_after_logout_server =
+        codexmanager_service::start_one_shot_server().expect("start server");
+    let read_after_logout = post_rpc(&read_after_logout_server.addr, &read_json);
+    let read_after_logout_result = read_after_logout.get("result").expect("read result");
+    assert!(read_after_logout_result.get("account").unwrap().is_null());
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    let account = storage
+        .find_account_by_id(&account_id)
+        .expect("find account")
+        .expect("account exists");
+    assert_eq!(account.status, "inactive");
+}
+
+#[test]
+fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
+    let _ctx = RpcTestContext::new("rpc-chatgpt-auth-tokens-refresh");
+    let refreshed_access_token =
+        build_access_token("sub-refresh", "refreshed@example.com", "org-refresh", "pro");
+    let refresh_response = serde_json::json!({
+        "access_token": refreshed_access_token,
+        "refresh_token": "refresh-token-new"
+    });
+    let (issuer, refresh_rx, refresh_join) = start_mock_oauth_token_server(
+        200,
+        serde_json::to_string(&refresh_response).expect("serialize refresh response"),
+    );
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
+    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-rpc-refresh");
+
+    let login_req = JsonRpcRequest {
+        id: 44,
+        method: "account/login/start".to_string(),
+        params: Some(serde_json::json!({
+            "type": "chatgptAuthTokens",
+            "accessToken": build_access_token(
+                "sub-refresh",
+                "initial@example.com",
+                "org-refresh",
+                "pro"
+            ),
+            "refreshToken": "refresh-token-old",
+            "chatgptAccountId": "org-refresh"
+        })),
+    };
+    let login_json = serde_json::to_string(&login_req).expect("serialize login");
+    let login_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let login_resp = post_rpc(&login_server.addr, &login_json);
+    let account_id = login_resp
+        .get("result")
+        .and_then(|value| value.get("accountId"))
+        .and_then(|value| value.as_str())
+        .expect("account id")
+        .to_string();
+
+    let refresh_req = JsonRpcRequest {
+        id: 45,
+        method: "account/chatgptAuthTokens/refresh".to_string(),
+        params: Some(serde_json::json!({
+            "reason": "unauthorized",
+            "previousAccountId": "org-refresh"
+        })),
+    };
+    let refresh_json = serde_json::to_string(&refresh_req).expect("serialize refresh");
+    let refresh_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let refresh_rpc_resp = post_rpc(&refresh_server.addr, &refresh_json);
+    let refresh_result = refresh_rpc_resp.get("result").expect("refresh result");
+    assert_eq!(
+        refresh_result
+            .get("chatgptAccountId")
+            .and_then(|value| value.as_str()),
+        Some("org-refresh")
+    );
+    assert_eq!(
+        refresh_result
+            .get("accessToken")
+            .and_then(|value| value.as_str()),
+        Some(refreshed_access_token.as_str())
+    );
+
+    let refresh_body = refresh_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive refresh request");
+    refresh_join.join().expect("join mock oauth server");
+    assert!(refresh_body.contains("grant_type=refresh_token"));
+    assert!(refresh_body.contains("refresh_token=refresh-token-old"));
+
+    let storage =
+        Storage::open(std::env::var("CODEXMANAGER_DB_PATH").expect("db path")).expect("open db");
+    let token = storage
+        .find_token_by_account_id(&account_id)
+        .expect("find token")
+        .expect("token exists");
+    assert_eq!(token.access_token, refreshed_access_token);
+    assert_eq!(token.refresh_token, "refresh-token-new");
 }
 
 #[test]

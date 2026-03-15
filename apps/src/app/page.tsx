@@ -153,7 +153,8 @@ function StatProgressCard({
 }
 
 export default function DashboardPage() {
-  const { stats, currentAccount, recommendations, requestLogs, isLoading } = useDashboardStats();
+  const { stats, currentAccount, recommendations, requestLogs, isLoading, isServiceReady } =
+    useDashboardStats();
   const poolPrimary = stats.poolRemain?.primary ?? 0;
   const poolSecondary = stats.poolRemain?.secondary ?? 0;
 
@@ -234,7 +235,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[
+        {[ 
           {
             title: "今日令牌",
             value: formatCompactNumber(stats.todayTokens, "0"),
@@ -264,19 +265,23 @@ export default function DashboardPage() {
             sub: "按官价估算",
           },
         ].map((card) => (
-          <Card
-            key={card.title}
-            className="glass-card overflow-hidden border-none shadow-md backdrop-blur-md transition-all hover:scale-[1.02]"
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
-              <card.icon className={cn("h-4 w-4", card.color)} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{card.value}</div>
-              <p className="mt-1 text-[10px] text-muted-foreground">{card.sub}</p>
-            </CardContent>
-          </Card>
+          isLoading ? (
+            <Skeleton key={card.title} className="h-32 w-full rounded-2xl" />
+          ) : (
+            <Card
+              key={card.title}
+              className="glass-card overflow-hidden border-none shadow-md backdrop-blur-md transition-all hover:scale-[1.02]"
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
+                <card.icon className={cn("h-4 w-4", card.color)} />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{card.value}</div>
+                <p className="mt-1 text-[10px] text-muted-foreground">{card.sub}</p>
+              </CardContent>
+            </Card>
+          )
         ))}
       </div>
 
@@ -286,7 +291,15 @@ export default function DashboardPage() {
             <CardTitle className="text-base font-semibold">当前活跃账号</CardTitle>
           </CardHeader>
           <CardContent className="flex min-h-[200px] flex-col justify-start">
-            {currentAccount ? (
+            {isLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-28 w-full rounded-2xl" />
+                <div className="grid grid-cols-2 gap-4">
+                  <Skeleton className="h-32 w-full rounded-xl" />
+                  <Skeleton className="h-32 w-full rounded-xl" />
+                </div>
+              </div>
+            ) : currentAccount ? (
               <div className="space-y-4">
                 <AccountHighlightCard
                   title="当前活跃账号"
@@ -312,7 +325,7 @@ export default function DashboardPage() {
                 <div className="rounded-full bg-accent/30 p-4 animate-pulse">
                   <Activity className="h-8 w-8 opacity-20" />
                 </div>
-                <p>暂无可识别的活跃账号</p>
+                <p>{isServiceReady ? "暂无可识别的活跃账号" : "正在等待服务连接"}</p>
               </div>
             )}
           </CardContent>
@@ -326,7 +339,12 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground">
               基于当前配额，系统会优先推荐剩余额度更高且仍可参与路由的账号。
             </p>
-            {recommendations.primaryPick || recommendations.secondaryPick ? (
+            {isLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-28 w-full rounded-2xl" />
+                <Skeleton className="h-28 w-full rounded-2xl" />
+              </div>
+            ) : recommendations.primaryPick || recommendations.secondaryPick ? (
               <>
                 {recommendations.primaryPick ? (
                   <AccountHighlightCard
@@ -351,7 +369,7 @@ export default function DashboardPage() {
               </>
             ) : (
               <div className="rounded-xl bg-accent/20 p-4 text-sm text-muted-foreground">
-                当前没有可推荐的可用账号。
+                {isServiceReady ? "当前没有可推荐的可用账号。" : "正在等待服务连接。"}
               </div>
             )}
           </CardContent>

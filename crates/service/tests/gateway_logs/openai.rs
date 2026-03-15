@@ -447,6 +447,118 @@ fn gateway_openai_non_stream_without_usage_keeps_tokens_null() {
 }
 
 #[test]
+fn gateway_openai_compact_route_collapses_sse_and_preserves_priority_tier() {
+    let _lock = lock_env();
+    let dir = new_test_dir("codexmanager-gateway-openai-compact-route");
+    let db_path: PathBuf = dir.join("codexmanager.db");
+
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+
+    let upstream_sse = concat!(
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_compact_1\",\"model\":\"gpt-5.3-codex\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"compact summary\"}]}],\"usage\":{\"input_tokens\":8,\"output_tokens\":3,\"total_tokens\":11}}}\n\n",
+        "data: [DONE]\n\n"
+    );
+    let (upstream_addr, upstream_rx, upstream_join) =
+        start_mock_upstream_once_with_content_type(upstream_sse, "text/event-stream");
+    let upstream_base = format!("http://{upstream_addr}/backend-api/codex");
+    let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
+
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init db");
+    let now = now_ts();
+
+    storage
+        .insert_account(&Account {
+            id: "acc_openai_compact".to_string(),
+            label: "openai-compact".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_openai_compact".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_openai_compact".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_openai_compact".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: Some("api_access_token_openai_compact".to_string()),
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let platform_key = "pk_openai_compact";
+    storage
+        .insert_api_key(&ApiKey {
+            id: "gk_openai_compact".to_string(),
+            name: Some("openai-compact".to_string()),
+            model_slug: Some("gpt-5.3-codex".to_string()),
+            reasoning_effort: Some("high".to_string()),
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: hash_platform_key_for_test(platform_key),
+            status: "active".to_string(),
+            created_at: now,
+            last_used_at: None,
+        })
+        .expect("insert api key");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let request_body = serde_json::json!({
+        "model": "gpt-5.3-codex",
+        "input": "compact me",
+        "stream": false,
+        "store": true,
+        "service_tier": "priority"
+    });
+    let request_body = serde_json::to_string(&request_body).expect("serialize request");
+    let (status, gateway_body) = post_http_raw(
+        &server.addr,
+        "/v1/responses/compact",
+        &request_body,
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", &format!("Bearer {platform_key}")),
+        ],
+    );
+    server.join();
+    assert_eq!(status, 200, "gateway response: {gateway_body}");
+
+    let value: serde_json::Value = serde_json::from_str(&gateway_body)
+        .unwrap_or_else(|err| panic!("parse response failed: {err}; body={gateway_body}"));
+    assert_eq!(value["id"], "resp_compact_1");
+    assert_eq!(value["output"][0]["content"][0]["text"], "compact summary");
+
+    let captured = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive upstream request");
+    upstream_join.join().expect("join upstream");
+    assert_eq!(captured.path, "/backend-api/codex/responses/compact");
+
+    let upstream_body = String::from_utf8(captured.body).expect("upstream body utf8");
+    assert!(
+        upstream_body.contains("\"stream\":true"),
+        "unexpected upstream body: {upstream_body}"
+    );
+    assert!(
+        upstream_body.contains("\"store\":false"),
+        "unexpected upstream body: {upstream_body}"
+    );
+    assert!(
+        upstream_body.contains("\"service_tier\":\"priority\""),
+        "unexpected upstream body: {upstream_body}"
+    );
+}
+
+#[test]
 fn gateway_models_returns_cached_without_upstream() {
     let _lock = lock_env();
     let dir = new_test_dir("codexmanager-gateway-models-cache");

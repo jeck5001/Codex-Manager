@@ -64,7 +64,7 @@ fn read_text_with_timeout(
     }
 }
 
-fn next_account_sort(storage: &codexmanager_core::storage::Storage) -> i64 {
+pub(crate) fn next_account_sort(storage: &codexmanager_core::storage::Storage) -> i64 {
     storage
         .list_accounts()
         .ok()

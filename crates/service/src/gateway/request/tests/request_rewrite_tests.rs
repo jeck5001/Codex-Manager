@@ -410,6 +410,51 @@ fn responses_retains_service_tier_for_codex_supported_fields() {
 }
 
 #[test]
+fn responses_compact_uses_codex_compat_rewrite() {
+    let body = json!({
+        "model": "gpt-5.3-codex",
+        "input": "compact me",
+        "stream": false,
+        "store": true,
+        "service_tier": "priority",
+        "user": "drop-me"
+    });
+    let out = apply_request_overrides(
+        "/v1/responses/compact",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert_eq!(
+        value.get("stream").and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        value.get("store").and_then(serde_json::Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        value
+            .get("instructions")
+            .and_then(serde_json::Value::as_str),
+        Some("")
+    );
+    assert_eq!(
+        value
+            .get("service_tier")
+            .and_then(serde_json::Value::as_str),
+        Some("priority")
+    );
+    assert!(value.get("user").is_none());
+    assert!(value
+        .get("input")
+        .and_then(serde_json::Value::as_array)
+        .is_some());
+}
+
+#[test]
 fn responses_passthrough_for_non_codex_upstream() {
     let body = json!({
         "model": "gpt-4.1",

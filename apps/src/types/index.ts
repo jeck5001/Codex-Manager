@@ -146,6 +146,29 @@ export interface LoginStartResult {
   device: DeviceAuthInfo | null;
 }
 
+export interface CurrentAccessTokenAccount {
+  type: string;
+  accountId: string;
+  email: string;
+  planType: string;
+  chatgptAccountId: string | null;
+  workspaceId: string | null;
+  status: string;
+}
+
+export interface CurrentAccessTokenAccountReadResult {
+  account: CurrentAccessTokenAccount | null;
+  authMode: string | null;
+  requiresOpenaiAuth: boolean;
+}
+
+export interface ChatgptAuthTokensRefreshResult {
+  accountId: string;
+  accessToken: string;
+  chatgptAccountId: string;
+  chatgptPlanType: string | null;
+}
+
 export interface EnvOverrideCatalogItem {
   key: string;
   label: string;

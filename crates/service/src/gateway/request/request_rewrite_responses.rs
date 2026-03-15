@@ -4,6 +4,7 @@ use super::request_rewrite_shared::{path_matches_template, retain_fields_with_al
 
 pub(super) fn is_responses_path(path: &str) -> bool {
     path_matches_template(path, "/v1/responses")
+        || path_matches_template(path, "/v1/responses/compact")
 }
 
 pub(super) fn ensure_instructions(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {

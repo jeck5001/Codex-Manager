@@ -2,7 +2,7 @@ use codexmanager_core::rpc::types::{AccountListParams, JsonRpcRequest, JsonRpcRe
 
 use crate::{
     account_cleanup, account_delete, account_delete_many, account_export, account_import,
-    account_list, account_update, auth_login, auth_tokens,
+    account_list, account_update, auth_account, auth_login, auth_tokens,
 };
 
 pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
@@ -81,25 +81,44 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "account/exportData" => super::value_or_error(account_export::export_accounts_data()),
         "account/login/start" => {
             let login_type = super::str_param(req, "type").unwrap_or("chatgpt");
-            let open_browser = super::bool_param(req, "openBrowser").unwrap_or(true);
-            let note = super::string_param(req, "note");
-            let tags = super::string_param(req, "tags");
-            let group_name = super::string_param(req, "groupName");
-            let workspace_id = super::string_param(req, "workspaceId").and_then(|v| {
-                if v.trim().is_empty() {
-                    None
-                } else {
-                    Some(v)
-                }
-            });
-            super::value_or_error(auth_login::login_start(
-                login_type,
-                open_browser,
-                note,
-                tags,
-                group_name,
-                workspace_id,
-            ))
+            if login_type.eq_ignore_ascii_case("chatgptAuthTokens") {
+                let params = auth_account::ChatgptAuthTokensLoginInput {
+                    access_token: first_string_param(req, &["accessToken", "access_token"])
+                        .unwrap_or_default(),
+                    refresh_token: first_string_param(req, &["refreshToken", "refresh_token"]),
+                    id_token: first_string_param(req, &["idToken", "id_token"]),
+                    chatgpt_account_id: first_string_param(
+                        req,
+                        &["chatgptAccountId", "chatgpt_account_id", "accountId"],
+                    ),
+                    workspace_id: first_string_param(req, &["workspaceId", "workspace_id"]),
+                    chatgpt_plan_type: first_string_param(
+                        req,
+                        &["chatgptPlanType", "chatgpt_plan_type", "planType"],
+                    ),
+                };
+                super::value_or_error(auth_account::login_with_chatgpt_auth_tokens(params))
+            } else {
+                let open_browser = super::bool_param(req, "openBrowser").unwrap_or(true);
+                let note = super::string_param(req, "note");
+                let tags = super::string_param(req, "tags");
+                let group_name = super::string_param(req, "groupName");
+                let workspace_id = super::string_param(req, "workspaceId").and_then(|v| {
+                    if v.trim().is_empty() {
+                        None
+                    } else {
+                        Some(v)
+                    }
+                });
+                super::value_or_error(auth_login::login_start(
+                    login_type,
+                    open_browser,
+                    note,
+                    tags,
+                    group_name,
+                    workspace_id,
+                ))
+            }
         }
         "account/login/status" => {
             let login_id = super::str_param(req, "loginId").unwrap_or("");
@@ -119,8 +138,33 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 ))
             }
         }
+        "account/chatgptAuthTokens/refresh" => {
+            let previous_account_id =
+                first_str_param(req, &["previousAccountId", "previous_account_id"]);
+            super::value_or_error(auth_account::refresh_current_chatgpt_auth_tokens(
+                previous_account_id,
+            ))
+        }
+        "account/read" => {
+            let refresh_token =
+                first_bool_param(req, &["refreshToken", "refresh_token"]).unwrap_or(false);
+            super::value_or_error(auth_account::read_current_account(refresh_token))
+        }
+        "account/logout" => super::value_or_error(auth_account::logout_current_account()),
         _ => return None,
     };
 
     Some(super::response(req, result))
+}
+
+fn first_str_param<'a>(req: &'a JsonRpcRequest, keys: &[&str]) -> Option<&'a str> {
+    keys.iter().find_map(|key| super::str_param(req, key))
+}
+
+fn first_string_param(req: &JsonRpcRequest, keys: &[&str]) -> Option<String> {
+    first_str_param(req, keys).map(|value| value.to_string())
+}
+
+fn first_bool_param(req: &JsonRpcRequest, keys: &[&str]) -> Option<bool> {
+    keys.iter().find_map(|key| super::bool_param(req, key))
 }

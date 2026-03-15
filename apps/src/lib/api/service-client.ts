@@ -14,6 +14,14 @@ import {
 } from "../../types";
 import { readInitializeResult } from "@/lib/utils/service";
 
+function readStringField(payload: unknown, key: string): string {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return "";
+  }
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export const serviceClient = {
   start: (addr?: string) => invoke("service_start", { addr }),
   stop: () => invoke("service_stop"),
@@ -42,6 +50,14 @@ export const serviceClient = {
     invoke<string>("service_gateway_route_strategy_get", withAddr()),
   setRouteStrategy: (strategy: string) =>
     invoke("service_gateway_route_strategy_set", withAddr({ strategy })),
+  async getManualPreferredAccountId(): Promise<string> {
+    const result = await invoke<unknown>("service_gateway_manual_account_get", withAddr());
+    return readStringField(result, "accountId");
+  },
+  setManualPreferredAccount: (accountId: string) =>
+    invoke("service_gateway_manual_account_set", withAddr({ accountId })),
+  clearManualPreferredAccount: () =>
+    invoke("service_gateway_manual_account_clear", withAddr()),
   getHeaderPolicy: () =>
     invoke<string>("service_gateway_header_policy_get", withAddr()),
   setHeaderPolicy: (cpaNoCookieHeaderModeEnabled: boolean) =>

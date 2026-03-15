@@ -111,14 +111,6 @@
 - `crates/service/src/gateway/protocol_adapter/response_conversion/`
 - `crates/service/src/gateway/upstream/`
 
-
 ## 联系方式
-
-<p align="center">
-  <img src="assets/images/group.jpg" alt="交流群二维码" width="280" />
-  <img src="assets/images/qq_group.jpg" alt="QQ 交流群二维码" width="280" />
-</p>
-
-- Telegram 交流群：<https://t.me/+8o2Eu7GPMIFjNDM1>
-- QQ 交流群：扫码加入
-- 微信公众号：七线牛马
+- 公众号：七线牛马
+- 微信： ProsperGao

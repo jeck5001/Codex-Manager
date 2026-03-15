@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { accountClient } from "@/lib/api/account-client";
 import { attachUsagesToAccounts } from "@/lib/api/normalize";
+import { serviceClient } from "@/lib/api/service-client";
+import { useAppStore } from "@/lib/store/useAppStore";
 
 type ImportByDirectoryResult = Awaited<ReturnType<typeof accountClient.importByDirectory>>;
 type ImportByFileResult = Awaited<ReturnType<typeof accountClient.importByFile>>;
@@ -25,6 +27,7 @@ function buildImportSummaryMessage(result: ImportByDirectoryResult): string {
 
 export function useAccounts() {
   const queryClient = useQueryClient();
+  const serviceStatus = useAppStore((state) => state.serviceStatus);
 
   const accountsQuery = useQuery({
     queryKey: ["accounts", "list"],
@@ -35,6 +38,13 @@ export function useAccounts() {
   const usagesQuery = useQuery({
     queryKey: ["usage", "list"],
     queryFn: () => accountClient.listUsage(),
+    retry: 1,
+  });
+
+  const manualPreferredAccountQuery = useQuery({
+    queryKey: ["gateway", "manual-account", serviceStatus.addr || null],
+    queryFn: () => serviceClient.getManualPreferredAccountId(),
+    enabled: serviceStatus.connected,
     retry: 1,
   });
 
@@ -63,7 +73,15 @@ export function useAccounts() {
       queryClient.invalidateQueries({ queryKey: ["usage-aggregate"] }),
       queryClient.invalidateQueries({ queryKey: ["today-summary"] }),
       queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
+      queryClient.invalidateQueries({ queryKey: ["gateway", "manual-account"] }),
       queryClient.invalidateQueries({ queryKey: ["logs"] }),
+    ]);
+  };
+
+  const invalidateManualPreferred = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["gateway", "manual-account"] }),
+      queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
     ]);
   };
 
@@ -166,11 +184,34 @@ export function useAccounts() {
     },
   });
 
+  const setManualPreferredMutation = useMutation({
+    mutationFn: (accountId: string) => serviceClient.setManualPreferredAccount(accountId),
+    onSuccess: async () => {
+      await invalidateManualPreferred();
+      toast.success("已设为优先账号");
+    },
+    onError: (error: unknown) => {
+      toast.error(`设置优先账号失败: ${getErrorMessage(error)}`);
+    },
+  });
+
+  const clearManualPreferredMutation = useMutation({
+    mutationFn: () => serviceClient.clearManualPreferredAccount(),
+    onSuccess: async () => {
+      await invalidateManualPreferred();
+      toast.success("已取消优先账号");
+    },
+    onError: (error: unknown) => {
+      toast.error(`取消优先账号失败: ${getErrorMessage(error)}`);
+    },
+  });
+
   return {
     accounts,
     groups,
     total: accountsQuery.data?.total || accounts.length,
     isLoading: accountsQuery.isLoading || usagesQuery.isLoading,
+    manualPreferredAccountId: manualPreferredAccountQuery.data || "",
     refreshAccount: (accountId: string) => refreshMutation.mutate(accountId),
     refreshAllAccounts: () => refreshMutation.mutate(undefined),
     deleteAccount: (accountId: string) => deleteMutation.mutate(accountId),
@@ -179,8 +220,12 @@ export function useAccounts() {
     importByFile: () => importByFileMutation.mutate(),
     importByDirectory: () => importByDirectoryMutation.mutate(),
     exportAccounts: () => exportMutation.mutate(),
+    setPreferredAccount: (accountId: string) => setManualPreferredMutation.mutate(accountId),
+    clearPreferredAccount: () => clearManualPreferredMutation.mutate(),
     isRefreshing: refreshMutation.isPending,
     isExporting: exportMutation.isPending,
     isDeletingMany: deleteManyMutation.isPending,
+    isUpdatingPreferred:
+      setManualPreferredMutation.isPending || clearManualPreferredMutation.isPending,
   };
 }

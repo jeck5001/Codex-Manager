@@ -46,3 +46,54 @@ pub async fn service_login_complete(
     });
     rpc_call_in_background("account/login/complete", addr, Some(params)).await
 }
+
+#[tauri::command]
+pub async fn service_login_chatgpt_auth_tokens(
+    addr: Option<String>,
+    access_token: String,
+    refresh_token: Option<String>,
+    id_token: Option<String>,
+    chatgpt_account_id: Option<String>,
+    workspace_id: Option<String>,
+    chatgpt_plan_type: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+      "type": "chatgptAuthTokens",
+      "accessToken": access_token,
+      "refreshToken": refresh_token,
+      "idToken": id_token,
+      "chatgptAccountId": chatgpt_account_id,
+      "workspaceId": workspace_id,
+      "chatgptPlanType": chatgpt_plan_type
+    });
+    rpc_call_in_background("account/login/start", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_account_read(
+    addr: Option<String>,
+    refresh_token: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+      "refreshToken": refresh_token.unwrap_or(false)
+    });
+    rpc_call_in_background("account/read", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_account_logout(addr: Option<String>) -> Result<serde_json::Value, String> {
+    rpc_call_in_background("account/logout", addr, None).await
+}
+
+#[tauri::command]
+pub async fn service_chatgpt_auth_tokens_refresh(
+    addr: Option<String>,
+    reason: Option<String>,
+    previous_account_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+      "reason": reason.unwrap_or_else(|| "unauthorized".to_string()),
+      "previousAccountId": previous_account_id
+    });
+    rpc_call_in_background("account/chatgptAuthTokens/refresh", addr, Some(params)).await
+}

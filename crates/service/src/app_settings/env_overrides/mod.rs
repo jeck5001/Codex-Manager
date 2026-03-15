@@ -13,6 +13,5 @@ pub(crate) use catalog::{
 pub(crate) use manager::set_env_overrides;
 pub(crate) use process::{apply_env_overrides_to_process, reload_runtime_after_env_override_apply};
 pub(crate) use snapshot::{
-    current_env_overrides, persisted_env_overrides_missing_process_env,
-    save_env_overrides_value,
+    current_env_overrides, persisted_env_overrides_missing_process_env, save_env_overrides_value,
 };

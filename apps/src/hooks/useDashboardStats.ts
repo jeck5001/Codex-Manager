@@ -1,18 +1,72 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  buildStartupSnapshotQueryKey,
+  hasStartupSnapshotSignal,
+  STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT,
+  STARTUP_SNAPSHOT_STALE_TIME,
+  STARTUP_SNAPSHOT_WARMUP_INTERVAL_MS,
+  STARTUP_SNAPSHOT_WARMUP_TIMEOUT_MS,
+} from "@/lib/api/startup-snapshot";
 import { serviceClient } from "@/lib/api/service-client";
+import { useAppStore } from "@/lib/store/useAppStore";
 import { pickBestRecommendations, pickCurrentAccount } from "@/lib/utils/usage";
 
 export function useDashboardStats() {
+  const serviceStatus = useAppStore((state) => state.serviceStatus);
+  const isServiceReady = serviceStatus.connected;
+  const warmupStartedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isServiceReady) {
+      warmupStartedAtRef.current = null;
+      return;
+    }
+    warmupStartedAtRef.current = Date.now();
+  }, [isServiceReady, serviceStatus.addr]);
+
   const snapshotQuery = useQuery({
-    queryKey: ["startup-snapshot", 120],
-    queryFn: () => serviceClient.getStartupSnapshot({ requestLogLimit: 120 }),
+    queryKey: buildStartupSnapshotQueryKey(
+      serviceStatus.addr,
+      STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT
+    ),
+    queryFn: () =>
+      serviceClient.getStartupSnapshot({
+        requestLogLimit: STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT,
+      }),
+    enabled: isServiceReady,
     retry: 1,
+    staleTime: STARTUP_SNAPSHOT_STALE_TIME,
+    refetchInterval: (query) => {
+      if (!isServiceReady) return false;
+      const startedAt = warmupStartedAtRef.current;
+      if (startedAt == null) return false;
+      if (Date.now() - startedAt >= STARTUP_SNAPSHOT_WARMUP_TIMEOUT_MS) {
+        return false;
+      }
+
+      const snapshot = query.state.data;
+      if (!snapshot || snapshot.accounts.length === 0) {
+        return false;
+      }
+
+      return hasStartupSnapshotSignal(snapshot)
+        ? false
+        : STARTUP_SNAPSHOT_WARMUP_INTERVAL_MS;
+    },
+    refetchIntervalInBackground: true,
   });
 
   const data = snapshotQuery.data;
   const accounts = data?.accounts || [];
+  const shouldWarmupPoll =
+    isServiceReady &&
+    accounts.length > 0 &&
+    !hasStartupSnapshotSignal(data) &&
+    warmupStartedAtRef.current != null &&
+    Date.now() - warmupStartedAtRef.current < STARTUP_SNAPSHOT_WARMUP_TIMEOUT_MS;
   const totalAccounts = accounts.length;
   const availableAccounts = accounts.filter((item) => item.isAvailable).length;
   const unavailableAccounts = totalAccounts - availableAccounts;
@@ -44,7 +98,9 @@ export function useDashboardStats() {
     currentAccount,
     recommendations,
     requestLogs: data?.requestLogs || [],
-    isLoading: snapshotQuery.isLoading,
+    isLoading: !isServiceReady || snapshotQuery.isPending || shouldWarmupPoll,
+    isSyncingSnapshot: shouldWarmupPoll,
+    isServiceReady,
     isError: snapshotQuery.isError,
     error: snapshotQuery.error,
   };

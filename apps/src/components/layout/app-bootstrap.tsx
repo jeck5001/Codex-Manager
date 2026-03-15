@@ -1,11 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Play, RefreshCw } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store/useAppStore";
 import { serviceClient } from "@/lib/api/service-client";
+import {
+  buildStartupSnapshotQueryKey,
+  STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT,
+  STARTUP_SNAPSHOT_STALE_TIME,
+} from "@/lib/api/startup-snapshot";
 import { appClient } from "@/lib/api/app-client";
 import { isTauriRuntime } from "@/lib/api/transport";
 import { Button } from "@/components/ui/button";
@@ -21,6 +27,7 @@ const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve
 export function AppBootstrap({ children }: { children: React.ReactNode }) {
   const { setServiceStatus, setAppSettings, serviceStatus } = useAppStore();
   const { setTheme } = useTheme();
+  const queryClient = useQueryClient();
   const [isInitializing, setIsInitializing] = useState(true);
   const hasInitializedOnce = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +67,23 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       return initializeService(addr, 2);
     },
     [initializeService]
+  );
+
+  const prefetchStartupSnapshot = useCallback(
+    async (addr: string) => {
+      await queryClient.prefetchQuery({
+        queryKey: buildStartupSnapshotQueryKey(
+          addr,
+          STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT
+        ),
+        queryFn: () =>
+          serviceClient.getStartupSnapshot({
+            requestLogLimit: STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT,
+          }),
+        staleTime: STARTUP_SNAPSHOT_STALE_TIME,
+      });
+    },
+    [queryClient]
   );
 
   const init = useCallback(async () => {
@@ -104,6 +128,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
           connected: true,
           version: initializeResult.version,
         });
+        await prefetchStartupSnapshot(addr);
         setIsInitializing(false);
         hasInitializedOnce.current = true;
       } catch (serviceError: unknown) {
@@ -121,7 +146,14 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     }
     // We remove serviceStatus from dependencies to avoid infinite loop
     // and use hasInitializedOnce ref for stability
-  }, [initializeService, setAppSettings, setServiceStatus, setTheme, startAndInitializeService]);
+  }, [
+    initializeService,
+    prefetchStartupSnapshot,
+    setAppSettings,
+    setServiceStatus,
+    setTheme,
+    startAndInitializeService,
+  ]);
 
   const handleForceStart = async () => {
     setIsInitializing(true);
@@ -142,6 +174,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
         connected: true,
         version: initializeResult.version,
       });
+      await prefetchStartupSnapshot(addr);
       applyLowTransparency(settings.lowTransparency);
       setIsInitializing(false);
       toast.success("服务已启动");
@@ -156,8 +189,8 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     void init();
   }, [init]);
 
-  const showLoading = isInitializing && !hasInitializedOnce;
-  const showError = !!error && !hasInitializedOnce;
+  const showLoading = isInitializing && !hasInitializedOnce.current;
+  const showError = !!error && !hasInitializedOnce.current;
 
   return (
     <>
