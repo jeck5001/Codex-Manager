@@ -24,10 +24,14 @@ const DEFAULT_SERVICE_ADDR = "localhost:48760";
 export function Header() {
   const { serviceStatus, setServiceStatus, setAppSettings } = useAppStore();
   const pathname = usePathname();
-  const isDesktop = isTauriRuntime();
   const [webPasswordModalOpen, setWebPasswordModalOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const [portInput, setPortInput] = useState("48760");
+
+  useEffect(() => {
+    setIsDesktop(isTauriRuntime());
+  }, []);
 
   useEffect(() => {
     const current = String(serviceStatus.addr || DEFAULT_SERVICE_ADDR);
