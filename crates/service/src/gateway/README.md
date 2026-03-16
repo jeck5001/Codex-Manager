@@ -161,6 +161,21 @@
 - 请求日志会保留尝试链路；free 首试失败后再回退 team / pro 时，最终日志仍只落一条记录
 - 这个行为是 CodexManager 的可用性优先策略，不是 Codex 开源源码里的默认处理方式
 
+### 请求体压缩
+
+设置入口：
+
+- 前端 `appSettings.requestCompressionEnabled`
+- 持久化键 `gateway.request_compression_enabled`
+- 环境变量 `CODEXMANAGER_ENABLE_REQUEST_COMPRESSION`
+
+行为：
+
+- 默认值是 `true`
+- 对齐官方 Codex：仅在 `ChatGPT Codex backend + /v1/responses + 流式请求` 这条链路上启用
+- 启用后，请求体会在真正发上游前做 `zstd` 压缩，并补 `Content-Encoding: zstd`
+- `compact`、非流式请求、OpenAI API fallback、Azure/Anthropic 路径不会启用这层压缩
+
 ### 单账号并发上限
 
 设置入口：

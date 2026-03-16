@@ -46,7 +46,13 @@ export function readInitializeResult(payload: unknown): ServiceInitializationRes
         ? source.server_name
         : "";
   const version = typeof source.version === "string" ? source.version : "";
-  return { serverName, version };
+  const userAgent =
+    typeof source.userAgent === "string"
+      ? source.userAgent
+      : typeof source.user_agent === "string"
+        ? source.user_agent
+        : "";
+  return { serverName, version, userAgent };
 }
 
 export function isExpectedInitializeResult(payload: unknown): boolean {

@@ -8,6 +8,7 @@ use crate::storage_helpers;
 mod account;
 mod apikey;
 mod app_settings;
+mod codex_compat;
 mod gateway;
 mod requestlog;
 mod service_config;
@@ -79,8 +80,12 @@ pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
         let result = InitializeResult {
             server_name: "codexmanager-service".to_string(),
             version: codexmanager_core::core_version().to_string(),
+            user_agent: crate::gateway::current_codex_user_agent(),
         };
         return response(&req, as_json(result));
+    }
+    if let Some(resp) = codex_compat::try_handle(&req) {
+        return resp;
     }
 
     if let Some(resp) = account::try_handle(&req) {

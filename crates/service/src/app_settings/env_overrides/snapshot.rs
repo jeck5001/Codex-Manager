@@ -63,9 +63,7 @@ pub(crate) fn persisted_env_overrides_missing_process_env() -> BTreeMap<String, 
 pub(crate) fn current_env_overrides() -> BTreeMap<String, String> {
     let mut current = env_override_default_snapshot();
     for (key, value) in persisted_env_overrides_only() {
-        if std::env::var_os(&key).is_none() {
-            current.insert(key, value);
-        }
+        current.insert(key, value);
     }
     current
 }

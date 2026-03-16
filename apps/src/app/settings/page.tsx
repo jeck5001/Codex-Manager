@@ -68,6 +68,12 @@ const ROUTE_STRATEGY_LABELS: Record<string, string> = {
   balanced: "均衡轮询 (Balanced)",
 };
 
+const RESIDENCY_REQUIREMENT_LABELS: Record<string, string> = {
+  "": "不限制",
+  us: "仅美国 (us)",
+};
+const EMPTY_RESIDENCY_OPTION = "__none__";
+
 const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS = [
   "gpt-5",
   "gpt-5-codex",
@@ -121,6 +127,7 @@ export default function SettingsPage() {
   const [selectedEnvKey, setSelectedEnvKey] = useState<string | null>(null);
   const [envDrafts, setEnvDrafts] = useState<Record<string, string>>({});
   const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
+  const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
   const [transportDraft, setTransportDraft] = useState<
     Partial<Record<"sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs", string>>
   >({});
@@ -190,6 +197,8 @@ export default function SettingsPage() {
   );
 
   const upstreamProxyInput = upstreamProxyDraft ?? (snapshot?.upstreamProxyUrl || "");
+  const gatewayOriginatorInput =
+    gatewayOriginatorDraft ?? (snapshot?.gatewayOriginator || "codex_cli_rs");
   const transportInputValues = {
     sseKeepaliveIntervalMs:
       transportDraft.sseKeepaliveIntervalMs ??
@@ -549,6 +558,89 @@ export default function SettingsPage() {
                 <p className="text-[10px] text-muted-foreground">
                   所有 free / 7天单窗口账号命中候选时，都会按这里的模型发给上游；
                   即使原始请求模型更高，也会统一改写成这里配置的模型，避免在 free 账号上继续带着高模型失败。
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between border-t pt-6">
+                <div className="space-y-0.5">
+                  <Label>请求体压缩</Label>
+                  <p className="text-xs text-muted-foreground">
+                    对齐官方 Codex：流式 <code>/responses</code> 请求发往 ChatGPT Codex backend 时，默认使用
+                    <code>zstd</code> 压缩请求体。
+                  </p>
+                </div>
+                <Switch
+                  checked={snapshot.requestCompressionEnabled}
+                  onCheckedChange={(value) =>
+                    updateSettings.mutate({ requestCompressionEnabled: value })
+                  }
+                />
+              </div>
+
+              <div className="grid gap-2 border-t pt-6">
+                <Label>Originator</Label>
+                <Input
+                  className="h-10 max-w-md font-mono"
+                  value={gatewayOriginatorInput}
+                  onChange={(event) => setGatewayOriginatorDraft(event.target.value)}
+                  onBlur={() => {
+                    if (gatewayOriginatorDraft == null) return;
+                    if (gatewayOriginatorInput === (snapshot.gatewayOriginator || "codex_cli_rs")) {
+                      setGatewayOriginatorDraft(null);
+                      return;
+                    }
+                    void updateSettings
+                      .mutateAsync({ gatewayOriginator: gatewayOriginatorInput })
+                      .then(() => setGatewayOriginatorDraft(null))
+                      .catch(() => undefined);
+                  }}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  对齐官方 Codex 的上游 Originator。默认值为 <code>codex_cli_rs</code>，会同步影响登录和网关上游请求头。
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Residency Requirement</Label>
+                <Select
+                  value={
+                    (snapshot.gatewayResidencyRequirement ?? "") || EMPTY_RESIDENCY_OPTION
+                  }
+                  onValueChange={(value) =>
+                    updateSettings.mutate({
+                      gatewayResidencyRequirement:
+                        value === EMPTY_RESIDENCY_OPTION ? "" : (value ?? ""),
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-full md:w-[300px]">
+                    <SelectValue placeholder="选择地域约束">
+                      {(value) => {
+                        const nextValue =
+                          String(value || "") === EMPTY_RESIDENCY_OPTION
+                            ? ""
+                            : String(value || "");
+                        return RESIDENCY_REQUIREMENT_LABELS[nextValue] || nextValue;
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(snapshot.gatewayResidencyRequirementOptions?.length
+                      ? snapshot.gatewayResidencyRequirementOptions
+                      : ["", "us"]
+                    ).map((value) => (
+                      <SelectItem
+                        key={value || EMPTY_RESIDENCY_OPTION}
+                        value={value || EMPTY_RESIDENCY_OPTION}
+                      >
+                        {RESIDENCY_REQUIREMENT_LABELS[value] || value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">
+                  对齐官方 Codex 的 <code>x-openai-internal-codex-residency</code> 头。
+                  当前只支持留空或 <code>us</code>。
                 </p>
               </div>
 

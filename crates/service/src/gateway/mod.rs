@@ -153,8 +153,36 @@ pub(crate) fn current_free_account_max_model() -> String {
     runtime_config::current_free_account_max_model()
 }
 
+pub(crate) fn request_compression_enabled() -> bool {
+    runtime_config::request_compression_enabled()
+}
+
+pub(crate) fn current_originator() -> String {
+    runtime_config::current_originator()
+}
+
+pub(crate) fn set_originator(originator: &str) -> Result<String, String> {
+    runtime_config::set_originator(originator)
+}
+
+pub(crate) fn current_residency_requirement() -> Option<String> {
+    runtime_config::current_residency_requirement()
+}
+
+pub(crate) fn set_residency_requirement(value: Option<&str>) -> Result<Option<String>, String> {
+    runtime_config::set_residency_requirement(value)
+}
+
+pub(crate) fn current_codex_user_agent() -> String {
+    runtime_config::current_codex_user_agent()
+}
+
 pub(crate) fn set_free_account_max_model(model: &str) -> Result<String, String> {
     runtime_config::set_free_account_max_model(model)
+}
+
+pub(crate) fn set_request_compression_enabled(enabled: bool) -> bool {
+    runtime_config::set_request_compression_enabled(enabled)
 }
 
 pub(crate) fn cpa_no_cookie_header_mode_enabled() -> bool {

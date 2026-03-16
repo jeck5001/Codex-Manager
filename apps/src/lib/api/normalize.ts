@@ -498,6 +498,12 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     freeAccountMaxModelOptions: asArray(source.freeAccountMaxModelOptions).map((item) =>
       asString(item)
     ),
+    requestCompressionEnabled: asBoolean(source.requestCompressionEnabled, true),
+    gatewayOriginator: asString(source.gatewayOriginator) || "codex_cli_rs",
+    gatewayResidencyRequirement: asString(source.gatewayResidencyRequirement),
+    gatewayResidencyRequirementOptions: asArray(
+      source.gatewayResidencyRequirementOptions
+    ).map((item) => asString(item)),
     cpaNoCookieHeaderModeEnabled: asBoolean(
       source.cpaNoCookieHeaderModeEnabled,
       false

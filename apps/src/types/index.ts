@@ -222,6 +222,10 @@ export interface AppSettings {
   routeStrategyOptions: string[];
   freeAccountMaxModel: string;
   freeAccountMaxModelOptions: string[];
+  requestCompressionEnabled: boolean;
+  gatewayOriginator: string;
+  gatewayResidencyRequirement: string;
+  gatewayResidencyRequirementOptions: string[];
   cpaNoCookieHeaderModeEnabled: boolean;
   upstreamProxyUrl: string;
   upstreamStreamTimeoutMs: number;
@@ -238,6 +242,7 @@ export interface AppSettings {
 export interface ServiceInitializationResult {
   serverName: string;
   version: string;
+  userAgent: string;
 }
 
 export interface StartupSnapshot {
