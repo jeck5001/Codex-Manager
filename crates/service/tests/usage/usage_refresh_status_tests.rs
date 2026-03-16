@@ -187,6 +187,66 @@ fn refresh_token_auth_error_marks_account_inactive() {
 }
 
 #[test]
+fn refresh_token_forbidden_without_invalid_grant_keeps_account_active() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let account = Account {
+        id: "acc-refresh-forbidden".to_string(),
+        label: "main".to_string(),
+        issuer: "issuer".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    storage.insert_account(&account).expect("insert");
+
+    assert!(!mark_account_inactive_for_refresh_token_error(
+        &storage,
+        "acc-refresh-forbidden",
+        "refresh token failed with status 403 Forbidden"
+    ));
+    let active = storage
+        .find_account_by_id("acc-refresh-forbidden")
+        .expect("find")
+        .expect("exists");
+    assert_eq!(active.status, "active");
+}
+
+#[test]
+fn refresh_token_invalid_grant_on_forbidden_marks_account_inactive() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let account = Account {
+        id: "acc-refresh-invalid-grant".to_string(),
+        label: "main".to_string(),
+        issuer: "issuer".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    storage.insert_account(&account).expect("insert");
+
+    assert!(mark_account_inactive_for_refresh_token_error(
+        &storage,
+        "acc-refresh-invalid-grant",
+        "refresh token failed with status 403 Forbidden: {\"error\":\"invalid_grant\"}"
+    ));
+    let inactive = storage
+        .find_account_by_id("acc-refresh-invalid-grant")
+        .expect("find")
+        .expect("exists");
+    assert_eq!(inactive.status, "inactive");
+}
+
+#[test]
 fn refresh_retry_filter_matches_auth_failures() {
     assert!(should_retry_with_refresh("usage endpoint status 401"));
     assert!(should_retry_with_refresh("usage endpoint status 403"));

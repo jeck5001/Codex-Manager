@@ -16,8 +16,24 @@ pub(crate) fn set_account_status(storage: &Storage, account_id: &str, status: &s
 
 pub(crate) fn is_refresh_token_auth_error(err: &str) -> bool {
     let normalized = err.trim().to_ascii_lowercase();
-    normalized.contains("refresh token failed with status 401")
-        || normalized.contains("refresh token failed with status 403")
+    if normalized.contains("refresh token failed with status 401") {
+        return true;
+    }
+
+    let status_400_or_403 = normalized.contains("refresh token failed with status 400")
+        || normalized.contains("refresh token failed with status 403");
+    if !status_400_or_403 {
+        return false;
+    }
+
+    normalized.contains("invalid_grant")
+        || normalized.contains("invalid_request")
+        || normalized.contains("invalid refresh token")
+        || normalized.contains("refresh token is invalid")
+        || normalized.contains("refresh token expired")
+        || normalized.contains("refresh token revoked")
+        || normalized.contains("token is expired")
+        || normalized.contains("token revoked")
 }
 
 pub(crate) fn mark_account_inactive_for_refresh_token_error(

@@ -175,6 +175,14 @@ fn clear_trace_error(trace_id: &str) {
     }
 }
 
+#[cfg(test)]
+fn trace_has_error(trace_id: &str) -> bool {
+    trace_error_traces()
+        .lock()
+        .map(|traces| traces.contains(trace_id))
+        .unwrap_or(false)
+}
+
 fn has_error_text(error: Option<&str>) -> bool {
     error
         .map(str::trim)

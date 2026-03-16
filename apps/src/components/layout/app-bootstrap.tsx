@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { AlertCircle, Play, RefreshCw } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store/useAppStore";
+import { accountClient } from "@/lib/api/account-client";
 import { serviceClient } from "@/lib/api/service-client";
 import {
   buildStartupSnapshotQueryKey,
@@ -22,14 +24,47 @@ import {
 } from "@/lib/utils/service";
 
 const DEFAULT_SERVICE_ADDR = "localhost:48760";
+const PRIMARY_PAGE_WARMUP_STALE_TIME = 30_000;
+const PRIMARY_PAGE_WARMUP_PAGE_SIZE = 20;
+const PRIMARY_PAGE_ROUTES = ["/", "/accounts", "/apikeys", "/logs", "/settings"] as const;
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+function routeChunkPath(route: (typeof PRIMARY_PAGE_ROUTES)[number]) {
+  if (route === "/") {
+    return "/_next/static/chunks/app/page.js";
+  }
+  return `/_next/static/chunks/app${route}/page.js`;
+}
+
+function warmRouteChunkScript(route: (typeof PRIMARY_PAGE_ROUTES)[number]) {
+  return new Promise<void>((resolve) => {
+    const src = routeChunkPath(route);
+    const existing = document.querySelector<HTMLScriptElement>(
+      `script[data-codexmanager-route-chunk="${src}"]`
+    );
+    if (existing) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.dataset.codexmanagerRouteChunk = src;
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    document.head.append(script);
+  });
+}
 
 export function AppBootstrap({ children }: { children: React.ReactNode }) {
   const { setServiceStatus, setAppSettings, serviceStatus } = useAppStore();
   const { setTheme } = useTheme();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [isInitializing, setIsInitializing] = useState(true);
   const hasInitializedOnce = useRef(false);
+  const hasWarmedDevRoutes = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const applyLowTransparency = (enabled: boolean) => {
@@ -86,6 +121,154 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     [queryClient]
   );
 
+  const warmupPrimaryPages = useCallback(
+    async (addr: string) => {
+      for (const route of PRIMARY_PAGE_ROUTES) {
+        router.prefetch(route);
+      }
+
+      const warmupTasks = [
+        queryClient.prefetchQuery({
+          queryKey: ["accounts", "list"],
+          queryFn: () => accountClient.list(),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["usage", "list"],
+          queryFn: () => accountClient.listUsage(),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["gateway", "manual-account", addr || null],
+          queryFn: () => serviceClient.getManualPreferredAccountId(),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["apikeys"],
+          queryFn: () => accountClient.listApiKeys(),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["apikey-models"],
+          queryFn: () => accountClient.listModels(false),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["apikey-usage-stats"],
+          queryFn: async () => {
+            const stats = await accountClient.listApiKeyUsageStats();
+            return stats.reduce<Record<string, number>>((result, item) => {
+              const keyId = String(item.keyId || "").trim();
+              if (!keyId) return result;
+              result[keyId] = Math.max(0, item.totalTokens || 0);
+              return result;
+            }, {});
+          },
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["accounts", "lookup"],
+          queryFn: () => accountClient.list(),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["logs", "list", "", "all", 1, PRIMARY_PAGE_WARMUP_PAGE_SIZE],
+          queryFn: () =>
+            serviceClient.listRequestLogs({
+              query: "",
+              statusFilter: "all",
+              page: 1,
+              pageSize: PRIMARY_PAGE_WARMUP_PAGE_SIZE,
+            }),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["logs", "summary", "", "all"],
+          queryFn: () =>
+            serviceClient.getRequestLogSummary({
+              query: "",
+              statusFilter: "all",
+            }),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["app-settings-snapshot"],
+          queryFn: () => appClient.getSettings(),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+      ];
+
+      await Promise.allSettled(warmupTasks);
+    },
+    [queryClient, router]
+  );
+
+  const warmupDevRouteTransitions = useCallback(() => {
+    if (process.env.NODE_ENV !== "development") {
+      return () => {};
+    }
+    if (hasWarmedDevRoutes.current || typeof window === "undefined") {
+      return () => {};
+    }
+    hasWarmedDevRoutes.current = true;
+
+    const runtime = globalThis as typeof globalThis & {
+      requestIdleCallback?: (
+        callback: IdleRequestCallback,
+        options?: IdleRequestOptions,
+      ) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const currentPath = window.location.pathname;
+    const routes = PRIMARY_PAGE_ROUTES.filter((route) => route !== currentPath);
+    const controllers: AbortController[] = [];
+
+    const runWarmup = () => {
+      for (const route of routes) {
+        router.prefetch(route);
+      }
+
+      void Promise.allSettled(
+        routes.flatMap((route) => {
+          const controller = new AbortController();
+          controllers.push(controller);
+          return [
+            fetch(route, {
+              method: "GET",
+              credentials: "same-origin",
+              cache: "default",
+              signal: controller.signal,
+              headers: {
+                "x-codexmanager-route-warmup": "1",
+              },
+            }),
+            warmRouteChunkScript(route),
+          ];
+        })
+      );
+    };
+
+    if (runtime.requestIdleCallback) {
+      const idleId = runtime.requestIdleCallback(() => runWarmup(), {
+        timeout: 800,
+      });
+      return () => {
+        runtime.cancelIdleCallback?.(idleId);
+        for (const controller of controllers) {
+          controller.abort();
+        }
+      };
+    }
+
+    const timer = window.setTimeout(runWarmup, 120);
+    return () => {
+      window.clearTimeout(timer);
+      for (const controller of controllers) {
+        controller.abort();
+      }
+    };
+  }, [router]);
+
   const init = useCallback(async () => {
     if (!isTauriRuntime()) {
       setIsInitializing(false);
@@ -129,6 +312,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
           version: initializeResult.version,
         });
         await prefetchStartupSnapshot(addr);
+        await warmupPrimaryPages(addr);
         setIsInitializing(false);
         hasInitializedOnce.current = true;
       } catch (serviceError: unknown) {
@@ -149,6 +333,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   }, [
     initializeService,
     prefetchStartupSnapshot,
+    warmupPrimaryPages,
     setAppSettings,
     setServiceStatus,
     setTheme,
@@ -175,6 +360,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
         version: initializeResult.version,
       });
       await prefetchStartupSnapshot(addr);
+      await warmupPrimaryPages(addr);
       applyLowTransparency(settings.lowTransparency);
       setIsInitializing(false);
       toast.success("服务已启动");
@@ -188,6 +374,8 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void init();
   }, [init]);
+
+  useEffect(() => warmupDevRouteTransitions(), [warmupDevRouteTransitions]);
 
   const showLoading = isInitializing && !hasInitializedOnce.current;
   const showError = !!error && !hasInitializedOnce.current;

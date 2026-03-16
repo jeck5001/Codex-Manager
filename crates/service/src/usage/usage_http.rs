@@ -20,6 +20,21 @@ pub(crate) struct RefreshTokenResponse {
     pub(crate) id_token: Option<String>,
 }
 
+fn format_refresh_token_status_error(status: reqwest::StatusCode, body: &str) -> String {
+    let snippet = body
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(256)
+        .collect::<String>();
+    if snippet.is_empty() {
+        format!("refresh token failed with status {status}")
+    } else {
+        format!("refresh token failed with status {status}: {snippet}")
+    }
+}
+
 fn build_usage_http_client() -> Client {
     let mut builder = Client::builder()
         // 中文注释：轮询链路复用连接池可降低握手开销；不复用会在多账号刷新时放大短连接抖动。
@@ -143,10 +158,9 @@ pub(crate) fn refresh_access_token(
         }
     };
     if !resp.status().is_success() {
-        return Err(format!(
-            "refresh token failed with status {}",
-            resp.status()
-        ));
+        let status = resp.status();
+        let body = resp.text().unwrap_or_default();
+        return Err(format_refresh_token_status_error(status, body.as_str()));
     }
     resp.json::<RefreshTokenResponse>()
         .map_err(|e| format!("read refresh token response json failed: {e}"))
