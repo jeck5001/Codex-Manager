@@ -1,8 +1,6 @@
 pub mod callback_endpoint;
 pub mod gateway_endpoint;
 pub mod rpc_endpoint;
-pub mod rpc_stream_endpoint;
-pub mod rpc_ws_endpoint;
 pub mod server;
 
 pub(crate) mod backend_router;

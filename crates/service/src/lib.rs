@@ -11,12 +11,9 @@ mod http;
 mod lifecycle;
 mod requestlog;
 mod rpc_dispatch;
-mod rpc_notifications;
-mod rpc_transport;
 mod runtime;
 mod startup_snapshot;
 mod storage;
-mod thread_turn;
 mod usage;
 
 pub(crate) use account::availability as account_availability;
@@ -68,15 +65,16 @@ pub use app_settings::{
     bind_all_interfaces_enabled, current_close_to_tray_on_close_setting,
     current_gateway_free_account_max_model, current_gateway_originator,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
-    current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
-    current_lightweight_mode_on_close_to_tray_setting, current_saved_service_addr,
-    current_service_bind_mode, current_ui_low_transparency_enabled, current_ui_theme,
-    current_update_auto_check_enabled, default_listener_bind_addr, listener_bind_addr,
-    residency_requirement_options, set_close_to_tray_on_close_setting,
-    set_gateway_background_tasks, set_gateway_cpa_no_cookie_header_mode,
-    set_gateway_free_account_max_model, set_gateway_originator,
-    set_gateway_request_compression_enabled, set_gateway_residency_requirement,
-    set_gateway_route_strategy, set_gateway_sse_keepalive_interval_ms,
+    current_gateway_sse_keepalive_interval_ms,
+    current_gateway_upstream_stream_timeout_ms, current_lightweight_mode_on_close_to_tray_setting,
+    current_saved_service_addr, current_service_bind_mode,
+    current_ui_low_transparency_enabled, current_ui_theme, current_update_auto_check_enabled,
+    default_listener_bind_addr, listener_bind_addr, residency_requirement_options,
+    set_close_to_tray_on_close_setting, set_gateway_background_tasks,
+    set_gateway_cpa_no_cookie_header_mode, set_gateway_free_account_max_model,
+    set_gateway_originator, set_gateway_request_compression_enabled,
+    set_gateway_residency_requirement, set_gateway_route_strategy,
+    set_gateway_sse_keepalive_interval_ms,
     set_gateway_upstream_proxy_url, set_gateway_upstream_stream_timeout_ms,
     set_lightweight_mode_on_close_to_tray_setting, set_saved_service_addr, set_service_bind_mode,
     set_ui_low_transparency_enabled, set_ui_theme, set_update_auto_check_enabled,
@@ -103,20 +101,8 @@ pub use lifecycle::bootstrap::{initialize_storage_if_needed, portable};
 pub use lifecycle::shutdown::{clear_shutdown_flag, request_shutdown, shutdown_requested};
 pub use lifecycle::startup::{start_one_shot_server, start_server, ServerHandle};
 
-#[allow(dead_code)]
 pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
     rpc_dispatch::handle_request(req)
-}
-
-pub(crate) fn handle_request_with_context(
-    req: JsonRpcRequest,
-    ctx: &rpc_dispatch::RpcRequestContext,
-) -> JsonRpcResponse {
-    rpc_dispatch::handle_request_with_context(req, ctx)
-}
-
-pub fn clear_thread_turn_for_tests() {
-    thread_turn::clear_for_tests();
 }
 
 #[cfg(test)]

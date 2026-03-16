@@ -14,10 +14,6 @@ use crate::app_settings::{get_persisted_app_setting, save_persisted_app_setting}
 use crate::gateway::clear_manual_preferred_account_if;
 use crate::storage_helpers::open_storage;
 use crate::usage_token_refresh::refresh_and_persist_access_token;
-use codexmanager_core::rpc::types::{
-    AccountRateLimitsReadResult, RateLimitSnapshotResult, RateLimitWindowResult,
-};
-use std::collections::BTreeMap;
 
 const CURRENT_AUTH_ACCOUNT_ID_KEY: &str = "auth.current_account_id";
 
@@ -180,8 +176,6 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
 
     set_current_auth_account_id(Some(&account_id))?;
     let _ = crate::gateway::set_manual_preferred_account(&account_id);
-    crate::rpc_notifications::notify_account_login_completed(None, true, None);
-    crate::rpc_notifications::notify_account_updated();
 
     Ok(ChatgptAuthTokensLoginResponse {
         kind: "chatgptAuthTokens".to_string(),
@@ -284,55 +278,10 @@ pub(crate) fn logout_current_account() -> Result<serde_json::Value, String> {
         }
     }
     set_current_auth_account_id(None)?;
-    crate::rpc_notifications::notify_account_updated();
     Ok(serde_json::json!({
         "ok": true,
         "accountId": current_account_id,
     }))
-}
-
-pub(crate) fn cancel_login(login_id: &str) -> Result<serde_json::Value, String> {
-    let login_id = login_id.trim();
-    if login_id.is_empty() {
-        return Err("loginId is required".to_string());
-    }
-    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let session = storage
-        .get_login_session(login_id)
-        .map_err(|err| err.to_string())?
-        .ok_or_else(|| "unknown login session".to_string())?;
-    if session.status == "success" {
-        return Err("login session already completed".to_string());
-    }
-    storage
-        .update_login_session_status(login_id, "cancelled", None)
-        .map_err(|err| err.to_string())?;
-    crate::rpc_notifications::notify_account_login_completed(
-        Some(login_id),
-        false,
-        Some("cancelled"),
-    );
-    Ok(serde_json::json!({}))
-}
-
-pub(crate) fn read_current_rate_limits() -> Result<AccountRateLimitsReadResult, String> {
-    let storage = open_storage()
-        .ok_or_else(|| "codex account authentication required to read rate limits".to_string())?;
-    let (account, _token) = resolve_current_account_with_token(&storage)?
-        .ok_or_else(|| "codex account authentication required to read rate limits".to_string())?;
-    let snapshot = crate::usage_read::read_usage_snapshot(Some(&account.id))
-        .ok_or_else(|| "no rate limits available for current account".to_string())?;
-    let plan_type = storage
-        .find_token_by_account_id(&account.id)
-        .map_err(|err| err.to_string())?
-        .and_then(|token| resolve_plan_type(&token, None));
-    let rate_limits = build_rate_limit_snapshot("codex", None, &snapshot, plan_type.as_deref());
-    let mut rate_limits_by_limit_id = BTreeMap::new();
-    rate_limits_by_limit_id.insert("codex".to_string(), rate_limits.clone());
-    Ok(AccountRateLimitsReadResult {
-        rate_limits,
-        rate_limits_by_limit_id: Some(rate_limits_by_limit_id),
-    })
 }
 
 fn resolve_current_account_with_token(
@@ -403,45 +352,6 @@ fn current_account_payload(account: &Account, token: &Token) -> CurrentAuthAccou
     }
 }
 
-fn build_rate_limit_snapshot(
-    limit_id: &str,
-    limit_name: Option<&str>,
-    snapshot: &codexmanager_core::rpc::types::UsageSnapshotResult,
-    plan_type: Option<&str>,
-) -> RateLimitSnapshotResult {
-    RateLimitSnapshotResult {
-        limit_id: Some(limit_id.to_string()),
-        limit_name: limit_name.map(|value| value.to_string()),
-        primary: build_rate_limit_window(
-            snapshot.used_percent,
-            snapshot.window_minutes,
-            snapshot.resets_at,
-        ),
-        secondary: build_rate_limit_window(
-            snapshot.secondary_used_percent,
-            snapshot.secondary_window_minutes,
-            snapshot.secondary_resets_at,
-        ),
-        credits: snapshot
-            .credits_json
-            .as_deref()
-            .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok()),
-        plan_type: plan_type.map(|value| value.to_string()),
-    }
-}
-
-fn build_rate_limit_window(
-    used_percent: Option<f64>,
-    window_minutes: Option<i64>,
-    resets_at: Option<i64>,
-) -> Option<RateLimitWindowResult> {
-    used_percent.map(|used_percent| RateLimitWindowResult {
-        used_percent: used_percent.round() as i64,
-        window_duration_mins: window_minutes,
-        resets_at,
-    })
-}
-
 fn resolve_plan_type(
     token: &Token,
     parsed_claims: Option<&codexmanager_core::auth::IdTokenClaims>,
@@ -476,44 +386,6 @@ fn normalize_plan_type(value: String) -> Option<String> {
     }
 }
 
-pub(crate) fn current_auth_account_id() -> Option<String> {
-    get_persisted_app_setting(CURRENT_AUTH_ACCOUNT_ID_KEY)
-}
-
 pub(crate) fn set_current_auth_account_id(account_id: Option<&str>) -> Result<(), String> {
     save_persisted_app_setting(CURRENT_AUTH_ACCOUNT_ID_KEY, account_id)
-}
-
-pub(crate) fn account_updated_notification_payload() -> serde_json::Value {
-    let Some(storage) = open_storage() else {
-        return serde_json::json!({
-            "authMode": serde_json::Value::Null,
-            "planType": serde_json::Value::Null,
-        });
-    };
-    let Some((account, token)) = resolve_current_account_with_token(&storage).ok().flatten() else {
-        return serde_json::json!({
-            "authMode": serde_json::Value::Null,
-            "planType": serde_json::Value::Null,
-        });
-    };
-    serde_json::json!({
-        "authMode": "chatgpt",
-        "planType": resolve_plan_type(&token, None),
-        "accountId": account.id,
-    })
-}
-
-pub(crate) fn current_rate_limits_notification_payload_for_account(
-    account_id: &str,
-) -> Option<serde_json::Value> {
-    let current_account_id = current_auth_account_id()?;
-    if current_account_id != account_id {
-        return None;
-    }
-    let rate_limits = read_current_rate_limits().ok()?;
-    Some(serde_json::json!({
-        "rateLimits": rate_limits.rate_limits,
-        "rateLimitsByLimitId": rate_limits.rate_limits_by_limit_id,
-    }))
 }

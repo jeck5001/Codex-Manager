@@ -1,7 +1,7 @@
 use axum::body::{to_bytes, Body};
 use axum::extract::State;
 use axum::http::{header, Request as HttpRequest, Response, StatusCode};
-use axum::routing::{any, get};
+use axum::routing::{any, post};
 use axum::Router;
 use reqwest::Client;
 use std::io;
@@ -111,15 +111,7 @@ async fn proxy_handler(
 
 fn build_front_proxy_app(state: ProxyState) -> Router {
     Router::new()
-        .route(
-            "/rpc",
-            get(crate::http::rpc_ws_endpoint::handle_rpc_websocket)
-                .post(crate::http::rpc_endpoint::handle_rpc_http),
-        )
-        .route(
-            "/rpc/events",
-            get(crate::http::rpc_stream_endpoint::handle_rpc_events),
-        )
+        .route("/rpc", post(crate::http::rpc_endpoint::handle_rpc_http))
         .fallback(any(proxy_handler))
         .with_state(state)
 }

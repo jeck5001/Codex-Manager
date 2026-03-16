@@ -40,56 +40,35 @@ fn is_loopback_origin(origin: &str) -> bool {
     matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"))
 }
 
-fn notification_method(value: &serde_json::Value) -> Option<&str> {
-    value
-        .as_object()
-        .and_then(|object| object.get("method"))
-        .and_then(|method| method.as_str())
-        .map(str::trim)
-        .filter(|method| !method.is_empty())
-}
-
-fn handle_rpc_payload(
-    payload: serde_json::Value,
-    connection_id: Option<String>,
-) -> (u16, String, bool) {
-    let ctx = crate::rpc_dispatch::RpcRequestContext { connection_id };
-
-    let is_notification = payload
-        .as_object()
-        .map(|object| !object.contains_key("id"))
-        .unwrap_or(false);
-    if is_notification {
-        let method = notification_method(&payload)
-            .unwrap_or_default()
-            .to_string();
-        let params = payload
-            .as_object()
-            .and_then(|object| object.get("params"))
-            .cloned();
-        let response_body = match crate::rpc_dispatch::handle_notification_with_context(
-            method.as_str(),
-            params,
-            &ctx,
-        ) {
-            Ok(()) => "{}".to_string(),
-            Err(err) => serde_json::json!({ "error": err }).to_string(),
-        };
-        let success = response_body == "{}";
-        return (200, response_body, success);
+fn handle_rpc_body(body: &str) -> (u16, String, bool) {
+    if body.trim().is_empty() {
+        return (400, "{}".to_string(), false);
     }
 
-    let req: codexmanager_core::rpc::types::JsonRpcRequest = match serde_json::from_value(payload) {
+    let req: codexmanager_core::rpc::types::JsonRpcRequest = match serde_json::from_str(body) {
         Ok(v) => v,
         Err(_) => return (400, "{}".to_string(), false),
     };
-    let resp = crate::handle_request_with_context(req, &ctx);
+    let resp = crate::handle_request(req);
     let success = !rpc_response_failed(&resp);
     let json = serde_json::to_string(&resp).unwrap_or_else(|_| "{}".to_string());
     (200, json, success)
 }
 
+fn is_axum_json_content_type(headers: &HeaderMap) -> bool {
+    headers
+        .get("Content-Type")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .map(|value| value.trim().eq_ignore_ascii_case("application/json"))
+        .unwrap_or(false)
+}
+
 fn validate_axum_headers(headers: &HeaderMap) -> Option<AxumResponse> {
+    if !is_axum_json_content_type(headers) {
+        return Some((StatusCode::UNSUPPORTED_MEDIA_TYPE, "{}").into_response());
+    }
+
     match headers
         .get("X-CodexManager-Rpc-Token")
         .and_then(|value| value.to_str().ok())
@@ -131,20 +110,7 @@ pub(crate) async fn handle_rpc_http(headers: HeaderMap, body: String) -> AxumRes
     if let Some(response) = validate_axum_headers(&headers) {
         return response;
     }
-    if body.trim().is_empty() {
-        return (StatusCode::BAD_REQUEST, "{}").into_response();
-    }
-    let payload: serde_json::Value = match serde_json::from_str(&body) {
-        Ok(v) => v,
-        Err(_) => return (StatusCode::BAD_REQUEST, "{}").into_response(),
-    };
-    let connection_id = headers
-        .get(crate::rpc_transport::RPC_CONNECTION_ID_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    let (status, response_body, success) = handle_rpc_payload(payload, connection_id);
+    let (status, response_body, success) = handle_rpc_body(&body);
     if success {
         rpc_metrics_guard.mark_success();
     }
@@ -202,18 +168,7 @@ pub fn handle_rpc(mut request: Request) {
         return;
     }
 
-    let payload: serde_json::Value = match serde_json::from_str(&body) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = request.respond(Response::from_string("{}").with_status_code(400));
-            return;
-        }
-    };
-    let connection_id = get_header_value(&request, crate::rpc_transport::RPC_CONNECTION_ID_HEADER)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    let (status, response_body, success) = handle_rpc_payload(payload, connection_id);
+    let (status, response_body, success) = handle_rpc_body(&body);
     if success {
         rpc_metrics_guard.mark_success();
     }
