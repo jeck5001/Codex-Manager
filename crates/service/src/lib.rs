@@ -100,8 +100,16 @@ pub use lifecycle::bootstrap::{initialize_storage_if_needed, portable};
 pub use lifecycle::shutdown::{clear_shutdown_flag, request_shutdown, shutdown_requested};
 pub use lifecycle::startup::{start_one_shot_server, start_server, ServerHandle};
 
+#[allow(dead_code)]
 pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
     rpc_dispatch::handle_request(req)
+}
+
+pub(crate) fn handle_request_with_context(
+    req: JsonRpcRequest,
+    ctx: &rpc_dispatch::RpcRequestContext,
+) -> JsonRpcResponse {
+    rpc_dispatch::handle_request_with_context(req, ctx)
 }
 
 #[cfg(test)]

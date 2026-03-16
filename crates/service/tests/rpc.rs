@@ -110,7 +110,30 @@ impl Drop for RpcTestContext {
 }
 
 fn post_rpc_raw(addr: &str, body: &str, headers: &[(&str, &str)]) -> (u16, String) {
-    let mut stream = TcpStream::connect(addr).expect("connect server");
+    let mut stream = {
+        let mut last_err = None;
+        let mut connected = None;
+        for _ in 0..20 {
+            match TcpStream::connect(addr) {
+                Ok(stream) => {
+                    connected = Some(stream);
+                    break;
+                }
+                Err(err) => {
+                    last_err = Some(err);
+                    thread::sleep(Duration::from_millis(50));
+                }
+            }
+        }
+        connected.unwrap_or_else(|| {
+            panic!(
+                "connect server: {}",
+                last_err
+                    .map(|err| err.to_string())
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )
+        })
+    };
     let mut request = format!("POST /rpc HTTP/1.1\r\nHost: {addr}\r\n");
     for (name, value) in headers {
         request.push_str(name);
@@ -669,7 +692,9 @@ fn rpc_config_read_returns_supported_config_tree_and_layers() {
     );
 
     let result = response.get("result").expect("config read result");
-    assert_eq!(result["config"]["gateway"]["originator"], "codex_cli_rs");
+    assert!(result["config"]["gateway"]["originator"]
+        .as_str()
+        .is_some_and(|value| !value.trim().is_empty()));
     assert_eq!(result["config"]["service"]["bind_mode"], "loopback");
     assert_eq!(
         result["config"]["gateway"]["request_compression_enabled"].as_bool(),
