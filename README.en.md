@@ -21,7 +21,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 | Build locally, package, publish, run scripts | [Build, release, and script guide](docs/release/20260310122606851_构建发布与脚本说明.md) |
 
 ## Recent Changes
-- Current latest version: `v0.1.8` (2026-03-11)
+- Current latest version: `v0.1.9` (2026-03-18)
 - This release rolls up the latest protocol compatibility work, login-path alignment, gateway error handling, desktop interaction fixes, Web auth hardening, and long-term maintainability refactors; see [CHANGELOG.md](CHANGELOG.md) for full history.
 - The dashboard now adds an account-pool view as well: the new aggregate remaining-usage card for 5-hour / 7-day windows is computed on the backend and wired into both startup snapshot loading and the auto-refresh path, so it keeps updating even as the account pool grows.
 - The Codex login-account request path is now closer to upstream behavior: ChatGPT-backed turns now use `access_token` directly, no longer mixing in `api_key_access_token` semantics, and the default `https://api.openai.com/v1` fallback has been removed so local fallback errors no longer rewrite upstream challenge / `403` outcomes.

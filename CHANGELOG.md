@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-03-18
+
+### Changed
+- 统一将发版版本提升到 `0.1.9`，同步更新 workspace、Tauri 桌面端、`tauri.conf.json` 与前端包版本。
+- GitHub Release workflow 中固定的 Tauri CLI 版本已对齐到当前 Rust 侧实际使用版本，减少打包阶段的 CLI / crate 漂移风险。
+- 发布文档与 README 已同步更新到 `v0.1.9`，并修正前端静态导出目录说明为 `apps/out`。
+
 ## [0.1.8] - 2026-03-11
 
 ### Fixed
@@ -79,7 +86,8 @@
 ### Changed
 - 账号管理页操作区整合为单一“账号操作”下拉菜单，替代右侧多按钮堆叠，界面更简洁。
 
-[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.9
 [0.1.8]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.8
 [0.1.7]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.7
 [0.1.6]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.6
