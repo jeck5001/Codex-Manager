@@ -100,14 +100,20 @@ fn gateway_cpa_no_cookie_header_mode_suppresses_affinity_headers_on_responses() 
     assert!(!captured.headers.contains_key("x-codex-turn-state"));
     assert!(!captured.headers.contains_key("conversation_id"));
     assert!(!captured.headers.contains_key("openai-beta"));
-    assert!(!captured.headers.contains_key("chatgpt-account-id"));
+    assert_eq!(
+        captured
+            .headers
+            .get("chatgpt-account-id")
+            .map(String::as_str),
+        Some("chatgpt_acc_cpa_mode")
+    );
     assert_eq!(
         captured.headers.get("cookie").map(String::as_str),
         Some("cf_clearance=still_present")
     );
     assert_eq!(
         captured.headers.get("session_id").map(String::as_str),
-        Some("sess_dummy")
+        Some("conv_dummy")
     );
     let upstream_payload: serde_json::Value =
         serde_json::from_slice(&captured.body).expect("parse upstream payload");
@@ -228,7 +234,13 @@ fn gateway_cpa_no_cookie_header_mode_binds_prompt_cache_key_to_session_only() {
     assert!(!captured.headers.contains_key("conversation_id"));
     assert!(!captured.headers.contains_key("x-codex-turn-state"));
     assert!(!captured.headers.contains_key("openai-beta"));
-    assert!(!captured.headers.contains_key("chatgpt-account-id"));
+    assert_eq!(
+        captured
+            .headers
+            .get("chatgpt-account-id")
+            .map(String::as_str),
+        Some("chatgpt_acc_cpa_prompt_cache")
+    );
 }
 
 #[test]
@@ -352,4 +364,116 @@ fn gateway_cpa_no_cookie_header_mode_skips_post_retries_on_404() {
     );
 
     upstream_join.join().expect("join upstream");
+}
+
+#[test]
+fn gateway_cpa_no_cookie_header_mode_keeps_account_header_on_compact() {
+    let _lock = lock_env();
+    let dir = new_test_dir("codexmanager-gateway-cpa-no-cookie-compact-account-id");
+    let db_path: PathBuf = dir.join("codexmanager.db");
+
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let _mode_guard = EnvGuard::set("CODEXMANAGER_CPA_NO_COOKIE_HEADER_MODE", "1");
+    let _cookie_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_COOKIE", "");
+
+    let upstream_response = serde_json::json!({
+        "output": [{
+            "type": "message",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "text": "compact ok" }]
+        }]
+    });
+    let upstream_response =
+        serde_json::to_string(&upstream_response).expect("serialize upstream response");
+    let (upstream_addr, upstream_rx, upstream_join) = start_mock_upstream_once(&upstream_response);
+    let upstream_base = format!("http://{upstream_addr}/backend-api/codex");
+    let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
+
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init db");
+    let now = now_ts();
+
+    storage
+        .insert_account(&Account {
+            id: "acc_cpa_compact".to_string(),
+            label: "cpa-compact".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_acc_cpa_compact".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 1,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_cpa_compact".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_cpa_compact".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: Some("api_access_token_cpa_compact".to_string()),
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let platform_key = "pk_cpa_compact";
+    storage
+        .insert_api_key(&ApiKey {
+            id: "gk_cpa_compact".to_string(),
+            name: Some("cpa-compact".to_string()),
+            model_slug: Some("gpt-5.3-codex".to_string()),
+            reasoning_effort: None,
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: hash_platform_key_for_test(platform_key),
+            status: "active".to_string(),
+            created_at: now,
+            last_used_at: None,
+        })
+        .expect("insert api key");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req_body = r#"{"model":"gpt-5.3-codex","input":"compact me","stream":false}"#;
+    let (status, response_body) = post_http_raw(
+        &server.addr,
+        "/v1/responses/compact",
+        req_body,
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", &format!("Bearer {platform_key}")),
+            ("session_id", "sess_cpa_compact"),
+        ],
+    );
+    server.join();
+    assert_eq!(status, 200, "gateway response: {response_body}");
+
+    let captured = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive upstream request");
+    upstream_join.join().expect("join upstream");
+
+    assert_eq!(captured.path, "/backend-api/codex/responses/compact");
+    assert_eq!(
+        captured
+            .headers
+            .get("chatgpt-account-id")
+            .map(String::as_str),
+        Some("chatgpt_acc_cpa_compact")
+    );
+    assert_eq!(
+        captured
+            .headers
+            .get("x-openai-subagent")
+            .map(String::as_str),
+        Some("compact")
+    );
+    assert_eq!(
+        captured.headers.get("session_id").map(String::as_str),
+        Some("sess_cpa_compact")
+    );
 }

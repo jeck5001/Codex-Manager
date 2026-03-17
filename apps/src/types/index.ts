@@ -168,6 +168,7 @@ export interface CurrentAccessTokenAccount {
   accountId: string;
   email: string;
   planType: string;
+  planTypeRaw?: string | null;
   chatgptAccountId: string | null;
   workspaceId: string | null;
   status: string;
@@ -184,6 +185,7 @@ export interface ChatgptAuthTokensRefreshResult {
   accessToken: string;
   chatgptAccountId: string;
   chatgptPlanType: string | null;
+  chatgptPlanTypeRaw?: string | null;
 }
 
 export interface EnvOverrideCatalogItem {

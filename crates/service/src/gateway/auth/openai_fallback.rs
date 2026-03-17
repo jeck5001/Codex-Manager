@@ -110,7 +110,7 @@ pub(super) fn try_openai_fallback(
         .chatgpt_account_id
         .as_deref()
         .or_else(|| account.workspace_id.as_deref());
-    let include_account_id = !compact_headers_mode && !is_openai_api_target;
+    let include_account_id = !is_openai_api_target;
     let mut upstream_headers = if is_compact_request_path(request_path) {
         let header_input = super::upstream::header_profile::CodexCompactUpstreamHeaderInput {
             auth_token: bearer.as_str(),

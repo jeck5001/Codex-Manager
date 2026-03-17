@@ -302,6 +302,10 @@ fn codex_header_profile_uses_fallback_session_when_incoming_missing() {
         find_header(&headers, "session_id").as_deref(),
         Some("fallback-session")
     );
+    assert_eq!(
+        find_header(&headers, "x-client-request-id").as_deref(),
+        Some("fallback-session")
+    );
 }
 
 #[test]
@@ -375,6 +379,40 @@ fn codex_header_profile_can_disable_affinity_headers() {
     assert!(find_header(&headers, "Conversation_id").is_none());
     assert_eq!(
         find_header(&headers, "session_id").as_deref(),
+        Some("sticky-session")
+    );
+    assert_eq!(
+        find_header(&headers, "x-client-request-id").as_deref(),
+        Some("sticky-session")
+    );
+}
+
+#[test]
+fn codex_header_profile_keeps_stable_client_request_id_on_failover() {
+    let headers = build_codex_upstream_headers(CodexUpstreamHeaderInput {
+        auth_token: "token-failover-stable",
+        account_id: None,
+        include_account_id: true,
+        upstream_cookie: None,
+        incoming_session_id: Some("sticky-session"),
+        incoming_client_request_id: None,
+        incoming_subagent: None,
+        incoming_beta_features: None,
+        incoming_turn_metadata: None,
+        fallback_session_id: Some("fallback-session"),
+        incoming_turn_state: Some("sticky-turn"),
+        include_turn_state: true,
+        strip_session_affinity: true,
+        is_stream: true,
+        has_body: true,
+    });
+
+    assert_ne!(
+        find_header(&headers, "session_id").as_deref(),
+        Some("sticky-session")
+    );
+    assert_eq!(
+        find_header(&headers, "x-client-request-id").as_deref(),
         Some("sticky-session")
     );
 }

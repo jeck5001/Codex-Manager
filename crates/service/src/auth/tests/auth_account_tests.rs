@@ -1,4 +1,4 @@
-use super::resolve_plan_type;
+use super::{resolve_plan_type, resolve_plan_type_raw};
 use codexmanager_core::auth::parse_id_token_claims;
 use codexmanager_core::storage::Token;
 
@@ -45,4 +45,19 @@ fn resolve_plan_type_falls_back_to_id_token_when_access_claims_missing() {
     let resolved = resolve_plan_type(&token, Some(&claims));
 
     assert_eq!(resolved.as_deref(), Some("team"));
+}
+
+#[test]
+fn resolve_plan_type_preserves_unknown_raw_value_for_diagnostics() {
+    let access_token = jwt_with_claims(
+        "eyJzdWIiOiJ1c2VyLTEiLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9wbGFuX3R5cGUiOiJyZXNlYXJjaGVyX2JldGEifX0",
+    );
+    let token = build_token(&access_token, &access_token);
+    let claims = parse_id_token_claims(&access_token).expect("access claims");
+
+    let resolved = resolve_plan_type(&token, Some(&claims));
+    let raw = resolve_plan_type_raw(&token, Some(&claims));
+
+    assert_eq!(resolved.as_deref(), Some("unknown"));
+    assert_eq!(raw.as_deref(), Some("researcher_beta"));
 }

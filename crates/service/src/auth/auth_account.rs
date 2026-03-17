@@ -33,6 +33,7 @@ pub(crate) struct CurrentAuthAccount {
     pub(crate) account_id: String,
     pub(crate) email: String,
     pub(crate) plan_type: String,
+    pub(crate) plan_type_raw: Option<String>,
     pub(crate) chatgpt_account_id: Option<String>,
     pub(crate) workspace_id: Option<String>,
     pub(crate) status: String,
@@ -45,6 +46,7 @@ pub(crate) struct ChatgptAuthTokensRefreshResponse {
     pub(crate) access_token: String,
     pub(crate) chatgpt_account_id: String,
     pub(crate) chatgpt_plan_type: Option<String>,
+    pub(crate) chatgpt_plan_type_raw: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -253,13 +255,16 @@ pub(crate) fn refresh_current_chatgpt_auth_tokens(
         .or_else(|| extract_workspace_id(&token.access_token))
         .ok_or_else(|| "refreshed token missing chatgptAccountId".to_string())?;
     let access_claims = parse_id_token_claims(&token.access_token).ok();
-    let chatgpt_plan_type = resolve_plan_type(&token, access_claims.as_ref());
+    let plan_type_resolution = resolve_plan_type_resolution(&token, access_claims.as_ref());
 
     Ok(ChatgptAuthTokensRefreshResponse {
         account_id: refreshed_account.id,
         access_token: token.access_token,
         chatgpt_account_id,
-        chatgpt_plan_type,
+        chatgpt_plan_type: plan_type_resolution
+            .as_ref()
+            .map(|plan| plan.normalized.clone()),
+        chatgpt_plan_type_raw: plan_type_resolution.and_then(|plan| plan.raw),
     })
 }
 
@@ -338,6 +343,7 @@ fn resolve_refresh_target(
 
 fn current_account_payload(account: &Account, token: &Token) -> CurrentAuthAccount {
     let claims = parse_id_token_claims(&token.access_token).ok();
+    let plan_type_resolution = resolve_plan_type_resolution(token, claims.as_ref());
     CurrentAuthAccount {
         kind: "chatgpt".to_string(),
         account_id: account.id.clone(),
@@ -345,18 +351,43 @@ fn current_account_payload(account: &Account, token: &Token) -> CurrentAuthAccou
             .as_ref()
             .and_then(|claims| claims.email.clone())
             .unwrap_or_else(|| account.label.clone()),
-        plan_type: resolve_plan_type(token, claims.as_ref())
+        plan_type: plan_type_resolution
+            .as_ref()
+            .map(|plan| plan.normalized.clone())
             .unwrap_or_else(|| "unknown".to_string()),
+        plan_type_raw: plan_type_resolution.and_then(|plan| plan.raw),
         chatgpt_account_id: account.chatgpt_account_id.clone(),
         workspace_id: account.workspace_id.clone(),
         status: account.status.clone(),
     }
 }
 
+#[cfg(test)]
 fn resolve_plan_type(
     token: &Token,
     parsed_claims: Option<&codexmanager_core::auth::IdTokenClaims>,
 ) -> Option<String> {
+    resolve_plan_type_resolution(token, parsed_claims).map(|plan| plan.normalized)
+}
+
+#[cfg(test)]
+fn resolve_plan_type_raw(
+    token: &Token,
+    parsed_claims: Option<&codexmanager_core::auth::IdTokenClaims>,
+) -> Option<String> {
+    resolve_plan_type_resolution(token, parsed_claims).and_then(|plan| plan.raw)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedPlanType {
+    normalized: String,
+    raw: Option<String>,
+}
+
+fn resolve_plan_type_resolution(
+    token: &Token,
+    parsed_claims: Option<&codexmanager_core::auth::IdTokenClaims>,
+) -> Option<ResolvedPlanType> {
     if let Some(claims) = parsed_claims {
         if let Some(plan_type) = claims
             .auth
@@ -381,16 +412,22 @@ fn resolve_plan_type(
         .and_then(normalize_plan_type)
 }
 
-fn normalize_plan_type(value: String) -> Option<String> {
+fn normalize_plan_type(value: String) -> Option<ResolvedPlanType> {
     let normalized = value.trim().to_ascii_lowercase();
     match normalized.as_str() {
         "free" | "go" | "plus" | "pro" | "team" | "business" | "enterprise" | "edu"
-        | "education" => Some(match normalized.as_str() {
-            "education" => "edu".to_string(),
-            _ => normalized,
+        | "education" => Some(ResolvedPlanType {
+            normalized: match normalized.as_str() {
+                "education" => "edu".to_string(),
+                _ => normalized,
+            },
+            raw: None,
         }),
         "" => None,
-        _ => Some("unknown".to_string()),
+        _ => Some(ResolvedPlanType {
+            normalized: "unknown".to_string(),
+            raw: Some(value.trim().to_string()),
+        }),
     }
 }
 

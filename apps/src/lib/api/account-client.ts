@@ -234,6 +234,10 @@ export const accountClient = {
         typeof source.chatgptPlanType === "string"
           ? source.chatgptPlanType.trim()
           : null,
+      chatgptPlanTypeRaw:
+        typeof source.chatgptPlanTypeRaw === "string"
+          ? source.chatgptPlanTypeRaw.trim()
+          : null,
     };
   },
 

@@ -36,6 +36,11 @@ pub(crate) fn build_codex_upstream_headers(
     input: CodexUpstreamHeaderInput<'_>,
 ) -> Vec<(String, String)> {
     let mut headers = Vec::with_capacity(10);
+    let resolved_session_id = resolve_session_id(
+        input.incoming_session_id,
+        input.fallback_session_id,
+        input.strip_session_affinity,
+    );
     headers.push((
         "Authorization".to_string(),
         format!("Bearer {}", input.auth_token),
@@ -66,15 +71,13 @@ pub(crate) fn build_codex_upstream_headers(
             residency_requirement,
         ));
     }
-    if let Some(client_request_id) = input
-        .incoming_client_request_id
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        headers.push((
-            "x-client-request-id".to_string(),
-            client_request_id.to_string(),
-        ));
+    if let Some(client_request_id) = resolve_client_request_id(
+        input.incoming_client_request_id,
+        input.incoming_session_id,
+        input.fallback_session_id,
+        input.strip_session_affinity,
+    ) {
+        headers.push(("x-client-request-id".to_string(), client_request_id));
     }
     if let Some(subagent) = input
         .incoming_subagent
@@ -103,14 +106,7 @@ pub(crate) fn build_codex_upstream_headers(
             turn_metadata.to_string(),
         ));
     }
-    headers.push((
-        "session_id".to_string(),
-        resolve_session_id(
-            input.incoming_session_id,
-            input.fallback_session_id,
-            input.strip_session_affinity,
-        ),
-    ));
+    headers.push(("session_id".to_string(), resolved_session_id));
 
     if !input.strip_session_affinity {
         if input.include_turn_state {
@@ -212,4 +208,34 @@ fn resolve_session_id(
         }
     }
     random_session_id()
+}
+
+fn resolve_client_request_id(
+    incoming_client_request_id: Option<&str>,
+    incoming_session_id: Option<&str>,
+    fallback_session_id: Option<&str>,
+    strip_session_affinity: bool,
+) -> Option<String> {
+    if let Some(value) = incoming_client_request_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(value.to_string());
+    }
+
+    if let Some(value) = incoming_session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(value.to_string());
+    }
+
+    if strip_session_affinity {
+        return None;
+    }
+
+    fallback_session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }

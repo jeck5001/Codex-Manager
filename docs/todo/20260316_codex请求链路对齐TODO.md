@@ -62,7 +62,9 @@
 - [x] 浏览器授权 `scope` 对齐官方 connectors scope
 - [x] refresh token 请求体改成官方 `application/json` 形状
 - [x] usage endpoint 请求头统一到 `ChatGPT-Account-ID` 语义，并对 challenge / HTML 失败输出稳定摘要
+- [x] `CPA no cookie` 模式与 `ChatGPT-Account-ID` 解耦，只抑制 cookie/粘性头，不再误去掉账号头
 - [x] `planType` 读取优先按最新 access token claims
+- [x] 对外 `planType` 已统一到官方枚举语义，并对未知值保留原始 plan 供诊断
 - [x] 401 refresh 错误文案映射到官方 expired / reused / revoked / unknown 消息
 - [x] refresh `401` 内部原因收口到稳定枚举，避免后续只靠散乱字符串匹配
 - [x] token endpoint 错误解析贴近官方优先级，并对 transport error 做敏感 URL 脱敏
@@ -95,6 +97,10 @@
 - [x] 收掉 HTTP `/responses` 上不该显式发送的 `Conversation_id / OpenAI-Beta / Connection / Version`
 - [x] 透传官方 `x-codex-beta-features`
 - [x] 透传官方 `x-codex-turn-metadata`（仅 ASCII 安全值）
+- [x] 客户端未传 `x-client-request-id` 时，按稳定线程/session 锚点自动补齐
+- [x] 当 `/responses` 已有 `prompt_cache_key` 时，让 `session_id / x-client-request-id` 优先跟随线程锚点，不再让旧 `Session_id` 抢占
+- [x] 当入站明确携带 `Conversation_id` 时，让线程锚点覆盖旧 `x-client-request-id`
+- [x] 当旧 `Session_id` 已被新的线程锚点覆盖时，丢弃旧 `x-codex-turn-state`
 - [ ] 继续核对 cookie、turn state、conversation 相关头在不同链路上的带法
 - [ ] 复核失败重试、failover、日志落盘时机，避免多账号切换误导
 

@@ -171,11 +171,30 @@ pub(in super::super) fn send_upstream_request(
     } else {
         extract_prompt_cache_key(body.as_ref())
     };
-    let mut incoming_session_id = incoming_headers.session_id();
-    if compact_headers_mode && prompt_cache_key.is_some() {
-        // 中文注释：在请求头收敛策略下，prompt_cache_key 命中时优先绑定新的会话锚点，
-        // 避免透传旧会话 id 造成跨账号粘性。
+    let has_conversation_anchor = incoming_headers.conversation_id().is_some();
+    let original_incoming_session_id = incoming_headers.session_id();
+    let mut incoming_session_id = original_incoming_session_id;
+    let mut incoming_client_request_id = incoming_headers.client_request_id();
+    let mut incoming_turn_state = incoming_headers.turn_state();
+    if prompt_cache_key.is_some() {
+        // 中文注释：当请求已携带线程锚点（prompt_cache_key）时，优先让上游会话头也绑定到
+        // 同一锚点，避免继续透传旧 session_id 造成线程漂移或跨账号粘性。
         incoming_session_id = None;
+    }
+    if has_conversation_anchor {
+        // 中文注释：官方 ResponsesClient 在提供 conversation_id 时，会直接用它覆盖
+        // x-client-request-id。这里把旧值改写成当前线程锚点，而不是简单清空，
+        // 这样 failover 时仍能保留稳定的 client request id。
+        incoming_client_request_id = prompt_cache_key.as_deref();
+    }
+    if let (Some(cache_key), Some(legacy_session_id)) =
+        (prompt_cache_key.as_deref(), original_incoming_session_id)
+    {
+        if legacy_session_id.trim() != cache_key {
+            // 中文注释：旧 session_id 已被新的线程锚点覆盖时，继续透传旧 turn-state
+            // 只会把上游路由粘到历史 turn，和官方同 turn 回放语义相悖。
+            incoming_turn_state = None;
+        }
     }
     let remote = request_ctx.remote_addr.as_ref();
     let mut derived_session_id = if !strip_session_affinity && incoming_session_id.is_none() {
@@ -187,7 +206,7 @@ pub(in super::super) fn send_upstream_request(
         None
     };
     // 中文注释：当 prompt_cache_key 存在时，用它对齐请求会话锚点，
-    // 避免沿用旧粘性会话导致更高的 upstream challenge 概率。
+    // 更贴近官方 conversation_id -> session_id / x-client-request-id 的默认行为。
     if !strip_session_affinity {
         if let Some(cache_key) = prompt_cache_key.as_ref() {
             derived_session_id = Some(cache_key.clone());
@@ -197,8 +216,7 @@ pub(in super::super) fn send_upstream_request(
         .chatgpt_account_id
         .as_deref()
         .or_else(|| account.workspace_id.as_deref());
-    let include_account_id =
-        !compact_headers_mode && !super::super::super::is_openai_api_base(target_url);
+    let include_account_id = !super::super::super::is_openai_api_base(target_url);
     let mut upstream_headers = if is_compact_request_path(request_ctx.request_path) {
         let header_input = super::super::header_profile::CodexCompactUpstreamHeaderInput {
             auth_token,
@@ -219,12 +237,12 @@ pub(in super::super) fn send_upstream_request(
             include_account_id,
             upstream_cookie,
             incoming_session_id,
-            incoming_client_request_id: incoming_headers.client_request_id(),
+            incoming_client_request_id,
             incoming_subagent: incoming_headers.subagent(),
             incoming_beta_features: incoming_headers.beta_features(),
             incoming_turn_metadata: incoming_headers.turn_metadata(),
             fallback_session_id: derived_session_id.as_deref(),
-            incoming_turn_state: incoming_headers.turn_state(),
+            incoming_turn_state,
             include_turn_state: !compact_headers_mode,
             strip_session_affinity,
             is_stream,
