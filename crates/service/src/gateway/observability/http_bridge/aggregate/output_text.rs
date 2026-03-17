@@ -26,6 +26,7 @@ pub(crate) struct UpstreamResponseBridgeResult {
     pub stream_terminal_error: Option<String>,
     pub delivery_error: Option<String>,
     pub upstream_error_hint: Option<String>,
+    pub delivered_status_code: Option<u16>,
 }
 
 impl UpstreamResponseBridgeResult {
@@ -343,7 +344,7 @@ pub(in super::super) fn parse_usage_from_json(value: &Value) -> UpstreamResponse
     usage
 }
 
-pub(in super::super) fn extract_error_message_from_json(value: &Value) -> Option<String> {
+pub(crate) fn extract_error_message_from_json(value: &Value) -> Option<String> {
     fn extract_message_from_error_map(err_obj: &Map<String, Value>) -> Option<String> {
         let message = err_obj
             .get("message")

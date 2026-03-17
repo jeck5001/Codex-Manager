@@ -144,14 +144,16 @@ pub(super) fn finalize_upstream_response(
         .delivery_error
         .as_deref()
         .is_some_and(is_client_disconnect_error);
-    let status_for_log = if status_code >= 400 {
+    let status_for_log = if client_delivery_failed {
+        499
+    } else if let Some(delivered_status_code) = bridge.delivered_status_code {
+        delivered_status_code
+    } else if status_code >= 400 {
         status_code
     } else if upstream_stream_failed {
         502
     } else if bridge_ok {
         status_code
-    } else if client_delivery_failed {
-        499
     } else {
         502
     };

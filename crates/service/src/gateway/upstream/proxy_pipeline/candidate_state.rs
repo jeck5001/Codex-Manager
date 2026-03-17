@@ -62,13 +62,16 @@ impl CandidateExecutionState {
         self.rewritten_bodies
             .entry(model_override.to_string())
             .or_insert_with(|| {
-                Bytes::from(super::super::super::apply_request_overrides(
-                    path,
-                    body.to_vec(),
-                    Some(model_override),
-                    None,
-                    Some(setup.upstream_base.as_str()),
-                ))
+                Bytes::from(
+                    super::super::super::apply_request_overrides_with_prompt_cache_key(
+                        path,
+                        body.to_vec(),
+                        Some(model_override),
+                        None,
+                        Some(setup.upstream_base.as_str()),
+                        None,
+                    ),
+                )
             })
             .clone()
     }

@@ -217,11 +217,41 @@ fn refresh_token_forbidden_without_invalid_grant_keeps_account_active() {
 }
 
 #[test]
-fn refresh_token_invalid_grant_on_forbidden_marks_account_inactive() {
+fn refresh_token_invalid_grant_on_forbidden_keeps_account_active() {
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
     let account = Account {
-        id: "acc-refresh-invalid-grant".to_string(),
+        id: "acc-refresh-invalid-grant-403".to_string(),
+        label: "main".to_string(),
+        issuer: "issuer".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    storage.insert_account(&account).expect("insert");
+
+    assert!(!mark_account_inactive_for_refresh_token_error(
+        &storage,
+        "acc-refresh-invalid-grant-403",
+        "refresh token failed with status 403 Forbidden: {\"error\":\"invalid_grant\"}"
+    ));
+    let active = storage
+        .find_account_by_id("acc-refresh-invalid-grant-403")
+        .expect("find")
+        .expect("exists");
+    assert_eq!(active.status, "active");
+}
+
+#[test]
+fn refresh_token_unknown_401_marks_account_inactive() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let account = Account {
+        id: "acc-refresh-unknown-401".to_string(),
         label: "main".to_string(),
         issuer: "issuer".to_string(),
         chatgpt_account_id: None,
@@ -236,11 +266,11 @@ fn refresh_token_invalid_grant_on_forbidden_marks_account_inactive() {
 
     assert!(mark_account_inactive_for_refresh_token_error(
         &storage,
-        "acc-refresh-invalid-grant",
-        "refresh token failed with status 403 Forbidden: {\"error\":\"invalid_grant\"}"
+        "acc-refresh-unknown-401",
+        "refresh token failed with status 401 Unauthorized: some_unknown_backend_code"
     ));
     let inactive = storage
-        .find_account_by_id("acc-refresh-invalid-grant")
+        .find_account_by_id("acc-refresh-unknown-401")
         .expect("find")
         .expect("exists");
     assert_eq!(inactive.status, "inactive");
@@ -276,5 +306,25 @@ fn usage_refresh_failure_events_are_throttled_by_error_class() {
         &account_id,
         "usage endpoint status 503 Service Unavailable",
     );
+    assert_eq!(storage.event_count().expect("count events"), 2);
+}
+
+#[test]
+fn usage_refresh_failure_throttle_splits_401_reason_classes() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let account_id = unique_id("acc-throttle-401");
+
+    record_usage_refresh_failure(
+        &storage,
+        &account_id,
+        "refresh token failed with status 401 Unauthorized: Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.",
+    );
+    record_usage_refresh_failure(
+        &storage,
+        &account_id,
+        "refresh token failed with status 401 Unauthorized: Your access token could not be refreshed. Please log out and sign in again.",
+    );
+
     assert_eq!(storage.event_count().expect("count events"), 2);
 }

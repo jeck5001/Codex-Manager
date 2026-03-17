@@ -233,12 +233,31 @@ fn filter_multipart_form_data_body(
     Some((rebuilt, dropped_keys))
 }
 
+#[allow(dead_code)]
 pub(super) fn apply_request_overrides(
     path: &str,
     body: Vec<u8>,
     model_slug: Option<&str>,
     reasoning_effort: Option<&str>,
     upstream_base_url: Option<&str>,
+) -> Vec<u8> {
+    apply_request_overrides_with_prompt_cache_key(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        upstream_base_url,
+        None,
+    )
+}
+
+pub(super) fn apply_request_overrides_with_prompt_cache_key(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    upstream_base_url: Option<&str>,
+    prompt_cache_key: Option<&str>,
 ) -> Vec<u8> {
     let use_codex_responses_compat = should_apply_codex_responses_compat(path, upstream_base_url);
     let normalized_model = model_slug.map(str::trim).filter(|v| !v.is_empty());
@@ -292,6 +311,9 @@ pub(super) fn apply_request_overrides(
                 if responses::ensure_input_list(path, obj) {
                     changed = true;
                 }
+                if responses::ensure_parallel_tool_calls_bool(path, obj) {
+                    changed = true;
+                }
                 if !responses::is_compact_path(path) {
                     let had_stream_passthrough = obj.contains_key("stream_passthrough");
                     let stream_passthrough = responses::take_stream_passthrough_flag(path, obj);
@@ -302,6 +324,15 @@ pub(super) fn apply_request_overrides(
                         changed = true;
                     }
                     if responses::ensure_store_false(path, obj) {
+                        changed = true;
+                    }
+                    if responses::ensure_tool_choice_auto(path, obj) {
+                        changed = true;
+                    }
+                    if responses::ensure_reasoning_include(path, obj) {
+                        changed = true;
+                    }
+                    if responses::ensure_prompt_cache_key(path, obj, prompt_cache_key) {
                         changed = true;
                     }
                 }

@@ -1,5 +1,7 @@
 use super::next_account_sort;
 use crate::account_identity::{build_account_storage_id, pick_existing_account_id_by_identity};
+use crate::auth_tokens::{ensure_workspace_allowed, parse_token_endpoint_error};
+use codexmanager_core::auth::parse_id_token_claims;
 use codexmanager_core::storage::{now_ts, Account, Storage};
 
 fn build_account(
@@ -87,4 +89,79 @@ fn next_account_sort_uses_step_five() {
         .expect("update sort 2");
 
     assert_eq!(next_account_sort(&storage), 12);
+}
+
+fn jwt_with_claims(payload: &str) -> String {
+    format!("eyJhbGciOiJIUzI1NiJ9.{payload}.sig")
+}
+
+#[test]
+fn ensure_workspace_allowed_accepts_matching_auth_chatgpt_account_id() {
+    let token = jwt_with_claims(
+        "eyJzdWIiOiJ1c2VyLTEiLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoib3JnX2FiYyJ9fQ",
+    );
+    let claims = parse_id_token_claims(&token).expect("claims");
+
+    let result = ensure_workspace_allowed(Some("org_abc"), &claims, &token, &token);
+
+    assert!(result.is_ok(), "workspace should match: {:?}", result);
+}
+
+#[test]
+fn ensure_workspace_allowed_rejects_mismatched_workspace() {
+    let token = jwt_with_claims("eyJzdWIiOiJ1c2VyLTEiLCJ3b3Jrc3BhY2VfaWQiOiJvcmdfYWJjIn0");
+    let claims = parse_id_token_claims(&token).expect("claims");
+
+    let result = ensure_workspace_allowed(Some("org_other"), &claims, &token, &token);
+
+    assert_eq!(
+        result.expect_err("should reject mismatch"),
+        "Login is restricted to workspace id org_other."
+    );
+}
+
+#[test]
+fn parse_token_endpoint_error_prefers_error_description() {
+    let detail = parse_token_endpoint_error(
+        r#"{"error":"invalid_grant","error_description":"refresh token expired"}"#,
+    );
+
+    assert_eq!(detail.to_string(), "refresh token expired");
+}
+
+#[test]
+fn parse_token_endpoint_error_reads_nested_error_message_and_code() {
+    let detail = parse_token_endpoint_error(
+        r#"{"error":{"code":"proxy_auth_required","message":"proxy authentication required"}}"#,
+    );
+
+    assert_eq!(detail.to_string(), "proxy authentication required");
+}
+
+#[test]
+fn parse_token_endpoint_error_preserves_plain_text_for_display() {
+    let detail = parse_token_endpoint_error("service unavailable");
+
+    assert_eq!(detail.to_string(), "service unavailable");
+}
+
+#[test]
+fn parse_token_endpoint_error_summarizes_challenge_html() {
+    let detail =
+        parse_token_endpoint_error("<html><title>Just a moment...</title><body>cf</body></html>");
+
+    assert_eq!(
+        detail.to_string(),
+        "Cloudflare 安全验证页（title=Just a moment...）"
+    );
+}
+
+#[test]
+fn parse_token_endpoint_error_summarizes_generic_html() {
+    let detail = parse_token_endpoint_error("<html><title>502 Bad Gateway</title></html>");
+
+    assert_eq!(
+        detail.to_string(),
+        "上游返回 HTML 错误页（title=502 Bad Gateway）"
+    );
 }

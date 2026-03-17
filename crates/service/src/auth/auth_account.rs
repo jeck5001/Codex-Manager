@@ -252,7 +252,8 @@ pub(crate) fn refresh_current_chatgpt_auth_tokens(
         .or_else(|| extract_chatgpt_account_id(&token.access_token))
         .or_else(|| extract_workspace_id(&token.access_token))
         .ok_or_else(|| "refreshed token missing chatgptAccountId".to_string())?;
-    let chatgpt_plan_type = resolve_plan_type(&token, None);
+    let access_claims = parse_id_token_claims(&token.access_token).ok();
+    let chatgpt_plan_type = resolve_plan_type(&token, access_claims.as_ref());
 
     Ok(ChatgptAuthTokensRefreshResponse {
         account_id: refreshed_account.id,
@@ -367,6 +368,13 @@ fn resolve_plan_type(
             return normalize_plan_type(plan_type);
         }
     }
+    if let Some(plan_type) = parse_id_token_claims(&token.access_token)
+        .ok()
+        .and_then(|claims| claims.auth.and_then(|auth| auth.chatgpt_plan_type))
+        .and_then(normalize_plan_type)
+    {
+        return Some(plan_type);
+    }
     parse_id_token_claims(&token.id_token)
         .ok()
         .and_then(|claims| claims.auth.and_then(|auth| auth.chatgpt_plan_type))
@@ -389,3 +397,7 @@ fn normalize_plan_type(value: String) -> Option<String> {
 pub(crate) fn set_current_auth_account_id(account_id: Option<&str>) -> Result<(), String> {
     save_persisted_app_setting(CURRENT_AUTH_ACCOUNT_ID_KEY, account_id)
 }
+
+#[cfg(test)]
+#[path = "tests/auth_account_tests.rs"]
+mod tests;

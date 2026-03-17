@@ -1,6 +1,8 @@
 use codexmanager_core::usage::usage_endpoint;
 use reqwest::blocking::Client;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 use reqwest::Proxy;
+use serde::Serialize;
 use std::sync::{OnceLock, RwLock};
 use std::time::Duration;
 
@@ -10,6 +12,48 @@ const ENV_UPSTREAM_PROXY_URL: &str = "CODEXMANAGER_UPSTREAM_PROXY_URL";
 // NOTE: rely on reqwest built-in timeout (covers the full request including response body read).
 // Avoid background worker threads + recv_timeout which cannot cancel the underlying read.
 const USAGE_HTTP_TOTAL_TIMEOUT: Duration = Duration::from_secs(60);
+const REFRESH_TOKEN_EXPIRED_MESSAGE: &str =
+    "Your access token could not be refreshed because your refresh token has expired. Please log out and sign in again.";
+const REFRESH_TOKEN_REUSED_MESSAGE: &str =
+    "Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.";
+const REFRESH_TOKEN_INVALIDATED_MESSAGE: &str =
+    "Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.";
+const REFRESH_TOKEN_UNKNOWN_MESSAGE: &str =
+    "Your access token could not be refreshed. Please log out and sign in again.";
+const RESIDENCY_HEADER_NAME: &str = "x-openai-internal-codex-residency";
+const CHATGPT_ACCOUNT_ID_HEADER_NAME: &str = "ChatGPT-Account-ID";
+const REQUEST_ID_HEADER: &str = "x-request-id";
+const OAI_REQUEST_ID_HEADER: &str = "x-oai-request-id";
+const CF_RAY_HEADER: &str = "cf-ray";
+const AUTH_ERROR_HEADER: &str = "x-openai-authorization-error";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RefreshTokenAuthErrorReason {
+    Expired,
+    Reused,
+    Invalidated,
+    Unknown401,
+}
+
+impl RefreshTokenAuthErrorReason {
+    pub(crate) fn as_code(self) -> &'static str {
+        match self {
+            Self::Expired => "refresh_token_expired",
+            Self::Reused => "refresh_token_reused",
+            Self::Invalidated => "refresh_token_invalidated",
+            Self::Unknown401 => "refresh_token_unknown_401",
+        }
+    }
+
+    fn user_message(self) -> &'static str {
+        match self {
+            Self::Expired => REFRESH_TOKEN_EXPIRED_MESSAGE,
+            Self::Reused => REFRESH_TOKEN_REUSED_MESSAGE,
+            Self::Invalidated => REFRESH_TOKEN_INVALIDATED_MESSAGE,
+            Self::Unknown401 => REFRESH_TOKEN_UNKNOWN_MESSAGE,
+        }
+    }
+}
 
 #[derive(serde::Deserialize)]
 pub(crate) struct RefreshTokenResponse {
@@ -20,7 +64,85 @@ pub(crate) struct RefreshTokenResponse {
     pub(crate) id_token: Option<String>,
 }
 
+#[derive(Serialize)]
+struct RefreshTokenRequest<'a> {
+    client_id: &'a str,
+    grant_type: &'a str,
+    refresh_token: &'a str,
+}
+
+fn extract_refresh_token_error_code(body: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(body).ok()?;
+    value
+        .get("error")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.to_ascii_lowercase())
+        .or_else(|| {
+            value
+                .get("code")
+                .and_then(|value| value.as_str())
+                .filter(|value| !value.trim().is_empty())
+                .map(|value| value.to_ascii_lowercase())
+        })
+        .or_else(|| {
+            value
+                .get("error")
+                .and_then(|value| value.get("code"))
+                .and_then(|value| value.as_str())
+                .filter(|value| !value.trim().is_empty())
+                .map(|value| value.to_ascii_lowercase())
+        })
+}
+
+fn classify_refresh_token_auth_error_reason_from_code(
+    code: Option<&str>,
+) -> RefreshTokenAuthErrorReason {
+    match code {
+        Some("refresh_token_expired") => RefreshTokenAuthErrorReason::Expired,
+        Some("refresh_token_reused") => RefreshTokenAuthErrorReason::Reused,
+        Some("refresh_token_invalidated") => RefreshTokenAuthErrorReason::Invalidated,
+        _ => RefreshTokenAuthErrorReason::Unknown401,
+    }
+}
+
+pub(crate) fn classify_refresh_token_auth_error_reason(
+    status: reqwest::StatusCode,
+    body: &str,
+) -> Option<RefreshTokenAuthErrorReason> {
+    if status != reqwest::StatusCode::UNAUTHORIZED {
+        return None;
+    }
+    Some(classify_refresh_token_auth_error_reason_from_code(
+        extract_refresh_token_error_code(body).as_deref(),
+    ))
+}
+
+pub(crate) fn refresh_token_auth_error_reason_from_message(
+    message: &str,
+) -> Option<RefreshTokenAuthErrorReason> {
+    let normalized = message.trim();
+    if !normalized.contains("refresh token failed with status 401") {
+        return None;
+    }
+    if normalized.contains(REFRESH_TOKEN_EXPIRED_MESSAGE) {
+        return Some(RefreshTokenAuthErrorReason::Expired);
+    }
+    if normalized.contains(REFRESH_TOKEN_REUSED_MESSAGE) {
+        return Some(RefreshTokenAuthErrorReason::Reused);
+    }
+    if normalized.contains(REFRESH_TOKEN_INVALIDATED_MESSAGE) {
+        return Some(RefreshTokenAuthErrorReason::Invalidated);
+    }
+    Some(RefreshTokenAuthErrorReason::Unknown401)
+}
+
 fn format_refresh_token_status_error(status: reqwest::StatusCode, body: &str) -> String {
+    if let Some(reason) = classify_refresh_token_auth_error_reason(status, body) {
+        let message = reason.user_message();
+        return format!("refresh token failed with status {status}: {message}");
+    }
+
     let snippet = body
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -36,12 +158,15 @@ fn format_refresh_token_status_error(status: reqwest::StatusCode, body: &str) ->
 }
 
 fn build_usage_http_client() -> Client {
+    let default_headers = build_usage_http_default_headers();
     let mut builder = Client::builder()
         // 中文注释：轮询链路复用连接池可降低握手开销；不复用会在多账号刷新时放大短连接抖动。
         .connect_timeout(USAGE_HTTP_CONNECT_TIMEOUT)
         .timeout(USAGE_HTTP_TOTAL_TIMEOUT)
         .pool_max_idle_per_host(8)
-        .pool_idle_timeout(Some(Duration::from_secs(60)));
+        .pool_idle_timeout(Some(Duration::from_secs(60)))
+        .user_agent(crate::gateway::current_codex_user_agent())
+        .default_headers(default_headers);
     if let Some(proxy_url) = current_upstream_proxy_url() {
         match Proxy::all(proxy_url.as_str()) {
             Ok(proxy) => {
@@ -57,6 +182,86 @@ fn build_usage_http_client() -> Client {
         }
     }
     builder.build().unwrap_or_else(|_| Client::new())
+}
+
+fn build_usage_http_default_headers() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    if let Ok(value) = HeaderValue::from_str(&crate::gateway::current_originator()) {
+        headers.insert(HeaderName::from_static("originator"), value);
+    }
+    if let Some(residency_requirement) = crate::gateway::current_residency_requirement() {
+        if let Ok(value) = HeaderValue::from_str(&residency_requirement) {
+            headers.insert(HeaderName::from_static(RESIDENCY_HEADER_NAME), value);
+        }
+    }
+    headers
+}
+
+fn build_usage_request_headers(workspace_id: Option<&str>) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    if let Some(workspace_id) = workspace_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if let Ok(value) = HeaderValue::from_str(workspace_id) {
+            if let Ok(name) = HeaderName::from_bytes(CHATGPT_ACCOUNT_ID_HEADER_NAME.as_bytes()) {
+                headers.insert(name, value);
+            }
+        }
+    }
+    headers
+}
+
+fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn summarize_usage_error_response(
+    status: reqwest::StatusCode,
+    headers: &HeaderMap,
+    body: &str,
+    force_html_error: bool,
+) -> String {
+    let request_id = extract_response_header(headers, REQUEST_ID_HEADER)
+        .or_else(|| extract_response_header(headers, OAI_REQUEST_ID_HEADER));
+    let cf_ray = extract_response_header(headers, CF_RAY_HEADER);
+    let auth_error = extract_response_header(headers, AUTH_ERROR_HEADER);
+    let body_hint = if force_html_error {
+        crate::gateway::summarize_upstream_error_hint_from_body(403, body.as_bytes())
+    } else {
+        crate::gateway::summarize_upstream_error_hint_from_body(status.as_u16(), body.as_bytes())
+    }
+    .or_else(|| {
+        let trimmed = body.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
+    .unwrap_or_else(|| "unknown error".to_string());
+
+    let mut details = Vec::new();
+    if let Some(request_id) = request_id {
+        details.push(format!("request id: {request_id}"));
+    }
+    if let Some(cf_ray) = cf_ray {
+        details.push(format!("cf-ray: {cf_ray}"));
+    }
+    if let Some(auth_error) = auth_error {
+        details.push(format!("auth error: {auth_error}"));
+    }
+
+    if details.is_empty() {
+        format!("usage endpoint failed: status={} body={body_hint}", status)
+    } else {
+        format!(
+            "usage endpoint failed: status={} body={body_hint}, {}",
+            status,
+            details.join(", ")
+        )
+    }
 }
 
 pub(crate) fn usage_http_client() -> Client {
@@ -94,8 +299,9 @@ pub(crate) fn fetch_usage_snapshot(
         let mut req = client
             .get(&url)
             .header("Authorization", format!("Bearer {bearer}"));
-        if let Some(workspace_id) = workspace_id {
-            req = req.header("ChatGPT-Account-Id", workspace_id);
+        let request_headers = build_usage_request_headers(workspace_id);
+        if !request_headers.is_empty() {
+            req = req.headers(request_headers);
         }
         req
     };
@@ -117,7 +323,25 @@ pub(crate) fn fetch_usage_snapshot(
         }
     };
     if !resp.status().is_success() {
-        return Err(format!("usage endpoint status {}", resp.status()));
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = resp.text().unwrap_or_default();
+        return Err(summarize_usage_error_response(
+            status, &headers, &body, false,
+        ));
+    }
+    let content_type = resp
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    if crate::gateway::is_html_content_type(content_type) {
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = resp.text().unwrap_or_default();
+        return Err(summarize_usage_error_response(
+            status, &headers, &body, true,
+        ));
     }
     resp.json::<serde_json::Value>()
         .map_err(|e| format!("read usage endpoint json failed: {e}"))
@@ -128,18 +352,17 @@ pub(crate) fn refresh_access_token(
     client_id: &str,
     refresh_token: &str,
 ) -> Result<RefreshTokenResponse, String> {
-    // 使用 refresh_token 获取新的 access_token
-    let body = format!(
-        "grant_type=refresh_token&refresh_token={}&client_id={}&scope=openid%20profile%20email",
-        urlencoding::encode(refresh_token),
-        urlencoding::encode(client_id)
-    );
+    let body = RefreshTokenRequest {
+        client_id,
+        grant_type: "refresh_token",
+        refresh_token,
+    };
     let build_request = || {
         let client = usage_http_client();
         client
             .post(format!("{issuer}/oauth/token"))
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(body.clone())
+            .header("Content-Type", "application/json")
+            .json(&body)
     };
     let resp = match build_request().send() {
         Ok(resp) => resp,

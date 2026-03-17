@@ -355,6 +355,40 @@ pub(super) fn start_mock_upstream_once_with_content_type(
     (addr.to_string(), rx, join)
 }
 
+pub(super) fn start_mock_upstream_once_with_status_content_type(
+    status: u16,
+    response_body: &str,
+    content_type: &str,
+) -> (
+    String,
+    Receiver<CapturedUpstreamRequest>,
+    thread::JoinHandle<()>,
+) {
+    let listener = bind_test_listener("mock upstream");
+    let addr = listener.local_addr().expect("mock upstream addr");
+    let response = response_body.as_bytes().to_vec();
+    let content_type = content_type.to_string();
+    let (tx, rx) = mpsc::channel();
+
+    let join = thread::spawn(move || {
+        let (mut stream, captured) = accept_http_request(&listener, Duration::from_secs(3))
+            .expect("accept upstream http request");
+        let _ = tx.send(captured);
+
+        let header = format!(
+            "HTTP/1.1 {status} OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            response.len()
+        );
+        stream
+            .write_all(header.as_bytes())
+            .expect("write upstream status");
+        stream.write_all(&response).expect("write upstream body");
+        let _ = stream.flush();
+    });
+
+    (addr.to_string(), rx, join)
+}
+
 pub(super) fn start_mock_upstream_sequence(
     responses: Vec<(u16, String)>,
 ) -> (

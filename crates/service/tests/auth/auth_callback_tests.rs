@@ -1,7 +1,8 @@
 use super::{
     build_callback_error_page, build_callback_success_page, ensure_login_server_with_addr,
-    resolve_redirect_uri, LOGIN_SERVER_STATE,
+    oauth_callback_error_message, resolve_redirect_uri, LOGIN_SERVER_STATE,
 };
+use crate::auth_login::login_start;
 use std::net::TcpListener;
 use std::sync::Mutex;
 use url::Url;
@@ -104,4 +105,31 @@ fn callback_error_page_escapes_message() {
     let html = build_callback_error_page("bad <script>alert(1)</script>");
     assert!(html.contains("Login Failed"));
     assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+}
+
+#[test]
+fn oauth_callback_error_message_maps_missing_entitlement() {
+    let message = oauth_callback_error_message(
+        "access_denied",
+        Some("missing_codex_entitlement for workspace"),
+    );
+    assert!(message.contains("Codex is not enabled"));
+}
+
+#[test]
+fn login_start_fails_when_login_server_cannot_bind() {
+    let _guard = ENV_LOCK.lock().expect("lock");
+    reset_login_server_state();
+    let prev_login = std::env::var("CODEXMANAGER_LOGIN_ADDR").ok();
+
+    std::env::set_var("CODEXMANAGER_LOGIN_ADDR", "0.0.0.0:1455");
+
+    let err = login_start("browser", false, None, None, None, None).expect_err("should fail");
+    assert!(err.contains("loopback"));
+
+    match prev_login {
+        Some(value) => std::env::set_var("CODEXMANAGER_LOGIN_ADDR", value),
+        None => std::env::remove_var("CODEXMANAGER_LOGIN_ADDR"),
+    }
+    reset_login_server_state();
 }

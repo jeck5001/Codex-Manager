@@ -1,5 +1,39 @@
-use super::usage_http_client;
+use super::{
+    build_usage_request_headers, summarize_usage_error_response, usage_http_client,
+    CHATGPT_ACCOUNT_ID_HEADER_NAME,
+};
+use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::StatusCode;
+use std::sync::{Mutex, MutexGuard};
+
+static USAGE_HEADER_RUNTIME_MUTEX: Mutex<()> = Mutex::new(());
+
+fn usage_header_runtime_guard() -> MutexGuard<'static, ()> {
+    USAGE_HEADER_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+struct UsageHeaderRuntimeRestore {
+    originator: String,
+    residency_requirement: Option<String>,
+}
+
+impl UsageHeaderRuntimeRestore {
+    fn capture() -> Self {
+        Self {
+            originator: crate::current_gateway_originator(),
+            residency_requirement: crate::current_gateway_residency_requirement(),
+        }
+    }
+}
+
+impl Drop for UsageHeaderRuntimeRestore {
+    fn drop(&mut self) {
+        let _ = crate::set_gateway_originator(&self.originator);
+        let _ = crate::set_gateway_residency_requirement(self.residency_requirement.as_deref());
+    }
+}
 
 #[test]
 fn usage_http_client_is_cloneable() {
@@ -27,4 +61,133 @@ fn refresh_token_status_error_includes_body_snippet() {
         ),
         "refresh token failed with status 400 Bad Request: { \"error\": \"invalid_grant\" }"
     );
+}
+
+#[test]
+fn refresh_token_status_error_maps_invalidated_401_to_official_message() {
+    assert_eq!(
+        super::format_refresh_token_status_error(
+            StatusCode::UNAUTHORIZED,
+            "{\"error\":\"refresh_token_invalidated\"}"
+        ),
+        "refresh token failed with status 401 Unauthorized: Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again."
+    );
+}
+
+#[test]
+fn refresh_token_status_error_maps_unknown_401_to_official_message() {
+    assert_eq!(
+        super::format_refresh_token_status_error(
+            StatusCode::UNAUTHORIZED,
+            "{\"error\":\"something_else\"}"
+        ),
+        "refresh token failed with status 401 Unauthorized: Your access token could not be refreshed. Please log out and sign in again."
+    );
+}
+
+#[test]
+fn classify_refresh_token_auth_error_reason_maps_known_and_unknown_401() {
+    assert_eq!(
+        super::classify_refresh_token_auth_error_reason(
+            StatusCode::UNAUTHORIZED,
+            "{\"error\":\"refresh_token_invalidated\"}"
+        ),
+        Some(super::RefreshTokenAuthErrorReason::Invalidated)
+    );
+    assert_eq!(
+        super::classify_refresh_token_auth_error_reason(
+            StatusCode::UNAUTHORIZED,
+            "{\"error\":\"something_else\"}"
+        ),
+        Some(super::RefreshTokenAuthErrorReason::Unknown401)
+    );
+    assert_eq!(
+        super::classify_refresh_token_auth_error_reason(
+            StatusCode::FORBIDDEN,
+            "{\"error\":\"refresh_token_invalidated\"}"
+        ),
+        None
+    );
+}
+
+#[test]
+fn refresh_token_auth_error_reason_from_message_tracks_canonical_messages() {
+    let invalidated = super::format_refresh_token_status_error(
+        StatusCode::UNAUTHORIZED,
+        "{\"error\":\"refresh_token_invalidated\"}",
+    );
+    assert_eq!(
+        super::refresh_token_auth_error_reason_from_message(&invalidated),
+        Some(super::RefreshTokenAuthErrorReason::Invalidated)
+    );
+
+    let unknown = super::format_refresh_token_status_error(
+        StatusCode::UNAUTHORIZED,
+        "{\"error\":\"something_else\"}",
+    );
+    assert_eq!(
+        super::refresh_token_auth_error_reason_from_message(&unknown),
+        Some(super::RefreshTokenAuthErrorReason::Unknown401)
+    );
+}
+
+#[test]
+fn usage_http_default_headers_follow_gateway_runtime_profile() {
+    let _guard = usage_header_runtime_guard();
+    let _restore = UsageHeaderRuntimeRestore::capture();
+    crate::set_gateway_originator("codex_cli_rs_usage").expect("set gateway originator");
+    crate::set_gateway_residency_requirement(Some("us"))
+        .expect("set gateway residency requirement");
+
+    let headers = super::build_usage_http_default_headers();
+
+    assert_eq!(
+        headers
+            .get("originator")
+            .and_then(|value| value.to_str().ok()),
+        Some("codex_cli_rs_usage")
+    );
+    assert_eq!(
+        headers
+            .get("x-openai-internal-codex-residency")
+            .and_then(|value| value.to_str().ok()),
+        Some("us")
+    );
+}
+
+#[test]
+fn usage_request_headers_use_official_chatgpt_account_header_name() {
+    let headers = build_usage_request_headers(Some("workspace_123"));
+
+    assert_eq!(
+        headers
+            .get(CHATGPT_ACCOUNT_ID_HEADER_NAME)
+            .and_then(|value| value.to_str().ok()),
+        Some("workspace_123")
+    );
+    assert!(headers.get("ChatGPT-Account-Id").is_none());
+}
+
+#[test]
+fn summarize_usage_error_response_stabilizes_html_and_debug_headers() {
+    let mut headers = HeaderMap::new();
+    headers.insert("x-request-id", HeaderValue::from_static("req_usage_123"));
+    headers.insert("cf-ray", HeaderValue::from_static("cf_usage_123"));
+    headers.insert(
+        "x-openai-authorization-error",
+        HeaderValue::from_static("missing_authorization_header"),
+    );
+
+    let summary = summarize_usage_error_response(
+        StatusCode::FORBIDDEN,
+        &headers,
+        "<html><head><title>Just a moment...</title></head><body>challenge</body></html>",
+        true,
+    );
+
+    assert!(summary.contains("usage endpoint failed: status=403 Forbidden"));
+    assert!(summary.contains("Cloudflare 安全验证页"));
+    assert!(summary.contains("request id: req_usage_123"));
+    assert!(summary.contains("cf-ray: cf_usage_123"));
+    assert!(summary.contains("auth error: missing_authorization_header"));
 }

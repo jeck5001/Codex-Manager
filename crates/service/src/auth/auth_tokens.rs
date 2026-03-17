@@ -1,9 +1,11 @@
 use codexmanager_core::auth::{
-    extract_chatgpt_account_id, extract_workspace_id, parse_id_token_claims, DEFAULT_CLIENT_ID,
-    DEFAULT_ISSUER,
+    extract_chatgpt_account_id, extract_workspace_id, parse_id_token_claims,
+    token_exchange_body_authorization_code, token_exchange_body_token_exchange, IdTokenClaims,
+    DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
 };
 use codexmanager_core::storage::{now_ts, Account, Token};
 use reqwest::blocking::Client;
+use reqwest::Error as ReqwestError;
 use serde::de::DeserializeOwned;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -65,50 +67,200 @@ fn read_text_with_timeout(
 }
 
 fn summarize_token_endpoint_error_body(body: &str) -> String {
-    let trimmed = body.trim();
-    if trimmed.is_empty() {
-        return String::new();
+    parse_token_endpoint_error(body).to_string()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TokenEndpointErrorDetail {
+    error_code: Option<String>,
+    error_message: Option<String>,
+    display_message: String,
+}
+
+impl std::fmt::Display for TokenEndpointErrorDetail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.display_message.fmt(f)
+    }
+}
+
+const REDACTED_URL_VALUE: &str = "<redacted>";
+const SENSITIVE_URL_QUERY_KEYS: &[&str] = &[
+    "access_token",
+    "api_key",
+    "client_secret",
+    "code",
+    "code_verifier",
+    "id_token",
+    "key",
+    "refresh_token",
+    "requested_token",
+    "state",
+    "subject_token",
+    "token",
+];
+
+fn extract_html_title(raw: &str) -> Option<String> {
+    let lower = raw.to_ascii_lowercase();
+    let start = lower.find("<title>")?;
+    let end = lower[start + 7..].find("</title>")? + start + 7;
+    let title = raw.get(start + 7..end)?.trim();
+    if title.is_empty() {
+        None
+    } else {
+        Some(title.to_string())
+    }
+}
+
+fn summarize_html_error_body(raw: &str) -> String {
+    let normalized = raw.to_ascii_lowercase();
+    let looks_like_challenge = normalized.contains("cloudflare")
+        || normalized.contains("just a moment")
+        || normalized.contains("attention required");
+    let looks_like_html = normalized.contains("<html")
+        || normalized.contains("<!doctype html")
+        || normalized.contains("</html>");
+    if !looks_like_html {
+        return raw.trim().to_string();
     }
 
-    let value = serde_json::from_str::<serde_json::Value>(trimmed).ok();
-    let candidates = [
-        value
-            .as_ref()
-            .and_then(|json| json.get("error_description"))
-            .and_then(|value| value.as_str())
-            .map(str::to_string),
-        value
-            .as_ref()
-            .and_then(|json| json.get("error"))
-            .and_then(|value| value.as_str())
-            .map(str::to_string),
-        value
-            .as_ref()
-            .and_then(|json| json.get("message"))
-            .and_then(|value| value.as_str())
-            .map(str::to_string),
-        value
-            .as_ref()
-            .and_then(|json| json.get("error"))
-            .and_then(|value| value.get("message"))
-            .and_then(|value| value.as_str())
-            .map(str::to_string),
-        Some(trimmed.to_string()),
-    ];
+    let title = extract_html_title(raw);
+    if looks_like_challenge {
+        return match title {
+            Some(title) => format!("Cloudflare 安全验证页（title={title}）"),
+            None => "Cloudflare 安全验证页".to_string(),
+        };
+    }
 
-    candidates
-        .into_iter()
-        .flatten()
-        .map(|value| value.trim().to_string())
-        .find(|value| !value.is_empty())
-        .map(|value| {
-            if value.len() > 200 {
-                format!("{}...", &value[..200])
-            } else {
-                value
-            }
+    match title {
+        Some(title) => format!("上游返回 HTML 错误页（title={title}）"),
+        None => "上游返回 HTML 错误页".to_string(),
+    }
+}
+
+fn redact_sensitive_query_value(key: &str, value: &str) -> String {
+    if SENSITIVE_URL_QUERY_KEYS
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(key))
+    {
+        REDACTED_URL_VALUE.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn redact_sensitive_url_parts(url: &mut url::Url) {
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_fragment(None);
+
+    let query_pairs = url
+        .query_pairs()
+        .map(|(key, value)| {
+            let key = key.into_owned();
+            let value = value.into_owned();
+            (key.clone(), redact_sensitive_query_value(&key, &value))
         })
-        .unwrap_or_default()
+        .collect::<Vec<_>>();
+
+    if query_pairs.is_empty() {
+        url.set_query(None);
+        return;
+    }
+
+    let redacted_query = query_pairs
+        .into_iter()
+        .fold(
+            url::form_urlencoded::Serializer::new(String::new()),
+            |mut serializer, (key, value)| {
+                serializer.append_pair(&key, &value);
+                serializer
+            },
+        )
+        .finish();
+    url.set_query(Some(&redacted_query));
+}
+
+fn redact_sensitive_error_url(mut err: ReqwestError) -> ReqwestError {
+    if let Some(url) = err.url_mut() {
+        redact_sensitive_url_parts(url);
+    }
+    err
+}
+
+pub(crate) fn parse_token_endpoint_error(body: &str) -> TokenEndpointErrorDetail {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return TokenEndpointErrorDetail {
+            error_code: None,
+            error_message: None,
+            display_message: "unknown error".to_string(),
+        };
+    }
+
+    let parsed = serde_json::from_str::<serde_json::Value>(trimmed).ok();
+    if let Some(json) = parsed {
+        let error_code = json
+            .get("error")
+            .and_then(serde_json::Value::as_str)
+            .filter(|error_code| !error_code.trim().is_empty())
+            .map(ToString::to_string)
+            .or_else(|| {
+                json.get("error")
+                    .and_then(serde_json::Value::as_object)
+                    .and_then(|error_obj| error_obj.get("code"))
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|code| !code.trim().is_empty())
+                    .map(ToString::to_string)
+            });
+        if let Some(description) = json
+            .get("error_description")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+        {
+            return TokenEndpointErrorDetail {
+                error_code,
+                error_message: Some(description.to_string()),
+                display_message: description.to_string(),
+            };
+        }
+        if let Some(message) = json
+            .get("error")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|error_obj| error_obj.get("message"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+        {
+            return TokenEndpointErrorDetail {
+                error_code,
+                error_message: Some(message.to_string()),
+                display_message: message.to_string(),
+            };
+        }
+        if let Some(message) = json
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+        {
+            return TokenEndpointErrorDetail {
+                error_code,
+                error_message: Some(message.to_string()),
+                display_message: message.to_string(),
+            };
+        }
+        if let Some(error_code) = error_code {
+            return TokenEndpointErrorDetail {
+                display_message: error_code.clone(),
+                error_code: Some(error_code),
+                error_message: None,
+            };
+        }
+    }
+
+    TokenEndpointErrorDetail {
+        error_code: None,
+        error_message: None,
+        display_message: summarize_html_error_body(trimmed),
+    }
 }
 
 pub(crate) fn next_account_sort(storage: &codexmanager_core::storage::Storage) -> i64 {
@@ -175,6 +327,15 @@ pub(crate) fn complete_login_with_redirect(
         let _ = storage.update_login_session_status(state, "failed", Some(&e));
         e
     })?;
+    if let Err(e) = ensure_workspace_allowed(
+        session.workspace_id.as_deref(),
+        &claims,
+        &tokens.id_token,
+        &tokens.access_token,
+    ) {
+        let _ = storage.update_login_session_status(state, "failed", Some(&e));
+        return Err(e);
+    }
 
     // 生成账户记录
     let subject_account_id = claims.sub.clone();
@@ -280,25 +441,24 @@ fn exchange_code_for_tokens(
     let resp = client
         .post(format!("{issuer}/oauth/token"))
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(format!(
-            "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&code_verifier={}",
-            urlencoding::encode(code),
-            urlencoding::encode(redirect_uri),
-            urlencoding::encode(client_id),
-            urlencoding::encode(code_verifier)
+        .body(token_exchange_body_authorization_code(
+            code,
+            redirect_uri,
+            client_id,
+            code_verifier,
         ))
         .send()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| redact_sensitive_error_url(e).to_string())?;
     if !resp.status().is_success() {
         let status = resp.status();
         let detail = read_text_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT)
-            .map(|body| summarize_token_endpoint_error_body(&body))
-            .unwrap_or_default();
-        return Err(if detail.is_empty() {
-            format!("token endpoint returned status {status}")
-        } else {
-            format!("token endpoint returned status {status}: {detail}")
-        });
+            .map(|body| parse_token_endpoint_error(&body))
+            .unwrap_or(TokenEndpointErrorDetail {
+                error_code: None,
+                error_message: None,
+                display_message: "unknown error".to_string(),
+            });
+        return Err(format!("token endpoint returned status {status}: {detail}"));
     }
     read_json_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT)
 }
@@ -318,26 +478,54 @@ pub(crate) fn obtain_api_key(
     let resp = client
         .post(format!("{issuer}/oauth/token"))
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(format!(
-            "grant_type={}&client_id={}&requested_token={}&subject_token={}&subject_token_type={}",
-            urlencoding::encode("urn:ietf:params:oauth:grant-type:token-exchange"),
-            urlencoding::encode(client_id),
-            urlencoding::encode("openai-api-key"),
-            urlencoding::encode(id_token),
-            urlencoding::encode("urn:ietf:params:oauth:token-type:id_token")
-        ))
+        .body(token_exchange_body_token_exchange(id_token, client_id))
         .send()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| redact_sensitive_error_url(e).to_string())?;
     if !resp.status().is_success() {
         let status = resp.status();
-        let body = read_text_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT).unwrap_or_default();
+        let body = read_text_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT)
+            .map(|body| summarize_token_endpoint_error_body(&body))
+            .unwrap_or_else(|_| "unknown error".to_string());
         return Err(format!(
-            "api key exchange failed with status {} body {}",
+            "api key exchange failed with status {}: {}",
             status, body
         ));
     }
     let body: ExchangeResp = read_json_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT)?;
     Ok(body.access_token)
+}
+
+fn ensure_workspace_allowed(
+    expected: Option<&str>,
+    claims: &IdTokenClaims,
+    id_token: &str,
+    access_token: &str,
+) -> Result<(), String> {
+    let Some(expected) = expected.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+
+    let actual = clean_value(
+        claims
+            .auth
+            .as_ref()
+            .and_then(|auth| auth.chatgpt_account_id.clone())
+            .or_else(|| extract_chatgpt_account_id(id_token))
+            .or_else(|| extract_chatgpt_account_id(access_token))
+            .or_else(|| claims.workspace_id.clone())
+            .or_else(|| extract_workspace_id(id_token))
+            .or_else(|| extract_workspace_id(access_token)),
+    );
+
+    let Some(actual) = actual else {
+        return Err("Login is restricted to a specific workspace, but the token did not include a workspace claim.".to_string());
+    };
+
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!("Login is restricted to workspace id {expected}."))
+    }
 }
 
 #[cfg(test)]

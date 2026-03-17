@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io;
 use tiny_http::Header;
 use tiny_http::Request;
@@ -6,6 +7,7 @@ use tiny_http::Server;
 use url::Url;
 
 use crate::auth_tokens::complete_login;
+use crate::storage_helpers::open_storage;
 
 pub(crate) fn resolve_redirect_uri() -> Option<String> {
     // 优先使用显式配置的回调地址
@@ -30,22 +32,10 @@ pub(crate) fn handle_login_request(request: Request) -> Result<(), String> {
         return Ok(());
     }
 
-    let code = url
-        .query_pairs()
-        .find(|(k, _)| k == "code")
-        .map(|(_, v)| v.into_owned());
-    let state = url
-        .query_pairs()
-        .find(|(k, _)| k == "state")
-        .map(|(_, v)| v.into_owned());
-
-    let (Some(code), Some(state)) = (code, state) else {
-        let _ = request.respond(Response::from_string("Missing code/state").with_status_code(400));
-        return Ok(());
-    };
+    let params: HashMap<String, String> = url.query_pairs().into_owned().collect();
 
     // 完成登录流程并响应浏览器
-    let result = handle_login_callback_params(&code, &state);
+    let result = handle_login_callback_query(&params);
     match result {
         Ok(_) => {
             let _ = request.respond(html_response(build_callback_success_page()));
@@ -58,8 +48,102 @@ pub(crate) fn handle_login_request(request: Request) -> Result<(), String> {
     Ok(())
 }
 
+fn handle_login_callback_query(params: &HashMap<String, String>) -> Result<(), String> {
+    let state = params
+        .get("state")
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    if let Some(error_code) = params
+        .get("error")
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let error_description = params
+            .get("error_description")
+            .map(String::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let message = oauth_callback_error_message(error_code, error_description);
+        update_login_session_failed(state, &message);
+        return Err(message);
+    }
+
+    let state =
+        state.ok_or_else(|| "Missing login state. Sign-in could not be completed.".to_string())?;
+    ensure_login_session_exists(state)?;
+    let code = params
+        .get("code")
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            let message = "Missing authorization code. Sign-in could not be completed.".to_string();
+            update_login_session_failed(Some(state), &message);
+            message
+        })?;
+    handle_login_callback_params(code, state)
+}
+
 pub(crate) fn handle_login_callback_params(code: &str, state: &str) -> Result<(), String> {
-    complete_login(state, code)
+    complete_login(state, code).map_err(|err| {
+        if err == "unknown login session" {
+            "State mismatch or expired login session.".to_string()
+        } else {
+            err
+        }
+    })
+}
+
+fn ensure_login_session_exists(state: &str) -> Result<(), String> {
+    let Some(storage) = open_storage() else {
+        return Err("storage unavailable".to_string());
+    };
+    match storage
+        .get_login_session(state)
+        .map_err(|e| e.to_string())?
+    {
+        Some(_) => Ok(()),
+        None => Err("State mismatch or expired login session.".to_string()),
+    }
+}
+
+fn update_login_session_failed(state: Option<&str>, error: &str) {
+    let Some(state) = state else {
+        return;
+    };
+    let Some(storage) = open_storage() else {
+        return;
+    };
+    let exists = storage.get_login_session(state).ok().flatten().is_some();
+    if exists {
+        let _ = storage.update_login_session_status(state, "failed", Some(error));
+    }
+}
+
+fn is_missing_codex_entitlement_error(error_code: &str, error_description: Option<&str>) -> bool {
+    error_code == "access_denied"
+        && error_description.is_some_and(|description| {
+            description
+                .to_ascii_lowercase()
+                .contains("missing_codex_entitlement")
+        })
+}
+
+fn oauth_callback_error_message(error_code: &str, error_description: Option<&str>) -> String {
+    if is_missing_codex_entitlement_error(error_code, error_description) {
+        return "Codex is not enabled for your workspace. Contact your workspace administrator to request access to Codex.".to_string();
+    }
+
+    if let Some(description) = error_description {
+        if !description.trim().is_empty() {
+            return format!("Sign-in failed: {description}");
+        }
+    }
+
+    format!("Sign-in failed: {error_code}")
 }
 
 #[derive(Clone, Debug)]

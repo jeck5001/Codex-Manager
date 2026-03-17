@@ -50,17 +50,6 @@ pub(crate) fn derive_sticky_session_id_from_headers_with_remote(
     )
 }
 
-pub(crate) fn derive_sticky_conversation_id_from_headers_with_remote(
-    incoming_headers: &IncomingHeaderSnapshot,
-    remote: Option<SocketAddr>,
-) -> Option<String> {
-    derive_sticky_id_from_material_with_remote(
-        incoming_headers.sticky_key_material(),
-        remote,
-        "conversation",
-    )
-}
-
 fn stable_session_id_from_material(value: &str) -> String {
     let digest = Sha256::digest(value.as_bytes());
     let mut bytes = [0u8; 16];

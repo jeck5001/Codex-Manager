@@ -71,12 +71,13 @@ pub(super) fn build_local_validation_result(
     // 否则上游兼容改写（例如 /responses 强制 stream=true）会污染下游响应模式判断。
     let client_request_meta = super::super::parse_request_metadata(&body);
     let (effective_model, effective_reasoning) = resolve_effective_request_overrides(&api_key);
-    body = super::super::apply_request_overrides(
+    body = super::super::apply_request_overrides_with_prompt_cache_key(
         &path,
         body,
         effective_model.as_deref(),
         effective_reasoning.as_deref(),
         api_key.upstream_base_url.as_deref(),
+        incoming_headers.conversation_id(),
     );
 
     let request_method = request.method().as_str().to_string();

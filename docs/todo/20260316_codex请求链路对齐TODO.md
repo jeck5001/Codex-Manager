@@ -1,6 +1,6 @@
 # Codex 请求链路对齐 TODO
 
-更新时间：2026-03-16
+更新时间：2026-03-17
 
 ## 结论
 
@@ -29,6 +29,7 @@
 - `x-client-request-id`
 - `x-openai-subagent`
 - `x-codex-turn-state`
+- `conversation_id -> prompt_cache_key` 的线程锚点补齐
 - 动态 `Originator / User-Agent / Residency`
 - `/responses` 流式请求体 `zstd` 压缩
 - free / 单 7 天窗口账号的模型改写与候选策略
@@ -55,10 +56,21 @@
 
 待做：
 
+- [x] 登录启动不再失败放行；本地 callback server 起不来时直接失败
+- [x] callback 增加 `error / error_description / state` 错误建模
+- [x] callback 成功后增加 workspace 二次校验
+- [x] 浏览器授权 `scope` 对齐官方 connectors scope
+- [x] refresh token 请求体改成官方 `application/json` 形状
+- [x] usage endpoint 请求头统一到 `ChatGPT-Account-ID` 语义，并对 challenge / HTML 失败输出稳定摘要
+- [x] `planType` 读取优先按最新 access token claims
+- [x] 401 refresh 错误文案映射到官方 expired / reused / revoked / unknown 消息
+- [x] refresh `401` 内部原因收口到稳定枚举，避免后续只靠散乱字符串匹配
+- [x] token endpoint 错误解析贴近官方优先级，并对 transport error 做敏感 URL 脱敏
+- [x] token endpoint 遇到 challenge / HTML 页面时输出稳定摘要，不再原样透传整页 HTML
 - [ ] 对齐登录回调请求头、`Originator`、`User-Agent` 使用点
 - [ ] 对齐 token endpoint 错误解析，补齐更完整的失效/挑战区分
-- [ ] 复核 refresh token 失败后的账号状态迁移，继续避免误摘号
-- [ ] 对齐 plan type 读取与 free/go 限制识别路径
+- [x] 复核 refresh token 失败后的账号状态迁移，继续避免误摘号
+- [x] 收紧 refresh 失效判定：仅 401 视为 refresh 认证失败，403/挑战页/代理异常不再摘号
 
 验收：
 
@@ -73,8 +85,12 @@
 
 待做：
 
-- [ ] 继续核对请求体字段白名单和默认值
-- [ ] 对齐流式与非流式的 header profile 分支
+- [x] 收掉 `tool_choice=auto`、`reasoning.encrypted_content` 这类官方默认值差异
+- [x] 模型列表 `/models` 请求头收回到与官方默认客户端一致的 `originator / User-Agent / ChatGPT-Account-ID / residency` 语义，并移除历史 `Version` 头
+- [x] 模型列表 `/models` 失败诊断收口到稳定 challenge / HTML / auth 调试摘要，并保持 OpenAI fallback 触发条件兼容
+- [ ] 继续核对请求体字段白名单和默认值的剩余边角
+- [x] 对齐流式与非流式的 header profile 分支
+- [x] 收掉 HTTP `/responses` 上不该显式发送的 `Conversation_id / OpenAI-Beta / Connection / Version`
 - [ ] 继续核对 cookie、turn state、conversation 相关头在不同链路上的带法
 - [ ] 复核失败重试、failover、日志落盘时机，避免多账号切换误导
 
@@ -92,7 +108,9 @@
 待做：
 
 - [ ] 继续核对 compact 专用头部和 cookie 行为
-- [ ] 核对 compact 失败时的 fallback 与日志诊断
+- [x] compact 上游 `2xx` 假成功体改判为 `502`，避免 HTML/challenge/异常 JSON 透传成功
+- [x] compact 上游 `403/5xx` 的 HTML/challenge 页改成结构化 JSON 错误返回，不再透传整页 HTML
+- [ ] 继续细化 compact 失败时的 fallback 与日志诊断
 - [ ] 如果官方 `compact_remote` 的历史替换行为会影响真实请求链路，再按需补对应状态传递；否则不补 `thread/compact/start`
 
 验收：

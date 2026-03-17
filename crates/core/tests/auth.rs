@@ -23,7 +23,9 @@ fn build_authorize_url_matches_codex() {
     assert!(url.contains("response_type=code"));
     assert!(url.contains("client_id=app_123"));
     assert!(url.contains("redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback"));
-    assert!(url.contains("scope=openid%20profile%20email%20offline_access"));
+    assert!(url.contains(
+        "scope=openid%20profile%20email%20offline_access%20api.connectors.read%20api.connectors.invoke"
+    ));
     assert!(url.contains("code_challenge=challenge"));
     assert!(url.contains("code_challenge_method=S256"));
     assert!(url.contains("id_token_add_organizations=true"));

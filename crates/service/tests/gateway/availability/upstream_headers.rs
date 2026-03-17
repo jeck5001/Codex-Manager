@@ -44,7 +44,6 @@ fn codex_header_profile_sets_required_headers_for_stream() {
         auth_token: "token-123",
         account_id: Some("acc-1"),
         include_account_id: true,
-        include_openai_beta: true,
         upstream_cookie: Some("cf_clearance=test"),
         incoming_session_id: None,
         incoming_client_request_id: Some("client-req-1"),
@@ -52,9 +51,6 @@ fn codex_header_profile_sets_required_headers_for_stream() {
         fallback_session_id: None,
         incoming_turn_state: Some("turn-state"),
         include_turn_state: true,
-        incoming_conversation_id: Some("conversation"),
-        fallback_conversation_id: None,
-        include_conversation_id: true,
         strip_session_affinity: false,
         is_stream: true,
         has_body: true,
@@ -72,11 +68,9 @@ fn codex_header_profile_sets_required_headers_for_stream() {
         find_header(&headers, "Accept").as_deref(),
         Some("text/event-stream")
     );
-    assert_eq!(find_header(&headers, "Version").as_deref(), Some("0.101.0"));
-    assert_eq!(
-        find_header(&headers, "Openai-Beta").as_deref(),
-        Some("responses=experimental")
-    );
+    assert!(find_header(&headers, "Connection").is_none());
+    assert!(find_header(&headers, "Version").is_none());
+    assert!(find_header(&headers, "Openai-Beta").is_none());
     assert_eq!(
         find_header(&headers, "Originator").as_deref(),
         Some("codex_cli_rs")
@@ -90,7 +84,7 @@ fn codex_header_profile_sets_required_headers_for_stream() {
         Some("review")
     );
     assert_eq!(
-        find_header(&headers, "Chatgpt-Account-Id").as_deref(),
+        find_header(&headers, "ChatGPT-Account-ID").as_deref(),
         Some("acc-1")
     );
     assert_eq!(
@@ -101,11 +95,8 @@ fn codex_header_profile_sets_required_headers_for_stream() {
         find_header(&headers, "x-codex-turn-state").as_deref(),
         Some("turn-state")
     );
-    assert_eq!(
-        find_header(&headers, "Conversation_id").as_deref(),
-        Some("conversation")
-    );
-    assert!(find_header(&headers, "Session_id").is_some());
+    assert!(find_header(&headers, "Conversation_id").is_none());
+    assert!(find_header(&headers, "session_id").is_some());
 }
 
 #[test]
@@ -114,7 +105,6 @@ fn codex_header_profile_uses_json_accept_for_non_stream() {
         auth_token: "token-456",
         account_id: None,
         include_account_id: true,
-        include_openai_beta: true,
         upstream_cookie: None,
         incoming_session_id: None,
         incoming_client_request_id: None,
@@ -122,9 +112,6 @@ fn codex_header_profile_uses_json_accept_for_non_stream() {
         fallback_session_id: None,
         incoming_turn_state: None,
         include_turn_state: true,
-        incoming_conversation_id: None,
-        fallback_conversation_id: None,
-        include_conversation_id: true,
         strip_session_affinity: false,
         is_stream: false,
         has_body: false,
@@ -135,6 +122,8 @@ fn codex_header_profile_uses_json_accept_for_non_stream() {
         Some("application/json")
     );
     assert!(find_header(&headers, "Content-Type").is_none());
+    assert!(find_header(&headers, "Openai-Beta").is_none());
+    assert!(find_header(&headers, "Version").is_none());
 }
 
 #[test]
@@ -163,13 +152,13 @@ fn codex_compact_header_profile_matches_remote_compact_shape() {
         find_header(&headers, "Accept").as_deref(),
         Some("application/json")
     );
-    assert_eq!(find_header(&headers, "Version").as_deref(), Some("0.101.0"));
+    assert!(find_header(&headers, "Version").is_none());
     assert_eq!(
-        find_header(&headers, "Session_id").as_deref(),
+        find_header(&headers, "session_id").as_deref(),
         Some("session-compact")
     );
     assert_eq!(
-        find_header(&headers, "Chatgpt-Account-Id").as_deref(),
+        find_header(&headers, "ChatGPT-Account-ID").as_deref(),
         Some("acc-compact")
     );
     assert_eq!(
@@ -202,7 +191,6 @@ fn codex_header_profile_uses_dynamic_originator_and_residency_requirement() {
         auth_token: "token-dynamic",
         account_id: None,
         include_account_id: true,
-        include_openai_beta: true,
         upstream_cookie: None,
         incoming_session_id: None,
         incoming_client_request_id: None,
@@ -210,9 +198,6 @@ fn codex_header_profile_uses_dynamic_originator_and_residency_requirement() {
         fallback_session_id: None,
         incoming_turn_state: None,
         include_turn_state: true,
-        incoming_conversation_id: None,
-        fallback_conversation_id: None,
-        include_conversation_id: true,
         strip_session_affinity: false,
         is_stream: true,
         has_body: true,
@@ -237,7 +222,6 @@ fn codex_header_profile_regenerates_session_on_failover() {
         auth_token: "token-789",
         account_id: None,
         include_account_id: true,
-        include_openai_beta: true,
         upstream_cookie: None,
         incoming_session_id: Some("sticky-session"),
         incoming_client_request_id: None,
@@ -245,16 +229,13 @@ fn codex_header_profile_regenerates_session_on_failover() {
         fallback_session_id: Some("fallback-session"),
         incoming_turn_state: Some("sticky-turn"),
         include_turn_state: true,
-        incoming_conversation_id: Some("sticky-conversation"),
-        fallback_conversation_id: Some("fallback-conversation"),
-        include_conversation_id: true,
         strip_session_affinity: true,
         is_stream: true,
         has_body: true,
     });
 
     assert_ne!(
-        find_header(&headers, "Session_id").as_deref(),
+        find_header(&headers, "session_id").as_deref(),
         Some("sticky-session")
     );
     assert!(find_header(&headers, "x-codex-turn-state").is_none());
@@ -267,7 +248,6 @@ fn codex_header_profile_uses_fallback_session_when_incoming_missing() {
         auth_token: "token-fallback",
         account_id: None,
         include_account_id: true,
-        include_openai_beta: true,
         upstream_cookie: None,
         incoming_session_id: None,
         incoming_client_request_id: None,
@@ -275,27 +255,23 @@ fn codex_header_profile_uses_fallback_session_when_incoming_missing() {
         fallback_session_id: Some("fallback-session"),
         incoming_turn_state: None,
         include_turn_state: true,
-        incoming_conversation_id: None,
-        fallback_conversation_id: None,
-        include_conversation_id: true,
         strip_session_affinity: false,
         is_stream: true,
         has_body: true,
     });
 
     assert_eq!(
-        find_header(&headers, "Session_id").as_deref(),
+        find_header(&headers, "session_id").as_deref(),
         Some("fallback-session")
     );
 }
 
 #[test]
-fn codex_header_profile_uses_fallback_conversation_when_incoming_missing() {
+fn codex_header_profile_does_not_forward_conversation_header_even_with_fallback() {
     let headers = build_codex_upstream_headers(CodexUpstreamHeaderInput {
         auth_token: "token-fallback-conv",
         account_id: None,
         include_account_id: true,
-        include_openai_beta: true,
         upstream_cookie: None,
         incoming_session_id: None,
         incoming_client_request_id: None,
@@ -303,18 +279,12 @@ fn codex_header_profile_uses_fallback_conversation_when_incoming_missing() {
         fallback_session_id: Some("fallback-session"),
         incoming_turn_state: None,
         include_turn_state: true,
-        incoming_conversation_id: None,
-        fallback_conversation_id: Some("fallback-conversation"),
-        include_conversation_id: true,
         strip_session_affinity: false,
         is_stream: true,
         has_body: true,
     });
 
-    assert_eq!(
-        find_header(&headers, "Conversation_id").as_deref(),
-        Some("fallback-conversation")
-    );
+    assert!(find_header(&headers, "Conversation_id").is_none());
 }
 
 #[test]
@@ -323,7 +293,6 @@ fn codex_header_profile_skips_account_header_when_disabled() {
         auth_token: "token-no-acc",
         account_id: Some("acc-should-not-send"),
         include_account_id: false,
-        include_openai_beta: true,
         upstream_cookie: None,
         incoming_session_id: None,
         incoming_client_request_id: None,
@@ -331,24 +300,20 @@ fn codex_header_profile_skips_account_header_when_disabled() {
         fallback_session_id: None,
         incoming_turn_state: None,
         include_turn_state: true,
-        incoming_conversation_id: None,
-        fallback_conversation_id: None,
-        include_conversation_id: true,
         strip_session_affinity: false,
         is_stream: true,
         has_body: true,
     });
 
-    assert!(find_header(&headers, "Chatgpt-Account-Id").is_none());
+    assert!(find_header(&headers, "ChatGPT-Account-ID").is_none());
 }
 
 #[test]
-fn codex_header_profile_can_disable_beta_and_affinity_headers() {
+fn codex_header_profile_can_disable_affinity_headers() {
     let headers = build_codex_upstream_headers(CodexUpstreamHeaderInput {
         auth_token: "token-cpa-mode",
         account_id: None,
         include_account_id: true,
-        include_openai_beta: false,
         upstream_cookie: None,
         incoming_session_id: Some("sticky-session"),
         incoming_client_request_id: None,
@@ -356,9 +321,6 @@ fn codex_header_profile_can_disable_beta_and_affinity_headers() {
         fallback_session_id: None,
         incoming_turn_state: Some("sticky-turn"),
         include_turn_state: false,
-        incoming_conversation_id: Some("sticky-conversation"),
-        fallback_conversation_id: None,
-        include_conversation_id: false,
         strip_session_affinity: false,
         is_stream: true,
         has_body: true,
@@ -368,7 +330,7 @@ fn codex_header_profile_can_disable_beta_and_affinity_headers() {
     assert!(find_header(&headers, "x-codex-turn-state").is_none());
     assert!(find_header(&headers, "Conversation_id").is_none());
     assert_eq!(
-        find_header(&headers, "Session_id").as_deref(),
+        find_header(&headers, "session_id").as_deref(),
         Some("sticky-session")
     );
 }

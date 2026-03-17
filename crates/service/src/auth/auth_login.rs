@@ -22,11 +22,8 @@ pub(crate) fn login_start(
     let client_id =
         std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
     let originator = crate::gateway::current_originator();
-    let mut warning = None;
     if login_type != "device" {
-        if let Err(err) = ensure_login_server() {
-            warning = Some(err);
-        }
+        ensure_login_server()?;
     }
     let redirect_uri = if login_type == "device" {
         std::env::var("CODEXMANAGER_REDIRECT_URI")
@@ -47,6 +44,7 @@ pub(crate) fn login_start(
             state: state.clone(),
             status: "pending".to_string(),
             error: None,
+            workspace_id: workspace_id.clone(),
             note,
             tags,
             group_name,
@@ -107,7 +105,7 @@ pub(crate) fn login_start(
         issuer,
         client_id,
         redirect_uri,
-        warning,
+        warning: None,
         device,
     })
 }

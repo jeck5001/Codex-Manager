@@ -617,6 +617,260 @@ fn gateway_openai_compact_route_aligns_with_codex_remote_compact_request() {
 }
 
 #[test]
+fn gateway_openai_compact_invalid_success_body_is_mapped_to_502() {
+    let _lock = lock_env();
+    let dir = new_test_dir("codexmanager-gateway-openai-compact-invalid-success");
+    let db_path: PathBuf = dir.join("codexmanager.db");
+
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+
+    let upstream_body =
+        "<!doctype html><html><title>Just a moment...</title><body>challenge</body></html>";
+    let (upstream_addr, upstream_rx, upstream_join) =
+        start_mock_upstream_once_with_content_type(upstream_body, "text/html; charset=utf-8");
+    let upstream_base = format!("http://{upstream_addr}/backend-api/codex");
+    let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
+
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init db");
+    let now = now_ts();
+
+    storage
+        .insert_account(&Account {
+            id: "acc_openai_compact_bad".to_string(),
+            label: "openai-compact-bad".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_openai_compact_bad".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_openai_compact_bad".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_openai_compact_bad".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: Some("api_access_token_openai_compact_bad".to_string()),
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let platform_key = "pk_openai_compact_bad";
+    storage
+        .insert_api_key(&ApiKey {
+            id: "gk_openai_compact_bad".to_string(),
+            name: Some("openai-compact-bad".to_string()),
+            model_slug: Some("gpt-5.3-codex".to_string()),
+            reasoning_effort: Some("high".to_string()),
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: hash_platform_key_for_test(platform_key),
+            status: "active".to_string(),
+            created_at: now,
+            last_used_at: None,
+        })
+        .expect("insert api key");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let request_body = serde_json::json!({
+        "model": "gpt-5.3-codex",
+        "input": "compact me",
+        "stream": false
+    });
+    let request_body = serde_json::to_string(&request_body).expect("serialize request");
+    let (status, gateway_body) = post_http_raw(
+        &server.addr,
+        "/v1/responses/compact",
+        &request_body,
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", &format!("Bearer {platform_key}")),
+            ("session_id", "sess_compact_invalid"),
+        ],
+    );
+    server.join();
+    assert_eq!(status, 502, "gateway response: {gateway_body}");
+    assert!(
+        gateway_body.contains("上游 compact 响应格式异常"),
+        "unexpected gateway body: {gateway_body}"
+    );
+    assert!(
+        gateway_body.contains("Just a moment")
+            || gateway_body.contains("Cloudflare")
+            || gateway_body.contains("HTML 错误页"),
+        "unexpected gateway body: {gateway_body}"
+    );
+
+    let captured = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive upstream request");
+    upstream_join.join().expect("join upstream");
+    assert_eq!(captured.path, "/backend-api/codex/responses/compact");
+
+    let mut matched = None;
+    for _ in 0..40 {
+        let logs = storage
+            .list_request_logs(Some("key:=gk_openai_compact_bad"), 20)
+            .expect("list request logs");
+        matched = logs
+            .into_iter()
+            .find(|item| item.request_path == "/v1/responses/compact");
+        if matched.is_some() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    let log = matched.expect("compact invalid success request log");
+    assert_eq!(log.status_code, Some(502), "log error: {:?}", log.error);
+    assert!(
+        log.error
+            .as_deref()
+            .is_some_and(|err| err.contains("上游 compact 响应格式异常")),
+        "unexpected log error: {:?}",
+        log.error
+    );
+}
+
+#[test]
+fn gateway_openai_compact_html_non_success_is_mapped_to_structured_403() {
+    let _lock = lock_env();
+    let dir = new_test_dir("codexmanager-gateway-openai-compact-html-non-success");
+    let db_path: PathBuf = dir.join("codexmanager.db");
+
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+
+    let upstream_body =
+        "<!doctype html><html><title>Just a moment...</title><body>challenge</body></html>";
+    let (upstream_addr, upstream_rx, upstream_join) =
+        start_mock_upstream_once_with_status_content_type(
+            403,
+            upstream_body,
+            "text/html; charset=utf-8",
+        );
+    let upstream_base = format!("http://{upstream_addr}/backend-api/codex");
+    let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
+
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init db");
+    let now = now_ts();
+
+    storage
+        .insert_account(&Account {
+            id: "acc_openai_compact_html".to_string(),
+            label: "openai-compact-html".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_openai_compact_html".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_openai_compact_html".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_openai_compact_html".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: Some("api_access_token_openai_compact_html".to_string()),
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let platform_key = "pk_openai_compact_html";
+    storage
+        .insert_api_key(&ApiKey {
+            id: "gk_openai_compact_html".to_string(),
+            name: Some("openai-compact-html".to_string()),
+            model_slug: Some("gpt-5.3-codex".to_string()),
+            reasoning_effort: Some("high".to_string()),
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: hash_platform_key_for_test(platform_key),
+            status: "active".to_string(),
+            created_at: now,
+            last_used_at: None,
+        })
+        .expect("insert api key");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let request_body = serde_json::json!({
+        "model": "gpt-5.3-codex",
+        "input": "compact me",
+        "stream": false
+    });
+    let request_body = serde_json::to_string(&request_body).expect("serialize request");
+    let gateway_url = format!("http://{}/v1/responses/compact", server.addr);
+    let response = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("build client")
+        .post(&gateway_url)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {platform_key}"))
+        .header("session_id", "sess_compact_html_non_success")
+        .body(request_body)
+        .send()
+        .expect("send compact request");
+    let status = response.status().as_u16();
+    let gateway_body = response.text().expect("read gateway body");
+    server.join();
+    assert_eq!(status, 403, "gateway response: {gateway_body}");
+    assert!(
+        gateway_body.contains("上游 compact 请求失败"),
+        "unexpected gateway body: {gateway_body}"
+    );
+    assert!(
+        gateway_body.contains("Cloudflare") || gateway_body.contains("Just a moment"),
+        "unexpected gateway body: {gateway_body}"
+    );
+
+    let captured = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive upstream request");
+    upstream_join.join().expect("join upstream");
+    assert_eq!(captured.path, "/backend-api/codex/responses/compact");
+
+    let mut matched = None;
+    for _ in 0..40 {
+        let logs = storage
+            .list_request_logs(Some("key:=gk_openai_compact_html"), 20)
+            .expect("list request logs");
+        matched = logs
+            .into_iter()
+            .find(|item| item.request_path == "/v1/responses/compact");
+        if matched.is_some() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    let log = matched.expect("compact html non-success request log");
+    assert_eq!(log.status_code, Some(403), "log error: {:?}", log.error);
+    assert!(
+        log.error
+            .as_deref()
+            .is_some_and(|err| err.contains("上游 compact 请求失败")),
+        "unexpected log error: {:?}",
+        log.error
+    );
+}
+
+#[test]
 fn gateway_models_returns_cached_without_upstream() {
     let _lock = lock_env();
     let dir = new_test_dir("codexmanager-gateway-models-cache");
@@ -877,8 +1131,8 @@ fn gateway_chatgpt_primary_preserves_turn_state_headers_without_openai_fallback(
         "primary request should forward turn_state for same-account flow"
     );
     assert!(
-        first.headers.contains_key("conversation_id"),
-        "primary request should preserve conversation_id without fallback rewriting"
+        !first.headers.contains_key("conversation_id"),
+        "primary request should not forward conversation_id on codex HTTP responses"
     );
     assert_eq!(
         first.headers.get("x-client-request-id").map(String::as_str),

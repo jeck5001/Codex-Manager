@@ -61,6 +61,9 @@ fn classify_usage_refresh_error(message: &str) -> String {
     if let Some(status_code) = extract_usage_status_code(&normalized) {
         return format!("usage_status_{status_code}");
     }
+    if let Some(reason) = crate::usage_http::refresh_token_auth_error_reason_from_message(message) {
+        return format!("token_refresh_{}", reason.as_code());
+    }
     if normalized.contains("timeout") {
         return "timeout".to_string();
     }

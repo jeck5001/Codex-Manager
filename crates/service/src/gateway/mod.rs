@@ -64,7 +64,7 @@ pub(super) use request_helpers::{
 };
 #[cfg(test)]
 use request_helpers::{should_drop_incoming_header, should_drop_incoming_header_for_failover};
-use request_rewrite::{apply_request_overrides, compute_upstream_url};
+use request_rewrite::{apply_request_overrides_with_prompt_cache_key, compute_upstream_url};
 #[cfg(test)]
 use upstream::config::normalize_upstream_base_url;
 use upstream::config::{
@@ -103,6 +103,7 @@ use cooldown::{
 pub(super) use failover::should_failover_after_refresh;
 use failover::should_failover_from_cached_snapshot;
 use http_bridge::respond_with_upstream;
+pub(crate) use http_bridge::summarize_upstream_error_hint_from_body;
 pub(super) use incoming_headers::IncomingHeaderSnapshot;
 use local_count_tokens::maybe_respond_local_count_tokens;
 use local_models::maybe_respond_local_models;

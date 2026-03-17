@@ -207,6 +207,11 @@ impl Storage {
         Ok(())
     }
 
+    pub(super) fn ensure_login_session_workspace_column(&self) -> Result<()> {
+        self.ensure_column("login_sessions", "workspace_id", "TEXT")?;
+        Ok(())
+    }
+
     fn query_accounts(
         &self,
         query: Option<&str>,

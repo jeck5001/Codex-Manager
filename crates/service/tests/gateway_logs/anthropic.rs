@@ -123,10 +123,7 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
         captured.headers.get("version").map(String::as_str),
         Some("0.101.0")
     );
-    assert_eq!(
-        captured.headers.get("openai-beta").map(String::as_str),
-        Some("responses=experimental")
-    );
+    assert!(!captured.headers.contains_key("openai-beta"));
     assert_eq!(
         captured.headers.get("originator").map(String::as_str),
         Some("codex_cli_rs")

@@ -129,9 +129,6 @@ pub(super) fn try_openai_fallback(
             auth_token: bearer.as_str(),
             account_id,
             include_account_id,
-            include_openai_beta: !compact_headers_mode
-                && !is_openai_api_target
-                && request_path.starts_with("/v1/responses"),
             upstream_cookie,
             incoming_session_id: incoming_headers.session_id(),
             incoming_client_request_id: incoming_headers.client_request_id(),
@@ -139,9 +136,6 @@ pub(super) fn try_openai_fallback(
             fallback_session_id: None,
             incoming_turn_state: incoming_headers.turn_state(),
             include_turn_state: !compact_headers_mode && !is_openai_api_target,
-            incoming_conversation_id: incoming_headers.conversation_id(),
-            fallback_conversation_id: None,
-            include_conversation_id: !compact_headers_mode && !is_openai_api_target,
             strip_session_affinity,
             is_stream,
             has_body: !body.is_empty(),

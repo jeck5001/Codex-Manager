@@ -7,12 +7,119 @@ use super::super::{
     build_anthropic_error_body, ResponseAdapter, ToolNameRestoreMap,
 };
 use super::{
-    collect_non_stream_json_from_sse_bytes, extract_error_hint_from_body, looks_like_sse_payload,
-    merge_usage, parse_usage_from_json, push_trace_id_header, usage_has_signal, AnthropicSseReader,
-    OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader, PassthroughSseCollector,
-    PassthroughSseUsageReader, SseKeepAliveFrame, UpstreamResponseBridgeResult,
-    UpstreamResponseUsage,
+    collect_non_stream_json_from_sse_bytes, extract_error_hint_from_body,
+    extract_error_message_from_json, looks_like_sse_payload, merge_usage, parse_usage_from_json,
+    push_trace_id_header, usage_has_signal, AnthropicSseReader, OpenAIChatCompletionsSseReader,
+    OpenAICompletionsSseReader, PassthroughSseCollector, PassthroughSseUsageReader,
+    SseKeepAliveFrame, UpstreamResponseBridgeResult, UpstreamResponseUsage,
 };
+
+fn is_compact_request_path(path: &str) -> bool {
+    path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?")
+}
+
+fn compact_success_body_is_valid(body: &[u8]) -> bool {
+    serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|value| value.get("output").cloned())
+        .is_some_and(|output| output.is_array())
+}
+
+fn build_invalid_compact_success_message(body: &[u8]) -> String {
+    if let Ok(value) = serde_json::from_slice::<Value>(body) {
+        if let Some(message) = extract_error_message_from_json(&value) {
+            return format!("上游 compact 响应格式异常：{message}");
+        }
+    }
+    if let Some(hint) = extract_error_hint_from_body(502, body) {
+        return format!("上游 compact 响应格式异常：{hint}");
+    }
+    "上游 compact 响应格式异常（未返回 output 数组）".to_string()
+}
+
+fn compact_non_success_body_should_be_normalized(
+    status_code: u16,
+    content_type: Option<&str>,
+    body: &[u8],
+) -> bool {
+    if status_code < 400 {
+        return false;
+    }
+    if content_type
+        .map(crate::gateway::is_html_content_type)
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    extract_error_hint_from_body(status_code, body)
+        .is_some_and(|hint| hint.contains("Cloudflare") || hint.contains("HTML 错误页"))
+}
+
+fn build_compact_non_success_message(status_code: u16, body: &[u8]) -> String {
+    if let Ok(value) = serde_json::from_slice::<Value>(body) {
+        if let Some(message) = extract_error_message_from_json(&value) {
+            return format!("上游 compact 请求失败：{message}");
+        }
+    }
+    if let Some(hint) = extract_error_hint_from_body(status_code, body) {
+        return format!("上游 compact 请求失败：{hint}");
+    }
+    format!("上游 compact 请求失败：status={status_code}")
+}
+
+fn respond_synthesized_compact_error_body(
+    request: Request,
+    status_code: u16,
+    usage: UpstreamResponseUsage,
+    message: String,
+    trace_id: Option<&str>,
+) -> UpstreamResponseBridgeResult {
+    let response = crate::gateway::error_response::terminal_text_response(
+        status_code,
+        message.as_str(),
+        trace_id,
+    );
+    let delivery_error = request.respond(response).err().map(|err| err.to_string());
+    UpstreamResponseBridgeResult {
+        usage,
+        stream_terminal_seen: true,
+        stream_terminal_error: None,
+        delivery_error,
+        upstream_error_hint: Some(message),
+        delivered_status_code: Some(status_code),
+    }
+}
+
+fn respond_invalid_compact_success_body(
+    request: Request,
+    usage: UpstreamResponseUsage,
+    body: &[u8],
+    trace_id: Option<&str>,
+) -> UpstreamResponseBridgeResult {
+    respond_synthesized_compact_error_body(
+        request,
+        502,
+        usage,
+        build_invalid_compact_success_message(body),
+        trace_id,
+    )
+}
+
+fn respond_invalid_compact_non_success_body(
+    request: Request,
+    status_code: u16,
+    usage: UpstreamResponseUsage,
+    body: &[u8],
+    trace_id: Option<&str>,
+) -> UpstreamResponseBridgeResult {
+    respond_synthesized_compact_error_body(
+        request,
+        status_code,
+        usage,
+        build_compact_non_success_message(status_code, body),
+        trace_id,
+    )
+}
 
 pub(crate) fn respond_with_upstream(
     request: Request,
@@ -63,6 +170,7 @@ pub(crate) fn respond_with_upstream(
                     .map_err(|err| format!("read upstream body failed: {err}"))?;
                 let detected_sse =
                     is_sse || (!is_json && looks_like_sse_payload(upstream_body.as_ref()));
+                let is_compact_request = is_compact_request_path(request_path);
                 if detected_sse {
                     let (synthesized_body, mut usage) =
                         collect_non_stream_json_from_sse_bytes(upstream_body.as_ref());
@@ -87,6 +195,32 @@ pub(crate) fn respond_with_upstream(
                             headers.push(content_type_header);
                         }
                     }
+                    if status.0 < 400
+                        && is_compact_request
+                        && !compact_success_body_is_valid(body.as_ref())
+                    {
+                        return Ok(respond_invalid_compact_success_body(
+                            request,
+                            usage,
+                            body.as_ref(),
+                            trace_id,
+                        ));
+                    }
+                    if is_compact_request
+                        && compact_non_success_body_should_be_normalized(
+                            status.0,
+                            upstream_content_type.as_deref(),
+                            body.as_ref(),
+                        )
+                    {
+                        return Ok(respond_invalid_compact_non_success_body(
+                            request,
+                            status.0,
+                            usage,
+                            body.as_ref(),
+                            trace_id,
+                        ));
+                    }
                     let len = Some(body.len());
                     let response =
                         Response::new(status, headers, std::io::Cursor::new(body), len, None);
@@ -97,6 +231,7 @@ pub(crate) fn respond_with_upstream(
                         stream_terminal_error: None,
                         delivery_error,
                         upstream_error_hint,
+                        delivered_status_code: None,
                     });
                 }
 
@@ -111,6 +246,32 @@ pub(crate) fn respond_with_upstream(
                 } else {
                     UpstreamResponseUsage::default()
                 };
+                if status.0 < 400
+                    && is_compact_request
+                    && !compact_success_body_is_valid(upstream_body.as_ref())
+                {
+                    return Ok(respond_invalid_compact_success_body(
+                        request,
+                        usage,
+                        upstream_body.as_ref(),
+                        trace_id,
+                    ));
+                }
+                if is_compact_request
+                    && compact_non_success_body_should_be_normalized(
+                        status.0,
+                        upstream_content_type.as_deref(),
+                        upstream_body.as_ref(),
+                    )
+                {
+                    return Ok(respond_invalid_compact_non_success_body(
+                        request,
+                        status.0,
+                        usage,
+                        upstream_body.as_ref(),
+                        trace_id,
+                    ));
+                }
                 let upstream_error_hint =
                     extract_error_hint_from_body(status.0, upstream_body.as_ref());
                 let len = Some(upstream_body.len());
@@ -128,6 +289,7 @@ pub(crate) fn respond_with_upstream(
                     stream_terminal_error: None,
                     delivery_error,
                     upstream_error_hint,
+                    delivered_status_code: None,
                 });
             }
             if is_stream && !is_sse && status.0 >= 400 {
@@ -159,6 +321,7 @@ pub(crate) fn respond_with_upstream(
                     stream_terminal_error: None,
                     delivery_error,
                     upstream_error_hint,
+                    delivered_status_code: None,
                 });
             }
             if is_sse || is_stream {
@@ -185,6 +348,7 @@ pub(crate) fn respond_with_upstream(
                     stream_terminal_error: collector.terminal_error,
                     delivery_error,
                     upstream_error_hint: collector.upstream_error_hint,
+                    delivered_status_code: None,
                 });
             }
             let len = upstream.content_length().map(|v| v as usize);
@@ -196,6 +360,7 @@ pub(crate) fn respond_with_upstream(
                 stream_terminal_error: None,
                 delivery_error,
                 upstream_error_hint: None,
+                delivered_status_code: None,
             })
         }
         ResponseAdapter::OpenAIChatCompletionsJson
@@ -301,6 +466,7 @@ pub(crate) fn respond_with_upstream(
                     stream_terminal_error: collector.terminal_error,
                     delivery_error,
                     upstream_error_hint: None,
+                    delivered_status_code: None,
                 });
             }
 
@@ -378,6 +544,7 @@ pub(crate) fn respond_with_upstream(
                 stream_terminal_error: None,
                 delivery_error,
                 upstream_error_hint,
+                delivered_status_code: None,
             })
         }
         ResponseAdapter::AnthropicJson | ResponseAdapter::AnthropicSse => {
@@ -436,6 +603,7 @@ pub(crate) fn respond_with_upstream(
                     stream_terminal_error: None,
                     delivery_error,
                     upstream_error_hint: None,
+                    delivered_status_code: None,
                 });
             }
 
@@ -475,6 +643,7 @@ pub(crate) fn respond_with_upstream(
                 stream_terminal_error: None,
                 delivery_error,
                 upstream_error_hint,
+                delivered_status_code: None,
             })
         }
     }

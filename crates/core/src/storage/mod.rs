@@ -45,6 +45,7 @@ pub struct LoginSession {
     pub state: String,
     pub status: String,
     pub error: Option<String>,
+    pub workspace_id: Option<String>,
     pub note: Option<String>,
     pub tags: Option<String>,
     pub group_name: Option<String>,
@@ -336,19 +337,25 @@ impl Storage {
             include_str!("../../migrations/032_request_logs_attempt_chain.sql"),
             |s| s.ensure_request_log_attempt_chain_columns(),
         )?;
+        self.apply_sql_or_compat_migration(
+            "033_login_sessions_workspace_id",
+            include_str!("../../migrations/033_login_sessions_workspace_id.sql"),
+            |s| s.ensure_login_session_workspace_column(),
+        )?;
         self.ensure_request_token_stats_table()?;
         Ok(())
     }
 
     pub fn insert_login_session(&self, session: &LoginSession) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO login_sessions (login_id, code_verifier, state, status, error, note, tags, group_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO login_sessions (login_id, code_verifier, state, status, error, workspace_id, note, tags, group_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             (
                 &session.login_id,
                 &session.code_verifier,
                 &session.state,
                 &session.status,
                 &session.error,
+                &session.workspace_id,
                 &session.note,
                 &session.tags,
                 &session.group_name,
@@ -361,7 +368,7 @@ impl Storage {
 
     pub fn get_login_session(&self, login_id: &str) -> Result<Option<LoginSession>> {
         let mut stmt = self.conn.prepare(
-            "SELECT login_id, code_verifier, state, status, error, note, tags, group_name, created_at, updated_at FROM login_sessions WHERE login_id = ?1",
+            "SELECT login_id, code_verifier, state, status, error, workspace_id, note, tags, group_name, created_at, updated_at FROM login_sessions WHERE login_id = ?1",
         )?;
         let mut rows = stmt.query([login_id])?;
         if let Some(row) = rows.next()? {
@@ -371,11 +378,12 @@ impl Storage {
                 state: row.get(2)?,
                 status: row.get(3)?,
                 error: row.get(4)?,
-                note: row.get(5)?,
-                tags: row.get(6)?,
-                group_name: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
+                workspace_id: row.get(5)?,
+                note: row.get(6)?,
+                tags: row.get(7)?,
+                group_name: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
             }))
         } else {
             Ok(None)

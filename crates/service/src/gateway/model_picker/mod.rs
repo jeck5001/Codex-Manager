@@ -7,6 +7,14 @@ mod request;
 use parse::parse_model_options;
 use request::send_models_request;
 
+fn should_retry_models_with_openai_fallback(err: &str) -> bool {
+    let normalized = err.to_ascii_lowercase();
+    normalized.contains("cloudflare")
+        || normalized.contains("text/html")
+        || normalized.contains("html 错误页")
+        || normalized.contains("challenge")
+}
+
 pub(crate) fn fetch_models_for_picker() -> Result<Vec<ModelOption>, String> {
     let storage = super::open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let mut candidates = super::collect_gateway_candidates(&storage)?;
@@ -42,7 +50,7 @@ pub(crate) fn fetch_models_for_picker() -> Result<Vec<ModelOption>, String> {
             Ok(response_body) => return Ok(parse_model_options(&response_body)),
             Err(err) => {
                 // ChatGPT upstream occasionally returns HTML challenge. Try OpenAI fallback.
-                if err.contains("text/html") || err.contains("cloudflare") {
+                if should_retry_models_with_openai_fallback(&err) {
                     if let Some(fallback_base) = upstream_fallback_base.as_deref() {
                         if let Ok(response_body) = send_models_request(
                             &client,
@@ -64,4 +72,22 @@ pub(crate) fn fetch_models_for_picker() -> Result<Vec<ModelOption>, String> {
     }
 
     Err(last_error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_retry_models_with_openai_fallback;
+
+    #[test]
+    fn fallback_retry_matches_stable_html_and_challenge_summaries() {
+        assert!(should_retry_models_with_openai_fallback(
+            "models upstream failed: status=403 body=Cloudflare 安全验证页（title=Just a moment...）"
+        ));
+        assert!(should_retry_models_with_openai_fallback(
+            "models upstream failed: status=502 body=上游返回 HTML 错误页（title=502 Bad Gateway）"
+        ));
+        assert!(!should_retry_models_with_openai_fallback(
+            "models upstream failed: status=401 body=missing_authorization_header"
+        ));
+    }
 }

@@ -102,6 +102,99 @@ pub(super) fn ensure_store_false(path: &str, obj: &mut serde_json::Map<String, V
     true
 }
 
+pub(super) fn ensure_prompt_cache_key(
+    path: &str,
+    obj: &mut serde_json::Map<String, Value>,
+    prompt_cache_key: Option<&str>,
+) -> bool {
+    if !is_standard_responses_path(path) {
+        return false;
+    }
+    let Some(prompt_cache_key) = prompt_cache_key
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return false;
+    };
+
+    match obj.get("prompt_cache_key") {
+        Some(Value::String(existing)) if !existing.trim().is_empty() => return false,
+        Some(_) => {}
+        None => {}
+    }
+
+    obj.insert(
+        "prompt_cache_key".to_string(),
+        Value::String(prompt_cache_key.to_string()),
+    );
+    true
+}
+
+pub(super) fn ensure_tool_choice_auto(
+    path: &str,
+    obj: &mut serde_json::Map<String, Value>,
+) -> bool {
+    if !is_standard_responses_path(path) {
+        return false;
+    }
+    match obj.get("tool_choice") {
+        Some(Value::String(existing)) if existing.eq_ignore_ascii_case("auto") => return false,
+        Some(_) => {}
+        None => {}
+    }
+
+    obj.insert("tool_choice".to_string(), Value::String("auto".to_string()));
+    true
+}
+
+pub(super) fn ensure_parallel_tool_calls_bool(
+    path: &str,
+    obj: &mut serde_json::Map<String, Value>,
+) -> bool {
+    if !is_responses_path(path) {
+        return false;
+    }
+    match obj.get("parallel_tool_calls") {
+        Some(Value::Bool(_)) => return false,
+        Some(_) => {}
+        None => {}
+    }
+
+    obj.insert("parallel_tool_calls".to_string(), Value::Bool(false));
+    true
+}
+
+pub(super) fn ensure_reasoning_include(
+    path: &str,
+    obj: &mut serde_json::Map<String, Value>,
+) -> bool {
+    if !is_standard_responses_path(path) || !obj.contains_key("reasoning") {
+        return false;
+    }
+
+    let include = obj
+        .entry("include".to_string())
+        .or_insert_with(|| Value::Array(Vec::new()));
+    if !include.is_array() {
+        *include = Value::Array(Vec::new());
+    }
+    let Some(include_array) = include.as_array_mut() else {
+        return false;
+    };
+
+    if include_array.iter().any(|value| {
+        value
+            .as_str()
+            .map(|item| item == "reasoning.encrypted_content")
+            .unwrap_or(false)
+    }) {
+        return false;
+    }
+
+    include_array.push(Value::String("reasoning.encrypted_content".to_string()));
+    true
+}
+
 pub(super) fn normalize_dynamic_tools_to_tools(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -266,7 +359,6 @@ fn is_supported_codex_responses_key(key: &str) -> bool {
             | "stream"
             | "include"
             | "prompt_cache_key"
-            | "encrypted_content"
             | "text"
     )
 }

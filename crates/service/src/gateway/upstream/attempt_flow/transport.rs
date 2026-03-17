@@ -172,12 +172,10 @@ pub(in super::super) fn send_upstream_request(
         extract_prompt_cache_key(body.as_ref())
     };
     let mut incoming_session_id = incoming_headers.session_id();
-    let mut incoming_conversation_id = incoming_headers.conversation_id();
     if compact_headers_mode && prompt_cache_key.is_some() {
         // 中文注释：在请求头收敛策略下，prompt_cache_key 命中时优先绑定新的会话锚点，
         // 避免透传旧会话 id 造成跨账号粘性。
         incoming_session_id = None;
-        incoming_conversation_id = None;
     }
     let remote = request_ctx.remote_addr.as_ref();
     let mut derived_session_id = if !strip_session_affinity && incoming_session_id.is_none() {
@@ -188,22 +186,11 @@ pub(in super::super) fn send_upstream_request(
     } else {
         None
     };
-    let mut derived_conversation_id =
-        if !strip_session_affinity && incoming_conversation_id.is_none() {
-            super::super::header_profile::derive_sticky_conversation_id_from_headers_with_remote(
-                incoming_headers,
-                remote.copied(),
-            )
-        } else {
-            None
-        };
-
-    // 中文注释：参考 CLIProxyAPI 的 claude 兼容逻辑：当 prompt_cache_key 存在时，
-    // 需要将 Session_id/Conversation_id 与其对齐，否则更容易触发 upstream challenge。
+    // 中文注释：当 prompt_cache_key 存在时，用它对齐请求会话锚点，
+    // 避免沿用旧粘性会话导致更高的 upstream challenge 概率。
     if !strip_session_affinity {
         if let Some(cache_key) = prompt_cache_key.as_ref() {
             derived_session_id = Some(cache_key.clone());
-            derived_conversation_id = Some(cache_key.clone());
         }
     }
     let account_id = account
@@ -230,7 +217,6 @@ pub(in super::super) fn send_upstream_request(
             auth_token,
             account_id,
             include_account_id,
-            include_openai_beta: !compact_headers_mode,
             upstream_cookie,
             incoming_session_id,
             incoming_client_request_id: incoming_headers.client_request_id(),
@@ -238,9 +224,6 @@ pub(in super::super) fn send_upstream_request(
             fallback_session_id: derived_session_id.as_deref(),
             incoming_turn_state: incoming_headers.turn_state(),
             include_turn_state: !compact_headers_mode,
-            incoming_conversation_id,
-            fallback_conversation_id: derived_conversation_id.as_deref(),
-            include_conversation_id: !compact_headers_mode,
             strip_session_affinity,
             is_stream,
             has_body: !body.is_empty(),

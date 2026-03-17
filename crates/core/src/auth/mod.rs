@@ -207,7 +207,11 @@ pub fn build_authorize_url(
         ("response_type", "code".to_string()),
         ("client_id", client_id.to_string()),
         ("redirect_uri", redirect_uri.to_string()),
-        ("scope", "openid profile email offline_access".to_string()),
+        (
+            "scope",
+            "openid profile email offline_access api.connectors.read api.connectors.invoke"
+                .to_string(),
+        ),
         ("code_challenge", code_challenge.to_string()),
         ("code_challenge_method", "S256".to_string()),
         ("id_token_add_organizations", "true".to_string()),

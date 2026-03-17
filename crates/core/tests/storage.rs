@@ -153,6 +153,7 @@ fn storage_login_session_roundtrip() {
         state: "state".to_string(),
         status: "pending".to_string(),
         error: None,
+        workspace_id: Some("org_123".to_string()),
         note: None,
         tags: None,
         group_name: None,
@@ -167,6 +168,7 @@ fn storage_login_session_roundtrip() {
         .expect("load session")
         .expect("session exists");
     assert_eq!(loaded.status, "pending");
+    assert_eq!(loaded.workspace_id.as_deref(), Some("org_123"));
 }
 
 #[test]
