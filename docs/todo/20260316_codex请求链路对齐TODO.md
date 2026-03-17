@@ -111,6 +111,7 @@
 - [x] 收紧 `x-codex-turn-state` 的入站信任：缺少稳定线程锚点时不再盲信客户端自带 turn-state
 - [x] 把 `openai fallback` 的线程锚点、`session_id`、`x-client-request-id` 语义继续收齐到主链
 - [x] fallback 分支在缺少稳定线程锚点时，也不再信任孤立的 `x-codex-turn-state`
+- [x] fallback 非成功并触发 failover 时，日志会补齐 `body/request_id/cf-ray/auth_error/identity_error_code` 摘要
 - [ ] 复核失败重试、failover、日志落盘时机，避免多账号切换误导
 
 验收：

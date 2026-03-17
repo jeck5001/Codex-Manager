@@ -1,6 +1,12 @@
 use bytes::Bytes;
 use codexmanager_core::storage::{Account, Storage, Token};
+use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
+
+const REQUEST_ID_HEADER: &str = "x-request-id";
+const OAI_REQUEST_ID_HEADER: &str = "x-oai-request-id";
+const CF_RAY_HEADER: &str = "cf-ray";
+const AUTH_ERROR_HEADER: &str = "x-openai-authorization-error";
 
 pub(super) enum FallbackBranchResult {
     NotTriggered,
@@ -14,6 +20,53 @@ fn should_failover_after_fallback_non_success(status: u16, has_more_candidates: 
         return false;
     }
     matches!(status, 401 | 403 | 404 | 408 | 409 | 429)
+}
+
+fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn summarize_fallback_non_success(
+    primary_status: u16,
+    fallback_status: u16,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> String {
+    let request_id = extract_response_header(headers, REQUEST_ID_HEADER)
+        .or_else(|| extract_response_header(headers, OAI_REQUEST_ID_HEADER));
+    let cf_ray = extract_response_header(headers, CF_RAY_HEADER);
+    let auth_error = extract_response_header(headers, AUTH_ERROR_HEADER);
+    let identity_error_code = crate::gateway::extract_identity_error_code_from_headers(headers);
+    let body_hint = crate::gateway::summarize_upstream_error_hint_from_body(fallback_status, body)
+        .or_else(|| {
+            let trimmed = std::str::from_utf8(body).ok()?.trim().to_string();
+            (!trimmed.is_empty()).then_some(trimmed)
+        })
+        .unwrap_or_else(|| "unknown error".to_string());
+
+    let mut details = vec![format!("primary_status={primary_status}")];
+    if let Some(request_id) = request_id {
+        details.push(format!("request_id={request_id}"));
+    }
+    if let Some(cf_ray) = cf_ray {
+        details.push(format!("cf_ray={cf_ray}"));
+    }
+    if let Some(auth_error) = auth_error {
+        details.push(format!("auth_error={auth_error}"));
+    }
+    if let Some(identity_error_code) = identity_error_code {
+        details.push(format!("identity_error_code={identity_error_code}"));
+    }
+
+    format!(
+        "upstream fallback non-success(status={fallback_status}, body={body_hint}, {})",
+        details.join(", ")
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -90,20 +143,33 @@ where
             }
             let fallback_status = resp.status().as_u16();
             super::super::super::mark_account_cooldown_for_status(&account.id, fallback_status);
-            let fallback_error = format!(
-                "upstream fallback non-success(primary_status={})",
-                status.as_u16()
-            );
-            log_gateway_result(
-                Some(fallback_base),
-                fallback_status,
-                Some(fallback_error.as_str()),
-            );
             // 中文注释：仅对“可能账号相关/可恢复”的状态继续 failover；
             // 例如 5xx 这类上游服务端错误直接回传，避免单次请求在大量候选账号上长时间轮询。
             if should_failover_after_fallback_non_success(fallback_status, has_more_candidates) {
+                let headers = resp.headers().clone();
+                let body = resp.bytes().unwrap_or_default();
+                let fallback_error = summarize_fallback_non_success(
+                    status.as_u16(),
+                    fallback_status,
+                    &headers,
+                    &body,
+                );
+                log_gateway_result(
+                    Some(fallback_base),
+                    fallback_status,
+                    Some(fallback_error.as_str()),
+                );
                 FallbackBranchResult::Failover
             } else {
+                let fallback_error = format!(
+                    "upstream fallback non-success(primary_status={})",
+                    status.as_u16()
+                );
+                log_gateway_result(
+                    Some(fallback_base),
+                    fallback_status,
+                    Some(fallback_error.as_str()),
+                );
                 FallbackBranchResult::RespondUpstream(resp)
             }
         }
