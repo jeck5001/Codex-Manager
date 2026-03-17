@@ -4,7 +4,6 @@ use reqwest::header::HeaderMap;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::Method;
 use reqwest::StatusCode;
-
 const REQUEST_ID_HEADER: &str = "x-request-id";
 const OAI_REQUEST_ID_HEADER: &str = "x-oai-request-id";
 const CF_RAY_HEADER: &str = "cf-ray";
@@ -28,9 +27,8 @@ fn build_models_request_headers(
     residency_requirement: Option<&str>,
     include_account_header: bool,
     account_header_value: Option<&str>,
-    upstream_cookie: Option<&str>,
 ) -> Vec<(String, String)> {
-    let mut headers = Vec::with_capacity(7);
+    let mut headers = Vec::with_capacity(6);
     headers.push(("Accept".to_string(), "application/json".to_string()));
     headers.push(("User-Agent".to_string(), user_agent.to_string()));
     headers.push(("originator".to_string(), originator.to_string()));
@@ -44,12 +42,6 @@ fn build_models_request_headers(
         ));
     }
     headers.push(("Authorization".to_string(), format!("Bearer {}", bearer)));
-    if let Some(cookie) = upstream_cookie
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        headers.push(("Cookie".to_string(), cookie.to_string()));
-    }
     if include_account_header {
         if let Some(account_id) = account_header_value
             .map(str::trim)
@@ -80,6 +72,7 @@ fn summarize_models_error_response(
         .or_else(|| extract_response_header(headers, OAI_REQUEST_ID_HEADER));
     let cf_ray = extract_response_header(headers, CF_RAY_HEADER);
     let auth_error = extract_response_header(headers, AUTH_ERROR_HEADER);
+    let identity_error_code = crate::gateway::extract_identity_error_code_from_headers(headers);
     let body_hint = if force_html_error {
         super::super::http_bridge::summarize_upstream_error_hint_from_body(403, body.as_bytes())
     } else {
@@ -104,6 +97,9 @@ fn summarize_models_error_response(
     if let Some(auth_error) = auth_error {
         details.push(format!("auth error: {auth_error}"));
     }
+    if let Some(identity_error_code) = identity_error_code {
+        details.push(format!("identity_error_code: {identity_error_code}"));
+    }
 
     if details.is_empty() {
         format!("models upstream failed: status={} body={body_hint}", status)
@@ -124,7 +120,6 @@ pub(super) fn send_models_request(
     path: &str,
     account: &Account,
     token: &mut Token,
-    upstream_cookie: Option<&str>,
 ) -> Result<Vec<u8>, String> {
     let (url, _url_alt) = super::super::compute_upstream_url(upstream_base, path);
     let url = append_client_version_query(&url);
@@ -150,7 +145,6 @@ pub(super) fn send_models_request(
             crate::gateway::current_residency_requirement().as_deref(),
             include_account_header,
             account_header_value.as_deref(),
-            upstream_cookie,
         ) {
             builder = builder.header(name, value);
         }
@@ -247,7 +241,6 @@ mod tests {
             Some("us"),
             true,
             Some("acc_123"),
-            Some("cookie=value"),
         );
         let find = |name: &str| {
             headers
@@ -263,7 +256,7 @@ mod tests {
         );
         assert_eq!(find("originator"), Some("codex_cli_rs"));
         assert_eq!(find("Authorization"), Some("Bearer access-token"));
-        assert_eq!(find("Cookie"), Some("cookie=value"));
+        assert!(find("Cookie").is_none());
         assert_eq!(find("ChatGPT-Account-ID"), Some("acc_123"));
         assert_eq!(
             find(crate::gateway::runtime_config::RESIDENCY_HEADER_NAME),
@@ -282,7 +275,6 @@ mod tests {
             None,
             false,
             Some("acc_123"),
-            Some("   "),
         );
         let find = |name: &str| {
             headers
@@ -305,6 +297,10 @@ mod tests {
             "x-openai-authorization-error",
             HeaderValue::from_static("missing_authorization_header"),
         );
+        headers.insert(
+            "x-error-json",
+            HeaderValue::from_static("{\"identity_error_code\":\"org_membership_required\"}"),
+        );
 
         let message = summarize_models_error_response(
             StatusCode::FORBIDDEN,
@@ -317,6 +313,25 @@ mod tests {
         assert!(message.contains("request id: req-models"));
         assert!(message.contains("cf-ray: ray-models"));
         assert!(message.contains("auth error: missing_authorization_header"));
+        assert!(message.contains("identity_error_code: org_membership_required"));
         assert!(!message.contains("<html>"));
+    }
+
+    #[test]
+    fn summarize_models_error_response_includes_identity_error_code() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-error-json",
+            HeaderValue::from_static("{\"identity_error_code\":\"access_denied\"}"),
+        );
+
+        let message = summarize_models_error_response(
+            StatusCode::FORBIDDEN,
+            &headers,
+            "{\"error\":{\"message\":\"blocked\"}}",
+            false,
+        );
+
+        assert!(message.contains("identity_error_code: access_denied"));
     }
 }

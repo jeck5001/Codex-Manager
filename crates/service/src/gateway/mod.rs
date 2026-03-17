@@ -104,6 +104,97 @@ pub(super) use failover::should_failover_after_refresh;
 use failover::should_failover_from_cached_snapshot;
 use http_bridge::respond_with_upstream;
 pub(crate) use http_bridge::summarize_upstream_error_hint_from_body;
+pub(crate) fn extract_identity_error_code_from_headers(
+    headers: &reqwest::header::HeaderMap,
+) -> Option<String> {
+    headers
+        .get("x-error-json")
+        .and_then(|value| value.to_str().ok())
+        .and_then(extract_identity_error_code_from_header_value)
+}
+
+fn extract_identity_error_code_from_header_value(raw: &str) -> Option<String> {
+    if let Some(code) = extract_identity_error_code_from_error_json(raw) {
+        return Some(code);
+    }
+
+    let decoded = decode_base64_header_value(raw.as_bytes())?;
+    let decoded = String::from_utf8(decoded).ok()?;
+    extract_identity_error_code_from_error_json(&decoded)
+}
+
+fn extract_identity_error_code_from_error_json(raw: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(raw).ok()?;
+    value
+        .get("identity_error_code")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            value
+                .get("error")
+                .and_then(serde_json::Value::as_object)
+                .and_then(|error| error.get("code"))
+                .and_then(serde_json::Value::as_str)
+        })
+        .or_else(|| {
+            value
+                .get("error")
+                .and_then(serde_json::Value::as_object)
+                .and_then(|error| error.get("identity_error_code"))
+                .and_then(serde_json::Value::as_str)
+        })
+        .or_else(|| {
+            value
+                .get("details")
+                .and_then(serde_json::Value::as_object)
+                .and_then(|details| details.get("identity_error_code"))
+                .and_then(serde_json::Value::as_str)
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn decode_base64_header_value(input: &[u8]) -> Option<Vec<u8>> {
+    fn decode_char(byte: u8) -> Option<u8> {
+        match byte {
+            b'A'..=b'Z' => Some(byte - b'A'),
+            b'a'..=b'z' => Some(byte - b'a' + 26),
+            b'0'..=b'9' => Some(byte - b'0' + 52),
+            b'+' | b'-' => Some(62),
+            b'/' | b'_' => Some(63),
+            _ => None,
+        }
+    }
+
+    let filtered = input
+        .iter()
+        .copied()
+        .filter(|byte| !byte.is_ascii_whitespace())
+        .collect::<Vec<_>>();
+    if filtered.is_empty() || filtered.len() % 4 != 0 {
+        return None;
+    }
+
+    let mut output = Vec::with_capacity(filtered.len() / 4 * 3);
+    for chunk in filtered.chunks(4) {
+        let a = decode_char(chunk[0])?;
+        let b = decode_char(chunk[1])?;
+        let c_pad = chunk[2] == b'=';
+        let d_pad = chunk[3] == b'=';
+        let c = if c_pad { 0 } else { decode_char(chunk[2])? };
+        let d = if d_pad { 0 } else { decode_char(chunk[3])? };
+
+        output.push((a << 2) | (b >> 4));
+        if !c_pad {
+            output.push((b << 4) | (c >> 2));
+        }
+        if !d_pad {
+            output.push((c << 6) | d);
+        }
+    }
+
+    Some(output)
+}
 pub(super) use incoming_headers::IncomingHeaderSnapshot;
 use local_count_tokens::maybe_respond_local_count_tokens;
 use local_models::maybe_respond_local_models;

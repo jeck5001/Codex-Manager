@@ -1,6 +1,5 @@
 use bytes::Bytes;
 use codexmanager_core::storage::Account;
-use std::net::SocketAddr;
 use std::time::Instant;
 use tiny_http::Request;
 
@@ -13,14 +12,12 @@ enum RequestCompression {
 #[derive(Debug, Clone, Copy)]
 pub(in super::super) struct UpstreamRequestContext<'a> {
     pub(in super::super) request_path: &'a str,
-    pub(in super::super) remote_addr: Option<SocketAddr>,
 }
 
 impl<'a> UpstreamRequestContext<'a> {
     pub(in super::super) fn from_request(request: &'a Request) -> Self {
         Self {
             request_path: request.url(),
-            remote_addr: request.remote_addr().copied(),
         }
     }
 }
@@ -172,6 +169,15 @@ pub(in super::super) fn send_upstream_request(
         extract_prompt_cache_key(body.as_ref())
     };
     let has_conversation_anchor = incoming_headers.conversation_id().is_some();
+    let compact_conversation_anchor = if strip_session_affinity {
+        None
+    } else {
+        incoming_headers
+            .conversation_id()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
     let original_incoming_session_id = incoming_headers.session_id();
     let mut incoming_session_id = original_incoming_session_id;
     let mut incoming_client_request_id = incoming_headers.client_request_id();
@@ -181,11 +187,24 @@ pub(in super::super) fn send_upstream_request(
         // 同一锚点，避免继续透传旧 session_id 造成线程漂移或跨账号粘性。
         incoming_session_id = None;
     }
+    if is_compact_request_path(request_ctx.request_path) && compact_conversation_anchor.is_some() {
+        // 中文注释：官方 compact 客户端会直接把 conversation_id 映射成 session_id。
+        // compact 请求没有 prompt_cache_key，因此这里显式让会话头退回到 conversation 锚点。
+        incoming_session_id = None;
+    }
     if has_conversation_anchor {
         // 中文注释：官方 ResponsesClient 在提供 conversation_id 时，会直接用它覆盖
         // x-client-request-id。这里把旧值改写成当前线程锚点，而不是简单清空，
         // 这样 failover 时仍能保留稳定的 client request id。
         incoming_client_request_id = prompt_cache_key.as_deref();
+    }
+    if incoming_turn_state.is_some()
+        && original_incoming_session_id.is_none()
+        && prompt_cache_key.is_none()
+    {
+        // 中文注释：客户端单独塞一个 turn-state、却没有任何稳定线程锚点时，
+        // 这份状态无法证明属于当前请求线程。此时直接透传只会把上游粘到未知历史 turn。
+        incoming_turn_state = None;
     }
     if let (Some(cache_key), Some(legacy_session_id)) =
         (prompt_cache_key.as_deref(), original_incoming_session_id)
@@ -196,12 +215,11 @@ pub(in super::super) fn send_upstream_request(
             incoming_turn_state = None;
         }
     }
-    let remote = request_ctx.remote_addr.as_ref();
     let mut derived_session_id = if !strip_session_affinity && incoming_session_id.is_none() {
-        super::super::header_profile::derive_sticky_session_id_from_headers_with_remote(
-            incoming_headers,
-            remote.copied(),
-        )
+        // 中文注释：这里继续保留“基于账号/密钥的稳定 session”兼容策略，
+        // 但不再把 remote 地址混进会话锚点，避免同一客户端仅因源地址变化就得到不同 session_id，
+        // 让主路径更接近官方可见的线程锚点语义。
+        super::super::header_profile::derive_sticky_session_id_from_headers(incoming_headers)
     } else {
         None
     };
@@ -212,6 +230,9 @@ pub(in super::super) fn send_upstream_request(
             derived_session_id = Some(cache_key.clone());
         }
     }
+    let compact_fallback_session_id = compact_conversation_anchor
+        .as_deref()
+        .or(derived_session_id.as_deref());
     let account_id = account
         .chatgpt_account_id
         .as_deref()
@@ -225,7 +246,7 @@ pub(in super::super) fn send_upstream_request(
             upstream_cookie,
             incoming_session_id,
             incoming_subagent: incoming_headers.subagent(),
-            fallback_session_id: derived_session_id.as_deref(),
+            fallback_session_id: compact_fallback_session_id,
             strip_session_affinity,
             has_body: !body.is_empty(),
         };
@@ -242,6 +263,7 @@ pub(in super::super) fn send_upstream_request(
             incoming_beta_features: incoming_headers.beta_features(),
             incoming_turn_metadata: incoming_headers.turn_metadata(),
             fallback_session_id: derived_session_id.as_deref(),
+            fallback_client_request_id: prompt_cache_key.as_deref(),
             incoming_turn_state,
             include_turn_state: !compact_headers_mode,
             strip_session_affinity,

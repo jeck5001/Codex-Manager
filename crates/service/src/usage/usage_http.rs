@@ -95,6 +95,14 @@ fn extract_refresh_token_error_code(body: &str) -> Option<String> {
         })
 }
 
+fn extract_refresh_token_error_code_from_headers(headers: &HeaderMap) -> Option<String> {
+    crate::gateway::extract_identity_error_code_from_headers(headers).or_else(|| {
+        extract_response_header(headers, AUTH_ERROR_HEADER)
+            .map(|value| value.to_ascii_lowercase())
+            .filter(|value| !value.trim().is_empty())
+    })
+}
+
 fn classify_refresh_token_auth_error_reason_from_code(
     code: Option<&str>,
 ) -> RefreshTokenAuthErrorReason {
@@ -106,15 +114,27 @@ fn classify_refresh_token_auth_error_reason_from_code(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn classify_refresh_token_auth_error_reason(
     status: reqwest::StatusCode,
+    body: &str,
+) -> Option<RefreshTokenAuthErrorReason> {
+    classify_refresh_token_auth_error_reason_with_headers(status, None, body)
+}
+
+fn classify_refresh_token_auth_error_reason_with_headers(
+    status: reqwest::StatusCode,
+    headers: Option<&HeaderMap>,
     body: &str,
 ) -> Option<RefreshTokenAuthErrorReason> {
     if status != reqwest::StatusCode::UNAUTHORIZED {
         return None;
     }
+    let header_code = headers.and_then(extract_refresh_token_error_code_from_headers);
     Some(classify_refresh_token_auth_error_reason_from_code(
-        extract_refresh_token_error_code(body).as_deref(),
+        extract_refresh_token_error_code(body)
+            .or(header_code)
+            .as_deref(),
     ))
 }
 
@@ -137,8 +157,19 @@ pub(crate) fn refresh_token_auth_error_reason_from_message(
     Some(RefreshTokenAuthErrorReason::Unknown401)
 }
 
+#[cfg(test)]
 fn format_refresh_token_status_error(status: reqwest::StatusCode, body: &str) -> String {
-    if let Some(reason) = classify_refresh_token_auth_error_reason(status, body) {
+    format_refresh_token_status_error_with_headers(status, None, body)
+}
+
+fn format_refresh_token_status_error_with_headers(
+    status: reqwest::StatusCode,
+    headers: Option<&HeaderMap>,
+    body: &str,
+) -> String {
+    if let Some(reason) =
+        classify_refresh_token_auth_error_reason_with_headers(status, headers, body)
+    {
         let message = reason.user_message();
         return format!("refresh token failed with status {status}: {message}");
     }
@@ -231,6 +262,7 @@ fn summarize_usage_error_response(
         .or_else(|| extract_response_header(headers, OAI_REQUEST_ID_HEADER));
     let cf_ray = extract_response_header(headers, CF_RAY_HEADER);
     let auth_error = extract_response_header(headers, AUTH_ERROR_HEADER);
+    let identity_error_code = crate::gateway::extract_identity_error_code_from_headers(headers);
     let body_hint = if force_html_error {
         crate::gateway::summarize_upstream_error_hint_from_body(403, body.as_bytes())
     } else {
@@ -251,6 +283,9 @@ fn summarize_usage_error_response(
     }
     if let Some(auth_error) = auth_error {
         details.push(format!("auth error: {auth_error}"));
+    }
+    if let Some(identity_error_code) = identity_error_code {
+        details.push(format!("identity error code: {identity_error_code}"));
     }
 
     if details.is_empty() {
@@ -382,8 +417,13 @@ pub(crate) fn refresh_access_token(
     };
     if !resp.status().is_success() {
         let status = resp.status();
+        let headers = resp.headers().clone();
         let body = resp.text().unwrap_or_default();
-        return Err(format_refresh_token_status_error(status, body.as_str()));
+        return Err(format_refresh_token_status_error_with_headers(
+            status,
+            Some(&headers),
+            body.as_str(),
+        ));
     }
     resp.json::<RefreshTokenResponse>()
         .map_err(|e| format!("read refresh token response json failed: {e}"))

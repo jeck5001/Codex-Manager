@@ -111,6 +111,42 @@ fn classify_refresh_token_auth_error_reason_maps_known_and_unknown_401() {
 }
 
 #[test]
+fn refresh_token_status_error_uses_identity_error_code_header_when_body_lacks_code() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-error-json",
+        HeaderValue::from_static("{\"identity_error_code\":\"refresh_token_invalidated\"}"),
+    );
+
+    assert_eq!(
+        super::format_refresh_token_status_error_with_headers(
+            StatusCode::UNAUTHORIZED,
+            Some(&headers),
+            "<html><title>Just a moment...</title></html>"
+        ),
+        "refresh token failed with status 401 Unauthorized: Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again."
+    );
+}
+
+#[test]
+fn refresh_token_status_error_uses_auth_error_header_when_body_lacks_code() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-openai-authorization-error",
+        HeaderValue::from_static("refresh_token_expired"),
+    );
+
+    assert_eq!(
+        super::format_refresh_token_status_error_with_headers(
+            StatusCode::UNAUTHORIZED,
+            Some(&headers),
+            "<html><title>Just a moment...</title></html>"
+        ),
+        "refresh token failed with status 401 Unauthorized: Your access token could not be refreshed because your refresh token has expired. Please log out and sign in again."
+    );
+}
+
+#[test]
 fn refresh_token_auth_error_reason_from_message_tracks_canonical_messages() {
     let invalidated = super::format_refresh_token_status_error(
         StatusCode::UNAUTHORIZED,
@@ -177,6 +213,10 @@ fn summarize_usage_error_response_stabilizes_html_and_debug_headers() {
         "x-openai-authorization-error",
         HeaderValue::from_static("missing_authorization_header"),
     );
+    headers.insert(
+        "x-error-json",
+        HeaderValue::from_static("eyJlcnJvciI6eyJjb2RlIjoidG9rZW5fZXhwaXJlZCJ9fQ=="),
+    );
 
     let summary = summarize_usage_error_response(
         StatusCode::FORBIDDEN,
@@ -190,4 +230,29 @@ fn summarize_usage_error_response_stabilizes_html_and_debug_headers() {
     assert!(summary.contains("request id: req_usage_123"));
     assert!(summary.contains("cf-ray: cf_usage_123"));
     assert!(summary.contains("auth error: missing_authorization_header"));
+    assert!(summary.contains("identity error code: token_expired"));
+}
+
+#[test]
+fn summarize_usage_error_response_accepts_raw_error_json_header() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-request-id",
+        HeaderValue::from_static("req_usage_raw_123"),
+    );
+    headers.insert(
+        "x-error-json",
+        HeaderValue::from_static("{\"details\":{\"identity_error_code\":\"proxy_auth_required\"}}"),
+    );
+
+    let summary = summarize_usage_error_response(
+        StatusCode::BAD_GATEWAY,
+        &headers,
+        "<html><head><title>502 Bad Gateway</title></head></html>",
+        false,
+    );
+
+    assert!(summary.contains("request id: req_usage_raw_123"));
+    assert!(summary.contains("identity error code: proxy_auth_required"));
+    assert!(summary.contains("上游返回 HTML 错误页（title=502 Bad Gateway）"));
 }

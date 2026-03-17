@@ -13,6 +13,7 @@ pub(crate) struct CodexUpstreamHeaderInput<'a> {
     pub(crate) incoming_beta_features: Option<&'a str>,
     pub(crate) incoming_turn_metadata: Option<&'a str>,
     pub(crate) fallback_session_id: Option<&'a str>,
+    pub(crate) fallback_client_request_id: Option<&'a str>,
     pub(crate) incoming_turn_state: Option<&'a str>,
     pub(crate) include_turn_state: bool,
     pub(crate) strip_session_affinity: bool,
@@ -73,9 +74,7 @@ pub(crate) fn build_codex_upstream_headers(
     }
     if let Some(client_request_id) = resolve_client_request_id(
         input.incoming_client_request_id,
-        input.incoming_session_id,
-        input.fallback_session_id,
-        input.strip_session_affinity,
+        input.fallback_client_request_id,
     ) {
         headers.push(("x-client-request-id".to_string(), client_request_id));
     }
@@ -180,14 +179,7 @@ pub(crate) fn build_codex_compact_upstream_headers(
             headers.push(("ChatGPT-Account-ID".to_string(), account_id.to_string()));
         }
     }
-    if should_forward_upstream_cookie() {
-        if let Some(cookie) = input
-            .upstream_cookie
-            .filter(|value| !value.trim().is_empty())
-        {
-            headers.push(("Cookie".to_string(), cookie.to_string()));
-        }
-    }
+    let _ = input.upstream_cookie;
     headers
 }
 
@@ -220,9 +212,7 @@ fn resolve_session_id(
 
 fn resolve_client_request_id(
     incoming_client_request_id: Option<&str>,
-    incoming_session_id: Option<&str>,
-    fallback_session_id: Option<&str>,
-    strip_session_affinity: bool,
+    fallback_client_request_id: Option<&str>,
 ) -> Option<String> {
     if let Some(value) = incoming_client_request_id
         .map(str::trim)
@@ -231,18 +221,7 @@ fn resolve_client_request_id(
         return Some(value.to_string());
     }
 
-    if let Some(value) = incoming_session_id
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        return Some(value.to_string());
-    }
-
-    if strip_session_affinity {
-        return None;
-    }
-
-    fallback_session_id
+    fallback_client_request_id
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)

@@ -371,7 +371,10 @@ fn gateway_cpa_no_cookie_header_mode_keeps_account_header_on_compact() {
 
     let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
     let _mode_guard = EnvGuard::set("CODEXMANAGER_CPA_NO_COOKIE_HEADER_MODE", "1");
-    let _cookie_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_COOKIE", "cf_clearance=compact_cookie");
+    let _cookie_guard = EnvGuard::set(
+        "CODEXMANAGER_UPSTREAM_COOKIE",
+        "cf_clearance=compact_cookie",
+    );
 
     let upstream_response = serde_json::json!({
         "output": [{

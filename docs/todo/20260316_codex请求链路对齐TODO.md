@@ -73,6 +73,7 @@
 - [x] `/oauth/token` 登录链路已挂上 `Accept / Originator / User-Agent / Residency`
 - [x] token endpoint / api key exchange 失败摘要补齐 `request_id / cf-ray / auth_error` 调试头
 - [x] token endpoint / api key exchange 的 `x-error-json` 统一支持原始 JSON 与 base64 两种头值，并补齐 `identity_error_code`
+- [x] 当 refresh `401` 的 body 缺少错误码时，继续从 `x-error-json / x-openai-authorization-error` 头部兜底判定 canonical 原因
 - [ ] 继续复核登录回调与 token 链的剩余请求头使用点
 - [ ] 对齐 token endpoint 错误解析，继续细化 challenge / HTML / 非 JSON 子类
 - [x] 复核 refresh token 失败后的账号状态迁移，继续避免误摘号
@@ -104,9 +105,10 @@
 - [x] 当 `/responses` 已有 `prompt_cache_key` 时，让 `session_id / x-client-request-id` 优先跟随线程锚点，不再让旧 `Session_id` 抢占
 - [x] 当入站明确携带 `Conversation_id` 时，让线程锚点覆盖旧 `x-client-request-id`
 - [x] 当旧 `Session_id` 已被新的线程锚点覆盖时，丢弃旧 `x-codex-turn-state`
-- [ ] 继续核对 `/responses` 主链上的 remote-sticky `session_id` 兼容分支
-- [ ] 继续核对 `x-codex-turn-state` 的入站信任与过滤规则
+- [x] 收掉 `/responses` 主链上 remote 地址参与 `session_id` 派生的兼容分支；保留基于账号/密钥的稳定 session 兼容
+- [x] 收紧 `x-codex-turn-state` 的入站信任：缺少稳定线程锚点时不再盲信客户端自带 turn-state
 - [x] 把 `openai fallback` 的线程锚点、`session_id`、`x-client-request-id` 语义继续收齐到主链
+- [x] fallback 分支在缺少稳定线程锚点时，也不再信任孤立的 `x-codex-turn-state`
 - [ ] 复核失败重试、failover、日志落盘时机，避免多账号切换误导
 
 验收：
@@ -124,6 +126,7 @@
 
 - [x] compact 默认补 `x-openai-subagent=compact`，与官方 `compact_remote` 保持一致
 - [x] compact 不再显式发送上游 `Cookie`
+- [x] compact 在入站带 `Conversation_id` 时，会上游发送 `session_id=<conversation_id>`，不再让旧 `session_id` 抢占线程锚点
 - [ ] 继续核对 compact 其余专用头部与 `session_id` 兼容分支
 - [x] compact 上游 `2xx` 假成功体改判为 `502`，避免 HTML/challenge/异常 JSON 透传成功
 - [x] compact 上游 `403/5xx` 的 HTML/challenge 页改成结构化 JSON 错误返回，不再透传整页 HTML

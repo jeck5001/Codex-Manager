@@ -90,6 +90,7 @@ fn build_token_endpoint_debug_suffix(headers: &HeaderMap) -> String {
         .or_else(|| extract_response_header(headers, OAI_REQUEST_ID_HEADER));
     let cf_ray = extract_response_header(headers, CF_RAY_HEADER);
     let auth_error = extract_response_header(headers, AUTH_ERROR_HEADER);
+    let identity_error_code = crate::gateway::extract_identity_error_code_from_headers(headers);
 
     let mut details = Vec::new();
     if let Some(request_id) = request_id {
@@ -101,11 +102,37 @@ fn build_token_endpoint_debug_suffix(headers: &HeaderMap) -> String {
     if let Some(auth_error) = auth_error {
         details.push(format!("auth_error={auth_error}"));
     }
+    if let Some(identity_error_code) = identity_error_code {
+        details.push(format!("identity_error_code={identity_error_code}"));
+    }
 
     if details.is_empty() {
         String::new()
     } else {
         format!(" [{}]", details.join(", "))
+    }
+}
+
+fn classify_token_endpoint_error_kind(body: &str) -> &'static str {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return "empty";
+    }
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return "json";
+    }
+    let normalized = trimmed.to_ascii_lowercase();
+    if normalized.contains("<html") || normalized.contains("<!doctype html") {
+        if normalized.contains("cloudflare")
+            || normalized.contains("just a moment")
+            || normalized.contains("attention required")
+        {
+            "cloudflare_challenge"
+        } else {
+            "html"
+        }
+    } else {
+        "non_json"
     }
 }
 
@@ -308,7 +335,19 @@ fn format_token_endpoint_status_error(
     body: &str,
 ) -> String {
     let detail = parse_token_endpoint_error(body);
-    let suffix = build_token_endpoint_debug_suffix(headers);
+    let suffix = {
+        let mut suffix = build_token_endpoint_debug_suffix(headers);
+        let kind = classify_token_endpoint_error_kind(body);
+        if kind != "json" {
+            let addition = format!("kind={kind}");
+            if suffix.is_empty() {
+                suffix = format!(" [{addition}]");
+            } else {
+                suffix.insert_str(suffix.len() - 1, &format!(", {addition}"));
+            }
+        }
+        suffix
+    };
     format!("token endpoint returned status {status}: {detail}{suffix}")
 }
 
@@ -318,7 +357,19 @@ fn format_api_key_exchange_status_error(
     body: &str,
 ) -> String {
     let detail = summarize_token_endpoint_error_body(body);
-    let suffix = build_token_endpoint_debug_suffix(headers);
+    let suffix = {
+        let mut suffix = build_token_endpoint_debug_suffix(headers);
+        let kind = classify_token_endpoint_error_kind(body);
+        if kind != "json" {
+            let addition = format!("kind={kind}");
+            if suffix.is_empty() {
+                suffix = format!(" [{addition}]");
+            } else {
+                suffix.insert_str(suffix.len() - 1, &format!(", {addition}"));
+            }
+        }
+        suffix
+    };
     format!("api key exchange failed with status {status}: {detail}{suffix}")
 }
 

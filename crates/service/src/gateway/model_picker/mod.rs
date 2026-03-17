@@ -27,7 +27,6 @@ pub(crate) fn fetch_models_for_picker() -> Result<Vec<ModelOption>, String> {
     let upstream_fallback_base = super::resolve_upstream_fallback_base_url(base);
     let path = super::normalize_models_path("/v1/models");
     let method = Method::GET;
-    let upstream_cookie = super::upstream_cookie();
     candidates.sort_by_key(|(account, _)| {
         (
             super::is_account_in_cooldown(&account.id),
@@ -45,7 +44,6 @@ pub(crate) fn fetch_models_for_picker() -> Result<Vec<ModelOption>, String> {
             &path,
             &account,
             &mut token,
-            upstream_cookie.as_deref(),
         ) {
             Ok(response_body) => return Ok(parse_model_options(&response_body)),
             Err(err) => {
@@ -60,7 +58,6 @@ pub(crate) fn fetch_models_for_picker() -> Result<Vec<ModelOption>, String> {
                             &path,
                             &account,
                             &mut token,
-                            upstream_cookie.as_deref(),
                         ) {
                             return Ok(parse_model_options(&response_body));
                         }

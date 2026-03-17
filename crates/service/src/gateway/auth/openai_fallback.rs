@@ -100,20 +100,41 @@ fn resolve_request_affinity_state<'a>(
     let mut resolved_incoming_session_id = original_incoming_session_id;
     let mut resolved_client_request_id = incoming_client_request_id.map(str::to_string);
     let mut resolved_turn_state = incoming_turn_state;
+    let conversation_anchor = conversation_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let effective_thread_anchor = prompt_cache_key
+        .clone()
+        .or_else(|| conversation_anchor.clone());
 
     if prompt_cache_key.is_some() {
         // 中文注释：当请求已携带线程锚点时，fallback 分支也应和主路径一样优先绑定到
         // 同一锚点，而不是继续复用旧 session_id。
         resolved_incoming_session_id = None;
     }
-    if conversation_id.is_some() {
-        // 中文注释：主路径已按 conversation_id 覆盖旧 request id，这里保持一致。
-        resolved_client_request_id = prompt_cache_key.clone();
+    if conversation_anchor.is_some() {
+        // 中文注释：官方 ResponsesClient / CompactClient 都把 conversation_id 映射成
+        // 上游 session_id。这里即使 prompt_cache_key 缺失，也让旧 session_id 退位，
+        // 避免 compact 继续粘到历史兼容 session。
+        resolved_incoming_session_id = None;
+        // 中文注释：主路径已按 conversation_id 覆盖旧 request id，这里保持一致；
+        // 缺少 prompt_cache_key 时退回到 conversation 锚点本身。
+        resolved_client_request_id = effective_thread_anchor.clone();
     }
-    if let (Some(cache_key), Some(legacy_session_id)) =
-        (prompt_cache_key.as_deref(), original_incoming_session_id)
+    if resolved_turn_state.is_some()
+        && original_incoming_session_id.is_none()
+        && effective_thread_anchor.is_none()
     {
-        if legacy_session_id.trim() != cache_key {
+        // 中文注释：没有任何稳定线程锚点时，fallback 分支也不再信任孤立 turn-state，
+        // 避免把 OpenAI fallback 粘回未知历史 turn。
+        resolved_turn_state = None;
+    }
+    if let (Some(thread_anchor), Some(legacy_session_id)) = (
+        effective_thread_anchor.as_deref(),
+        original_incoming_session_id,
+    ) {
+        if legacy_session_id.trim() != thread_anchor {
             // 中文注释：旧 session_id 已被新的线程锚点覆盖时，继续透传旧 turn-state
             // 只会把 fallback 分支粘回历史 turn。
             resolved_turn_state = None;
@@ -124,8 +145,8 @@ fn resolve_request_affinity_state<'a>(
         incoming_session_id: resolved_incoming_session_id,
         incoming_client_request_id: resolved_client_request_id,
         incoming_turn_state: resolved_turn_state,
-        fallback_session_id: prompt_cache_key.clone(),
-        fallback_client_request_id: prompt_cache_key,
+        fallback_session_id: effective_thread_anchor.clone(),
+        fallback_client_request_id: effective_thread_anchor,
     }
 }
 
@@ -311,5 +332,43 @@ mod tests {
         assert_eq!(actual.incoming_turn_state, Some("turn_state_ok"));
         assert_eq!(actual.fallback_session_id, None);
         assert_eq!(actual.fallback_client_request_id, None);
+    }
+
+    #[test]
+    fn request_affinity_drops_turn_state_without_thread_anchor() {
+        let actual =
+            resolve_request_affinity_state(None, None, Some("orphan_turn_state"), None, None);
+
+        assert_eq!(actual.incoming_session_id, None);
+        assert_eq!(actual.incoming_client_request_id, None);
+        assert_eq!(actual.incoming_turn_state, None);
+        assert_eq!(actual.fallback_session_id, None);
+        assert_eq!(actual.fallback_client_request_id, None);
+    }
+
+    #[test]
+    fn request_affinity_uses_conversation_anchor_when_prompt_cache_missing() {
+        let actual = resolve_request_affinity_state(
+            Some("legacy_session_should_not_win"),
+            Some("legacy_request_id_should_not_win"),
+            Some("legacy_turn_state_should_not_win"),
+            Some("conv_anchor_only"),
+            None,
+        );
+
+        assert_eq!(actual.incoming_session_id, None);
+        assert_eq!(
+            actual.incoming_client_request_id.as_deref(),
+            Some("conv_anchor_only")
+        );
+        assert_eq!(actual.incoming_turn_state, None);
+        assert_eq!(
+            actual.fallback_session_id.as_deref(),
+            Some("conv_anchor_only")
+        );
+        assert_eq!(
+            actual.fallback_client_request_id.as_deref(),
+            Some("conv_anchor_only")
+        );
     }
 }

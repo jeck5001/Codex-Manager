@@ -209,6 +209,10 @@ fn format_token_endpoint_status_error_appends_debug_headers() {
         "x-openai-authorization-error",
         HeaderValue::from_static("expired_session"),
     );
+    headers.insert(
+        "x-error-json",
+        HeaderValue::from_static("eyJlcnJvciI6eyJjb2RlIjoidG9rZW5fZXhwaXJlZCJ9fQ=="),
+    );
 
     let message = format_token_endpoint_status_error(
         reqwest::StatusCode::FORBIDDEN,
@@ -221,6 +225,8 @@ fn format_token_endpoint_status_error_appends_debug_headers() {
     assert!(message.contains("request_id=req_token_123"));
     assert!(message.contains("cf_ray=ray_token_123"));
     assert!(message.contains("auth_error=expired_session"));
+    assert!(message.contains("identity_error_code=token_expired"));
+    assert!(message.contains("kind=cloudflare_challenge"));
 }
 
 #[test]
@@ -228,6 +234,10 @@ fn format_api_key_exchange_status_error_appends_debug_headers() {
     let mut headers = HeaderMap::new();
     headers.insert("x-request-id", HeaderValue::from_static("req_api_key_123"));
     headers.insert("cf-ray", HeaderValue::from_static("ray_api_key_123"));
+    headers.insert(
+        "x-error-json",
+        HeaderValue::from_static("eyJlcnJvciI6eyJjb2RlIjoicHJveHlfYXV0aF9yZXF1aXJlZCJ9fQ=="),
+    );
 
     let message = format_api_key_exchange_status_error(
         reqwest::StatusCode::BAD_GATEWAY,
@@ -239,6 +249,31 @@ fn format_api_key_exchange_status_error_appends_debug_headers() {
     assert!(message.contains("上游返回 HTML 错误页（title=502 Bad Gateway）"));
     assert!(message.contains("request_id=req_api_key_123"));
     assert!(message.contains("cf_ray=ray_api_key_123"));
+    assert!(message.contains("identity_error_code=proxy_auth_required"));
+    assert!(message.contains("kind=html"));
+}
+
+#[test]
+fn format_token_endpoint_status_error_accepts_raw_error_json_header() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-request-id",
+        HeaderValue::from_static("req_token_raw_123"),
+    );
+    headers.insert(
+        "x-error-json",
+        HeaderValue::from_static("{\"identity_error_code\":\"org_membership_required\"}"),
+    );
+
+    let message = format_token_endpoint_status_error(
+        reqwest::StatusCode::FORBIDDEN,
+        &headers,
+        "<html><title>Just a moment...</title></html>",
+    );
+
+    assert!(message.contains("request_id=req_token_raw_123"));
+    assert!(message.contains("identity_error_code=org_membership_required"));
+    assert!(message.contains("kind=cloudflare_challenge"));
 }
 
 #[test]
