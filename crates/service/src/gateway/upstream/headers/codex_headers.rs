@@ -134,7 +134,7 @@ pub(crate) fn build_codex_upstream_headers(
 pub(crate) fn build_codex_compact_upstream_headers(
     input: CodexCompactUpstreamHeaderInput<'_>,
 ) -> Vec<(String, String)> {
-    let mut headers = Vec::with_capacity(9);
+    let mut headers = Vec::with_capacity(8);
     headers.push((
         "Authorization".to_string(),
         format!("Bearer {}", input.auth_token),
@@ -157,23 +157,20 @@ pub(crate) fn build_codex_compact_upstream_headers(
             residency_requirement,
         ));
     }
-    let compact_subagent = input
+    if let Some(subagent) = input
         .incoming_subagent
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("compact");
-    headers.push((
-        "x-openai-subagent".to_string(),
-        compact_subagent.to_string(),
-    ));
-    headers.push((
-        "session_id".to_string(),
-        resolve_session_id(
-            input.incoming_session_id,
-            input.fallback_session_id,
-            input.strip_session_affinity,
-        ),
-    ));
+    {
+        headers.push(("x-openai-subagent".to_string(), subagent.to_string()));
+    }
+    if let Some(session_id) = resolve_optional_session_id(
+        input.incoming_session_id,
+        input.fallback_session_id,
+        input.strip_session_affinity,
+    ) {
+        headers.push(("session_id".to_string(), session_id));
+    }
     if input.include_account_id {
         if let Some(account_id) = input.account_id {
             headers.push(("ChatGPT-Account-ID".to_string(), account_id.to_string()));
@@ -208,6 +205,26 @@ fn resolve_session_id(
         }
     }
     random_session_id()
+}
+
+fn resolve_optional_session_id(
+    incoming: Option<&str>,
+    fallback_session_id: Option<&str>,
+    strip_session_affinity: bool,
+) -> Option<String> {
+    if strip_session_affinity {
+        return None;
+    }
+    if let Some(value) = incoming {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    fallback_session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 fn resolve_client_request_id(

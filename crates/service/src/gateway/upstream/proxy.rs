@@ -19,7 +19,21 @@ fn exhausted_gateway_error_for_log(
     skipped_inflight: usize,
     last_attempt_error: Option<&str>,
 ) -> String {
-    let mut parts = vec!["no available account".to_string()];
+    let kind = if !attempted_account_ids.is_empty() {
+        "no_available_account_exhausted"
+    } else if skipped_cooldown > 0 && skipped_inflight > 0 {
+        "no_available_account_skipped"
+    } else if skipped_cooldown > 0 {
+        "no_available_account_cooldown"
+    } else if skipped_inflight > 0 {
+        "no_available_account_inflight"
+    } else {
+        "no_available_account"
+    };
+    let mut parts = vec![
+        "no available account".to_string(),
+        format!("kind={kind}"),
+    ];
     if !attempted_account_ids.is_empty() {
         parts.push(format!("attempted={}", attempted_account_ids.join(",")));
     }
@@ -253,8 +267,16 @@ mod tests {
         );
 
         assert!(message.contains("no available account"));
+        assert!(message.contains("kind=no_available_account_exhausted"));
         assert!(message.contains("attempted=acc-a,acc-b"));
         assert!(message.contains("skipped(cooldown=2, inflight=1)"));
         assert!(message.contains("last_attempt=upstream challenge blocked"));
+    }
+
+    #[test]
+    fn exhausted_gateway_error_marks_cooldown_only_skip_kind() {
+        let message = exhausted_gateway_error_for_log(&[], 2, 0, None);
+
+        assert!(message.contains("kind=no_available_account_cooldown"));
     }
 }

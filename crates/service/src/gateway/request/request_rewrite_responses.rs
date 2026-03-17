@@ -195,6 +195,27 @@ pub(super) fn ensure_reasoning_include(
     true
 }
 
+pub(super) fn normalize_service_tier(
+    path: &str,
+    obj: &mut serde_json::Map<String, Value>,
+) -> bool {
+    if !is_standard_responses_path(path) {
+        return false;
+    }
+    let Some(service_tier) = obj.get_mut("service_tier") else {
+        return false;
+    };
+    let Some(raw_value) = service_tier.as_str() else {
+        return false;
+    };
+    if !raw_value.eq_ignore_ascii_case("fast") {
+        return false;
+    }
+
+    *service_tier = Value::String("priority".to_string());
+    true
+}
+
 pub(super) fn normalize_dynamic_tools_to_tools(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,

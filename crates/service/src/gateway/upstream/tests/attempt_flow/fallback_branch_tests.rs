@@ -1,4 +1,7 @@
-use super::{should_failover_after_fallback_non_success, summarize_fallback_non_success};
+use super::{
+    should_failover_after_fallback_non_success, summarize_fallback_non_success,
+    summarize_fallback_non_success_headers_only,
+};
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 
@@ -45,6 +48,10 @@ fn fallback_non_success_summary_includes_debug_headers_and_body_hint() {
     );
 
     assert!(
+        message.contains("kind=cloudflare_challenge"),
+        "unexpected summary: {message}"
+    );
+    assert!(
         message.contains("status=403"),
         "unexpected summary: {message}"
     );
@@ -81,6 +88,66 @@ fn fallback_non_success_summary_uses_plain_body_when_no_structured_hint_exists()
 
     assert!(
         message.contains("body=plain upstream error"),
+        "unexpected summary: {message}"
+    );
+}
+
+#[test]
+fn fallback_non_success_headers_only_summary_includes_debug_headers() {
+    let mut headers = HeaderMap::new();
+    headers.insert("x-oai-request-id", HeaderValue::from_static("req_fallback_headers"));
+    headers.insert("cf-ray", HeaderValue::from_static("ray_fallback_headers"));
+    headers.insert(
+        "x-openai-authorization-error",
+        HeaderValue::from_static("blocked_by_policy"),
+    );
+    headers.insert(
+        "x-error-json",
+        HeaderValue::from_static("{\"identity_error_code\":\"org_membership_required\"}"),
+    );
+    headers.insert("content-type", HeaderValue::from_static("text/html; charset=utf-8"));
+
+    let message = summarize_fallback_non_success_headers_only(500, 500, &headers);
+
+    assert!(
+        message.contains("kind=cloudflare_blocked"),
+        "unexpected summary: {message}"
+    );
+    assert!(message.contains("status=500"), "unexpected summary: {message}");
+    assert!(
+        message.contains("primary_status=500"),
+        "unexpected summary: {message}"
+    );
+    assert!(
+        message.contains("request_id=req_fallback_headers"),
+        "unexpected summary: {message}"
+    );
+    assert!(
+        message.contains("cf_ray=ray_fallback_headers"),
+        "unexpected summary: {message}"
+    );
+    assert!(
+        message.contains("auth_error=blocked_by_policy"),
+        "unexpected summary: {message}"
+    );
+    assert!(
+        message.contains("identity_error_code=org_membership_required"),
+        "unexpected summary: {message}"
+    );
+    assert!(
+        message.contains("content_type=text/html; charset=utf-8"),
+        "unexpected summary: {message}"
+    );
+}
+
+#[test]
+fn fallback_non_success_headers_only_summary_marks_server_error_without_debug_headers() {
+    let headers = HeaderMap::new();
+
+    let message = summarize_fallback_non_success_headers_only(502, 502, &headers);
+
+    assert!(
+        message.contains("kind=server_error"),
         "unexpected summary: {message}"
     );
 }

@@ -329,6 +329,9 @@ pub(super) fn apply_request_overrides_with_prompt_cache_key(
                     if responses::ensure_tool_choice_auto(path, obj) {
                         changed = true;
                     }
+                    if responses::normalize_service_tier(path, obj) {
+                        changed = true;
+                    }
                     if responses::ensure_reasoning_include(path, obj) {
                         changed = true;
                     }

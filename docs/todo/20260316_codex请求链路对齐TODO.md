@@ -75,7 +75,7 @@
 - [x] token endpoint / api key exchange 失败摘要补齐 `request_id / cf-ray / auth_error` 调试头
 - [x] token endpoint / api key exchange 的 `x-error-json` 统一支持原始 JSON 与 base64 两种头值，并补齐 `identity_error_code`
 - [x] 当 refresh `401` 的 body 缺少错误码时，继续从 `x-error-json / x-openai-authorization-error` 头部兜底判定 canonical 原因
-- [ ] 继续复核登录回调与 token 链的剩余请求头使用点
+- [x] 继续复核登录回调与 token 链的剩余请求头使用点；`/oauth/token` 与 token exchange 仅保留 form-urlencoded `Content-Type`，refresh 继续走共享 client 默认头
 - [x] 对齐 token endpoint 错误解析，继续细化 challenge / HTML / 非 JSON 子类，并让空 body 场景继续从 `auth_error / identity_error_code` 头部推断 `blocked / identity_error / auth_error / cloudflare_edge` 类型
 - [x] 复核 refresh token 失败后的账号状态迁移，继续避免误摘号
 - [x] 收紧 refresh 失效判定：仅 401 视为 refresh 认证失败，403/挑战页/代理异常不再摘号
@@ -94,6 +94,7 @@
 待做：
 
 - [x] 收掉 `tool_choice=auto`、`reasoning.encrypted_content` 这类官方默认值差异
+- [x] `service_tier=Fast` 现在会映射成官方 wire 值 `priority`
 - [x] 模型列表 `/models` 请求头收回到与官方默认客户端一致的 `originator / User-Agent / ChatGPT-Account-ID / residency` 语义，并移除历史 `Version` 头
 - [x] 模型列表 `/models` 失败诊断收口到稳定 challenge / HTML / auth / `identity_error_code` 摘要，并保持 OpenAI fallback 触发条件兼容
 - [x] 模型列表 `/models` 不再显式发送上游 `Cookie`
@@ -111,7 +112,7 @@
 - [x] 收紧 `x-codex-turn-state` 的入站信任：缺少稳定线程锚点时不再盲信客户端自带 turn-state
 - [x] 把 `openai fallback` 的线程锚点、`session_id`、`x-client-request-id` 语义继续收齐到主链
 - [x] fallback 分支在缺少稳定线程锚点时，也不再信任孤立的 `x-codex-turn-state`
-- [x] fallback 非成功并触发 failover 时，日志会补齐 `body/request_id/cf-ray/auth_error/identity_error_code` 摘要
+- [x] fallback 非成功时，日志会补齐稳定摘要；继续 failover 时保留 `body/request_id/cf-ray/auth_error/identity_error_code`，直接回传上游非成功时也会保留 `request_id/cf-ray/auth_error/identity_error_code/content_type`
 - [x] 复核失败重试、failover、日志落盘时机；当候选全被切走或跳过时，请求日志会补齐 attempted/skipped/last_attempt 摘要，避免多账号切换误导
 
 验收：
@@ -127,16 +128,16 @@
 
 待做：
 
-- [x] compact 默认补 `x-openai-subagent=compact`，与官方 `compact_remote` 保持一致
+- [x] compact 只有在客户端显式带了 `x-openai-subagent` 时才透传；不再默认补 `compact`
 - [x] compact 不再显式发送上游 `Cookie`
 - [x] compact 在入站带 `Conversation_id` 时，会上游发送 `session_id=<conversation_id>`，不再让旧 `session_id` 抢占线程锚点
-- [ ] 继续核对 compact 其余专用头部与 `session_id` 兼容分支
+- [x] compact 仅在存在真实线程锚点时才发送 `session_id`；无锚点时不再随机补兼容 session
 - [x] compact 上游 `2xx` 假成功体改判为 `502`，避免 HTML/challenge/异常 JSON 透传成功
 - [x] compact 上游 `403/5xx` 的 HTML/challenge 页改成结构化 JSON 错误返回，不再透传整页 HTML
 - [x] compact 结构化错误补齐稳定 `kind` 分类，能直接区分 `cloudflare_challenge / cloudflare_blocked / identity_error / auth_error / cloudflare_edge / html / invalid_success_body / non_json`
 - [x] compact 在 body 为空、但头部已给出 `auth_error / identity_error_code` 时，也会强制走结构化错误返回
-- [ ] 继续细化 compact 失败时的 fallback 与其余调试头诊断
-- [ ] 如果官方 `compact_remote` 的历史替换行为会影响真实请求链路，再按需补对应状态传递；否则不补 `thread/compact/start`
+- [x] compact 失败时的 fallback 诊断已收齐到与主链一致：继续 failover 时保留 body 级摘要，直接回传上游非成功时也会保留 `request_id/cf-ray/auth_error/identity_error_code/content_type`
+- [x] 官方 `compact_remote` 的历史替换属于客户端会话层，不影响当前上游请求链路；不补 `thread/compact/start`
 
 验收：
 
@@ -177,7 +178,7 @@
 - [x] `/responses` 与 `compact` 的 challenge / HTML 失败摘要补齐 `auth_error`
 - [x] `/responses` 与 `compact` 的 `x-error-json` 已统一支持原始 JSON / base64 两种头值，并补齐 `identity_error_code`
 - [ ] 继续增强 `gateway-trace.log` 对最后一帧、最后一跳、响应头、body 摘要的记录
-- [ ] 对 403/502/503 建立更稳定的错误分类
+- [x] 对 403/502/503 建立更稳定的错误分类；`/responses`、`compact`、fallback 非成功和最终 `503 no available account` 都会补稳定 `kind=...`
 - [ ] 让桌面端 toast 和请求日志错误文案尽量使用同一错误源
 
 验收：

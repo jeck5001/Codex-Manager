@@ -973,7 +973,7 @@ fn gateway_openai_compact_uses_conversation_id_as_session_anchor() {
             .headers
             .get("x-openai-subagent")
             .map(String::as_str),
-        Some("compact")
+        None
     );
 }
 

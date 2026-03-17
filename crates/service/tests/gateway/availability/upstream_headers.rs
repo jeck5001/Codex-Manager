@@ -194,7 +194,7 @@ fn codex_compact_header_profile_matches_remote_compact_shape() {
 }
 
 #[test]
-fn codex_compact_header_profile_defaults_subagent_to_compact() {
+fn codex_compact_header_profile_omits_subagent_without_explicit_source() {
     let headers = build_codex_compact_upstream_headers(CodexCompactUpstreamHeaderInput {
         auth_token: "token-compact-default",
         account_id: None,
@@ -207,10 +207,24 @@ fn codex_compact_header_profile_defaults_subagent_to_compact() {
         has_body: true,
     });
 
-    assert_eq!(
-        find_header(&headers, "x-openai-subagent").as_deref(),
-        Some("compact")
-    );
+    assert!(find_header(&headers, "x-openai-subagent").is_none());
+}
+
+#[test]
+fn codex_compact_header_profile_omits_session_without_thread_anchor() {
+    let headers = build_codex_compact_upstream_headers(CodexCompactUpstreamHeaderInput {
+        auth_token: "token-compact-no-session",
+        account_id: None,
+        include_account_id: false,
+        upstream_cookie: None,
+        incoming_session_id: None,
+        incoming_subagent: None,
+        fallback_session_id: None,
+        strip_session_affinity: false,
+        has_body: true,
+    });
+
+    assert!(find_header(&headers, "session_id").is_none());
 }
 
 #[test]

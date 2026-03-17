@@ -467,6 +467,29 @@ fn responses_defaults_tool_choice_and_reasoning_include_for_codex_backend() {
 }
 
 #[test]
+fn responses_normalizes_fast_service_tier_to_priority_for_codex_backend() {
+    let body = json!({
+        "model": "gpt-5.3-codex",
+        "input": "hello",
+        "service_tier": "Fast"
+    });
+    let out = apply_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert_eq!(
+        value
+            .get("service_tier")
+            .and_then(serde_json::Value::as_str),
+        Some("priority")
+    );
+}
+
+#[test]
 fn responses_compact_uses_codex_compat_rewrite() {
     let body = json!({
         "model": "gpt-5.3-codex",

@@ -31,6 +31,71 @@ fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn looks_like_blocked_marker(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized.contains("blocked")
+        || normalized.contains("unsupported_country_region_territory")
+        || normalized.contains("unsupported_country")
+        || normalized.contains("region_restricted")
+}
+
+fn classify_fallback_non_success_kind(
+    fallback_status: u16,
+    content_type: Option<&str>,
+    body: &[u8],
+    cf_ray: Option<&str>,
+    auth_error: Option<&str>,
+    identity_error_code: Option<&str>,
+) -> &'static str {
+    if fallback_status == 429 {
+        return "rate_limited";
+    }
+    if fallback_status == 404 {
+        return "not_found";
+    }
+    if auth_error.is_some_and(looks_like_blocked_marker)
+        || identity_error_code.is_some_and(looks_like_blocked_marker)
+    {
+        return "cloudflare_blocked";
+    }
+    if let Some(hint) =
+        crate::gateway::summarize_upstream_error_hint_from_body(fallback_status, body)
+    {
+        if hint.contains("Cloudflare") {
+            return "cloudflare_challenge";
+        }
+        if hint.contains("HTML 错误页") {
+            return "html";
+        }
+    }
+    if content_type
+        .map(crate::gateway::is_html_content_type)
+        .unwrap_or(false)
+    {
+        return "html";
+    }
+    if identity_error_code.is_some() {
+        return "identity_error";
+    }
+    if auth_error.is_some() {
+        return "auth_error";
+    }
+    if cf_ray.is_some() {
+        return "cloudflare_edge";
+    }
+    if fallback_status >= 500 {
+        return "server_error";
+    }
+    if serde_json::from_slice::<serde_json::Value>(body).is_ok() {
+        return "json_error";
+    }
+    if body.is_empty() {
+        "empty"
+    } else {
+        "non_json"
+    }
+}
+
 fn summarize_fallback_non_success(
     primary_status: u16,
     fallback_status: u16,
@@ -42,6 +107,15 @@ fn summarize_fallback_non_success(
     let cf_ray = extract_response_header(headers, CF_RAY_HEADER);
     let auth_error = extract_response_header(headers, AUTH_ERROR_HEADER);
     let identity_error_code = crate::gateway::extract_identity_error_code_from_headers(headers);
+    let content_type = extract_response_header(headers, "content-type");
+    let kind = classify_fallback_non_success_kind(
+        fallback_status,
+        content_type.as_deref(),
+        body,
+        cf_ray.as_deref(),
+        auth_error.as_deref(),
+        identity_error_code.as_deref(),
+    );
     let body_hint = crate::gateway::summarize_upstream_error_hint_from_body(fallback_status, body)
         .or_else(|| {
             let trimmed = std::str::from_utf8(body).ok()?.trim().to_string();
@@ -49,7 +123,7 @@ fn summarize_fallback_non_success(
         })
         .unwrap_or_else(|| "unknown error".to_string());
 
-    let mut details = vec![format!("primary_status={primary_status}")];
+    let mut details = vec![format!("kind={kind}"), format!("primary_status={primary_status}")];
     if let Some(request_id) = request_id {
         details.push(format!("request_id={request_id}"));
     }
@@ -65,6 +139,49 @@ fn summarize_fallback_non_success(
 
     format!(
         "upstream fallback non-success(status={fallback_status}, body={body_hint}, {})",
+        details.join(", ")
+    )
+}
+
+fn summarize_fallback_non_success_headers_only(
+    primary_status: u16,
+    fallback_status: u16,
+    headers: &HeaderMap,
+) -> String {
+    let request_id = extract_response_header(headers, REQUEST_ID_HEADER)
+        .or_else(|| extract_response_header(headers, OAI_REQUEST_ID_HEADER));
+    let cf_ray = extract_response_header(headers, CF_RAY_HEADER);
+    let auth_error = extract_response_header(headers, AUTH_ERROR_HEADER);
+    let identity_error_code = crate::gateway::extract_identity_error_code_from_headers(headers);
+    let content_type = extract_response_header(headers, "content-type");
+    let kind = classify_fallback_non_success_kind(
+        fallback_status,
+        content_type.as_deref(),
+        &[],
+        cf_ray.as_deref(),
+        auth_error.as_deref(),
+        identity_error_code.as_deref(),
+    );
+
+    let mut details = vec![format!("kind={kind}"), format!("primary_status={primary_status}")];
+    if let Some(request_id) = request_id {
+        details.push(format!("request_id={request_id}"));
+    }
+    if let Some(cf_ray) = cf_ray {
+        details.push(format!("cf_ray={cf_ray}"));
+    }
+    if let Some(auth_error) = auth_error {
+        details.push(format!("auth_error={auth_error}"));
+    }
+    if let Some(identity_error_code) = identity_error_code {
+        details.push(format!("identity_error_code={identity_error_code}"));
+    }
+    if let Some(content_type) = content_type {
+        details.push(format!("content_type={content_type}"));
+    }
+
+    format!(
+        "upstream fallback non-success(status={fallback_status}, {})",
         details.join(", ")
     )
 }
@@ -161,9 +278,11 @@ where
                 );
                 FallbackBranchResult::Failover
             } else {
-                let fallback_error = format!(
-                    "upstream fallback non-success(primary_status={})",
-                    status.as_u16()
+                let headers = resp.headers().clone();
+                let fallback_error = summarize_fallback_non_success_headers_only(
+                    status.as_u16(),
+                    fallback_status,
+                    &headers,
                 );
                 log_gateway_result(
                     Some(fallback_base),
