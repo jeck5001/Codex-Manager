@@ -37,6 +37,7 @@ fn compact_debug_suffix(
     request_id: Option<&str>,
     cf_ray: Option<&str>,
     auth_error: Option<&str>,
+    identity_error_code: Option<&str>,
 ) -> String {
     let mut details = Vec::new();
     if let Some(request_id) = request_id.map(str::trim).filter(|value| !value.is_empty()) {
@@ -47,6 +48,12 @@ fn compact_debug_suffix(
     }
     if let Some(auth_error) = auth_error.map(str::trim).filter(|value| !value.is_empty()) {
         details.push(format!("auth_error={auth_error}"));
+    }
+    if let Some(identity_error_code) = identity_error_code
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        details.push(format!("identity_error_code={identity_error_code}"));
     }
     if details.is_empty() {
         String::new()
@@ -60,9 +67,10 @@ fn with_upstream_debug_suffix(
     request_id: Option<&str>,
     cf_ray: Option<&str>,
     auth_error: Option<&str>,
+    identity_error_code: Option<&str>,
 ) -> Option<String> {
     let message = message?;
-    let suffix = compact_debug_suffix(request_id, cf_ray, auth_error);
+    let suffix = compact_debug_suffix(request_id, cf_ray, auth_error, identity_error_code);
     if suffix.is_empty() {
         Some(message)
     } else {
@@ -82,24 +90,25 @@ fn build_invalid_compact_success_message(
     request_id: Option<&str>,
     cf_ray: Option<&str>,
     auth_error: Option<&str>,
+    identity_error_code: Option<&str>,
 ) -> String {
     if let Ok(value) = serde_json::from_slice::<Value>(body) {
         if let Some(message) = extract_error_message_from_json(&value) {
             return format!(
                 "上游 compact 响应格式异常：{message}{}",
-                compact_debug_suffix(request_id, cf_ray, auth_error)
+                compact_debug_suffix(request_id, cf_ray, auth_error, identity_error_code)
             );
         }
     }
     if let Some(hint) = extract_error_hint_from_body(502, body) {
         return format!(
             "上游 compact 响应格式异常：{hint}{}",
-            compact_debug_suffix(request_id, cf_ray, auth_error)
+            compact_debug_suffix(request_id, cf_ray, auth_error, identity_error_code)
         );
     }
     format!(
         "上游 compact 响应格式异常（未返回 output 数组）{}",
-        compact_debug_suffix(request_id, cf_ray, auth_error)
+        compact_debug_suffix(request_id, cf_ray, auth_error, identity_error_code)
     )
 }
 
@@ -127,24 +136,25 @@ fn build_compact_non_success_message(
     request_id: Option<&str>,
     cf_ray: Option<&str>,
     auth_error: Option<&str>,
+    identity_error_code: Option<&str>,
 ) -> String {
     if let Ok(value) = serde_json::from_slice::<Value>(body) {
         if let Some(message) = extract_error_message_from_json(&value) {
             return format!(
                 "上游 compact 请求失败：{message}{}",
-                compact_debug_suffix(request_id, cf_ray, auth_error)
+                compact_debug_suffix(request_id, cf_ray, auth_error, identity_error_code)
             );
         }
     }
     if let Some(hint) = extract_error_hint_from_body(status_code, body) {
         return format!(
             "上游 compact 请求失败：{hint}{}",
-            compact_debug_suffix(request_id, cf_ray, auth_error)
+            compact_debug_suffix(request_id, cf_ray, auth_error, identity_error_code)
         );
     }
     format!(
         "上游 compact 请求失败：status={status_code}{}",
-        compact_debug_suffix(request_id, cf_ray, auth_error)
+        compact_debug_suffix(request_id, cf_ray, auth_error, identity_error_code)
     )
 }
 
@@ -183,13 +193,20 @@ fn respond_invalid_compact_success_body(
     request_id: Option<&str>,
     cf_ray: Option<&str>,
     auth_error: Option<&str>,
+    identity_error_code: Option<&str>,
     trace_id: Option<&str>,
 ) -> UpstreamResponseBridgeResult {
     respond_synthesized_compact_error_body(
         request,
         502,
         usage,
-        build_invalid_compact_success_message(body, request_id, cf_ray, auth_error),
+        build_invalid_compact_success_message(
+            body,
+            request_id,
+            cf_ray,
+            auth_error,
+            identity_error_code,
+        ),
         request_id,
         cf_ray,
         trace_id,
@@ -204,13 +221,21 @@ fn respond_invalid_compact_non_success_body(
     request_id: Option<&str>,
     cf_ray: Option<&str>,
     auth_error: Option<&str>,
+    identity_error_code: Option<&str>,
     trace_id: Option<&str>,
 ) -> UpstreamResponseBridgeResult {
     respond_synthesized_compact_error_body(
         request,
         status_code,
         usage,
-        build_compact_non_success_message(status_code, body, request_id, cf_ray, auth_error),
+        build_compact_non_success_message(
+            status_code,
+            body,
+            request_id,
+            cf_ray,
+            auth_error,
+            identity_error_code,
+        ),
         request_id,
         cf_ray,
         trace_id,
@@ -232,6 +257,8 @@ pub(crate) fn respond_with_upstream(
         first_upstream_header(upstream.headers(), REQUEST_ID_HEADER_CANDIDATES);
     let upstream_cf_ray = first_upstream_header(upstream.headers(), &[CF_RAY_HEADER_NAME]);
     let upstream_auth_error = first_upstream_header(upstream.headers(), &[AUTH_ERROR_HEADER_NAME]);
+    let upstream_identity_error_code =
+        crate::gateway::extract_identity_error_code_from_headers(upstream.headers());
     let upstream_content_type = upstream
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
@@ -284,6 +311,7 @@ pub(crate) fn respond_with_upstream(
                         upstream_request_id.as_deref(),
                         upstream_cf_ray.as_deref(),
                         upstream_auth_error.as_deref(),
+                        upstream_identity_error_code.as_deref(),
                     );
                     if synthesized_response {
                         headers.retain(|header| {
@@ -311,6 +339,7 @@ pub(crate) fn respond_with_upstream(
                             upstream_request_id.as_deref(),
                             upstream_cf_ray.as_deref(),
                             upstream_auth_error.as_deref(),
+                            upstream_identity_error_code.as_deref(),
                             trace_id,
                         ));
                     }
@@ -329,6 +358,7 @@ pub(crate) fn respond_with_upstream(
                             upstream_request_id.as_deref(),
                             upstream_cf_ray.as_deref(),
                             upstream_auth_error.as_deref(),
+                            upstream_identity_error_code.as_deref(),
                             trace_id,
                         ));
                     }
@@ -371,6 +401,7 @@ pub(crate) fn respond_with_upstream(
                         upstream_request_id.as_deref(),
                         upstream_cf_ray.as_deref(),
                         upstream_auth_error.as_deref(),
+                        upstream_identity_error_code.as_deref(),
                         trace_id,
                     ));
                 }
@@ -389,6 +420,7 @@ pub(crate) fn respond_with_upstream(
                         upstream_request_id.as_deref(),
                         upstream_cf_ray.as_deref(),
                         upstream_auth_error.as_deref(),
+                        upstream_identity_error_code.as_deref(),
                         trace_id,
                     ));
                 }
@@ -397,6 +429,7 @@ pub(crate) fn respond_with_upstream(
                     upstream_request_id.as_deref(),
                     upstream_cf_ray.as_deref(),
                     upstream_auth_error.as_deref(),
+                    upstream_identity_error_code.as_deref(),
                 );
                 let len = Some(upstream_body.len());
                 let response = Response::new(
@@ -436,6 +469,7 @@ pub(crate) fn respond_with_upstream(
                     upstream_request_id.as_deref(),
                     upstream_cf_ray.as_deref(),
                     upstream_auth_error.as_deref(),
+                    upstream_identity_error_code.as_deref(),
                 );
                 let len = Some(upstream_body.len());
                 let response = Response::new(
@@ -486,6 +520,7 @@ pub(crate) fn respond_with_upstream(
                         upstream_request_id.as_deref(),
                         upstream_cf_ray.as_deref(),
                         upstream_auth_error.as_deref(),
+                        upstream_identity_error_code.as_deref(),
                     ),
                     delivered_status_code: None,
                     upstream_request_id: upstream_request_id.clone(),
@@ -684,6 +719,7 @@ pub(crate) fn respond_with_upstream(
                 upstream_request_id.as_deref(),
                 upstream_cf_ray.as_deref(),
                 upstream_auth_error.as_deref(),
+                upstream_identity_error_code.as_deref(),
             );
             Ok(UpstreamResponseBridgeResult {
                 usage,
@@ -787,6 +823,7 @@ pub(crate) fn respond_with_upstream(
                 upstream_request_id.as_deref(),
                 upstream_cf_ray.as_deref(),
                 upstream_auth_error.as_deref(),
+                upstream_identity_error_code.as_deref(),
             );
             Ok(UpstreamResponseBridgeResult {
                 usage,

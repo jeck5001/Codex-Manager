@@ -5,6 +5,14 @@ use reqwest::Method;
 use serde_json::Value;
 use std::time::Instant;
 
+struct RequestAffinityState<'a> {
+    incoming_session_id: Option<&'a str>,
+    incoming_client_request_id: Option<String>,
+    incoming_turn_state: Option<&'a str>,
+    fallback_session_id: Option<String>,
+    fallback_client_request_id: Option<String>,
+}
+
 fn should_force_connection_close(target_url: &str) -> bool {
     reqwest::Url::parse(target_url)
         .ok()
@@ -66,6 +74,61 @@ fn should_compact_upstream_headers() -> bool {
     super::cpa_no_cookie_header_mode_enabled()
 }
 
+fn extract_prompt_cache_key(body: &[u8]) -> Option<String> {
+    if body.is_empty() || body.len() > 64 * 1024 {
+        return None;
+    }
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return None;
+    };
+    value
+        .get("prompt_cache_key")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn resolve_request_affinity_state<'a>(
+    incoming_session_id: Option<&'a str>,
+    incoming_client_request_id: Option<&'a str>,
+    incoming_turn_state: Option<&'a str>,
+    conversation_id: Option<&'a str>,
+    prompt_cache_key: Option<String>,
+) -> RequestAffinityState<'a> {
+    let original_incoming_session_id = incoming_session_id;
+    let mut resolved_incoming_session_id = original_incoming_session_id;
+    let mut resolved_client_request_id = incoming_client_request_id.map(str::to_string);
+    let mut resolved_turn_state = incoming_turn_state;
+
+    if prompt_cache_key.is_some() {
+        // 中文注释：当请求已携带线程锚点时，fallback 分支也应和主路径一样优先绑定到
+        // 同一锚点，而不是继续复用旧 session_id。
+        resolved_incoming_session_id = None;
+    }
+    if conversation_id.is_some() {
+        // 中文注释：主路径已按 conversation_id 覆盖旧 request id，这里保持一致。
+        resolved_client_request_id = prompt_cache_key.clone();
+    }
+    if let (Some(cache_key), Some(legacy_session_id)) =
+        (prompt_cache_key.as_deref(), original_incoming_session_id)
+    {
+        if legacy_session_id.trim() != cache_key {
+            // 中文注释：旧 session_id 已被新的线程锚点覆盖时，继续透传旧 turn-state
+            // 只会把 fallback 分支粘回历史 turn。
+            resolved_turn_state = None;
+        }
+    }
+
+    RequestAffinityState {
+        incoming_session_id: resolved_incoming_session_id,
+        incoming_client_request_id: resolved_client_request_id,
+        incoming_turn_state: resolved_turn_state,
+        fallback_session_id: prompt_cache_key.clone(),
+        fallback_client_request_id: prompt_cache_key,
+    }
+}
+
 fn is_compact_request_path(path: &str) -> bool {
     path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?")
 }
@@ -105,6 +168,18 @@ pub(super) fn try_openai_fallback(
         } else {
             body.clone()
         };
+    let prompt_cache_key = if strip_session_affinity {
+        None
+    } else {
+        extract_prompt_cache_key(body_for_request.as_ref())
+    };
+    let request_affinity = resolve_request_affinity_state(
+        incoming_headers.session_id(),
+        incoming_headers.client_request_id(),
+        incoming_headers.turn_state(),
+        incoming_headers.conversation_id(),
+        prompt_cache_key,
+    );
 
     let account_id = account
         .chatgpt_account_id
@@ -117,9 +192,9 @@ pub(super) fn try_openai_fallback(
             account_id,
             include_account_id,
             upstream_cookie,
-            incoming_session_id: incoming_headers.session_id(),
+            incoming_session_id: request_affinity.incoming_session_id,
             incoming_subagent: incoming_headers.subagent(),
-            fallback_session_id: None,
+            fallback_session_id: request_affinity.fallback_session_id.as_deref(),
             strip_session_affinity,
             has_body: !body.is_empty(),
         };
@@ -130,13 +205,14 @@ pub(super) fn try_openai_fallback(
             account_id,
             include_account_id,
             upstream_cookie,
-            incoming_session_id: incoming_headers.session_id(),
-            incoming_client_request_id: incoming_headers.client_request_id(),
+            incoming_session_id: request_affinity.incoming_session_id,
+            incoming_client_request_id: request_affinity.incoming_client_request_id.as_deref(),
             incoming_subagent: incoming_headers.subagent(),
             incoming_beta_features: incoming_headers.beta_features(),
             incoming_turn_metadata: incoming_headers.turn_metadata(),
-            fallback_session_id: None,
-            incoming_turn_state: incoming_headers.turn_state(),
+            fallback_session_id: request_affinity.fallback_session_id.as_deref(),
+            fallback_client_request_id: request_affinity.fallback_client_request_id.as_deref(),
+            incoming_turn_state: request_affinity.incoming_turn_state,
             include_turn_state: !compact_headers_mode && !is_openai_api_target,
             strip_session_affinity,
             is_stream,
@@ -185,4 +261,55 @@ pub(super) fn try_openai_fallback(
     let duration_ms = super::duration_to_millis(attempt_started_at.elapsed());
     super::metrics::record_gateway_upstream_attempt(duration_ms, false);
     Ok(Some(resp))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_request_affinity_state;
+
+    #[test]
+    fn request_affinity_uses_thread_anchor_for_fallback_headers() {
+        let actual = resolve_request_affinity_state(
+            Some("legacy_session_should_not_win"),
+            Some("legacy_request_id_should_not_win"),
+            Some("legacy_turn_state_should_not_win"),
+            Some("conv_anchor_fallback"),
+            Some("conv_anchor_fallback".to_string()),
+        );
+
+        assert_eq!(actual.incoming_session_id, None);
+        assert_eq!(
+            actual.incoming_client_request_id.as_deref(),
+            Some("conv_anchor_fallback")
+        );
+        assert_eq!(actual.incoming_turn_state, None);
+        assert_eq!(
+            actual.fallback_session_id.as_deref(),
+            Some("conv_anchor_fallback")
+        );
+        assert_eq!(
+            actual.fallback_client_request_id.as_deref(),
+            Some("conv_anchor_fallback")
+        );
+    }
+
+    #[test]
+    fn request_affinity_keeps_plain_request_id_without_conversation_anchor() {
+        let actual = resolve_request_affinity_state(
+            None,
+            Some("explicit_client_request_id"),
+            Some("turn_state_ok"),
+            None,
+            None,
+        );
+
+        assert_eq!(actual.incoming_session_id, None);
+        assert_eq!(
+            actual.incoming_client_request_id.as_deref(),
+            Some("explicit_client_request_id")
+        );
+        assert_eq!(actual.incoming_turn_state, Some("turn_state_ok"));
+        assert_eq!(actual.fallback_session_id, None);
+        assert_eq!(actual.fallback_client_request_id, None);
+    }
 }

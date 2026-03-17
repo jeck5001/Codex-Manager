@@ -72,8 +72,9 @@
 - [x] token endpoint 遇到 challenge / HTML 页面时输出稳定摘要，不再原样透传整页 HTML
 - [x] `/oauth/token` 登录链路已挂上 `Accept / Originator / User-Agent / Residency`
 - [x] token endpoint / api key exchange 失败摘要补齐 `request_id / cf-ray / auth_error` 调试头
+- [x] token endpoint / api key exchange 的 `x-error-json` 统一支持原始 JSON 与 base64 两种头值，并补齐 `identity_error_code`
 - [ ] 继续复核登录回调与 token 链的剩余请求头使用点
-- [ ] 对齐 token endpoint 错误解析，补齐更完整的失效/挑战区分
+- [ ] 对齐 token endpoint 错误解析，继续细化 challenge / HTML / 非 JSON 子类
 - [x] 复核 refresh token 失败后的账号状态迁移，继续避免误摘号
 - [x] 收紧 refresh 失效判定：仅 401 视为 refresh 认证失败，403/挑战页/代理异常不再摘号
 
@@ -92,17 +93,20 @@
 
 - [x] 收掉 `tool_choice=auto`、`reasoning.encrypted_content` 这类官方默认值差异
 - [x] 模型列表 `/models` 请求头收回到与官方默认客户端一致的 `originator / User-Agent / ChatGPT-Account-ID / residency` 语义，并移除历史 `Version` 头
-- [x] 模型列表 `/models` 失败诊断收口到稳定 challenge / HTML / auth 调试摘要，并保持 OpenAI fallback 触发条件兼容
+- [x] 模型列表 `/models` 失败诊断收口到稳定 challenge / HTML / auth / `identity_error_code` 摘要，并保持 OpenAI fallback 触发条件兼容
+- [x] 模型列表 `/models` 不再显式发送上游 `Cookie`
 - [ ] 继续核对请求体字段白名单和默认值的剩余边角
 - [x] 对齐流式与非流式的 header profile 分支
 - [x] 收掉 HTTP `/responses` 上不该显式发送的 `Conversation_id / OpenAI-Beta / Connection / Version`
 - [x] 透传官方 `x-codex-beta-features`
 - [x] 透传官方 `x-codex-turn-metadata`（仅 ASCII 安全值）
-- [x] 客户端未传 `x-client-request-id` 时，按稳定线程/session 锚点自动补齐
+- [x] 客户端未传 `x-client-request-id` 时，仅在线程锚点（`prompt_cache_key / Conversation_id`）存在时自动补齐，不再从普通 `session_id` 派生
 - [x] 当 `/responses` 已有 `prompt_cache_key` 时，让 `session_id / x-client-request-id` 优先跟随线程锚点，不再让旧 `Session_id` 抢占
 - [x] 当入站明确携带 `Conversation_id` 时，让线程锚点覆盖旧 `x-client-request-id`
 - [x] 当旧 `Session_id` 已被新的线程锚点覆盖时，丢弃旧 `x-codex-turn-state`
-- [ ] 继续核对 cookie、turn state、conversation 相关头在不同链路上的带法
+- [ ] 继续核对 `/responses` 主链上的 remote-sticky `session_id` 兼容分支
+- [ ] 继续核对 `x-codex-turn-state` 的入站信任与过滤规则
+- [x] 把 `openai fallback` 的线程锚点、`session_id`、`x-client-request-id` 语义继续收齐到主链
 - [ ] 复核失败重试、failover、日志落盘时机，避免多账号切换误导
 
 验收：
@@ -119,10 +123,11 @@
 待做：
 
 - [x] compact 默认补 `x-openai-subagent=compact`，与官方 `compact_remote` 保持一致
-- [ ] 继续核对 compact 其余专用头部和 cookie 行为
+- [x] compact 不再显式发送上游 `Cookie`
+- [ ] 继续核对 compact 其余专用头部与 `session_id` 兼容分支
 - [x] compact 上游 `2xx` 假成功体改判为 `502`，避免 HTML/challenge/异常 JSON 透传成功
 - [x] compact 上游 `403/5xx` 的 HTML/challenge 页改成结构化 JSON 错误返回，不再透传整页 HTML
-- [ ] 继续细化 compact 失败时的 fallback 与日志诊断
+- [ ] 继续细化 compact 失败时的 fallback 与 `identity_error_code` / 调试头诊断
 - [ ] 如果官方 `compact_remote` 的历史替换行为会影响真实请求链路，再按需补对应状态传递；否则不补 `thread/compact/start`
 
 验收：
@@ -162,6 +167,7 @@
 - [x] `gateway-trace.log` 已对失败请求补齐 `REQUEST_START / CANDIDATE_* / ATTEMPT_* / BRIDGE_RESULT / FAILED_REQUEST` 上下文缓冲，成功请求仍不落 trace 文件
 - [x] `BRIDGE_RESULT` 与失败日志已补充 `request_id / cf-ray / content-type` 诊断摘要
 - [x] `/responses` 与 `compact` 的 challenge / HTML 失败摘要补齐 `auth_error`
+- [x] `/responses` 与 `compact` 的 `x-error-json` 已统一支持原始 JSON / base64 两种头值，并补齐 `identity_error_code`
 - [ ] 继续增强 `gateway-trace.log` 对最后一帧、最后一跳、响应头、body 摘要的记录
 - [ ] 对 403/502/503 建立更稳定的错误分类
 - [ ] 让桌面端 toast 和请求日志错误文案尽量使用同一错误源
