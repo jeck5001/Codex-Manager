@@ -23,11 +23,12 @@ const OPENAI_AUTH_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const OPENAI_AUTH_READ_TIMEOUT: Duration = Duration::from_secs(30);
 const OPENAI_AUTH_TOTAL_TIMEOUT: Duration = Duration::from_secs(60);
 const ACCOUNT_SORT_STEP: i64 = 5;
-const RESIDENCY_HEADER_NAME: &str = "x-openai-internal-codex-residency";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 const OAI_REQUEST_ID_HEADER: &str = "x-oai-request-id";
 const CF_RAY_HEADER: &str = "cf-ray";
 const AUTH_ERROR_HEADER: &str = "x-openai-authorization-error";
+const CLOUDFLARE_BLOCKED_MESSAGE: &str =
+    "Access blocked by Cloudflare. This usually happens when connecting from a restricted region";
 
 fn read_json_with_timeout<T>(
     resp: reqwest::blocking::Response,
@@ -123,7 +124,9 @@ fn classify_token_endpoint_error_kind(body: &str) -> &'static str {
     }
     let normalized = trimmed.to_ascii_lowercase();
     if normalized.contains("<html") || normalized.contains("<!doctype html") {
-        if normalized.contains("cloudflare")
+        if normalized.contains("cloudflare") && normalized.contains("blocked") {
+            "cloudflare_blocked"
+        } else if normalized.contains("cloudflare")
             || normalized.contains("just a moment")
             || normalized.contains("attention required")
         {
@@ -179,6 +182,7 @@ fn extract_html_title(raw: &str) -> Option<String> {
 
 fn summarize_html_error_body(raw: &str) -> String {
     let normalized = raw.to_ascii_lowercase();
+    let looks_like_blocked = normalized.contains("cloudflare") && normalized.contains("blocked");
     let looks_like_challenge = normalized.contains("cloudflare")
         || normalized.contains("just a moment")
         || normalized.contains("attention required");
@@ -187,6 +191,10 @@ fn summarize_html_error_body(raw: &str) -> String {
         || normalized.contains("</html>");
     if !looks_like_html {
         return raw.trim().to_string();
+    }
+
+    if looks_like_blocked {
+        return CLOUDFLARE_BLOCKED_MESSAGE.to_string();
     }
 
     let title = extract_html_title(raw);
@@ -392,19 +400,6 @@ fn openai_auth_http_client() -> &'static Client {
     })
 }
 
-fn apply_token_endpoint_headers(
-    builder: reqwest::blocking::RequestBuilder,
-) -> reqwest::blocking::RequestBuilder {
-    let mut builder = builder
-        .header("Accept", "application/json")
-        .header("User-Agent", crate::gateway::current_codex_user_agent())
-        .header("Originator", crate::gateway::current_originator());
-    if let Some(residency_requirement) = crate::gateway::current_residency_requirement() {
-        builder = builder.header(RESIDENCY_HEADER_NAME, residency_requirement);
-    }
-    builder
-}
-
 pub(crate) fn complete_login(state: &str, code: &str) -> Result<(), String> {
     complete_login_with_redirect(state, code, None)
 }
@@ -561,7 +556,8 @@ fn exchange_code_for_tokens(
 ) -> Result<TokenResponse, String> {
     // 请求 token 接口
     let client = openai_auth_http_client();
-    let resp = apply_token_endpoint_headers(client.post(format!("{issuer}/oauth/token")))
+    let resp = client
+        .post(format!("{issuer}/oauth/token"))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(token_exchange_body_authorization_code(
             code,
@@ -597,7 +593,8 @@ pub(crate) fn obtain_api_key(
 
     // 兑换平台 API Key
     let client = openai_auth_http_client();
-    let resp = apply_token_endpoint_headers(client.post(format!("{issuer}/oauth/token")))
+    let resp = client
+        .post(format!("{issuer}/oauth/token"))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(token_exchange_body_token_exchange(id_token, client_id))
         .send()

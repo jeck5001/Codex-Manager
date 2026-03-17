@@ -60,6 +60,7 @@
 - [x] callback 增加 `error / error_description / state` 错误建模
 - [x] callback 成功后增加 workspace 二次校验
 - [x] 浏览器授权 `scope` 对齐官方 connectors scope
+- [x] 授权码换 token 与 id_token 换 API key 的请求头已收回到官方登录服务器形状，不再额外挂 `Originator / User-Agent / Residency`
 - [x] refresh token 请求体改成官方 `application/json` 形状
 - [x] usage endpoint 请求头统一到 `ChatGPT-Account-ID` 语义，并对 challenge / HTML 失败输出稳定摘要
 - [x] `CPA no cookie` 模式与 `ChatGPT-Account-ID` 解耦，只抑制 cookie/粘性头，不再误去掉账号头
@@ -70,7 +71,7 @@
 - [x] refresh `401` 内部原因收口到稳定枚举，避免后续只靠散乱字符串匹配
 - [x] token endpoint 错误解析贴近官方优先级，并对 transport error 做敏感 URL 脱敏
 - [x] token endpoint 遇到 challenge / HTML 页面时输出稳定摘要，不再原样透传整页 HTML
-- [x] `/oauth/token` 登录链路已挂上 `Accept / Originator / User-Agent / Residency`
+- [x] token endpoint 命中 `403 + Cloudflare blocked` 时输出官方风格 blocked 摘要
 - [x] token endpoint / api key exchange 失败摘要补齐 `request_id / cf-ray / auth_error` 调试头
 - [x] token endpoint / api key exchange 的 `x-error-json` 统一支持原始 JSON 与 base64 两种头值，并补齐 `identity_error_code`
 - [x] 当 refresh `401` 的 body 缺少错误码时，继续从 `x-error-json / x-openai-authorization-error` 头部兜底判定 canonical 原因
@@ -99,6 +100,7 @@
 - [ ] 继续核对请求体字段白名单和默认值的剩余边角
 - [x] 对齐流式与非流式的 header profile 分支
 - [x] 收掉 HTTP `/responses` 上不该显式发送的 `Conversation_id / OpenAI-Beta / Connection / Version`
+- [x] 当上游目标是 `api.openai.com/v1` 时，`/responses` 不再透传 ChatGPT 侧 `Cookie / ChatGPT-Account-ID`
 - [x] 透传官方 `x-codex-beta-features`
 - [x] 透传官方 `x-codex-turn-metadata`（仅 ASCII 安全值）
 - [x] 客户端未传 `x-client-request-id` 时，仅在线程锚点（`prompt_cache_key / Conversation_id`）存在时自动补齐，不再从普通 `session_id` 派生

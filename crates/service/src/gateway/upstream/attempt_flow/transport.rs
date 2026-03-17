@@ -163,6 +163,7 @@ pub(in super::super) fn send_upstream_request(
 ) -> Result<reqwest::blocking::Response, reqwest::Error> {
     let attempt_started_at = Instant::now();
     let compact_headers_mode = should_compact_upstream_headers();
+    let is_openai_api_target = super::super::super::is_openai_api_base(target_url);
     let prompt_cache_key = if strip_session_affinity {
         None
     } else {
@@ -237,13 +238,18 @@ pub(in super::super) fn send_upstream_request(
         .chatgpt_account_id
         .as_deref()
         .or_else(|| account.workspace_id.as_deref());
-    let include_account_id = !super::super::super::is_openai_api_base(target_url);
+    let include_account_id = !is_openai_api_target;
+    let forwarded_upstream_cookie = if is_openai_api_target {
+        None
+    } else {
+        upstream_cookie
+    };
     let mut upstream_headers = if is_compact_request_path(request_ctx.request_path) {
         let header_input = super::super::header_profile::CodexCompactUpstreamHeaderInput {
             auth_token,
             account_id,
             include_account_id,
-            upstream_cookie,
+            upstream_cookie: forwarded_upstream_cookie,
             incoming_session_id,
             incoming_subagent: incoming_headers.subagent(),
             fallback_session_id: compact_fallback_session_id,
@@ -256,7 +262,7 @@ pub(in super::super) fn send_upstream_request(
             auth_token,
             account_id,
             include_account_id,
-            upstream_cookie,
+            upstream_cookie: forwarded_upstream_cookie,
             incoming_session_id,
             incoming_client_request_id,
             incoming_subagent: incoming_headers.subagent(),
