@@ -31,7 +31,7 @@ permissions:
   contents: write
 
 env:
-  TAURI_CLI_VERSION: 2.9.6
+  TAURI_CLI_VERSION: 2.10.3
 
 concurrency:
   group: ${{ format('{0}-tag-{1}', github.workflow, startsWith(github.event.inputs.tag, 'v') && github.event.inputs.tag || format('v{0}', github.event.inputs.tag)) }}
