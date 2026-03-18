@@ -14,6 +14,10 @@ inputs:
     description: Lockfile path used for pnpm cache.
     required: false
     default: apps/pnpm-lock.yaml
+  enable-pnpm-cache:
+    description: Enable pnpm store cache through actions/setup-node.
+    required: false
+    default: "true"
   rust-toolchain:
     description: Rust toolchain channel.
     required: false
@@ -36,12 +40,19 @@ runs:
         version: ${{ inputs.pnpm-version }}
         run_install: false
 
-    - name: Setup Node.js
+    - name: Setup Node.js with pnpm cache
+      if: ${{ inputs.enable-pnpm-cache == 'true' }}
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version }}
         cache: pnpm
         cache-dependency-path: ${{ inputs.pnpm-lock-path }}
+
+    - name: Setup Node.js
+      if: ${{ inputs.enable-pnpm-cache != 'true' }}
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
 
     - name: Setup Rust
       if: ${{ inputs.rust-target == '' }}

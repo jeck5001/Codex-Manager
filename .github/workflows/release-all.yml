@@ -105,6 +105,8 @@ jobs:
 
       - name: Setup release environment
         uses: ./.github/actions/setup-release-env
+        with:
+          enable-pnpm-cache: false
 
       - name: Prepare frontend dist
         uses: ./.github/actions/prepare-frontend-dist
@@ -220,6 +222,7 @@ jobs:
       - name: Setup release environment
         uses: ./.github/actions/setup-release-env
         with:
+          enable-pnpm-cache: false
           rust-target: ${{ matrix.rust_target }}
 
       - name: Prepare frontend dist
@@ -352,6 +355,8 @@ jobs:
 
       - name: Setup release environment
         uses: ./.github/actions/setup-release-env
+        with:
+          enable-pnpm-cache: false
 
       - name: Cache apt packages
         uses: actions/cache@v5
