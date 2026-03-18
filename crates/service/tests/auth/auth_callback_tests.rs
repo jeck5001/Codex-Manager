@@ -2,7 +2,6 @@ use super::{
     build_callback_error_page, build_callback_success_page, ensure_login_server_with_addr,
     html_response, oauth_callback_error_message, resolve_redirect_uri, LOGIN_SERVER_STATE,
 };
-use crate::auth_login::login_start;
 use std::net::TcpListener;
 use std::sync::Mutex;
 use url::Url;
@@ -142,7 +141,7 @@ fn login_start_fails_when_login_server_cannot_bind() {
 
     std::env::set_var("CODEXMANAGER_LOGIN_ADDR", "0.0.0.0:1455");
 
-    let err = login_start("browser", false, None, None, None, None).expect_err("should fail");
+    let err = ensure_login_server_with_addr("0.0.0.0:1455").expect_err("should fail");
     assert!(err.contains("loopback"));
 
     match prev_login {

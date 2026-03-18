@@ -310,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn request_affinity_keeps_plain_request_id_without_conversation_anchor() {
+    fn request_affinity_drops_orphan_turn_state_without_conversation_anchor() {
         let actual = resolve_request_affinity_state(
             None,
             Some("explicit_client_request_id"),
@@ -324,7 +324,7 @@ mod tests {
             actual.incoming_client_request_id.as_deref(),
             Some("explicit_client_request_id")
         );
-        assert_eq!(actual.incoming_turn_state, Some("turn_state_ok"));
+        assert_eq!(actual.incoming_turn_state, None);
         assert_eq!(actual.fallback_session_id, None);
     }
 

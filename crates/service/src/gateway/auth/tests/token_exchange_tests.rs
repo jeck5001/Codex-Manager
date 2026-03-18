@@ -54,3 +54,19 @@ fn stale_shared_exchange_lock_entry_is_not_reclaimed() {
     let second = account_token_exchange_lock("acc-1");
     assert!(Arc::ptr_eq(&first, &second));
 }
+
+#[test]
+fn fallback_to_access_token_uses_runtime_access_token_when_exchange_fails() {
+    let token = Token {
+        account_id: "acc-2".to_string(),
+        id_token: "runtime-id-token".to_string(),
+        access_token: "runtime-access-token".to_string(),
+        refresh_token: String::new(),
+        api_key_access_token: None,
+        last_refresh: now_ts(),
+    };
+
+    let bearer =
+        fallback_to_access_token(&token, "api key exchange failed").expect("fallback bearer");
+    assert_eq!(bearer, "runtime-access-token");
+}
