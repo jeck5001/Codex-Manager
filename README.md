@@ -118,3 +118,6 @@
 ## 联系方式
 - 公众号：七线牛马
 - 微信： ProsperGao
+- 交流圈：
+
+  ![交流圈二维码](assets/images/qq_group.jpg)
