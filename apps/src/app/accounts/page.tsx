@@ -310,11 +310,10 @@ export default function AccountsPage() {
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start gap-4 xl:flex-nowrap">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <div className="w-full sm:w-64">
               <Input
                 placeholder="搜索账号名 / 编号..."
-                className="h-10 bg-card/50 pl-9"
+                className="h-10 bg-card/50 px-3"
                 value={search}
                 onChange={(event) => handleSearchChange(event.target.value)}
               />

@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   Database,
   RefreshCw,
-  Search,
   Shield,
   Trash2,
   Zap,
@@ -547,11 +546,10 @@ function LogsPageContent() {
     <div className="animate-in space-y-5 fade-in duration-500">
       <Card className="glass-card border-none shadow-md backdrop-blur-md">
         <CardContent className="grid gap-3 pt-0 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-center">
-          <div className="relative min-w-0">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="min-w-0">
             <Input
               placeholder="搜索路径、账号或密钥..."
-              className="glass-card h-10 rounded-xl pl-10"
+              className="glass-card h-10 rounded-xl px-3"
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);

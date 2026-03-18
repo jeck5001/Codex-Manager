@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
-import { DisclaimerBanner } from "@/components/layout/disclaimer-banner";
 import { Providers } from "@/components/providers";
 import { AppBootstrap } from "@/components/layout/app-bootstrap";
 
@@ -25,10 +24,7 @@ export default function RootLayout({
               <Sidebar />
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                 <Header />
-                <main className="min-w-0 flex-1 overflow-y-auto p-6 no-scrollbar">
-                  <DisclaimerBanner />
-                  {children}
-                </main>
+                <main className="min-w-0 flex-1 overflow-y-auto p-6 no-scrollbar">{children}</main>
               </div>
             </div>
           </AppBootstrap>
