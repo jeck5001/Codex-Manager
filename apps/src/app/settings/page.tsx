@@ -21,6 +21,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -30,6 +38,8 @@ import {
   AppWindow,
   Check,
   Cpu,
+  Download,
+  ExternalLink,
   Globe,
   Info,
   Palette,
@@ -130,12 +140,31 @@ function parseIntegerInput(value: string, minimum = 0): number | null {
 }
 
 type UpdateCheckSummary = {
+  repo: string;
+  mode: string;
+  isPortable: boolean;
   hasUpdate: boolean;
+  canPrepare: boolean;
   currentVersion: string;
   latestVersion: string;
   releaseTag: string;
   releaseName: string;
   reason: string;
+};
+
+type UpdatePrepareSummary = {
+  prepared: boolean;
+  mode: string;
+  isPortable: boolean;
+  releaseTag: string;
+  latestVersion: string;
+  assetName: string;
+  assetPath: string;
+  downloaded: boolean;
+};
+
+type CheckUpdateRequest = {
+  silent?: boolean;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -156,13 +185,42 @@ function readBooleanField(source: Record<string, unknown>, key: string): boolean
 function normalizeUpdateCheckSummary(payload: unknown): UpdateCheckSummary {
   const source = asRecord(payload) ?? {};
   return {
+    repo: readStringField(source, "repo"),
+    mode: readStringField(source, "mode"),
+    isPortable: readBooleanField(source, "isPortable"),
     hasUpdate: readBooleanField(source, "hasUpdate"),
+    canPrepare: readBooleanField(source, "canPrepare"),
     currentVersion: readStringField(source, "currentVersion"),
     latestVersion: readStringField(source, "latestVersion"),
     releaseTag: readStringField(source, "releaseTag"),
     releaseName: readStringField(source, "releaseName"),
     reason: readStringField(source, "reason"),
   };
+}
+
+function normalizeUpdatePrepareSummary(payload: unknown): UpdatePrepareSummary {
+  const source = asRecord(payload) ?? {};
+  return {
+    prepared: readBooleanField(source, "prepared"),
+    mode: readStringField(source, "mode"),
+    isPortable: readBooleanField(source, "isPortable"),
+    releaseTag: readStringField(source, "releaseTag"),
+    latestVersion: readStringField(source, "latestVersion"),
+    assetName: readStringField(source, "assetName"),
+    assetPath: readStringField(source, "assetPath"),
+    downloaded: readBooleanField(source, "downloaded"),
+  };
+}
+
+function buildReleaseUrl(summary: UpdateCheckSummary | null): string {
+  if (!summary?.repo) {
+    return "https://github.com/qxcnm/Codex-Manager/releases";
+  }
+  const normalizedTag = summary.releaseTag || (summary.latestVersion ? `v${summary.latestVersion}` : "");
+  if (!normalizedTag) {
+    return `https://github.com/${summary.repo}/releases`;
+  }
+  return `https://github.com/${summary.repo}/releases/tag/${normalizedTag}`;
 }
 
 export default function SettingsPage() {
@@ -172,6 +230,7 @@ export default function SettingsPage() {
   const isDesktopRuntime = isTauriRuntime();
   const lastSyncedSnapshotThemeRef = useRef<string | null>(null);
   const lastSyncedAppearancePresetRef = useRef<string | null>(null);
+  const autoUpdateCheckedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>(readInitialSettingsTab);
   const [envSearch, setEnvSearch] = useState("");
   const [selectedEnvKey, setSelectedEnvKey] = useState<string | null>(null);
@@ -179,6 +238,9 @@ export default function SettingsPage() {
   const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
   const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<UpdateCheckSummary | null>(null);
+  const [updateDialogCheck, setUpdateDialogCheck] = useState<UpdateCheckSummary | null>(null);
+  const [preparedUpdate, setPreparedUpdate] = useState<UpdatePrepareSummary | null>(null);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [transportDraft, setTransportDraft] = useState<
     Partial<Record<"sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs", string>>
   >({});
@@ -214,24 +276,68 @@ export default function SettingsPage() {
   });
 
   const checkUpdate = useMutation({
-    mutationFn: () => appClient.checkUpdate(),
-    onSuccess: (result) => {
+    mutationFn: (request?: CheckUpdateRequest) => {
+      void request;
+      return appClient.checkUpdate();
+    },
+    onSuccess: (result, request) => {
       const summary = normalizeUpdateCheckSummary(result);
       setLastUpdateCheck(summary);
       if (summary.hasUpdate) {
-        toast.success(
-          `发现新版本 ${summary.latestVersion || summary.releaseTag || "可用"}`
+        setUpdateDialogCheck(summary);
+        setPreparedUpdate((current) =>
+          current && current.latestVersion === summary.latestVersion ? current : null
         );
+        setUpdateDialogOpen(true);
+        if (!request?.silent) {
+          toast.success(
+            `发现新版本 ${summary.latestVersion || summary.releaseTag || "可用"}`
+          );
+        }
         return;
       }
-      toast.success(
-        summary.reason
-          ? `已检查更新：${summary.reason}`
-          : `当前已是最新版本 ${summary.currentVersion || ""}`.trim()
-      );
+      setPreparedUpdate(null);
+      if (!request?.silent) {
+        toast.success(
+          summary.reason
+            ? `已检查更新：${summary.reason}`
+            : `当前已是最新版本 ${summary.currentVersion || ""}`.trim()
+        );
+      }
     },
     onError: (error: unknown) => {
       toast.error(`检查更新失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const prepareUpdate = useMutation({
+    mutationFn: () => appClient.prepareUpdate(),
+    onSuccess: (result) => {
+      const summary = normalizeUpdatePrepareSummary(result);
+      setPreparedUpdate(summary);
+      setUpdateDialogOpen(true);
+      toast.success(
+        summary.isPortable
+          ? `更新已下载，重启应用后即可更新到 ${summary.latestVersion || "新版本"}`
+          : `安装包已下载完成，可立即安装 ${summary.latestVersion || "新版本"}`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`下载更新失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const applyPreparedUpdate = useMutation({
+    mutationFn: (payload: { isPortable: boolean }) =>
+      payload.isPortable ? appClient.applyUpdatePortable() : appClient.launchInstaller(),
+    onSuccess: (_result, payload) => {
+      setUpdateDialogOpen(false);
+      toast.success(payload.isPortable ? "即将重启并应用更新" : "安装程序已启动");
+    },
+    onError: (error: unknown, payload) => {
+      toast.error(
+        `${payload.isPortable ? "应用更新" : "启动安装程序"}失败: ${getAppErrorMessage(error)}`
+      );
     },
   });
 
@@ -263,6 +369,22 @@ export default function SettingsPage() {
     if (typeof window === "undefined") return;
     window.sessionStorage.setItem(SETTINGS_ACTIVE_TAB_KEY, activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!isDesktopRuntime || !snapshot?.updateAutoCheck || autoUpdateCheckedRef.current) {
+      return;
+    }
+    autoUpdateCheckedRef.current = true;
+    checkUpdate.mutate({ silent: true });
+  }, [checkUpdate, isDesktopRuntime, snapshot?.updateAutoCheck]);
+
+  const handleOpenReleasePage = () => {
+    void appClient
+      .openInBrowser(buildReleaseUrl(updateDialogCheck))
+      .catch((error) => {
+        toast.error(`打开发布页失败: ${getAppErrorMessage(error)}`);
+      });
+  };
 
   const filteredEnvCatalog = useMemo(() => {
     const catalog = snapshot?.envOverrideCatalog || [];
@@ -566,8 +688,13 @@ export default function SettingsPage() {
                 <Button
                   variant="outline"
                   className="gap-2 self-start md:self-auto"
-                  disabled={!isDesktopRuntime || checkUpdate.isPending}
-                  onClick={() => checkUpdate.mutate()}
+                  disabled={
+                    !isDesktopRuntime ||
+                    checkUpdate.isPending ||
+                    prepareUpdate.isPending ||
+                    applyPreparedUpdate.isPending
+                  }
+                  onClick={() => checkUpdate.mutate({ silent: false })}
                 >
                   <RefreshCw className={cn("h-4 w-4", checkUpdate.isPending && "animate-spin")} />
                   检查更新
@@ -1147,6 +1274,124 @@ export default function SettingsPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={updateDialogOpen}
+        onOpenChange={(open) => {
+          if (prepareUpdate.isPending || applyPreparedUpdate.isPending) {
+            return;
+          }
+          setUpdateDialogOpen(open);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="glass-card border-none p-6 sm:max-w-[480px]"
+        >
+          <DialogHeader>
+            <DialogTitle>{preparedUpdate ? "更新已准备完成" : "发现新版本"}</DialogTitle>
+            <DialogDescription>
+              {preparedUpdate
+                ? preparedUpdate.isPortable
+                  ? "更新包已下载完成。确认后将重启应用并替换当前程序。"
+                  : "安装包已下载完成。确认后会启动系统安装程序。"
+                : `当前版本 ${updateDialogCheck?.currentVersion || "未知"}，发现新版本 ${
+                    updateDialogCheck?.latestVersion ||
+                    updateDialogCheck?.releaseTag ||
+                    "可用"
+                  }。`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 text-sm">
+            <div className="rounded-2xl border border-border/50 bg-background/45 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">当前版本</span>
+                <span className="font-medium">
+                  {updateDialogCheck?.currentVersion || "未知"}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">目标版本</span>
+                <span className="font-medium">
+                  {preparedUpdate?.latestVersion ||
+                    updateDialogCheck?.latestVersion ||
+                    updateDialogCheck?.releaseTag ||
+                    "未知"}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">更新模式</span>
+                <span className="font-medium">
+                  {(preparedUpdate?.isPortable ?? updateDialogCheck?.isPortable)
+                    ? "便携包更新"
+                    : "安装包更新"}
+                </span>
+              </div>
+              {preparedUpdate?.assetName ? (
+                <div className="mt-2 flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">更新文件</span>
+                  <span className="max-w-[240px] truncate font-mono text-xs">
+                    {preparedUpdate.assetName}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+
+            {preparedUpdate ? null : updateDialogCheck?.reason ? (
+              <div className="rounded-2xl border border-border/50 bg-muted/40 p-4 text-xs leading-5 text-muted-foreground">
+                {updateDialogCheck.reason}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-border/50 bg-muted/40 p-4 text-xs leading-5 text-muted-foreground">
+                建议先下载更新包，下载完成后再执行安装或重启更新。
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              disabled={prepareUpdate.isPending || applyPreparedUpdate.isPending}
+              onClick={() => setUpdateDialogOpen(false)}
+            >
+              稍后
+            </Button>
+            {preparedUpdate ? (
+              <Button
+                className="gap-2"
+                disabled={applyPreparedUpdate.isPending}
+                onClick={() =>
+                  applyPreparedUpdate.mutate({ isPortable: preparedUpdate.isPortable })
+                }
+              >
+                <Download className="h-4 w-4" />
+                {applyPreparedUpdate.isPending
+                  ? preparedUpdate.isPortable
+                    ? "正在应用更新..."
+                    : "正在启动安装程序..."
+                  : preparedUpdate.isPortable
+                    ? "重启并更新"
+                    : "立即安装"}
+              </Button>
+            ) : updateDialogCheck?.canPrepare ? (
+              <Button
+                className="gap-2"
+                disabled={prepareUpdate.isPending}
+                onClick={() => prepareUpdate.mutate()}
+              >
+                <Download className="h-4 w-4" />
+                {prepareUpdate.isPending ? "正在下载更新..." : "下载更新"}
+              </Button>
+            ) : (
+              <Button className="gap-2" onClick={handleOpenReleasePage}>
+                <ExternalLink className="h-4 w-4" />
+                打开发布页
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

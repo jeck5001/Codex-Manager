@@ -63,10 +63,10 @@ fn env_flag(name: &str) -> Option<bool> {
 }
 
 pub(super) fn should_include_prerelease_updates_with_override(
-    current_version: &Version,
+    _current_version: &Version,
     override_value: Option<bool>,
 ) -> bool {
-    override_value.unwrap_or_else(|| !current_version.pre.is_empty())
+    override_value.unwrap_or(false)
 }
 
 pub(super) fn should_include_prerelease_updates(current_version: &Version) -> bool {
@@ -102,14 +102,14 @@ mod tests {
     use super::{normalize_version, should_include_prerelease_updates_with_override};
 
     #[test]
-    fn prerelease_channel_defaults_follow_current_version() {
+    fn prerelease_channel_defaults_to_stable_latest() {
         let stable = Version::parse("0.1.8").expect("stable version");
         let beta = Version::parse("0.1.8-beta.1").expect("beta version");
 
         assert!(!should_include_prerelease_updates_with_override(
             &stable, None
         ));
-        assert!(should_include_prerelease_updates_with_override(&beta, None));
+        assert!(!should_include_prerelease_updates_with_override(&beta, None));
         assert!(should_include_prerelease_updates_with_override(
             &stable,
             Some(true)
