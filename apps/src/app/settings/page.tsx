@@ -169,6 +169,7 @@ export default function SettingsPage() {
   const { setAppSettings: setStoreSettings } = useAppStore();
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
+  const isDesktopRuntime = isTauriRuntime();
   const lastSyncedSnapshotThemeRef = useRef<string | null>(null);
   const lastSyncedAppearancePresetRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>(readInitialSettingsTab);
@@ -549,7 +550,9 @@ export default function SettingsPage() {
                 <div className="space-y-1">
                   <Label>检查更新</Label>
                   <p className="text-xs text-muted-foreground">
-                    立即检查 GitHub Releases 是否有新版本可用
+                    {isDesktopRuntime
+                      ? "立即检查 GitHub Releases 是否有新版本可用"
+                      : "Web / Docker 版不提供桌面应用更新检查"}
                   </p>
                   {lastUpdateCheck ? (
                     <p className="text-xs text-muted-foreground">
@@ -563,14 +566,8 @@ export default function SettingsPage() {
                 <Button
                   variant="outline"
                   className="gap-2 self-start md:self-auto"
-                  disabled={checkUpdate.isPending}
-                  onClick={() => {
-                    if (!isTauriRuntime()) {
-                      toast.error("当前操作仅支持桌面端");
-                      return;
-                    }
-                    checkUpdate.mutate();
-                  }}
+                  disabled={!isDesktopRuntime || checkUpdate.isPending}
+                  onClick={() => checkUpdate.mutate()}
                 >
                   <RefreshCw className={cn("h-4 w-4", checkUpdate.isPending && "animate-spin")} />
                   检查更新

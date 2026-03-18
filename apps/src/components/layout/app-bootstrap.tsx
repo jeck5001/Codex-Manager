@@ -45,6 +45,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   const retryInitRef = useRef<(() => Promise<void>) | null>(null);
   const serviceStatusRef = useRef(serviceStatus);
   const [error, setError] = useState<string | null>(null);
+  const supportsLocalServiceStart = isTauriRuntime();
 
   useEffect(() => {
     serviceStatusRef.current = serviceStatus;
@@ -328,11 +329,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const init = useCallback(async () => {
-    if (!isTauriRuntime()) {
-      setIsInitializing(false);
-      hasInitializedOnce.current = true;
-      return;
-    }
+    const desktopRuntime = isTauriRuntime();
 
     // Only show full screen loading if we haven't initialized once
     if (!hasInitializedOnce.current) {
@@ -363,7 +360,10 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
         let initializeResult;
         try {
           initializeResult = await initializeService(addr, 1);
-        } catch {
+        } catch (initializeError) {
+          if (!desktopRuntime) {
+            throw initializeError;
+          }
           initializeResult = await startAndInitializeService(addr);
         }
         applyConnectedServiceState(
@@ -402,6 +402,11 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   ]);
 
   const handleForceStart = async () => {
+    if (!isTauriRuntime()) {
+      void init();
+      return;
+    }
+
     setIsInitializing(true);
     setError(null);
     try {
@@ -489,13 +494,17 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
                     {error}
                   </p>
                 </div>
-                <div className="grid w-full grid-cols-2 gap-3">
+                <div
+                  className={`grid w-full gap-3 ${supportsLocalServiceStart ? "grid-cols-2" : "grid-cols-1"}`}
+                >
                   <Button variant="outline" onClick={() => void init()} className="h-11 gap-2">
                     <RefreshCw className="h-4 w-4" /> 重试
                   </Button>
-                  <Button onClick={handleForceStart} className="h-11 gap-2 bg-primary">
-                    <Play className="h-4 w-4" /> 强制启动
-                  </Button>
+                  {supportsLocalServiceStart ? (
+                    <Button onClick={handleForceStart} className="h-11 gap-2 bg-primary">
+                      <Play className="h-4 w-4" /> 强制启动
+                    </Button>
+                  ) : null}
                 </div>
               </>
             )}

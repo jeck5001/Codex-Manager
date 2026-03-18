@@ -475,7 +475,7 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
   return {
     updateAutoCheck: asBoolean(source.updateAutoCheck, true),
     closeToTrayOnClose: asBoolean(source.closeToTrayOnClose, false),
-    closeToTraySupported: asBoolean(source.closeToTraySupported, true),
+    closeToTraySupported: asBoolean(source.closeToTraySupported, false),
     lowTransparency: asBoolean(source.lowTransparency, false),
     lightweightModeOnCloseToTray: asBoolean(
       source.lightweightModeOnCloseToTray,

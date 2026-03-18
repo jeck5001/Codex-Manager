@@ -128,6 +128,7 @@
 ## 联系方式
 - 公众号：七线牛马
 - 微信： ProsperGao
+- 认可社区： [Linux.do 开源推广](https://linux.do/t/topic/1776670)
 - 交流圈：
 
   <img src="assets/images/qq_group.jpg" alt="交流群二维码" width="280" />

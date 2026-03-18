@@ -1,11 +1,132 @@
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, isTauri as tauriIsTauri } from "@tauri-apps/api/core";
 import { fetchWithRetry, runWithControl, RequestOptions } from "../utils/request";
 import { useAppStore } from "../store/useAppStore";
 
-const WEB_RPC_METHOD_MAP = {
-  app_settings_get: "appSettings/get",
-  app_settings_set: "appSettings/set",
-} as const;
+type InvokeParams = Record<string, unknown>;
+
+type WebCommandDescriptor = {
+  rpcMethod?: string;
+  mapParams?: (params?: InvokeParams) => InvokeParams;
+  direct?: (params?: InvokeParams, options?: RequestOptions) => Promise<unknown>;
+};
+
+const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
+  app_settings_get: { rpcMethod: "appSettings/get" },
+  app_settings_set: {
+    rpcMethod: "appSettings/set",
+    mapParams: (params) => asRecord(asRecord(params)?.patch) ?? {},
+  },
+  service_initialize: { rpcMethod: "initialize" },
+  service_startup_snapshot: { rpcMethod: "startup/snapshot" },
+  service_account_list: { rpcMethod: "account/list" },
+  service_account_delete: { rpcMethod: "account/delete" },
+  service_account_delete_many: { rpcMethod: "account/deleteMany" },
+  service_account_delete_unavailable_free: {
+    rpcMethod: "account/deleteUnavailableFree",
+  },
+  service_account_update: { rpcMethod: "account/update" },
+  service_account_import: { rpcMethod: "account/import" },
+  service_account_import_by_file: {
+    direct: () => pickImportFilesFromBrowser(false),
+  },
+  service_account_import_by_directory: {
+    direct: () => pickImportFilesFromBrowser(true),
+  },
+  service_account_export_by_account_files: {
+    direct: (_params, options) => exportAccountsViaBrowser(options),
+  },
+  service_usage_read: { rpcMethod: "account/usage/read" },
+  service_usage_list: { rpcMethod: "account/usage/list" },
+  service_usage_refresh: { rpcMethod: "account/usage/refresh" },
+  service_usage_aggregate: { rpcMethod: "account/usage/aggregate" },
+  service_login_start: {
+    rpcMethod: "account/login/start",
+    mapParams: (params) => ({
+      ...(params ?? {}),
+      type:
+        typeof params?.loginType === "string" && params.loginType.trim()
+          ? params.loginType
+          : "chatgpt",
+      openBrowser: false,
+    }),
+  },
+  service_login_status: { rpcMethod: "account/login/status" },
+  service_login_complete: { rpcMethod: "account/login/complete" },
+  service_login_chatgpt_auth_tokens: {
+    rpcMethod: "account/login/start",
+    mapParams: (params) => ({
+      ...(params ?? {}),
+      type: "chatgptAuthTokens",
+    }),
+  },
+  service_account_read: { rpcMethod: "account/read" },
+  service_account_logout: { rpcMethod: "account/logout" },
+  service_chatgpt_auth_tokens_refresh: {
+    rpcMethod: "account/chatgptAuthTokens/refresh",
+  },
+  service_apikey_list: { rpcMethod: "apikey/list" },
+  service_apikey_create: { rpcMethod: "apikey/create" },
+  service_apikey_usage_stats: { rpcMethod: "apikey/usageStats" },
+  service_apikey_delete: {
+    rpcMethod: "apikey/delete",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_update_model: {
+    rpcMethod: "apikey/updateModel",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_disable: {
+    rpcMethod: "apikey/disable",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_enable: {
+    rpcMethod: "apikey/enable",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_models: { rpcMethod: "apikey/models" },
+  service_apikey_read_secret: {
+    rpcMethod: "apikey/readSecret",
+    mapParams: mapKeyIdToId,
+  },
+  service_gateway_transport_get: { rpcMethod: "gateway/transport/get" },
+  service_gateway_transport_set: { rpcMethod: "gateway/transport/set" },
+  service_gateway_upstream_proxy_get: { rpcMethod: "gateway/upstreamProxy/get" },
+  service_gateway_upstream_proxy_set: { rpcMethod: "gateway/upstreamProxy/set" },
+  service_gateway_route_strategy_get: { rpcMethod: "gateway/routeStrategy/get" },
+  service_gateway_route_strategy_set: { rpcMethod: "gateway/routeStrategy/set" },
+  service_gateway_manual_account_get: { rpcMethod: "gateway/manualAccount/get" },
+  service_gateway_manual_account_set: { rpcMethod: "gateway/manualAccount/set" },
+  service_gateway_manual_account_clear: {
+    rpcMethod: "gateway/manualAccount/clear",
+  },
+  service_gateway_header_policy_get: { rpcMethod: "gateway/headerPolicy/get" },
+  service_gateway_header_policy_set: { rpcMethod: "gateway/headerPolicy/set" },
+  service_gateway_background_tasks_get: {
+    rpcMethod: "gateway/backgroundTasks/get",
+  },
+  service_gateway_background_tasks_set: {
+    rpcMethod: "gateway/backgroundTasks/set",
+  },
+  service_requestlog_list: { rpcMethod: "requestlog/list" },
+  service_requestlog_summary: { rpcMethod: "requestlog/summary" },
+  service_requestlog_clear: { rpcMethod: "requestlog/clear" },
+  service_requestlog_today_summary: { rpcMethod: "requestlog/today_summary" },
+  service_listen_config_get: { rpcMethod: "service/listenConfig/get" },
+  service_listen_config_set: { rpcMethod: "service/listenConfig/set" },
+  open_in_browser: {
+    direct: async (params) => {
+      const url = typeof params?.url === "string" ? params.url.trim() : "";
+      if (!url) {
+        throw new Error("缺少浏览器跳转地址");
+      }
+      if (typeof window === "undefined") {
+        throw new Error("当前环境不支持打开浏览器");
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+      return { ok: true };
+    },
+  },
+};
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -46,22 +167,33 @@ function throwIfBusinessError(payload: unknown): void {
   if (msg) throw new Error(msg);
 }
 
-function buildWebRpcParams(
-  method: keyof typeof WEB_RPC_METHOD_MAP,
-  params?: Record<string, unknown>
-): Record<string, unknown> {
-  if (method === "app_settings_set") {
-    return asRecord(asRecord(params)?.patch) ?? {};
-  }
-  return params ?? {};
-}
-
 async function invokeWebRpc<T>(
-  method: keyof typeof WEB_RPC_METHOD_MAP,
-  params?: Record<string, unknown>,
+  method: string,
+  params?: InvokeParams,
   options: RequestOptions = {}
 ): Promise<T> {
-  const rpcMethod = WEB_RPC_METHOD_MAP[method];
+  const descriptor = WEB_COMMAND_MAP[method];
+  if (!descriptor) {
+    throw new Error("当前 Web / Docker 版暂不支持该操作");
+  }
+  if (descriptor.direct) {
+    return (await descriptor.direct(params, options)) as T;
+  }
+  if (!descriptor.rpcMethod) {
+    throw new Error("当前 Web / Docker 版暂不支持该操作");
+  }
+  return postWebRpc<T>(
+    descriptor.rpcMethod,
+    descriptor.mapParams ? descriptor.mapParams(params) : params ?? {},
+    options
+  );
+}
+
+async function postWebRpc<T>(
+  rpcMethod: string,
+  params?: InvokeParams,
+  options: RequestOptions = {}
+): Promise<T> {
   const response = await fetchWithRetry(
     "/api/rpc",
     {
@@ -71,7 +203,7 @@ async function invokeWebRpc<T>(
         jsonrpc: "2.0",
         id: Date.now(),
         method: rpcMethod,
-        params: buildWebRpcParams(method, params),
+        params: params ?? {},
       }),
     },
     options
@@ -95,9 +227,19 @@ async function invokeWebRpc<T>(
 }
 
 export function isTauriRuntime(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const runtime = globalThis as typeof globalThis & {
+    __TAURI__?: unknown;
+    __TAURI_INTERNALS__?: { invoke?: unknown };
+  };
+
   return (
-    typeof window !== "undefined" &&
-    Boolean((window as typeof window & { __TAURI__?: unknown }).__TAURI__)
+    tauriIsTauri() ||
+    Boolean(runtime.__TAURI_INTERNALS__?.invoke) ||
+    Boolean(runtime.__TAURI__)
   );
 }
 
@@ -141,18 +283,11 @@ export async function invokeFirst<T>(
 
 export async function invoke<T>(
   method: string,
-  params?: Record<string, unknown>,
+  params?: InvokeParams,
   options: RequestOptions = {}
 ): Promise<T> {
   if (!isTauriRuntime()) {
-    if (method in WEB_RPC_METHOD_MAP) {
-      return invokeWebRpc(
-        method as keyof typeof WEB_RPC_METHOD_MAP,
-        params,
-        options
-      );
-    }
-    throw new Error("当前操作仅支持桌面端");
+    return invokeWebRpc(method, params, options);
   }
 
   const response = await runWithControl<unknown>(
@@ -201,6 +336,153 @@ function resolveBusinessErrorMessage(payload: unknown): string {
         : "";
   }
   return "";
+}
+
+function mapKeyIdToId(params?: InvokeParams): InvokeParams {
+  const source = params ?? {};
+  const keyId =
+    typeof source.keyId === "string" && source.keyId.trim()
+      ? source.keyId.trim()
+      : undefined;
+  if (!keyId) {
+    return source;
+  }
+  return {
+    ...source,
+    id: keyId,
+  };
+}
+
+async function pickImportFilesFromBrowser(directory: boolean): Promise<unknown> {
+  if (typeof document === "undefined") {
+    throw new Error("当前环境不支持浏览器文件选择");
+  }
+
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json,.txt,application/json,text/plain";
+  input.multiple = true;
+  if (directory) {
+    const directoryInput = input as HTMLInputElement & {
+      directory?: boolean;
+      webkitdirectory?: boolean;
+    };
+    directoryInput.directory = true;
+    directoryInput.webkitdirectory = true;
+  }
+  input.style.display = "none";
+  document.body.appendChild(input);
+
+  return await new Promise<unknown>((resolve, reject) => {
+    let finished = false;
+
+    const cleanup = () => {
+      input.removeEventListener("change", handleChange);
+      input.removeEventListener("cancel", handleCancel as EventListener);
+      input.remove();
+    };
+
+    const finish = (value: unknown) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      resolve(value);
+    };
+
+    const fail = (error: unknown) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      reject(error);
+    };
+
+    const handleCancel = () => {
+      finish({
+        ok: true,
+        canceled: true,
+      });
+    };
+
+    const handleChange = async () => {
+      try {
+        const files = Array.from(input.files ?? []);
+        if (!files.length) {
+          handleCancel();
+          return;
+        }
+
+        const contents = await Promise.all(files.map((file) => file.text()));
+        const filePaths = files.map((file) => {
+          const relativePath =
+            (file as File & { webkitRelativePath?: string }).webkitRelativePath ||
+            file.name;
+          return relativePath || file.name;
+        });
+        const directoryPath = directory
+          ? filePaths[0]?.split("/")[0] || filePaths[0]?.split("\\")[0] || ""
+          : "";
+
+        finish({
+          ok: true,
+          canceled: false,
+          directoryPath,
+          fileCount: files.length,
+          filePaths,
+          contents,
+        });
+      } catch (error) {
+        fail(error);
+      }
+    };
+
+    input.addEventListener("change", handleChange);
+    input.addEventListener("cancel", handleCancel as EventListener);
+    input.click();
+  });
+}
+
+async function exportAccountsViaBrowser(
+  options: RequestOptions = {}
+): Promise<unknown> {
+  if (typeof document === "undefined") {
+    throw new Error("当前环境不支持浏览器导出");
+  }
+
+  const payload =
+    asRecord(await postWebRpc<unknown>("account/exportData", {}, options)) ?? {};
+  const files = Array.isArray(payload.files)
+    ? payload.files
+        .map((item) => asRecord(item))
+        .filter((item): item is Record<string, unknown> => item !== null)
+    : [];
+
+  for (const item of files) {
+    const fileName =
+      typeof item.fileName === "string" && item.fileName.trim()
+        ? item.fileName.trim()
+        : "account.json";
+    const content = typeof item.content === "string" ? item.content : "";
+    const blob = new Blob([content], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  return {
+    ok: true,
+    canceled: false,
+    exported:
+      typeof payload.exported === "number" ? payload.exported : files.length,
+    outputDir: "browser-download",
+  };
 }
 
 export async function requestlogListViaHttpRpc<T>(

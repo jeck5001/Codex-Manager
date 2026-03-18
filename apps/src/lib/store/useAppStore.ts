@@ -22,7 +22,7 @@ export const useAppStore = create<AppState>((set) => ({
   appSettings: {
     updateAutoCheck: true,
     closeToTrayOnClose: false,
-    closeToTraySupported: true,
+    closeToTraySupported: false,
     lowTransparency: false,
     lightweightModeOnCloseToTray: false,
     webAccessPasswordConfigured: false,
