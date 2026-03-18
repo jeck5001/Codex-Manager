@@ -476,6 +476,26 @@ fn openai_auth_http_client() -> &'static Client {
     })
 }
 
+pub(crate) fn issuer_uses_loopback_host(issuer: &str) -> bool {
+    url::Url::parse(issuer)
+        .ok()
+        .and_then(|url| url.host_str().map(|host| host.to_ascii_lowercase()))
+        .is_some_and(|host| matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1"))
+}
+
+fn auth_http_client_for_issuer(issuer: &str) -> Client {
+    if issuer_uses_loopback_host(issuer) {
+        return Client::builder()
+            .connect_timeout(OPENAI_AUTH_CONNECT_TIMEOUT)
+            .timeout(OPENAI_AUTH_TOTAL_TIMEOUT)
+            .no_proxy()
+            .build()
+            .unwrap_or_else(|_| Client::new());
+    }
+
+    openai_auth_http_client().clone()
+}
+
 pub(crate) fn complete_login(state: &str, code: &str) -> Result<(), String> {
     complete_login_with_redirect(state, code, None)
 }
@@ -616,6 +636,27 @@ pub(crate) fn complete_login_with_redirect(
     Ok(())
 }
 
+pub(crate) fn build_exchange_code_request(
+    client: &Client,
+    issuer: &str,
+    client_id: &str,
+    redirect_uri: &str,
+    code_verifier: &str,
+    code: &str,
+) -> Result<reqwest::blocking::Request, String> {
+    client
+        .post(format!("{issuer}/oauth/token"))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(token_exchange_body_authorization_code(
+            code,
+            redirect_uri,
+            client_id,
+            code_verifier,
+        ))
+        .build()
+        .map_err(|e| redact_sensitive_error_url(e).to_string())
+}
+
 #[derive(serde::Deserialize)]
 struct TokenResponse {
     id_token: String,
@@ -631,17 +672,11 @@ fn exchange_code_for_tokens(
     code: &str,
 ) -> Result<TokenResponse, String> {
     // 请求 token 接口
-    let client = openai_auth_http_client();
+    let client = auth_http_client_for_issuer(issuer);
+    let request =
+        build_exchange_code_request(&client, issuer, client_id, redirect_uri, code_verifier, code)?;
     let resp = client
-        .post(format!("{issuer}/oauth/token"))
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(token_exchange_body_authorization_code(
-            code,
-            redirect_uri,
-            client_id,
-            code_verifier,
-        ))
-        .send()
+        .execute(request)
         .map_err(|e| redact_sensitive_error_url(e).to_string())?;
     if !resp.status().is_success() {
         let status = resp.status();
@@ -668,12 +703,10 @@ pub(crate) fn obtain_api_key(
     }
 
     // 兑换平台 API Key
-    let client = openai_auth_http_client();
+    let client = auth_http_client_for_issuer(issuer);
+    let request = build_api_key_exchange_request(&client, issuer, client_id, id_token)?;
     let resp = client
-        .post(format!("{issuer}/oauth/token"))
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(token_exchange_body_token_exchange(id_token, client_id))
-        .send()
+        .execute(request)
         .map_err(|e| redact_sensitive_error_url(e).to_string())?;
     if !resp.status().is_success() {
         let status = resp.status();
@@ -688,6 +721,20 @@ pub(crate) fn obtain_api_key(
     }
     let body: ExchangeResp = read_json_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT)?;
     Ok(body.access_token)
+}
+
+pub(crate) fn build_api_key_exchange_request(
+    client: &Client,
+    issuer: &str,
+    client_id: &str,
+    id_token: &str,
+) -> Result<reqwest::blocking::Request, String> {
+    client
+        .post(format!("{issuer}/oauth/token"))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(token_exchange_body_token_exchange(id_token, client_id))
+        .build()
+        .map_err(|e| redact_sensitive_error_url(e).to_string())
 }
 
 fn ensure_workspace_allowed(

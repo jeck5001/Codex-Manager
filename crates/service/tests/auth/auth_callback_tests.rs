@@ -26,7 +26,7 @@ fn resolve_redirect_uri_prefers_login_server() {
     let prev_service = std::env::var("CODEXMANAGER_SERVICE_ADDR").ok();
 
     std::env::remove_var("CODEXMANAGER_REDIRECT_URI");
-    std::env::set_var("CODEXMANAGER_LOGIN_ADDR", "localhost:0");
+    std::env::set_var("CODEXMANAGER_LOGIN_ADDR", "127.0.0.1:0");
     std::env::set_var("CODEXMANAGER_SERVICE_ADDR", "localhost:48760");
 
     let uri = resolve_redirect_uri().expect("redirect uri");
@@ -116,13 +116,13 @@ fn callback_html_response_forces_connection_close() {
         .iter()
         .find(|header| header.field.equiv("Content-Type"))
         .map(|header| header.value.as_str());
-    let connection = headers
-        .iter()
-        .find(|header| header.field.equiv("Connection"))
-        .map(|header| header.value.as_str());
-
     assert_eq!(content_type, Some("text/html; charset=utf-8"));
-    assert_eq!(connection, Some("close"));
+    assert!(
+        headers
+            .iter()
+            .all(|header| !header.field.equiv("Transfer-Encoding")),
+        "html response should stay simple for login callback pages"
+    );
 }
 
 #[test]

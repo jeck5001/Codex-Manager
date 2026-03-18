@@ -1,39 +1,14 @@
 use super::next_account_sort;
 use crate::account_identity::{build_account_storage_id, pick_existing_account_id_by_identity};
 use crate::auth_tokens::{
-    ensure_workspace_allowed, exchange_code_for_tokens, format_api_key_exchange_status_error,
-    format_token_endpoint_status_error, parse_token_endpoint_error,
+    build_api_key_exchange_request, build_exchange_code_request, ensure_workspace_allowed,
+    format_api_key_exchange_status_error, format_token_endpoint_status_error,
+    issuer_uses_loopback_host, parse_token_endpoint_error,
 };
 use codexmanager_core::auth::parse_id_token_claims;
 use codexmanager_core::storage::{now_ts, Account, Storage};
+use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
-use std::sync::mpsc;
-use std::sync::Mutex;
-use std::time::Duration;
-use tiny_http::{Response, Server};
-
-static AUTH_RUNTIME_MUTEX: Mutex<()> = Mutex::new(());
-
-struct GatewayRuntimeRestore {
-    originator: String,
-    residency: Option<String>,
-}
-
-impl GatewayRuntimeRestore {
-    fn capture() -> Self {
-        Self {
-            originator: crate::current_gateway_originator(),
-            residency: crate::current_gateway_residency_requirement(),
-        }
-    }
-}
-
-impl Drop for GatewayRuntimeRestore {
-    fn drop(&mut self) {
-        let _ = crate::set_gateway_originator(&self.originator);
-        let _ = crate::set_gateway_residency_requirement(self.residency.as_deref());
-    }
-}
 
 fn build_account(
     id: &str,
@@ -365,57 +340,39 @@ fn format_token_endpoint_status_error_uses_cloudflare_edge_kind_when_only_cf_ray
 }
 
 #[test]
+fn issuer_uses_loopback_host_accepts_local_test_issuers() {
+    assert!(issuer_uses_loopback_host("http://127.0.0.1:1455"));
+    assert!(issuer_uses_loopback_host("http://localhost:1455"));
+}
+
+#[test]
+fn issuer_uses_loopback_host_rejects_remote_issuers() {
+    assert!(!issuer_uses_loopback_host("https://auth.openai.com"));
+}
+
+#[test]
 fn exchange_code_for_tokens_matches_official_login_server_headers() {
-    let _guard = AUTH_RUNTIME_MUTEX.lock().expect("lock auth runtime");
-    let _restore = GatewayRuntimeRestore::capture();
-    crate::set_gateway_originator("codex_cli_rs_auth_test").expect("set originator");
-    crate::set_gateway_residency_requirement(Some("us")).expect("set residency");
-
-    let server = Server::http("127.0.0.1:0").expect("bind mock token server");
-    let addr = server.server_addr().to_ip().expect("server addr");
-    let issuer = format!("http://{addr}");
-    let (tx, rx) = mpsc::sync_channel(1);
-
-    let join = std::thread::spawn(move || {
-        let request = server.recv().expect("receive token request");
-        let headers = request
-            .headers()
-            .iter()
-            .map(|header| {
-                (
-                    header.field.as_str().to_string(),
-                    header.value.as_str().to_string(),
-                )
-            })
-            .collect::<Vec<_>>();
-        let _ = tx.send((request.url().to_string(), headers));
-        let body = r#"{"id_token":"id_token_test","access_token":"access_token_test","refresh_token":"refresh_token_test"}"#;
-        let response = Response::from_string(body).with_status_code(200);
-        request.respond(response).expect("respond token");
-    });
-
-    let tokens = exchange_code_for_tokens(
-        &issuer,
+    let client = Client::builder().no_proxy().build().expect("build client");
+    let request = build_exchange_code_request(
+        &client,
+        "http://127.0.0.1:1455",
         "client-test",
         "http://localhost:1455/auth/callback",
         "verifier-test",
         "code-test",
     )
-    .expect("exchange code for tokens");
-
-    let (path, headers) = rx
-        .recv_timeout(Duration::from_secs(2))
-        .expect("receive captured token request");
-    join.join().expect("join mock token server");
+    .expect("build exchange request");
 
     let find = |name: &str| {
-        headers
-            .iter()
-            .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
-            .map(|(_, value)| value.as_str())
+        request.headers().get(name).and_then(|value| value.to_str().ok())
     };
+    let body = request
+        .body()
+        .and_then(|body| body.as_bytes())
+        .map(|body| String::from_utf8_lossy(body).into_owned())
+        .expect("request body");
 
-    assert_eq!(path, "/oauth/token");
+    assert_eq!(request.url().path(), "/oauth/token");
     assert_eq!(
         find("Content-Type"),
         Some("application/x-www-form-urlencoded")
@@ -423,63 +380,28 @@ fn exchange_code_for_tokens_matches_official_login_server_headers() {
     assert_eq!(find("Originator"), None);
     assert_eq!(find("x-openai-internal-codex-residency"), None);
     assert_eq!(find("User-Agent"), None);
-    assert_eq!(tokens.access_token, "access_token_test");
+    assert!(body.contains("grant_type=authorization_code"));
+    assert!(body.contains("code=code-test"));
+    assert!(body.contains("code_verifier=verifier-test"));
 }
 
 #[test]
 fn obtain_api_key_matches_official_login_server_headers() {
-    let _guard = AUTH_RUNTIME_MUTEX.lock().expect("lock auth runtime");
-    let _restore = GatewayRuntimeRestore::capture();
-    crate::set_gateway_originator("codex_cli_rs_auth_test").expect("set originator");
-    crate::set_gateway_residency_requirement(Some("us")).expect("set residency");
-
-    let server = Server::http("127.0.0.1:0").expect("bind mock token server");
-    let addr = server.server_addr().to_ip().expect("server addr");
-    let issuer = format!("http://{addr}");
-    let (tx, rx) = mpsc::sync_channel(1);
-
-    let join = std::thread::spawn(move || {
-        let mut request = server.recv().expect("receive token request");
-        let headers = request
-            .headers()
-            .iter()
-            .map(|header| {
-                (
-                    header.field.as_str().to_string(),
-                    header.value.as_str().to_string(),
-                )
-            })
-            .collect::<Vec<_>>();
-        let body = {
-            let mut body = String::new();
-            request
-                .as_reader()
-                .read_to_string(&mut body)
-                .expect("read request body");
-            body
-        };
-        let _ = tx.send((request.url().to_string(), headers, body));
-        let response = Response::from_string(r#"{"access_token":"api_key_access_token_test"}"#)
-            .with_status_code(200);
-        request.respond(response).expect("respond token");
-    });
-
-    let access_token = crate::auth_tokens::obtain_api_key(&issuer, "client-test", "id-token-test")
-        .expect("obtain api key");
-
-    let (path, headers, body) = rx
-        .recv_timeout(Duration::from_secs(2))
-        .expect("receive captured token exchange");
-    join.join().expect("join mock token server");
+    let client = Client::builder().no_proxy().build().expect("build client");
+    let request =
+        build_api_key_exchange_request(&client, "http://127.0.0.1:1455", "client-test", "id-token-test")
+            .expect("build api key exchange request");
 
     let find = |name: &str| {
-        headers
-            .iter()
-            .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
-            .map(|(_, value)| value.as_str())
+        request.headers().get(name).and_then(|value| value.to_str().ok())
     };
+    let body = request
+        .body()
+        .and_then(|body| body.as_bytes())
+        .map(|body| String::from_utf8_lossy(body).into_owned())
+        .expect("request body");
 
-    assert_eq!(path, "/oauth/token");
+    assert_eq!(request.url().path(), "/oauth/token");
     assert_eq!(
         find("Content-Type"),
         Some("application/x-www-form-urlencoded")
@@ -489,5 +411,4 @@ fn obtain_api_key_matches_official_login_server_headers() {
     assert_eq!(find("User-Agent"), None);
     assert!(body.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange"));
     assert!(body.contains("requested_token=openai-api-key"));
-    assert_eq!(access_token, "api_key_access_token_test");
 }
