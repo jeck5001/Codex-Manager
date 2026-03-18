@@ -521,6 +521,7 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
       asString(item)
     ),
     theme: asString(source.theme) || "tech",
+    appearancePreset: asString(source.appearancePreset) || "classic",
   };
 }
 

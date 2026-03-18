@@ -2,15 +2,17 @@ use super::parse_bool_with_default;
 use super::{
     get_persisted_app_setting, save_persisted_app_setting, save_persisted_bool_setting,
     APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY,
-    APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY,
-    APP_SETTING_UPDATE_AUTO_CHECK_KEY,
+    APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
+    APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY,
 };
 
 const DEFAULT_UI_THEME: &str = "tech";
+const DEFAULT_UI_APPEARANCE_PRESET: &str = "classic";
 const VALID_UI_THEMES: &[&str] = &[
     "tech", "dark", "dark-one", "business", "mint", "sunset", "grape", "ocean", "forest", "rose",
     "slate", "aurora",
 ];
+const VALID_UI_APPEARANCE_PRESETS: &[&str] = &["modern", "classic"];
 
 fn normalize_ui_theme(raw: Option<&str>) -> String {
     let candidate = raw.unwrap_or(DEFAULT_UI_THEME).trim().to_ascii_lowercase();
@@ -18,6 +20,21 @@ fn normalize_ui_theme(raw: Option<&str>) -> String {
         candidate
     } else {
         DEFAULT_UI_THEME.to_string()
+    }
+}
+
+fn normalize_ui_appearance_preset(raw: Option<&str>) -> String {
+    let candidate = raw
+        .unwrap_or(DEFAULT_UI_APPEARANCE_PRESET)
+        .trim()
+        .to_ascii_lowercase();
+    if VALID_UI_APPEARANCE_PRESETS
+        .iter()
+        .any(|preset| *preset == candidate)
+    {
+        candidate
+    } else {
+        DEFAULT_UI_APPEARANCE_PRESET.to_string()
     }
 }
 
@@ -72,5 +89,17 @@ pub fn current_ui_theme() -> String {
 pub fn set_ui_theme(theme: Option<&str>) -> Result<String, String> {
     let normalized = normalize_ui_theme(theme);
     save_persisted_app_setting(APP_SETTING_UI_THEME_KEY, Some(&normalized))?;
+    Ok(normalized)
+}
+
+pub fn current_ui_appearance_preset() -> String {
+    normalize_ui_appearance_preset(
+        get_persisted_app_setting(APP_SETTING_UI_APPEARANCE_PRESET_KEY).as_deref(),
+    )
+}
+
+pub fn set_ui_appearance_preset(preset: Option<&str>) -> Result<String, String> {
+    let normalized = normalize_ui_appearance_preset(preset);
+    save_persisted_app_setting(APP_SETTING_UI_APPEARANCE_PRESET_KEY, Some(&normalized))?;
     Ok(normalized)
 }

@@ -9,8 +9,9 @@ use super::{
     set_gateway_residency_requirement, set_gateway_route_strategy,
     set_gateway_sse_keepalive_interval_ms, set_gateway_upstream_proxy_url,
     set_gateway_upstream_stream_timeout_ms, set_lightweight_mode_on_close_to_tray_setting,
-    set_saved_service_addr, set_service_bind_mode, set_ui_low_transparency_enabled, set_ui_theme,
-    set_update_auto_check_enabled, BackgroundTasksInput,
+    set_saved_service_addr, set_service_bind_mode, set_ui_appearance_preset,
+    set_ui_low_transparency_enabled, set_ui_theme, set_update_auto_check_enabled,
+    BackgroundTasksInput,
 };
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -21,6 +22,7 @@ pub(super) struct AppSettingsPatch {
     lightweight_mode_on_close_to_tray: Option<bool>,
     low_transparency: Option<bool>,
     theme: Option<String>,
+    appearance_preset: Option<String>,
     service_addr: Option<String>,
     service_listen_mode: Option<String>,
     route_strategy: Option<String>,
@@ -60,6 +62,9 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     }
     if let Some(theme) = patch.theme {
         let _ = set_ui_theme(Some(&theme))?;
+    }
+    if let Some(preset) = patch.appearance_preset {
+        let _ = set_ui_appearance_preset(Some(&preset))?;
     }
     if let Some(service_addr) = patch.service_addr {
         let _ = set_saved_service_addr(Some(&service_addr))?;

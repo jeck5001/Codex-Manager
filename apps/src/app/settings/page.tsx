@@ -7,6 +7,11 @@ import { toast } from "sonner";
 import { appClient } from "@/lib/api/app-client";
 import { getAppErrorMessage } from "@/lib/api/transport";
 import { useAppStore } from "@/lib/store/useAppStore";
+import {
+  APPEARANCE_PRESETS,
+  applyAppearancePreset,
+  normalizeAppearancePreset,
+} from "@/lib/appearance";
 import { AppSettings, BackgroundTaskSettings } from "@/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -128,6 +133,7 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
   const lastSyncedSnapshotThemeRef = useRef<string | null>(null);
+  const lastSyncedAppearancePresetRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>(readInitialSettingsTab);
   const [envSearch, setEnvSearch] = useState("");
   const [selectedEnvKey, setSelectedEnvKey] = useState<string | null>(null);
@@ -158,6 +164,7 @@ export default function SettingsPage() {
       } else {
         document.body.classList.remove("low-transparency");
       }
+      applyAppearancePreset(nextSnapshot.appearancePreset);
       if (!variables._silent) {
         toast.success("设置已更新");
       }
@@ -181,6 +188,15 @@ export default function SettingsPage() {
       setTheme(snapshot.theme);
     }
   }, [setTheme, snapshot?.theme]);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    const nextPreset = normalizeAppearancePreset(snapshot.appearancePreset);
+    if (lastSyncedAppearancePresetRef.current === nextPreset) return;
+
+    lastSyncedAppearancePresetRef.current = nextPreset;
+    applyAppearancePreset(nextPreset);
+  }, [snapshot]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -222,6 +238,7 @@ export default function SettingsPage() {
     : "";
 
   const lastIntentThemeRef = useRef<string | null>(null);
+  const lastIntentAppearancePresetRef = useRef<string | null>(null);
 
   const handleThemeChange = (nextTheme: string) => {
     if (!snapshot || nextTheme === snapshot.theme) return;
@@ -263,6 +280,44 @@ export default function SettingsPage() {
             queryClient.setQueryData(["app-settings-snapshot"], previousSnapshot);
             setStoreSettings(previousSnapshot);
             setTheme(previousTheme);
+          }
+        },
+      }
+    );
+  };
+
+  const handleAppearancePresetChange = (nextPreset: string) => {
+    if (!snapshot) return;
+
+    const normalizedPreset = normalizeAppearancePreset(nextPreset);
+    const previousSnapshot = snapshot;
+    const previousPreset = normalizeAppearancePreset(snapshot.appearancePreset);
+    if (normalizedPreset === previousPreset) return;
+
+    lastIntentAppearancePresetRef.current = normalizedPreset;
+    lastSyncedAppearancePresetRef.current = normalizedPreset;
+    applyAppearancePreset(normalizedPreset);
+
+    queryClient.setQueryData(["app-settings-snapshot"], {
+      ...snapshot,
+      appearancePreset: normalizedPreset,
+    });
+    setStoreSettings({ ...snapshot, appearancePreset: normalizedPreset });
+
+    updateSettings.mutate(
+      { appearancePreset: normalizedPreset, _silent: true },
+      {
+        onSuccess: (updatedSnapshot) => {
+          if (lastIntentAppearancePresetRef.current === normalizedPreset) {
+            queryClient.setQueryData(["app-settings-snapshot"], updatedSnapshot);
+            setStoreSettings(updatedSnapshot);
+          }
+        },
+        onError: () => {
+          if (lastIntentAppearancePresetRef.current === normalizedPreset) {
+            queryClient.setQueryData(["app-settings-snapshot"], previousSnapshot);
+            setStoreSettings(previousSnapshot);
+            applyAppearancePreset(previousPreset);
           }
         },
       }
@@ -458,6 +513,78 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="appearance" className="space-y-6">
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Palette className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">样式版本</CardTitle>
+              </div>
+              <CardDescription>在渐变版本和默认版本之间切换</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-2">
+                {APPEARANCE_PRESETS.map((item) => {
+                  const currentPreset = normalizeAppearancePreset(snapshot.appearancePreset);
+                  const isActive = currentPreset === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleAppearancePresetChange(item.id)}
+                      className={cn(
+                        "group relative rounded-2xl border p-4 text-left transition-all duration-300 hover:-translate-y-0.5",
+                        isActive
+                          ? "border-primary bg-primary/10 shadow-lg ring-1 ring-primary"
+                          : "border-border/60 bg-background/50 hover:bg-accent/30"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1.5">
+                          <div className="text-sm font-semibold">{item.name}</div>
+                          <p className="text-xs leading-5 text-muted-foreground">
+                            {item.description}
+                          </p>
+                        </div>
+                        {isActive ? (
+                          <div className="rounded-full bg-primary p-1 text-primary-foreground shadow-sm">
+                            <Check className="h-3 w-3" />
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 flex items-end gap-2.5">
+                        <div
+                          className={cn(
+                            "h-14 flex-1 rounded-xl border",
+                            item.id === "modern"
+                              ? "border-primary/20 bg-[linear-gradient(160deg,rgba(255,255,255,0.88),rgba(37,99,235,0.1)),linear-gradient(180deg,rgba(191,219,254,0.6),rgba(255,255,255,0.85))]"
+                              : "border-slate-300/70 bg-[radial-gradient(at_0%_0%,#bfdbfe_0px,transparent_50%),radial-gradient(at_100%_0%,#cffafe_0px,transparent_50%),radial-gradient(at_50%_100%,#ffffff_0px,transparent_50%),rgba(255,255,255,0.86)]"
+                          )}
+                        />
+                        <div className="flex w-16 flex-col gap-1.5">
+                          <div
+                            className={cn(
+                              "h-4 rounded-lg border",
+                              item.id === "modern"
+                                ? "border-primary/15 bg-white/80 shadow-sm"
+                                : "border-slate-300/70 bg-white/70"
+                            )}
+                          />
+                          <div
+                            className={cn(
+                              "h-4 rounded-lg border",
+                              item.id === "modern"
+                                ? "border-primary/15 bg-white/70 shadow-sm"
+                                : "border-slate-300/70 bg-white/60"
+                            )}
+                          />
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="glass-card border-none shadow-md">
             <CardHeader>
               <div className="flex items-center gap-2">

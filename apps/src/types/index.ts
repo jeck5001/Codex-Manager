@@ -238,6 +238,7 @@ export interface AppSettings {
   envOverrideReservedKeys: string[];
   envOverrideUnsupportedKeys: string[];
   theme: string;
+  appearancePreset: string;
   [key: string]: unknown;
 }
 

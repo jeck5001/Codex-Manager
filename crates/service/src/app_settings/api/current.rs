@@ -10,20 +10,20 @@ use super::{
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
     current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
     current_lightweight_mode_on_close_to_tray_setting, current_saved_service_addr,
-    current_service_bind_mode, current_ui_low_transparency_enabled, current_ui_theme,
-    current_update_auto_check_enabled, env_override_catalog_value, env_override_reserved_keys,
-    env_override_unsupported_keys, residency_requirement_options, save_env_overrides_value,
-    save_persisted_app_setting, save_persisted_bool_setting, sync_runtime_settings_from_storage,
-    APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
-    APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
+    current_service_bind_mode, current_ui_appearance_preset, current_ui_low_transparency_enabled,
+    current_ui_theme, current_update_auto_check_enabled, env_override_catalog_value,
+    env_override_reserved_keys, env_override_unsupported_keys, residency_requirement_options,
+    save_env_overrides_value, save_persisted_app_setting, save_persisted_bool_setting,
+    sync_runtime_settings_from_storage, APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
+    APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
     APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_SERVICE_ADDR_KEY,
-    APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY,
-    APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
+    APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
+    APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
     SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
 };
 
@@ -55,6 +55,7 @@ pub(super) fn current_app_settings_value(
     let lightweight_mode_on_close_to_tray = current_lightweight_mode_on_close_to_tray_setting();
     let low_transparency = current_ui_low_transparency_enabled();
     let theme = current_ui_theme();
+    let appearance_preset = current_ui_appearance_preset();
     let service_addr = current_saved_service_addr();
     let service_listen_mode = current_service_bind_mode();
     let route_strategy = crate::gateway::current_route_strategy().to_string();
@@ -78,6 +79,7 @@ pub(super) fn current_app_settings_value(
         lightweight_mode_on_close_to_tray,
         low_transparency,
         &theme,
+        &appearance_preset,
         &service_addr,
         &service_listen_mode,
         &route_strategy,
@@ -100,6 +102,7 @@ pub(super) fn current_app_settings_value(
         "lightweightModeOnCloseToTray": lightweight_mode_on_close_to_tray,
         "lowTransparency": low_transparency,
         "theme": theme,
+        "appearancePreset": appearance_preset,
         "serviceAddr": service_addr,
         "serviceListenMode": service_listen_mode,
         "serviceListenModeOptions": [
@@ -174,6 +177,7 @@ fn persist_current_snapshot(
     lightweight_mode_on_close_to_tray: bool,
     low_transparency: bool,
     theme: &str,
+    appearance_preset: &str,
     service_addr: &str,
     service_listen_mode: &str,
     route_strategy: &str,
@@ -199,6 +203,10 @@ fn persist_current_snapshot(
     );
     let _ = save_persisted_bool_setting(APP_SETTING_UI_LOW_TRANSPARENCY_KEY, low_transparency);
     let _ = save_persisted_app_setting(APP_SETTING_UI_THEME_KEY, Some(theme));
+    let _ = save_persisted_app_setting(
+        APP_SETTING_UI_APPEARANCE_PRESET_KEY,
+        Some(appearance_preset),
+    );
     let _ = save_persisted_app_setting(APP_SETTING_SERVICE_ADDR_KEY, Some(service_addr));
     let _ = save_persisted_app_setting(SERVICE_BIND_MODE_SETTING_KEY, Some(service_listen_mode));
     let _ =

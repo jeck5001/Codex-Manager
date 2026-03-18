@@ -72,6 +72,7 @@ export const useAppStore = create<AppState>((set) => ({
     envOverrideReservedKeys: [],
     envOverrideUnsupportedKeys: [],
     theme: "tech",
+    appearancePreset: "classic",
   },
   isSidebarOpen: true,
 

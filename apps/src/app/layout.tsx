@@ -4,6 +4,10 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { Providers } from "@/components/providers";
 import { AppBootstrap } from "@/components/layout/app-bootstrap";
+import {
+  appearanceInitScript,
+  DEFAULT_APPEARANCE_PRESET,
+} from "@/lib/appearance";
 
 export const metadata: Metadata = {
   title: "CodexManager",
@@ -16,8 +20,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html
+      lang="zh-CN"
+      suppressHydrationWarning
+      data-appearance={DEFAULT_APPEARANCE_PRESET}
+    >
       <body className="antialiased">
+        <script dangerouslySetInnerHTML={{ __html: appearanceInitScript }} />
         <Providers>
           <AppBootstrap>
             <div className="flex h-screen overflow-hidden">

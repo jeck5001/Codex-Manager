@@ -28,6 +28,7 @@ fn reset_runtime_defaults() {
         "requestCompressionEnabled": true,
         "gatewayOriginator": "codex_cli_rs",
         "gatewayResidencyRequirement": "",
+        "appearancePreset": "classic",
         "lightweightModeOnCloseToTray": false,
         "cpaNoCookieHeaderModeEnabled": false,
         "upstreamProxyUrl": "",
@@ -174,6 +175,7 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "lightweightModeOnCloseToTray": true,
             "lowTransparency": true,
             "theme": "dark",
+            "appearancePreset": "classic",
             "serviceAddr": "127.0.0.1:4999",
             "serviceListenMode": "all_interfaces",
             "routeStrategy": "rr",
@@ -223,6 +225,12 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         assert_eq!(
             snapshot.get("theme").and_then(|value| value.as_str()),
             Some("dark")
+        );
+        assert_eq!(
+            snapshot
+                .get("appearancePreset")
+                .and_then(|value| value.as_str()),
+            Some("classic")
         );
         assert_eq!(
             snapshot
@@ -293,6 +301,12 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             storage
+                .get_app_setting(codexmanager_service::APP_SETTING_UI_APPEARANCE_PRESET_KEY)
+                .expect("read appearance preset"),
+            Some("classic".to_string())
+        );
+        assert_eq!(
+            storage
                 .get_app_setting(
                     codexmanager_service::APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY
                 )
@@ -350,7 +364,8 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
 fn app_settings_set_preserves_dark_one_theme() {
     with_temp_db(|_| {
         let snapshot = codexmanager_service::app_settings_set(Some(&json!({
-            "theme": "dark-one"
+            "theme": "dark-one",
+            "appearancePreset": "classic"
         })))
         .expect("save dark-one theme");
 
@@ -363,6 +378,12 @@ fn app_settings_set_preserves_dark_one_theme() {
         assert_eq!(
             current.get("theme").and_then(|value| value.as_str()),
             Some("dark-one")
+        );
+        assert_eq!(
+            current
+                .get("appearancePreset")
+                .and_then(|value| value.as_str()),
+            Some("classic")
         );
     });
 }

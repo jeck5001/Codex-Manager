@@ -17,6 +17,7 @@ import {
 import { appClient } from "@/lib/api/app-client";
 import { isTauriRuntime } from "@/lib/api/transport";
 import { Button } from "@/components/ui/button";
+import { applyAppearancePreset } from "@/lib/appearance";
 import {
   formatServiceError,
   isExpectedInitializeResult,
@@ -348,6 +349,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       if (settings.theme && settings.theme !== currentAppliedTheme) {
         setTheme(settings.theme);
       }
+      applyAppearancePreset(settings.appearancePreset);
       
       setAppSettings(settings);
       
@@ -410,6 +412,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       if (settings.theme && settings.theme !== currentAppliedTheme) {
         setTheme(settings.theme);
       }
+      applyAppearancePreset(settings.appearancePreset);
       
       setAppSettings(settings);
       const initializeResult = await startAndInitializeService(addr);
