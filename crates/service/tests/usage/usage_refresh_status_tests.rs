@@ -121,7 +121,7 @@ fn apply_status_skips_db_and_event_when_status_unchanged() {
 }
 
 #[test]
-fn mark_usage_unreachable_keeps_account_status_for_usage_status_error() {
+fn mark_usage_unreachable_only_marks_401_as_unavailable() {
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
     let account = Account {
@@ -152,13 +152,57 @@ fn mark_usage_unreachable_keeps_account_status_for_usage_status_error() {
         "acc-2",
         "usage endpoint status 500 Internal Server Error",
     );
-    let inactive = storage
+    let still_active_after_500 = storage
         .list_accounts()
         .expect("list")
         .into_iter()
         .find(|acc| acc.id == "acc-2")
         .expect("exists");
-    assert_eq!(inactive.status, "active");
+    assert_eq!(still_active_after_500.status, "active");
+
+    mark_usage_unreachable_if_needed(
+        &storage,
+        "acc-2",
+        "usage endpoint status 401 Unauthorized",
+    );
+    let unavailable = storage
+        .list_accounts()
+        .expect("list")
+        .into_iter()
+        .find(|acc| acc.id == "acc-2")
+        .expect("exists");
+    assert_eq!(unavailable.status, "unavailable");
+}
+
+#[test]
+fn mark_usage_unreachable_does_not_override_manual_disabled_status() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    storage
+        .insert_account(&Account {
+            id: "acc-disabled".to_string(),
+            label: "main".to_string(),
+            issuer: "issuer".to_string(),
+            chatgpt_account_id: None,
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "disabled".to_string(),
+            created_at: now_ts(),
+            updated_at: now_ts(),
+        })
+        .expect("insert");
+
+    mark_usage_unreachable_if_needed(
+        &storage,
+        "acc-disabled",
+        "usage endpoint status 401 Unauthorized",
+    );
+    let disabled = storage
+        .find_account_by_id("acc-disabled")
+        .expect("find")
+        .expect("exists");
+    assert_eq!(disabled.status, "disabled");
 }
 
 #[test]

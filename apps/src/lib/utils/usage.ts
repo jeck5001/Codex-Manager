@@ -87,6 +87,10 @@ function isRecoveryRequiredAccount(account?: { status?: string } | null): boolea
   return normalizedAccountStatus(account) === "inactive";
 }
 
+function isUnavailableAccount(account?: { status?: string } | null): boolean {
+  return normalizedAccountStatus(account) === "unavailable";
+}
+
 export function remainingPercent(value: number | null | undefined): number | null {
   const parsed = toNullableNumber(value);
   if (parsed == null) return null;
@@ -216,6 +220,9 @@ export function calcAvailability(
   }
   if (isRecoveryRequiredAccount(account)) {
     return { text: "需恢复", level: "bad" };
+  }
+  if (isUnavailableAccount(account)) {
+    return { text: "不可用", level: "bad" };
   }
   if (!usage) {
     return { text: "未知", level: "unknown" };
