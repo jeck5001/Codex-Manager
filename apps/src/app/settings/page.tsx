@@ -177,7 +177,6 @@ export default function SettingsPage() {
   const [envDrafts, setEnvDrafts] = useState<Record<string, string>>({});
   const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
   const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
-  const [isDesktopRuntime, setIsDesktopRuntime] = useState(false);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<UpdateCheckSummary | null>(null);
   const [transportDraft, setTransportDraft] = useState<
     Partial<Record<"sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs", string>>
@@ -263,10 +262,6 @@ export default function SettingsPage() {
     if (typeof window === "undefined") return;
     window.sessionStorage.setItem(SETTINGS_ACTIVE_TAB_KEY, activeTab);
   }, [activeTab]);
-
-  useEffect(() => {
-    setIsDesktopRuntime(isTauriRuntime());
-  }, []);
 
   const filteredEnvCatalog = useMemo(() => {
     const catalog = snapshot?.envOverrideCatalog || [];
@@ -568,8 +563,14 @@ export default function SettingsPage() {
                 <Button
                   variant="outline"
                   className="gap-2 self-start md:self-auto"
-                  disabled={!isDesktopRuntime || checkUpdate.isPending}
-                  onClick={() => checkUpdate.mutate()}
+                  disabled={checkUpdate.isPending}
+                  onClick={() => {
+                    if (!isTauriRuntime()) {
+                      toast.error("当前操作仅支持桌面端");
+                      return;
+                    }
+                    checkUpdate.mutate();
+                  }}
                 >
                   <RefreshCw className={cn("h-4 w-4", checkUpdate.isPending && "animate-spin")} />
                   检查更新
