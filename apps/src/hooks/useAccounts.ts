@@ -174,7 +174,6 @@ export function useAccounts() {
     mutationFn: ({
       accountId,
       enabled,
-      sourceStatus,
     }: {
       accountId: string;
       enabled: boolean;
