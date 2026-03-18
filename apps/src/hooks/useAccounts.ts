@@ -142,6 +142,18 @@ export function useAccounts() {
     },
   });
 
+  const updateAccountSortMutation = useMutation({
+    mutationFn: ({ accountId, sort }: { accountId: string; sort: number }) =>
+      accountClient.update(accountId, sort),
+    onSuccess: async () => {
+      await invalidateAll();
+      toast.success("账号顺序已更新");
+    },
+    onError: (error: unknown) => {
+      toast.error(`更新顺序失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   const importByDirectoryMutation = useMutation({
     mutationFn: () => accountClient.importByDirectory(),
     onSuccess: async (result: ImportByDirectoryResult) => {
@@ -230,6 +242,8 @@ export function useAccounts() {
     exportAccounts: () => exportMutation.mutate(),
     setPreferredAccount: (accountId: string) => setManualPreferredMutation.mutate(accountId),
     clearPreferredAccount: () => clearManualPreferredMutation.mutate(),
+    updateAccountSort: (accountId: string, sort: number) =>
+      updateAccountSortMutation.mutate({ accountId, sort }),
     isRefreshingAccountId:
       refreshAccountMutation.isPending && typeof refreshAccountMutation.variables === "string"
         ? refreshAccountMutation.variables
@@ -239,5 +253,14 @@ export function useAccounts() {
     isDeletingMany: deleteManyMutation.isPending,
     isUpdatingPreferred:
       setManualPreferredMutation.isPending || clearManualPreferredMutation.isPending,
+    isUpdatingSortAccountId:
+      updateAccountSortMutation.isPending &&
+      updateAccountSortMutation.variables &&
+      typeof updateAccountSortMutation.variables === "object" &&
+      "accountId" in updateAccountSortMutation.variables
+        ? String(
+            (updateAccountSortMutation.variables as { accountId?: unknown }).accountId || ""
+          )
+        : "",
   };
 }

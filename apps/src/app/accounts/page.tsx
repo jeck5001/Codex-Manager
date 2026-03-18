@@ -122,6 +122,8 @@ export default function AccountsPage() {
     setPreferredAccount,
     clearPreferredAccount,
     isUpdatingPreferred,
+    updateAccountSort,
+    isUpdatingSortAccountId,
   } = useAccounts();
 
   const [search, setSearch] = useState("");
@@ -494,9 +496,46 @@ export default function AccountsPage() {
                       />
                     </TableCell>
                     <TableCell>
-                      <span className="rounded bg-muted/50 px-2 py-0.5 font-mono text-xs">
-                        {account.priority}
-                      </span>
+                      <Input
+                        key={`${account.id}:${account.priority}`}
+                        type="number"
+                        min={0}
+                        step={1}
+                        defaultValue={account.priority}
+                        disabled={isUpdatingSortAccountId === account.id}
+                        className="h-8 w-16 bg-muted/30 px-2 text-center font-mono text-xs tabular-nums"
+                        title="顺序越小越靠前"
+                        onBlur={(event) => {
+                          if (isUpdatingSortAccountId === account.id) return;
+
+                          const raw = event.currentTarget.value.trim();
+                          if (!raw) {
+                            event.currentTarget.value = String(account.priority);
+                            return;
+                          }
+
+                          const parsed = Number(raw);
+                          if (!Number.isFinite(parsed)) {
+                            toast.error("顺序必须是数字");
+                            event.currentTarget.value = String(account.priority);
+                            return;
+                          }
+
+                          const nextSort = Math.max(0, Math.trunc(parsed));
+                          if (nextSort === account.priority) return;
+                          updateAccountSort(account.id, nextSort);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.currentTarget.blur();
+                            return;
+                          }
+                          if (event.key === "Escape") {
+                            event.currentTarget.value = String(account.priority);
+                            event.currentTarget.blur();
+                          }
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
