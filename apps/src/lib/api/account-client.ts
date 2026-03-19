@@ -39,6 +39,8 @@ import {
   RegisterOutlookBatchStartResult,
   RegisterOutlookBatchImportResult,
   RegisterServiceGroup,
+  RegisterStats,
+  RegisterTaskListResult,
   RegisterTaskSnapshot,
   UsageAggregateSummary,
 } from "../../types";
@@ -116,6 +118,12 @@ interface RegisterOutlookBatchStartPayload {
   mode: "pipeline" | "parallel";
 }
 
+interface RegisterTaskListPayload {
+  page?: number;
+  pageSize?: number;
+  status?: string | null;
+}
+
 interface RegisterEmailServiceListPayload {
   serviceType?: string | null;
   enabledOnly?: boolean;
@@ -186,6 +194,8 @@ function normalizeRegisterAvailableServices(value: unknown): RegisterAvailableSe
 
 function normalizeRegisterTaskSnapshot(value: unknown): RegisterTaskSnapshot {
   const source = asRecord(value) ?? {};
+  const result = asRecord(source.result);
+  const emailFromResult = typeof result?.email === "string" ? result.email : "";
   return {
     taskUuid: typeof source.taskUuid === "string"
       ? source.taskUuid
@@ -219,8 +229,15 @@ function normalizeRegisterTaskSnapshot(value: unknown): RegisterTaskSnapshot {
       : typeof source.error_message === "string"
         ? source.error_message
         : "",
-    email: typeof source.email === "string" ? source.email : "",
-    canImport: source.canImport === true || source.can_import === true,
+    email: typeof source.email === "string" && source.email
+      ? source.email
+      : emailFromResult,
+    canImport:
+      source.canImport === true ||
+      source.can_import === true ||
+      (typeof emailFromResult === "string" &&
+        emailFromResult.trim().length > 0 &&
+        String(source.status || "").trim().toLowerCase() === "completed"),
     logs: Array.isArray(source.logs)
       ? source.logs.filter((item): item is string => typeof item === "string")
       : [],
@@ -283,6 +300,36 @@ function normalizeRegisterBatchSnapshot(value: unknown): RegisterBatchSnapshot {
     logs: Array.isArray(source.logs)
       ? source.logs.filter((item): item is string => typeof item === "string")
       : [],
+  };
+}
+
+function normalizeRegisterTaskListResult(value: unknown): RegisterTaskListResult {
+  const source = asRecord(value) ?? {};
+  const tasks = Array.isArray(source.tasks) ? source.tasks : [];
+  return {
+    total:
+      typeof source.total === "number" && Number.isFinite(source.total) ? source.total : tasks.length,
+    tasks: tasks.map(normalizeRegisterTaskSnapshot).filter((task) => task.taskUuid),
+  };
+}
+
+function normalizeRegisterStats(value: unknown): RegisterStats {
+  const source = asRecord(value) ?? {};
+  const rawByStatus = asRecord(source.byStatus ?? source.by_status) ?? {};
+  const byStatus = Object.entries(rawByStatus).reduce<Record<string, number>>((result, [key, rawValue]) => {
+    if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+      result[key] = rawValue;
+    }
+    return result;
+  }, {});
+  return {
+    byStatus,
+    todayCount:
+      typeof source.todayCount === "number" && Number.isFinite(source.todayCount)
+        ? source.todayCount
+        : typeof source.today_count === "number" && Number.isFinite(source.today_count)
+          ? source.today_count
+          : 0,
   };
 }
 
@@ -755,6 +802,28 @@ export const accountClient = {
   },
   cancelRegisterBatch: (batchId: string) =>
     invoke("service_account_register_batch_cancel", withAddr({ batchId })),
+  async listRegisterTasks(params?: RegisterTaskListPayload): Promise<RegisterTaskListResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_tasks_list",
+      withAddr({
+        page: params?.page ?? 1,
+        pageSize: params?.pageSize ?? 20,
+        status: params?.status ?? null,
+      })
+    );
+    return normalizeRegisterTaskListResult(result);
+  },
+  async getRegisterStats(): Promise<RegisterStats> {
+    const result = await invoke<unknown>(
+      "service_account_register_stats",
+      withAddr()
+    );
+    return normalizeRegisterStats(result);
+  },
+  cancelRegisterTask: (taskUuid: string) =>
+    invoke("service_account_register_task_cancel", withAddr({ taskUuid })),
+  deleteRegisterTask: (taskUuid: string) =>
+    invoke("service_account_register_task_delete", withAddr({ taskUuid })),
   async startRegisterOutlookBatch(
     params: RegisterOutlookBatchStartPayload
   ): Promise<RegisterOutlookBatchStartResult> {

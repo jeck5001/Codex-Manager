@@ -164,6 +164,37 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
             super::value_or_error(account_register::cancel_register_batch(batch_id))
         }
+        "account/register/tasks/list" => {
+            let page = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("page"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(1);
+            let page_size = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("pageSize").or_else(|| params.get("page_size")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(20);
+            let status = first_str_param(req, &["status"]);
+            super::value_or_error(account_register::list_register_tasks(
+                page,
+                page_size,
+                status,
+            ))
+        }
+        "account/register/stats" => {
+            super::value_or_error(account_register::register_stats())
+        }
+        "account/register/task/cancel" => {
+            let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
+            super::value_or_error(account_register::cancel_register_task(task_uuid))
+        }
+        "account/register/task/delete" => {
+            let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
+            super::value_or_error(account_register::delete_register_task(task_uuid))
+        }
         "account/register/outlookAccounts" => {
             super::value_or_error(account_register::list_register_outlook_accounts())
         }

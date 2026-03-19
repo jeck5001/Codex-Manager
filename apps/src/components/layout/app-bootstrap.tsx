@@ -30,6 +30,7 @@ const PRIMARY_PAGE_WARMUP_PAGE_SIZE = 20;
 const PRIMARY_PAGE_ROUTES = [
   "/",
   "/accounts/",
+  "/register/",
   "/email-services/",
   "/apikeys/",
   "/logs/",
@@ -165,6 +166,21 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
         queryClient.prefetchQuery({
           queryKey: ["register-email-service-types"],
           queryFn: () => accountClient.getRegisterEmailServiceTypes(),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["register-tasks", "all", 1, 20],
+          queryFn: () =>
+            accountClient.listRegisterTasks({
+              page: 1,
+              pageSize: 20,
+              status: null,
+            }),
+          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
+        }),
+        queryClient.prefetchQuery({
+          queryKey: ["register-stats"],
+          queryFn: () => accountClient.getRegisterStats(),
           staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
         }),
         queryClient.prefetchQuery({
