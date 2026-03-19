@@ -26,6 +26,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { accountClient } from "@/lib/api/account-client";
+import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { FileUp, Info, LogIn, Clipboard, ExternalLink, Hash } from "lucide-react";
@@ -304,10 +305,14 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     }
   };
 
-  const copyUrl = () => {
+  const copyUrl = async () => {
     if (!loginUrl) return;
-    navigator.clipboard.writeText(loginUrl);
-    toast.success("链接已复制");
+    try {
+      await copyTextToClipboard(loginUrl);
+      toast.success("链接已复制");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
   };
 
   return (
@@ -372,7 +377,12 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                 {loginUrl && (
                   <div className="mt-3 p-2 rounded-lg bg-primary/5 border border-primary/10 flex items-center gap-2 animate-in fade-in zoom-in duration-300">
                     <Input value={loginUrl} readOnly className="font-mono text-[10px] h-8 border-none bg-transparent" />
-                    <Button variant="ghost" size="sm" onClick={copyUrl} className="h-8 w-8 p-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void copyUrl()}
+                      className="h-8 w-8 p-0"
+                    >
                       <Clipboard className="h-3.5 w-3.5" />
                     </Button>
                   </div>

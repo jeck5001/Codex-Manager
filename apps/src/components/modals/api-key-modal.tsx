@@ -20,6 +20,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { accountClient } from "@/lib/api/account-client";
+import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { toast } from "sonner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Key, Globe, Clipboard, ShieldCheck } from "lucide-react";
@@ -147,9 +148,13 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
     }
   };
 
-  const copyKey = () => {
-    navigator.clipboard.writeText(generatedKey);
-    toast.success("密钥已复制");
+  const copyKey = async () => {
+    try {
+      await copyTextToClipboard(generatedKey);
+      toast.success("密钥已复制");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
   };
 
   return (
@@ -285,7 +290,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
               </Label>
               <div className="flex gap-2">
                 <Input value={generatedKey} readOnly className="font-mono text-sm bg-primary/5" />
-                <Button variant="outline" onClick={copyKey}>
+                <Button variant="outline" onClick={() => void copyKey()}>
                   <Clipboard className="h-4 w-4" />
                 </Button>
               </div>

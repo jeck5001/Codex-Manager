@@ -66,6 +66,7 @@ import {
 } from "@/components/ui/table";
 import { useAccounts } from "@/hooks/useAccounts";
 import { cn } from "@/lib/utils";
+import { buildStaticRouteUrl } from "@/lib/utils/static-routes";
 import {
   formatTsFromSeconds,
   isPrimaryWindowOnlyUsage,
@@ -725,7 +726,10 @@ export default function AccountsPage() {
                                 className="gap-2"
                                 onClick={() =>
                                   router.push(
-                                    `/logs?query=${encodeURIComponent(account.id)}`,
+                                    buildStaticRouteUrl(
+                                      "/logs",
+                                      `?query=${encodeURIComponent(account.id)}`,
+                                    ),
                                   )
                                 }
                               >
