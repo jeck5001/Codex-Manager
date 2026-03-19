@@ -165,6 +165,7 @@ export default function RegisterPage() {
   const latestTasks = latestTasksQuery.data?.tasks || [];
   const activeTasks = latestTasks.filter((task) => isTaskActive(task.status));
   const recentAccounts = recentAccountsQuery.data?.items || [];
+  const recentAccountPreview = recentAccounts.slice(0, 4);
 
   useEffect(() => {
     const candidates = activeTasks.length > 0 ? activeTasks : latestTasks;
@@ -293,37 +294,42 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-w-0 space-y-6 animate-in fade-in duration-700">
-      <div className="grid min-w-0 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+    <div className="min-w-0 space-y-4 animate-in fade-in duration-700">
+      <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
         {isStatsLoading
           ? Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="h-32 rounded-2xl" />
+              <Skeleton key={index} className="h-24 rounded-2xl" />
             ))
           : summaryCards.map((card) => (
-              <Card key={card.title} className="glass-card overflow-hidden border-none shadow-md backdrop-blur-md">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
+              <Card
+                key={card.title}
+                className="glass-card overflow-hidden border-none py-0 shadow-md backdrop-blur-md"
+              >
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pb-1 pt-4">
+                  <CardTitle className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    {card.title}
+                  </CardTitle>
                   <card.icon className={cn("h-4 w-4", card.tone)} />
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{card.value}</div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{card.sub}</p>
+                <CardContent className="px-5 pb-4 pt-0">
+                  <div className="text-xl font-bold leading-none">{card.value}</div>
+                  <p className="mt-2 line-clamp-1 text-[11px] text-muted-foreground">{card.sub}</p>
                 </CardContent>
               </Card>
             ))}
       </div>
 
-      <div className="grid min-w-0 gap-6">
+      <div className="grid min-w-0 gap-4">
         <Card className="glass-card min-w-0 overflow-hidden border-none shadow-xl backdrop-blur-md">
-          <CardHeader className="border-b border-border/40">
+          <CardHeader className="border-b border-border/40 pb-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <CardTitle>注册工作台</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  从这里发起自动注册，旁边会持续显示当前活跃任务的最新日志。
+                  从这里发起自动注册，并快速查看服务、账号和活跃任务。
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button className="gap-2" onClick={() => setAddModalOpen(true)}>
                   <Plus className="h-4 w-4" />
                   启动注册
@@ -344,88 +350,26 @@ export default function RegisterPage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4 pt-4">
-            <div className="grid min-w-0 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+          <CardContent className="space-y-3 pt-4">
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {workbenchCards.map((card) => (
                 <div
                   key={card.title}
-                  className="rounded-2xl border border-border/50 bg-muted/20 p-4 shadow-sm"
+                  className="rounded-xl border border-border/50 bg-muted/20 p-3 shadow-sm"
                 >
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">{card.title}</p>
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                      {card.title}
+                    </p>
                     <card.icon className={cn("h-4 w-4", card.tone)} />
                   </div>
-                  <div className="mt-3 text-2xl font-bold">{card.value}</div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{card.sub}</p>
+                  <div className="mt-2 text-xl font-bold leading-none">{card.value}</div>
+                  <p className="mt-2 line-clamp-1 text-[11px] text-muted-foreground">{card.sub}</p>
                 </div>
               ))}
             </div>
 
-            <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.28fr)]">
-              <div className="min-w-0 space-y-4">
-                <div className="min-w-0 rounded-2xl border border-border/50 bg-muted/15 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">服务概览</h3>
-                    <Layers3 className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span>Tempmail</span>
-                      <Badge variant={registerServicesQuery.data?.tempmail.available ? "default" : "secondary"}>
-                        {registerServicesQuery.data?.tempmail.available ? "可用" : "不可用"}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Outlook</span>
-                      <span className="font-medium">{registerServicesQuery.data?.outlook.count || 0}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>自定义域名</span>
-                      <span className="font-medium">{registerServicesQuery.data?.customDomain.count || 0}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Temp Mail</span>
-                      <span className="font-medium">{registerServicesQuery.data?.tempMail.count || 0}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="min-w-0 rounded-2xl border border-border/50 bg-muted/15 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">最近账号</h3>
-                    <Badge variant="outline">{recentAccounts.length}</Badge>
-                  </div>
-                  <div className="space-y-2">
-                    {recentAccountsQuery.isLoading ? (
-                      Array.from({ length: 5 }).map((_, index) => (
-                        <Skeleton key={index} className="h-12 rounded-xl" />
-                      ))
-                    ) : recentAccounts.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
-                        本地账号池里还没有可展示的账号
-                      </div>
-                    ) : (
-                      recentAccounts.map((account: Account) => (
-                        <div
-                          key={account.id}
-                          className="rounded-xl border border-border/50 bg-background/40 px-3 py-2"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-sm font-medium">{account.name}</span>
-                            <Badge variant={account.isAvailable ? "default" : "secondary"}>
-                              {account.isAvailable ? "可用" : "不可用"}
-                            </Badge>
-                          </div>
-                          <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                            {account.id}
-                          </p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-
+            <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
               <div className="min-w-0 rounded-2xl border border-border/50 bg-muted/15 p-4">
                 <div className="mb-3 flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <div>
@@ -459,8 +403,8 @@ export default function RegisterPage() {
                   </div>
                 ) : monitorTaskQuery.isLoading || !monitorTaskQuery.data ? (
                   <div className="space-y-3">
-                    <Skeleton className="h-24 rounded-xl" />
-                    <Skeleton className="h-[300px] rounded-xl" />
+                    <Skeleton className="h-20 rounded-xl" />
+                    <Skeleton className="h-[260px] rounded-xl" />
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -485,10 +429,82 @@ export default function RegisterPage() {
                     <Textarea
                       readOnly
                       value={monitorTaskQuery.data.logs.join("\n")}
-                      className="min-h-[330px] resize-none overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-4 [overflow-wrap:anywhere]"
+                      className="min-h-[260px] resize-none overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-4 xl:min-h-[320px] [overflow-wrap:anywhere]"
                     />
                   </div>
                 )}
+              </div>
+
+              <div className="min-w-0 space-y-3">
+                <div className="min-w-0 rounded-2xl border border-border/50 bg-muted/15 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">服务概览</h3>
+                    <Layers3 className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-2">
+                    <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5">
+                      <p className="text-[11px] text-muted-foreground">Tempmail</p>
+                      <div className="mt-2">
+                        <Badge variant={registerServicesQuery.data?.tempmail.available ? "default" : "secondary"}>
+                          {registerServicesQuery.data?.tempmail.available ? "可用" : "不可用"}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5">
+                      <p className="text-[11px] text-muted-foreground">Outlook</p>
+                      <p className="mt-2 text-lg font-semibold">
+                        {registerServicesQuery.data?.outlook.count || 0}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5">
+                      <p className="text-[11px] text-muted-foreground">自定义域名</p>
+                      <p className="mt-2 text-lg font-semibold">
+                        {registerServicesQuery.data?.customDomain.count || 0}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5">
+                      <p className="text-[11px] text-muted-foreground">Temp Mail</p>
+                      <p className="mt-2 text-lg font-semibold">
+                        {registerServicesQuery.data?.tempMail.count || 0}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="min-w-0 rounded-2xl border border-border/50 bg-muted/15 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">最近账号</h3>
+                    <Badge variant="outline">{recentAccounts.length}</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {recentAccountsQuery.isLoading ? (
+                      Array.from({ length: 4 }).map((_, index) => (
+                        <Skeleton key={index} className="h-11 rounded-xl" />
+                      ))
+                    ) : recentAccounts.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border/60 px-3 py-5 text-center text-sm text-muted-foreground">
+                        本地账号池里还没有可展示的账号
+                      </div>
+                    ) : (
+                      recentAccountPreview.map((account: Account) => (
+                        <div
+                          key={account.id}
+                          className="rounded-xl border border-border/50 bg-background/40 px-3 py-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm font-medium">{account.name}</span>
+                            <Badge variant={account.isAvailable ? "default" : "secondary"}>
+                              {account.isAvailable ? "可用" : "不可用"}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                            {account.id}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
