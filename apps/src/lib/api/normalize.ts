@@ -159,7 +159,8 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
   const name = asString(source.label || source.name) || id;
   const groupName = asString(source.groupName ?? source.group_name);
   const status = asString(source.status);
-  const availability = calcAvailability(usage, { status });
+  const statusReason = asString(source.statusReason ?? source.status_reason);
+  const availability = calcAvailability(usage, { status, statusReason });
   const usageBuckets = getUsageDisplayBuckets(usage);
 
   return {
@@ -171,6 +172,7 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     groupName,
     sort: asInteger(source.sort ?? source.priority, 0, 0),
     status,
+    statusReason,
     isAvailable: availability.level === "ok",
     isLowQuota: isLowQuotaUsage(usage),
     lastRefreshAt: usage?.capturedAt ?? null,

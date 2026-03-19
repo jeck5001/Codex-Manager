@@ -29,6 +29,7 @@ pub struct AccountSummary {
     pub group_name: Option<String>,
     pub sort: i64,
     pub status: String,
+    pub status_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

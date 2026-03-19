@@ -29,6 +29,7 @@ export interface Account {
   groupName: string;
   sort: number;
   status: string;
+  statusReason: string;
   isAvailable: boolean;
   isLowQuota: boolean;
   lastRefreshAt: number | null;
