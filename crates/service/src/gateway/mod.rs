@@ -277,21 +277,8 @@ pub(crate) fn set_request_compression_enabled(enabled: bool) -> bool {
     runtime_config::set_request_compression_enabled(enabled)
 }
 
-pub(crate) fn cpa_no_cookie_header_mode_enabled() -> bool {
-    runtime_config::cpa_no_cookie_header_mode_enabled()
-}
-
 pub(crate) fn strict_request_param_allowlist_enabled() -> bool {
     runtime_config::strict_request_param_allowlist_enabled()
-}
-
-pub(crate) fn set_cpa_no_cookie_header_mode(enabled: bool) -> bool {
-    runtime_config::set_cpa_no_cookie_header_mode_enabled(enabled);
-    std::env::set_var(
-        "CODEXMANAGER_CPA_NO_COOKIE_HEADER_MODE",
-        if enabled { "1" } else { "0" },
-    );
-    enabled
 }
 
 pub(crate) fn current_upstream_proxy_url() -> Option<String> {

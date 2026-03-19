@@ -228,7 +228,6 @@ export interface AppSettings {
   gatewayOriginator: string;
   gatewayResidencyRequirement: string;
   gatewayResidencyRequirementOptions: string[];
-  cpaNoCookieHeaderModeEnabled: boolean;
   upstreamProxyUrl: string;
   upstreamStreamTimeoutMs: number;
   sseKeepaliveIntervalMs: number;

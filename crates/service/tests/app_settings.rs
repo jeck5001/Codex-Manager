@@ -30,7 +30,6 @@ fn reset_runtime_defaults() {
         "gatewayResidencyRequirement": "",
         "appearancePreset": "classic",
         "lightweightModeOnCloseToTray": false,
-        "cpaNoCookieHeaderModeEnabled": false,
         "upstreamProxyUrl": "",
         "upstreamStreamTimeoutMs": 1800000,
         "sseKeepaliveIntervalMs": 15000,
@@ -183,7 +182,6 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "requestCompressionEnabled": false,
             "gatewayOriginator": "codex_cli_rs_test",
             "gatewayResidencyRequirement": "us",
-            "cpaNoCookieHeaderModeEnabled": true,
             "upstreamProxyUrl": "http://127.0.0.1:7890",
             "upstreamStreamTimeoutMs": 654321,
             "sseKeepaliveIntervalMs": 17000,
@@ -429,13 +427,6 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
             .expect("save gateway residency requirement");
         storage
             .set_app_setting(
-                codexmanager_service::APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
-                "1",
-                now_ts(),
-            )
-            .expect("save cpa mode");
-        storage
-            .set_app_setting(
                 codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
                 "http://127.0.0.1:8899",
                 now_ts(),
@@ -524,12 +515,6 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
         );
         assert_eq!(
             snapshot
-                .get("cpaNoCookieHeaderModeEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(true)
-        );
-        assert_eq!(
-            snapshot
                 .get("upstreamProxyUrl")
                 .and_then(|value| value.as_str()),
             Some("http://127.0.0.1:8899")
@@ -588,7 +573,6 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             codexmanager_service::APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_ORIGINATOR_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY,
-            codexmanager_service::APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
@@ -605,7 +589,6 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             ("CODEXMANAGER_ENABLE_REQUEST_COMPRESSION", Some("0")),
             ("CODEXMANAGER_ORIGINATOR", Some("codex_cli_rs_env")),
             ("CODEXMANAGER_RESIDENCY_REQUIREMENT", Some("us")),
-            ("CODEXMANAGER_CPA_NO_COOKIE_HEADER_MODE", Some("1")),
             (
                 "CODEXMANAGER_UPSTREAM_PROXY_URL",
                 Some("http://127.0.0.1:7899"),
@@ -666,12 +649,6 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .get("gatewayResidencyRequirement")
                 .and_then(|value| value.as_str()),
             Some("us")
-        );
-        assert_eq!(
-            snapshot
-                .get("cpaNoCookieHeaderModeEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(true)
         );
         assert_eq!(
             snapshot

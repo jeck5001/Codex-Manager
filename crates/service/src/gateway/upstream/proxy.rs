@@ -79,7 +79,7 @@ pub(in super::super) fn proxy_validated_request(
     let client_is_stream = is_stream;
     let is_compact_path =
         path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?");
-    // 中文注释：对齐 CPA：/v1/responses 上游固定走 SSE。
+    // 中文注释：对齐 Codex 上游协议：/v1/responses 固定走 SSE。
     // 下游是否流式仍由客户端 `stream` 参数决定（在 response bridge 层聚合/透传）。
     let upstream_is_stream =
         client_is_stream || (path.starts_with("/v1/responses") && !is_compact_path);

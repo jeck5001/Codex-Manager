@@ -69,10 +69,6 @@ fn strip_encrypted_content_from_body(body: &[u8]) -> Option<Vec<u8>> {
     serde_json::to_vec(&value).ok()
 }
 
-fn should_compact_upstream_headers() -> bool {
-    super::cpa_no_cookie_header_mode_enabled()
-}
-
 fn extract_prompt_cache_key(body: &[u8]) -> Option<String> {
     if body.is_empty() || body.len() > 64 * 1024 {
         return None;
@@ -167,7 +163,6 @@ pub(super) fn try_openai_fallback(
     let (url, _url_alt) = super::compute_upstream_url(upstream_base, request_path);
     let bearer = super::resolve_openai_bearer_token(storage, account, token)?;
     let attempt_started_at = Instant::now();
-    let compact_headers_mode = should_compact_upstream_headers();
     let is_openai_api_target = super::is_openai_api_base(upstream_base);
     let forwarded_upstream_cookie = if is_openai_api_target {
         None
@@ -212,7 +207,6 @@ pub(super) fn try_openai_fallback(
             auth_token: bearer.as_str(),
             account_id,
             include_account_id,
-            upstream_cookie: forwarded_upstream_cookie,
             incoming_session_id: request_affinity.incoming_session_id,
             incoming_subagent: incoming_headers.subagent(),
             fallback_session_id: request_affinity.fallback_session_id.as_deref(),
@@ -233,7 +227,7 @@ pub(super) fn try_openai_fallback(
             incoming_turn_metadata: incoming_headers.turn_metadata(),
             fallback_session_id: request_affinity.fallback_session_id.as_deref(),
             incoming_turn_state: request_affinity.incoming_turn_state,
-            include_turn_state: !compact_headers_mode && !is_openai_api_target,
+            include_turn_state: !is_openai_api_target,
             strip_session_affinity,
             is_stream,
             has_body: !body.is_empty(),

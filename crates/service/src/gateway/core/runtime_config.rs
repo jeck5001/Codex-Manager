@@ -20,7 +20,6 @@ static UPSTREAM_CONNECT_TIMEOUT_SECS: AtomicU64 =
 static UPSTREAM_TOTAL_TIMEOUT_MS: AtomicU64 = AtomicU64::new(DEFAULT_UPSTREAM_TOTAL_TIMEOUT_MS);
 static UPSTREAM_STREAM_TIMEOUT_MS: AtomicU64 = AtomicU64::new(DEFAULT_UPSTREAM_STREAM_TIMEOUT_MS);
 static ACCOUNT_MAX_INFLIGHT: AtomicUsize = AtomicUsize::new(DEFAULT_ACCOUNT_MAX_INFLIGHT);
-static CPA_NO_COOKIE_HEADER_MODE: AtomicBool = AtomicBool::new(DEFAULT_CPA_NO_COOKIE_HEADER_MODE);
 static STRICT_REQUEST_PARAM_ALLOWLIST: AtomicBool =
     AtomicBool::new(DEFAULT_STRICT_REQUEST_PARAM_ALLOWLIST);
 static ENABLE_REQUEST_COMPRESSION: AtomicBool = AtomicBool::new(DEFAULT_ENABLE_REQUEST_COMPRESSION);
@@ -38,7 +37,6 @@ const DEFAULT_UPSTREAM_TOTAL_TIMEOUT_MS: u64 = 120_000;
 const DEFAULT_UPSTREAM_STREAM_TIMEOUT_MS: u64 = 1_800_000;
 // 中文注释：默认把单账号并发收紧到 1，避免多个长连接 Codex 会话同时压到同一账号上。
 const DEFAULT_ACCOUNT_MAX_INFLIGHT: usize = 1;
-const DEFAULT_CPA_NO_COOKIE_HEADER_MODE: bool = false;
 const DEFAULT_STRICT_REQUEST_PARAM_ALLOWLIST: bool = true;
 const DEFAULT_ENABLE_REQUEST_COMPRESSION: bool = true;
 const DEFAULT_REQUEST_GATE_WAIT_TIMEOUT_MS: u64 = 300;
@@ -54,7 +52,6 @@ const ENV_UPSTREAM_CONNECT_TIMEOUT_SECS: &str = "CODEXMANAGER_UPSTREAM_CONNECT_T
 const ENV_UPSTREAM_TOTAL_TIMEOUT_MS: &str = "CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS";
 const ENV_UPSTREAM_STREAM_TIMEOUT_MS: &str = "CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS";
 const ENV_ACCOUNT_MAX_INFLIGHT: &str = "CODEXMANAGER_ACCOUNT_MAX_INFLIGHT";
-const ENV_CPA_NO_COOKIE_HEADER_MODE: &str = "CODEXMANAGER_CPA_NO_COOKIE_HEADER_MODE";
 const ENV_STRICT_REQUEST_PARAM_ALLOWLIST: &str = "CODEXMANAGER_STRICT_REQUEST_PARAM_ALLOWLIST";
 const ENV_ENABLE_REQUEST_COMPRESSION: &str = "CODEXMANAGER_ENABLE_REQUEST_COMPRESSION";
 const ENV_TOKEN_EXCHANGE_CLIENT_ID: &str = "CODEXMANAGER_CLIENT_ID";
@@ -185,19 +182,9 @@ pub(crate) fn account_max_inflight_limit() -> usize {
     ACCOUNT_MAX_INFLIGHT.load(Ordering::Relaxed)
 }
 
-pub(super) fn cpa_no_cookie_header_mode_enabled() -> bool {
-    ensure_runtime_config_loaded();
-    CPA_NO_COOKIE_HEADER_MODE.load(Ordering::Relaxed)
-}
-
 pub(crate) fn strict_request_param_allowlist_enabled() -> bool {
     ensure_runtime_config_loaded();
     STRICT_REQUEST_PARAM_ALLOWLIST.load(Ordering::Relaxed)
-}
-
-pub(super) fn set_cpa_no_cookie_header_mode_enabled(enabled: bool) {
-    ensure_runtime_config_loaded();
-    CPA_NO_COOKIE_HEADER_MODE.store(enabled, Ordering::Relaxed);
 }
 
 pub(crate) fn request_gate_wait_timeout() -> Duration {
@@ -376,13 +363,6 @@ pub(super) fn reload_from_env() {
     );
     ACCOUNT_MAX_INFLIGHT.store(
         env_usize_or(ENV_ACCOUNT_MAX_INFLIGHT, DEFAULT_ACCOUNT_MAX_INFLIGHT),
-        Ordering::Relaxed,
-    );
-    CPA_NO_COOKIE_HEADER_MODE.store(
-        env_bool_or(
-            ENV_CPA_NO_COOKIE_HEADER_MODE,
-            DEFAULT_CPA_NO_COOKIE_HEADER_MODE,
-        ),
         Ordering::Relaxed,
     );
     STRICT_REQUEST_PARAM_ALLOWLIST.store(

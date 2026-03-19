@@ -55,10 +55,6 @@ fn extract_prompt_cache_key(body: &[u8]) -> Option<String> {
         .map(str::to_string)
 }
 
-fn should_compact_upstream_headers() -> bool {
-    super::super::super::cpa_no_cookie_header_mode_enabled()
-}
-
 fn is_compact_request_path(path: &str) -> bool {
     path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?")
 }
@@ -162,7 +158,6 @@ pub(in super::super) fn send_upstream_request(
     strip_session_affinity: bool,
 ) -> Result<reqwest::blocking::Response, reqwest::Error> {
     let attempt_started_at = Instant::now();
-    let compact_headers_mode = should_compact_upstream_headers();
     let is_openai_api_target = super::super::super::is_openai_api_base(target_url);
     let prompt_cache_key = if strip_session_affinity {
         None
@@ -242,7 +237,6 @@ pub(in super::super) fn send_upstream_request(
             auth_token,
             account_id,
             include_account_id,
-            upstream_cookie: forwarded_upstream_cookie,
             incoming_session_id,
             incoming_subagent: incoming_headers.subagent(),
             fallback_session_id: compact_fallback_session_id,
@@ -263,7 +257,7 @@ pub(in super::super) fn send_upstream_request(
             incoming_turn_metadata: incoming_headers.turn_metadata(),
             fallback_session_id: derived_session_id.as_deref(),
             incoming_turn_state,
-            include_turn_state: !compact_headers_mode,
+            include_turn_state: true,
             strip_session_affinity,
             is_stream,
             has_body: !body.is_empty(),

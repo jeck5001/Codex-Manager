@@ -504,10 +504,6 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     gatewayResidencyRequirementOptions: asArray(
       source.gatewayResidencyRequirementOptions
     ).map((item) => asString(item)),
-    cpaNoCookieHeaderModeEnabled: asBoolean(
-      source.cpaNoCookieHeaderModeEnabled,
-      false
-    ),
     upstreamProxyUrl: asString(source.upstreamProxyUrl),
     upstreamStreamTimeoutMs: asInteger(source.upstreamStreamTimeoutMs, 1_800_000, 0),
     sseKeepaliveIntervalMs: asInteger(source.sseKeepaliveIntervalMs, 15_000, 1),

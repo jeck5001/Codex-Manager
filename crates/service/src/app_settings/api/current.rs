@@ -15,8 +15,8 @@ use super::{
     env_override_reserved_keys, env_override_unsupported_keys, residency_requirement_options,
     save_env_overrides_value, save_persisted_app_setting, save_persisted_bool_setting,
     sync_runtime_settings_from_storage, APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
-    APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
-    APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
+    APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
+    APP_SETTING_GATEWAY_ORIGINATOR_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
@@ -65,7 +65,6 @@ pub(super) fn current_app_settings_value(
     let gateway_residency_requirement = current_gateway_residency_requirement().unwrap_or_default();
     let free_account_max_model_options =
         load_free_account_max_model_options(&free_account_max_model);
-    let cpa_no_cookie_header_mode_enabled = crate::gateway::cpa_no_cookie_header_mode_enabled();
     let upstream_proxy_url = crate::gateway::current_upstream_proxy_url();
     let upstream_stream_timeout_ms = current_gateway_upstream_stream_timeout_ms();
     let sse_keepalive_interval_ms = current_gateway_sse_keepalive_interval_ms();
@@ -87,7 +86,6 @@ pub(super) fn current_app_settings_value(
         request_compression_enabled,
         &gateway_originator,
         &gateway_residency_requirement,
-        cpa_no_cookie_header_mode_enabled,
         upstream_proxy_url.as_deref(),
         upstream_stream_timeout_ms,
         sse_keepalive_interval_ms,
@@ -117,7 +115,6 @@ pub(super) fn current_app_settings_value(
         "gatewayOriginator": gateway_originator,
         "gatewayResidencyRequirement": gateway_residency_requirement,
         "gatewayResidencyRequirementOptions": residency_requirement_options(),
-        "cpaNoCookieHeaderModeEnabled": cpa_no_cookie_header_mode_enabled,
         "upstreamProxyUrl": upstream_proxy_url.unwrap_or_default(),
         "upstreamStreamTimeoutMs": upstream_stream_timeout_ms,
         "sseKeepaliveIntervalMs": sse_keepalive_interval_ms,
@@ -185,7 +182,6 @@ fn persist_current_snapshot(
     request_compression_enabled: bool,
     gateway_originator: &str,
     gateway_residency_requirement: &str,
-    cpa_no_cookie_header_mode_enabled: bool,
     upstream_proxy_url: Option<&str>,
     upstream_stream_timeout_ms: u64,
     sse_keepalive_interval_ms: u64,
@@ -228,10 +224,6 @@ fn persist_current_snapshot(
         } else {
             Some(gateway_residency_requirement)
         },
-    );
-    let _ = save_persisted_bool_setting(
-        APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
-        cpa_no_cookie_header_mode_enabled,
     );
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,

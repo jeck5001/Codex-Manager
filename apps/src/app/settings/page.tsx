@@ -995,19 +995,6 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              <div className="flex items-center justify-between border-t pt-6">
-                <div className="space-y-0.5">
-                  <Label>请求头收敛策略</Label>
-                  <p className="text-xs text-muted-foreground">移除高风险会话头，降低 Cloudflare 验证命中率</p>
-                </div>
-                <Switch
-                  checked={snapshot.cpaNoCookieHeaderModeEnabled}
-                  onCheckedChange={(value) =>
-                    updateSettings.mutate({ cpaNoCookieHeaderModeEnabled: value })
-                  }
-                />
-              </div>
-
               <div className="grid gap-2 pt-2">
                 <Label>上游代理 (Proxy)</Label>
                 <Input

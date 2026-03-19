@@ -13,8 +13,7 @@ pub(super) use super::gateway::{
     current_gateway_originator, current_gateway_request_compression_enabled,
     current_gateway_residency_requirement, current_gateway_sse_keepalive_interval_ms,
     current_gateway_upstream_stream_timeout_ms, residency_requirement_options,
-    set_gateway_background_tasks, set_gateway_cpa_no_cookie_header_mode,
-    set_gateway_free_account_max_model, set_gateway_originator,
+    set_gateway_background_tasks, set_gateway_free_account_max_model, set_gateway_originator,
     set_gateway_request_compression_enabled, set_gateway_residency_requirement,
     set_gateway_route_strategy, set_gateway_sse_keepalive_interval_ms,
     set_gateway_upstream_proxy_url, set_gateway_upstream_stream_timeout_ms, BackgroundTasksInput,
@@ -35,7 +34,6 @@ pub(super) use super::ui::{
 };
 pub(super) use super::{
     APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
-    APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,

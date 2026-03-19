@@ -23,7 +23,7 @@ pub(super) fn ensure_instructions(path: &str, obj: &mut serde_json::Map<String, 
     if obj.contains_key("instructions") {
         return false;
     }
-    // 中文注释：对齐 CPA 的 Codex 请求构造：缺失 instructions 时补空字符串，
+    // 中文注释：对齐 Codex 请求构造：缺失 instructions 时补空字符串，
     // 避免部分上游对字段存在性更严格导致的 400。
     obj.insert("instructions".to_string(), Value::String(String::new()));
     true
@@ -70,7 +70,7 @@ pub(super) fn ensure_stream_true(path: &str, obj: &mut serde_json::Map<String, V
     if stream.as_bool() == Some(true) {
         return false;
     }
-    // 中文注释：对齐 CPA 的 Codex executor：/responses 固定走上游 SSE，
+    // 中文注释：对齐 Codex executor：/responses 固定走上游 SSE，
     // 后续由网关按下游协议再聚合/透传，避免 backend-api/codex 在非流式形态返回 400。
     *stream = Value::Bool(true);
     true

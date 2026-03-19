@@ -9,7 +9,6 @@ fn header_runtime_guard() -> MutexGuard<'static, ()> {
 fn header_runtime_scope() -> (MutexGuard<'static, ()>, GatewayHeaderRuntimeRestore) {
     let guard = header_runtime_guard();
     let restore = GatewayHeaderRuntimeRestore::capture();
-    crate::gateway::set_cpa_no_cookie_header_mode(false);
     let _ = crate::set_gateway_originator("codex_cli_rs");
     let _ = crate::set_gateway_residency_requirement(None);
     (guard, restore)
@@ -18,7 +17,6 @@ fn header_runtime_scope() -> (MutexGuard<'static, ()>, GatewayHeaderRuntimeResto
 struct GatewayHeaderRuntimeRestore {
     originator: String,
     residency_requirement: Option<String>,
-    cpa_no_cookie_header_mode: bool,
 }
 
 impl GatewayHeaderRuntimeRestore {
@@ -26,7 +24,6 @@ impl GatewayHeaderRuntimeRestore {
         Self {
             originator: crate::current_gateway_originator(),
             residency_requirement: crate::current_gateway_residency_requirement(),
-            cpa_no_cookie_header_mode: crate::gateway::cpa_no_cookie_header_mode_enabled(),
         }
     }
 }
@@ -35,7 +32,6 @@ impl Drop for GatewayHeaderRuntimeRestore {
     fn drop(&mut self) {
         let _ = crate::set_gateway_originator(&self.originator);
         let _ = crate::set_gateway_residency_requirement(self.residency_requirement.as_deref());
-        let _ = crate::gateway::set_cpa_no_cookie_header_mode(self.cpa_no_cookie_header_mode);
     }
 }
 
@@ -155,7 +151,6 @@ fn codex_compact_header_profile_matches_remote_compact_shape() {
         auth_token: "token-compact",
         account_id: Some("acc-compact"),
         include_account_id: true,
-        upstream_cookie: Some("cf_clearance=test"),
         incoming_session_id: Some("session-compact"),
         incoming_subagent: Some("compact"),
         fallback_session_id: Some("fallback-session"),
@@ -206,7 +201,6 @@ fn codex_compact_header_profile_omits_subagent_without_explicit_source() {
         auth_token: "token-compact-default",
         account_id: None,
         include_account_id: false,
-        upstream_cookie: None,
         incoming_session_id: Some("session-compact-default"),
         incoming_subagent: None,
         fallback_session_id: Some("fallback-session"),
@@ -224,7 +218,6 @@ fn codex_compact_header_profile_omits_session_without_thread_anchor() {
         auth_token: "token-compact-no-session",
         account_id: None,
         include_account_id: false,
-        upstream_cookie: None,
         incoming_session_id: None,
         incoming_subagent: None,
         fallback_session_id: None,
@@ -233,60 +226,6 @@ fn codex_compact_header_profile_omits_session_without_thread_anchor() {
     });
 
     assert!(find_header(&headers, "session_id").is_none());
-}
-
-#[test]
-fn codex_header_profile_skips_cookie_when_cpa_no_cookie_mode_enabled() {
-    let (_guard, _restore) = header_runtime_scope();
-    crate::gateway::set_cpa_no_cookie_header_mode(true);
-
-    let headers = build_codex_upstream_headers(CodexUpstreamHeaderInput {
-        auth_token: "token-no-cookie",
-        account_id: Some("acc-1"),
-        include_account_id: true,
-        upstream_cookie: Some("cf_clearance=test"),
-        incoming_session_id: Some("sess-1"),
-        incoming_client_request_id: None,
-        incoming_subagent: None,
-        incoming_beta_features: None,
-        incoming_turn_metadata: None,
-        fallback_session_id: None,
-        incoming_turn_state: None,
-        include_turn_state: true,
-        strip_session_affinity: false,
-        is_stream: true,
-        has_body: true,
-    });
-
-    assert!(find_header(&headers, "Cookie").is_none());
-    assert_eq!(
-        find_header(&headers, "ChatGPT-Account-ID").as_deref(),
-        Some("acc-1")
-    );
-}
-
-#[test]
-fn codex_compact_header_profile_skips_cookie_when_cpa_no_cookie_mode_enabled() {
-    let (_guard, _restore) = header_runtime_scope();
-    crate::gateway::set_cpa_no_cookie_header_mode(true);
-
-    let headers = build_codex_compact_upstream_headers(CodexCompactUpstreamHeaderInput {
-        auth_token: "token-compact-no-cookie",
-        account_id: Some("acc-compact"),
-        include_account_id: true,
-        upstream_cookie: Some("cf_clearance=test"),
-        incoming_session_id: Some("session-compact"),
-        incoming_subagent: None,
-        fallback_session_id: None,
-        strip_session_affinity: false,
-        has_body: true,
-    });
-
-    assert!(find_header(&headers, "Cookie").is_none());
-    assert_eq!(
-        find_header(&headers, "ChatGPT-Account-ID").as_deref(),
-        Some("acc-compact")
-    );
 }
 
 #[test]
@@ -436,7 +375,7 @@ fn codex_header_profile_skips_account_header_when_disabled() {
 fn codex_header_profile_can_disable_affinity_headers() {
     let (_guard, _restore) = header_runtime_scope();
     let headers = build_codex_upstream_headers(CodexUpstreamHeaderInput {
-        auth_token: "token-cpa-mode",
+        auth_token: "token-no-affinity",
         account_id: None,
         include_account_id: true,
         upstream_cookie: None,

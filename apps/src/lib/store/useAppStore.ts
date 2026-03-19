@@ -50,7 +50,6 @@ export const useAppStore = create<AppState>((set) => ({
     gatewayOriginator: "codex_cli_rs",
     gatewayResidencyRequirement: "",
     gatewayResidencyRequirementOptions: ["", "us"],
-    cpaNoCookieHeaderModeEnabled: false,
     upstreamProxyUrl: "",
     upstreamStreamTimeoutMs: 1800000,
     sseKeepaliveIntervalMs: 15000,

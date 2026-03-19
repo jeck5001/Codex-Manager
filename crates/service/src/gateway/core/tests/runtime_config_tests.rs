@@ -41,7 +41,6 @@ fn reload_from_env_updates_timeout_and_cookie() {
     let _stream_timeout_guard = EnvGuard::set(ENV_UPSTREAM_STREAM_TIMEOUT_MS, "888");
     let _inflight_guard = EnvGuard::set(ENV_ACCOUNT_MAX_INFLIGHT, "4");
     let _cookie_guard = EnvGuard::set(ENV_UPSTREAM_COOKIE, "cookie=abc");
-    let _cpa_mode_guard = EnvGuard::set(ENV_CPA_NO_COOKIE_HEADER_MODE, "1");
     let _strict_allowlist_guard = EnvGuard::set(ENV_STRICT_REQUEST_PARAM_ALLOWLIST, "0");
     let _request_compression_guard = EnvGuard::set(ENV_ENABLE_REQUEST_COMPRESSION, "0");
     let _client_id_guard = EnvGuard::set(ENV_TOKEN_EXCHANGE_CLIENT_ID, "client-id-123");
@@ -54,7 +53,6 @@ fn reload_from_env_updates_timeout_and_cookie() {
     assert_eq!(upstream_stream_timeout(), Some(Duration::from_millis(888)));
     assert_eq!(account_max_inflight_limit(), 4);
     assert_eq!(upstream_cookie().as_deref(), Some("cookie=abc"));
-    assert!(cpa_no_cookie_header_mode_enabled());
     assert!(!strict_request_param_allowlist_enabled());
     assert!(!request_compression_enabled());
     assert_eq!(token_exchange_client_id(), "client-id-123");
