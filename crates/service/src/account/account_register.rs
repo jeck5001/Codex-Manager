@@ -4,7 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 const ENV_REGISTER_SERVICE_URL: &str = "CODEXMANAGER_REGISTER_SERVICE_URL";
-const DEFAULT_REGISTER_SERVICE_URL: &str = "http://127.0.0.1:8000";
+const DEFAULT_REGISTER_SERVICE_URL: &str = "http://127.0.0.1:9000";
 const REGISTER_BATCH_AUTO_IMPORT_POLL_INTERVAL_SECS: u64 = 3;
 const REGISTER_BATCH_AUTO_IMPORT_TIMEOUT_SECS: u64 = 30 * 60;
 
@@ -851,7 +851,7 @@ mod tests {
     fn normalized_register_service_url_uses_default_and_trims_slash() {
         assert_eq!(
             normalized_register_service_url(None),
-            "http://127.0.0.1:8000"
+            "http://127.0.0.1:9000"
         );
         assert_eq!(
             normalized_register_service_url(Some(" http://example.com:8000/ ")),

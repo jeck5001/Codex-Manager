@@ -5,13 +5,13 @@ services:
     restart: unless-stopped
     environment:
       APP_HOST: 0.0.0.0
-      APP_PORT: 8000
+      APP_PORT: 9000
       PYTHONUNBUFFERED: "1"
     volumes:
       - ./codexregister-data:/app/data
       - ./codexregister-logs:/app/logs
     ports:
-      - "8000:8000"
+      - "9000:9000"
 
   codexmanager-service:
     image: ${GHCR_NAMESPACE:-ghcr.io/jeck5001}/codexmanager-service:${IMAGE_TAG:-latest}
@@ -23,7 +23,7 @@ services:
       CODEXMANAGER_SERVICE_ADDR: 0.0.0.0:48760
       CODEXMANAGER_DB_PATH: /data/codexmanager.db
       CODEXMANAGER_RPC_TOKEN_FILE: /data/codexmanager.rpc-token
-      CODEXMANAGER_REGISTER_SERVICE_URL: http://codexmanager-register:8000
+      CODEXMANAGER_REGISTER_SERVICE_URL: http://codexmanager-register:9000
     volumes:
       - ./codexmanager-data:/data
     ports:

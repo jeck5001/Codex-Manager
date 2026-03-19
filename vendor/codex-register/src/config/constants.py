@@ -241,7 +241,7 @@ DEFAULT_SETTINGS = [
     ("registration.timeout", "120", "超时时间（秒）", "registration"),
     ("registration.default_password_length", "12", "默认密码长度", "registration"),
     ("webui.host", "0.0.0.0", "Web UI 监听主机", "webui"),
-    ("webui.port", "8000", "Web UI 监听端口", "webui"),
+    ("webui.port", "9000", "Web UI 监听端口", "webui"),
     ("webui.debug", "true", "调试模式", "webui"),
 ]
 
