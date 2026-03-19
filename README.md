@@ -78,6 +78,92 @@
 3. 如回调失败，粘贴回调链接手动完成解析。
 4. 刷新用量并确认账号状态。
 
+## NAS / Docker Compose 免传码部署
+如果你是部署到飞牛 NAS、群晖或其他 `x86_64` Linux，推荐直接使用 GHCR 镜像，不要每次把整仓代码传到 NAS。
+
+### 1. 推送代码，自动构建镜像
+- 仓库已提供工作流：[.github/workflows/docker-images.yml](.github/workflows/docker-images.yml)
+- 触发方式：
+  - push 任意分支时，自动构建 `linux/amd64` 镜像
+  - push `v*` tag 时，自动构建 tag 镜像
+  - 也可以手动在 GitHub Actions 里执行
+- 默认会推送 3 个镜像到 GHCR：
+  - `ghcr.io/<你的 GitHub 用户名>/codexmanager-register`
+  - `ghcr.io/<你的 GitHub 用户名>/codexmanager-service`
+  - `ghcr.io/<你的 GitHub 用户名>/codexmanager-web`
+
+### 2. NAS 上只保留 compose 和数据目录
+把下面两个文件放到 NAS 某个目录即可：
+- [docker/docker-compose.ghcr.yml](docker/docker-compose.ghcr.yml)
+- [docker/.env.ghcr.example](docker/.env.ghcr.example)
+
+建议在 NAS 上目录结构保持为：
+
+```text
+codexmanager-nas/
+├─ docker-compose.yml
+├─ .env
+├─ codexmanager-data/
+├─ codexregister-data/
+└─ codexregister-logs/
+```
+
+可以这样准备：
+
+```bash
+mkdir -p codexmanager-nas/codexmanager-data
+mkdir -p codexmanager-nas/codexregister-data
+mkdir -p codexmanager-nas/codexregister-logs
+cp docker/docker-compose.ghcr.yml codexmanager-nas/docker-compose.yml
+cp docker/.env.ghcr.example codexmanager-nas/.env
+```
+
+### 3. 按需修改 `.env`
+默认会拉取：
+
+```env
+GHCR_NAMESPACE=ghcr.io/jeck5001
+IMAGE_TAG=latest
+```
+
+如果你想在 NAS 上跟某个开发分支，而不是主分支：
+- push 分支后，GHCR 会自动产生同名 branch tag
+- 例如分支 `feat/integrate-codex-register`
+- 对应可把 `IMAGE_TAG` 改成 `feat-integrate-codex-register`
+
+### 4. 首次启动
+如果镜像是公开的，通常不需要登录 GHCR；如果你后面改成私有仓库，再先执行：
+
+```bash
+docker login ghcr.io
+```
+
+然后启动：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+### 5. 以后更新
+以后你的更新流程就只剩两步：
+
+1. 本地提交并 push 到 GitHub
+2. NAS 上执行：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+查看状态：
+
+```bash
+docker compose ps
+docker compose logs -f codexmanager-service
+docker compose logs -f codexmanager-web
+```
+
 ## 页面展示
 ### 桌面端
 - 账号管理：集中导入、导出、刷新账号与用量

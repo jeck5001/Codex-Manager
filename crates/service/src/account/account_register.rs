@@ -22,6 +22,24 @@ pub(crate) struct RegisterTaskReadResponse {
     logs: Vec<String>,
 }
 
+impl RegisterTaskReadResponse {
+    pub(crate) fn status(&self) -> &str {
+        self.status.as_str()
+    }
+
+    pub(crate) fn error_message(&self) -> Option<&str> {
+        self.error_message.as_deref()
+    }
+
+    pub(crate) fn email(&self) -> Option<&str> {
+        self.email.as_deref()
+    }
+
+    pub(crate) fn can_import(&self) -> bool {
+        self.can_import
+    }
+}
+
 fn normalized_register_service_url(raw: Option<&str>) -> String {
     let base = raw
         .map(str::trim)

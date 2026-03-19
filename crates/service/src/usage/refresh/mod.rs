@@ -30,6 +30,7 @@ mod errors;
 mod queue;
 mod runner;
 mod settings;
+mod autofill;
 
 static USAGE_POLLING_STARTED: OnceLock<()> = OnceLock::new();
 static GATEWAY_KEEPALIVE_STARTED: OnceLock<()> = OnceLock::new();
@@ -49,6 +50,11 @@ static HTTP_WORKER_FACTOR: AtomicUsize = AtomicUsize::new(DEFAULT_HTTP_WORKER_FA
 static HTTP_WORKER_MIN: AtomicUsize = AtomicUsize::new(DEFAULT_HTTP_WORKER_MIN);
 static HTTP_STREAM_WORKER_FACTOR: AtomicUsize = AtomicUsize::new(DEFAULT_HTTP_STREAM_WORKER_FACTOR);
 static HTTP_STREAM_WORKER_MIN: AtomicUsize = AtomicUsize::new(DEFAULT_HTTP_STREAM_WORKER_MIN);
+static AUTO_REGISTER_POOL_ENABLED: AtomicBool = AtomicBool::new(false);
+static AUTO_REGISTER_READY_ACCOUNT_COUNT: AtomicUsize =
+    AtomicUsize::new(DEFAULT_AUTO_REGISTER_READY_ACCOUNT_COUNT);
+static AUTO_REGISTER_READY_REMAIN_PERCENT: AtomicU64 =
+    AtomicU64::new(DEFAULT_AUTO_REGISTER_READY_REMAIN_PERCENT);
 
 const ENV_DISABLE_POLLING: &str = "CODEXMANAGER_DISABLE_POLLING";
 const ENV_USAGE_POLLING_ENABLED: &str = "CODEXMANAGER_USAGE_POLLING_ENABLED";
@@ -64,6 +70,11 @@ const COMMON_POLL_FAILURE_BACKOFF_MAX_ENV: &str = "CODEXMANAGER_POLL_FAILURE_BAC
 const USAGE_POLL_JITTER_ENV: &str = "CODEXMANAGER_USAGE_POLL_JITTER_SECS";
 const USAGE_POLL_FAILURE_BACKOFF_MAX_ENV: &str = "CODEXMANAGER_USAGE_POLL_FAILURE_BACKOFF_MAX_SECS";
 const USAGE_REFRESH_WORKERS_ENV: &str = "CODEXMANAGER_USAGE_REFRESH_WORKERS";
+const ENV_AUTO_REGISTER_POOL_ENABLED: &str = "CODEXMANAGER_AUTO_REGISTER_POOL_ENABLED";
+const ENV_AUTO_REGISTER_READY_ACCOUNT_COUNT: &str =
+    "CODEXMANAGER_AUTO_REGISTER_READY_ACCOUNT_COUNT";
+const ENV_AUTO_REGISTER_READY_REMAIN_PERCENT: &str =
+    "CODEXMANAGER_AUTO_REGISTER_READY_REMAIN_PERCENT";
 const DEFAULT_USAGE_POLL_BATCH_LIMIT: usize = 100;
 const DEFAULT_USAGE_POLL_CYCLE_BUDGET_SECS: u64 = 30;
 const DEFAULT_USAGE_REFRESH_WORKERS: usize = 4;
@@ -71,6 +82,8 @@ const DEFAULT_HTTP_WORKER_FACTOR: usize = 4;
 const DEFAULT_HTTP_WORKER_MIN: usize = 8;
 const DEFAULT_HTTP_STREAM_WORKER_FACTOR: usize = 1;
 const DEFAULT_HTTP_STREAM_WORKER_MIN: usize = 2;
+const DEFAULT_AUTO_REGISTER_READY_ACCOUNT_COUNT: usize = 2;
+const DEFAULT_AUTO_REGISTER_READY_REMAIN_PERCENT: u64 = 20;
 const ENV_HTTP_WORKER_FACTOR: &str = "CODEXMANAGER_HTTP_WORKER_FACTOR";
 const ENV_HTTP_WORKER_MIN: &str = "CODEXMANAGER_HTTP_WORKER_MIN";
 const ENV_HTTP_STREAM_WORKER_FACTOR: &str = "CODEXMANAGER_HTTP_STREAM_WORKER_FACTOR";
@@ -134,6 +147,7 @@ pub(crate) use self::settings::{
     background_tasks_settings, reload_background_tasks_runtime_from_env,
     set_background_tasks_settings, BackgroundTasksSettingsPatch,
 };
+pub(crate) use self::autofill::maybe_trigger_auto_register_pool_fill;
 
 pub(crate) fn ensure_usage_polling() {
     ensure_background_tasks_config_loaded();
