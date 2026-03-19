@@ -1,7 +1,8 @@
-use codexmanager_core::storage::{Account, Token};
+use codexmanager_core::storage::{Account, ConversationBinding, Token};
 
 use super::super::super::IncomingHeaderSnapshot;
 use crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE;
+use crate::gateway::conversation_binding::ConversationRoutingContext;
 
 pub(in super::super) struct UpstreamRequestSetup {
     pub(in super::super) upstream_base: String,
@@ -15,6 +16,7 @@ pub(in super::super) struct UpstreamRequestSetup {
     pub(in super::super) has_sticky_fallback_session: bool,
     pub(in super::super) has_sticky_fallback_conversation: bool,
     pub(in super::super) has_body_encrypted_content: bool,
+    pub(in super::super) conversation_routing: Option<ConversationRoutingContext>,
 }
 
 pub(in super::super) fn prepare_request_setup(
@@ -25,6 +27,9 @@ pub(in super::super) fn prepare_request_setup(
     body: &bytes::Bytes,
     candidates: &mut Vec<(Account, Token)>,
     key_id: &str,
+    platform_key_hash: &str,
+    local_conversation_id: Option<&str>,
+    conversation_binding: Option<&ConversationBinding>,
     model_for_log: Option<&str>,
     trace_id: &str,
 ) -> UpstreamRequestSetup {
@@ -39,7 +44,19 @@ pub(in super::super) fn prepare_request_setup(
     let account_max_inflight = super::super::super::account_max_inflight_limit();
     let anthropic_has_prompt_cache_key =
         protocol_type == PROTOCOL_ANTHROPIC_NATIVE && has_prompt_cache_key;
-    super::super::super::apply_route_strategy(candidates, key_id, model_for_log);
+    let conversation_routing =
+        super::super::super::conversation_binding::prepare_conversation_routing(
+            platform_key_hash,
+            local_conversation_id,
+            conversation_binding,
+            candidates,
+        );
+    if !conversation_routing
+        .as_ref()
+        .is_some_and(|routing| routing.binding_selected)
+    {
+        super::super::super::apply_route_strategy(candidates, key_id, model_for_log);
+    }
     let candidate_order = candidates
         .iter()
         .map(|(account, _)| format!("{}#sort={}", account.id, account.sort))
@@ -47,7 +64,14 @@ pub(in super::super) fn prepare_request_setup(
     super::super::super::trace_log::log_candidate_pool(
         trace_id,
         key_id,
-        super::super::super::current_route_strategy(),
+        if conversation_routing
+            .as_ref()
+            .is_some_and(|routing| routing.binding_selected)
+        {
+            "conversation_bound"
+        } else {
+            super::super::super::current_route_strategy()
+        },
         candidate_order.as_slice(),
     );
 
@@ -70,5 +94,6 @@ pub(in super::super) fn prepare_request_setup(
             .is_some(),
         has_body_encrypted_content:
             super::super::support::payload_rewrite::body_has_encrypted_content_hint(body.as_ref()),
+        conversation_routing,
     }
 }

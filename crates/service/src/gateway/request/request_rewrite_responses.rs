@@ -106,6 +106,7 @@ pub(super) fn ensure_prompt_cache_key(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
     prompt_cache_key: Option<&str>,
+    force_override: bool,
 ) -> bool {
     if !is_standard_responses_path(path) {
         return false;
@@ -118,7 +119,12 @@ pub(super) fn ensure_prompt_cache_key(
     };
 
     match obj.get("prompt_cache_key") {
-        Some(Value::String(existing)) if !existing.trim().is_empty() => return false,
+        Some(Value::String(existing)) if !force_override && !existing.trim().is_empty() => {
+            return false;
+        }
+        Some(Value::String(existing)) if force_override && existing.trim() == prompt_cache_key => {
+            return false;
+        }
         Some(_) => {}
         None => {}
     }

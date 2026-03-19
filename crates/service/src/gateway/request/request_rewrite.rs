@@ -259,6 +259,45 @@ pub(super) fn apply_request_overrides_with_prompt_cache_key(
     upstream_base_url: Option<&str>,
     prompt_cache_key: Option<&str>,
 ) -> Vec<u8> {
+    apply_request_overrides_with_prompt_cache_key_mode(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        upstream_base_url,
+        prompt_cache_key,
+        false,
+    )
+}
+
+pub(super) fn apply_request_overrides_with_forced_prompt_cache_key(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    upstream_base_url: Option<&str>,
+    prompt_cache_key: Option<&str>,
+) -> Vec<u8> {
+    apply_request_overrides_with_prompt_cache_key_mode(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        upstream_base_url,
+        prompt_cache_key,
+        true,
+    )
+}
+
+fn apply_request_overrides_with_prompt_cache_key_mode(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    upstream_base_url: Option<&str>,
+    prompt_cache_key: Option<&str>,
+    force_prompt_cache_key: bool,
+) -> Vec<u8> {
     let use_codex_responses_compat = should_apply_codex_responses_compat(path, upstream_base_url);
     let normalized_model = model_slug.map(str::trim).filter(|v| !v.is_empty());
     let normalized_reasoning = reasoning_effort
@@ -341,7 +380,12 @@ pub(super) fn apply_request_overrides_with_prompt_cache_key(
                     if responses::ensure_reasoning_include(path, obj) {
                         changed = true;
                     }
-                    if responses::ensure_prompt_cache_key(path, obj, prompt_cache_key) {
+                    if responses::ensure_prompt_cache_key(
+                        path,
+                        obj,
+                        prompt_cache_key,
+                        force_prompt_cache_key,
+                    ) {
                         changed = true;
                     }
                 }

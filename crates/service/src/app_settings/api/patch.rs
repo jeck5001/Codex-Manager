@@ -5,13 +5,12 @@ use std::collections::HashMap;
 use super::{
     set_close_to_tray_on_close_setting, set_env_overrides, set_gateway_background_tasks,
     set_gateway_free_account_max_model, set_gateway_originator,
-    set_gateway_request_compression_enabled,
-    set_gateway_residency_requirement, set_gateway_route_strategy,
-    set_gateway_sse_keepalive_interval_ms, set_gateway_upstream_proxy_url,
-    set_gateway_upstream_stream_timeout_ms, set_lightweight_mode_on_close_to_tray_setting,
-    set_saved_service_addr, set_service_bind_mode, set_ui_appearance_preset,
-    set_ui_low_transparency_enabled, set_ui_theme, set_update_auto_check_enabled,
-    BackgroundTasksInput,
+    set_gateway_request_compression_enabled, set_gateway_residency_requirement,
+    set_gateway_route_strategy, set_gateway_sse_keepalive_interval_ms,
+    set_gateway_upstream_proxy_url, set_gateway_upstream_stream_timeout_ms,
+    set_lightweight_mode_on_close_to_tray_setting, set_saved_service_addr, set_service_bind_mode,
+    set_ui_appearance_preset, set_ui_low_transparency_enabled, set_ui_theme,
+    set_update_auto_check_enabled, BackgroundTasksInput,
 };
 
 #[derive(Debug, Clone, Default, Deserialize)]

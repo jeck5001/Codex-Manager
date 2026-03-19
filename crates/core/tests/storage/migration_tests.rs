@@ -183,6 +183,15 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
         )
         .expect("count 033 migration");
     assert_eq!(applied_033, 1);
+    let applied_034: i64 = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '034_conversation_bindings'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count 034 migration");
+    assert_eq!(applied_034, 1);
 
     assert!(!storage
         .has_column("accounts", "note")
@@ -226,6 +235,12 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
     assert!(storage
         .has_column("login_sessions", "workspace_id")
         .expect("check login_sessions.workspace_id"));
+    assert!(storage
+        .has_column("conversation_bindings", "thread_anchor")
+        .expect("check conversation_bindings.thread_anchor"));
+    assert!(storage
+        .has_column("conversation_bindings", "last_switch_reason")
+        .expect("check conversation_bindings.last_switch_reason"));
     assert!(!storage
         .has_column("request_logs", "input_tokens")
         .expect("check request_logs.input_tokens"));
@@ -496,6 +511,38 @@ fn accounts_sort_index_migration_adds_sort_updated_at_index() {
     assert!(index_sql.contains("accounts"));
     assert!(index_sql.contains("sort ASC"));
     assert!(index_sql.contains("updated_at DESC"));
+}
+
+#[test]
+fn conversation_bindings_migration_adds_indexes() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    let account_index_sql: String = storage
+        .conn
+        .query_row(
+            "SELECT sql
+             FROM sqlite_master
+             WHERE type = 'index' AND name = 'idx_conversation_bindings_account_id'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("load account index definition");
+    assert!(account_index_sql.contains("conversation_bindings"));
+    assert!(account_index_sql.contains("account_id"));
+
+    let last_used_index_sql: String = storage
+        .conn
+        .query_row(
+            "SELECT sql
+             FROM sqlite_master
+             WHERE type = 'index' AND name = 'idx_conversation_bindings_last_used_at'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("load last_used index definition");
+    assert!(last_used_index_sql.contains("conversation_bindings"));
+    assert!(last_used_index_sql.contains("last_used_at DESC"));
 }
 
 #[test]

@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod accounts;
 mod api_keys;
+mod conversation_bindings;
 mod events;
 mod model_options;
 mod request_log_query;
@@ -72,6 +73,21 @@ pub struct Event {
     pub event_type: String,
     pub message: String,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConversationBinding {
+    pub platform_key_hash: String,
+    pub conversation_id: String,
+    pub account_id: String,
+    pub thread_epoch: i64,
+    pub thread_anchor: String,
+    pub status: String,
+    pub last_model: Option<String>,
+    pub last_switch_reason: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub last_used_at: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -341,6 +357,10 @@ impl Storage {
             "033_login_sessions_workspace_id",
             include_str!("../../migrations/033_login_sessions_workspace_id.sql"),
             |s| s.ensure_login_session_workspace_column(),
+        )?;
+        self.apply_sql_migration(
+            "034_conversation_bindings",
+            include_str!("../../migrations/034_conversation_bindings.sql"),
         )?;
         self.ensure_request_token_stats_table()?;
         Ok(())

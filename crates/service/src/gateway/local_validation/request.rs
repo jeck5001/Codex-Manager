@@ -71,14 +71,38 @@ pub(super) fn build_local_validation_result(
     // 否则上游兼容改写（例如 /responses 强制 stream=true）会污染下游响应模式判断。
     let client_request_meta = super::super::parse_request_metadata(&body);
     let (effective_model, effective_reasoning) = resolve_effective_request_overrides(&api_key);
-    body = super::super::apply_request_overrides_with_prompt_cache_key(
-        &path,
-        body,
-        effective_model.as_deref(),
-        effective_reasoning.as_deref(),
-        api_key.upstream_base_url.as_deref(),
-        incoming_headers.conversation_id(),
+    let local_conversation_id = incoming_headers.conversation_id().map(str::to_string);
+    let conversation_binding = super::super::conversation_binding::load_conversation_binding(
+        &storage,
+        api_key.key_hash.as_str(),
+        local_conversation_id.as_deref(),
+    )
+    .map_err(|err| LocalValidationError::new(500, err))?;
+    let effective_thread_anchor = super::super::conversation_binding::effective_thread_anchor(
+        local_conversation_id.as_deref(),
+        conversation_binding.as_ref(),
     );
+    let incoming_headers =
+        incoming_headers.with_conversation_id_override(effective_thread_anchor.as_deref());
+    body = if effective_thread_anchor.is_some() {
+        super::super::apply_request_overrides_with_forced_prompt_cache_key(
+            &path,
+            body,
+            effective_model.as_deref(),
+            effective_reasoning.as_deref(),
+            api_key.upstream_base_url.as_deref(),
+            effective_thread_anchor.as_deref(),
+        )
+    } else {
+        super::super::apply_request_overrides_with_prompt_cache_key(
+            &path,
+            body,
+            effective_model.as_deref(),
+            effective_reasoning.as_deref(),
+            api_key.upstream_base_url.as_deref(),
+            None,
+        )
+    };
 
     let request_method = request.method().as_str().to_string();
     let method = Method::from_bytes(request_method.as_bytes())
@@ -110,6 +134,9 @@ pub(super) fn build_local_validation_result(
         tool_name_restore_map,
         request_method,
         key_id: api_key.id,
+        platform_key_hash: api_key.key_hash,
+        local_conversation_id,
+        conversation_binding,
         model_for_log,
         reasoning_for_log,
         method,
