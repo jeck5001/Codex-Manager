@@ -39,6 +39,9 @@ const DEFAULT_BACKGROUND_TASKS: BackgroundTaskSettings = {
   httpWorkerMin: 8,
   httpStreamWorkerFactor: 1,
   httpStreamWorkerMin: 2,
+  autoRegisterPoolEnabled: false,
+  autoRegisterReadyAccountCount: 2,
+  autoRegisterReadyRemainPercent: 20,
 };
 
 function asObject(payload: unknown): Record<string, unknown> {
@@ -450,6 +453,20 @@ export function normalizeBackgroundTasks(payload: unknown): BackgroundTaskSettin
       source.httpStreamWorkerMin,
       DEFAULT_BACKGROUND_TASKS.httpStreamWorkerMin,
       1
+    ),
+    autoRegisterPoolEnabled: asBoolean(
+      source.autoRegisterPoolEnabled,
+      DEFAULT_BACKGROUND_TASKS.autoRegisterPoolEnabled
+    ),
+    autoRegisterReadyAccountCount: asInteger(
+      source.autoRegisterReadyAccountCount,
+      DEFAULT_BACKGROUND_TASKS.autoRegisterReadyAccountCount,
+      1
+    ),
+    autoRegisterReadyRemainPercent: asInteger(
+      source.autoRegisterReadyRemainPercent,
+      DEFAULT_BACKGROUND_TASKS.autoRegisterReadyRemainPercent,
+      0
     ),
   };
 }

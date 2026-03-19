@@ -28,6 +28,9 @@ pub struct BackgroundTasksInput {
     pub http_worker_min: Option<usize>,
     pub http_stream_worker_factor: Option<usize>,
     pub http_stream_worker_min: Option<usize>,
+    pub auto_register_pool_enabled: Option<bool>,
+    pub auto_register_ready_account_count: Option<usize>,
+    pub auto_register_ready_remain_percent: Option<u64>,
 }
 
 impl BackgroundTasksInput {
@@ -44,6 +47,9 @@ impl BackgroundTasksInput {
             http_worker_min: self.http_worker_min,
             http_stream_worker_factor: self.http_stream_worker_factor,
             http_stream_worker_min: self.http_stream_worker_min,
+            auto_register_pool_enabled: self.auto_register_pool_enabled,
+            auto_register_ready_account_count: self.auto_register_ready_account_count,
+            auto_register_ready_remain_percent: self.auto_register_ready_remain_percent,
         }
     }
 }

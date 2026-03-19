@@ -385,6 +385,9 @@ export interface BackgroundTaskSettings {
   httpWorkerMin: number;
   httpStreamWorkerFactor: number;
   httpStreamWorkerMin: number;
+  autoRegisterPoolEnabled: boolean;
+  autoRegisterReadyAccountCount: number;
+  autoRegisterReadyRemainPercent: number;
 }
 
 export interface AppSettings {
