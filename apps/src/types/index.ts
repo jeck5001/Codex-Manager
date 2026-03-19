@@ -188,6 +188,51 @@ export interface ChatgptAuthTokensRefreshResult {
   chatgptPlanTypeRaw?: string | null;
 }
 
+export interface RegisterServiceItem {
+  id: number | null;
+  name: string;
+  type: string;
+  description: string;
+}
+
+export interface RegisterServiceGroup {
+  available: boolean;
+  count: number;
+  services: RegisterServiceItem[];
+}
+
+export interface RegisterAvailableServicesResult {
+  serviceUrl: string;
+  tempmail: RegisterServiceGroup;
+  outlook: RegisterServiceGroup;
+  customDomain: RegisterServiceGroup;
+  tempMail: RegisterServiceGroup;
+}
+
+export interface RegisterTaskSnapshot {
+  taskUuid: string;
+  status: string;
+  emailServiceId: number | null;
+  proxy: string;
+  createdAt: string;
+  startedAt: string;
+  completedAt: string;
+  errorMessage: string;
+  email: string;
+  canImport: boolean;
+  logs: string[];
+}
+
+export interface RegisterImportResult {
+  taskUuid: string;
+  email: string;
+  remoteAccountId: number | null;
+  accountId: string;
+  chatgptAccountId: string;
+  workspaceId: string;
+  type: string;
+}
+
 export interface EnvOverrideCatalogItem {
   key: string;
   label: string;
