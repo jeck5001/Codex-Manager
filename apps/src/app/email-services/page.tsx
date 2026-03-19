@@ -18,6 +18,7 @@ import { ConfirmDialog } from "@/components/modals/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +73,11 @@ type ServiceFormState = {
   priority: string;
   config: Record<string, unknown>;
 };
+
+type DeleteState =
+  | { kind: "single"; service: RegisterEmailService }
+  | { kind: "outlook-batch"; ids: number[]; count: number }
+  | null;
 
 const EMPTY_FORM: ServiceFormState = {
   mode: "create",
@@ -226,19 +232,23 @@ export default function EmailServicesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [formState, setFormState] = useState<ServiceFormState>(EMPTY_FORM);
   const [isOpeningEdit, setIsOpeningEdit] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<RegisterEmailService | null>(null);
+  const [deleteState, setDeleteState] = useState<DeleteState>(null);
+  const [selectedOutlookIds, setSelectedOutlookIds] = useState<number[]>([]);
   const [outlookImportOpen, setOutlookImportOpen] = useState(false);
   const [outlookImportData, setOutlookImportData] = useState("");
   const [outlookImportEnabled, setOutlookImportEnabled] = useState(true);
   const [outlookImportPriority, setOutlookImportPriority] = useState("0");
   const [importResultText, setImportResultText] = useState("");
+  const [tempmailTestOpen, setTempmailTestOpen] = useState(false);
+  const [tempmailTestUrl, setTempmailTestUrl] = useState("");
 
   const {
     serviceTypes,
     services,
-    total,
+    stats,
     isLoading,
     isTypesLoading,
+    isStatsLoading,
     refetchServices,
     createEmailService,
     updateEmailService,
@@ -247,6 +257,9 @@ export default function EmailServicesPage() {
     testEmailService,
     setEmailServiceEnabled,
     importOutlookServices,
+    batchDeleteOutlookServices,
+    reorderEmailServices,
+    testTempmailConnection,
     isCreating,
     isUpdating,
     isDeleting,
@@ -254,6 +267,9 @@ export default function EmailServicesPage() {
     isTesting,
     isToggling,
     isImporting,
+    isBatchDeletingOutlook,
+    isReordering,
+    isTestingTempmail,
   } = useRegisterEmailServices({
     serviceType: serviceTypeFilter === "all" ? null : serviceTypeFilter,
     enabledOnly,
@@ -276,19 +292,34 @@ export default function EmailServicesPage() {
     });
   }, [search, services]);
 
-  const stats = useMemo(() => {
-    const enabledCount = services.filter((service) => service.enabled).length;
-    const outlookCount = services.filter((service) => service.serviceType === "outlook").length;
-    const tempCount = services.filter((service) =>
-      service.serviceType === "tempmail" || service.serviceType === "temp_mail"
-    ).length;
+  const outlookServices = useMemo(() => {
+    return filteredServices.filter((service) => service.serviceType === "outlook");
+  }, [filteredServices]);
+
+  const statsSnapshot = useMemo(() => {
+    const enabledCount = stats?.enabledCount ?? services.filter((service) => service.enabled).length;
+    const outlookCount = stats?.outlookCount ?? services.filter((service) => service.serviceType === "outlook").length;
+    const tempMailCount =
+      stats?.tempMailCount ??
+      services.filter((service) => service.serviceType === "tempmail" || service.serviceType === "temp_mail").length;
+    const customCount =
+      stats?.customCount ?? services.filter((service) => service.serviceType === "custom_domain").length;
+    const totalServices = outlookCount + customCount + tempMailCount;
+
     return {
+      totalServices,
       enabledCount,
-      disabledCount: Math.max(0, services.length - enabledCount),
+      disabledCount: Math.max(0, totalServices - enabledCount),
       outlookCount,
-      tempCount,
+      customCount,
+      tempMailCount,
+      tempmailAvailable: stats?.tempmailAvailable ?? true,
     };
-  }, [services]);
+  }, [services, stats]);
+
+  const allVisibleOutlookSelected =
+    outlookServices.length > 0 &&
+    outlookServices.every((service) => selectedOutlookIds.includes(service.id));
 
   const selectedType = serviceTypeMap.get(formState.serviceType);
   const isSubmittingForm = isCreating || isUpdating || isReadingFull || isOpeningEdit;
@@ -304,6 +335,12 @@ export default function EmailServicesPage() {
       config: buildFormConfig(nextType),
     }));
   }, [formOpen, formState.mode, formState.serviceType, serviceTypes]);
+
+  useEffect(() => {
+    setSelectedOutlookIds((current) =>
+      current.filter((id) => outlookServices.some((service) => service.id === id))
+    );
+  }, [outlookServices]);
 
   const openCreateDialog = () => {
     const nextType = serviceTypes[0];
@@ -401,9 +438,56 @@ export default function EmailServicesPage() {
     }
   };
 
-  const handleDeleteConfirm = () => {
-    if (!deleteTarget) return;
-    deleteEmailService(deleteTarget.id);
+  const handleToggleOutlookSelection = (serviceId: number, checked: boolean) => {
+    setSelectedOutlookIds((current) => {
+      if (checked) {
+        return current.includes(serviceId) ? current : [...current, serviceId];
+      }
+      return current.filter((id) => id !== serviceId);
+    });
+  };
+
+  const handleToggleAllVisibleOutlook = (checked: boolean) => {
+    const visibleIds = outlookServices.map((service) => service.id);
+    setSelectedOutlookIds((current) => {
+      if (checked) {
+        return Array.from(new Set([...current, ...visibleIds]));
+      }
+      return current.filter((id) => !visibleIds.includes(id));
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteState) return;
+    if (deleteState.kind === "single") {
+      deleteEmailService(deleteState.service.id);
+      return;
+    }
+
+    try {
+      await batchDeleteOutlookServices(deleteState.ids);
+      setSelectedOutlookIds((current) => current.filter((id) => !deleteState.ids.includes(id)));
+    } catch {
+      // mutation 已统一 toast
+    }
+  };
+
+  const handleMovePriority = async (serviceId: number, direction: "up" | "down") => {
+    const nextList = [...services];
+    const currentIndex = nextList.findIndex((item) => item.id === serviceId);
+    if (currentIndex < 0) return;
+
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= nextList.length) return;
+
+    const [currentItem] = nextList.splice(currentIndex, 1);
+    nextList.splice(targetIndex, 0, currentItem);
+
+    try {
+      await reorderEmailServices(nextList.map((item) => item.id));
+    } catch {
+      // mutation 已统一 toast
+    }
   };
 
   const handleOutlookImport = async () => {
@@ -438,32 +522,41 @@ export default function EmailServicesPage() {
     }
   };
 
+  const handleTestTempmail = async () => {
+    try {
+      await testTempmailConnection(tempmailTestUrl.trim() || null);
+      setTempmailTestOpen(false);
+    } catch {
+      // mutation 已统一 toast
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           {
             title: "服务总数",
-            value: total,
+            value: statsSnapshot.totalServices,
             hint: "注册流程可调度的邮箱服务",
             icon: Mail,
           },
           {
             title: "启用中",
-            value: stats.enabledCount,
-            hint: `已禁用 ${stats.disabledCount}`,
+            value: statsSnapshot.enabledCount,
+            hint: `已禁用 ${statsSnapshot.disabledCount}`,
             icon: ShieldCheck,
           },
           {
             title: "Outlook",
-            value: stats.outlookCount,
+            value: statsSnapshot.outlookCount,
             hint: "支持批量导入邮箱账户",
             icon: Upload,
           },
           {
-            title: "临时邮箱",
-            value: stats.tempCount,
-            hint: "Tempmail / Temp-Mail",
+            title: "自定义/临时邮箱",
+            value: statsSnapshot.customCount + statsSnapshot.tempMailCount,
+            hint: statsSnapshot.tempmailAvailable ? "Tempmail.lol 当前可用" : "Tempmail.lol 当前不可用",
             icon: Wrench,
           },
         ].map((item) => (
@@ -528,6 +621,15 @@ export default function EmailServicesPage() {
             <Button
               variant="outline"
               className="h-10 rounded-xl"
+              disabled={isStatsLoading || isTestingTempmail}
+              onClick={() => setTempmailTestOpen(true)}
+            >
+              <Wrench className="h-4 w-4" />
+              测试 Tempmail
+            </Button>
+            <Button
+              variant="outline"
+              className="h-10 rounded-xl"
               onClick={() => {
                 setOutlookImportOpen(true);
                 setImportResultText("");
@@ -549,10 +651,45 @@ export default function EmailServicesPage() {
       </Card>
 
       <Card className="glass-card overflow-hidden border-none py-0 shadow-xl">
+        <CardHeader className="border-b border-border/60">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>服务列表</CardTitle>
+              <CardDescription>
+                Outlook 账户支持批量选择删除；所有服务都支持启停、测试和编辑。
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                className="h-9 rounded-xl"
+                disabled={selectedOutlookIds.length === 0 || isBatchDeletingOutlook}
+                onClick={() =>
+                  setDeleteState({
+                    kind: "outlook-batch",
+                    ids: [...selectedOutlookIds],
+                    count: selectedOutlookIds.length,
+                  })
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+                {selectedOutlookIds.length > 0
+                  ? `删除选中 Outlook (${selectedOutlookIds.length})`
+                  : "批量删除 Outlook"}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[52px] text-center">
+                  <Checkbox
+                    checked={allVisibleOutlookSelected}
+                    onCheckedChange={(checked) => handleToggleAllVisibleOutlook(checked === true)}
+                  />
+                </TableHead>
                 <TableHead className="w-[84px]">ID</TableHead>
                 <TableHead className="min-w-[180px]">名称</TableHead>
                 <TableHead className="w-[140px]">类型</TableHead>
@@ -567,22 +704,33 @@ export default function EmailServicesPage() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={`loading-${index}`}>
-                    <TableCell colSpan={8}>
+                    <TableCell colSpan={9}>
                       <Skeleton className="h-9 w-full" />
                     </TableCell>
                   </TableRow>
                 ))
               ) : filteredServices.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
                     当前没有匹配的邮箱服务
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredServices.map((service) => {
                   const typeMeta = serviceTypeMap.get(service.serviceType);
+                  const isOutlook = service.serviceType === "outlook";
                   return (
                     <TableRow key={service.id} className="border-border/60">
+                      <TableCell className="text-center">
+                        {isOutlook ? (
+                          <Checkbox
+                            checked={selectedOutlookIds.includes(service.id)}
+                            onCheckedChange={(checked) =>
+                              handleToggleOutlookSelection(service.id, checked === true)
+                            }
+                          />
+                        ) : null}
+                      </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         #{service.id}
                       </TableCell>
@@ -600,7 +748,29 @@ export default function EmailServicesPage() {
                           {service.enabled ? "已启用" : "已禁用"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{service.priority}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span>{service.priority}</span>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              disabled={isReordering}
+                              onClick={() => void handleMovePriority(service.id, "up")}
+                            >
+                              ↑
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              disabled={isReordering}
+                              onClick={() => void handleMovePriority(service.id, "down")}
+                            >
+                              ↓
+                            </Button>
+                          </div>
+                        </div>
+                      </TableCell>
                       <TableCell className="whitespace-normal text-xs text-muted-foreground">
                         {summarizeConfig(service.config)}
                       </TableCell>
@@ -643,7 +813,9 @@ export default function EmailServicesPage() {
                               )}
                               {service.enabled ? "禁用" : "启用"}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setDeleteTarget(service)}>
+                            <DropdownMenuItem
+                              onClick={() => setDeleteState({ kind: "single", service })}
+                            >
                               <Trash2 className="mr-2 h-4 w-4" />
                               删除
                             </DropdownMenuItem>
@@ -858,25 +1030,59 @@ export default function EmailServicesPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={tempmailTestOpen} onOpenChange={setTempmailTestOpen}>
+        <DialogContent className="glass-card border-none p-6 sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>测试 Tempmail 直连</DialogTitle>
+            <DialogDescription>
+              可选填写自定义 API 地址；留空时会按注册服务默认配置测试 `Tempmail.lol`。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Label>Tempmail API 地址</Label>
+            <Input
+              value={tempmailTestUrl}
+              onChange={(event) => setTempmailTestUrl(event.target.value)}
+              placeholder="https://api.tempmail.lol/v2"
+              className="h-10 rounded-xl"
+            />
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setTempmailTestOpen(false)}>
+              取消
+            </Button>
+            <Button disabled={isTestingTempmail} onClick={() => void handleTestTempmail()}>
+              {isTestingTempmail ? "测试中..." : "开始测试"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
-        open={!!deleteTarget}
+        open={!!deleteState}
         onOpenChange={(open) => {
           if (!open) {
-            setDeleteTarget(null);
+            setDeleteState(null);
           }
         }}
         title="删除邮箱服务"
         description={
-          deleteTarget
-            ? `确认删除“${deleteTarget.name}”吗？删除后自动注册将不再使用该服务。`
-            : ""
+          deleteState?.kind === "single"
+            ? `确认删除“${deleteState.service.name}”吗？删除后自动注册将不再使用该服务。`
+            : deleteState?.kind === "outlook-batch"
+              ? `确认批量删除选中的 ${deleteState.count} 个 Outlook 账户吗？`
+              : ""
         }
-        confirmText={isDeleting ? "删除中..." : "删除"}
+        confirmText={isDeleting || isBatchDeletingOutlook ? "删除中..." : "删除"}
         confirmVariant="destructive"
-        onConfirm={handleDeleteConfirm}
+        onConfirm={() => {
+          void handleDeleteConfirm();
+        }}
       />
 
-      {(isTesting || isToggling) && (
+      {(isTesting || isToggling || isReordering) && (
         <div className="fixed right-6 bottom-6 rounded-full border border-border/70 bg-background/90 px-3 py-2 text-xs text-muted-foreground shadow-lg backdrop-blur">
           正在执行邮箱服务操作...
         </div>

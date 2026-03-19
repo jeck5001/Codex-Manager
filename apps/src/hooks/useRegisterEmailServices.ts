@@ -49,10 +49,17 @@ export function useRegisterEmailServices(filters: RegisterEmailServiceListParams
     retry: 1,
   });
 
+  const statsQuery = useQuery({
+    queryKey: ["register-email-service-stats"],
+    queryFn: () => accountClient.getRegisterEmailServiceStats(),
+    retry: 1,
+  });
+
   const invalidateAll = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["register-email-service-types"] }),
       queryClient.invalidateQueries({ queryKey: ["register-email-services"] }),
+      queryClient.invalidateQueries({ queryKey: ["register-email-service-stats"] }),
       queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
     ]);
   };
@@ -144,12 +151,52 @@ export function useRegisterEmailServices(filters: RegisterEmailServiceListParams
     },
   });
 
+  const batchDeleteOutlookMutation = useMutation({
+    mutationFn: (serviceIds: number[]) =>
+      accountClient.batchDeleteRegisterOutlookEmailServices(serviceIds),
+    onSuccess: async (result) => {
+      await invalidateAll();
+      toast.success(result.message || `已删除 ${result.deleted} 个 Outlook 账户`);
+    },
+    onError: (error: unknown) => {
+      toast.error(`批量删除失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const reorderMutation = useMutation({
+    mutationFn: (serviceIds: number[]) =>
+      accountClient.reorderRegisterEmailServices({ serviceIds }),
+    onSuccess: async () => {
+      await invalidateAll();
+      toast.success("邮箱服务优先级已更新");
+    },
+    onError: (error: unknown) => {
+      toast.error(`更新顺序失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const testTempmailMutation = useMutation({
+    mutationFn: (apiUrl?: string | null) => accountClient.testRegisterTempmail(apiUrl),
+    onSuccess: (result) => {
+      if (result.success) {
+        toast.success(result.message || "Tempmail 连接正常");
+      } else {
+        toast.error(result.message || "Tempmail 连接失败");
+      }
+    },
+    onError: (error: unknown) => {
+      toast.error(`测试失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   return {
     serviceTypes: typesQuery.data?.types || [],
     services: servicesQuery.data?.services || [],
     total: servicesQuery.data?.total || 0,
+    stats: statsQuery.data || null,
     isLoading: servicesQuery.isLoading,
     isTypesLoading: typesQuery.isLoading,
+    isStatsLoading: statsQuery.isLoading,
     refetchServices: servicesQuery.refetch,
     createEmailService: createMutation.mutateAsync,
     updateEmailService: updateMutation.mutateAsync,
@@ -158,6 +205,9 @@ export function useRegisterEmailServices(filters: RegisterEmailServiceListParams
     testEmailService: testMutation.mutateAsync,
     setEmailServiceEnabled: toggleEnabledMutation.mutate,
     importOutlookServices: outlookBatchImportMutation.mutateAsync,
+    batchDeleteOutlookServices: batchDeleteOutlookMutation.mutateAsync,
+    reorderEmailServices: reorderMutation.mutateAsync,
+    testTempmailConnection: testTempmailMutation.mutateAsync,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
@@ -165,6 +215,9 @@ export function useRegisterEmailServices(filters: RegisterEmailServiceListParams
     isTesting: testMutation.isPending,
     isToggling: toggleEnabledMutation.isPending,
     isImporting: outlookBatchImportMutation.isPending,
+    isBatchDeletingOutlook: batchDeleteOutlookMutation.isPending,
+    isReordering: reorderMutation.isPending,
+    isTestingTempmail: testTempmailMutation.isPending,
     lastImportResult: outlookBatchImportMutation.data || null,
   };
 }

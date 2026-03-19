@@ -107,6 +107,16 @@ fn register_delete_json(path: &str) -> Result<Value, String> {
     read_json_response(response)
 }
 
+fn register_delete_json_with_body(path: &str, payload: &Value) -> Result<Value, String> {
+    let client = register_http_client()?;
+    let response = client
+        .delete(register_service_url(path))
+        .json(payload)
+        .send()
+        .map_err(|err| format!("request register service failed: {err}"))?;
+    read_json_response(response)
+}
+
 fn task_status(task: &Value) -> String {
     task.get("status")
         .and_then(Value::as_str)
@@ -238,6 +248,10 @@ pub(crate) fn list_register_email_services(
     register_get_json_with_query("/api/email-services", &query)
 }
 
+pub(crate) fn register_email_service_stats() -> Result<Value, String> {
+    register_get_json("/api/email-services/stats")
+}
+
 pub(crate) fn read_register_email_service_full(service_id: i64) -> Result<Value, String> {
     if service_id < 1 {
         return Err("serviceId is required".to_string());
@@ -344,6 +358,41 @@ pub(crate) fn batch_import_register_outlook(
             "data": data,
             "enabled": enabled,
             "priority": priority.max(0),
+        }),
+    )
+}
+
+pub(crate) fn batch_delete_register_outlook(service_ids: Vec<i64>) -> Result<Value, String> {
+    let ids = service_ids
+        .into_iter()
+        .filter(|service_id| *service_id > 0)
+        .collect::<Vec<_>>();
+    if ids.is_empty() {
+        return Err("serviceIds is required".to_string());
+    }
+    register_delete_json_with_body("/api/email-services/outlook/batch", &json!(ids))
+}
+
+pub(crate) fn reorder_register_email_services(service_ids: Vec<i64>) -> Result<Value, String> {
+    let ids = service_ids
+        .into_iter()
+        .filter(|service_id| *service_id > 0)
+        .collect::<Vec<_>>();
+    if ids.is_empty() {
+        return Err("serviceIds is required".to_string());
+    }
+    register_post_json("/api/email-services/reorder", &json!(ids))
+}
+
+pub(crate) fn test_register_tempmail(api_url: Option<&str>) -> Result<Value, String> {
+    let api_url = api_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    register_post_json(
+        "/api/email-services/test-tempmail",
+        &json!({
+            "api_url": api_url,
         }),
     )
 }

@@ -116,6 +116,9 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 enabled_only,
             ))
         }
+        "account/register/emailServices/stats" => {
+            super::value_or_error(account_register::register_email_service_stats())
+        }
         "account/register/emailServices/readFull" => {
             let service_id = req
                 .params
@@ -221,6 +224,30 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             super::value_or_error(account_register::batch_import_register_outlook(
                 data, enabled, priority,
             ))
+        }
+        "account/register/emailServices/outlookBatchDelete" => {
+            let service_ids = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("serviceIds").or_else(|| params.get("service_ids")))
+                .and_then(|value| value.as_array())
+                .map(|items| items.iter().filter_map(|item| item.as_i64()).collect::<Vec<_>>())
+                .unwrap_or_default();
+            super::value_or_error(account_register::batch_delete_register_outlook(service_ids))
+        }
+        "account/register/emailServices/reorder" => {
+            let service_ids = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("serviceIds").or_else(|| params.get("service_ids")))
+                .and_then(|value| value.as_array())
+                .map(|items| items.iter().filter_map(|item| item.as_i64()).collect::<Vec<_>>())
+                .unwrap_or_default();
+            super::value_or_error(account_register::reorder_register_email_services(service_ids))
+        }
+        "account/register/emailServices/testTempmail" => {
+            let api_url = first_str_param(req, &["apiUrl", "api_url"]);
+            super::value_or_error(account_register::test_register_tempmail(api_url))
         }
         "account/register/task" => {
             let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
