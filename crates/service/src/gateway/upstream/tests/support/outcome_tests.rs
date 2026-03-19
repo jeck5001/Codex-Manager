@@ -1,5 +1,7 @@
 use super::*;
 use reqwest::header::HeaderValue;
+use std::thread;
+use std::time::Duration;
 
 #[test]
 fn status_404_with_more_candidates_triggers_failover() {
@@ -97,4 +99,29 @@ fn challenge_on_last_candidate_keeps_upstream_response() {
         |_, _, _| {},
     );
     assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
+}
+
+#[test]
+fn success_response_enqueues_usage_refresh_for_account() {
+    crate::usage_refresh::clear_pending_usage_refresh_tasks_for_tests();
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+
+    let decision = decide_upstream_outcome(
+        &storage,
+        "acc-success",
+        reqwest::StatusCode::OK,
+        None,
+        "https://chatgpt.com/backend-api/codex/responses",
+        false,
+        |_, _, _| {},
+    );
+
+    assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
+    assert!(crate::usage_refresh::is_usage_refresh_task_pending_for_tests(
+        "acc-success"
+    ));
+
+    thread::sleep(Duration::from_millis(20));
+    crate::usage_refresh::clear_pending_usage_refresh_tasks_for_tests();
 }
