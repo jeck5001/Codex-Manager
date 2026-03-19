@@ -1,15 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   CalendarDays,
+  Clock3,
   Eye,
+  Layers3,
+  Mail,
   Plus,
   RefreshCw,
+  Server,
   Trash2,
+  Users,
   XCircle,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { AddAccountModal } from "@/components/modals/add-account-modal";
 import { ConfirmDialog } from "@/components/modals/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +49,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useRegisterTasks } from "@/hooks/useRegisterTasks";
 import { accountClient } from "@/lib/api/account-client";
 import { cn } from "@/lib/utils";
-import type { RegisterTaskSnapshot } from "@/types";
+import type { Account, RegisterTaskSnapshot } from "@/types";
 
 type PendingAction =
   | { kind: "cancel"; task: RegisterTaskSnapshot }
@@ -91,6 +97,11 @@ function countByStatuses(source: Record<string, number>, keys: string[]) {
   return keys.reduce((sum, key) => sum + (source[key] || 0), 0);
 }
 
+function isTaskActive(status: string) {
+  const normalized = String(status || "").trim().toLowerCase();
+  return normalized === "pending" || normalized === "running";
+}
+
 export default function RegisterPage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -99,6 +110,7 @@ export default function RegisterPage() {
   const [detailTask, setDetailTask] = useState<RegisterTaskSnapshot | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [monitorTaskUuid, setMonitorTaskUuid] = useState("");
 
   const {
     tasks,
@@ -117,11 +129,114 @@ export default function RegisterPage() {
     status: statusFilter === "all" ? null : statusFilter,
   });
 
+  const registerServicesQuery = useQuery({
+    queryKey: ["register-available-services"],
+    queryFn: () => accountClient.getRegisterAvailableServices(),
+    retry: 1,
+    staleTime: 30_000,
+  });
+
+  const registerOutlookAccountsQuery = useQuery({
+    queryKey: ["register-outlook-accounts"],
+    queryFn: () => accountClient.getRegisterOutlookAccounts(),
+    retry: 1,
+    staleTime: 30_000,
+  });
+
+  const recentAccountsQuery = useQuery({
+    queryKey: ["register-recent-accounts"],
+    queryFn: () => accountClient.list({ page: 1, pageSize: 8 }),
+    retry: 1,
+    staleTime: 15_000,
+  });
+
+  const latestTasksQuery = useQuery({
+    queryKey: ["register-tasks", "latest-workbench"],
+    queryFn: () => accountClient.listRegisterTasks({ page: 1, pageSize: 8, status: null }),
+    retry: 1,
+    refetchInterval: 3000,
+  });
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const byStatus = stats?.byStatus || {};
   const runningCount = countByStatuses(byStatus, ["pending", "running"]);
   const completedCount = byStatus.completed || 0;
   const failedCount = countByStatuses(byStatus, ["failed", "cancelled"]);
+  const latestTasks = latestTasksQuery.data?.tasks || [];
+  const activeTasks = latestTasks.filter((task) => isTaskActive(task.status));
+  const recentAccounts = recentAccountsQuery.data?.items || [];
+
+  useEffect(() => {
+    const candidates = activeTasks.length > 0 ? activeTasks : latestTasks;
+    if (!candidates.length) {
+      if (monitorTaskUuid) {
+        setMonitorTaskUuid("");
+      }
+      return;
+    }
+
+    if (!candidates.some((task) => task.taskUuid === monitorTaskUuid)) {
+      setMonitorTaskUuid(candidates[0].taskUuid);
+    }
+  }, [activeTasks, latestTasks, monitorTaskUuid]);
+
+  const monitorTaskQuery = useQuery({
+    queryKey: ["register-task-monitor", monitorTaskUuid],
+    queryFn: () => accountClient.getRegisterTask(monitorTaskUuid),
+    enabled: Boolean(monitorTaskUuid),
+    retry: 1,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status || "";
+      return isTaskActive(status) ? 2000 : false;
+    },
+  });
+
+  const workbenchCards = useMemo(
+    () => [
+      {
+        title: "邮箱服务",
+        value:
+          (registerServicesQuery.data?.outlook.count || 0) +
+          (registerServicesQuery.data?.customDomain.count || 0) +
+          (registerServicesQuery.data?.tempMail.count || 0) +
+          (registerServicesQuery.data?.tempmail.available ? 1 : 0),
+        sub: "当前可用于自动注册的服务总数",
+        icon: Server,
+        tone: "text-sky-500",
+      },
+      {
+        title: "Outlook 账号",
+        value: registerOutlookAccountsQuery.data?.total || 0,
+        sub: `未注册 ${registerOutlookAccountsQuery.data?.unregisteredCount || 0} 个`,
+        icon: Mail,
+        tone: "text-blue-500",
+      },
+      {
+        title: "最近账号",
+        value: recentAccounts.length,
+        sub: "本地账号池最新加载的账号数",
+        icon: Users,
+        tone: "text-emerald-500",
+      },
+      {
+        title: "活跃任务",
+        value: activeTasks.length,
+        sub: "排队中或正在执行的注册任务",
+        icon: Clock3,
+        tone: "text-amber-500",
+      },
+    ],
+    [
+      activeTasks.length,
+      recentAccounts.length,
+      registerOutlookAccountsQuery.data?.total,
+      registerOutlookAccountsQuery.data?.unregisteredCount,
+      registerServicesQuery.data?.customDomain.count,
+      registerServicesQuery.data?.outlook.count,
+      registerServicesQuery.data?.tempMail.count,
+      registerServicesQuery.data?.tempmail.available,
+    ],
+  );
 
   const summaryCards = useMemo(
     () => [
@@ -196,6 +311,188 @@ export default function RegisterPage() {
                 </CardContent>
               </Card>
             ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card className="glass-card overflow-hidden border-none shadow-xl backdrop-blur-md">
+          <CardHeader className="border-b border-border/40">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <CardTitle>注册工作台</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  从这里发起自动注册，旁边会持续显示当前活跃任务的最新日志。
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button className="gap-2" onClick={() => setAddModalOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  启动注册
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    void registerServicesQuery.refetch();
+                    void registerOutlookAccountsQuery.refetch();
+                    void latestTasksQuery.refetch();
+                    void recentAccountsQuery.refetch();
+                  }}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  刷新工作台
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {workbenchCards.map((card) => (
+                <div
+                  key={card.title}
+                  className="rounded-2xl border border-border/50 bg-muted/20 p-4 shadow-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{card.title}</p>
+                    <card.icon className={cn("h-4 w-4", card.tone)} />
+                  </div>
+                  <div className="mt-3 text-2xl font-bold">{card.value}</div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{card.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[0.72fr_1.28fr]">
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-border/50 bg-muted/15 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">服务概览</h3>
+                    <Layers3 className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span>Tempmail</span>
+                      <Badge variant={registerServicesQuery.data?.tempmail.available ? "default" : "secondary"}>
+                        {registerServicesQuery.data?.tempmail.available ? "可用" : "不可用"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Outlook</span>
+                      <span className="font-medium">{registerServicesQuery.data?.outlook.count || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>自定义域名</span>
+                      <span className="font-medium">{registerServicesQuery.data?.customDomain.count || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Temp Mail</span>
+                      <span className="font-medium">{registerServicesQuery.data?.tempMail.count || 0}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border/50 bg-muted/15 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">最近账号</h3>
+                    <Badge variant="outline">{recentAccounts.length}</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {recentAccountsQuery.isLoading ? (
+                      Array.from({ length: 5 }).map((_, index) => (
+                        <Skeleton key={index} className="h-12 rounded-xl" />
+                      ))
+                    ) : recentAccounts.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
+                        本地账号池里还没有可展示的账号
+                      </div>
+                    ) : (
+                      recentAccounts.map((account: Account) => (
+                        <div
+                          key={account.id}
+                          className="rounded-xl border border-border/50 bg-background/40 px-3 py-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm font-medium">{account.name}</span>
+                            <Badge variant={account.isAvailable ? "default" : "secondary"}>
+                              {account.isAvailable ? "可用" : "不可用"}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                            {account.id}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border/50 bg-muted/15 p-4">
+                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold">活跃任务监控</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      默认跟踪最近的活跃任务；没有活跃任务时展示最近一条任务记录。
+                    </p>
+                  </div>
+                  <div className="min-w-[220px]">
+                    <Select
+                      value={monitorTaskUuid}
+                      onValueChange={(value) => setMonitorTaskUuid(value || "")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择要监控的任务" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(activeTasks.length > 0 ? activeTasks : latestTasks).map((task) => (
+                          <SelectItem key={task.taskUuid} value={task.taskUuid}>
+                            {`${getStatusMeta(task.status).label} · ${task.email || task.taskUuid.slice(0, 8)}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {!monitorTaskUuid ? (
+                  <div className="rounded-xl border border-dashed border-border/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                    暂无可监控的注册任务
+                  </div>
+                ) : monitorTaskQuery.isLoading || !monitorTaskQuery.data ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-24 rounded-xl" />
+                    <Skeleton className="h-[300px] rounded-xl" />
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded-xl border border-border/50 bg-background/40 p-3">
+                        <p className="text-xs text-muted-foreground">状态</p>
+                        <Badge className={cn("mt-2 border", getStatusMeta(monitorTaskQuery.data.status).className)}>
+                          {getStatusMeta(monitorTaskQuery.data.status).label}
+                        </Badge>
+                      </div>
+                      <div className="rounded-xl border border-border/50 bg-background/40 p-3">
+                        <p className="text-xs text-muted-foreground">邮箱</p>
+                        <p className="mt-2 truncate text-sm font-medium">
+                          {monitorTaskQuery.data.email || "--"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/50 bg-background/40 p-3">
+                        <p className="text-xs text-muted-foreground">创建时间</p>
+                        <p className="mt-2 text-sm">{formatTimestamp(monitorTaskQuery.data.createdAt)}</p>
+                      </div>
+                    </div>
+                    <Textarea
+                      readOnly
+                      value={monitorTaskQuery.data.logs.join("\n")}
+                      className="min-h-[330px] resize-none overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-4 [overflow-wrap:anywhere]"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="glass-card overflow-hidden border-none shadow-xl backdrop-blur-md">
