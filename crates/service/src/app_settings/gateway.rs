@@ -6,6 +6,8 @@ use super::{
     normalize_optional_text, save_persisted_app_setting, save_persisted_bool_setting,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
+    APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
+    APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
@@ -63,6 +65,38 @@ pub fn set_gateway_free_account_max_model(model: &str) -> Result<String, String>
 
 pub fn current_gateway_free_account_max_model() -> String {
     gateway::current_free_account_max_model()
+}
+
+pub fn set_gateway_quota_protection_enabled(enabled: bool) -> Result<bool, String> {
+    std::env::set_var(
+        crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED,
+        if enabled { "1" } else { "0" },
+    );
+    save_persisted_bool_setting(APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY, enabled)?;
+    Ok(enabled)
+}
+
+pub fn current_gateway_quota_protection_enabled() -> bool {
+    crate::account_availability::current_quota_protection_enabled()
+}
+
+pub fn set_gateway_quota_protection_threshold_percent(value: u64) -> Result<u64, String> {
+    if value > 100 {
+        return Err("quotaProtectionThresholdPercent must be between 0 and 100".to_string());
+    }
+    std::env::set_var(
+        crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
+        value.to_string(),
+    );
+    save_persisted_app_setting(
+        APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
+        Some(&value.to_string()),
+    )?;
+    Ok(value)
+}
+
+pub fn current_gateway_quota_protection_threshold_percent() -> u64 {
+    crate::account_availability::current_quota_protection_threshold_percent().min(100)
 }
 
 pub fn set_gateway_request_compression_enabled(enabled: bool) -> Result<bool, String> {

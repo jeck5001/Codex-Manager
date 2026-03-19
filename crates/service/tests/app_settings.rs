@@ -25,6 +25,8 @@ fn reset_runtime_defaults() {
     let _ = codexmanager_service::app_settings_set(Some(&json!({
         "routeStrategy": "balanced",
         "freeAccountMaxModel": "gpt-5.2",
+        "quotaProtectionEnabled": false,
+        "quotaProtectionThresholdPercent": 10,
         "requestCompressionEnabled": true,
         "gatewayOriginator": "codex_cli_rs",
         "gatewayResidencyRequirement": "",
@@ -180,6 +182,8 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "serviceListenMode": "all_interfaces",
             "routeStrategy": "rr",
             "freeAccountMaxModel": "gpt-5.3-codex",
+            "quotaProtectionEnabled": true,
+            "quotaProtectionThresholdPercent": 12,
             "requestCompressionEnabled": false,
             "gatewayOriginator": "codex_cli_rs_test",
             "gatewayResidencyRequirement": "us",
@@ -264,6 +268,18 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             snapshot
+                .get("quotaProtectionEnabled")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            snapshot
+                .get("quotaProtectionThresholdPercent")
+                .and_then(|value| value.as_u64()),
+            Some(12)
+        );
+        assert_eq!(
+            snapshot
                 .get("requestCompressionEnabled")
                 .and_then(|value| value.as_bool()),
             Some(false)
@@ -312,6 +328,22 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
                 )
                 .expect("read free account max model"),
             Some("gpt-5.3-codex".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY
+                )
+                .expect("read quota protection enabled"),
+            Some("1".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY
+                )
+                .expect("read quota protection threshold"),
+            Some("12".to_string())
         );
         assert_eq!(
             storage
@@ -585,6 +617,8 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             codexmanager_service::SERVICE_BIND_MODE_SETTING_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
+            codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
+            codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_ORIGINATOR_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY,
@@ -602,6 +636,8 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             ("CODEXMANAGER_SERVICE_ADDR", Some("0.0.0.0:4999")),
             ("CODEXMANAGER_ROUTE_STRATEGY", Some("balanced")),
             ("CODEXMANAGER_FREE_ACCOUNT_MAX_MODEL", Some("gpt-5.2-codex")),
+            ("CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_ENABLED", Some("1")),
+            ("CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT", Some("7")),
             ("CODEXMANAGER_ENABLE_REQUEST_COMPRESSION", Some("0")),
             ("CODEXMANAGER_ORIGINATOR", Some("codex_cli_rs_env")),
             ("CODEXMANAGER_RESIDENCY_REQUIREMENT", Some("us")),
@@ -648,6 +684,18 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .get("freeAccountMaxModel")
                 .and_then(|value| value.as_str()),
             Some("gpt-5.2-codex")
+        );
+        assert_eq!(
+            snapshot
+                .get("quotaProtectionEnabled")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            snapshot
+                .get("quotaProtectionThresholdPercent")
+                .and_then(|value| value.as_u64()),
+            Some(7)
         );
         assert_eq!(
             snapshot
@@ -746,6 +794,22 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 )
                 .expect("read free account max model"),
             Some("gpt-5.2-codex".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY
+                )
+                .expect("read quota protection enabled"),
+            Some("1".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY
+                )
+                .expect("read quota protection threshold"),
+            Some("7".to_string())
         );
         assert_eq!(
             storage

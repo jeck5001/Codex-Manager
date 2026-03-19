@@ -1,5 +1,43 @@
 use super::{evaluate_snapshot, Availability};
 use codexmanager_core::storage::UsageSnapshotRecord;
+use std::ffi::OsString;
+use std::sync::{Mutex, OnceLock};
+
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+struct EnvRestore(Vec<(&'static str, Option<OsString>)>);
+
+impl Drop for EnvRestore {
+    fn drop(&mut self) {
+        for (key, value) in self.0.drain(..) {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+    }
+}
+
+fn override_quota_protection_env(enabled: &str, threshold: &str) -> EnvRestore {
+    let keys = [
+        super::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED,
+        super::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
+    ];
+    let previous = keys
+        .iter()
+        .map(|key| (*key, std::env::var_os(key)))
+        .collect::<Vec<_>>();
+    std::env::set_var(super::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED, enabled);
+    std::env::set_var(
+        super::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
+        threshold,
+    );
+    EnvRestore(previous)
+}
 
 fn snap(
     primary_used: Option<f64>,
@@ -62,5 +100,33 @@ fn availability_marks_ok_available() {
     assert!(matches!(
         evaluate_snapshot(&record),
         Availability::Available
+    ));
+}
+
+#[test]
+fn availability_marks_primary_threshold_unavailable_when_quota_protection_enabled() {
+    let _guard = env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _env = override_quota_protection_env("1", "10");
+
+    let record = snap(Some(90.0), Some(300), Some(20.0), Some(10080));
+    assert!(matches!(
+        evaluate_snapshot(&record),
+        Availability::Unavailable("usage_protected_primary")
+    ));
+}
+
+#[test]
+fn availability_marks_secondary_threshold_unavailable_when_quota_protection_enabled() {
+    let _guard = env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _env = override_quota_protection_env("1", "5");
+
+    let record = snap(Some(40.0), Some(300), Some(95.0), Some(10080));
+    assert!(matches!(
+        evaluate_snapshot(&record),
+        Availability::Unavailable("usage_protected_secondary")
     ));
 }
