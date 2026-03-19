@@ -383,6 +383,7 @@ fn latest_usage_cte_sql() -> &'static str {
 }
 
 fn available_usage_clause(usage_alias: &str) -> String {
+    let cutoff = gateway_available_used_percent_cutoff();
     format!(
         "{usage_alias}.used_percent IS NOT NULL
          AND {usage_alias}.window_minutes IS NOT NULL
@@ -390,9 +391,32 @@ fn available_usage_clause(usage_alias: &str) -> String {
             ({usage_alias}.secondary_used_percent IS NULL AND {usage_alias}.secondary_window_minutes IS NULL)
             OR ({usage_alias}.secondary_used_percent IS NOT NULL AND {usage_alias}.secondary_window_minutes IS NOT NULL)
          )
-         AND {usage_alias}.used_percent < 100
-         AND ({usage_alias}.secondary_used_percent IS NULL OR {usage_alias}.secondary_used_percent < 100)"
+         AND {usage_alias}.used_percent < {cutoff}
+         AND ({usage_alias}.secondary_used_percent IS NULL OR {usage_alias}.secondary_used_percent < {cutoff})"
     )
+}
+
+fn gateway_available_used_percent_cutoff() -> String {
+    const ENV_ENABLED: &str = "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_ENABLED";
+    const ENV_THRESHOLD: &str = "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT";
+
+    let enabled = matches!(
+        std::env::var(ENV_ENABLED)
+            .ok()
+            .map(|value| value.trim().to_ascii_lowercase()),
+        Some(value) if matches!(value.as_str(), "1" | "true" | "yes" | "on")
+    );
+    let threshold = if enabled {
+        std::env::var(ENV_THRESHOLD)
+            .ok()
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .map(|value| value.min(100))
+            .unwrap_or(10)
+    } else {
+        0
+    };
+
+    format!("{:.6}", (100.0_f64 - threshold as f64).max(0.0))
 }
 
 fn gateway_available_usage_clause(usage_alias: &str) -> String {

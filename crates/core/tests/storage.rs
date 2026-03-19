@@ -1,6 +1,35 @@
 use codexmanager_core::storage::{
     now_ts, Account, ApiKey, RequestLog, RequestTokenStat, Storage, Token, UsageSnapshotRecord,
 };
+use std::ffi::OsString;
+
+struct EnvRestore(Vec<(&'static str, Option<OsString>)>);
+
+impl Drop for EnvRestore {
+    fn drop(&mut self) {
+        for (key, value) in self.0.drain(..) {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+    }
+}
+
+fn override_gateway_quota_env(enabled: &str, threshold: &str) -> EnvRestore {
+    let keys = [
+        "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_ENABLED",
+        "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT",
+    ];
+    let previous = keys
+        .iter()
+        .map(|key| (*key, std::env::var_os(key)))
+        .collect::<Vec<_>>();
+    std::env::set_var(keys[0], enabled);
+    std::env::set_var(keys[1], threshold);
+    EnvRestore(previous)
+}
 
 #[test]
 fn storage_can_insert_account_and_token() {
@@ -511,6 +540,63 @@ fn latest_usage_snapshots_break_ties_by_latest_id() {
         .find(|item| item.account_id == "acc-1")
         .expect("acc-1 exists");
     assert_eq!(acc1.used_percent, Some(30.0));
+}
+
+#[test]
+fn gateway_candidates_respect_quota_protection_threshold() {
+    let _env = override_gateway_quota_env("1", "10");
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+    let now = now_ts();
+
+    for (id, used) in [("acc-safe", 89.0_f64), ("acc-guarded", 90.0_f64)] {
+        storage
+            .insert_account(&Account {
+                id: id.to_string(),
+                label: id.to_string(),
+                issuer: "issuer".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: 0,
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("insert account");
+        storage
+            .insert_token(&Token {
+                account_id: id.to_string(),
+                id_token: "id".to_string(),
+                access_token: "access".to_string(),
+                refresh_token: "refresh".to_string(),
+                api_key_access_token: None,
+                last_refresh: now,
+            })
+            .expect("insert token");
+        storage
+            .insert_usage_snapshot(&UsageSnapshotRecord {
+                account_id: id.to_string(),
+                used_percent: Some(used),
+                window_minutes: Some(300),
+                resets_at: None,
+                secondary_used_percent: None,
+                secondary_window_minutes: None,
+                secondary_resets_at: None,
+                credits_json: None,
+                captured_at: now,
+            })
+            .expect("insert usage");
+    }
+
+    let candidates = storage
+        .list_gateway_candidates()
+        .expect("list gateway candidates");
+    let candidate_ids = candidates
+        .iter()
+        .map(|(account, _)| account.id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(candidate_ids, vec!["acc-safe"]);
 }
 
 #[test]

@@ -498,6 +498,12 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     freeAccountMaxModelOptions: asArray(source.freeAccountMaxModelOptions).map((item) =>
       asString(item)
     ),
+    quotaProtectionEnabled: asBoolean(source.quotaProtectionEnabled, false),
+    quotaProtectionThresholdPercent: asInteger(
+      source.quotaProtectionThresholdPercent,
+      10,
+      0
+    ),
     requestCompressionEnabled: asBoolean(source.requestCompressionEnabled, true),
     gatewayOriginator: asString(source.gatewayOriginator) || "codex_cli_rs",
     gatewayResidencyRequirement: asString(source.gatewayResidencyRequirement),

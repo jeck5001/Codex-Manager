@@ -237,6 +237,7 @@ export default function SettingsPage() {
   const [envDrafts, setEnvDrafts] = useState<Record<string, string>>({});
   const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
   const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
+  const [quotaProtectionThresholdDraft, setQuotaProtectionThresholdDraft] = useState<string | null>(null);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<UpdateCheckSummary | null>(null);
   const [updateDialogCheck, setUpdateDialogCheck] = useState<UpdateCheckSummary | null>(null);
   const [preparedUpdate, setPreparedUpdate] = useState<UpdatePrepareSummary | null>(null);
@@ -405,6 +406,9 @@ export default function SettingsPage() {
   const upstreamProxyInput = upstreamProxyDraft ?? (snapshot?.upstreamProxyUrl || "");
   const gatewayOriginatorInput =
     gatewayOriginatorDraft ?? (snapshot?.gatewayOriginator || "codex_cli_rs");
+  const quotaProtectionThresholdInput =
+    quotaProtectionThresholdDraft ??
+    stringifyNumber(snapshot?.quotaProtectionThresholdPercent);
   const transportInputValues = {
     sseKeepaliveIntervalMs:
       transportDraft.sseKeepaliveIntervalMs ??
@@ -572,6 +576,24 @@ export default function SettingsPage() {
           return nextDraft;
         });
       })
+      .catch(() => undefined);
+  };
+
+  const saveQuotaProtectionThreshold = () => {
+    if (!snapshot) return;
+    const nextValue = parseIntegerInput(quotaProtectionThresholdInput, 0);
+    if (nextValue == null || nextValue > 100) {
+      toast.error("请输入 0 到 100 之间的百分比");
+      setQuotaProtectionThresholdDraft(null);
+      return;
+    }
+    if (nextValue === snapshot.quotaProtectionThresholdPercent) {
+      setQuotaProtectionThresholdDraft(null);
+      return;
+    }
+    void updateSettings
+      .mutateAsync({ quotaProtectionThresholdPercent: nextValue })
+      .then(() => setQuotaProtectionThresholdDraft(null))
       .catch(() => undefined);
   };
 
@@ -910,6 +932,39 @@ export default function SettingsPage() {
                   设为“跟随请求”时，不会额外改写 free / 7天单窗口账号的模型；
                   只有你选了具体模型后，命中这些账号时才会统一改写为该模型。
                 </p>
+              </div>
+
+              <div className="grid gap-4 rounded-2xl border border-border/50 bg-background/35 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <Label>额度保护</Label>
+                    <p className="text-xs text-muted-foreground">
+                      开启后，当账号剩余额度小于等于阈值时，网关会自动跳过该账号。
+                    </p>
+                  </div>
+                  <Switch
+                    checked={snapshot.quotaProtectionEnabled}
+                    onCheckedChange={(value) =>
+                      updateSettings.mutate({ quotaProtectionEnabled: value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2 md:max-w-[240px]">
+                  <Label>剩余额度阈值 (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={quotaProtectionThresholdInput}
+                    onChange={(event) =>
+                      setQuotaProtectionThresholdDraft(event.target.value)
+                    }
+                    onBlur={saveQuotaProtectionThreshold}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    例如填 <code>10</code> 表示剩余额度小于等于 10% 时不再参与路由。
+                  </p>
+                </div>
               </div>
 
               <div className="flex items-center justify-between border-t pt-6">

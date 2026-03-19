@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use super::{
     current_background_tasks_snapshot_value, current_close_to_tray_on_close_setting,
     current_env_overrides, current_gateway_free_account_max_model, current_gateway_originator,
+    current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
     current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
     current_lightweight_mode_on_close_to_tray_setting, current_saved_service_addr,
@@ -17,6 +18,8 @@ use super::{
     sync_runtime_settings_from_storage, APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
+    APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
+    APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
@@ -60,6 +63,8 @@ pub(super) fn current_app_settings_value(
     let service_listen_mode = current_service_bind_mode();
     let route_strategy = crate::gateway::current_route_strategy().to_string();
     let free_account_max_model = current_gateway_free_account_max_model();
+    let quota_protection_enabled = current_gateway_quota_protection_enabled();
+    let quota_protection_threshold_percent = current_gateway_quota_protection_threshold_percent();
     let request_compression_enabled = current_gateway_request_compression_enabled();
     let gateway_originator = current_gateway_originator();
     let gateway_residency_requirement = current_gateway_residency_requirement().unwrap_or_default();
@@ -84,6 +89,8 @@ pub(super) fn current_app_settings_value(
         &service_listen_mode,
         &route_strategy,
         &free_account_max_model,
+        quota_protection_enabled,
+        quota_protection_threshold_percent,
         request_compression_enabled,
         &gateway_originator,
         &gateway_residency_requirement,
@@ -113,6 +120,8 @@ pub(super) fn current_app_settings_value(
         "routeStrategyOptions": ["ordered", "balanced"],
         "freeAccountMaxModel": free_account_max_model,
         "freeAccountMaxModelOptions": free_account_max_model_options,
+        "quotaProtectionEnabled": quota_protection_enabled,
+        "quotaProtectionThresholdPercent": quota_protection_threshold_percent,
         "requestCompressionEnabled": request_compression_enabled,
         "gatewayOriginator": gateway_originator,
         "gatewayResidencyRequirement": gateway_residency_requirement,
@@ -182,6 +191,8 @@ fn persist_current_snapshot(
     service_listen_mode: &str,
     route_strategy: &str,
     free_account_max_model: &str,
+    quota_protection_enabled: bool,
+    quota_protection_threshold_percent: u64,
     request_compression_enabled: bool,
     gateway_originator: &str,
     gateway_residency_requirement: &str,
@@ -214,6 +225,14 @@ fn persist_current_snapshot(
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
         Some(free_account_max_model),
+    );
+    let _ = save_persisted_bool_setting(
+        APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
+        quota_protection_enabled,
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
+        Some(&quota_protection_threshold_percent.to_string()),
     );
     let _ = save_persisted_bool_setting(
         APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,

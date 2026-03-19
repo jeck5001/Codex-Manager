@@ -7,6 +7,8 @@ use super::{
     reload_runtime_after_env_override_apply, set_service_bind_mode, BackgroundTasksInput,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
+    APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
+    APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
@@ -36,6 +38,26 @@ pub fn sync_runtime_settings_from_storage() {
             if let Err(err) = gateway::set_free_account_max_model(&model) {
                 log::warn!("sync persisted free account max model failed: {err}");
             }
+        }
+    }
+    if let Some(raw) = settings.get(APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY) {
+        std::env::set_var(
+            crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED,
+            if parse_bool_with_default(raw, false) {
+                "1"
+            } else {
+                "0"
+            },
+        );
+    }
+    if let Some(raw) = settings.get(APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY) {
+        if let Ok(value) = raw.trim().parse::<u64>() {
+            std::env::set_var(
+                crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
+                value.min(100).to_string(),
+            );
+        } else {
+            log::warn!("parse persisted quota protection threshold failed: {raw}");
         }
     }
     if let Some(raw) = settings.get(APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY) {

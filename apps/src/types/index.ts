@@ -224,6 +224,8 @@ export interface AppSettings {
   routeStrategyOptions: string[];
   freeAccountMaxModel: string;
   freeAccountMaxModelOptions: string[];
+  quotaProtectionEnabled: boolean;
+  quotaProtectionThresholdPercent: number;
   requestCompressionEnabled: boolean;
   gatewayOriginator: string;
   gatewayResidencyRequirement: string;
