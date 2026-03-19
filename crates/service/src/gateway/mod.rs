@@ -68,7 +68,8 @@ pub(super) use request_helpers::{
 use request_helpers::{should_drop_incoming_header, should_drop_incoming_header_for_failover};
 use request_rewrite::{
     apply_request_overrides_with_forced_prompt_cache_key,
-    apply_request_overrides_with_prompt_cache_key, compute_upstream_url,
+    apply_request_overrides_with_service_tier_and_forced_prompt_cache_key,
+    apply_request_overrides_with_service_tier_and_prompt_cache_key, compute_upstream_url,
 };
 #[cfg(test)]
 use upstream::config::normalize_upstream_base_url;

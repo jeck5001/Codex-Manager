@@ -174,6 +174,7 @@ pub struct ApiKeySummary {
     pub name: Option<String>,
     pub model_slug: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub service_tier: Option<String>,
     pub client_type: String,
     pub protocol_type: String,
     pub auth_scheme: String,

@@ -161,6 +161,7 @@ pub struct ApiKey {
     pub name: Option<String>,
     pub model_slug: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub service_tier: Option<String>,
     pub client_type: String,
     pub protocol_type: String,
     pub auth_scheme: String,
@@ -361,6 +362,11 @@ impl Storage {
         self.apply_sql_migration(
             "034_conversation_bindings",
             include_str!("../../migrations/034_conversation_bindings.sql"),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "035_api_key_profiles_service_tier",
+            include_str!("../../migrations/035_api_key_profiles_service_tier.sql"),
+            |s| s.ensure_api_key_service_tier_column(),
         )?;
         self.ensure_request_token_stats_table()?;
         Ok(())

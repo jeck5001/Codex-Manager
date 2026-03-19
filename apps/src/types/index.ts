@@ -63,6 +63,7 @@ export interface ApiKey {
   model: string;
   modelSlug: string;
   reasoningEffort: string;
+  serviceTier: string;
   protocol: string;
   clientType: string;
   authScheme: string;

@@ -236,6 +236,7 @@ export function normalizeApiKey(item: unknown): ApiKey | null {
     model: asString(source.modelSlug ?? source.model_slug),
     modelSlug: asString(source.modelSlug ?? source.model_slug),
     reasoningEffort: asString(source.reasoningEffort ?? source.reasoning_effort),
+    serviceTier: asString(source.serviceTier ?? source.service_tier),
     protocol: asString(source.protocolType ?? source.protocol_type) || "openai_compat",
     clientType: asString(source.clientType ?? source.client_type),
     authScheme: asString(source.authScheme ?? source.auth_scheme),

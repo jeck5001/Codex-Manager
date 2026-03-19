@@ -192,6 +192,15 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
         )
         .expect("count 034 migration");
     assert_eq!(applied_034, 1);
+    let applied_035: i64 = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '035_api_key_profiles_service_tier'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count 035 migration");
+    assert_eq!(applied_035, 1);
 
     assert!(!storage
         .has_column("accounts", "note")
@@ -241,6 +250,9 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
     assert!(storage
         .has_column("conversation_bindings", "last_switch_reason")
         .expect("check conversation_bindings.last_switch_reason"));
+    assert!(storage
+        .has_column("api_key_profiles", "service_tier")
+        .expect("check api_key_profiles.service_tier"));
     assert!(!storage
         .has_column("request_logs", "input_tokens")
         .expect("check request_logs.input_tokens"));
@@ -425,11 +437,26 @@ fn api_key_profile_migration_backfills_existing_keys() {
             |s| s.ensure_api_key_profiles_table(),
         )
         .expect("apply 015 migration with fallback");
+    storage
+        .apply_sql_or_compat_migration(
+            "035_api_key_profiles_service_tier",
+            include_str!("../../migrations/035_api_key_profiles_service_tier.sql"),
+            |s| s.ensure_api_key_service_tier_column(),
+        )
+        .expect("apply 035 migration with fallback");
 
-    let profile_row: (String, String, String, String, Option<String>, Option<String>) = storage
+    let profile_row: (
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = storage
         .conn
         .query_row(
-            "SELECT client_type, protocol_type, auth_scheme, default_model, reasoning_effort, upstream_base_url
+            "SELECT client_type, protocol_type, auth_scheme, default_model, reasoning_effort, upstream_base_url, service_tier
              FROM api_key_profiles
              WHERE key_id = 'key-1'",
             [],
@@ -441,6 +468,7 @@ fn api_key_profile_migration_backfills_existing_keys() {
                     row.get(3)?,
                     row.get(4)?,
                     row.get(5)?,
+                    row.get(6)?,
                 ))
             },
         )
@@ -452,6 +480,7 @@ fn api_key_profile_migration_backfills_existing_keys() {
     assert_eq!(profile_row.3, "gpt-5");
     assert_eq!(profile_row.4.as_deref(), Some("low"));
     assert_eq!(profile_row.5, None);
+    assert_eq!(profile_row.6, None);
 }
 
 #[test]

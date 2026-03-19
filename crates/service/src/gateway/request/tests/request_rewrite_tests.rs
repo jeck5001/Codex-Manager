@@ -1,6 +1,6 @@
 use super::{
     apply_request_overrides, apply_request_overrides_with_forced_prompt_cache_key,
-    apply_request_overrides_with_prompt_cache_key,
+    apply_request_overrides_with_prompt_cache_key, apply_request_overrides_with_service_tier,
 };
 use serde_json::json;
 
@@ -543,6 +543,52 @@ fn responses_normalizes_fast_service_tier_to_priority_for_codex_backend() {
             .get("service_tier")
             .and_then(serde_json::Value::as_str),
         Some("priority")
+    );
+}
+
+#[test]
+fn responses_applies_fast_service_tier_override_as_priority_for_codex_backend() {
+    let body = json!({
+        "model": "gpt-5.3-codex",
+        "input": "hello"
+    });
+    let out = apply_request_overrides_with_service_tier(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("fast"),
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert_eq!(
+        value
+            .get("service_tier")
+            .and_then(serde_json::Value::as_str),
+        Some("priority")
+    );
+}
+
+#[test]
+fn responses_applies_flex_service_tier_override_as_flex_for_codex_backend() {
+    let body = json!({
+        "model": "gpt-5.3-codex",
+        "input": "hello"
+    });
+    let out = apply_request_overrides_with_service_tier(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("flex"),
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert_eq!(
+        value
+            .get("service_tier")
+            .and_then(serde_json::Value::as_str),
+        Some("flex")
     );
 }
 
