@@ -371,6 +371,44 @@ pub(crate) fn cancel_register_batch(batch_id: &str) -> Result<Value, String> {
     register_post_json(&format!("/api/registration/batch/{batch_id}/cancel"), &json!({}))
 }
 
+pub(crate) fn list_register_tasks(
+    page: i64,
+    page_size: i64,
+    status: Option<&str>,
+) -> Result<Value, String> {
+    let mut query = vec![
+        ("page".to_string(), page.max(1).to_string()),
+        ("page_size".to_string(), page_size.clamp(1, 100).to_string()),
+    ];
+    if let Some(status) = status.map(str::trim).filter(|value| !value.is_empty()) {
+        query.push(("status".to_string(), status.to_string()));
+    }
+    register_get_json_with_query("/api/registration/tasks", &query)
+}
+
+pub(crate) fn register_stats() -> Result<Value, String> {
+    register_get_json("/api/registration/stats")
+}
+
+pub(crate) fn cancel_register_task(task_uuid: &str) -> Result<Value, String> {
+    let task_uuid = task_uuid.trim();
+    if task_uuid.is_empty() {
+        return Err("taskUuid is required".to_string());
+    }
+    register_post_json(
+        &format!("/api/registration/tasks/{task_uuid}/cancel"),
+        &json!({}),
+    )
+}
+
+pub(crate) fn delete_register_task(task_uuid: &str) -> Result<Value, String> {
+    let task_uuid = task_uuid.trim();
+    if task_uuid.is_empty() {
+        return Err("taskUuid is required".to_string());
+    }
+    register_delete_json(&format!("/api/registration/tasks/{task_uuid}"))
+}
+
 pub(crate) fn list_register_outlook_accounts() -> Result<Value, String> {
     register_get_json("/api/registration/outlook-accounts")
 }

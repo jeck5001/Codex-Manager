@@ -33,6 +33,10 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_account_register_batch_start: { rpcMethod: "account/register/batch/start" },
   service_account_register_batch_read: { rpcMethod: "account/register/batch/read" },
   service_account_register_batch_cancel: { rpcMethod: "account/register/batch/cancel" },
+  service_account_register_tasks_list: { rpcMethod: "account/register/tasks/list" },
+  service_account_register_stats: { rpcMethod: "account/register/stats" },
+  service_account_register_task_cancel: { rpcMethod: "account/register/task/cancel" },
+  service_account_register_task_delete: { rpcMethod: "account/register/task/delete" },
   service_account_register_outlook_accounts: {
     rpcMethod: "account/register/outlookAccounts",
   },

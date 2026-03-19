@@ -307,6 +307,16 @@ export interface RegisterBatchSnapshot {
   logs: string[];
 }
 
+export interface RegisterTaskListResult {
+  total: number;
+  tasks: RegisterTaskSnapshot[];
+}
+
+export interface RegisterStats {
+  byStatus: Record<string, number>;
+  todayCount: number;
+}
+
 export interface RegisterOutlookAccount {
   id: number;
   email: string;

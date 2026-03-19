@@ -5,6 +5,7 @@ import {
   LayoutDashboard, 
   Mail,
   Users, 
+  Sparkles,
   Key, 
   FileText, 
   Settings, 
@@ -28,6 +29,7 @@ import {
 const NAV_ITEMS = [
   { name: "仪表盘", href: "/", icon: LayoutDashboard },
   { name: "账号管理", href: "/accounts/", icon: Users },
+  { name: "注册中心", href: "/register/", icon: Sparkles },
   { name: "邮箱服务", href: "/email-services/", icon: Mail },
   { name: "平台密钥", href: "/apikeys/", icon: Key },
   { name: "请求日志", href: "/logs/", icon: FileText },
