@@ -104,6 +104,117 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 proxy,
             ))
         }
+        "account/register/batch/start" => {
+            let email_service_type = first_str_param(
+                req,
+                &["emailServiceType", "email_service_type", "type"],
+            )
+            .unwrap_or("");
+            let email_service_id = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("emailServiceId")
+                        .or_else(|| params.get("email_service_id"))
+                })
+                .and_then(|value| value.as_i64());
+            let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            let count = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("count"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(1);
+            let interval_min = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("intervalMin").or_else(|| params.get("interval_min")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(5);
+            let interval_max = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("intervalMax").or_else(|| params.get("interval_max")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(30);
+            let concurrency = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("concurrency"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(1);
+            let mode = first_str_param(req, &["mode"]).unwrap_or("pipeline");
+            super::value_or_error(account_register::start_register_batch(
+                email_service_type,
+                email_service_id,
+                proxy,
+                count,
+                interval_min,
+                interval_max,
+                concurrency,
+                mode,
+            ))
+        }
+        "account/register/batch/read" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::read_register_batch(batch_id))
+        }
+        "account/register/batch/cancel" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::cancel_register_batch(batch_id))
+        }
+        "account/register/outlookAccounts" => {
+            super::value_or_error(account_register::list_register_outlook_accounts())
+        }
+        "account/register/outlookBatch/start" => {
+            let service_ids = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("serviceIds").or_else(|| params.get("service_ids")))
+                .and_then(|value| value.as_array())
+                .map(|items| items.iter().filter_map(|item| item.as_i64()).collect::<Vec<_>>())
+                .unwrap_or_default();
+            let skip_registered =
+                first_bool_param(req, &["skipRegistered", "skip_registered"]).unwrap_or(true);
+            let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            let interval_min = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("intervalMin").or_else(|| params.get("interval_min")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(5);
+            let interval_max = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("intervalMax").or_else(|| params.get("interval_max")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(30);
+            let concurrency = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("concurrency"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(1);
+            let mode = first_str_param(req, &["mode"]).unwrap_or("pipeline");
+            super::value_or_error(account_register::start_register_outlook_batch(
+                service_ids,
+                skip_registered,
+                proxy,
+                interval_min,
+                interval_max,
+                concurrency,
+                mode,
+            ))
+        }
+        "account/register/outlookBatch/read" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::read_register_outlook_batch(batch_id))
+        }
+        "account/register/outlookBatch/cancel" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::cancel_register_outlook_batch(batch_id))
+        }
         "account/register/emailServices/types" => {
             super::value_or_error(account_register::register_email_service_types())
         }
@@ -256,6 +367,10 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "account/register/import" => {
             let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
             super::value_or_error(account_register::import_register_task(task_uuid))
+        }
+        "account/register/importByEmail" => {
+            let email = first_str_param(req, &["email"]).unwrap_or("");
+            super::value_or_error(account_register::import_register_account_by_email(email))
         }
         "account/export" => {
             let output_dir = super::str_param(req, "outputDir").unwrap_or("");
