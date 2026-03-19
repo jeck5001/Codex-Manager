@@ -195,6 +195,57 @@ export interface RegisterServiceItem {
   description: string;
 }
 
+export interface RegisterEmailServiceField {
+  name: string;
+  label: string;
+  required: boolean;
+  defaultValue: string | number | boolean | null;
+  placeholder: string;
+  secret: boolean;
+}
+
+export interface RegisterEmailServiceType {
+  value: string;
+  label: string;
+  description: string;
+  configFields: RegisterEmailServiceField[];
+}
+
+export interface RegisterEmailServiceTypeCatalog {
+  types: RegisterEmailServiceType[];
+}
+
+export interface RegisterEmailService {
+  id: number;
+  serviceType: string;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  config: Record<string, unknown>;
+  lastUsed: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegisterEmailServiceListResult {
+  total: number;
+  services: RegisterEmailService[];
+}
+
+export interface RegisterEmailServiceTestResult {
+  success: boolean;
+  message: string;
+  details: Record<string, unknown> | null;
+}
+
+export interface RegisterOutlookBatchImportResult {
+  total: number;
+  success: number;
+  failed: number;
+  accounts: Array<Record<string, unknown>>;
+  errors: string[];
+}
+
 export interface RegisterServiceGroup {
   available: boolean;
   count: number;
