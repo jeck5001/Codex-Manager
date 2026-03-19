@@ -293,8 +293,8 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-700">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="min-w-0 space-y-6 animate-in fade-in duration-700">
+      <div className="grid min-w-0 gap-4 md:grid-cols-2 2xl:grid-cols-4">
         {isStatsLoading
           ? Array.from({ length: 4 }).map((_, index) => (
               <Skeleton key={index} className="h-32 rounded-2xl" />
@@ -313,8 +313,8 @@ export default function RegisterPage() {
             ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card className="glass-card overflow-hidden border-none shadow-xl backdrop-blur-md">
+      <div className="grid min-w-0 gap-6">
+        <Card className="glass-card min-w-0 overflow-hidden border-none shadow-xl backdrop-blur-md">
           <CardHeader className="border-b border-border/40">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -345,7 +345,7 @@ export default function RegisterPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
               {workbenchCards.map((card) => (
                 <div
                   key={card.title}
@@ -361,9 +361,9 @@ export default function RegisterPage() {
               ))}
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[0.72fr_1.28fr]">
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-border/50 bg-muted/15 p-4">
+            <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.28fr)]">
+              <div className="min-w-0 space-y-4">
+                <div className="min-w-0 rounded-2xl border border-border/50 bg-muted/15 p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-semibold">服务概览</h3>
                     <Layers3 className="h-4 w-4 text-muted-foreground" />
@@ -390,7 +390,7 @@ export default function RegisterPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-border/50 bg-muted/15 p-4">
+                <div className="min-w-0 rounded-2xl border border-border/50 bg-muted/15 p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-semibold">最近账号</h3>
                     <Badge variant="outline">{recentAccounts.length}</Badge>
@@ -426,15 +426,15 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-border/50 bg-muted/15 p-4">
-                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0 rounded-2xl border border-border/50 bg-muted/15 p-4">
+                <div className="mb-3 flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <div>
                     <h3 className="text-sm font-semibold">活跃任务监控</h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       默认跟踪最近的活跃任务；没有活跃任务时展示最近一条任务记录。
                     </p>
                   </div>
-                  <div className="min-w-[220px]">
+                  <div className="min-w-0 xl:min-w-[240px]">
                     <Select
                       value={monitorTaskUuid}
                       onValueChange={(value) => setMonitorTaskUuid(value || "")}
@@ -464,20 +464,20 @@ export default function RegisterPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <div className="rounded-xl border border-border/50 bg-background/40 p-3">
+                    <div className="grid min-w-0 gap-3 md:grid-cols-3">
+                      <div className="min-w-0 rounded-xl border border-border/50 bg-background/40 p-3">
                         <p className="text-xs text-muted-foreground">状态</p>
                         <Badge className={cn("mt-2 border", getStatusMeta(monitorTaskQuery.data.status).className)}>
                           {getStatusMeta(monitorTaskQuery.data.status).label}
                         </Badge>
                       </div>
-                      <div className="rounded-xl border border-border/50 bg-background/40 p-3">
+                      <div className="min-w-0 rounded-xl border border-border/50 bg-background/40 p-3">
                         <p className="text-xs text-muted-foreground">邮箱</p>
                         <p className="mt-2 truncate text-sm font-medium">
                           {monitorTaskQuery.data.email || "--"}
                         </p>
                       </div>
-                      <div className="rounded-xl border border-border/50 bg-background/40 p-3">
+                      <div className="min-w-0 rounded-xl border border-border/50 bg-background/40 p-3">
                         <p className="text-xs text-muted-foreground">创建时间</p>
                         <p className="mt-2 text-sm">{formatTimestamp(monitorTaskQuery.data.createdAt)}</p>
                       </div>
@@ -495,7 +495,7 @@ export default function RegisterPage() {
         </Card>
       </div>
 
-      <Card className="glass-card overflow-hidden border-none shadow-xl backdrop-blur-md">
+      <Card className="glass-card min-w-0 overflow-hidden border-none shadow-xl backdrop-blur-md">
         <CardHeader className="border-b border-border/40">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -520,9 +520,9 @@ export default function RegisterPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4 pt-4">
-          <div className="grid gap-4 md:grid-cols-[220px_1fr]">
-            <div className="space-y-2">
+        <CardContent className="min-w-0 space-y-4 pt-4">
+          <div className="grid min-w-0 gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+            <div className="min-w-0 space-y-2">
               <Label>任务状态</Label>
               <Select
                 value={statusFilter}
@@ -544,14 +544,14 @@ export default function RegisterPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end justify-end">
+            <div className="min-w-0 flex items-end justify-end">
               <div className="text-sm text-muted-foreground">
                 共 {total} 条任务，当前第 {page} / {totalPages} 页
               </div>
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-border/50">
+          <div className="min-w-0 overflow-x-auto rounded-xl border border-border/50">
             <Table>
               <TableHeader>
                 <TableRow>
