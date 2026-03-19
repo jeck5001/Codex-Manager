@@ -188,6 +188,183 @@ export interface ChatgptAuthTokensRefreshResult {
   chatgptPlanTypeRaw?: string | null;
 }
 
+export interface RegisterServiceItem {
+  id: number | null;
+  name: string;
+  type: string;
+  description: string;
+}
+
+export interface RegisterEmailServiceField {
+  name: string;
+  label: string;
+  required: boolean;
+  defaultValue: string | number | boolean | null;
+  placeholder: string;
+  secret: boolean;
+}
+
+export interface RegisterEmailServiceType {
+  value: string;
+  label: string;
+  description: string;
+  configFields: RegisterEmailServiceField[];
+}
+
+export interface RegisterEmailServiceTypeCatalog {
+  types: RegisterEmailServiceType[];
+}
+
+export interface RegisterEmailService {
+  id: number;
+  serviceType: string;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  config: Record<string, unknown>;
+  lastUsed: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegisterEmailServiceListResult {
+  total: number;
+  services: RegisterEmailService[];
+}
+
+export interface RegisterEmailServiceStats {
+  outlookCount: number;
+  customCount: number;
+  tempMailCount: number;
+  tempmailAvailable: boolean;
+  enabledCount: number;
+}
+
+export interface RegisterEmailServiceTestResult {
+  success: boolean;
+  message: string;
+  details: Record<string, unknown> | null;
+}
+
+export interface RegisterEmailServiceBatchDeleteResult {
+  success: boolean;
+  deleted: number;
+  message: string;
+}
+
+export interface RegisterOutlookBatchImportResult {
+  total: number;
+  success: number;
+  failed: number;
+  accounts: Array<Record<string, unknown>>;
+  errors: string[];
+}
+
+export interface RegisterServiceGroup {
+  available: boolean;
+  count: number;
+  services: RegisterServiceItem[];
+}
+
+export interface RegisterAvailableServicesResult {
+  serviceUrl: string;
+  tempmail: RegisterServiceGroup;
+  outlook: RegisterServiceGroup;
+  customDomain: RegisterServiceGroup;
+  tempMail: RegisterServiceGroup;
+}
+
+export interface RegisterTaskSnapshot {
+  taskUuid: string;
+  status: string;
+  emailServiceId: number | null;
+  proxy: string;
+  createdAt: string;
+  startedAt: string;
+  completedAt: string;
+  errorMessage: string;
+  email: string;
+  canImport: boolean;
+  logs: string[];
+}
+
+export interface RegisterBatchStartResult {
+  batchId: string;
+  count: number;
+  taskUuids: string[];
+}
+
+export interface RegisterBatchSnapshot {
+  batchId: string;
+  total: number;
+  completed: number;
+  success: number;
+  failed: number;
+  currentIndex: number;
+  cancelled: boolean;
+  finished: boolean;
+  progress: string;
+  logs: string[];
+}
+
+export interface RegisterTaskListResult {
+  total: number;
+  tasks: RegisterTaskSnapshot[];
+}
+
+export interface RegisterStats {
+  byStatus: Record<string, number>;
+  todayCount: number;
+}
+
+export interface RegisterOutlookAccount {
+  id: number;
+  email: string;
+  name: string;
+  hasOauth: boolean;
+  isRegistered: boolean;
+  registeredAccountId: number | null;
+}
+
+export interface RegisterOutlookAccountsResult {
+  total: number;
+  registeredCount: number;
+  unregisteredCount: number;
+  accounts: RegisterOutlookAccount[];
+}
+
+export interface RegisterOutlookBatchStartResult {
+  batchId: string;
+  total: number;
+  skipped: number;
+  toRegister: number;
+  serviceIds: number[];
+}
+
+export interface RegisterOutlookBatchSnapshot {
+  batchId: string;
+  total: number;
+  completed: number;
+  success: number;
+  failed: number;
+  skipped: number;
+  currentIndex: number;
+  cancelled: boolean;
+  finished: boolean;
+  progress: string;
+  logs: string[];
+}
+
+export interface RegisterImportResult {
+  taskUuid: string;
+  email: string;
+  remoteAccountId: number | null;
+  accountId: string;
+  chatgptAccountId: string;
+  workspaceId: string;
+  type: string;
+}
+
 export interface EnvOverrideCatalogItem {
   key: string;
   label: string;
@@ -208,6 +385,9 @@ export interface BackgroundTaskSettings {
   httpWorkerMin: number;
   httpStreamWorkerFactor: number;
   httpStreamWorkerMin: number;
+  autoRegisterPoolEnabled: boolean;
+  autoRegisterReadyAccountCount: number;
+  autoRegisterReadyRemainPercent: number;
 }
 
 export interface AppSettings {

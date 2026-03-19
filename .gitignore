@@ -32,6 +32,9 @@
 *.log
 *.db
 *.sqlite
+docker/codexmanager-data/
+docker/codexregister-data/
+docker/codexregister-logs/
 codexmanager.rpc-token
 codex resume*.txt
 .tmp_stage_ps/

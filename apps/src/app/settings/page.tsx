@@ -547,14 +547,20 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
-  const saveBackgroundTaskField = (key: keyof BackgroundTaskSettings, minimum = 1) => {
+  const saveBackgroundTaskField = (
+    key: keyof BackgroundTaskSettings,
+    minimum = 1,
+    maximum?: number
+  ) => {
     if (!snapshot) return;
     const draftKey = String(key);
     const sourceValue =
       backgroundTaskDraft[draftKey] ?? stringifyNumber(snapshot.backgroundTasks[key] as number);
     const nextValue = parseIntegerInput(sourceValue, minimum);
-    if (nextValue == null) {
-      toast.error("请输入合法的数值");
+    if (nextValue == null || (maximum != null && nextValue > maximum)) {
+      toast.error(
+        maximum != null ? `请输入 ${minimum} 到 ${maximum} 之间的数值` : "请输入合法的数值"
+      );
       setBackgroundTaskDraft((current) => {
         const nextDraft = { ...current };
         delete nextDraft[draftKey];
@@ -1187,6 +1193,87 @@ export default function SettingsPage() {
                   </div>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
+              <CardTitle className="text-base">账号池自动补号</CardTitle>
+              <CardDescription>
+                当高于额度门槛的可用账号数量过少时，后台会自动调用注册服务补充账号池
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/50 bg-background/35 p-4">
+                <div className="space-y-0.5">
+                  <Label>启用自动补号</Label>
+                  <p className="text-xs text-muted-foreground">
+                    触发后会自动注册并导入新账号；若已有注册任务在跑，则本轮跳过避免冲突。
+                  </p>
+                </div>
+                <Switch
+                  checked={snapshot.backgroundTasks.autoRegisterPoolEnabled}
+                  onCheckedChange={(value) =>
+                    updateBackgroundTasks({ autoRegisterPoolEnabled: value })
+                  }
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-2 rounded-2xl border border-border/50 bg-background/30 p-4">
+                  <Label>触发保底账号数</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={
+                      backgroundTaskDraft.autoRegisterReadyAccountCount ||
+                      stringifyNumber(snapshot.backgroundTasks.autoRegisterReadyAccountCount)
+                    }
+                    onChange={(event) =>
+                      setBackgroundTaskDraft((current) => ({
+                        ...current,
+                        autoRegisterReadyAccountCount: event.target.value,
+                      }))
+                    }
+                    onBlur={() =>
+                      saveBackgroundTaskField("autoRegisterReadyAccountCount", 1)
+                    }
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    当“满足额度门槛的可用账号数”小于等于这个值时触发补号。
+                  </p>
+                </div>
+
+                <div className="grid gap-2 rounded-2xl border border-border/50 bg-background/30 p-4">
+                  <Label>可用额度门槛 (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={
+                      backgroundTaskDraft.autoRegisterReadyRemainPercent ||
+                      stringifyNumber(snapshot.backgroundTasks.autoRegisterReadyRemainPercent)
+                    }
+                    onChange={(event) =>
+                      setBackgroundTaskDraft((current) => ({
+                        ...current,
+                        autoRegisterReadyRemainPercent: event.target.value,
+                      }))
+                    }
+                    onBlur={() =>
+                      saveBackgroundTaskField("autoRegisterReadyRemainPercent", 0, 100)
+                    }
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    只有剩余额度大于等于该百分比的账号，才会计入可用账号数。
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-border/60 bg-background/20 p-4 text-xs leading-6 text-muted-foreground">
+                例如：保底账号数设为 <code>3</code>，额度门槛设为 <code>20%</code>，
+                当系统检测到仅剩 3 个或更少账号仍有至少 20% 剩余额度时，就会自动注册新号补充池子。
+              </div>
             </CardContent>
           </Card>
 

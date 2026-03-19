@@ -26,6 +26,73 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   },
   service_account_update: { rpcMethod: "account/update" },
   service_account_import: { rpcMethod: "account/import" },
+  service_account_register_available_services: {
+    rpcMethod: "account/register/availableServices",
+  },
+  service_account_register_start: { rpcMethod: "account/register/start" },
+  service_account_register_batch_start: { rpcMethod: "account/register/batch/start" },
+  service_account_register_batch_read: { rpcMethod: "account/register/batch/read" },
+  service_account_register_batch_cancel: { rpcMethod: "account/register/batch/cancel" },
+  service_account_register_tasks_list: { rpcMethod: "account/register/tasks/list" },
+  service_account_register_stats: { rpcMethod: "account/register/stats" },
+  service_account_register_task_cancel: { rpcMethod: "account/register/task/cancel" },
+  service_account_register_task_delete: { rpcMethod: "account/register/task/delete" },
+  service_account_register_outlook_accounts: {
+    rpcMethod: "account/register/outlookAccounts",
+  },
+  service_account_register_outlook_batch_start: {
+    rpcMethod: "account/register/outlookBatch/start",
+  },
+  service_account_register_outlook_batch_read: {
+    rpcMethod: "account/register/outlookBatch/read",
+  },
+  service_account_register_outlook_batch_cancel: {
+    rpcMethod: "account/register/outlookBatch/cancel",
+  },
+  service_account_register_email_services_types: {
+    rpcMethod: "account/register/emailServices/types",
+  },
+  service_account_register_email_services_list: {
+    rpcMethod: "account/register/emailServices/list",
+  },
+  service_account_register_email_services_stats: {
+    rpcMethod: "account/register/emailServices/stats",
+  },
+  service_account_register_email_services_read_full: {
+    rpcMethod: "account/register/emailServices/readFull",
+  },
+  service_account_register_email_services_create: {
+    rpcMethod: "account/register/emailServices/create",
+  },
+  service_account_register_email_services_update: {
+    rpcMethod: "account/register/emailServices/update",
+  },
+  service_account_register_email_services_delete: {
+    rpcMethod: "account/register/emailServices/delete",
+  },
+  service_account_register_email_services_test: {
+    rpcMethod: "account/register/emailServices/test",
+  },
+  service_account_register_email_services_set_enabled: {
+    rpcMethod: "account/register/emailServices/setEnabled",
+  },
+  service_account_register_email_services_outlook_batch_import: {
+    rpcMethod: "account/register/emailServices/outlookBatchImport",
+  },
+  service_account_register_email_services_outlook_batch_delete: {
+    rpcMethod: "account/register/emailServices/outlookBatchDelete",
+  },
+  service_account_register_email_services_reorder: {
+    rpcMethod: "account/register/emailServices/reorder",
+  },
+  service_account_register_email_services_test_tempmail: {
+    rpcMethod: "account/register/emailServices/testTempmail",
+  },
+  service_account_register_task: { rpcMethod: "account/register/task" },
+  service_account_register_import: { rpcMethod: "account/register/import" },
+  service_account_register_import_by_email: {
+    rpcMethod: "account/register/importByEmail",
+  },
   service_account_import_by_file: {
     direct: () => pickImportFilesFromBrowser(false),
   },

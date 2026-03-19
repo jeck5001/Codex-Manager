@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use super::{
     is_keepalive_error_ignorable, parse_interval_secs,
+    maybe_trigger_auto_register_pool_fill,
     refresh_tokens_before_expiry_for_all_accounts, refresh_usage_for_polling_batch,
     run_gateway_keepalive_once, COMMON_POLL_FAILURE_BACKOFF_MAX_ENV, COMMON_POLL_JITTER_ENV,
     DEFAULT_GATEWAY_KEEPALIVE_FAILURE_BACKOFF_MAX_SECS, DEFAULT_GATEWAY_KEEPALIVE_JITTER_SECS,
@@ -37,7 +38,13 @@ pub(super) fn usage_polling_loop() {
                 interval_secs,
             )
         },
-        refresh_usage_for_polling_batch,
+        || {
+            refresh_usage_for_polling_batch()?;
+            if let Err(err) = maybe_trigger_auto_register_pool_fill() {
+                log::warn!("usage polling auto-fill check failed: {err}");
+            }
+            Ok(())
+        },
         |_| true,
     );
 }
