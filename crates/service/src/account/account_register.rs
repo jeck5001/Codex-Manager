@@ -1,9 +1,12 @@
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::thread;
 use std::time::Duration;
 
 const ENV_REGISTER_SERVICE_URL: &str = "CODEXMANAGER_REGISTER_SERVICE_URL";
 const DEFAULT_REGISTER_SERVICE_URL: &str = "http://127.0.0.1:8000";
+const REGISTER_BATCH_AUTO_IMPORT_POLL_INTERVAL_SECS: u64 = 3;
+const REGISTER_BATCH_AUTO_IMPORT_TIMEOUT_SECS: u64 = 30 * 60;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -192,6 +195,120 @@ fn task_uuid_array_from_items(items: &[Value]) -> Vec<Value> {
         .collect()
 }
 
+fn task_uuid_strings_from_payload(payload: &Value) -> Vec<String> {
+    payload
+        .get("tasks")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    item.get("task_uuid")
+                        .or_else(|| item.get("taskUuid"))
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(ToString::to_string)
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn is_register_task_terminal(status: &str) -> bool {
+    matches!(
+        status.trim().to_ascii_lowercase().as_str(),
+        "completed" | "failed" | "cancelled"
+    )
+}
+
+fn spawn_register_batch_auto_import(task_uuids: Vec<String>) {
+    if task_uuids.is_empty() {
+        return;
+    }
+
+    let _ = thread::Builder::new()
+        .name("register-batch-auto-import".to_string())
+        .spawn(move || {
+            let started_at = std::time::Instant::now();
+            let deadline =
+                started_at + Duration::from_secs(REGISTER_BATCH_AUTO_IMPORT_TIMEOUT_SECS);
+            let mut pending = task_uuids;
+
+            while !pending.is_empty() && std::time::Instant::now() < deadline {
+                let current = pending.clone();
+                pending.clear();
+
+                for task_uuid in current {
+                    let snapshot = match read_register_task(task_uuid.as_str()) {
+                        Ok(snapshot) => snapshot,
+                        Err(err) => {
+                            log::warn!(
+                                "register batch auto import read task failed: task_uuid={} err={}",
+                                task_uuid,
+                                err
+                            );
+                            pending.push(task_uuid);
+                            continue;
+                        }
+                    };
+
+                    if !is_register_task_terminal(snapshot.status()) {
+                        pending.push(task_uuid);
+                        continue;
+                    }
+
+                    if !snapshot.can_import() {
+                        log::info!(
+                            "register batch auto import skipped: task_uuid={} status={}",
+                            task_uuid,
+                            snapshot.status()
+                        );
+                        continue;
+                    }
+
+                    match import_register_task(task_uuid.as_str()) {
+                        Ok(imported) => {
+                            let account_id = imported
+                                .get("accountId")
+                                .or_else(|| imported.get("account_id"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("--");
+                            log::info!(
+                                "register batch auto import succeeded: task_uuid={} email={} account_id={}",
+                                task_uuid,
+                                snapshot.email().unwrap_or("--"),
+                                account_id
+                            );
+                        }
+                        Err(err) => {
+                            log::warn!(
+                                "register batch auto import failed: task_uuid={} email={} err={}",
+                                task_uuid,
+                                snapshot.email().unwrap_or("--"),
+                                err
+                            );
+                        }
+                    }
+                }
+
+                if !pending.is_empty() {
+                    thread::sleep(Duration::from_secs(
+                        REGISTER_BATCH_AUTO_IMPORT_POLL_INTERVAL_SECS,
+                    ));
+                }
+            }
+
+            if !pending.is_empty() {
+                log::warn!(
+                    "register batch auto import timed out: pending={} elapsed_ms={}",
+                    pending.len(),
+                    started_at.elapsed().as_millis()
+                );
+            }
+        });
+}
+
 fn pick_remote_account_by_email<'a>(items: &'a [Value], email: &str) -> Option<&'a Value> {
     items.iter().find(|item| {
         item.get("email")
@@ -367,9 +484,11 @@ pub(crate) fn start_register_batch(
         .and_then(Value::as_array)
         .map(|items| task_uuid_array_from_items(items))
         .unwrap_or_default();
+    let auto_import_task_uuids = task_uuid_strings_from_payload(&payload);
     if let Some(object) = payload.as_object_mut() {
         object.insert("taskUuids".to_string(), Value::Array(task_uuids));
     }
+    spawn_register_batch_auto_import(auto_import_task_uuids);
     Ok(payload)
 }
 
