@@ -21,7 +21,7 @@ COPY . .
 RUN mkdir -p data logs
 
 # Expose port
-EXPOSE 8000
+EXPOSE 9000
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1
