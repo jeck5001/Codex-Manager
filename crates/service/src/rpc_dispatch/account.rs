@@ -2,7 +2,7 @@ use codexmanager_core::rpc::types::{AccountListParams, JsonRpcRequest, JsonRpcRe
 
 use crate::{
     account_cleanup, account_delete, account_delete_many, account_export, account_import,
-    account_list, account_update, auth_account, auth_login, auth_tokens,
+    account_list, account_register, account_update, auth_account, auth_login, auth_tokens,
 };
 
 pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
@@ -78,6 +78,39 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 }
             }
             super::value_or_error(account_import::import_account_auth_json(contents))
+        }
+        "account/register/availableServices" => {
+            super::value_or_error(account_register::available_register_services())
+        }
+        "account/register/start" => {
+            let email_service_type = first_str_param(
+                req,
+                &["emailServiceType", "email_service_type", "type"],
+            )
+            .unwrap_or("");
+            let email_service_id = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("emailServiceId")
+                        .or_else(|| params.get("email_service_id"))
+                })
+                .and_then(|value| value.as_i64());
+            let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            super::value_or_error(account_register::start_register_task(
+                email_service_type,
+                email_service_id,
+                proxy,
+            ))
+        }
+        "account/register/task" => {
+            let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
+            super::value_or_error(account_register::read_register_task(task_uuid))
+        }
+        "account/register/import" => {
+            let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
+            super::value_or_error(account_register::import_register_task(task_uuid))
         }
         "account/export" => {
             let output_dir = super::str_param(req, "outputDir").unwrap_or("");

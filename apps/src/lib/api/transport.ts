@@ -26,6 +26,12 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   },
   service_account_update: { rpcMethod: "account/update" },
   service_account_import: { rpcMethod: "account/import" },
+  service_account_register_available_services: {
+    rpcMethod: "account/register/availableServices",
+  },
+  service_account_register_start: { rpcMethod: "account/register/start" },
+  service_account_register_task: { rpcMethod: "account/register/task" },
+  service_account_register_import: { rpcMethod: "account/register/import" },
   service_account_import_by_file: {
     direct: () => pickImportFilesFromBrowser(false),
   },

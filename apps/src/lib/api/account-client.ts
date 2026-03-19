@@ -21,6 +21,10 @@ import {
   LoginStatusResult,
   LoginStartResult,
   ModelOption,
+  RegisterAvailableServicesResult,
+  RegisterImportResult,
+  RegisterServiceGroup,
+  RegisterTaskSnapshot,
   UsageAggregateSummary,
 } from "../../types";
 
@@ -73,6 +77,125 @@ interface ApiKeyPayload {
   staticHeadersJson?: string | null;
 }
 
+interface RegisterStartPayload {
+  emailServiceType: string;
+  emailServiceId?: number | null;
+  proxy?: string | null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function normalizeRegisterServiceGroup(value: unknown): RegisterServiceGroup {
+  const source = asRecord(value) ?? {};
+  const services = Array.isArray(source.services) ? source.services : [];
+  return {
+    available: source.available === true,
+    count: typeof source.count === "number" && Number.isFinite(source.count)
+      ? source.count
+      : services.length,
+    services: services.map((item) => {
+      const service = asRecord(item) ?? {};
+      return {
+        id: typeof service.id === "number" && Number.isFinite(service.id) ? service.id : null,
+        name: typeof service.name === "string" ? service.name : "",
+        type: typeof service.type === "string" ? service.type : "",
+        description: typeof service.description === "string" ? service.description : "",
+      };
+    }),
+  };
+}
+
+function normalizeRegisterAvailableServices(value: unknown): RegisterAvailableServicesResult {
+  const source = asRecord(value) ?? {};
+  return {
+    serviceUrl: typeof source.serviceUrl === "string" ? source.serviceUrl : "",
+    tempmail: normalizeRegisterServiceGroup(source.tempmail),
+    outlook: normalizeRegisterServiceGroup(source.outlook),
+    customDomain: normalizeRegisterServiceGroup(source.custom_domain ?? source.customDomain),
+    tempMail: normalizeRegisterServiceGroup(source.temp_mail ?? source.tempMail),
+  };
+}
+
+function normalizeRegisterTaskSnapshot(value: unknown): RegisterTaskSnapshot {
+  const source = asRecord(value) ?? {};
+  return {
+    taskUuid: typeof source.taskUuid === "string"
+      ? source.taskUuid
+      : typeof source.task_uuid === "string"
+        ? source.task_uuid
+        : "",
+    status: typeof source.status === "string" ? source.status : "",
+    emailServiceId: typeof source.emailServiceId === "number" && Number.isFinite(source.emailServiceId)
+      ? source.emailServiceId
+      : typeof source.email_service_id === "number" && Number.isFinite(source.email_service_id)
+        ? source.email_service_id
+        : null,
+    proxy: typeof source.proxy === "string" ? source.proxy : "",
+    createdAt: typeof source.createdAt === "string"
+      ? source.createdAt
+      : typeof source.created_at === "string"
+        ? source.created_at
+        : "",
+    startedAt: typeof source.startedAt === "string"
+      ? source.startedAt
+      : typeof source.started_at === "string"
+        ? source.started_at
+        : "",
+    completedAt: typeof source.completedAt === "string"
+      ? source.completedAt
+      : typeof source.completed_at === "string"
+        ? source.completed_at
+        : "",
+    errorMessage: typeof source.errorMessage === "string"
+      ? source.errorMessage
+      : typeof source.error_message === "string"
+        ? source.error_message
+        : "",
+    email: typeof source.email === "string" ? source.email : "",
+    canImport: source.canImport === true || source.can_import === true,
+    logs: Array.isArray(source.logs)
+      ? source.logs.filter((item): item is string => typeof item === "string")
+      : [],
+  };
+}
+
+function normalizeRegisterImportResult(value: unknown): RegisterImportResult {
+  const source = asRecord(value) ?? {};
+  return {
+    taskUuid: typeof source.taskUuid === "string"
+      ? source.taskUuid
+      : typeof source.task_uuid === "string"
+        ? source.task_uuid
+        : "",
+    email: typeof source.email === "string" ? source.email : "",
+    remoteAccountId: typeof source.remoteAccountId === "number" && Number.isFinite(source.remoteAccountId)
+      ? source.remoteAccountId
+      : typeof source.remote_account_id === "number" && Number.isFinite(source.remote_account_id)
+        ? source.remote_account_id
+        : null,
+    accountId: typeof source.accountId === "string"
+      ? source.accountId
+      : typeof source.account_id === "string"
+        ? source.account_id
+        : "",
+    chatgptAccountId: typeof source.chatgptAccountId === "string"
+      ? source.chatgptAccountId
+      : typeof source.chatgpt_account_id === "string"
+        ? source.chatgpt_account_id
+        : "",
+    workspaceId: typeof source.workspaceId === "string"
+      ? source.workspaceId
+      : typeof source.workspace_id === "string"
+        ? source.workspace_id
+        : "",
+    type: typeof source.type === "string" ? source.type : "",
+  };
+}
+
 export const accountClient = {
   async list(params?: Record<string, unknown>): Promise<AccountListResult> {
     const result = await invoke<unknown>("service_account_list", withAddr(params));
@@ -92,6 +215,38 @@ export const accountClient = {
     invoke("service_account_update", withAddr({ accountId, status: "active" })),
   import: (contents: string[]) =>
     invoke<AccountImportResult>("service_account_import", withAddr({ contents })),
+  async getRegisterAvailableServices(): Promise<RegisterAvailableServicesResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_available_services",
+      withAddr()
+    );
+    return normalizeRegisterAvailableServices(result);
+  },
+  async startRegisterTask(params: RegisterStartPayload): Promise<RegisterTaskSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_start",
+      withAddr({
+        emailServiceType: params.emailServiceType,
+        emailServiceId: params.emailServiceId ?? null,
+        proxy: params.proxy ?? null,
+      })
+    );
+    return normalizeRegisterTaskSnapshot(result);
+  },
+  async getRegisterTask(taskUuid: string): Promise<RegisterTaskSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_task",
+      withAddr({ taskUuid })
+    );
+    return normalizeRegisterTaskSnapshot(result);
+  },
+  async importRegisterTask(taskUuid: string): Promise<RegisterImportResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_import",
+      withAddr({ taskUuid })
+    );
+    return normalizeRegisterImportResult(result);
+  },
   async importByDirectory(): Promise<AccountImportResult> {
     const picked = await invoke<AccountImportResult>(
       "service_account_import_by_directory",

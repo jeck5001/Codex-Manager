@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { 
   Dialog, 
   DialogContent, 
@@ -28,7 +28,12 @@ import {
 import { accountClient } from "@/lib/api/account-client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
-import { FileUp, Info, LogIn, Clipboard, ExternalLink, Hash } from "lucide-react";
+import { FileUp, Info, LogIn, Clipboard, ExternalLink, Hash, Sparkles, RefreshCw } from "lucide-react";
+import type {
+  RegisterAvailableServicesResult,
+  RegisterServiceGroup,
+  RegisterTaskSnapshot,
+} from "@/types";
 
 interface AddAccountModalProps {
   open: boolean;
@@ -142,6 +147,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   const [loginHint, setLoginHint] = useState("");
   const queryClient = useQueryClient();
   const loginPollTokenRef = useRef(0);
+  const registerPollTokenRef = useRef(0);
 
   // Login Form
   const [tags, setTags] = useState("");
@@ -153,8 +159,22 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   // Bulk Import
   const [bulkContent, setBulkContent] = useState("");
 
+  // Register Integration
+  const [registerServices, setRegisterServices] =
+    useState<RegisterAvailableServicesResult | null>(null);
+  const [isRegisterLoading, setIsRegisterLoading] = useState(false);
+  const [isRegisterSubmitting, setIsRegisterSubmitting] = useState(false);
+  const [isRegisterImporting, setIsRegisterImporting] = useState(false);
+  const [registerError, setRegisterError] = useState("");
+  const [registerHint, setRegisterHint] = useState("");
+  const [registerServiceType, setRegisterServiceType] = useState("tempmail");
+  const [registerServiceId, setRegisterServiceId] = useState("");
+  const [registerProxy, setRegisterProxy] = useState("");
+  const [registerTask, setRegisterTask] = useState<RegisterTaskSnapshot | null>(null);
+
   const resetModalState = useCallback(() => {
     loginPollTokenRef.current += 1;
+    registerPollTokenRef.current += 1;
     setActiveTab("login");
     setIsLoading(false);
     setIsPollingLogin(false);
@@ -165,6 +185,16 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setLoginUrl("");
     setManualCallback("");
     setBulkContent("");
+    setRegisterServices(null);
+    setIsRegisterLoading(false);
+    setIsRegisterSubmitting(false);
+    setIsRegisterImporting(false);
+    setRegisterError("");
+    setRegisterHint("");
+    setRegisterServiceType("tempmail");
+    setRegisterServiceId("");
+    setRegisterProxy("");
+    setRegisterTask(null);
   }, []);
 
   const invalidateLoginQueries = async () => {
@@ -227,6 +257,144 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     if (pollToken === loginPollTokenRef.current) {
       setIsPollingLogin(false);
       setLoginHint("登录超时，请重试或使用下方手动解析回调。");
+    }
+  };
+
+  const registerTypeOptions = useMemo(() => {
+    if (!registerServices) return [];
+    return [
+      { value: "tempmail", label: "临时邮箱", group: registerServices.tempmail },
+      { value: "outlook", label: "Outlook", group: registerServices.outlook },
+      { value: "custom_domain", label: "自定义域名", group: registerServices.customDomain },
+      { value: "temp_mail", label: "Temp Mail", group: registerServices.tempMail },
+    ].filter((item) => item.group.available);
+  }, [registerServices]);
+
+  const selectedRegisterGroup = useMemo<RegisterServiceGroup | null>(() => {
+    const matched = registerTypeOptions.find((item) => item.value === registerServiceType);
+    return matched?.group || null;
+  }, [registerServiceType, registerTypeOptions]);
+
+  const selectedRegisterServiceHasChoices = (selectedRegisterGroup?.services || []).some(
+    (item) => item.id != null,
+  );
+
+  const syncRegisterSelection = useCallback(
+    (catalog: RegisterAvailableServicesResult) => {
+      const nextOptions = [
+        { value: "tempmail", group: catalog.tempmail },
+        { value: "outlook", group: catalog.outlook },
+        { value: "custom_domain", group: catalog.customDomain },
+        { value: "temp_mail", group: catalog.tempMail },
+      ].filter((item) => item.group.available);
+      const nextType =
+        nextOptions.find((item) => item.value === registerServiceType)?.value ||
+        nextOptions[0]?.value ||
+        "tempmail";
+      const nextGroup = nextOptions.find((item) => item.value === nextType)?.group || null;
+      const nextServiceId =
+        nextGroup?.services.find((item) => item.id != null)?.id != null
+          ? String(nextGroup.services.find((item) => item.id != null)?.id)
+          : "";
+      setRegisterServiceType(nextType);
+      setRegisterServiceId(nextServiceId);
+    },
+    [registerServiceType],
+  );
+
+  const loadRegisterServices = useCallback(async () => {
+    setIsRegisterLoading(true);
+    setRegisterError("");
+    try {
+      const result = await accountClient.getRegisterAvailableServices();
+      setRegisterServices(result);
+      syncRegisterSelection(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setRegisterError(message);
+    } finally {
+      setIsRegisterLoading(false);
+    }
+  }, [syncRegisterSelection]);
+
+  useEffect(() => {
+    if (!open || activeTab !== "register" || registerServices || isRegisterLoading) {
+      return;
+    }
+    void loadRegisterServices();
+  }, [activeTab, isRegisterLoading, loadRegisterServices, open, registerServices]);
+
+  const completeRegisterSuccess = async (message: string) => {
+    await invalidateLoginQueries();
+    toast.success(message);
+    resetModalState();
+    onOpenChange(false);
+  };
+
+  const importCompletedRegisterTask = async (taskUuid: string) => {
+    setIsRegisterImporting(true);
+    setRegisterHint("注册成功，正在自动导入账号...");
+    try {
+      const imported = await accountClient.importRegisterTask(taskUuid);
+      await completeRegisterSuccess(`账号已注册并导入：${imported.email}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setRegisterError(`注册成功，但自动导入失败：${message}`);
+      setRegisterHint("");
+      toast.error(`自动导入失败: ${message}`);
+    } finally {
+      setIsRegisterImporting(false);
+      setIsRegisterSubmitting(false);
+    }
+  };
+
+  const waitForRegisterTask = async (taskUuid: string) => {
+    const pollToken = registerPollTokenRef.current + 1;
+    registerPollTokenRef.current = pollToken;
+    setRegisterHint("注册任务已启动，正在等待完成...");
+
+    const deadline = Date.now() + 10 * 60 * 1000;
+    while (pollToken === registerPollTokenRef.current && Date.now() < deadline) {
+      try {
+        const snapshot = await accountClient.getRegisterTask(taskUuid);
+        if (pollToken !== registerPollTokenRef.current) {
+          return;
+        }
+        setRegisterTask(snapshot);
+
+        const status = String(snapshot.status || "").trim().toLowerCase();
+        if (status === "completed") {
+          if (snapshot.canImport) {
+            await importCompletedRegisterTask(snapshot.taskUuid);
+            return;
+          }
+          setRegisterError("注册任务已完成，但未拿到可导入的账号信息");
+          setRegisterHint("");
+          setIsRegisterSubmitting(false);
+          return;
+        }
+        if (status === "failed" || status === "cancelled") {
+          const message = snapshot.errorMessage || "注册失败";
+          setRegisterError(message);
+          setRegisterHint("");
+          setIsRegisterSubmitting(false);
+          toast.error(message);
+          return;
+        }
+      } catch (err: unknown) {
+        if (pollToken !== registerPollTokenRef.current) {
+          return;
+        }
+        setRegisterError(err instanceof Error ? err.message : String(err));
+      }
+
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 2000));
+    }
+
+    if (pollToken === registerPollTokenRef.current) {
+      setRegisterHint("");
+      setRegisterError("注册轮询超时，请稍后重试");
+      setIsRegisterSubmitting(false);
     }
   };
 
@@ -304,6 +472,31 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     }
   };
 
+  const handleStartRegister = async () => {
+    if (!selectedRegisterGroup?.available) {
+      toast.error("当前没有可用的注册邮箱服务");
+      return;
+    }
+    setRegisterError("");
+    setRegisterHint("");
+    setIsRegisterSubmitting(true);
+    try {
+      const task = await accountClient.startRegisterTask({
+        emailServiceType: registerServiceType,
+        emailServiceId: registerServiceId ? Number(registerServiceId) : null,
+        proxy: registerProxy || null,
+      });
+      setRegisterTask(task);
+      toast.success("注册任务已启动");
+      void waitForRegisterTask(task.taskUuid);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setRegisterError(message);
+      setIsRegisterSubmitting(false);
+      toast.error(`启动注册失败: ${message}`);
+    }
+  };
+
   const copyUrl = () => {
     if (!loginUrl) return;
     navigator.clipboard.writeText(loginUrl);
@@ -324,9 +517,12 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                 通过登录授权或批量导入文本内容来添加账号。
               </DialogDescription>
             </DialogHeader>
-            <TabsList className="grid w-full grid-cols-2 h-10 mb-0">
+            <TabsList className="grid w-full grid-cols-3 h-10 mb-0">
               <TabsTrigger value="login" className="gap-2">
                 <LogIn className="h-3.5 w-3.5" /> 登录授权
+              </TabsTrigger>
+              <TabsTrigger value="register" className="gap-2">
+                <Sparkles className="h-3.5 w-3.5" /> 自动注册
               </TabsTrigger>
               <TabsTrigger value="bulk" className="gap-2">
                 <FileUp className="h-3.5 w-3.5" /> 批量导入
@@ -405,6 +601,153 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                   </div>
                 </div>
               </div>
+            </TabsContent>
+
+            <TabsContent value="register" className="mt-0 space-y-4">
+              <div className="rounded-lg border border-primary/15 bg-primary/5 p-3 text-xs text-muted-foreground">
+                通过内置的 `codex-register` 注册服务自动创建账号。注册完成后会直接导入到当前账号列表。
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">注册服务状态</p>
+                  <p className="text-xs text-muted-foreground">
+                    {registerServices?.serviceUrl || "未连接"}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadRegisterServices()}
+                  disabled={isRegisterLoading || isRegisterSubmitting || isRegisterImporting}
+                  className="gap-2"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  刷新
+                </Button>
+              </div>
+
+              {registerError ? (
+                <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-600 dark:text-red-400">
+                  {registerError}
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>邮箱服务类型</Label>
+                  <Select
+                    value={registerServiceType}
+                    onValueChange={(value) => {
+                      if (!value) return;
+                      setRegisterServiceType(value);
+                      const nextGroup = registerTypeOptions.find((item) => item.value === value)?.group;
+                      const nextId =
+                        nextGroup?.services.find((item) => item.id != null)?.id != null
+                          ? String(nextGroup.services.find((item) => item.id != null)?.id)
+                          : "";
+                      setRegisterServiceId(nextId);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择邮箱服务" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {registerTypeOptions.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label} ({item.group.count})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>代理 (可选)</Label>
+                  <Input
+                    placeholder="http://user:pass@host:port"
+                    value={registerProxy}
+                    onChange={(event) => setRegisterProxy(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              {selectedRegisterServiceHasChoices ? (
+                <div className="space-y-2">
+                  <Label>具体服务</Label>
+                  <Select
+                    value={registerServiceId}
+                    onValueChange={(value) => {
+                      if (!value) return;
+                      setRegisterServiceId(value);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择具体服务" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(selectedRegisterGroup?.services || [])
+                        .filter((item) => item.id != null)
+                        .map((item) => (
+                          <SelectItem key={String(item.id)} value={String(item.id)}>
+                            {item.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+
+              {selectedRegisterGroup?.services?.[0]?.description ? (
+                <p className="text-xs text-muted-foreground">
+                  {selectedRegisterGroup.services[0].description}
+                </p>
+              ) : null}
+
+              <Button
+                onClick={handleStartRegister}
+                disabled={
+                  isRegisterLoading ||
+                  isRegisterSubmitting ||
+                  isRegisterImporting ||
+                  !selectedRegisterGroup?.available
+                }
+                className="w-full gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                {isRegisterSubmitting || isRegisterImporting ? "处理中..." : "开始注册并导入"}
+              </Button>
+
+              {registerHint ? (
+                <p className="text-xs text-muted-foreground">{registerHint}</p>
+              ) : null}
+
+              {registerTask ? (
+                <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">任务状态</p>
+                      <p className="font-mono text-[11px] text-muted-foreground">
+                        {registerTask.taskUuid}
+                      </p>
+                    </div>
+                    <div className="text-sm">{registerTask.status || "--"}</div>
+                  </div>
+                  {registerTask.email ? (
+                    <p className="text-xs text-muted-foreground">
+                      注册邮箱：{registerTask.email}
+                    </p>
+                  ) : null}
+                  <div className="space-y-2">
+                    <Label>任务日志</Label>
+                    <Textarea
+                      readOnly
+                      value={registerTask.logs.join("\n")}
+                      className="min-h-[220px] resize-none overflow-auto whitespace-pre-wrap break-all [overflow-wrap:anywhere] font-mono text-[10px] leading-4"
+                    />
+                  </div>
+                </div>
+              ) : null}
             </TabsContent>
 
             <TabsContent value="bulk" className="mt-0 space-y-4">
