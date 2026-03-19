@@ -39,14 +39,20 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 - Observability is much stronger: request logs now use backend pagination and backend summaries, while compact false-success bodies, HTML/challenge pages, `401 refresh` reasons, and `503 no available account` failures all produce clearer diagnostics instead of ambiguous generic errors.
 - Desktop stability and startup behavior were cleaned up as well: service startup false negatives, `/rpc` empty responses, stale usage-dialog data, first-switch lag, hydration mismatches, and misleading dev render indicators were all addressed, and the Web password setting now stays in sync between desktop and Web.
 - The release path was also normalized: the product version is now `0.1.10`, the Tauri Rust side and workflow Tauri CLI / pnpm versions are aligned again, and `release-all.yml` remains the single release entry for Windows / macOS / Linux. See [CHANGELOG.md](CHANGELOG.md) for the full history.
+- Unreleased updates:
+  - Accounts now distinguish deactivation signals and add a dedicated banned filter. `account_deactivated` and `workspace_deactivated` are automatically marked unavailable and can be filtered directly as `Banned`.
+  - The account list now shows reset timestamps under the 5-hour and 7-day quota bars. For free accounts that only expose the 7-day window, the reset time is shown under the 7-day column.
+  - Platform keys now support a service tier override with `Follow Request`, `Fast`, and `Flex`. `Fast` maps to upstream `priority`, while `Flex` is forwarded as `flex`.
+  - The desktop create / edit flow for platform keys has been fixed, so protocol, model, reasoning effort, and service tier now save and round-trip correctly.
+  - The Settings page restores the service listen-mode switch, so you can switch between `localhost` and `0.0.0.0`; the `Check for Updates` button now shows loading only for manual checks.
 
 ## Features
-- Account pool management: groups, tags, sorting, notes
+- Account pool management: groups, tags, sorting, notes, banned detection, and banned filtering
 - Bulk import / export: multi-file import, recursive desktop folder import for JSON, one-file-per-account export
-- Usage dashboard: 5-hour + 7-day windows, plus accounts that only expose a 7-day window
+- Usage dashboard: 5-hour + 7-day windows, plus accounts that only expose a 7-day window, with per-window reset timestamps
 - OAuth login: browser flow + manual callback parsing
-- Platform keys: create, disable, delete, model binding
-- Local service with configurable port
+- Platform keys: create, disable, delete, model binding, reasoning effort, and service tier overrides (`Follow Request` / `Fast` / `Flex`)
+- Local service with configurable port and listen address
 - Local OpenAI-compatible gateway for CLI and third-party tools
 
 ## Screenshots
@@ -64,9 +70,9 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 
 ## Page Overview
 ### Desktop
-- Accounts: bulk import/export, refresh accounts and usage
-- Platform Keys: bind keys by model and inspect request logs
-- Settings: manage ports, proxy, theme, auto-update, and background behavior
+- Accounts: bulk import/export, refresh accounts and usage, plus low-quota / banned filters and reset-time display
+- Platform Keys: bind keys by model, reasoning effort, and service tier, then inspect request logs
+- Settings: manage ports, listen address, proxy, theme, auto-update, and background behavior
 
 ### Service Edition
 - `codexmanager-service`: local OpenAI-compatible gateway
@@ -114,7 +120,6 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 ## Acknowledgements And References
 
 - Codex (OpenAI): this project references its implementation and source layout for request-path behavior, login semantics, and upstream compatibility <https://github.com/openai/codex>
-- CPA (CLIProxyAPI): this project references its protocol adaptation, request forwarding, and compatibility design <https://github.com/router-for-me/CLIProxyAPI>
 
 ## Recognized Community
 <p align="center">

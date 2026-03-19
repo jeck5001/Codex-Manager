@@ -248,6 +248,19 @@ export default function AccountsPage() {
     ],
     [accounts],
   );
+  const unavailableFreeAccountCount = useMemo(
+    () =>
+      accounts.filter(
+        (account) =>
+          !account.isAvailable &&
+          String(account.group || "").trim().toLowerCase() === "free",
+      ).length,
+    [accounts],
+  );
+  const bannedAccountCount = useMemo(
+    () => accounts.filter((account) => isBannedAccount(account)).length,
+    [accounts],
+  );
 
   const pageSizeNumber = Number(pageSize) || 20;
   const totalPages = Math.max(
@@ -329,6 +342,21 @@ export default function AccountsPage() {
       kind: "selected",
       ids: [...effectiveSelectedIds],
       count: effectiveSelectedIds.length,
+    });
+  };
+
+  const handleDeleteBanned = () => {
+    const bannedIds = accounts
+      .filter((account) => isBannedAccount(account))
+      .map((account) => account.id);
+    if (!bannedIds.length) {
+      toast.error("当前没有可清理的封禁账号");
+      return;
+    }
+    setDeleteDialogState({
+      kind: "selected",
+      ids: bannedIds,
+      count: bannedIds.length,
     });
   };
 
@@ -522,6 +550,17 @@ export default function AccountsPage() {
                     onClick={() => deleteUnavailableFree()}
                   >
                     <Trash2 className="mr-2 h-4 w-4" /> 一键清理不可用免费
+                    <DropdownMenuShortcut>
+                      {unavailableFreeAccountCount}
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant="destructive"
+                    className="h-9 rounded-lg px-2"
+                    onClick={handleDeleteBanned}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" /> 一键清理封禁账号
+                    <DropdownMenuShortcut>{bannedAccountCount}</DropdownMenuShortcut>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
