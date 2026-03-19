@@ -22,6 +22,8 @@ import {
   LoginStartResult,
   ModelOption,
   RegisterAvailableServicesResult,
+  RegisterBatchSnapshot,
+  RegisterBatchStartResult,
   RegisterEmailServiceBatchDeleteResult,
   RegisterEmailService,
   RegisterEmailServiceField,
@@ -31,6 +33,10 @@ import {
   RegisterEmailServiceType,
   RegisterEmailServiceTypeCatalog,
   RegisterImportResult,
+  RegisterOutlookAccount,
+  RegisterOutlookAccountsResult,
+  RegisterOutlookBatchSnapshot,
+  RegisterOutlookBatchStartResult,
   RegisterOutlookBatchImportResult,
   RegisterServiceGroup,
   RegisterTaskSnapshot,
@@ -90,6 +96,24 @@ interface RegisterStartPayload {
   emailServiceType: string;
   emailServiceId?: number | null;
   proxy?: string | null;
+}
+
+interface RegisterBatchStartPayload extends RegisterStartPayload {
+  count: number;
+  intervalMin: number;
+  intervalMax: number;
+  concurrency: number;
+  mode: "pipeline" | "parallel";
+}
+
+interface RegisterOutlookBatchStartPayload {
+  serviceIds: number[];
+  skipRegistered?: boolean;
+  proxy?: string | null;
+  intervalMin: number;
+  intervalMax: number;
+  concurrency: number;
+  mode: "pipeline" | "parallel";
 }
 
 interface RegisterEmailServiceListPayload {
@@ -200,6 +224,149 @@ function normalizeRegisterTaskSnapshot(value: unknown): RegisterTaskSnapshot {
     logs: Array.isArray(source.logs)
       ? source.logs.filter((item): item is string => typeof item === "string")
       : [],
+  };
+}
+
+function normalizeRegisterBatchStartResult(value: unknown): RegisterBatchStartResult {
+  const source = asRecord(value) ?? {};
+  const tasks = Array.isArray(source.tasks) ? source.tasks : [];
+  const taskUuids = Array.isArray(source.taskUuids)
+    ? source.taskUuids
+    : Array.isArray(source.task_uuids)
+      ? source.task_uuids
+      : tasks.map((item) => asRecord(item)?.task_uuid ?? asRecord(item)?.taskUuid);
+
+  return {
+    batchId: typeof source.batchId === "string"
+      ? source.batchId
+      : typeof source.batch_id === "string"
+        ? source.batch_id
+        : "",
+    count:
+      typeof source.count === "number" && Number.isFinite(source.count)
+        ? source.count
+        : Array.isArray(taskUuids)
+          ? taskUuids.length
+          : 0,
+    taskUuids: Array.isArray(taskUuids)
+      ? taskUuids.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : [],
+  };
+}
+
+function normalizeRegisterBatchSnapshot(value: unknown): RegisterBatchSnapshot {
+  const source = asRecord(value) ?? {};
+  return {
+    batchId: typeof source.batchId === "string"
+      ? source.batchId
+      : typeof source.batch_id === "string"
+        ? source.batch_id
+        : "",
+    total: typeof source.total === "number" && Number.isFinite(source.total) ? source.total : 0,
+    completed:
+      typeof source.completed === "number" && Number.isFinite(source.completed)
+        ? source.completed
+        : 0,
+    success:
+      typeof source.success === "number" && Number.isFinite(source.success) ? source.success : 0,
+    failed:
+      typeof source.failed === "number" && Number.isFinite(source.failed) ? source.failed : 0,
+    currentIndex:
+      typeof source.currentIndex === "number" && Number.isFinite(source.currentIndex)
+        ? source.currentIndex
+        : typeof source.current_index === "number" && Number.isFinite(source.current_index)
+          ? source.current_index
+          : 0,
+    cancelled: source.cancelled === true,
+    finished: source.finished === true,
+    progress: typeof source.progress === "string" ? source.progress : "",
+    logs: Array.isArray(source.logs)
+      ? source.logs.filter((item): item is string => typeof item === "string")
+      : [],
+  };
+}
+
+function normalizeRegisterOutlookAccount(value: unknown): RegisterOutlookAccount {
+  const source = asRecord(value) ?? {};
+  return {
+    id: typeof source.id === "number" && Number.isFinite(source.id) ? source.id : 0,
+    email: typeof source.email === "string" ? source.email : "",
+    name: typeof source.name === "string" ? source.name : "",
+    hasOauth: source.hasOauth === true || source.has_oauth === true,
+    isRegistered: source.isRegistered === true || source.is_registered === true,
+    registeredAccountId:
+      typeof source.registeredAccountId === "number" && Number.isFinite(source.registeredAccountId)
+        ? source.registeredAccountId
+        : typeof source.registered_account_id === "number" &&
+            Number.isFinite(source.registered_account_id)
+          ? source.registered_account_id
+          : null,
+  };
+}
+
+function normalizeRegisterOutlookAccountsResult(
+  value: unknown
+): RegisterOutlookAccountsResult {
+  const source = asRecord(value) ?? {};
+  const accounts = Array.isArray(source.accounts) ? source.accounts : [];
+  return {
+    total: typeof source.total === "number" && Number.isFinite(source.total) ? source.total : 0,
+    registeredCount:
+      typeof source.registeredCount === "number" && Number.isFinite(source.registeredCount)
+        ? source.registeredCount
+        : typeof source.registered_count === "number" &&
+            Number.isFinite(source.registered_count)
+          ? source.registered_count
+          : 0,
+    unregisteredCount:
+      typeof source.unregisteredCount === "number" && Number.isFinite(source.unregisteredCount)
+        ? source.unregisteredCount
+        : typeof source.unregistered_count === "number" &&
+            Number.isFinite(source.unregistered_count)
+          ? source.unregistered_count
+          : 0,
+    accounts: accounts.map(normalizeRegisterOutlookAccount).filter((item) => item.id > 0),
+  };
+}
+
+function normalizeRegisterOutlookBatchStartResult(
+  value: unknown
+): RegisterOutlookBatchStartResult {
+  const source = asRecord(value) ?? {};
+  const serviceIds = Array.isArray(source.serviceIds)
+    ? source.serviceIds
+    : Array.isArray(source.service_ids)
+      ? source.service_ids
+      : [];
+  return {
+    batchId: typeof source.batchId === "string"
+      ? source.batchId
+      : typeof source.batch_id === "string"
+        ? source.batch_id
+        : "",
+    total: typeof source.total === "number" && Number.isFinite(source.total) ? source.total : 0,
+    skipped:
+      typeof source.skipped === "number" && Number.isFinite(source.skipped) ? source.skipped : 0,
+    toRegister:
+      typeof source.toRegister === "number" && Number.isFinite(source.toRegister)
+        ? source.toRegister
+        : typeof source.to_register === "number" && Number.isFinite(source.to_register)
+          ? source.to_register
+          : 0,
+    serviceIds: serviceIds.filter(
+      (item): item is number => typeof item === "number" && Number.isFinite(item)
+    ),
+  };
+}
+
+function normalizeRegisterOutlookBatchSnapshot(
+  value: unknown
+): RegisterOutlookBatchSnapshot {
+  const source = asRecord(value) ?? {};
+  return {
+    ...normalizeRegisterBatchSnapshot(value),
+    skipped:
+      typeof source.skipped === "number" && Number.isFinite(source.skipped) ? source.skipped : 0,
   };
 }
 
@@ -430,6 +597,13 @@ export const accountClient = {
     );
     return normalizeRegisterAvailableServices(result);
   },
+  async getRegisterOutlookAccounts(): Promise<RegisterOutlookAccountsResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_outlook_accounts",
+      withAddr()
+    );
+    return normalizeRegisterOutlookAccountsResult(result);
+  },
   async getRegisterEmailServiceTypes(): Promise<RegisterEmailServiceTypeCatalog> {
     const result = await invoke<unknown>(
       "service_account_register_email_services_types",
@@ -554,6 +728,59 @@ export const accountClient = {
     );
     return normalizeRegisterTaskSnapshot(result);
   },
+  async startRegisterBatch(
+    params: RegisterBatchStartPayload
+  ): Promise<RegisterBatchStartResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_batch_start",
+      withAddr({
+        emailServiceType: params.emailServiceType,
+        emailServiceId: params.emailServiceId ?? null,
+        proxy: params.proxy ?? null,
+        count: params.count,
+        intervalMin: params.intervalMin,
+        intervalMax: params.intervalMax,
+        concurrency: params.concurrency,
+        mode: params.mode,
+      })
+    );
+    return normalizeRegisterBatchStartResult(result);
+  },
+  async getRegisterBatch(batchId: string): Promise<RegisterBatchSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_batch_read",
+      withAddr({ batchId })
+    );
+    return normalizeRegisterBatchSnapshot(result);
+  },
+  cancelRegisterBatch: (batchId: string) =>
+    invoke("service_account_register_batch_cancel", withAddr({ batchId })),
+  async startRegisterOutlookBatch(
+    params: RegisterOutlookBatchStartPayload
+  ): Promise<RegisterOutlookBatchStartResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_outlook_batch_start",
+      withAddr({
+        serviceIds: params.serviceIds,
+        skipRegistered: params.skipRegistered ?? true,
+        proxy: params.proxy ?? null,
+        intervalMin: params.intervalMin,
+        intervalMax: params.intervalMax,
+        concurrency: params.concurrency,
+        mode: params.mode,
+      })
+    );
+    return normalizeRegisterOutlookBatchStartResult(result);
+  },
+  async getRegisterOutlookBatch(batchId: string): Promise<RegisterOutlookBatchSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_outlook_batch_read",
+      withAddr({ batchId })
+    );
+    return normalizeRegisterOutlookBatchSnapshot(result);
+  },
+  cancelRegisterOutlookBatch: (batchId: string) =>
+    invoke("service_account_register_outlook_batch_cancel", withAddr({ batchId })),
   async getRegisterTask(taskUuid: string): Promise<RegisterTaskSnapshot> {
     const result = await invoke<unknown>(
       "service_account_register_task",
@@ -565,6 +792,13 @@ export const accountClient = {
     const result = await invoke<unknown>(
       "service_account_register_import",
       withAddr({ taskUuid })
+    );
+    return normalizeRegisterImportResult(result);
+  },
+  async importRegisterAccountByEmail(email: string): Promise<RegisterImportResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_import_by_email",
+      withAddr({ email })
     );
     return normalizeRegisterImportResult(result);
   },

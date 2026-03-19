@@ -30,6 +30,21 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
     rpcMethod: "account/register/availableServices",
   },
   service_account_register_start: { rpcMethod: "account/register/start" },
+  service_account_register_batch_start: { rpcMethod: "account/register/batch/start" },
+  service_account_register_batch_read: { rpcMethod: "account/register/batch/read" },
+  service_account_register_batch_cancel: { rpcMethod: "account/register/batch/cancel" },
+  service_account_register_outlook_accounts: {
+    rpcMethod: "account/register/outlookAccounts",
+  },
+  service_account_register_outlook_batch_start: {
+    rpcMethod: "account/register/outlookBatch/start",
+  },
+  service_account_register_outlook_batch_read: {
+    rpcMethod: "account/register/outlookBatch/read",
+  },
+  service_account_register_outlook_batch_cancel: {
+    rpcMethod: "account/register/outlookBatch/cancel",
+  },
   service_account_register_email_services_types: {
     rpcMethod: "account/register/emailServices/types",
   },
@@ -71,6 +86,9 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   },
   service_account_register_task: { rpcMethod: "account/register/task" },
   service_account_register_import: { rpcMethod: "account/register/import" },
+  service_account_register_import_by_email: {
+    rpcMethod: "account/register/importByEmail",
+  },
   service_account_import_by_file: {
     direct: () => pickImportFilesFromBrowser(false),
   },

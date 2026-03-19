@@ -160,6 +160,20 @@ fn task_logs(logs_payload: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn task_uuid_array_from_items(items: &[Value]) -> Vec<Value> {
+    items
+        .iter()
+        .filter_map(|item| {
+            item.get("task_uuid")
+                .or_else(|| item.get("taskUuid"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| Value::String(value.to_string()))
+        })
+        .collect()
+}
+
 fn pick_remote_account_by_email<'a>(items: &'a [Value], email: &str) -> Option<&'a Value> {
     items.iter().find(|item| {
         item.get("email")
@@ -197,6 +211,68 @@ fn resolve_remote_account_for_email(email: &str) -> Result<Value, String> {
         .ok_or_else(|| format!("register service account not found for email: {email}"))
 }
 
+fn import_remote_account_for_email(
+    email: &str,
+    chatgpt_account_id_hint: Option<String>,
+    workspace_id_hint: Option<String>,
+) -> Result<Value, String> {
+    let normalized_email = email.trim();
+    if normalized_email.is_empty() {
+        return Err("email is required".to_string());
+    }
+
+    let remote_account = resolve_remote_account_for_email(normalized_email)?;
+    let remote_account_id = remote_account
+        .get("id")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| "register service account missing id".to_string())?;
+    let remote_tokens = register_get_json(&format!("/api/accounts/{remote_account_id}/tokens"))?;
+
+    let access_token = remote_tokens
+        .get("access_token")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "register service account missing access_token".to_string())?
+        .to_string();
+    let refresh_token = remote_tokens
+        .get("refresh_token")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let id_token = remote_tokens
+        .get("id_token")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let chatgpt_account_id =
+        remote_account_string_field(&remote_account, "account_id").or(chatgpt_account_id_hint);
+    let workspace_id =
+        remote_account_string_field(&remote_account, "workspace_id").or(workspace_id_hint);
+
+    let imported = crate::auth_account::login_with_chatgpt_auth_tokens(
+        crate::auth_account::ChatgptAuthTokensLoginInput {
+            access_token,
+            refresh_token,
+            id_token,
+            chatgpt_account_id,
+            workspace_id,
+            chatgpt_plan_type: None,
+        },
+    )?;
+
+    Ok(json!({
+        "email": normalized_email,
+        "remoteAccountId": remote_account_id,
+        "accountId": imported.account_id,
+        "chatgptAccountId": imported.chatgpt_account_id,
+        "workspaceId": imported.workspace_id,
+        "type": imported.kind,
+    }))
+}
+
 pub(crate) fn available_register_services() -> Result<Value, String> {
     let mut payload = register_get_json("/api/registration/available-services")?;
     if let Some(object) = payload.as_object_mut() {
@@ -224,6 +300,138 @@ pub(crate) fn start_register_task(
             "email_service_id": email_service_id,
             "proxy": proxy,
         }),
+    )
+}
+
+pub(crate) fn start_register_batch(
+    email_service_type: &str,
+    email_service_id: Option<i64>,
+    proxy: Option<String>,
+    count: i64,
+    interval_min: i64,
+    interval_max: i64,
+    concurrency: i64,
+    mode: &str,
+) -> Result<Value, String> {
+    let service_type = email_service_type.trim();
+    if service_type.is_empty() {
+        return Err("emailServiceType is required".to_string());
+    }
+    if count < 1 {
+        return Err("count must be greater than 0".to_string());
+    }
+    if interval_min < 0 || interval_max < interval_min {
+        return Err("invalid interval range".to_string());
+    }
+    if concurrency < 1 {
+        return Err("concurrency must be greater than 0".to_string());
+    }
+    let normalized_mode = mode.trim().to_ascii_lowercase();
+    if !matches!(normalized_mode.as_str(), "pipeline" | "parallel") {
+        return Err("mode must be pipeline or parallel".to_string());
+    }
+
+    let mut payload = register_post_json(
+        "/api/registration/batch",
+        &json!({
+            "email_service_type": service_type,
+            "email_service_id": email_service_id,
+            "proxy": proxy,
+            "count": count,
+            "interval_min": interval_min,
+            "interval_max": interval_max,
+            "concurrency": concurrency,
+            "mode": normalized_mode,
+        }),
+    )?;
+    let task_uuids = payload
+        .get("tasks")
+        .and_then(Value::as_array)
+        .map(|items| task_uuid_array_from_items(items))
+        .unwrap_or_default();
+    if let Some(object) = payload.as_object_mut() {
+        object.insert("taskUuids".to_string(), Value::Array(task_uuids));
+    }
+    Ok(payload)
+}
+
+pub(crate) fn read_register_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_get_json(&format!("/api/registration/batch/{batch_id}"))
+}
+
+pub(crate) fn cancel_register_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_post_json(&format!("/api/registration/batch/{batch_id}/cancel"), &json!({}))
+}
+
+pub(crate) fn list_register_outlook_accounts() -> Result<Value, String> {
+    register_get_json("/api/registration/outlook-accounts")
+}
+
+pub(crate) fn start_register_outlook_batch(
+    service_ids: Vec<i64>,
+    skip_registered: bool,
+    proxy: Option<String>,
+    interval_min: i64,
+    interval_max: i64,
+    concurrency: i64,
+    mode: &str,
+) -> Result<Value, String> {
+    let ids = service_ids
+        .into_iter()
+        .filter(|service_id| *service_id > 0)
+        .collect::<Vec<_>>();
+    if ids.is_empty() {
+        return Err("serviceIds is required".to_string());
+    }
+    if interval_min < 0 || interval_max < interval_min {
+        return Err("invalid interval range".to_string());
+    }
+    if concurrency < 1 {
+        return Err("concurrency must be greater than 0".to_string());
+    }
+    let normalized_mode = mode.trim().to_ascii_lowercase();
+    if !matches!(normalized_mode.as_str(), "pipeline" | "parallel") {
+        return Err("mode must be pipeline or parallel".to_string());
+    }
+
+    register_post_json(
+        "/api/registration/outlook-batch",
+        &json!({
+            "service_ids": ids,
+            "skip_registered": skip_registered,
+            "proxy": proxy,
+            "interval_min": interval_min,
+            "interval_max": interval_max,
+            "concurrency": concurrency,
+            "mode": normalized_mode,
+        }),
+    )
+}
+
+pub(crate) fn read_register_outlook_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_get_json(&format!("/api/registration/outlook-batch/{batch_id}"))
+}
+
+pub(crate) fn cancel_register_outlook_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_post_json(
+        &format!("/api/registration/outlook-batch/{batch_id}/cancel"),
+        &json!({}),
     )
 }
 
@@ -431,71 +639,33 @@ pub(crate) fn import_register_task(task_uuid: &str) -> Result<Value, String> {
         .email
         .clone()
         .ok_or_else(|| "register task result missing email".to_string())?;
-
-    let remote_account = resolve_remote_account_for_email(&email)?;
-    let remote_account_id = remote_account
-        .get("id")
-        .and_then(Value::as_i64)
-        .ok_or_else(|| "register service account missing id".to_string())?;
-    let remote_tokens = register_get_json(&format!("/api/accounts/{remote_account_id}/tokens"))?;
-
-    let access_token = remote_tokens
-        .get("access_token")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| "register service account missing access_token".to_string())?
-        .to_string();
-    let refresh_token = remote_tokens
-        .get("refresh_token")
+    let chatgpt_account_id = task
+        .result
+        .get("account_id")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
-    let id_token = remote_tokens
-        .get("id_token")
+    let workspace_id = task
+        .result
+        .get("workspace_id")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
-    let chatgpt_account_id = remote_account_string_field(&remote_account, "account_id")
-        .or_else(|| {
-            task.result
-                .get("account_id")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
-        });
-    let workspace_id = remote_account_string_field(&remote_account, "workspace_id").or_else(|| {
-        task.result
-            .get("workspace_id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-    });
 
-    let imported = crate::auth_account::login_with_chatgpt_auth_tokens(
-        crate::auth_account::ChatgptAuthTokensLoginInput {
-            access_token,
-            refresh_token,
-            id_token,
-            chatgpt_account_id,
-            workspace_id,
-            chatgpt_plan_type: None,
-        },
-    )?;
+    let mut imported = import_remote_account_for_email(&email, chatgpt_account_id, workspace_id)?;
+    if let Some(object) = imported.as_object_mut() {
+        object.insert(
+            "taskUuid".to_string(),
+            Value::String(task_uuid.trim().to_string()),
+        );
+    }
+    Ok(imported)
+}
 
-    Ok(json!({
-        "taskUuid": task_uuid.trim(),
-        "email": email,
-        "remoteAccountId": remote_account_id,
-        "accountId": imported.account_id,
-        "chatgptAccountId": imported.chatgpt_account_id,
-        "workspaceId": imported.workspace_id,
-        "type": imported.kind,
-    }))
+pub(crate) fn import_register_account_by_email(email: &str) -> Result<Value, String> {
+    import_remote_account_for_email(email, None, None)
 }
 
 #[cfg(test)]

@@ -288,6 +288,63 @@ export interface RegisterTaskSnapshot {
   logs: string[];
 }
 
+export interface RegisterBatchStartResult {
+  batchId: string;
+  count: number;
+  taskUuids: string[];
+}
+
+export interface RegisterBatchSnapshot {
+  batchId: string;
+  total: number;
+  completed: number;
+  success: number;
+  failed: number;
+  currentIndex: number;
+  cancelled: boolean;
+  finished: boolean;
+  progress: string;
+  logs: string[];
+}
+
+export interface RegisterOutlookAccount {
+  id: number;
+  email: string;
+  name: string;
+  hasOauth: boolean;
+  isRegistered: boolean;
+  registeredAccountId: number | null;
+}
+
+export interface RegisterOutlookAccountsResult {
+  total: number;
+  registeredCount: number;
+  unregisteredCount: number;
+  accounts: RegisterOutlookAccount[];
+}
+
+export interface RegisterOutlookBatchStartResult {
+  batchId: string;
+  total: number;
+  skipped: number;
+  toRegister: number;
+  serviceIds: number[];
+}
+
+export interface RegisterOutlookBatchSnapshot {
+  batchId: string;
+  total: number;
+  completed: number;
+  success: number;
+  failed: number;
+  skipped: number;
+  currentIndex: number;
+  cancelled: boolean;
+  finished: boolean;
+  progress: string;
+  logs: string[];
+}
+
 export interface RegisterImportResult {
   taskUuid: string;
   email: string;
