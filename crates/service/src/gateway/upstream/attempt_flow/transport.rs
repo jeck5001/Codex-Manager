@@ -152,7 +152,6 @@ pub(in super::super) fn send_upstream_request(
     incoming_headers: &super::super::super::IncomingHeaderSnapshot,
     body: &Bytes,
     is_stream: bool,
-    upstream_cookie: Option<&str>,
     auth_token: &str,
     account: &Account,
     strip_session_affinity: bool,
@@ -223,11 +222,6 @@ pub(in super::super) fn send_upstream_request(
         .as_deref()
         .or_else(|| account.workspace_id.as_deref());
     let include_account_id = !is_openai_api_target;
-    let forwarded_upstream_cookie = if is_openai_api_target {
-        None
-    } else {
-        upstream_cookie
-    };
     let mut upstream_headers = if is_compact_request_path(request_ctx.request_path) {
         let header_input = super::super::header_profile::CodexCompactUpstreamHeaderInput {
             auth_token,
@@ -245,7 +239,6 @@ pub(in super::super) fn send_upstream_request(
             auth_token,
             account_id,
             include_account_id,
-            upstream_cookie: forwarded_upstream_cookie,
             incoming_session_id,
             incoming_client_request_id,
             incoming_subagent: incoming_headers.subagent(),

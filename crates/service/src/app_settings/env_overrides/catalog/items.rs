@@ -317,13 +317,6 @@ pub(crate) const ENV_OVERRIDE_CATALOG: &[EnvOverrideCatalogItem] = &[
         "15",
     ),
     EnvOverrideCatalogItem::new(
-        "CODEXMANAGER_UPSTREAM_COOKIE",
-        "上游 Cookie",
-        ENV_OVERRIDE_SCOPE_SERVICE,
-        ENV_OVERRIDE_APPLY_MODE_RUNTIME,
-        "",
-    ),
-    EnvOverrideCatalogItem::new(
         "CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS",
         "上游流式超时（毫秒）",
         ENV_OVERRIDE_SCOPE_SERVICE,

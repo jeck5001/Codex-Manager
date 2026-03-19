@@ -811,7 +811,7 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
         let snapshot = codexmanager_service::app_settings_set(Some(&json!({
             "envOverrides": {
                 "CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS": "321000",
-                "CODEXMANAGER_UPSTREAM_COOKIE": "cf_clearance=test"
+                "CODEXMANAGER_WEB_ROOT": "D:/tmp/web"
             }
         })))
         .expect("save env overrides");
@@ -822,13 +822,6 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
                 .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS"))
                 .and_then(|value| value.as_str()),
             Some("321000")
-        );
-        assert_eq!(
-            snapshot
-                .get("envOverrides")
-                .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_COOKIE"))
-                .and_then(|value| value.as_str()),
-            Some("cf_clearance=test")
         );
         assert_eq!(
             snapshot
@@ -890,9 +883,9 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
         );
         assert_eq!(
             stored
-                .get("CODEXMANAGER_UPSTREAM_COOKIE")
+                .get("CODEXMANAGER_WEB_ROOT")
                 .and_then(|value| value.as_str()),
-            Some("cf_clearance=test")
+            Some("D:/tmp/web")
         );
         assert_eq!(
             stored
@@ -1035,16 +1028,16 @@ fn app_settings_set_env_overrides_patch_preserves_other_values_and_reset_to_defa
         let first = codexmanager_service::app_settings_set(Some(&json!({
             "envOverrides": {
                 "CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS": "321000",
-                "CODEXMANAGER_UPSTREAM_COOKIE": "cf_clearance=test"
+                "CODEXMANAGER_WEB_ROOT": "D:/tmp/web"
             }
         })))
         .expect("save first env overrides");
         assert_eq!(
             first
                 .get("envOverrides")
-                .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_COOKIE"))
+                .and_then(|value| value.get("CODEXMANAGER_WEB_ROOT"))
                 .and_then(|value| value.as_str()),
-            Some("cf_clearance=test")
+            Some("D:/tmp/web")
         );
 
         let second = codexmanager_service::app_settings_set(Some(&json!({
@@ -1064,9 +1057,9 @@ fn app_settings_set_env_overrides_patch_preserves_other_values_and_reset_to_defa
         assert_eq!(
             second
                 .get("envOverrides")
-                .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_COOKIE"))
+                .and_then(|value| value.get("CODEXMANAGER_WEB_ROOT"))
                 .and_then(|value| value.as_str()),
-            Some("cf_clearance=test")
+            Some("D:/tmp/web")
         );
         assert_eq!(
             std::env::var("CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS")
@@ -1075,10 +1068,8 @@ fn app_settings_set_env_overrides_patch_preserves_other_values_and_reset_to_defa
             Some("120000")
         );
         assert_eq!(
-            std::env::var("CODEXMANAGER_UPSTREAM_COOKIE")
-                .ok()
-                .as_deref(),
-            Some("cf_clearance=test")
+            std::env::var("CODEXMANAGER_WEB_ROOT").ok().as_deref(),
+            Some("D:/tmp/web")
         );
     });
 }

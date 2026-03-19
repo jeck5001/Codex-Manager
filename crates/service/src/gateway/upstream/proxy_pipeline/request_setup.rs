@@ -9,7 +9,6 @@ pub(in super::super) struct UpstreamRequestSetup {
     pub(in super::super) upstream_fallback_base: Option<String>,
     pub(in super::super) url: String,
     pub(in super::super) url_alt: Option<String>,
-    pub(in super::super) upstream_cookie: Option<String>,
     pub(in super::super) candidate_count: usize,
     pub(in super::super) account_max_inflight: usize,
     pub(in super::super) anthropic_has_prompt_cache_key: bool,
@@ -38,8 +37,6 @@ pub(in super::super) fn prepare_request_setup(
         super::super::super::resolve_upstream_fallback_base_url(upstream_base.as_str());
     let (url, url_alt) =
         super::super::super::request_rewrite::compute_upstream_url(upstream_base.as_str(), path);
-    let upstream_cookie = super::super::super::upstream_cookie();
-
     let candidate_count = candidates.len();
     let account_max_inflight = super::super::super::account_max_inflight_limit();
     let anthropic_has_prompt_cache_key =
@@ -80,7 +77,6 @@ pub(in super::super) fn prepare_request_setup(
         upstream_fallback_base,
         url,
         url_alt,
-        upstream_cookie,
         candidate_count,
         account_max_inflight,
         anthropic_has_prompt_cache_key,

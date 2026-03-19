@@ -182,7 +182,6 @@ mod tests {
             upstream_fallback_base: None,
             url: "https://chatgpt.com/backend-api/codex/responses".to_string(),
             url_alt: None,
-            upstream_cookie: None,
             candidate_count: 1,
             account_max_inflight: 1,
             anthropic_has_prompt_cache_key: false,

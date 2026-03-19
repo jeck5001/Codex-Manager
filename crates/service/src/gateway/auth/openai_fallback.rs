@@ -156,7 +156,6 @@ pub(super) fn try_openai_fallback(
     upstream_base: &str,
     account: &Account,
     token: &mut Token,
-    upstream_cookie: Option<&str>,
     strip_session_affinity: bool,
     debug: bool,
 ) -> Result<Option<reqwest::blocking::Response>, String> {
@@ -164,11 +163,6 @@ pub(super) fn try_openai_fallback(
     let bearer = super::resolve_openai_bearer_token(storage, account, token)?;
     let attempt_started_at = Instant::now();
     let is_openai_api_target = super::is_openai_api_base(upstream_base);
-    let forwarded_upstream_cookie = if is_openai_api_target {
-        None
-    } else {
-        upstream_cookie
-    };
 
     // `x-codex-turn-state` is an org-scoped encrypted blob. When we hit API-key fallback
     // (often a different org than the ChatGPT workspace), forwarding it can trigger:
@@ -219,7 +213,6 @@ pub(super) fn try_openai_fallback(
             auth_token: bearer.as_str(),
             account_id,
             include_account_id,
-            upstream_cookie: forwarded_upstream_cookie,
             incoming_session_id: request_affinity.incoming_session_id,
             incoming_client_request_id: request_affinity.incoming_client_request_id.as_deref(),
             incoming_subagent: incoming_headers.subagent(),

@@ -49,7 +49,6 @@ fn codex_header_profile_sets_required_headers_for_stream() {
         auth_token: "token-123",
         account_id: Some("acc-1"),
         include_account_id: true,
-        upstream_cookie: Some("cf_clearance=test"),
         incoming_session_id: None,
         incoming_client_request_id: Some("client-req-1"),
         incoming_subagent: Some("review"),
@@ -103,10 +102,6 @@ fn codex_header_profile_sets_required_headers_for_stream() {
         Some("acc-1")
     );
     assert_eq!(
-        find_header(&headers, "Cookie").as_deref(),
-        Some("cf_clearance=test")
-    );
-    assert_eq!(
         find_header(&headers, "x-codex-turn-state").as_deref(),
         Some("turn-state")
     );
@@ -121,7 +116,6 @@ fn codex_header_profile_uses_json_accept_for_non_stream() {
         auth_token: "token-456",
         account_id: None,
         include_account_id: true,
-        upstream_cookie: None,
         incoming_session_id: None,
         incoming_client_request_id: None,
         incoming_subagent: None,
@@ -239,7 +233,6 @@ fn codex_header_profile_uses_dynamic_originator_and_residency_requirement() {
         auth_token: "token-dynamic",
         account_id: None,
         include_account_id: true,
-        upstream_cookie: None,
         incoming_session_id: None,
         incoming_client_request_id: None,
         incoming_subagent: None,
@@ -273,7 +266,6 @@ fn codex_header_profile_regenerates_session_on_failover() {
         auth_token: "token-789",
         account_id: None,
         include_account_id: true,
-        upstream_cookie: None,
         incoming_session_id: Some("sticky-session"),
         incoming_client_request_id: None,
         incoming_subagent: None,
@@ -306,7 +298,6 @@ fn codex_header_profile_uses_fallback_session_when_incoming_missing() {
         auth_token: "token-fallback",
         account_id: None,
         include_account_id: true,
-        upstream_cookie: None,
         incoming_session_id: None,
         incoming_client_request_id: None,
         incoming_subagent: None,
@@ -334,7 +325,6 @@ fn codex_header_profile_does_not_forward_conversation_header_even_with_fallback(
         auth_token: "token-fallback-conv",
         account_id: None,
         include_account_id: true,
-        upstream_cookie: None,
         incoming_session_id: None,
         incoming_client_request_id: None,
         incoming_subagent: None,
@@ -358,7 +348,6 @@ fn codex_header_profile_skips_account_header_when_disabled() {
         auth_token: "token-no-acc",
         account_id: Some("acc-should-not-send"),
         include_account_id: false,
-        upstream_cookie: None,
         incoming_session_id: None,
         incoming_client_request_id: None,
         incoming_subagent: None,
@@ -382,7 +371,6 @@ fn codex_header_profile_can_disable_affinity_headers() {
         auth_token: "token-no-affinity",
         account_id: None,
         include_account_id: true,
-        upstream_cookie: None,
         incoming_session_id: Some("sticky-session"),
         incoming_client_request_id: None,
         incoming_subagent: None,
@@ -413,7 +401,6 @@ fn codex_header_profile_does_not_invent_client_request_id_on_failover() {
         auth_token: "token-failover-stable",
         account_id: None,
         include_account_id: true,
-        upstream_cookie: None,
         incoming_session_id: Some("sticky-session"),
         incoming_client_request_id: None,
         incoming_subagent: None,

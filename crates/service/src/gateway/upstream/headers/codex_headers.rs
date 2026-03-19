@@ -4,7 +4,6 @@ pub(crate) struct CodexUpstreamHeaderInput<'a> {
     pub(crate) auth_token: &'a str,
     pub(crate) account_id: Option<&'a str>,
     pub(crate) include_account_id: bool,
-    pub(crate) upstream_cookie: Option<&'a str>,
     pub(crate) incoming_session_id: Option<&'a str>,
     pub(crate) incoming_client_request_id: Option<&'a str>,
     pub(crate) incoming_subagent: Option<&'a str>,
@@ -113,12 +112,6 @@ pub(crate) fn build_codex_upstream_headers(
         if let Some(account_id) = input.account_id {
             headers.push(("ChatGPT-Account-ID".to_string(), account_id.to_string()));
         }
-    }
-    if let Some(cookie) = input
-        .upstream_cookie
-        .filter(|value| !value.trim().is_empty())
-    {
-        headers.push(("Cookie".to_string(), cookie.to_string()));
     }
     headers
 }

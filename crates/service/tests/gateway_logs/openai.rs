@@ -121,10 +121,6 @@ fn gateway_openai_api_base_suppresses_cookie_and_account_headers() {
     let db_path: PathBuf = dir.join("codexmanager.db");
 
     let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let _cookie_guard = EnvGuard::set(
-        "CODEXMANAGER_UPSTREAM_COOKIE",
-        "cf_clearance=should_not_forward",
-    );
 
     let upstream_response = serde_json::json!({
         "id": "resp_openai_api_base",

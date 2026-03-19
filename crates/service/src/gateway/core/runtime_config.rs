@@ -23,7 +23,6 @@ static ACCOUNT_MAX_INFLIGHT: AtomicUsize = AtomicUsize::new(DEFAULT_ACCOUNT_MAX_
 static STRICT_REQUEST_PARAM_ALLOWLIST: AtomicBool =
     AtomicBool::new(DEFAULT_STRICT_REQUEST_PARAM_ALLOWLIST);
 static ENABLE_REQUEST_COMPRESSION: AtomicBool = AtomicBool::new(DEFAULT_ENABLE_REQUEST_COMPRESSION);
-static UPSTREAM_COOKIE: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static UPSTREAM_PROXY_URL: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static FREE_ACCOUNT_MAX_MODEL: OnceLock<RwLock<String>> = OnceLock::new();
 static ORIGINATOR: OnceLock<RwLock<String>> = OnceLock::new();
@@ -202,11 +201,6 @@ pub(crate) fn trace_body_preview_max_bytes() -> usize {
 pub(crate) fn front_proxy_max_body_bytes() -> usize {
     ensure_runtime_config_loaded();
     FRONT_PROXY_MAX_BODY_BYTES.load(Ordering::Relaxed)
-}
-
-pub(super) fn upstream_cookie() -> Option<String> {
-    ensure_runtime_config_loaded();
-    crate::lock_utils::read_recover(upstream_cookie_cell(), "upstream_cookie").clone()
 }
 
 pub(super) fn upstream_proxy_url() -> Option<String> {
@@ -407,11 +401,6 @@ pub(super) fn reload_from_env() {
         Ordering::Relaxed,
     );
 
-    let cookie = env_non_empty(ENV_UPSTREAM_COOKIE);
-    let mut cached_cookie =
-        crate::lock_utils::write_recover(upstream_cookie_cell(), "upstream_cookie");
-    *cached_cookie = cookie;
-
     let client_id = env_non_empty(ENV_TOKEN_EXCHANGE_CLIENT_ID)
         .unwrap_or_else(|| DEFAULT_CLIENT_ID.to_string());
     let mut cached_client_id = crate::lock_utils::write_recover(
@@ -476,8 +465,6 @@ pub(super) fn reload_from_env() {
     refresh_upstream_clients_from_runtime_config();
 }
 
-const ENV_UPSTREAM_COOKIE: &str = "CODEXMANAGER_UPSTREAM_COOKIE";
-
 fn ensure_runtime_config_loaded() {
     let _ = RUNTIME_CONFIG_LOADED.get_or_init(|| reload_from_env());
 }
@@ -535,10 +522,6 @@ fn build_upstream_client_pool() -> UpstreamClientPool {
         );
         UpstreamClientPool { proxies, clients }
     }
-}
-
-fn upstream_cookie_cell() -> &'static RwLock<Option<String>> {
-    UPSTREAM_COOKIE.get_or_init(|| RwLock::new(None))
 }
 
 fn upstream_proxy_url_cell() -> &'static RwLock<Option<String>> {
