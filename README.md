@@ -132,10 +132,10 @@
 - Codex（OpenAI）：本项目在请求链路、登录语义与上游兼容行为上参考了该项目的实现与源码结构 <https://github.com/openai/codex>
 
 ## 认可社区
-<p align="center">
+<p align="left">
   <a href="https://linux.do/t/topic/1688401" title="LINUX DO">
     <img
-      src="https://cdn3.linux.do/original/4X/d/1/4/d146c68151340881c884d95e0da4acdf369258c6.png?style=for-the-badge&logo=discourse&logoColor=white"
+      src="https://cdn3.linux.do/original/4X/d/1/4/d146c68151340881c884d95e0da4acdf369258c6.png"
       alt="LINUX DO"
       width="100"
       hight="100"
