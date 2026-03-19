@@ -96,3 +96,12 @@ pub(crate) fn clear_pending_usage_refresh_tasks_for_tests() {
         pending.clear();
     }
 }
+
+#[cfg(test)]
+pub(crate) fn is_usage_refresh_task_pending_for_tests(account_id: &str) -> bool {
+    let Some(mutex) = PENDING_USAGE_REFRESH_TASKS.get() else {
+        return false;
+    };
+    let pending = crate::lock_utils::lock_recover(mutex, "pending_usage_refresh_tasks");
+    pending.contains(account_id)
+}

@@ -25,6 +25,7 @@ where
     }
     if status.is_success() {
         super::super::super::clear_account_cooldown(account_id);
+        let _ = crate::usage_refresh::enqueue_usage_refresh_for_account(account_id);
         log_gateway_result(Some(url), status.as_u16(), None);
         return UpstreamOutcomeDecision::RespondUpstream;
     }

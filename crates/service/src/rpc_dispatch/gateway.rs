@@ -124,6 +124,15 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 http_worker_min: usize_param(req, "httpWorkerMin"),
                 http_stream_worker_factor: usize_param(req, "httpStreamWorkerFactor"),
                 http_stream_worker_min: usize_param(req, "httpStreamWorkerMin"),
+                auto_register_pool_enabled: super::bool_param(req, "autoRegisterPoolEnabled"),
+                auto_register_ready_account_count: usize_param(
+                    req,
+                    "autoRegisterReadyAccountCount",
+                ),
+                auto_register_ready_remain_percent: u64_param(
+                    req,
+                    "autoRegisterReadyRemainPercent",
+                ),
             };
             let input = crate::BackgroundTasksInput {
                 usage_polling_enabled: patch.usage_polling_enabled,
@@ -137,6 +146,9 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 http_worker_min: patch.http_worker_min,
                 http_stream_worker_factor: patch.http_stream_worker_factor,
                 http_stream_worker_min: patch.http_stream_worker_min,
+                auto_register_pool_enabled: patch.auto_register_pool_enabled,
+                auto_register_ready_account_count: patch.auto_register_ready_account_count,
+                auto_register_ready_remain_percent: patch.auto_register_ready_remain_percent,
             };
             super::value_or_error(crate::set_gateway_background_tasks(input))
         }

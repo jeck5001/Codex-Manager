@@ -47,6 +47,10 @@ export function Header() {
         return "仪表盘";
       case "/accounts":
         return "账号管理";
+      case "/register":
+        return "注册中心";
+      case "/email-services":
+        return "邮箱服务";
       case "/apikeys":
         return "平台密钥";
       case "/logs":

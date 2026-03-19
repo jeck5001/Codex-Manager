@@ -1,15 +1,33 @@
 services:
+  codexmanager-register:
+    build:
+      context: ../vendor/codex-register
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./codexregister-data:/app/data
+      - ./codexregister-logs:/app/logs
+    ports:
+      - "8000:8000"
+
   codexmanager-service:
     build:
       context: ..
       dockerfile: docker/Dockerfile.service
     restart: unless-stopped
+    depends_on:
+      - codexmanager-register
     environment:
       CODEXMANAGER_SERVICE_ADDR: 0.0.0.0:48760
       CODEXMANAGER_DB_PATH: /data/codexmanager.db
       CODEXMANAGER_RPC_TOKEN_FILE: /data/codexmanager.rpc-token
+      CODEXMANAGER_REGISTER_SERVICE_URL: http://codexmanager-register:8000
     volumes:
-      - codexmanager-data:/data
+      - ./codexmanager-data:/data
     ports:
       - "48760:48760"
 
@@ -29,9 +47,6 @@ services:
       CODEXMANAGER_RPC_TOKEN_FILE: /data/codexmanager.rpc-token
       CODEXMANAGER_WEB_NO_OPEN: "1"
     volumes:
-      - codexmanager-data:/data
+      - ./codexmanager-data:/data
     ports:
       - "48761:48761"
-
-volumes:
-  codexmanager-data:
