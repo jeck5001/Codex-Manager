@@ -88,6 +88,25 @@ fn register_post_json(path: &str, payload: &Value) -> Result<Value, String> {
     read_json_response(response)
 }
 
+fn register_patch_json(path: &str, payload: &Value) -> Result<Value, String> {
+    let client = register_http_client()?;
+    let response = client
+        .patch(register_service_url(path))
+        .json(payload)
+        .send()
+        .map_err(|err| format!("request register service failed: {err}"))?;
+    read_json_response(response)
+}
+
+fn register_delete_json(path: &str) -> Result<Value, String> {
+    let client = register_http_client()?;
+    let response = client
+        .delete(register_service_url(path))
+        .send()
+        .map_err(|err| format!("request register service failed: {err}"))?;
+    read_json_response(response)
+}
+
 fn task_status(task: &Value) -> String {
     task.get("status")
         .and_then(Value::as_str)
@@ -194,6 +213,137 @@ pub(crate) fn start_register_task(
             "email_service_type": service_type,
             "email_service_id": email_service_id,
             "proxy": proxy,
+        }),
+    )
+}
+
+pub(crate) fn register_email_service_types() -> Result<Value, String> {
+    register_get_json("/api/email-services/types")
+}
+
+pub(crate) fn list_register_email_services(
+    service_type: Option<&str>,
+    enabled_only: bool,
+) -> Result<Value, String> {
+    let mut query = Vec::new();
+    if let Some(service_type) = service_type
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        query.push(("service_type".to_string(), service_type.to_string()));
+    }
+    if enabled_only {
+        query.push(("enabled_only".to_string(), "true".to_string()));
+    }
+    register_get_json_with_query("/api/email-services", &query)
+}
+
+pub(crate) fn read_register_email_service_full(service_id: i64) -> Result<Value, String> {
+    if service_id < 1 {
+        return Err("serviceId is required".to_string());
+    }
+    register_get_json(&format!("/api/email-services/{service_id}/full"))
+}
+
+pub(crate) fn create_register_email_service(
+    service_type: &str,
+    name: &str,
+    enabled: bool,
+    priority: i64,
+    config: Value,
+) -> Result<Value, String> {
+    let service_type = service_type.trim();
+    let name = name.trim();
+    if service_type.is_empty() {
+        return Err("serviceType is required".to_string());
+    }
+    if name.is_empty() {
+        return Err("name is required".to_string());
+    }
+    register_post_json(
+        "/api/email-services",
+        &json!({
+            "service_type": service_type,
+            "name": name,
+            "enabled": enabled,
+            "priority": priority.max(0),
+            "config": config,
+        }),
+    )
+}
+
+pub(crate) fn update_register_email_service(
+    service_id: i64,
+    name: Option<&str>,
+    enabled: Option<bool>,
+    priority: Option<i64>,
+    config: Option<Value>,
+) -> Result<Value, String> {
+    if service_id < 1 {
+        return Err("serviceId is required".to_string());
+    }
+    let mut payload = serde_json::Map::new();
+    if let Some(name) = name.map(str::trim).filter(|value| !value.is_empty()) {
+        payload.insert("name".to_string(), Value::String(name.to_string()));
+    }
+    if let Some(enabled) = enabled {
+        payload.insert("enabled".to_string(), Value::Bool(enabled));
+    }
+    if let Some(priority) = priority {
+        payload.insert("priority".to_string(), Value::Number(priority.max(0).into()));
+    }
+    if let Some(config) = config {
+        payload.insert("config".to_string(), config);
+    }
+    register_patch_json(
+        &format!("/api/email-services/{service_id}"),
+        &Value::Object(payload),
+    )
+}
+
+pub(crate) fn delete_register_email_service(service_id: i64) -> Result<Value, String> {
+    if service_id < 1 {
+        return Err("serviceId is required".to_string());
+    }
+    register_delete_json(&format!("/api/email-services/{service_id}"))
+}
+
+pub(crate) fn test_register_email_service(service_id: i64) -> Result<Value, String> {
+    if service_id < 1 {
+        return Err("serviceId is required".to_string());
+    }
+    register_post_json(&format!("/api/email-services/{service_id}/test"), &json!({}))
+}
+
+pub(crate) fn set_register_email_service_enabled(
+    service_id: i64,
+    enabled: bool,
+) -> Result<Value, String> {
+    if service_id < 1 {
+        return Err("serviceId is required".to_string());
+    }
+    let action = if enabled { "enable" } else { "disable" };
+    register_post_json(
+        &format!("/api/email-services/{service_id}/{action}"),
+        &json!({}),
+    )
+}
+
+pub(crate) fn batch_import_register_outlook(
+    data: &str,
+    enabled: bool,
+    priority: i64,
+) -> Result<Value, String> {
+    let data = data.trim();
+    if data.is_empty() {
+        return Err("data is required".to_string());
+    }
+    register_post_json(
+        "/api/email-services/outlook/batch-import",
+        &json!({
+            "data": data,
+            "enabled": enabled,
+            "priority": priority.max(0),
         }),
     )
 }

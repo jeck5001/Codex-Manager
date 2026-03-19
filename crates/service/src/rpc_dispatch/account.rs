@@ -104,6 +104,124 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 proxy,
             ))
         }
+        "account/register/emailServices/types" => {
+            super::value_or_error(account_register::register_email_service_types())
+        }
+        "account/register/emailServices/list" => {
+            let service_type = first_str_param(req, &["serviceType", "service_type"]);
+            let enabled_only =
+                first_bool_param(req, &["enabledOnly", "enabled_only"]).unwrap_or(false);
+            super::value_or_error(account_register::list_register_email_services(
+                service_type,
+                enabled_only,
+            ))
+        }
+        "account/register/emailServices/readFull" => {
+            let service_id = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("serviceId").or_else(|| params.get("service_id")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default();
+            super::value_or_error(account_register::read_register_email_service_full(service_id))
+        }
+        "account/register/emailServices/create" => {
+            let service_type = first_str_param(
+                req,
+                &["serviceType", "service_type", "type"],
+            )
+            .unwrap_or("");
+            let name = first_str_param(req, &["name"]).unwrap_or("");
+            let enabled = first_bool_param(req, &["enabled"]).unwrap_or(true);
+            let priority = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("priority"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(0);
+            let config = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("config"))
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
+            super::value_or_error(account_register::create_register_email_service(
+                service_type,
+                name,
+                enabled,
+                priority,
+                config,
+            ))
+        }
+        "account/register/emailServices/update" => {
+            let service_id = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("serviceId").or_else(|| params.get("service_id")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default();
+            let enabled = first_bool_param(req, &["enabled"]);
+            let priority = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("priority"))
+                .and_then(|value| value.as_i64());
+            let config = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("config"))
+                .cloned();
+            super::value_or_error(account_register::update_register_email_service(
+                service_id,
+                first_str_param(req, &["name"]),
+                enabled,
+                priority,
+                config,
+            ))
+        }
+        "account/register/emailServices/delete" => {
+            let service_id = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("serviceId").or_else(|| params.get("service_id")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default();
+            super::value_or_error(account_register::delete_register_email_service(service_id))
+        }
+        "account/register/emailServices/test" => {
+            let service_id = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("serviceId").or_else(|| params.get("service_id")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default();
+            super::value_or_error(account_register::test_register_email_service(service_id))
+        }
+        "account/register/emailServices/setEnabled" => {
+            let service_id = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("serviceId").or_else(|| params.get("service_id")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default();
+            let enabled = first_bool_param(req, &["enabled"]).unwrap_or(true);
+            super::value_or_error(account_register::set_register_email_service_enabled(
+                service_id, enabled,
+            ))
+        }
+        "account/register/emailServices/outlookBatchImport" => {
+            let data = first_str_param(req, &["data"]).unwrap_or("");
+            let enabled = first_bool_param(req, &["enabled"]).unwrap_or(true);
+            let priority = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("priority"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(0);
+            super::value_or_error(account_register::batch_import_register_outlook(
+                data, enabled, priority,
+            ))
+        }
         "account/register/task" => {
             let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
             super::value_or_error(account_register::read_register_task(task_uuid))

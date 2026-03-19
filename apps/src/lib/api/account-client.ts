@@ -22,7 +22,14 @@ import {
   LoginStartResult,
   ModelOption,
   RegisterAvailableServicesResult,
+  RegisterEmailService,
+  RegisterEmailServiceField,
+  RegisterEmailServiceListResult,
+  RegisterEmailServiceTestResult,
+  RegisterEmailServiceType,
+  RegisterEmailServiceTypeCatalog,
   RegisterImportResult,
+  RegisterOutlookBatchImportResult,
   RegisterServiceGroup,
   RegisterTaskSnapshot,
   UsageAggregateSummary,
@@ -81,6 +88,33 @@ interface RegisterStartPayload {
   emailServiceType: string;
   emailServiceId?: number | null;
   proxy?: string | null;
+}
+
+interface RegisterEmailServiceListPayload {
+  serviceType?: string | null;
+  enabledOnly?: boolean;
+}
+
+interface RegisterEmailServiceCreatePayload {
+  serviceType: string;
+  name: string;
+  enabled?: boolean;
+  priority?: number;
+  config?: Record<string, unknown>;
+}
+
+interface RegisterEmailServiceUpdatePayload {
+  serviceId: number;
+  name?: string | null;
+  enabled?: boolean;
+  priority?: number | null;
+  config?: Record<string, unknown>;
+}
+
+interface RegisterOutlookBatchImportPayload {
+  data: string;
+  enabled?: boolean;
+  priority?: number;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -196,6 +230,128 @@ function normalizeRegisterImportResult(value: unknown): RegisterImportResult {
   };
 }
 
+function normalizeRegisterEmailServiceField(value: unknown): RegisterEmailServiceField {
+  const source = asRecord(value) ?? {};
+  const name = typeof source.name === "string" ? source.name : "";
+  const rawDefault = source.defaultValue ?? source.default ?? null;
+
+  return {
+    name,
+    label: typeof source.label === "string" ? source.label : name,
+    required: source.required === true,
+    defaultValue:
+      typeof rawDefault === "string" || typeof rawDefault === "number" || typeof rawDefault === "boolean"
+        ? rawDefault
+        : null,
+    placeholder: typeof source.placeholder === "string" ? source.placeholder : "",
+    secret:
+      source.secret === true ||
+      ["password", "api_key", "refresh_token", "access_token", "admin_password"].includes(name),
+  };
+}
+
+function normalizeRegisterEmailServiceType(value: unknown): RegisterEmailServiceType {
+  const source = asRecord(value) ?? {};
+  const configFields = Array.isArray(source.configFields)
+    ? source.configFields
+    : Array.isArray(source.config_fields)
+      ? source.config_fields
+      : [];
+
+  return {
+    value: typeof source.value === "string" ? source.value : "",
+    label: typeof source.label === "string" ? source.label : "",
+    description: typeof source.description === "string" ? source.description : "",
+    configFields: configFields.map(normalizeRegisterEmailServiceField),
+  };
+}
+
+function normalizeRegisterEmailServiceTypeCatalog(
+  value: unknown
+): RegisterEmailServiceTypeCatalog {
+  const source = asRecord(value) ?? {};
+  const types = Array.isArray(source.types) ? source.types : [];
+  return {
+    types: types.map(normalizeRegisterEmailServiceType).filter((item) => item.value),
+  };
+}
+
+function normalizeRegisterEmailService(value: unknown): RegisterEmailService {
+  const source = asRecord(value) ?? {};
+  return {
+    id: typeof source.id === "number" && Number.isFinite(source.id) ? source.id : 0,
+    serviceType: typeof source.serviceType === "string"
+      ? source.serviceType
+      : typeof source.service_type === "string"
+        ? source.service_type
+        : "",
+    name: typeof source.name === "string" ? source.name : "",
+    enabled: source.enabled === true,
+    priority:
+      typeof source.priority === "number" && Number.isFinite(source.priority)
+        ? source.priority
+        : 0,
+    config: asRecord(source.config) ?? {},
+    lastUsed: typeof source.lastUsed === "string"
+      ? source.lastUsed
+      : typeof source.last_used === "string"
+        ? source.last_used
+        : "",
+    createdAt: typeof source.createdAt === "string"
+      ? source.createdAt
+      : typeof source.created_at === "string"
+        ? source.created_at
+        : "",
+    updatedAt: typeof source.updatedAt === "string"
+      ? source.updatedAt
+      : typeof source.updated_at === "string"
+        ? source.updated_at
+        : "",
+  };
+}
+
+function normalizeRegisterEmailServiceList(value: unknown): RegisterEmailServiceListResult {
+  const source = asRecord(value) ?? {};
+  const services = Array.isArray(source.services) ? source.services : [];
+  return {
+    total:
+      typeof source.total === "number" && Number.isFinite(source.total)
+        ? source.total
+        : services.length,
+    services: services.map(normalizeRegisterEmailService).filter((item) => item.id > 0),
+  };
+}
+
+function normalizeRegisterEmailServiceTestResult(
+  value: unknown
+): RegisterEmailServiceTestResult {
+  const source = asRecord(value) ?? {};
+  return {
+    success: source.success === true,
+    message: typeof source.message === "string" ? source.message : "",
+    details: asRecord(source.details),
+  };
+}
+
+function normalizeRegisterOutlookBatchImportResult(
+  value: unknown
+): RegisterOutlookBatchImportResult {
+  const source = asRecord(value) ?? {};
+  return {
+    total: typeof source.total === "number" && Number.isFinite(source.total) ? source.total : 0,
+    success:
+      typeof source.success === "number" && Number.isFinite(source.success) ? source.success : 0,
+    failed:
+      typeof source.failed === "number" && Number.isFinite(source.failed) ? source.failed : 0,
+    accounts: Array.isArray(source.accounts)
+      ? source.accounts.map((item) => asRecord(item) ?? {})
+      : [],
+    errors: Array.isArray(source.errors)
+      ? source.errors.filter((item): item is string => typeof item === "string")
+      : [],
+  };
+}
+
 export const accountClient = {
   async list(params?: Record<string, unknown>): Promise<AccountListResult> {
     const result = await invoke<unknown>("service_account_list", withAddr(params));
@@ -221,6 +377,91 @@ export const accountClient = {
       withAddr()
     );
     return normalizeRegisterAvailableServices(result);
+  },
+  async getRegisterEmailServiceTypes(): Promise<RegisterEmailServiceTypeCatalog> {
+    const result = await invoke<unknown>(
+      "service_account_register_email_services_types",
+      withAddr()
+    );
+    return normalizeRegisterEmailServiceTypeCatalog(result);
+  },
+  async listRegisterEmailServices(
+    params?: RegisterEmailServiceListPayload
+  ): Promise<RegisterEmailServiceListResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_email_services_list",
+      withAddr({
+        serviceType: params?.serviceType ?? null,
+        enabledOnly: params?.enabledOnly ?? false,
+      })
+    );
+    return normalizeRegisterEmailServiceList(result);
+  },
+  async readRegisterEmailServiceFull(serviceId: number): Promise<RegisterEmailService> {
+    const result = await invoke<unknown>(
+      "service_account_register_email_services_read_full",
+      withAddr({ serviceId })
+    );
+    return normalizeRegisterEmailService(result);
+  },
+  async createRegisterEmailService(
+    params: RegisterEmailServiceCreatePayload
+  ): Promise<RegisterEmailService> {
+    const result = await invoke<unknown>(
+      "service_account_register_email_services_create",
+      withAddr({
+        serviceType: params.serviceType,
+        name: params.name,
+        enabled: params.enabled ?? true,
+        priority: params.priority ?? 0,
+        config: params.config ?? {},
+      })
+    );
+    return normalizeRegisterEmailService(result);
+  },
+  async updateRegisterEmailService(
+    params: RegisterEmailServiceUpdatePayload
+  ): Promise<RegisterEmailService> {
+    const result = await invoke<unknown>(
+      "service_account_register_email_services_update",
+      withAddr({
+        serviceId: params.serviceId,
+        name: params.name ?? null,
+        enabled: params.enabled,
+        priority: params.priority ?? null,
+        config: params.config ?? {},
+      })
+    );
+    return normalizeRegisterEmailService(result);
+  },
+  deleteRegisterEmailService: (serviceId: number) =>
+    invoke("service_account_register_email_services_delete", withAddr({ serviceId })),
+  async testRegisterEmailService(
+    serviceId: number
+  ): Promise<RegisterEmailServiceTestResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_email_services_test",
+      withAddr({ serviceId })
+    );
+    return normalizeRegisterEmailServiceTestResult(result);
+  },
+  setRegisterEmailServiceEnabled: (serviceId: number, enabled: boolean) =>
+    invoke(
+      "service_account_register_email_services_set_enabled",
+      withAddr({ serviceId, enabled })
+    ),
+  async outlookBatchImportRegisterEmailServices(
+    params: RegisterOutlookBatchImportPayload
+  ): Promise<RegisterOutlookBatchImportResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_email_services_outlook_batch_import",
+      withAddr({
+        data: params.data,
+        enabled: params.enabled ?? true,
+        priority: params.priority ?? 0,
+      })
+    );
+    return normalizeRegisterOutlookBatchImportResult(result);
   },
   async startRegisterTask(params: RegisterStartPayload): Promise<RegisterTaskSnapshot> {
     const result = await invoke<unknown>(
