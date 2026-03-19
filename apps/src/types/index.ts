@@ -232,10 +232,24 @@ export interface RegisterEmailServiceListResult {
   services: RegisterEmailService[];
 }
 
+export interface RegisterEmailServiceStats {
+  outlookCount: number;
+  customCount: number;
+  tempMailCount: number;
+  tempmailAvailable: boolean;
+  enabledCount: number;
+}
+
 export interface RegisterEmailServiceTestResult {
   success: boolean;
   message: string;
   details: Record<string, unknown> | null;
+}
+
+export interface RegisterEmailServiceBatchDeleteResult {
+  success: boolean;
+  deleted: number;
+  message: string;
 }
 
 export interface RegisterOutlookBatchImportResult {

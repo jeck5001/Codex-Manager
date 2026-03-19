@@ -36,6 +36,9 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_account_register_email_services_list: {
     rpcMethod: "account/register/emailServices/list",
   },
+  service_account_register_email_services_stats: {
+    rpcMethod: "account/register/emailServices/stats",
+  },
   service_account_register_email_services_read_full: {
     rpcMethod: "account/register/emailServices/readFull",
   },
@@ -56,6 +59,15 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   },
   service_account_register_email_services_outlook_batch_import: {
     rpcMethod: "account/register/emailServices/outlookBatchImport",
+  },
+  service_account_register_email_services_outlook_batch_delete: {
+    rpcMethod: "account/register/emailServices/outlookBatchDelete",
+  },
+  service_account_register_email_services_reorder: {
+    rpcMethod: "account/register/emailServices/reorder",
+  },
+  service_account_register_email_services_test_tempmail: {
+    rpcMethod: "account/register/emailServices/testTempmail",
   },
   service_account_register_task: { rpcMethod: "account/register/task" },
   service_account_register_import: { rpcMethod: "account/register/import" },

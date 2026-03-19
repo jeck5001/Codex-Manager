@@ -22,9 +22,11 @@ import {
   LoginStartResult,
   ModelOption,
   RegisterAvailableServicesResult,
+  RegisterEmailServiceBatchDeleteResult,
   RegisterEmailService,
   RegisterEmailServiceField,
   RegisterEmailServiceListResult,
+  RegisterEmailServiceStats,
   RegisterEmailServiceTestResult,
   RegisterEmailServiceType,
   RegisterEmailServiceTypeCatalog,
@@ -115,6 +117,10 @@ interface RegisterOutlookBatchImportPayload {
   data: string;
   enabled?: boolean;
   priority?: number;
+}
+
+interface RegisterEmailServiceReorderPayload {
+  serviceIds: number[];
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -322,6 +328,38 @@ function normalizeRegisterEmailServiceList(value: unknown): RegisterEmailService
   };
 }
 
+function normalizeRegisterEmailServiceStats(value: unknown): RegisterEmailServiceStats {
+  const source = asRecord(value) ?? {};
+  return {
+    outlookCount:
+      typeof source.outlookCount === "number" && Number.isFinite(source.outlookCount)
+        ? source.outlookCount
+        : typeof source.outlook_count === "number" && Number.isFinite(source.outlook_count)
+          ? source.outlook_count
+          : 0,
+    customCount:
+      typeof source.customCount === "number" && Number.isFinite(source.customCount)
+        ? source.customCount
+        : typeof source.custom_count === "number" && Number.isFinite(source.custom_count)
+          ? source.custom_count
+          : 0,
+    tempMailCount:
+      typeof source.tempMailCount === "number" && Number.isFinite(source.tempMailCount)
+        ? source.tempMailCount
+        : typeof source.temp_mail_count === "number" && Number.isFinite(source.temp_mail_count)
+          ? source.temp_mail_count
+          : 0,
+    tempmailAvailable:
+      source.tempmailAvailable === true || source.tempmail_available === true,
+    enabledCount:
+      typeof source.enabledCount === "number" && Number.isFinite(source.enabledCount)
+        ? source.enabledCount
+        : typeof source.enabled_count === "number" && Number.isFinite(source.enabled_count)
+          ? source.enabled_count
+          : 0,
+  };
+}
+
 function normalizeRegisterEmailServiceTestResult(
   value: unknown
 ): RegisterEmailServiceTestResult {
@@ -330,6 +368,20 @@ function normalizeRegisterEmailServiceTestResult(
     success: source.success === true,
     message: typeof source.message === "string" ? source.message : "",
     details: asRecord(source.details),
+  };
+}
+
+function normalizeRegisterEmailServiceBatchDeleteResult(
+  value: unknown
+): RegisterEmailServiceBatchDeleteResult {
+  const source = asRecord(value) ?? {};
+  return {
+    success: source.success === true,
+    deleted:
+      typeof source.deleted === "number" && Number.isFinite(source.deleted)
+        ? source.deleted
+        : 0,
+    message: typeof source.message === "string" ? source.message : "",
   };
 }
 
@@ -397,6 +449,13 @@ export const accountClient = {
     );
     return normalizeRegisterEmailServiceList(result);
   },
+  async getRegisterEmailServiceStats(): Promise<RegisterEmailServiceStats> {
+    const result = await invoke<unknown>(
+      "service_account_register_email_services_stats",
+      withAddr()
+    );
+    return normalizeRegisterEmailServiceStats(result);
+  },
   async readRegisterEmailServiceFull(serviceId: number): Promise<RegisterEmailService> {
     const result = await invoke<unknown>(
       "service_account_register_email_services_read_full",
@@ -462,6 +521,27 @@ export const accountClient = {
       })
     );
     return normalizeRegisterOutlookBatchImportResult(result);
+  },
+  async batchDeleteRegisterOutlookEmailServices(
+    serviceIds: number[]
+  ): Promise<RegisterEmailServiceBatchDeleteResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_email_services_outlook_batch_delete",
+      withAddr({ serviceIds })
+    );
+    return normalizeRegisterEmailServiceBatchDeleteResult(result);
+  },
+  reorderRegisterEmailServices: (params: RegisterEmailServiceReorderPayload) =>
+    invoke(
+      "service_account_register_email_services_reorder",
+      withAddr({ serviceIds: params.serviceIds })
+    ),
+  async testRegisterTempmail(apiUrl?: string | null): Promise<RegisterEmailServiceTestResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_email_services_test_tempmail",
+      withAddr({ apiUrl: apiUrl ?? null })
+    );
+    return normalizeRegisterEmailServiceTestResult(result);
   },
   async startRegisterTask(params: RegisterStartPayload): Promise<RegisterTaskSnapshot> {
     const result = await invoke<unknown>(
