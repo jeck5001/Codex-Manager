@@ -10,6 +10,31 @@ fn env_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+const ISOLATED_RUNTIME_ENV_KEYS: &[&str] = &[
+    "CODEXMANAGER_SERVICE_ADDR",
+    "CODEXMANAGER_WEB_ADDR",
+    "CODEXMANAGER_ROUTE_STRATEGY",
+    "CODEXMANAGER_FREE_ACCOUNT_MAX_MODEL",
+    "CODEXMANAGER_ENABLE_REQUEST_COMPRESSION",
+    "CODEXMANAGER_ORIGINATOR",
+    "CODEXMANAGER_RESIDENCY_REQUIREMENT",
+    "CODEXMANAGER_UPSTREAM_PROXY_URL",
+    "CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS",
+    "CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS",
+    "CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS",
+    "CODEXMANAGER_USAGE_POLLING_ENABLED",
+    "CODEXMANAGER_USAGE_POLL_INTERVAL_SECS",
+    "CODEXMANAGER_GATEWAY_KEEPALIVE_ENABLED",
+    "CODEXMANAGER_GATEWAY_KEEPALIVE_INTERVAL_SECS",
+    "CODEXMANAGER_TOKEN_REFRESH_POLLING_ENABLED",
+    "CODEXMANAGER_TOKEN_REFRESH_POLL_INTERVAL_SECS",
+    "CODEXMANAGER_USAGE_REFRESH_WORKERS",
+    "CODEXMANAGER_HTTP_WORKER_FACTOR",
+    "CODEXMANAGER_HTTP_WORKER_MIN",
+    "CODEXMANAGER_HTTP_STREAM_WORKER_FACTOR",
+    "CODEXMANAGER_HTTP_STREAM_WORKER_MIN",
+];
+
 fn unique_temp_db_path() -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -60,6 +85,11 @@ fn with_temp_db(test: impl FnOnce(&PathBuf)) {
     std::env::set_var("CODEXMANAGER_DB_PATH", &db_path);
     codexmanager_service::initialize_storage_if_needed().expect("init storage");
     reset_runtime_defaults();
+    let isolated_env_vars = ISOLATED_RUNTIME_ENV_KEYS
+        .iter()
+        .map(|key| (*key, None))
+        .collect::<Vec<_>>();
+    let _isolated_env = override_env_vars(&isolated_env_vars);
 
     test(&db_path);
 
