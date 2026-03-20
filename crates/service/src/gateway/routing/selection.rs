@@ -52,6 +52,10 @@ fn collect_gateway_candidates_uncached(storage: &Storage) -> Result<Vec<(Account
     Ok(out)
 }
 
+pub(crate) fn invalidate_candidate_cache() {
+    clear_candidate_cache();
+}
+
 fn read_candidate_cache() -> Option<Vec<(Account, Token)>> {
     let ttl = candidate_cache_ttl();
     if ttl.is_zero() {
