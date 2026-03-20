@@ -163,6 +163,8 @@ export default function AccountsPage() {
     isUpdatingSortAccountId,
     toggleAccountStatus,
     isUpdatingStatusAccountId,
+    bulkToggleAccountStatus,
+    isBulkUpdatingStatus,
   } = useAccounts();
 
   const [search, setSearch] = useState("");
@@ -215,6 +217,45 @@ export default function AccountsPage() {
   const effectiveSelectedIds = useMemo(
     () => selectedIds.filter((id) => accountIdSet.has(id)),
     [accountIdSet, selectedIds],
+  );
+  const selectedAccounts = useMemo(
+    () => accounts.filter((account) => effectiveSelectedIds.includes(account.id)),
+    [accounts, effectiveSelectedIds],
+  );
+  const filteredLowQuotaAccounts = useMemo(
+    () => filteredAccounts.filter((account) => account.isLowQuota),
+    [filteredAccounts],
+  );
+  const selectedEnableIds = useMemo(
+    () =>
+      selectedAccounts
+        .filter((account) => {
+          const action = getAccountStatusAction(account);
+          return action.enable;
+        })
+        .map((account) => account.id),
+    [selectedAccounts],
+  );
+  const selectedDisableIds = useMemo(
+    () =>
+      selectedAccounts
+        .filter((account) => !getAccountStatusAction(account).enable)
+        .map((account) => account.id),
+    [selectedAccounts],
+  );
+  const lowQuotaEnableIds = useMemo(
+    () =>
+      filteredLowQuotaAccounts
+        .filter((account) => getAccountStatusAction(account).enable)
+        .map((account) => account.id),
+    [filteredLowQuotaAccounts],
+  );
+  const lowQuotaDisableIds = useMemo(
+    () =>
+      filteredLowQuotaAccounts
+        .filter((account) => !getAccountStatusAction(account).enable)
+        .map((account) => account.id),
+    [filteredLowQuotaAccounts],
   );
 
   const visibleAccounts = useMemo(() => {
@@ -287,6 +328,32 @@ export default function AccountsPage() {
 
   const handleDeleteSingle = (account: Account) => {
     setDeleteDialogState({ kind: "single", account });
+  };
+
+  const handleBulkToggleSelected = (enabled: boolean) => {
+    const targetIds = enabled ? selectedEnableIds : selectedDisableIds;
+    if (!effectiveSelectedIds.length) {
+      toast.error("请先选择要操作的账号");
+      return;
+    }
+    if (!targetIds.length) {
+      toast.info(enabled ? "选中账号里没有可启用项" : "选中账号里没有可禁用项");
+      return;
+    }
+    bulkToggleAccountStatus(targetIds, enabled, "选中账号");
+  };
+
+  const handleBulkToggleLowQuota = (enabled: boolean) => {
+    const targetIds = enabled ? lowQuotaEnableIds : lowQuotaDisableIds;
+    if (!filteredLowQuotaAccounts.length) {
+      toast.info("当前筛选范围内没有低配额账号");
+      return;
+    }
+    if (!targetIds.length) {
+      toast.info(enabled ? "低配额账号里没有可启用项" : "低配额账号里没有可禁用项");
+      return;
+    }
+    bulkToggleAccountStatus(targetIds, enabled, "低配额账号");
   };
 
   const openSortEditor = (account: Account) => {
@@ -454,6 +521,44 @@ export default function AccountsPage() {
                     <DropdownMenuShortcut>
                       {isExporting ? "..." : "ZIP"}
                     </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
+                    状态
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!selectedEnableIds.length || isBulkUpdatingStatus}
+                    onClick={() => handleBulkToggleSelected(true)}
+                  >
+                    <Power className="mr-2 h-4 w-4" /> 启用选中账号
+                    <DropdownMenuShortcut>{selectedEnableIds.length || "-"}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!selectedDisableIds.length || isBulkUpdatingStatus}
+                    onClick={() => handleBulkToggleSelected(false)}
+                  >
+                    <PowerOff className="mr-2 h-4 w-4" /> 禁用选中账号
+                    <DropdownMenuShortcut>{selectedDisableIds.length || "-"}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!lowQuotaEnableIds.length || isBulkUpdatingStatus}
+                    onClick={() => handleBulkToggleLowQuota(true)}
+                  >
+                    <Power className="mr-2 h-4 w-4" /> 启用低配额账号
+                    <DropdownMenuShortcut>{lowQuotaEnableIds.length || "-"}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!lowQuotaDisableIds.length || isBulkUpdatingStatus}
+                    onClick={() => handleBulkToggleLowQuota(false)}
+                  >
+                    <PowerOff className="mr-2 h-4 w-4" /> 禁用低配额账号
+                    <DropdownMenuShortcut>{lowQuotaDisableIds.length || "-"}</DropdownMenuShortcut>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />

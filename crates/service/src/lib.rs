@@ -29,6 +29,7 @@ pub(crate) use account::plan as account_plan;
 pub(crate) use account::register as account_register;
 pub(crate) use account::status as account_status;
 pub(crate) use account::update as account_update;
+pub(crate) use account::update_many as account_update_many;
 pub(crate) use apikey::create as apikey_create;
 pub(crate) use apikey::delete as apikey_delete;
 pub(crate) use apikey::disable as apikey_disable;
