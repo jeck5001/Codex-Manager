@@ -405,6 +405,10 @@ export interface FreeProxySyncResult {
   previousUpstreamProxyUrl: string | null;
   proxyListValue: string;
   proxies: string[];
+  registerProxySyncEnabled: boolean;
+  registerProxyCreatedCount: number;
+  registerProxyUpdatedCount: number;
+  registerProxyTotalCount: number;
 }
 
 export interface AppSettings {

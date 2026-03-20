@@ -1,8 +1,9 @@
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
+use url::Url;
 
 const DEFAULT_FREEPROXY_SOURCE_URL: &str =
     "https://raw.githubusercontent.com/CharlesPikachu/freeproxy/master/proxies.json";
@@ -20,6 +21,7 @@ pub(crate) struct FreeProxySyncInput {
     pub limit: Option<usize>,
     pub source_url: Option<String>,
     pub clear_upstream_proxy_url: Option<bool>,
+    pub sync_register_proxy_pool: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -39,6 +41,10 @@ pub(crate) struct FreeProxySyncResult {
     pub previous_upstream_proxy_url: Option<String>,
     pub proxy_list_value: String,
     pub proxies: Vec<String>,
+    pub register_proxy_sync_enabled: bool,
+    pub register_proxy_created_count: usize,
+    pub register_proxy_updated_count: usize,
+    pub register_proxy_total_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +55,7 @@ struct FreeProxySyncOptions {
     limit: usize,
     source_url: String,
     clear_upstream_proxy_url: bool,
+    sync_register_proxy_pool: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,6 +131,12 @@ fn apply_freeproxy_catalog(
         return Err("freeproxy 未找到符合条件的可用代理".to_string());
     }
 
+    let register_proxy_sync = if options.sync_register_proxy_pool {
+        sync_register_proxy_pool(&proxies)?
+    } else {
+        RegisterProxySyncSummary::default()
+    };
+
     let proxy_list_value = proxies.join(",");
     let previous_upstream_proxy_url = crate::gateway::current_upstream_proxy_url();
     let mut overrides = HashMap::new();
@@ -153,7 +166,158 @@ fn apply_freeproxy_catalog(
         previous_upstream_proxy_url,
         proxy_list_value,
         proxies,
+        register_proxy_sync_enabled: options.sync_register_proxy_pool,
+        register_proxy_created_count: register_proxy_sync.created_count,
+        register_proxy_updated_count: register_proxy_sync.updated_count,
+        register_proxy_total_count: register_proxy_sync.total_count,
     })
+}
+
+#[derive(Debug, Clone, Default)]
+struct RegisterProxySyncSummary {
+    created_count: usize,
+    updated_count: usize,
+    total_count: usize,
+}
+
+#[derive(Debug, Clone)]
+struct RegisterProxyCandidate {
+    key: String,
+    name: String,
+    proxy_type: String,
+    host: String,
+    port: u16,
+    username: Option<String>,
+    password: Option<String>,
+    priority: i64,
+}
+
+fn sync_register_proxy_pool(proxies: &[String]) -> Result<RegisterProxySyncSummary, String> {
+    let candidates = build_register_proxy_candidates(proxies)?;
+    if candidates.is_empty() {
+        return Ok(RegisterProxySyncSummary::default());
+    }
+
+    let existing = crate::account_register::list_register_proxies(None)?;
+    let mut existing_by_key = HashMap::new();
+    for item in existing {
+        existing_by_key.entry(register_proxy_key_from_item(&item)).or_insert(item);
+    }
+
+    let mut created_count = 0;
+    let mut updated_count = 0;
+    for candidate in candidates.iter() {
+        if let Some(existing) = existing_by_key.get(candidate.key.as_str()) {
+            let needs_update = !existing.enabled
+                || existing.name != candidate.name
+                || existing.priority != candidate.priority;
+            if needs_update {
+                let _ = crate::account_register::update_register_proxy(
+                    existing.id,
+                    Some(candidate.name.as_str()),
+                    Some(true),
+                    Some(candidate.priority),
+                )?;
+                updated_count += 1;
+            }
+            continue;
+        }
+
+        let _ = crate::account_register::create_register_proxy(
+            candidate.name.as_str(),
+            candidate.proxy_type.as_str(),
+            candidate.host.as_str(),
+            candidate.port,
+            candidate.username.as_deref(),
+            candidate.password.as_deref(),
+            true,
+            candidate.priority,
+        )?;
+        created_count += 1;
+    }
+
+    Ok(RegisterProxySyncSummary {
+        created_count,
+        updated_count,
+        total_count: candidates.len(),
+    })
+}
+
+fn build_register_proxy_candidates(proxies: &[String]) -> Result<Vec<RegisterProxyCandidate>, String> {
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    let total = proxies.len();
+    for (index, proxy_url) in proxies.iter().enumerate() {
+        let candidate = parse_register_proxy_candidate(proxy_url, index, total)?;
+        if seen.insert(candidate.key.clone()) {
+            candidates.push(candidate);
+        }
+    }
+    Ok(candidates)
+}
+
+fn parse_register_proxy_candidate(
+    proxy_url: &str,
+    index: usize,
+    total: usize,
+) -> Result<RegisterProxyCandidate, String> {
+    let parsed =
+        Url::parse(proxy_url).map_err(|err| format!("解析 freeproxy 代理 URL 失败: {proxy_url}: {err}"))?;
+    let host = parsed
+        .host_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("freeproxy 代理缺少 host: {proxy_url}"))?
+        .to_string();
+    let port = parsed
+        .port_or_known_default()
+        .ok_or_else(|| format!("freeproxy 代理缺少端口: {proxy_url}"))?;
+    let username = (!parsed.username().trim().is_empty()).then(|| parsed.username().to_string());
+    let password = parsed.password().map(ToString::to_string);
+    let proxy_type = normalize_register_proxy_type(parsed.scheme());
+    let key = register_proxy_key(
+        proxy_type.as_str(),
+        host.as_str(),
+        port,
+        username.as_deref(),
+    );
+
+    Ok(RegisterProxyCandidate {
+        key,
+        name: format!("freeproxy-{}-{}-{}:{}", index + 1, proxy_type, host, port),
+        proxy_type,
+        host,
+        port,
+        username,
+        password,
+        priority: (total.saturating_sub(index)) as i64,
+    })
+}
+
+fn normalize_register_proxy_type(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "socks" | "socks5h" => "socks5".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn register_proxy_key(proxy_type: &str, host: &str, port: u16, username: Option<&str>) -> String {
+    format!(
+        "{}://{}@{}:{}",
+        normalize_register_proxy_type(proxy_type),
+        username.unwrap_or("").trim(),
+        host.trim().to_ascii_lowercase(),
+        port
+    )
+}
+
+fn register_proxy_key_from_item(item: &crate::account_register::RegisterProxyItem) -> String {
+    register_proxy_key(
+        item.proxy_type.as_str(),
+        item.host.as_str(),
+        item.port,
+        item.username.as_deref(),
+    )
 }
 
 fn fetch_freeproxy_catalog(source_url: &str) -> Result<FreeProxyCatalog, String> {
@@ -190,6 +354,7 @@ fn normalize_sync_options(input: FreeProxySyncInput) -> Result<FreeProxySyncOpti
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_FREEPROXY_SOURCE_URL.to_string());
     let clear_upstream_proxy_url = input.clear_upstream_proxy_url.unwrap_or(true);
+    let sync_register_proxy_pool = input.sync_register_proxy_pool.unwrap_or(true);
 
     Ok(FreeProxySyncOptions {
         protocol,
@@ -198,6 +363,7 @@ fn normalize_sync_options(input: FreeProxySyncInput) -> Result<FreeProxySyncOpti
         limit,
         source_url,
         clear_upstream_proxy_url,
+        sync_register_proxy_pool,
     })
 }
 
@@ -432,6 +598,7 @@ mod tests {
             limit: 10,
             source_url: DEFAULT_FREEPROXY_SOURCE_URL.to_string(),
             clear_upstream_proxy_url: true,
+            sync_register_proxy_pool: false,
         };
 
         let proxies = select_freeproxy_proxies(&sample_catalog().data, &options);
@@ -448,6 +615,7 @@ mod tests {
             limit: 10,
             source_url: DEFAULT_FREEPROXY_SOURCE_URL.to_string(),
             clear_upstream_proxy_url: true,
+            sync_register_proxy_pool: false,
         };
 
         let proxies = select_freeproxy_proxies(&sample_catalog().data, &options);
@@ -471,9 +639,26 @@ mod tests {
             limit: 10,
             source_url: DEFAULT_FREEPROXY_SOURCE_URL.to_string(),
             clear_upstream_proxy_url: true,
+            sync_register_proxy_pool: false,
         };
 
         let error = apply_freeproxy_catalog(options, sample_catalog()).expect_err("empty matches");
         assert!(error.contains("未找到符合条件"));
+    }
+
+    #[test]
+    fn build_register_proxy_candidates_normalizes_and_deduplicates() {
+        let candidates = build_register_proxy_candidates(&[
+            "socks5h://1.1.1.1:1080".to_string(),
+            "socks5://1.1.1.1:1080".to_string(),
+            "https://user:pass@2.2.2.2:443".to_string(),
+        ])
+        .expect("candidates");
+
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].proxy_type, "socks5");
+        assert_eq!(candidates[0].port, 1080);
+        assert_eq!(candidates[1].username.as_deref(), Some("user"));
+        assert_eq!(candidates[1].password.as_deref(), Some("pass"));
     }
 }
