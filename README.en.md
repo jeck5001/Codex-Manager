@@ -7,12 +7,10 @@
 <p align="center">A local desktop + service toolkit for Codex-compatible account and gateway management.</p>
 
 <p align="center">
-  <a href="README.md">中文</a>
-</p>
-
-<p align="center">
+  <a href="README.en.md">中文</a>|
   <a href="#sponsor">Sponsor</a>
 </p>
+
 
 A local desktop + service toolkit for managing Codex-compatible accounts, usage, platform keys, and a built-in local gateway.
 
