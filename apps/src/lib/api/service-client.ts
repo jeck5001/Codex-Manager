@@ -1,6 +1,7 @@
 import { invoke, withAddr } from "./transport";
 import {
   normalizeAppSettings,
+  normalizeFreeProxySyncResult,
   normalizeRequestLogFilterSummary,
   normalizeRequestLogListResult,
   normalizeStartupSnapshot,
@@ -8,6 +9,7 @@ import {
 } from "./normalize";
 import {
   BackgroundTaskSettings,
+  FreeProxySyncResult,
   RequestLogFilterSummary,
   RequestLogListResult,
   RequestLogTodaySummary,
@@ -51,6 +53,20 @@ export const serviceClient = {
     invoke<string>("service_gateway_upstream_proxy_get", withAddr()),
   setUpstreamProxy: (proxyUrl: string) =>
     invoke("service_gateway_upstream_proxy_set", withAddr({ proxyUrl })),
+  async syncFreeProxyPool(params?: {
+    protocol?: string;
+    anonymity?: string;
+    country?: string;
+    limit?: number;
+    clearUpstreamProxyUrl?: boolean;
+    sourceUrl?: string;
+  }): Promise<FreeProxySyncResult> {
+    const result = await invoke<unknown>(
+      "service_gateway_freeproxy_sync",
+      withAddr(params ?? {})
+    );
+    return normalizeFreeProxySyncResult(result);
+  },
   getRouteStrategy: () =>
     invoke<string>("service_gateway_route_strategy_get", withAddr()),
   setRouteStrategy: (strategy: string) =>

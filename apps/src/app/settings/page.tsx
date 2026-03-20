@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { appClient } from "@/lib/api/app-client";
+import { serviceClient } from "@/lib/api/service-client";
 import { getAppErrorMessage, isTauriRuntime } from "@/lib/api/transport";
 import { useAppStore } from "@/lib/store/useAppStore";
 import {
@@ -12,7 +13,7 @@ import {
   applyAppearancePreset,
   normalizeAppearancePreset,
 } from "@/lib/appearance";
-import { AppSettings, BackgroundTaskSettings } from "@/types";
+import { AppSettings, BackgroundTaskSettings, FreeProxySyncResult } from "@/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -90,6 +91,17 @@ const RESIDENCY_REQUIREMENT_LABELS: Record<string, string> = {
   us: "仅美国 (us)",
 };
 const EMPTY_RESIDENCY_OPTION = "__none__";
+const FREEPROXY_PROTOCOL_OPTIONS = [
+  { value: "socks5", label: "Socks5" },
+  { value: "https", label: "HTTPS" },
+  { value: "http", label: "HTTP" },
+  { value: "auto", label: "自动优选" },
+] as const;
+const FREEPROXY_ANONYMITY_OPTIONS = [
+  { value: "elite", label: "仅高匿" },
+  { value: "anonymous_or_elite", label: "匿名 + 高匿" },
+  { value: "all", label: "全部" },
+] as const;
 
 const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS = [
   "auto",
@@ -137,6 +149,15 @@ function parseIntegerInput(value: string, minimum = 0): number | null {
   const rounded = Math.trunc(numeric);
   if (rounded < minimum) return null;
   return rounded;
+}
+
+function countProxyPoolEntries(value: string | null | undefined): number {
+  const normalized = String(value || "").trim();
+  if (!normalized) return 0;
+  return normalized
+    .split(/[\n\r,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean).length;
 }
 
 type UpdateCheckSummary = {
@@ -238,6 +259,12 @@ export default function SettingsPage() {
   const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
   const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
   const [quotaProtectionThresholdDraft, setQuotaProtectionThresholdDraft] = useState<string | null>(null);
+  const [freeProxyProtocol, setFreeProxyProtocol] = useState("socks5");
+  const [freeProxyAnonymity, setFreeProxyAnonymity] = useState("elite");
+  const [freeProxyCountry, setFreeProxyCountry] = useState("");
+  const [freeProxyLimit, setFreeProxyLimit] = useState("20");
+  const [freeProxyClearSingleProxy, setFreeProxyClearSingleProxy] = useState(true);
+  const [freeProxySyncResult, setFreeProxySyncResult] = useState<FreeProxySyncResult | null>(null);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<UpdateCheckSummary | null>(null);
   const [updateDialogCheck, setUpdateDialogCheck] = useState<UpdateCheckSummary | null>(null);
   const [preparedUpdate, setPreparedUpdate] = useState<UpdatePrepareSummary | null>(null);
@@ -273,6 +300,32 @@ export default function SettingsPage() {
     },
     onError: (error: unknown) => {
       toast.error(`更新失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const syncFreeProxyPool = useMutation({
+    mutationFn: async () => {
+      const limit = parseIntegerInput(freeProxyLimit, 1);
+      if (limit == null || limit > 100) {
+        throw new Error("代理数量请输入 1 到 100 之间的整数");
+      }
+      return serviceClient.syncFreeProxyPool({
+        protocol: freeProxyProtocol,
+        anonymity: freeProxyAnonymity,
+        country: freeProxyCountry.trim(),
+        limit,
+        clearUpstreamProxyUrl: freeProxyClearSingleProxy,
+      });
+    },
+    onSuccess: async (result) => {
+      setFreeProxySyncResult(result);
+      const nextSnapshot = await appClient.getSettings();
+      queryClient.setQueryData(["app-settings-snapshot"], nextSnapshot);
+      setStoreSettings(nextSnapshot);
+      toast.success(`已同步 ${result.appliedCount} 个 freeproxy 代理到代理池`);
+    },
+    onError: (error: unknown) => {
+      toast.error(`同步 freeproxy 失败: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -423,6 +476,8 @@ export default function SettingsPage() {
       selectedEnvItem?.defaultValue ??
       ""
     : "";
+  const proxyPoolValue = snapshot?.envOverrides.CODEXMANAGER_PROXY_LIST || "";
+  const proxyPoolCount = countProxyPoolEntries(proxyPoolValue);
 
   const lastIntentThemeRef = useRef<string | null>(null);
   const lastIntentAppearancePresetRef = useRef<string | null>(null);
@@ -1089,6 +1144,128 @@ export default function SettingsPage() {
                   }}
                 />
                 <p className="text-[10px] text-muted-foreground">支持 http/https/socks5，留空表示直连。</p>
+              </div>
+
+              <div className="grid gap-4 rounded-2xl border border-border/50 bg-background/35 p-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                  <div className="space-y-1">
+                    <Label>freeproxy 快速同步</Label>
+                    <p className="text-xs text-muted-foreground">
+                      从 freeproxy 公共代理池抓取代理，并写入 <code>CODEXMANAGER_PROXY_LIST</code>。
+                      当前代理池共 {proxyPoolCount} 个代理。
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="gap-2 self-start"
+                    disabled={syncFreeProxyPool.isPending}
+                    onClick={() => syncFreeProxyPool.mutate()}
+                  >
+                    <Download className={cn("h-4 w-4", syncFreeProxyPool.isPending && "animate-pulse")} />
+                    同步代理池
+                  </Button>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-4">
+                  <div className="grid gap-2">
+                    <Label>协议</Label>
+                    <Select
+                      value={freeProxyProtocol}
+                      onValueChange={(value) => setFreeProxyProtocol(value || "socks5")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择协议" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FREEPROXY_PROTOCOL_OPTIONS.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label>匿名度</Label>
+                    <Select
+                      value={freeProxyAnonymity}
+                      onValueChange={(value) => setFreeProxyAnonymity(value || "elite")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择匿名度" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FREEPROXY_ANONYMITY_OPTIONS.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label>国家过滤</Label>
+                    <Input
+                      placeholder="US,DE,JP"
+                      value={freeProxyCountry}
+                      onChange={(event) => setFreeProxyCountry(event.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label>同步数量</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={freeProxyLimit}
+                      onChange={(event) => setFreeProxyLimit(event.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/40 px-3 py-2">
+                  <div className="space-y-0.5">
+                    <Label>同步后清空单代理配置</Label>
+                    <p className="text-[10px] text-muted-foreground">
+                      开启后会自动清空上面的单个代理 URL，避免代理池被单代理覆盖。
+                    </p>
+                  </div>
+                  <Switch
+                    checked={freeProxyClearSingleProxy}
+                    onCheckedChange={setFreeProxyClearSingleProxy}
+                  />
+                </div>
+
+                <p className="text-[10px] text-muted-foreground">
+                  默认更适合选择 <code>Socks5 + 仅高匿</code>。国家支持多值，逗号分隔；留空表示不过滤。
+                </p>
+
+                {freeProxySyncResult ? (
+                  <div className="grid gap-2 rounded-xl border border-border/40 bg-background/45 p-3">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>源更新时间：{freeProxySyncResult.sourceUpdatedAt || "未知"}</span>
+                      <span>抓取总数：{freeProxySyncResult.fetchedCount}</span>
+                      <span>命中：{freeProxySyncResult.matchedCount}</span>
+                      <span>已写入：{freeProxySyncResult.appliedCount}</span>
+                    </div>
+                    {freeProxySyncResult.previousUpstreamProxyUrl ? (
+                      <p className="text-[10px] text-muted-foreground">
+                        原单代理：
+                        <code>{freeProxySyncResult.previousUpstreamProxyUrl}</code>
+                        {freeProxySyncResult.clearedUpstreamProxyUrl ? "，已自动清空。" : "，目前仍保留。"}
+                      </p>
+                    ) : null}
+                    <div className="rounded-lg bg-black/5 p-2 font-mono text-[11px] leading-5 text-muted-foreground">
+                      {freeProxySyncResult.proxies.slice(0, 8).join("\n")}
+                      {freeProxySyncResult.proxies.length > 8
+                        ? `\n... 其余 ${freeProxySyncResult.proxies.length - 8} 个已省略`
+                        : ""}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid grid-cols-2 gap-4 border-t pt-6">

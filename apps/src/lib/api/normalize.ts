@@ -11,6 +11,7 @@ import {
   BackgroundTaskSettings,
   DeviceAuthInfo,
   EnvOverrideCatalogItem,
+  FreeProxySyncResult,
   LoginStartResult,
   ModelOption,
   RequestLog,
@@ -545,6 +546,26 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     ),
     theme: asString(source.theme) || "tech",
     appearancePreset: asString(source.appearancePreset) || "classic",
+  };
+}
+
+export function normalizeFreeProxySyncResult(payload: unknown): FreeProxySyncResult {
+  const source = asObject(payload);
+  return {
+    sourceUrl: asString(source.sourceUrl),
+    sourceUpdatedAt: asString(source.sourceUpdatedAt) || null,
+    fetchedCount: asInteger(source.fetchedCount, 0, 0),
+    matchedCount: asInteger(source.matchedCount, 0, 0),
+    appliedCount: asInteger(source.appliedCount, 0, 0),
+    protocol: asString(source.protocol),
+    anonymity: asString(source.anonymity),
+    countryFilter: asArray(source.countryFilter).map((item) => asString(item)).filter(Boolean),
+    limit: asInteger(source.limit, 0, 0),
+    clearedUpstreamProxyUrl: asBoolean(source.clearedUpstreamProxyUrl, false),
+    singleProxyStillConfigured: asBoolean(source.singleProxyStillConfigured, false),
+    previousUpstreamProxyUrl: asString(source.previousUpstreamProxyUrl) || null,
+    proxyListValue: asString(source.proxyListValue),
+    proxies: asArray(source.proxies).map((item) => asString(item)).filter(Boolean),
   };
 }
 

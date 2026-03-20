@@ -76,6 +76,21 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 }),
             )
         }
+        "gateway/freeProxy/sync" => {
+            let result = (|| {
+                let input = req
+                    .params
+                    .as_ref()
+                    .map(|params| {
+                        serde_json::from_value::<crate::gateway::FreeProxySyncInput>(params.clone())
+                    })
+                    .transpose()
+                    .map_err(|err| format!("invalid freeproxy sync payload: {err}"))?
+                    .unwrap_or_default();
+                crate::gateway::sync_proxy_pool_from_freeproxy(input)
+            })();
+            super::value_or_error(result)
+        }
         "gateway/transport/get" => super::as_json(serde_json::json!({
             "sseKeepaliveIntervalMs": crate::current_gateway_sse_keepalive_interval_ms(),
             "upstreamStreamTimeoutMs": crate::current_gateway_upstream_stream_timeout_ms(),
