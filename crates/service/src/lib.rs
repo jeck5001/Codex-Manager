@@ -1,4 +1,6 @@
 use codexmanager_core::rpc::types::{JsonRpcRequest, JsonRpcResponse};
+use std::io::Write;
+use std::sync::Once;
 
 mod account;
 mod account_identity;
@@ -106,6 +108,28 @@ pub use auth::{rpc_auth_token, rpc_auth_token_matches};
 pub use lifecycle::bootstrap::{initialize_storage_if_needed, portable};
 pub use lifecycle::shutdown::{clear_shutdown_flag, request_shutdown, shutdown_requested};
 pub use lifecycle::startup::{start_one_shot_server, start_server, ServerHandle};
+
+static LOG_INIT: Once = Once::new();
+
+pub fn initialize_process_logging() {
+    LOG_INIT.call_once(|| {
+        let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+        let mut builder = env_logger::Builder::from_env(env);
+        builder
+            .target(env_logger::Target::Stdout)
+            .format(|buf, record| {
+                writeln!(
+                    buf,
+                    "{} {:<5} [{}] {}",
+                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                    record.level(),
+                    record.target(),
+                    record.args()
+                )
+            })
+            .init();
+    });
+}
 
 pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
     rpc_dispatch::handle_request(req)
