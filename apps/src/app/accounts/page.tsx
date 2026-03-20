@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  BadgeCheck,
   BarChart3,
+  CreditCard,
   Download,
   PencilLine,
   ExternalLink,
@@ -16,6 +18,7 @@ import {
   PowerOff,
   RefreshCw,
   Search,
+  ShieldCheck,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -165,6 +168,18 @@ export default function AccountsPage() {
     isUpdatingStatusAccountId,
     bulkToggleAccountStatus,
     isBulkUpdatingStatus,
+    checkSubscription,
+    checkSubscriptions,
+    markSubscription,
+    markManySubscriptions,
+    uploadToTeamManager,
+    uploadManyToTeamManager,
+    isCheckingSubscriptionAccountId,
+    isCheckingSubscriptions,
+    isMarkingSubscriptionAccountId,
+    isMarkingManySubscriptions,
+    isUploadingTeamManagerAccountId,
+    isUploadingManyToTeamManager,
   } = useAccounts();
 
   const [search, setSearch] = useState("");
@@ -182,6 +197,22 @@ export default function AccountsPage() {
     accountName: string;
     currentSort: number;
   } | null>(null);
+  const [markSubscriptionDialogState, setMarkSubscriptionDialogState] = useState<
+    | {
+        kind: "single";
+        accountId: string;
+        accountName: string;
+      }
+    | {
+        kind: "selected";
+        accountIds: string[];
+        count: number;
+      }
+    | null
+  >(null);
+  const [markSubscriptionPlanType, setMarkSubscriptionPlanType] = useState<
+    "free" | "plus" | "team"
+  >("plus");
   const [deleteDialogState, setDeleteDialogState] = useState<
     | { kind: "single"; account: Account }
     | { kind: "selected"; ids: string[]; count: number }
@@ -354,6 +385,66 @@ export default function AccountsPage() {
       return;
     }
     bulkToggleAccountStatus(targetIds, enabled, "低配额账号");
+  };
+
+  const handleBatchCheckSubscription = () => {
+    if (!effectiveSelectedIds.length) {
+      toast.error("请先选择要检测的账号");
+      return;
+    }
+    checkSubscriptions(effectiveSelectedIds);
+  };
+
+  const handleBatchUploadTeamManager = () => {
+    if (!effectiveSelectedIds.length) {
+      toast.error("请先选择要上传的账号");
+      return;
+    }
+    uploadManyToTeamManager(effectiveSelectedIds);
+  };
+
+  const openSingleMarkSubscriptionDialog = (account: Account) => {
+    setMarkSubscriptionDialogState({
+      kind: "single",
+      accountId: account.id,
+      accountName: account.name,
+    });
+    const currentPlanType = String(account.subscriptionPlanType || "").trim().toLowerCase();
+    if (currentPlanType === "free" || currentPlanType === "plus" || currentPlanType === "team") {
+      setMarkSubscriptionPlanType(currentPlanType as "free" | "plus" | "team");
+      return;
+    }
+    setMarkSubscriptionPlanType("plus");
+  };
+
+  const openBatchMarkSubscriptionDialog = () => {
+    if (!effectiveSelectedIds.length) {
+      toast.error("请先选择要标记的账号");
+      return;
+    }
+    setMarkSubscriptionDialogState({
+      kind: "selected",
+      accountIds: [...effectiveSelectedIds],
+      count: effectiveSelectedIds.length,
+    });
+    setMarkSubscriptionPlanType("plus");
+  };
+
+  const handleConfirmMarkSubscription = () => {
+    if (!markSubscriptionDialogState) return;
+    if (markSubscriptionDialogState.kind === "single") {
+      markSubscription(
+        markSubscriptionDialogState.accountId,
+        markSubscriptionPlanType
+      );
+      setMarkSubscriptionDialogState(null);
+      return;
+    }
+    markManySubscriptions(
+      markSubscriptionDialogState.accountIds,
+      markSubscriptionPlanType
+    );
+    setMarkSubscriptionDialogState(null);
   };
 
   const openSortEditor = (account: Account) => {
@@ -560,6 +651,48 @@ export default function AccountsPage() {
                     <PowerOff className="mr-2 h-4 w-4" /> 禁用低配额账号
                     <DropdownMenuShortcut>{lowQuotaDisableIds.length || "-"}</DropdownMenuShortcut>
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!effectiveSelectedIds.length || isCheckingSubscriptions}
+                    onClick={handleBatchCheckSubscription}
+                  >
+                    <ShieldCheck className="mr-2 h-4 w-4" /> 检测选中订阅
+                    <DropdownMenuShortcut>
+                      {effectiveSelectedIds.length || "-"}
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!effectiveSelectedIds.length || isMarkingManySubscriptions}
+                    onClick={openBatchMarkSubscriptionDialog}
+                  >
+                    <BadgeCheck className="mr-2 h-4 w-4" /> 标记选中订阅
+                    <DropdownMenuShortcut>
+                      {effectiveSelectedIds.length || "-"}
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!effectiveSelectedIds.length || isUploadingManyToTeamManager}
+                    onClick={handleBatchUploadTeamManager}
+                  >
+                    <FileUp className="mr-2 h-4 w-4" /> 上传选中到 TM
+                    <DropdownMenuShortcut>
+                      {effectiveSelectedIds.length || "-"}
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
+                    支付
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    onClick={() => router.push("/payment")}
+                  >
+                    <CreditCard className="mr-2 h-4 w-4" /> 打开支付中心
+                  </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
@@ -702,6 +835,22 @@ export default function AccountsPage() {
                                 优先
                               </Badge>
                             ) : null}
+                            {account.subscriptionPlanType ? (
+                              <Badge
+                                variant="secondary"
+                                className="h-4 shrink-0 bg-sky-500/15 px-1.5 text-[9px] text-sky-700 dark:text-sky-300"
+                              >
+                                {String(account.subscriptionPlanType).toUpperCase()}
+                              </Badge>
+                            ) : null}
+                            {account.teamManagerUploadedAt ? (
+                              <Badge
+                                variant="secondary"
+                                className="h-4 shrink-0 bg-emerald-500/15 px-1.5 text-[9px] text-emerald-700 dark:text-emerald-300"
+                              >
+                                TM
+                              </Badge>
+                            ) : null}
                           </div>
                           <span className="truncate font-mono text-[10px] uppercase text-muted-foreground opacity-60">
                             {account.id.slice(0, 16)}...
@@ -713,6 +862,11 @@ export default function AccountsPage() {
                               "从未刷新",
                             )}
                           </span>
+                          {account.subscriptionUpdatedAt ? (
+                            <span className="text-[10px] text-muted-foreground">
+                              订阅标记: {formatTsFromSeconds(account.subscriptionUpdatedAt, "--")}
+                            </span>
+                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -836,6 +990,41 @@ export default function AccountsPage() {
                               >
                                 <ExternalLink className="h-4 w-4" /> 详情与日志
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2"
+                                disabled={isCheckingSubscriptionAccountId === account.id}
+                                onClick={() => checkSubscription(account.id)}
+                              >
+                                <ShieldCheck className="h-4 w-4" />
+                                检测订阅
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2"
+                                disabled={isMarkingSubscriptionAccountId === account.id}
+                                onClick={() => openSingleMarkSubscriptionDialog(account)}
+                              >
+                                <BadgeCheck className="h-4 w-4" />
+                                标记订阅
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2"
+                                disabled={isUploadingTeamManagerAccountId === account.id}
+                                onClick={() => uploadToTeamManager(account.id)}
+                              >
+                                <FileUp className="h-4 w-4" />
+                                上传到 Team Manager
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() =>
+                                  router.push(
+                                    `/payment?accountId=${encodeURIComponent(account.id)}`,
+                                  )
+                                }
+                              >
+                                <CreditCard className="h-4 w-4" />
+                                去支付中心
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="gap-2 text-red-500"
@@ -951,6 +1140,57 @@ export default function AccountsPage() {
         confirmVariant="destructive"
         onConfirm={handleConfirmDelete}
       />
+      <Dialog
+        open={Boolean(markSubscriptionDialogState)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMarkSubscriptionDialogState(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>标记订阅</DialogTitle>
+            <DialogDescription>
+              {markSubscriptionDialogState?.kind === "single"
+                ? `为账号 ${markSubscriptionDialogState.accountName} 设置订阅类型。`
+                : `为选中的 ${markSubscriptionDialogState?.count || 0} 个账号统一设置订阅类型。`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <Label htmlFor="mark-subscription-plan-type">订阅类型</Label>
+            <Select
+              value={markSubscriptionPlanType}
+              onValueChange={(value) =>
+                setMarkSubscriptionPlanType((value || "plus") as "free" | "plus" | "team")
+              }
+            >
+              <SelectTrigger id="mark-subscription-plan-type" className="h-11 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="free">Free</SelectItem>
+                <SelectItem value="plus">Plus</SelectItem>
+                <SelectItem value="team">Team</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMarkSubscriptionDialogState(null)}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleConfirmMarkSubscription}
+              disabled={isMarkingManySubscriptions}
+            >
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={Boolean(sortDialogState)}
         onOpenChange={(open) => {

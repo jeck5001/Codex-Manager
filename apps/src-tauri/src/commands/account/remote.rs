@@ -132,6 +132,103 @@ pub async fn service_account_update_many(
     rpc_call_in_background("account/updateMany", addr, Some(params)).await
 }
 
+#[tauri::command]
+pub async fn service_account_payment_generate_link(
+    addr: Option<String>,
+    account_id: String,
+    plan_type: String,
+    workspace_name: Option<String>,
+    price_interval: Option<String>,
+    seat_quantity: Option<i64>,
+    country: Option<String>,
+    proxy: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "accountId": account_id,
+        "planType": plan_type,
+        "workspaceName": workspace_name,
+        "priceInterval": price_interval,
+        "seatQuantity": seat_quantity,
+        "country": country,
+        "proxy": proxy,
+    });
+    rpc_call_in_background("account/payment/generateLink", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_account_subscription_check(
+    addr: Option<String>,
+    account_id: String,
+    proxy: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "accountId": account_id,
+        "proxy": proxy,
+    });
+    rpc_call_in_background("account/subscription/check", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_account_subscription_check_many(
+    addr: Option<String>,
+    account_ids: Vec<String>,
+    proxy: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "accountIds": account_ids,
+        "proxy": proxy,
+    });
+    rpc_call_in_background("account/subscription/checkMany", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_account_subscription_mark(
+    addr: Option<String>,
+    account_id: String,
+    plan_type: String,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "accountId": account_id,
+        "planType": plan_type,
+    });
+    rpc_call_in_background("account/subscription/mark", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_account_team_manager_upload(
+    addr: Option<String>,
+    account_id: String,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "accountId": account_id,
+    });
+    rpc_call_in_background("account/teamManager/upload", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_account_team_manager_upload_many(
+    addr: Option<String>,
+    account_ids: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "accountIds": account_ids,
+    });
+    rpc_call_in_background("account/teamManager/uploadMany", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_account_team_manager_test(
+    addr: Option<String>,
+    api_url: Option<String>,
+    api_key: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "apiUrl": api_url,
+        "apiKey": api_key,
+    });
+    rpc_call_in_background("account/teamManager/test", addr, Some(params)).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::account_update_payload;

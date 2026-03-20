@@ -13,6 +13,11 @@ import {
 import {
   AccountBulkStatusUpdateResult,
   AccountListResult,
+  AccountPaymentLinkResult,
+  AccountSubscriptionCheckManyResult,
+  AccountSubscriptionCheckResult,
+  AccountTeamManagerUploadManyResult,
+  AccountTeamManagerUploadResult,
   AccountUsage,
   ApiKey,
   ApiKeyCreateResult,
@@ -640,6 +645,49 @@ export const accountClient = {
     invoke<AccountBulkStatusUpdateResult>(
       "service_account_update_many",
       withAddr({ accountIds, status })
+    ),
+  generatePaymentLink: (payload: {
+    accountId: string;
+    planType: "plus" | "team";
+    workspaceName?: string | null;
+    priceInterval?: "month" | "year" | null;
+    seatQuantity?: number | null;
+    country?: string | null;
+    proxy?: string | null;
+  }) =>
+    invoke<AccountPaymentLinkResult>(
+      "service_account_payment_generate_link",
+      withAddr(payload)
+    ),
+  checkSubscription: (accountId: string, proxy?: string | null) =>
+    invoke<AccountSubscriptionCheckResult>(
+      "service_account_subscription_check",
+      withAddr({ accountId, proxy: proxy ?? null })
+    ),
+  checkSubscriptions: (accountIds: string[], proxy?: string | null) =>
+    invoke<AccountSubscriptionCheckManyResult>(
+      "service_account_subscription_check_many",
+      withAddr({ accountIds, proxy: proxy ?? null })
+    ),
+  markSubscription: (accountId: string, planType: "free" | "plus" | "team") =>
+    invoke<AccountSubscriptionCheckResult>(
+      "service_account_subscription_mark",
+      withAddr({ accountId, planType })
+    ),
+  uploadToTeamManager: (accountId: string) =>
+    invoke<AccountTeamManagerUploadResult>(
+      "service_account_team_manager_upload",
+      withAddr({ accountId })
+    ),
+  uploadManyToTeamManager: (accountIds: string[]) =>
+    invoke<AccountTeamManagerUploadManyResult>(
+      "service_account_team_manager_upload_many",
+      withAddr({ accountIds })
+    ),
+  testTeamManager: (apiUrl?: string | null, apiKey?: string | null) =>
+    invoke<{ success: boolean; message: string }>(
+      "service_account_team_manager_test",
+      withAddr({ apiUrl: apiUrl ?? null, apiKey: apiKey ?? null })
     ),
   import: (contents: string[]) =>
     invoke<AccountImportResult>("service_account_import", withAddr({ contents })),

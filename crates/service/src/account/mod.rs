@@ -14,6 +14,8 @@ pub(crate) mod import;
 pub(crate) mod list;
 #[path = "account_plan.rs"]
 pub(crate) mod plan;
+#[path = "account_payment.rs"]
+pub(crate) mod payment;
 #[path = "account_register.rs"]
 pub(crate) mod register;
 #[path = "account_status.rs"]

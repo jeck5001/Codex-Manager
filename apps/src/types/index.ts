@@ -36,6 +36,9 @@ export interface Account {
   availabilityLevel: AvailabilityLevel;
   primaryRemainPercent: number | null;
   secondaryRemainPercent: number | null;
+  subscriptionPlanType: string | null;
+  subscriptionUpdatedAt: number | null;
+  teamManagerUploadedAt: number | null;
   usage: AccountUsage | null;
 }
 
@@ -44,6 +47,45 @@ export interface AccountListResult {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface AccountPaymentLinkResult {
+  accountId: string;
+  accountName: string;
+  planType: string;
+  link: string;
+}
+
+export interface AccountSubscriptionCheckResult {
+  accountId: string;
+  accountName?: string;
+  success: boolean;
+  planType?: string | null;
+  subscriptionUpdatedAt?: number | null;
+  rawPlanType?: string | null;
+  error?: string;
+}
+
+export interface AccountSubscriptionCheckManyResult {
+  successCount: number;
+  failedCount: number;
+  details: AccountSubscriptionCheckResult[];
+}
+
+export interface AccountTeamManagerUploadResult {
+  accountId: string;
+  accountName?: string;
+  success: boolean;
+  message?: string;
+  uploadedAt?: number | null;
+  error?: string;
+}
+
+export interface AccountTeamManagerUploadManyResult {
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  details: AccountTeamManagerUploadResult[];
 }
 
 export interface AccountBulkStatusUpdateError {
@@ -451,6 +493,10 @@ export interface AppSettings {
   upstreamProxyUrl: string;
   upstreamStreamTimeoutMs: number;
   sseKeepaliveIntervalMs: number;
+  teamManagerEnabled: boolean;
+  teamManagerApiUrl: string;
+  teamManagerHasApiKey: boolean;
+  teamManagerApiKey?: string;
   backgroundTasks: BackgroundTaskSettings;
   envOverrides: Record<string, string>;
   envOverrideCatalog: EnvOverrideCatalogItem[];

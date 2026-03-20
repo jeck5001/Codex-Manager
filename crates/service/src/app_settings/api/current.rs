@@ -13,9 +13,10 @@ use super::{
     current_lightweight_mode_on_close_to_tray_setting, current_saved_service_addr,
     current_service_bind_mode, current_ui_appearance_preset, current_ui_low_transparency_enabled,
     current_ui_theme, current_update_auto_check_enabled, env_override_catalog_value,
-    env_override_reserved_keys, env_override_unsupported_keys, residency_requirement_options,
-    save_env_overrides_value, save_persisted_app_setting, save_persisted_bool_setting,
-    sync_runtime_settings_from_storage, APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
+    env_override_reserved_keys, env_override_unsupported_keys, get_persisted_app_setting,
+    parse_bool_with_default, residency_requirement_options, save_env_overrides_value,
+    save_persisted_app_setting, save_persisted_bool_setting, sync_runtime_settings_from_storage,
+    APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
@@ -24,6 +25,8 @@ use super::{
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+    APP_SETTING_TEAM_MANAGER_API_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_URL_KEY,
+    APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
     APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_SERVICE_ADDR_KEY,
     APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
     APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
@@ -74,6 +77,13 @@ pub(super) fn current_app_settings_value(
     let upstream_proxy_url = crate::gateway::current_upstream_proxy_url();
     let upstream_stream_timeout_ms = current_gateway_upstream_stream_timeout_ms();
     let sse_keepalive_interval_ms = current_gateway_sse_keepalive_interval_ms();
+    let team_manager_enabled = get_persisted_app_setting(APP_SETTING_TEAM_MANAGER_ENABLED_KEY)
+        .map(|raw| parse_bool_with_default(&raw, false))
+        .unwrap_or(false);
+    let team_manager_api_url =
+        get_persisted_app_setting(APP_SETTING_TEAM_MANAGER_API_URL_KEY).unwrap_or_default();
+    let team_manager_has_api_key =
+        get_persisted_app_setting(APP_SETTING_TEAM_MANAGER_API_KEY_KEY).is_some();
     let background_tasks_raw = serde_json::to_string(&background_tasks)
         .map_err(|err| format!("serialize background tasks failed: {err}"))?;
     let env_overrides = current_env_overrides();
@@ -130,6 +140,9 @@ pub(super) fn current_app_settings_value(
         "upstreamProxyUrl": upstream_proxy_url.unwrap_or_default(),
         "upstreamStreamTimeoutMs": upstream_stream_timeout_ms,
         "sseKeepaliveIntervalMs": sse_keepalive_interval_ms,
+        "teamManagerEnabled": team_manager_enabled,
+        "teamManagerApiUrl": team_manager_api_url,
+        "teamManagerHasApiKey": team_manager_has_api_key,
         "backgroundTasks": background_tasks,
         "envOverrides": env_overrides,
         "envOverrideCatalog": env_override_catalog_value(),

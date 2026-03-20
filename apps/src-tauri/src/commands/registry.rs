@@ -14,6 +14,13 @@ macro_rules! invoke_handler {
             crate::commands::account::remote::service_account_delete_unavailable_free,
             crate::commands::account::remote::service_account_update,
             crate::commands::account::remote::service_account_update_many,
+            crate::commands::account::remote::service_account_payment_generate_link,
+            crate::commands::account::remote::service_account_subscription_check,
+            crate::commands::account::remote::service_account_subscription_check_many,
+            crate::commands::account::remote::service_account_subscription_mark,
+            crate::commands::account::remote::service_account_team_manager_upload,
+            crate::commands::account::remote::service_account_team_manager_upload_many,
+            crate::commands::account::remote::service_account_team_manager_test,
             crate::commands::account::transfer::service_account_import,
             crate::commands::account::transfer::service_account_import_by_file,
             crate::commands::account::transfer::service_account_import_by_directory,
@@ -70,6 +77,7 @@ macro_rules! invoke_handler {
             crate::commands::apikey::service_apikey_enable,
             // system
             crate::commands::system::open_in_browser,
+            crate::commands::system::open_in_browser_incognito,
             crate::commands::system::app_window_unsaved_draft_sections_set,
             // updater
             crate::commands::updater::app_update_check,

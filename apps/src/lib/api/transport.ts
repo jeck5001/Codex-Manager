@@ -26,6 +26,27 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   },
   service_account_update: { rpcMethod: "account/update" },
   service_account_update_many: { rpcMethod: "account/updateMany" },
+  service_account_payment_generate_link: {
+    rpcMethod: "account/payment/generateLink",
+  },
+  service_account_subscription_check: {
+    rpcMethod: "account/subscription/check",
+  },
+  service_account_subscription_check_many: {
+    rpcMethod: "account/subscription/checkMany",
+  },
+  service_account_subscription_mark: {
+    rpcMethod: "account/subscription/mark",
+  },
+  service_account_team_manager_upload: {
+    rpcMethod: "account/teamManager/upload",
+  },
+  service_account_team_manager_upload_many: {
+    rpcMethod: "account/teamManager/uploadMany",
+  },
+  service_account_team_manager_test: {
+    rpcMethod: "account/teamManager/test",
+  },
   service_account_import: { rpcMethod: "account/import" },
   service_account_register_available_services: {
     rpcMethod: "account/register/availableServices",
@@ -183,6 +204,19 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_listen_config_get: { rpcMethod: "service/listenConfig/get" },
   service_listen_config_set: { rpcMethod: "service/listenConfig/set" },
   open_in_browser: {
+    direct: async (params) => {
+      const url = typeof params?.url === "string" ? params.url.trim() : "";
+      if (!url) {
+        throw new Error("缺少浏览器跳转地址");
+      }
+      if (typeof window === "undefined") {
+        throw new Error("当前环境不支持打开浏览器");
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+      return { ok: true };
+    },
+  },
+  open_in_browser_incognito: {
     direct: async (params) => {
       const url = typeof params?.url === "string" ? params.url.trim() : "";
       if (!url) {

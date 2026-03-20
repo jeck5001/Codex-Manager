@@ -26,6 +26,7 @@ pub(crate) fn read_accounts(
     let query = normalize_optional_text(params.query);
     let group_filter = normalize_optional_text(params.group_filter);
     let filter = normalize_filter(params.filter);
+    let payment_state_map = crate::account_payment::read_payment_state_map();
 
     if filter == AccountFilter::All {
         if pagination_requested {
@@ -44,7 +45,10 @@ pub(crate) fn read_accounts(
                 )
                 .map_err(|err| format!("list accounts failed: {err}"))?;
             return Ok(AccountListResult {
-                items: accounts.into_iter().map(to_account_summary).collect(),
+                items: accounts
+                    .into_iter()
+                    .map(|account| to_account_summary(account, &payment_state_map))
+                    .collect(),
                 total,
                 page,
                 page_size,
@@ -56,7 +60,10 @@ pub(crate) fn read_accounts(
             .map_err(|err| format!("list accounts failed: {err}"))?;
         let total = accounts.len() as i64;
         return Ok(AccountListResult {
-            items: accounts.into_iter().map(to_account_summary).collect(),
+            items: accounts
+                .into_iter()
+                .map(|account| to_account_summary(account, &payment_state_map))
+                .collect(),
             total,
             page: 1,
             page_size: if total > 0 {
@@ -81,7 +88,10 @@ pub(crate) fn read_accounts(
             Some((offset, page_size)),
         )?;
         return Ok(AccountListResult {
-            items: paged.into_iter().map(to_account_summary).collect(),
+            items: paged
+                .into_iter()
+                .map(|account| to_account_summary(account, &payment_state_map))
+                .collect(),
             total,
             page,
             page_size,
@@ -98,7 +108,10 @@ pub(crate) fn read_accounts(
     let total = accounts.len() as i64;
 
     Ok(AccountListResult {
-        items: accounts.into_iter().map(to_account_summary).collect(),
+        items: accounts
+            .into_iter()
+            .map(|account| to_account_summary(account, &payment_state_map))
+            .collect(),
         total,
         page: 1,
         page_size: if total > 0 {
@@ -188,12 +201,19 @@ fn filtered_accounts(
     }
 }
 
-fn to_account_summary(acc: Account) -> AccountSummary {
+fn to_account_summary(
+    acc: Account,
+    payment_state_map: &std::collections::BTreeMap<String, crate::account_payment::AccountPaymentState>,
+) -> AccountSummary {
+    let payment_state = payment_state_map.get(&acc.id);
     AccountSummary {
         id: acc.id,
         label: acc.label,
         group_name: acc.group_name,
         sort: acc.sort,
         status: acc.status,
+        subscription_plan_type: payment_state.and_then(|state| state.subscription_plan_type.clone()),
+        subscription_updated_at: payment_state.and_then(|state| state.subscription_updated_at),
+        team_manager_uploaded_at: payment_state.and_then(|state| state.team_manager_uploaded_at),
     }
 }

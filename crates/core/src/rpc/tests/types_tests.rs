@@ -11,12 +11,24 @@ fn account_summary_serialization_matches_compact_contract() {
         group_name: Some("TEAM".to_string()),
         sort: 10,
         status: "active".to_string(),
+        subscription_plan_type: Some("plus".to_string()),
+        subscription_updated_at: Some(1),
+        team_manager_uploaded_at: Some(2),
     };
 
     let value = serde_json::to_value(summary).expect("serialize account summary");
     let obj = value.as_object().expect("account summary object");
 
-    for key in ["id", "label", "groupName", "sort", "status"] {
+    for key in [
+        "id",
+        "label",
+        "groupName",
+        "sort",
+        "status",
+        "subscriptionPlanType",
+        "subscriptionUpdatedAt",
+        "teamManagerUploadedAt",
+    ] {
         assert!(obj.contains_key(key), "missing key: {key}");
     }
 
@@ -44,6 +56,9 @@ fn account_list_result_serialization_includes_pagination_fields() {
             group_name: Some("TEAM".to_string()),
             sort: 10,
             status: "active".to_string(),
+            subscription_plan_type: Some("team".to_string()),
+            subscription_updated_at: Some(1),
+            team_manager_uploaded_at: Some(2),
         }],
         total: 9,
         page: 2,

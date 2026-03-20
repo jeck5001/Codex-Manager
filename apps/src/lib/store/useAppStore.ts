@@ -56,6 +56,9 @@ export const useAppStore = create<AppState>((set) => ({
     upstreamProxyUrl: "",
     upstreamStreamTimeoutMs: 1800000,
     sseKeepaliveIntervalMs: 15000,
+    teamManagerEnabled: false,
+    teamManagerApiUrl: "",
+    teamManagerHasApiKey: false,
     backgroundTasks: {
       usagePollingEnabled: true,
       usagePollIntervalSecs: 600,

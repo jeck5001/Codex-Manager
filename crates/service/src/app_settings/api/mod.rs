@@ -28,7 +28,10 @@ pub(super) use super::service::{
     set_service_bind_mode, SERVICE_BIND_MODE_ALL_INTERFACES, SERVICE_BIND_MODE_LOOPBACK,
     SERVICE_BIND_MODE_SETTING_KEY,
 };
-pub(super) use super::store::{save_persisted_app_setting, save_persisted_bool_setting};
+pub(super) use super::shared::parse_bool_with_default;
+pub(super) use super::store::{
+    get_persisted_app_setting, save_persisted_app_setting, save_persisted_bool_setting,
+};
 pub(super) use super::ui::{
     current_close_to_tray_on_close_setting, current_lightweight_mode_on_close_to_tray_setting,
     current_ui_appearance_preset, current_ui_low_transparency_enabled, current_ui_theme,
@@ -46,6 +49,8 @@ pub(super) use super::{
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+    APP_SETTING_TEAM_MANAGER_API_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_URL_KEY,
+    APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
     APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_SERVICE_ADDR_KEY,
     APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
     APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY,
