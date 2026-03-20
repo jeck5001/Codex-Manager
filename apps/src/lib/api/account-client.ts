@@ -11,6 +11,7 @@ import {
   normalizeUsageSnapshot,
 } from "./normalize";
 import {
+  AccountBulkStatusUpdateResult,
   AccountListResult,
   AccountUsage,
   ApiKey,
@@ -635,6 +636,11 @@ export const accountClient = {
     invoke("service_account_update", withAddr({ accountId, status: "disabled" })),
   enableAccount: (accountId: string) =>
     invoke("service_account_update", withAddr({ accountId, status: "active" })),
+  updateManyStatus: (accountIds: string[], status: "active" | "disabled") =>
+    invoke<AccountBulkStatusUpdateResult>(
+      "service_account_update_many",
+      withAddr({ accountIds, status })
+    ),
   import: (contents: string[]) =>
     invoke<AccountImportResult>("service_account_import", withAddr({ contents })),
   async getRegisterAvailableServices(): Promise<RegisterAvailableServicesResult> {

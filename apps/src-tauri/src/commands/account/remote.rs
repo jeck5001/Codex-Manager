@@ -119,6 +119,19 @@ pub async fn service_account_update(
     .await
 }
 
+#[tauri::command]
+pub async fn service_account_update_many(
+    addr: Option<String>,
+    account_ids: Vec<String>,
+    status: String,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "accountIds": account_ids,
+        "status": status,
+    });
+    rpc_call_in_background("account/updateMany", addr, Some(params)).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::account_update_payload;

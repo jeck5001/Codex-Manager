@@ -210,6 +210,34 @@ export function useAccounts() {
     },
   });
 
+  const bulkToggleAccountStatusMutation = useMutation({
+    mutationFn: ({
+      accountIds,
+      enabled,
+      scopeLabel,
+    }: {
+      accountIds: string[];
+      enabled: boolean;
+      scopeLabel?: string;
+    }) =>
+      accountClient.updateManyStatus(accountIds, enabled ? "active" : "disabled"),
+    onSuccess: async (result, variables) => {
+      await invalidateAll();
+      const scopeLabel = variables.scopeLabel || "账号";
+      const actionLabel = variables.enabled ? "启用" : "禁用";
+      const updated = Number(result?.updated || 0);
+      const skipped = Number(result?.skipped || 0);
+      const failed = Number(result?.failed || 0);
+      toast.success(
+        `${actionLabel}${scopeLabel}完成：更新 ${updated}，跳过 ${skipped}，失败 ${failed}`
+      );
+    },
+    onError: (error: unknown, variables) => {
+      const actionLabel = variables.enabled ? "启用" : "禁用";
+      toast.error(`${actionLabel}账号失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   const importByDirectoryMutation = useMutation({
     mutationFn: () => accountClient.importByDirectory(),
     onSuccess: async (result: ImportByDirectoryResult) => {
@@ -311,6 +339,11 @@ export function useAccounts() {
       enabled: boolean,
       sourceStatus?: string | null
     ) => toggleAccountStatusMutation.mutate({ accountId, enabled, sourceStatus }),
+    bulkToggleAccountStatus: (
+      accountIds: string[],
+      enabled: boolean,
+      scopeLabel?: string
+    ) => bulkToggleAccountStatusMutation.mutate({ accountIds, enabled, scopeLabel }),
     isRefreshingAccountId:
       refreshAccountMutation.isPending && typeof refreshAccountMutation.variables === "string"
         ? refreshAccountMutation.variables
@@ -338,5 +371,6 @@ export function useAccounts() {
             (toggleAccountStatusMutation.variables as { accountId?: unknown }).accountId || ""
           )
         : "",
+    isBulkUpdatingStatus: bulkToggleAccountStatusMutation.isPending,
   };
 }

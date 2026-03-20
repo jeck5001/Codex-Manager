@@ -46,6 +46,22 @@ export interface AccountListResult {
   pageSize: number;
 }
 
+export interface AccountBulkStatusUpdateError {
+  accountId: string;
+  message: string;
+}
+
+export interface AccountBulkStatusUpdateResult {
+  requested: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  targetStatus: string;
+  updatedAccountIds: string[];
+  skippedAccountIds: string[];
+  errors: AccountBulkStatusUpdateError[];
+}
+
 export interface UsageAggregateSummary {
   primaryBucketCount: number;
   primaryKnownCount: number;

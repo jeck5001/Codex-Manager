@@ -20,3 +20,5 @@ pub(crate) mod register;
 pub(crate) mod status;
 #[path = "account_update.rs"]
 pub(crate) mod update;
+#[path = "account_update_many.rs"]
+pub(crate) mod update_many;
