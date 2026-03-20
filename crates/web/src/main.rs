@@ -19,7 +19,6 @@ use axum::routing::{get, post};
 use axum::Router;
 use rand::RngCore;
 use tokio::sync::{watch, Mutex};
-use tower_http::services::{ServeDir, ServeFile};
 
 const DEFAULT_WEB_ADDR: &str = "localhost:48761";
 const WEB_AUTH_COOKIE_NAME: &str = "codexmanager_web_auth";
@@ -34,6 +33,7 @@ struct AppState {
     shutdown_tx: watch::Sender<bool>,
     spawned_service: Arc<Mutex<bool>>,
     missing_ui_html: Arc<String>,
+    web_root: Arc<PathBuf>,
 }
 
 fn read_env_trim(name: &str) -> Option<String> {
@@ -223,6 +223,7 @@ async fn async_main() {
         shutdown_tx,
         spawned_service: spawned_service.clone(),
         missing_ui_html,
+        web_root: Arc::new(web_root.clone()),
     });
 
     let mut protected_app = Router::new()
@@ -233,8 +234,9 @@ async fn async_main() {
     let using_explicit_root = read_env_trim("CODEXMANAGER_WEB_ROOT").is_some();
     if using_explicit_root || disk_ok {
         if disk_ok {
-            let static_service = ServeDir::new(&web_root).not_found_service(ServeFile::new(index));
-            protected_app = protected_app.fallback_service(static_service);
+            protected_app = protected_app
+                .route("/", get(ui_assets::serve_disk_index))
+                .route("/{*path}", get(ui_assets::serve_disk_asset));
         } else {
             protected_app = protected_app
                 .route("/", get(ui_assets::serve_missing_ui))
