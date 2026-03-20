@@ -215,5 +215,8 @@ fn to_account_summary(
         subscription_plan_type: payment_state.and_then(|state| state.subscription_plan_type.clone()),
         subscription_updated_at: payment_state.and_then(|state| state.subscription_updated_at),
         team_manager_uploaded_at: payment_state.and_then(|state| state.team_manager_uploaded_at),
+        official_promo_link: payment_state.and_then(|state| state.official_promo_link.clone()),
+        official_promo_link_updated_at: payment_state
+            .and_then(|state| state.official_promo_link_updated_at),
     }
 }

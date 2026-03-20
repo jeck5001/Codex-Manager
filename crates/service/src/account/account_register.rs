@@ -397,6 +397,12 @@ fn import_remote_account_for_email(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
+    let cookies = remote_account
+        .get("cookies")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
     let chatgpt_account_id =
         remote_account_string_field(&remote_account, "account_id").or(chatgpt_account_id_hint);
     let workspace_id =
@@ -407,6 +413,7 @@ fn import_remote_account_for_email(
             access_token,
             refresh_token,
             id_token,
+            cookies,
             chatgpt_account_id,
             workspace_id,
             chatgpt_plan_type: None,

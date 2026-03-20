@@ -13,8 +13,9 @@ use std::{collections::BTreeMap, time::Duration};
 use crate::{
     app_settings::{
         get_persisted_app_setting, save_persisted_app_setting,
-        APP_SETTING_ACCOUNT_PAYMENT_STATE_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
-        APP_SETTING_TEAM_MANAGER_API_URL_KEY, APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
+        APP_SETTING_ACCOUNT_PAYMENT_STATE_KEY, APP_SETTING_ACCOUNT_SESSION_STATE_KEY,
+        APP_SETTING_TEAM_MANAGER_API_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_URL_KEY,
+        APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
     },
     storage_helpers::open_storage,
     usage_token_refresh::refresh_and_persist_access_token,
@@ -30,6 +31,14 @@ pub(crate) struct AccountPaymentState {
     pub subscription_plan_type: Option<String>,
     pub subscription_updated_at: Option<i64>,
     pub team_manager_uploaded_at: Option<i64>,
+    pub official_promo_link: Option<String>,
+    pub official_promo_link_updated_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub(crate) struct AccountSessionState {
+    pub cookies: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -118,12 +127,32 @@ fn country_currency(country: &str) -> &'static str {
     }
 }
 
-fn payment_headers(access_token: &str) -> Vec<(&'static str, String)> {
-    vec![
+fn extract_oai_did(cookies: &str) -> Option<String> {
+    cookies
+        .split(';')
+        .find_map(|part| {
+            let trimmed = part.trim();
+            trimmed
+                .strip_prefix("oai-did=")
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
+}
+
+fn payment_headers(access_token: &str, cookies: Option<&str>) -> Vec<(&'static str, String)> {
+    let mut headers = vec![
         ("Authorization", format!("Bearer {access_token}")),
         ("Content-Type", "application/json".to_string()),
         ("oai-language", "zh-CN".to_string()),
-    ]
+    ];
+    if let Some(cookie_value) = cookies.map(str::trim).filter(|value| !value.is_empty()) {
+        headers.push(("cookie", cookie_value.to_string()));
+        if let Some(device_id) = extract_oai_did(cookie_value) {
+            headers.push(("oai-device-id", device_id));
+        }
+    }
+    headers
 }
 
 fn normalize_subscription_plan_type(plan_type: &str) -> Option<String> {
@@ -135,6 +164,19 @@ fn normalize_subscription_plan_type(plan_type: &str) -> Option<String> {
     }
 }
 
+fn normalize_official_promo_link(link: Option<&str>) -> Result<Option<String>, String> {
+    let Some(raw) = link.map(str::trim) else {
+        return Ok(None);
+    };
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    if !raw.starts_with("https://chatgpt.com/checkout/openai_llc/cs_") {
+        return Err("official promo link 必须为 chatgpt 官方 checkout 链接".to_string());
+    }
+    Ok(Some(raw.to_string()))
+}
+
 pub(crate) fn read_payment_state_map() -> BTreeMap<String, AccountPaymentState> {
     let Some(raw) = get_persisted_app_setting(APP_SETTING_ACCOUNT_PAYMENT_STATE_KEY) else {
         return BTreeMap::new();
@@ -142,10 +184,23 @@ pub(crate) fn read_payment_state_map() -> BTreeMap<String, AccountPaymentState> 
     serde_json::from_str::<BTreeMap<String, AccountPaymentState>>(&raw).unwrap_or_default()
 }
 
+fn read_session_state_map() -> BTreeMap<String, AccountSessionState> {
+    let Some(raw) = get_persisted_app_setting(APP_SETTING_ACCOUNT_SESSION_STATE_KEY) else {
+        return BTreeMap::new();
+    };
+    serde_json::from_str::<BTreeMap<String, AccountSessionState>>(&raw).unwrap_or_default()
+}
+
 fn save_payment_state_map(map: &BTreeMap<String, AccountPaymentState>) -> Result<(), String> {
     let raw =
         serde_json::to_string(map).map_err(|err| format!("serialize payment state failed: {err}"))?;
     save_persisted_app_setting(APP_SETTING_ACCOUNT_PAYMENT_STATE_KEY, Some(&raw))
+}
+
+fn save_session_state_map(map: &BTreeMap<String, AccountSessionState>) -> Result<(), String> {
+    let raw =
+        serde_json::to_string(map).map_err(|err| format!("serialize session state failed: {err}"))?;
+    save_persisted_app_setting(APP_SETTING_ACCOUNT_SESSION_STATE_KEY, Some(&raw))
 }
 
 fn update_payment_state<F>(account_id: &str, mutate: F) -> Result<AccountPaymentState, String>
@@ -165,6 +220,50 @@ where
     let next = entry.clone();
     save_payment_state_map(&map)?;
     Ok(next)
+}
+
+fn update_session_state<F>(account_id: &str, mutate: F) -> Result<AccountSessionState, String>
+where
+    F: FnOnce(&mut AccountSessionState),
+{
+    let normalized_account_id = account_id.trim();
+    if normalized_account_id.is_empty() {
+        return Err("accountId is required".to_string());
+    }
+
+    let mut map = read_session_state_map();
+    let entry = map
+        .entry(normalized_account_id.to_string())
+        .or_insert_with(AccountSessionState::default);
+    mutate(entry);
+    let next = entry.clone();
+    save_session_state_map(&map)?;
+    Ok(next)
+}
+
+pub(crate) fn store_account_cookies(
+    account_id: &str,
+    cookies: Option<&str>,
+) -> Result<AccountSessionState, String> {
+    let Some(normalized_cookies) = cookies.map(str::trim) else {
+        let state = read_session_state_map();
+        return Ok(state.get(account_id.trim()).cloned().unwrap_or_default());
+    };
+    update_session_state(account_id, |entry| {
+        entry.cookies = if normalized_cookies.is_empty() {
+            None
+        } else {
+            Some(normalized_cookies.to_string())
+        };
+    })
+}
+
+fn account_cookies(account_id: &str) -> Option<String> {
+    read_session_state_map()
+        .get(account_id.trim())
+        .and_then(|entry| entry.cookies.clone())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn read_team_manager_settings() -> TeamManagerSettings {
@@ -225,6 +324,7 @@ fn infer_subscription_plan_type(payload: &Value) -> String {
 
 fn generate_checkout_link(
     access_token: &str,
+    cookies: Option<&str>,
     plan_type: &str,
     workspace_name: &str,
     price_interval: &str,
@@ -270,7 +370,7 @@ fn generate_checkout_link(
     };
 
     let mut request = client.post(PAYMENT_CHECKOUT_URL);
-    for (name, value) in payment_headers(access_token) {
+    for (name, value) in payment_headers(access_token, cookies) {
         request = request.header(name, value);
     }
     let response = request
@@ -414,6 +514,7 @@ pub(crate) fn generate_payment_link(
     };
     let link = generate_checkout_link(
         &token.access_token,
+        account_cookies(&account.id).as_deref(),
         normalized_plan,
         workspace_name
             .map(str::trim)
@@ -547,6 +648,32 @@ pub(crate) fn mark_account_subscription(
         "success": true,
         "planType": normalized_plan,
         "subscriptionUpdatedAt": state.subscription_updated_at,
+    }))
+}
+
+pub(crate) fn set_account_official_promo_link(
+    account_id: &str,
+    link: Option<&str>,
+) -> Result<Value, String> {
+    let normalized_account_id = account_id.trim();
+    if normalized_account_id.is_empty() {
+        return Err("accountId is required".to_string());
+    }
+    let (account, _) = resolve_account_with_token(normalized_account_id)?;
+    let normalized_link = normalize_official_promo_link(link)?;
+    let state = update_payment_state(normalized_account_id, |entry| {
+        entry.official_promo_link = normalized_link.clone();
+        entry.official_promo_link_updated_at = normalized_link
+            .as_ref()
+            .map(|_| codexmanager_core::storage::now_ts());
+    })?;
+
+    Ok(json!({
+        "accountId": account.id,
+        "accountName": account.label,
+        "success": true,
+        "officialPromoLink": state.official_promo_link,
+        "officialPromoLinkUpdatedAt": state.official_promo_link_updated_at,
     }))
 }
 

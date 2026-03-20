@@ -18,6 +18,7 @@ macro_rules! invoke_handler {
             crate::commands::account::remote::service_account_subscription_check,
             crate::commands::account::remote::service_account_subscription_check_many,
             crate::commands::account::remote::service_account_subscription_mark,
+            crate::commands::account::remote::service_account_payment_official_promo_link_set,
             crate::commands::account::remote::service_account_team_manager_upload,
             crate::commands::account::remote::service_account_team_manager_upload_many,
             crate::commands::account::remote::service_account_team_manager_test,
