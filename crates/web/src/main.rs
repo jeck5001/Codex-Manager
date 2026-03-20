@@ -231,7 +231,9 @@ async fn async_main() {
     let using_explicit_root = read_env_trim("CODEXMANAGER_WEB_ROOT").is_some();
     if using_explicit_root || disk_ok {
         if disk_ok {
-            let static_service = ServeDir::new(&web_root).not_found_service(ServeFile::new(index));
+            let static_service = ServeDir::new(&web_root)
+                .append_index_html_on_directories(true)
+                .not_found_service(ServeFile::new(index));
             protected_app = protected_app.fallback_service(static_service);
         } else {
             protected_app = protected_app
