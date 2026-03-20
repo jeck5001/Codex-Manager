@@ -78,6 +78,7 @@ pub fn set_gateway_quota_protection_enabled(enabled: bool) -> Result<bool, Strin
         crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED,
         if enabled { "1" } else { "0" },
     );
+    crate::gateway::invalidate_candidate_cache();
     save_persisted_bool_setting(APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY, enabled)?;
     Ok(enabled)
 }
@@ -94,6 +95,7 @@ pub fn set_gateway_quota_protection_threshold_percent(value: u64) -> Result<u64,
         crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
         value.to_string(),
     );
+    crate::gateway::invalidate_candidate_cache();
     save_persisted_app_setting(
         APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
         Some(&value.to_string()),
