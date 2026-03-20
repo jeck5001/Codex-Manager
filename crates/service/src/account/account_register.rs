@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::thread;
 use std::time::Duration;
@@ -23,6 +23,21 @@ pub(crate) struct RegisterTaskReadResponse {
     can_import: bool,
     result: Value,
     logs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RegisterProxyItem {
+    pub id: i64,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub proxy_type: String,
+    pub host: String,
+    pub port: u16,
+    pub username: Option<String>,
+    pub enabled: bool,
+    pub is_default: bool,
+    pub priority: i64,
 }
 
 impl RegisterTaskReadResponse {
@@ -612,6 +627,83 @@ pub(crate) fn cancel_register_outlook_batch(batch_id: &str) -> Result<Value, Str
 
 pub(crate) fn register_email_service_types() -> Result<Value, String> {
     register_get_json("/api/email-services/types")
+}
+
+pub(crate) fn list_register_proxies(
+    enabled: Option<bool>,
+) -> Result<Vec<RegisterProxyItem>, String> {
+    let mut query = Vec::new();
+    if let Some(value) = enabled {
+        query.push((
+            "enabled".to_string(),
+            if value { "true" } else { "false" }.to_string(),
+        ));
+    }
+    let payload = if query.is_empty() {
+        register_get_json("/api/settings/proxies")?
+    } else {
+        register_get_json_with_query("/api/settings/proxies", &query)?
+    };
+    payload
+        .get("proxies")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "register service proxies response missing proxies".to_string())?
+        .iter()
+        .map(|item| {
+            serde_json::from_value::<RegisterProxyItem>(item.clone())
+                .map_err(|err| format!("parse register proxy failed: {err}"))
+        })
+        .collect::<Result<Vec<_>, _>>()
+}
+
+pub(crate) fn create_register_proxy(
+    name: &str,
+    proxy_type: &str,
+    host: &str,
+    port: u16,
+    username: Option<&str>,
+    password: Option<&str>,
+    enabled: bool,
+    priority: i64,
+) -> Result<Value, String> {
+    register_post_json(
+        "/api/settings/proxies",
+        &json!({
+            "name": name,
+            "type": proxy_type,
+            "host": host,
+            "port": port,
+            "username": username,
+            "password": password,
+            "enabled": enabled,
+            "priority": priority,
+        }),
+    )
+}
+
+pub(crate) fn update_register_proxy(
+    proxy_id: i64,
+    name: Option<&str>,
+    enabled: Option<bool>,
+    priority: Option<i64>,
+) -> Result<Value, String> {
+    if proxy_id < 1 {
+        return Err("proxyId is required".to_string());
+    }
+    let mut payload = serde_json::Map::new();
+    if let Some(value) = name {
+        payload.insert("name".to_string(), Value::String(value.to_string()));
+    }
+    if let Some(value) = enabled {
+        payload.insert("enabled".to_string(), Value::Bool(value));
+    }
+    if let Some(value) = priority {
+        payload.insert("priority".to_string(), Value::Number(value.max(0).into()));
+    }
+    register_patch_json(
+        &format!("/api/settings/proxies/{proxy_id}"),
+        &Value::Object(payload),
+    )
 }
 
 pub(crate) fn list_register_email_services(

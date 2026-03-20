@@ -264,6 +264,7 @@ export default function SettingsPage() {
   const [freeProxyCountry, setFreeProxyCountry] = useState("");
   const [freeProxyLimit, setFreeProxyLimit] = useState("20");
   const [freeProxyClearSingleProxy, setFreeProxyClearSingleProxy] = useState(true);
+  const [freeProxySyncRegisterPool, setFreeProxySyncRegisterPool] = useState(true);
   const [freeProxySyncResult, setFreeProxySyncResult] = useState<FreeProxySyncResult | null>(null);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<UpdateCheckSummary | null>(null);
   const [updateDialogCheck, setUpdateDialogCheck] = useState<UpdateCheckSummary | null>(null);
@@ -315,6 +316,7 @@ export default function SettingsPage() {
         country: freeProxyCountry.trim(),
         limit,
         clearUpstreamProxyUrl: freeProxyClearSingleProxy,
+        syncRegisterProxyPool: freeProxySyncRegisterPool,
       });
     },
     onSuccess: async (result) => {
@@ -322,7 +324,11 @@ export default function SettingsPage() {
       const nextSnapshot = await appClient.getSettings();
       queryClient.setQueryData(["app-settings-snapshot"], nextSnapshot);
       setStoreSettings(nextSnapshot);
-      toast.success(`已同步 ${result.appliedCount} 个 freeproxy 代理到代理池`);
+      toast.success(
+        freeProxySyncRegisterPool
+          ? `已同步 ${result.appliedCount} 个代理到网关，并写入注册代理池`
+          : `已同步 ${result.appliedCount} 个 freeproxy 代理到代理池`
+      );
     },
     onError: (error: unknown) => {
       toast.error(`同步 freeproxy 失败: ${getAppErrorMessage(error)}`);
@@ -1239,6 +1245,19 @@ export default function SettingsPage() {
                   />
                 </div>
 
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/40 px-3 py-2">
+                  <div className="space-y-0.5">
+                    <Label>同步到注册代理池</Label>
+                    <p className="text-[10px] text-muted-foreground">
+                      开启后会把同一批代理同步到注册服务的代理列表，注册账号时也会自动使用这些代理。
+                    </p>
+                  </div>
+                  <Switch
+                    checked={freeProxySyncRegisterPool}
+                    onCheckedChange={setFreeProxySyncRegisterPool}
+                  />
+                </div>
+
                 <p className="text-[10px] text-muted-foreground">
                   默认更适合选择 <code>Socks5 + 仅高匿</code>。国家支持多值，逗号分隔；留空表示不过滤。
                 </p>
@@ -1250,6 +1269,13 @@ export default function SettingsPage() {
                       <span>抓取总数：{freeProxySyncResult.fetchedCount}</span>
                       <span>命中：{freeProxySyncResult.matchedCount}</span>
                       <span>已写入：{freeProxySyncResult.appliedCount}</span>
+                      {freeProxySyncResult.registerProxySyncEnabled ? (
+                        <span>
+                          注册池：总计 {freeProxySyncResult.registerProxyTotalCount}，新增{" "}
+                          {freeProxySyncResult.registerProxyCreatedCount}，更新{" "}
+                          {freeProxySyncResult.registerProxyUpdatedCount}
+                        </span>
+                      ) : null}
                     </div>
                     {freeProxySyncResult.previousUpstreamProxyUrl ? (
                       <p className="text-[10px] text-muted-foreground">

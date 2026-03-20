@@ -566,6 +566,10 @@ export function normalizeFreeProxySyncResult(payload: unknown): FreeProxySyncRes
     previousUpstreamProxyUrl: asString(source.previousUpstreamProxyUrl) || null,
     proxyListValue: asString(source.proxyListValue),
     proxies: asArray(source.proxies).map((item) => asString(item)).filter(Boolean),
+    registerProxySyncEnabled: asBoolean(source.registerProxySyncEnabled, false),
+    registerProxyCreatedCount: asInteger(source.registerProxyCreatedCount, 0, 0),
+    registerProxyUpdatedCount: asInteger(source.registerProxyUpdatedCount, 0, 0),
+    registerProxyTotalCount: asInteger(source.registerProxyTotalCount, 0, 0),
   };
 }
 

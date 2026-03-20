@@ -119,6 +119,7 @@ pub async fn service_gateway_freeproxy_sync(
     country: Option<String>,
     limit: Option<u64>,
     clear_upstream_proxy_url: Option<bool>,
+    sync_register_proxy_pool: Option<bool>,
     source_url: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let params = serde_json::json!({
@@ -127,6 +128,7 @@ pub async fn service_gateway_freeproxy_sync(
       "country": country,
       "limit": limit,
       "clearUpstreamProxyUrl": clear_upstream_proxy_url,
+      "syncRegisterProxyPool": sync_register_proxy_pool,
       "sourceUrl": source_url,
     });
     rpc_call_in_background("gateway/freeProxy/sync", addr, Some(params)).await

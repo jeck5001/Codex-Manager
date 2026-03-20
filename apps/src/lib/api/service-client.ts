@@ -59,6 +59,7 @@ export const serviceClient = {
     country?: string;
     limit?: number;
     clearUpstreamProxyUrl?: boolean;
+    syncRegisterProxyPool?: boolean;
     sourceUrl?: string;
   }): Promise<FreeProxySyncResult> {
     const result = await invoke<unknown>(
