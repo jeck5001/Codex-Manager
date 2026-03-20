@@ -128,7 +128,7 @@ pub(crate) fn rpc_token_file_path() -> PathBuf {
     if let Ok(raw) = std::env::var(ENV_RPC_TOKEN_FILE) {
         let trimmed = raw.trim();
         if !trimmed.is_empty() {
-            return resolve_path_with_base(trimmed, &db_dir());
+            return resolve_path_with_base(trimmed, &exe_dir());
         }
     }
     db_dir().join(DEFAULT_RPC_TOKEN_FILENAME)
@@ -216,4 +216,58 @@ pub(crate) fn generate_rpc_token_hex_32bytes() -> String {
         token.push_str(&format!("{byte:02x}"));
     }
     token
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: Option<&str>) -> Self {
+            let previous = std::env::var_os(key);
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.previous.as_ref() {
+                std::env::set_var(self.key, value);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    #[test]
+    fn ensure_default_db_path_resolves_relative_env_against_exe_dir() {
+        let _db_guard = EnvGuard::set(ENV_DB_PATH, Some("./data/codexmanager.db"));
+
+        let resolved = ensure_default_db_path();
+
+        assert_eq!(resolved, exe_dir().join("data").join("codexmanager.db"));
+        assert_eq!(
+            std::env::var(ENV_DB_PATH).ok().as_deref(),
+            Some(resolved.to_string_lossy().as_ref())
+        );
+    }
+
+    #[test]
+    fn rpc_token_file_path_resolves_relative_env_against_exe_dir() {
+        let _db_guard = EnvGuard::set(ENV_DB_PATH, Some("./data/codexmanager.db"));
+        let _token_guard = EnvGuard::set(ENV_RPC_TOKEN_FILE, Some("./data/codexmanager.rpc-token"));
+
+        let resolved = rpc_token_file_path();
+
+        assert_eq!(resolved, exe_dir().join("data").join("codexmanager.rpc-token"));
+    }
 }
