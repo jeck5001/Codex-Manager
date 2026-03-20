@@ -390,6 +390,23 @@ export interface BackgroundTaskSettings {
   autoRegisterReadyRemainPercent: number;
 }
 
+export interface FreeProxySyncResult {
+  sourceUrl: string;
+  sourceUpdatedAt: string | null;
+  fetchedCount: number;
+  matchedCount: number;
+  appliedCount: number;
+  protocol: string;
+  anonymity: string;
+  countryFilter: string[];
+  limit: number;
+  clearedUpstreamProxyUrl: boolean;
+  singleProxyStillConfigured: boolean;
+  previousUpstreamProxyUrl: string | null;
+  proxyListValue: string;
+  proxies: string[];
+}
+
 export interface AppSettings {
   updateAutoCheck: boolean;
   closeToTrayOnClose: boolean;

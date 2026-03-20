@@ -112,6 +112,27 @@ pub async fn service_gateway_upstream_proxy_set(
 }
 
 #[tauri::command]
+pub async fn service_gateway_freeproxy_sync(
+    addr: Option<String>,
+    protocol: Option<String>,
+    anonymity: Option<String>,
+    country: Option<String>,
+    limit: Option<u64>,
+    clear_upstream_proxy_url: Option<bool>,
+    source_url: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+      "protocol": protocol,
+      "anonymity": anonymity,
+      "country": country,
+      "limit": limit,
+      "clearUpstreamProxyUrl": clear_upstream_proxy_url,
+      "sourceUrl": source_url,
+    });
+    rpc_call_in_background("gateway/freeProxy/sync", addr, Some(params)).await
+}
+
+#[tauri::command]
 pub async fn service_gateway_transport_get(
     addr: Option<String>,
 ) -> Result<serde_json::Value, String> {

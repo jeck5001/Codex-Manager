@@ -10,7 +10,7 @@ mod ui;
 pub use api::{app_settings_get, app_settings_get_with_overrides, app_settings_set};
 pub(crate) use env_overrides::{
     apply_env_overrides_to_process, persisted_env_overrides_missing_process_env,
-    reload_runtime_after_env_override_apply,
+    reload_runtime_after_env_override_apply, set_env_overrides,
 };
 pub use gateway::{
     current_gateway_free_account_max_model, current_gateway_originator,
@@ -19,8 +19,8 @@ pub use gateway::{
     current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
     residency_requirement_options, set_gateway_background_tasks,
     set_gateway_cpa_no_cookie_header_mode, set_gateway_free_account_max_model,
-    set_gateway_quota_protection_enabled, set_gateway_quota_protection_threshold_percent,
-    set_gateway_originator, set_gateway_request_compression_enabled,
+    set_gateway_originator, set_gateway_quota_protection_enabled,
+    set_gateway_quota_protection_threshold_percent, set_gateway_request_compression_enabled,
     set_gateway_residency_requirement, set_gateway_route_strategy,
     set_gateway_sse_keepalive_interval_ms, set_gateway_upstream_proxy_url,
     set_gateway_upstream_stream_timeout_ms, BackgroundTasksInput,
