@@ -10,6 +10,8 @@
   <a href="README.md">中文</a>
 </p>
 
+- [Sponsor](README.en.md#sponsor)
+
 A local desktop + service toolkit for managing Codex-compatible accounts, usage, platform keys, and a built-in local gateway.
 
 ## Source Code Description:
@@ -140,6 +142,8 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
     />
   </a>
 </p>
+
+<a id="sponsor"></a>
 
 ## Sponsor
 
