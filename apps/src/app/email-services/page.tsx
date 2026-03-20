@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useRegisterEmailServices } from "@/hooks/useRegisterEmailServices";
+import { formatApiDateTime } from "@/lib/utils/datetime";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type {
@@ -94,17 +95,7 @@ function formatServiceTypeLabel(type: RegisterEmailServiceType | undefined, valu
 }
 
 function formatTimestamp(value: string) {
-  if (!value) return "未使用";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return date.toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatApiDateTime(value, { emptyLabel: "未使用", withSeconds: false });
 }
 
 function getDefaultFieldValue(field: RegisterEmailServiceField) {

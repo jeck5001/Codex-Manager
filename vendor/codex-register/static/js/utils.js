@@ -281,27 +281,46 @@ function throttle(func, limit) {
 // ============================================
 
 const format = {
+    parseApiDate(dateStr) {
+        if (!dateStr) return null;
+        const raw = String(dateStr).trim();
+        if (!raw) return null;
+        const normalized = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(raw)
+            ? `${raw}Z`
+            : raw;
+        const date = new Date(normalized);
+        return Number.isNaN(date.getTime()) ? null : date;
+    },
+
     date(dateStr) {
         if (!dateStr) return '-';
-        const date = new Date(dateStr);
+        const date = this.parseApiDate(dateStr);
+        if (!date) return dateStr;
         return date.toLocaleString('zh-CN', {
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Shanghai'
         });
     },
 
     dateShort(dateStr) {
         if (!dateStr) return '-';
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('zh-CN');
+        const date = this.parseApiDate(dateStr);
+        if (!date) return dateStr;
+        return date.toLocaleDateString('zh-CN', {
+            timeZone: 'Asia/Shanghai'
+        });
     },
 
     relativeTime(dateStr) {
         if (!dateStr) return '-';
-        const date = new Date(dateStr);
+        const date = this.parseApiDate(dateStr);
+        if (!date) return dateStr;
         const now = new Date();
         const diff = now - date;
         const seconds = Math.floor(diff / 1000);

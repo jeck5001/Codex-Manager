@@ -48,6 +48,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useRegisterTasks } from "@/hooks/useRegisterTasks";
 import { accountClient } from "@/lib/api/account-client";
+import { formatApiDateTime } from "@/lib/utils/datetime";
 import { cn } from "@/lib/utils";
 import type { Account, RegisterTaskSnapshot } from "@/types";
 
@@ -59,18 +60,7 @@ type PendingAction =
 const PAGE_SIZE = 20;
 
 function formatTimestamp(value: string) {
-  if (!value) return "--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return date.toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return formatApiDateTime(value, { emptyLabel: "--", withSeconds: true });
 }
 
 function getStatusMeta(status: string) {
