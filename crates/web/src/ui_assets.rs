@@ -48,6 +48,10 @@ pub(super) async fn serve_embedded_asset(
     serve_embedded_path(&path)
 }
 
+fn looks_like_asset_path(path: &str) -> bool {
+    path.rsplit('/').next().unwrap_or(path).contains('.')
+}
+
 fn serve_embedded_path(path: &str) -> Response {
     let raw = path.trim_start_matches('/');
     if raw.contains("..") {
@@ -58,7 +62,7 @@ fn serve_embedded_path(path: &str) -> Response {
     let Some((served_path, bytes)) = resolve_embedded_asset(wanted) else {
         return (StatusCode::NOT_FOUND, "missing ui").into_response();
     };
-    let mime = embedded_ui::guess_mime(served_path);
+    let mime = embedded_ui::guess_mime(&served_path);
 
     let mut out = Response::new(axum::body::Body::from(bytes));
     out.headers_mut().insert(
@@ -69,10 +73,27 @@ fn serve_embedded_path(path: &str) -> Response {
     out
 }
 
-fn resolve_embedded_asset(path: &str) -> Option<(&str, &'static [u8])> {
-    embedded_ui::read_asset_bytes(path)
-        .map(|bytes| (path, bytes))
-        .or_else(|| embedded_ui::read_asset_bytes("index.html").map(|bytes| ("index.html", bytes)))
+fn resolve_embedded_asset(path: &str) -> Option<(String, &'static [u8])> {
+    let raw = path.trim_start_matches('/');
+    let trimmed = raw.trim_end_matches('/');
+    let mut candidates = Vec::with_capacity(3);
+
+    if raw.is_empty() {
+        candidates.push("index.html".to_string());
+    } else {
+        candidates.push(raw.to_string());
+        if !trimmed.is_empty() && !looks_like_asset_path(trimmed) {
+            candidates.push(format!("{trimmed}/index.html"));
+        }
+    }
+
+    for candidate in candidates {
+        if let Some(bytes) = embedded_ui::read_asset_bytes(&candidate) {
+            return Some((candidate, bytes));
+        }
+    }
+
+    embedded_ui::read_asset_bytes("index.html").map(|bytes| ("index.html".to_string(), bytes))
 }
 
 #[cfg(all(test, feature = "embedded-ui"))]
@@ -91,5 +112,14 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("text/html")
         );
+    }
+
+    #[test]
+    fn directory_route_prefers_embedded_directory_index() {
+        let (served_path, _) = resolve_embedded_asset("accounts/").expect("accounts asset");
+        assert_eq!(served_path, "accounts/index.html");
+
+        let (served_path, _) = resolve_embedded_asset("accounts").expect("accounts asset");
+        assert_eq!(served_path, "accounts/index.html");
     }
 }
