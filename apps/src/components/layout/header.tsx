@@ -49,6 +49,8 @@ export function Header() {
         return "账号管理";
       case "/register":
         return "注册中心";
+      case "/payment":
+        return "支付中心";
       case "/email-services":
         return "邮箱服务";
       case "/apikeys":

@@ -3,6 +3,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use super::{
+    save_persisted_app_setting, save_persisted_bool_setting,
     set_close_to_tray_on_close_setting, set_env_overrides, set_gateway_background_tasks,
     set_gateway_cpa_no_cookie_header_mode, set_gateway_free_account_max_model,
     set_gateway_originator, set_gateway_quota_protection_enabled,
@@ -39,6 +40,9 @@ pub(super) struct AppSettingsPatch {
     sse_keepalive_interval_ms: Option<u64>,
     background_tasks: Option<BackgroundTasksInput>,
     env_overrides: Option<HashMap<String, String>>,
+    team_manager_enabled: Option<bool>,
+    team_manager_api_url: Option<String>,
+    team_manager_api_key: Option<String>,
     web_access_password: Option<String>,
 }
 
@@ -113,6 +117,17 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     }
     if let Some(env_overrides) = patch.env_overrides {
         let _ = set_env_overrides(env_overrides)?;
+    }
+    if let Some(enabled) = patch.team_manager_enabled {
+        let _ = save_persisted_bool_setting(crate::APP_SETTING_TEAM_MANAGER_ENABLED_KEY, enabled)?;
+    }
+    if let Some(api_url) = patch.team_manager_api_url {
+        let _ =
+            save_persisted_app_setting(crate::APP_SETTING_TEAM_MANAGER_API_URL_KEY, Some(&api_url))?;
+    }
+    if let Some(api_key) = patch.team_manager_api_key {
+        let _ =
+            save_persisted_app_setting(crate::APP_SETTING_TEAM_MANAGER_API_KEY_KEY, Some(&api_key))?;
     }
     if let Some(password) = patch.web_access_password {
         let _ = crate::set_web_access_password(Some(&password))?;

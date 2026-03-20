@@ -29,6 +29,12 @@ pub struct AccountSummary {
     pub group_name: Option<String>,
     pub sort: i64,
     pub status: String,
+    #[serde(default)]
+    pub subscription_plan_type: Option<String>,
+    #[serde(default)]
+    pub subscription_updated_at: Option<i64>,
+    #[serde(default)]
+    pub team_manager_uploaded_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

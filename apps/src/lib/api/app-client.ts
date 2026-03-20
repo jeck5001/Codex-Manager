@@ -17,6 +17,8 @@ export const appClient = {
     invoke("app_close_to_tray_on_close_set", { enabled }),
 
   openInBrowser: (url: string) => invoke("open_in_browser", { url }),
+  openInBrowserIncognito: (url: string) =>
+    invoke("open_in_browser_incognito", { url }),
 
   checkUpdate: () =>
     invokeFirst<unknown>(["app_update_check", "update_check", "check_update"], {}),

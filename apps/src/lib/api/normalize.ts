@@ -182,6 +182,15 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     availabilityLevel: availability.level,
     primaryRemainPercent: usageBuckets.primaryRemainPercent,
     secondaryRemainPercent: usageBuckets.secondaryRemainPercent,
+    subscriptionPlanType: asString(
+      source.subscriptionPlanType ?? source.subscription_plan_type
+    ) || null,
+    subscriptionUpdatedAt: toNullableNumber(
+      source.subscriptionUpdatedAt ?? source.subscription_updated_at
+    ),
+    teamManagerUploadedAt: toNullableNumber(
+      source.teamManagerUploadedAt ?? source.team_manager_uploaded_at
+    ),
     usage: usage ?? null,
   };
 }
@@ -535,6 +544,9 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     upstreamProxyUrl: asString(source.upstreamProxyUrl),
     upstreamStreamTimeoutMs: asInteger(source.upstreamStreamTimeoutMs, 1_800_000, 0),
     sseKeepaliveIntervalMs: asInteger(source.sseKeepaliveIntervalMs, 15_000, 1),
+    teamManagerEnabled: asBoolean(source.teamManagerEnabled, false),
+    teamManagerApiUrl: asString(source.teamManagerApiUrl),
+    teamManagerHasApiKey: asBoolean(source.teamManagerHasApiKey, false),
     backgroundTasks: normalizeBackgroundTasks(source.backgroundTasks),
     envOverrides: normalizeStringRecord(source.envOverrides),
     envOverrideCatalog: normalizeEnvOverrideCatalog(source.envOverrideCatalog),

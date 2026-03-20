@@ -2,7 +2,7 @@ use codexmanager_core::rpc::types::{AccountListParams, JsonRpcRequest, JsonRpcRe
 
 use crate::{
     account_cleanup, account_delete, account_delete_many, account_export, account_import,
-    account_list, account_register, account_update, account_update_many, auth_account,
+    account_list, account_payment, account_register, account_update, account_update_many, auth_account,
     auth_login, auth_tokens,
 };
 
@@ -96,6 +96,95 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 }
             }
             super::value_or_error(account_import::import_account_auth_json(contents))
+        }
+        "account/payment/generateLink" => {
+            let account_id = first_str_param(req, &["accountId", "account_id"]).unwrap_or("");
+            let plan_type = first_str_param(req, &["planType", "plan_type"]).unwrap_or("");
+            let workspace_name =
+                first_str_param(req, &["workspaceName", "workspace_name"]);
+            let price_interval =
+                first_str_param(req, &["priceInterval", "price_interval"]);
+            let seat_quantity = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("seatQuantity").or_else(|| params.get("seat_quantity")))
+                .and_then(|value| value.as_i64());
+            let country = first_str_param(req, &["country"]);
+            let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            super::value_or_error(account_payment::generate_payment_link(
+                account_id,
+                plan_type,
+                workspace_name,
+                price_interval,
+                seat_quantity,
+                country,
+                proxy.as_deref(),
+            ))
+        }
+        "account/subscription/check" => {
+            let account_id = first_str_param(req, &["accountId", "account_id"]).unwrap_or("");
+            let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            super::value_or_error(account_payment::check_account_subscription(
+                account_id,
+                proxy.as_deref(),
+            ))
+        }
+        "account/subscription/checkMany" => {
+            let account_ids = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|value| value.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str())
+                        .map(|item| item.to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            super::value_or_error(account_payment::check_many_accounts_subscription(
+                account_ids,
+                proxy.as_deref(),
+            ))
+        }
+        "account/subscription/mark" => {
+            let account_id = first_str_param(req, &["accountId", "account_id"]).unwrap_or("");
+            let plan_type = first_str_param(req, &["planType", "plan_type"]).unwrap_or("");
+            super::value_or_error(account_payment::mark_account_subscription(
+                account_id,
+                plan_type,
+            ))
+        }
+        "account/teamManager/upload" => {
+            let account_id = first_str_param(req, &["accountId", "account_id"]).unwrap_or("");
+            super::value_or_error(account_payment::upload_account_to_team_manager(
+                account_id,
+            ))
+        }
+        "account/teamManager/uploadMany" => {
+            let account_ids = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|value| value.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str())
+                        .map(|item| item.to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            super::value_or_error(account_payment::upload_many_accounts_to_team_manager(
+                account_ids,
+            ))
+        }
+        "account/teamManager/test" => {
+            super::value_or_error(account_payment::test_team_manager_connection(
+                req.params.as_ref(),
+            ))
         }
         "account/register/availableServices" => {
             super::value_or_error(account_register::available_register_services())

@@ -13,6 +13,22 @@ type ImportByDirectoryResult = Awaited<ReturnType<typeof accountClient.importByD
 type ImportByFileResult = Awaited<ReturnType<typeof accountClient.importByFile>>;
 type ExportResult = Awaited<ReturnType<typeof accountClient.export>>;
 type DeleteUnavailableFreeResult = { deleted?: number };
+type SubscriptionCheckResult = Awaited<
+  ReturnType<typeof accountClient.checkSubscription>
+>;
+type SubscriptionCheckManyResult = Awaited<
+  ReturnType<typeof accountClient.checkSubscriptions>
+>;
+type TeamManagerUploadResult = Awaited<
+  ReturnType<typeof accountClient.uploadToTeamManager>
+>;
+type TeamManagerUploadManyResult = Awaited<
+  ReturnType<typeof accountClient.uploadManyToTeamManager>
+>;
+type BatchMarkSubscriptionResult = {
+  successCount: number;
+  failedCount: number;
+};
 
 function isAccountRefreshBlocked(status: string | null | undefined): boolean {
   return String(status || "").trim().toLowerCase() === "disabled";
@@ -32,6 +48,14 @@ function formatUsageRefreshErrorMessage(error: unknown): string {
     return "账号长期未登录，refresh 已过期，已改为不可用状态";
   }
   return message;
+}
+
+function formatPlanTypeLabel(planType: string | null | undefined): string {
+  const normalized = String(planType || "").trim().toLowerCase();
+  if (normalized === "team") return "Team";
+  if (normalized === "plus") return "Plus";
+  if (normalized === "free") return "Free";
+  return normalized || "未知";
 }
 
 export function useAccounts() {
@@ -238,6 +262,140 @@ export function useAccounts() {
     },
   });
 
+  const checkSubscriptionMutation = useMutation({
+    mutationFn: ({
+      accountId,
+      proxy,
+    }: {
+      accountId: string;
+      proxy?: string | null;
+    }) => accountClient.checkSubscription(accountId, proxy),
+    onSuccess: async (result: SubscriptionCheckResult) => {
+      await invalidateAll();
+      toast.success(
+        `${result.accountName || result.accountId} 当前订阅：${formatPlanTypeLabel(
+          result.planType
+        )}`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`订阅检测失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const checkSubscriptionsMutation = useMutation({
+    mutationFn: ({
+      accountIds,
+      proxy,
+    }: {
+      accountIds: string[];
+      proxy?: string | null;
+    }) => accountClient.checkSubscriptions(accountIds, proxy),
+    onSuccess: async (result: SubscriptionCheckManyResult) => {
+      await invalidateAll();
+      const details = Array.isArray(result?.details) ? result.details : [];
+      const planSummary = details
+        .filter((item) => item?.success)
+        .reduce<Record<string, number>>((summary, item) => {
+          const key = formatPlanTypeLabel(item.planType);
+          summary[key] = (summary[key] || 0) + 1;
+          return summary;
+        }, {});
+      const planText = Object.entries(planSummary)
+        .map(([label, count]) => `${label} ${count}`)
+        .join("，");
+      toast.success(
+        `订阅检测完成：成功 ${Number(result?.successCount || 0)}，失败 ${Number(
+          result?.failedCount || 0
+        )}${planText ? `，${planText}` : ""}`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`批量订阅检测失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const markSubscriptionMutation = useMutation({
+    mutationFn: ({
+      accountId,
+      planType,
+    }: {
+      accountId: string;
+      planType: "free" | "plus" | "team";
+    }) => accountClient.markSubscription(accountId, planType),
+    onSuccess: async (result) => {
+      await invalidateAll();
+      toast.success(
+        `${result.accountName || result.accountId} 已标记为 ${formatPlanTypeLabel(
+          result.planType
+        )}`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`标记订阅失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const markManySubscriptionsMutation = useMutation({
+    mutationFn: async ({
+      accountIds,
+      planType,
+    }: {
+      accountIds: string[];
+      planType: "free" | "plus" | "team";
+    }): Promise<BatchMarkSubscriptionResult> => {
+      const results = await Promise.allSettled(
+        accountIds.map((accountId) => accountClient.markSubscription(accountId, planType))
+      );
+      return results.reduce<BatchMarkSubscriptionResult>(
+        (summary, result) => {
+          if (result.status === "fulfilled") {
+            summary.successCount += 1;
+          } else {
+            summary.failedCount += 1;
+          }
+          return summary;
+        },
+        { successCount: 0, failedCount: 0 }
+      );
+    },
+    onSuccess: async (result, variables) => {
+      await invalidateAll();
+      toast.success(
+        `批量标记 ${formatPlanTypeLabel(variables.planType)} 完成：成功 ${result.successCount}，失败 ${result.failedCount}`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`批量标记订阅失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const uploadToTeamManagerMutation = useMutation({
+    mutationFn: (accountId: string) => accountClient.uploadToTeamManager(accountId),
+    onSuccess: async (result: TeamManagerUploadResult) => {
+      await invalidateAll();
+      toast.success(`${result.accountName || result.accountId} 已上传到 Team Manager`);
+    },
+    onError: (error: unknown) => {
+      toast.error(`上传 Team Manager 失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const uploadManyToTeamManagerMutation = useMutation({
+    mutationFn: (accountIds: string[]) => accountClient.uploadManyToTeamManager(accountIds),
+    onSuccess: async (result: TeamManagerUploadManyResult) => {
+      await invalidateAll();
+      toast.success(
+        `上传 Team Manager 完成：成功 ${Number(result?.successCount || 0)}，失败 ${Number(
+          result?.failedCount || 0
+        )}，跳过 ${Number(result?.skippedCount || 0)}`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`批量上传 Team Manager 失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   const importByDirectoryMutation = useMutation({
     mutationFn: () => accountClient.importByDirectory(),
     onSuccess: async (result: ImportByDirectoryResult) => {
@@ -339,6 +497,20 @@ export function useAccounts() {
       enabled: boolean,
       sourceStatus?: string | null
     ) => toggleAccountStatusMutation.mutate({ accountId, enabled, sourceStatus }),
+    checkSubscription: (accountId: string, proxy?: string | null) =>
+      checkSubscriptionMutation.mutate({ accountId, proxy }),
+    checkSubscriptions: (accountIds: string[], proxy?: string | null) =>
+      checkSubscriptionsMutation.mutate({ accountIds, proxy }),
+    markSubscription: (accountId: string, planType: "free" | "plus" | "team") =>
+      markSubscriptionMutation.mutate({ accountId, planType }),
+    markManySubscriptions: (
+      accountIds: string[],
+      planType: "free" | "plus" | "team"
+    ) => markManySubscriptionsMutation.mutate({ accountIds, planType }),
+    uploadToTeamManager: (accountId: string) =>
+      uploadToTeamManagerMutation.mutate(accountId),
+    uploadManyToTeamManager: (accountIds: string[]) =>
+      uploadManyToTeamManagerMutation.mutate(accountIds),
     bulkToggleAccountStatus: (
       accountIds: string[],
       enabled: boolean,
@@ -372,5 +544,31 @@ export function useAccounts() {
           )
         : "",
     isBulkUpdatingStatus: bulkToggleAccountStatusMutation.isPending,
+    isCheckingSubscriptionAccountId:
+      checkSubscriptionMutation.isPending &&
+      checkSubscriptionMutation.variables &&
+      typeof checkSubscriptionMutation.variables === "object" &&
+      "accountId" in checkSubscriptionMutation.variables
+        ? String(
+            (checkSubscriptionMutation.variables as { accountId?: unknown }).accountId || ""
+          )
+        : "",
+    isCheckingSubscriptions: checkSubscriptionsMutation.isPending,
+    isMarkingSubscriptionAccountId:
+      markSubscriptionMutation.isPending &&
+      markSubscriptionMutation.variables &&
+      typeof markSubscriptionMutation.variables === "object" &&
+      "accountId" in markSubscriptionMutation.variables
+        ? String(
+            (markSubscriptionMutation.variables as { accountId?: unknown }).accountId || ""
+          )
+        : "",
+    isUploadingTeamManagerAccountId:
+      uploadToTeamManagerMutation.isPending &&
+      typeof uploadToTeamManagerMutation.variables === "string"
+        ? uploadToTeamManagerMutation.variables
+        : "",
+    isUploadingManyToTeamManager: uploadManyToTeamManagerMutation.isPending,
+    isMarkingManySubscriptions: markManySubscriptionsMutation.isPending,
   };
 }

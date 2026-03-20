@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
+import { accountClient } from "@/lib/api/account-client";
 import { appClient } from "@/lib/api/app-client";
 import { serviceClient } from "@/lib/api/service-client";
 import { getAppErrorMessage, isTauriRuntime } from "@/lib/api/transport";
@@ -274,6 +275,8 @@ export default function SettingsPage() {
     Partial<Record<"sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs", string>>
   >({});
   const [backgroundTaskDraft, setBackgroundTaskDraft] = useState<Record<string, string>>({});
+  const [teamManagerApiUrlDraft, setTeamManagerApiUrlDraft] = useState<string | null>(null);
+  const [teamManagerApiKeyDraft, setTeamManagerApiKeyDraft] = useState("");
 
   const { data: snapshot, isLoading } = useQuery({
     queryKey: ["app-settings-snapshot"],
@@ -301,6 +304,21 @@ export default function SettingsPage() {
     },
     onError: (error: unknown) => {
       toast.error(`更新失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const testTeamManager = useMutation({
+    mutationFn: (payload: { apiUrl?: string | null; apiKey?: string | null }) =>
+      accountClient.testTeamManager(payload.apiUrl, payload.apiKey),
+    onSuccess: (result) => {
+      if (result?.success) {
+        toast.success(result.message || "Team Manager 连接测试成功");
+      } else {
+        toast.error(result?.message || "Team Manager 连接测试失败");
+      }
+    },
+    onError: (error: unknown) => {
+      toast.error(`测试 Team Manager 失败: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -484,6 +502,7 @@ export default function SettingsPage() {
     : "";
   const proxyPoolValue = snapshot?.envOverrides.CODEXMANAGER_PROXY_LIST || "";
   const proxyPoolCount = countProxyPoolEntries(proxyPoolValue);
+  const teamManagerApiUrlInput = teamManagerApiUrlDraft ?? snapshot?.teamManagerApiUrl ?? "";
 
   const lastIntentThemeRef = useRef<string | null>(null);
   const lastIntentAppearancePresetRef = useRef<string | null>(null);
@@ -699,6 +718,34 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
+  const handleSaveTeamManager = () => {
+    if (!snapshot) return;
+    const nextApiUrl = teamManagerApiUrlInput.trim();
+    void updateSettings
+      .mutateAsync({
+        teamManagerEnabled: snapshot.teamManagerEnabled,
+        teamManagerApiUrl: nextApiUrl,
+        ...(teamManagerApiKeyDraft.trim()
+          ? { teamManagerApiKey: teamManagerApiKeyDraft.trim() }
+          : {}),
+      })
+      .then(() => {
+        setTeamManagerApiUrlDraft(null);
+        setTeamManagerApiKeyDraft("");
+      })
+      .catch(() => undefined);
+  };
+
+  const handleTestTeamManager = () => {
+    if (!snapshot) return;
+    void testTeamManager.mutate({
+      apiUrl: teamManagerApiUrlInput.trim() || null,
+      apiKey:
+        teamManagerApiKeyDraft.trim() ||
+        (snapshot.teamManagerHasApiKey ? "use_saved_key" : null),
+    });
+  };
+
   if (isLoading || !snapshot) {
     return <div className="flex h-64 items-center justify-center text-muted-foreground">加载配置中...</div>;
   }
@@ -811,6 +858,80 @@ export default function SettingsPage() {
                   checked={snapshot.lowTransparency}
                   onCheckedChange={(value) => updateSettings.mutate({ lowTransparency: value })}
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">Team Manager</CardTitle>
+              </div>
+              <CardDescription>配置支付后的一键上传目标，用于把可用账号同步到 Team Manager</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>启用上传</Label>
+                  <p className="text-xs text-muted-foreground">
+                    开启后，可在支付页和账号页直接上传到 Team Manager
+                  </p>
+                </div>
+                <Switch
+                  checked={snapshot.teamManagerEnabled}
+                  onCheckedChange={(value) =>
+                    updateSettings.mutate({ teamManagerEnabled: value })
+                  }
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="team-manager-api-url">API URL</Label>
+                <Input
+                  id="team-manager-api-url"
+                  placeholder="https://your-team-manager.example.com"
+                  value={teamManagerApiUrlInput}
+                  onChange={(event) => setTeamManagerApiUrlDraft(event.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="team-manager-api-key">API Key</Label>
+                <Input
+                  id="team-manager-api-key"
+                  type="password"
+                  placeholder={
+                    snapshot.teamManagerHasApiKey ? "留空则保留当前已保存 Key" : "输入 Team Manager API Key"
+                  }
+                  value={teamManagerApiKeyDraft}
+                  onChange={(event) => setTeamManagerApiKeyDraft(event.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {snapshot.teamManagerHasApiKey
+                    ? "当前已保存 API Key，重新输入后会覆盖。"
+                    : "当前还未保存 API Key。"}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  className="gap-2"
+                  disabled={updateSettings.isPending}
+                  onClick={handleSaveTeamManager}
+                >
+                  <Save className="h-4 w-4" />
+                  保存 Team Manager 设置
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  disabled={testTeamManager.isPending}
+                  onClick={handleTestTeamManager}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  {testTeamManager.isPending ? "测试中..." : "测试连接"}
+                </Button>
               </div>
             </CardContent>
           </Card>

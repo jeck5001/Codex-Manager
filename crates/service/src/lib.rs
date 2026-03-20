@@ -26,6 +26,7 @@ pub(crate) use account::export as account_export;
 pub(crate) use account::import as account_import;
 pub(crate) use account::list as account_list;
 pub(crate) use account::plan as account_plan;
+pub(crate) use account::payment as account_payment;
 pub(crate) use account::register as account_register;
 pub(crate) use account::status as account_status;
 pub(crate) use account::update as account_update;
@@ -94,6 +95,8 @@ pub use app_settings::{
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+    APP_SETTING_ACCOUNT_PAYMENT_STATE_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
+    APP_SETTING_TEAM_MANAGER_API_URL_KEY, APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
     APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_SERVICE_ADDR_KEY,
     APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
     APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY,
