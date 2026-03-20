@@ -38,6 +38,17 @@ pub(super) async fn serve_missing_ui(State(state): State<Arc<AppState>>) -> Html
     Html((*state.missing_ui_html).clone())
 }
 
+pub(super) async fn serve_disk_index(State(state): State<Arc<AppState>>) -> Response {
+    serve_disk_path(state.web_root.as_ref(), "index.html")
+}
+
+pub(super) async fn serve_disk_asset(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(path): axum::extract::Path<String>,
+) -> Response {
+    serve_disk_path(state.web_root.as_ref(), &path)
+}
+
 pub(super) async fn serve_embedded_index() -> Response {
     serve_embedded_path("index.html")
 }
@@ -58,7 +69,7 @@ fn serve_embedded_path(path: &str) -> Response {
     let Some((served_path, bytes)) = resolve_embedded_asset(wanted) else {
         return (StatusCode::NOT_FOUND, "missing ui").into_response();
     };
-    let mime = embedded_ui::guess_mime(served_path);
+    let mime = embedded_ui::guess_mime(&served_path);
 
     let mut out = Response::new(axum::body::Body::from(bytes));
     out.headers_mut().insert(
@@ -69,10 +80,86 @@ fn serve_embedded_path(path: &str) -> Response {
     out
 }
 
-fn resolve_embedded_asset(path: &str) -> Option<(&str, &'static [u8])> {
-    embedded_ui::read_asset_bytes(path)
-        .map(|bytes| (path, bytes))
-        .or_else(|| embedded_ui::read_asset_bytes("index.html").map(|bytes| ("index.html", bytes)))
+fn serve_disk_path(web_root: &std::path::Path, path: &str) -> Response {
+    let Some(asset_path) = resolve_disk_asset_path(web_root, path) else {
+        return (StatusCode::NOT_FOUND, "missing ui").into_response();
+    };
+    let Ok(bytes) = std::fs::read(&asset_path) else {
+        return (StatusCode::NOT_FOUND, "missing ui").into_response();
+    };
+    let mime = guess_disk_mime(&asset_path);
+
+    let mut out = Response::new(axum::body::Body::from(bytes));
+    out.headers_mut().insert(
+        "content-type",
+        axum::http::HeaderValue::from_static(mime),
+    );
+    out
+}
+
+fn resolve_disk_asset_path(web_root: &std::path::Path, path: &str) -> Option<std::path::PathBuf> {
+    let raw = path.trim_start_matches('/');
+    if raw.contains("..") {
+        return None;
+    }
+
+    if raw.is_empty() {
+        let index = web_root.join("index.html");
+        return index.is_file().then_some(index);
+    }
+
+    let direct = web_root.join(raw);
+    if direct.is_file() {
+        return Some(direct);
+    }
+
+    let normalized = raw.trim_end_matches('/');
+    if !normalized.is_empty() {
+        let nested_index = web_root.join(normalized).join("index.html");
+        if nested_index.is_file() {
+            return Some(nested_index);
+        }
+    }
+
+    None
+}
+
+fn guess_disk_mime(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|value| value.to_str()).unwrap_or("") {
+        "html" => "text/html; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "js" => "text/javascript; charset=utf-8",
+        "json" => "application/json",
+        "svg" => "image/svg+xml",
+        "ico" => "image/x-icon",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "txt" => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
+    }
+}
+
+fn resolve_embedded_asset(path: &str) -> Option<(String, &'static [u8])> {
+    let raw = path.trim_start_matches('/');
+    if raw.contains("..") {
+        return None;
+    }
+
+    if raw.is_empty() {
+        return embedded_ui::read_asset_bytes("index.html")
+            .map(|bytes| ("index.html".to_string(), bytes));
+    }
+
+    embedded_ui::read_asset_bytes(raw)
+        .map(|bytes| (raw.to_string(), bytes))
+        .or_else(|| {
+            let normalized = raw.trim_end_matches('/');
+            if normalized.is_empty() {
+                return None;
+            }
+            let nested_index = format!("{normalized}/index.html");
+            embedded_ui::read_asset_bytes(&nested_index).map(|bytes| (nested_index, bytes))
+        })
 }
 
 #[cfg(all(test, feature = "embedded-ui"))]
@@ -91,5 +178,12 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("text/html")
         );
+    }
+
+    #[test]
+    fn embedded_route_resolves_nested_index() {
+        let (path, _) = resolve_embedded_asset("payment").expect("payment route asset");
+
+        assert_eq!(path, "payment/index.html");
     }
 }
