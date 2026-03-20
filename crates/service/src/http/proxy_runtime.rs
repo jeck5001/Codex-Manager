@@ -1,10 +1,12 @@
 use axum::body::{to_bytes, Body};
 use axum::extract::State;
 use axum::http::{header, Request as HttpRequest, Response, StatusCode};
+use axum::middleware::{self, Next};
 use axum::routing::{any, post};
 use axum::Router;
 use reqwest::Client;
 use std::io;
+use std::time::Instant;
 
 use crate::http::proxy_bridge::run_proxy_server;
 use crate::http::proxy_request::{build_target_url, filter_request_headers};
@@ -109,10 +111,35 @@ async fn proxy_handler(
     }
 }
 
+async fn access_log(request: HttpRequest<Body>, next: Next) -> Response<Body> {
+    let method = request.method().clone();
+    let path = request
+        .uri()
+        .path_and_query()
+        .map(|value| value.as_str().to_string())
+        .unwrap_or_else(|| request.uri().path().to_string());
+    let started_at = Instant::now();
+
+    let response = next.run(request).await;
+    let status = response.status();
+    let elapsed_ms = started_at.elapsed().as_millis();
+
+    log::info!(
+        "event=http_access method={} path={} status={} duration_ms={}",
+        method,
+        path,
+        status.as_u16(),
+        elapsed_ms
+    );
+
+    response
+}
+
 fn build_front_proxy_app(state: ProxyState) -> Router {
     Router::new()
         .route("/rpc", post(crate::http::rpc_endpoint::handle_rpc_http))
         .fallback(any(proxy_handler))
+        .layer(middleware::from_fn(access_log))
         .with_state(state)
 }
 

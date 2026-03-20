@@ -13,7 +13,7 @@ use std::time::Duration;
 use axum::body::Bytes;
 use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
-use axum::middleware::Next;
+use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -114,6 +114,30 @@ fn escape_html(text: &str) -> String {
         .replace('>', "&gt;")
         .replace('\"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+async fn access_log(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let path = request
+        .uri()
+        .path_and_query()
+        .map(|value| value.as_str().to_string())
+        .unwrap_or_else(|| request.uri().path().to_string());
+    let started_at = std::time::Instant::now();
+
+    let response = next.run(request).await;
+    let status = response.status();
+    let elapsed_ms = started_at.elapsed().as_millis();
+
+    log::info!(
+        "event=web_access method={} path={} status={} duration_ms={}",
+        method,
+        path,
+        status.as_u16(),
+        elapsed_ms
+    );
+
+    response
 }
 
 async fn serve_on_listener(
@@ -235,6 +259,7 @@ async fn async_main() {
         .route("/__login", get(auth::login_page).post(auth::login_submit))
         .route("/__logout", get(auth::logout).post(auth::logout))
         .merge(protected_app)
+        .layer(middleware::from_fn(access_log))
         .with_state(state);
 
     println!("codexmanager-web listening on {web_addr} (service={service_addr})");

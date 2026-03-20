@@ -302,6 +302,7 @@ dependencies = [
  "axum",
  "codexmanager-service",
  "include_dir",
+ "log",
  "mime_guess",
  "rand 0.8.5",
  "reqwest",
