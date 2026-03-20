@@ -67,6 +67,7 @@ pub(crate) struct ChatgptAuthTokensLoginInput {
     pub(crate) access_token: String,
     pub(crate) refresh_token: Option<String>,
     pub(crate) id_token: Option<String>,
+    pub(crate) cookies: Option<String>,
     pub(crate) chatgpt_account_id: Option<String>,
     pub(crate) workspace_id: Option<String>,
     pub(crate) chatgpt_plan_type: Option<String>,
@@ -178,6 +179,7 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
     storage
         .insert_token(&token)
         .map_err(|err| err.to_string())?;
+    crate::account_payment::store_account_cookies(&account_id, input.cookies.as_deref())?;
 
     set_current_auth_account_id(Some(&account_id))?;
     set_current_auth_mode(Some(AUTH_MODE_CHATGPT_AUTH_TOKENS))?;

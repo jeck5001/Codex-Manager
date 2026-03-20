@@ -39,6 +39,8 @@ export interface Account {
   subscriptionPlanType: string | null;
   subscriptionUpdatedAt: number | null;
   teamManagerUploadedAt: number | null;
+  officialPromoLink: string | null;
+  officialPromoLinkUpdatedAt: number | null;
   usage: AccountUsage | null;
 }
 
@@ -63,6 +65,15 @@ export interface AccountSubscriptionCheckResult {
   planType?: string | null;
   subscriptionUpdatedAt?: number | null;
   rawPlanType?: string | null;
+  error?: string;
+}
+
+export interface AccountOfficialPromoLinkResult {
+  accountId: string;
+  accountName?: string;
+  success: boolean;
+  officialPromoLink?: string | null;
+  officialPromoLinkUpdatedAt?: number | null;
   error?: string;
 }
 

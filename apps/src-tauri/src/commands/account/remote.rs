@@ -195,6 +195,19 @@ pub async fn service_account_subscription_mark(
 }
 
 #[tauri::command]
+pub async fn service_account_payment_official_promo_link_set(
+    addr: Option<String>,
+    account_id: String,
+    link: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "accountId": account_id,
+        "link": link,
+    });
+    rpc_call_in_background("account/payment/officialPromoLink/set", addr, Some(params)).await
+}
+
+#[tauri::command]
 pub async fn service_account_team_manager_upload(
     addr: Option<String>,
     account_id: String,

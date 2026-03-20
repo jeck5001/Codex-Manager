@@ -157,6 +157,14 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 plan_type,
             ))
         }
+        "account/payment/officialPromoLink/set" => {
+            let account_id = first_str_param(req, &["accountId", "account_id"]).unwrap_or("");
+            let link = first_string_param(req, &["link", "officialPromoLink", "official_promo_link"]);
+            super::value_or_error(account_payment::set_account_official_promo_link(
+                account_id,
+                link.as_deref(),
+            ))
+        }
         "account/teamManager/upload" => {
             let account_id = first_str_param(req, &["accountId", "account_id"]).unwrap_or("");
             super::value_or_error(account_payment::upload_account_to_team_manager(
@@ -523,6 +531,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                         .unwrap_or_default(),
                     refresh_token: first_string_param(req, &["refreshToken", "refresh_token"]),
                     id_token: first_string_param(req, &["idToken", "id_token"]),
+                    cookies: first_string_param(req, &["cookies", "cookie"]),
                     chatgpt_account_id: first_string_param(
                         req,
                         &["chatgptAccountId", "chatgpt_account_id", "accountId"],

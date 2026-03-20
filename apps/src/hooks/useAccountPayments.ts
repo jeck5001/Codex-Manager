@@ -73,6 +73,27 @@ export function useAccountPayments() {
     },
   });
 
+  const setOfficialPromoLinkMutation = useMutation({
+    mutationFn: ({
+      accountId,
+      link,
+    }: {
+      accountId: string;
+      link?: string | null;
+    }) => accountClient.setOfficialPromoLink(accountId, link),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      if (result?.officialPromoLink) {
+        toast.success(`${result.accountName || result.accountId} 的官方优惠链接已保存`);
+      } else {
+        toast.success(`${result.accountName || result.accountId} 的官方优惠链接已清空`);
+      }
+    },
+    onError: (error: unknown) => {
+      toast.error(`保存官方优惠链接失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   const testTeamManagerMutation = useMutation({
     mutationFn: ({
       apiUrl,
@@ -97,6 +118,7 @@ export function useAccountPayments() {
     generatePaymentLink: generatePaymentLinkMutation.mutateAsync,
     checkSubscription: checkSubscriptionMutation.mutateAsync,
     markSubscription: markSubscriptionMutation.mutateAsync,
+    setOfficialPromoLink: setOfficialPromoLinkMutation.mutateAsync,
     uploadToTeamManager: uploadToTeamManagerMutation.mutateAsync,
     testTeamManager: testTeamManagerMutation.mutateAsync,
     openPaymentLink: async (url: string, incognito = false) => {
@@ -109,6 +131,7 @@ export function useAccountPayments() {
     isGeneratingPaymentLink: generatePaymentLinkMutation.isPending,
     isCheckingSubscription: checkSubscriptionMutation.isPending,
     isMarkingSubscription: markSubscriptionMutation.isPending,
+    isSettingOfficialPromoLink: setOfficialPromoLinkMutation.isPending,
     isUploadingToTeamManager: uploadToTeamManagerMutation.isPending,
     isTestingTeamManager: testTeamManagerMutation.isPending,
     generatingAccountId:

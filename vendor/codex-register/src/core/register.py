@@ -48,6 +48,7 @@ class RegistrationResult:
     refresh_token: str = ""
     id_token: str = ""
     session_token: str = ""  # 会话令牌
+    cookies: str = ""  # 完整 cookie 串，用于支付/会话复用
     error_message: str = ""
     logs: list = None
     metadata: dict = None
@@ -65,6 +66,7 @@ class RegistrationResult:
             "refresh_token": self.refresh_token[:20] + "..." if self.refresh_token else "",
             "id_token": self.id_token[:20] + "..." if self.id_token else "",
             "session_token": self.session_token[:20] + "..." if self.session_token else "",
+            "cookies": self.cookies[:40] + "..." if self.cookies else "",
             "error_message": self.error_message,
             "logs": self.logs or [],
             "metadata": self.metadata or {},
@@ -231,7 +233,7 @@ class RegistrationEngine:
 
                 if did:
                     self._log(f"Device ID: {did}")
-                    return did
+                return did
 
                 self._log(
                     f"获取 Device ID 失败: 未返回 oai-did Cookie (HTTP {response.status_code}, 第 {attempt}/{max_attempts} 次)",
@@ -247,6 +249,73 @@ class RegistrationEngine:
                 time.sleep(attempt)
                 self.http_client.close()
                 self.session = self.http_client.session
+
+        return None
+
+    def _session_cookie_items(self) -> list[tuple[str, str]]:
+        """提取当前会话中的 cookie 列表"""
+        if not self.session or not getattr(self.session, "cookies", None):
+            return []
+
+        items: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        jar = getattr(self.session.cookies, "jar", None)
+
+        if jar is not None:
+            for cookie in jar:
+                name = str(getattr(cookie, "name", "") or "").strip()
+                value = str(getattr(cookie, "value", "") or "").strip()
+                if not name or not value or name in seen:
+                    continue
+                seen.add(name)
+                items.append((name, value))
+
+        if items:
+            return items
+
+        try:
+            for name, value in self.session.cookies.items():
+                normalized_name = str(name or "").strip()
+                normalized_value = str(value or "").strip()
+                if not normalized_name or not normalized_value or normalized_name in seen:
+                    continue
+                seen.add(normalized_name)
+                items.append((normalized_name, normalized_value))
+        except Exception:
+            return []
+
+        return items
+
+    def _serialize_session_cookies(self) -> str:
+        """序列化当前会话 cookie，供支付接口复用"""
+        return "; ".join(f"{name}={value}" for name, value in self._session_cookie_items())
+
+    def _extract_session_token_from_cookies(self) -> Optional[str]:
+        """兼容 next-auth 分片 cookie，尽量提取完整 session token"""
+        items = self._session_cookie_items()
+        if not items:
+            return None
+
+        cookie_map = {name: value for name, value in items}
+        for cookie_name in (
+            "__Secure-next-auth.session-token",
+            "next-auth.session-token",
+        ):
+            direct = cookie_map.get(cookie_name)
+            if direct:
+                return direct
+
+            prefix = f"{cookie_name}."
+            chunks: list[tuple[int, str]] = []
+            for name, value in items:
+                if not name.startswith(prefix):
+                    continue
+                suffix = name[len(prefix):]
+                if suffix.isdigit():
+                    chunks.append((int(suffix), value))
+            if chunks:
+                chunks.sort(key=lambda item: item[0])
+                return "".join(value for _, value in chunks)
 
         return None
 
@@ -801,16 +870,19 @@ class RegistrationEngine:
             result.refresh_token = token_info.get("refresh_token", "")
             result.id_token = token_info.get("id_token", "")
             result.password = self.password or ""  # 保存密码（已注册账号为空）
+            result.cookies = self._serialize_session_cookies()
 
             # 设置来源标记
             result.source = "login" if self._is_existing_account else "register"
 
             # 尝试获取 session_token 从 cookie
-            session_cookie = self.session.cookies.get("__Secure-next-auth.session-token")
+            session_cookie = self._extract_session_token_from_cookies()
             if session_cookie:
                 self.session_token = session_cookie
                 result.session_token = session_cookie
                 self._log(f"获取到 Session Token")
+            if result.cookies:
+                self._log(f"获取到 Cookies，长度: {len(result.cookies)}")
 
             # 17. 完成
             self._log("=" * 60)
@@ -863,6 +935,7 @@ class RegistrationEngine:
                     password=result.password,
                     client_id=settings.openai_client_id,
                     session_token=result.session_token,
+                    cookies=result.cookies,
                     email_service=self.email_service.service_type.value,
                     email_service_id=self.email_info.get("service_id") if self.email_info else None,
                     account_id=result.account_id,

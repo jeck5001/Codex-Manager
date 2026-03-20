@@ -13,6 +13,7 @@ import {
 import {
   AccountBulkStatusUpdateResult,
   AccountListResult,
+  AccountOfficialPromoLinkResult,
   AccountPaymentLinkResult,
   AccountSubscriptionCheckManyResult,
   AccountSubscriptionCheckResult,
@@ -673,6 +674,11 @@ export const accountClient = {
     invoke<AccountSubscriptionCheckResult>(
       "service_account_subscription_mark",
       withAddr({ accountId, planType })
+    ),
+  setOfficialPromoLink: (accountId: string, link?: string | null) =>
+    invoke<AccountOfficialPromoLinkResult>(
+      "service_account_payment_official_promo_link_set",
+      withAddr({ accountId, link: link ?? null })
     ),
   uploadToTeamManager: (accountId: string) =>
     invoke<AccountTeamManagerUploadResult>(

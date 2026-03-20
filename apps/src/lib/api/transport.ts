@@ -38,6 +38,9 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_account_subscription_mark: {
     rpcMethod: "account/subscription/mark",
   },
+  service_account_payment_official_promo_link_set: {
+    rpcMethod: "account/payment/officialPromoLink/set",
+  },
   service_account_team_manager_upload: {
     rpcMethod: "account/teamManager/upload",
   },

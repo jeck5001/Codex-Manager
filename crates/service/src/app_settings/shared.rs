@@ -29,6 +29,7 @@ pub const APP_SETTING_TEAM_MANAGER_ENABLED_KEY: &str = "team_manager.enabled";
 pub const APP_SETTING_TEAM_MANAGER_API_URL_KEY: &str = "team_manager.api_url";
 pub const APP_SETTING_TEAM_MANAGER_API_KEY_KEY: &str = "team_manager.api_key";
 pub const APP_SETTING_ACCOUNT_PAYMENT_STATE_KEY: &str = "account.payment_state";
+pub const APP_SETTING_ACCOUNT_SESSION_STATE_KEY: &str = "account.session_state";
 pub const APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY: &str = "web.auth.password_hash";
 pub const WEB_ACCESS_SESSION_COOKIE_NAME: &str = "codexmanager_web_auth";
 

@@ -35,6 +35,10 @@ pub struct AccountSummary {
     pub subscription_updated_at: Option<i64>,
     #[serde(default)]
     pub team_manager_uploaded_at: Option<i64>,
+    #[serde(default)]
+    pub official_promo_link: Option<String>,
+    #[serde(default)]
+    pub official_promo_link_updated_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

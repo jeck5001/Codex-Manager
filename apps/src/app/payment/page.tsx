@@ -29,6 +29,21 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { useAccountPayments } from "@/hooks/useAccountPayments";
 import { appClient } from "@/lib/api/app-client";
 
+const COUNTRY_OPTIONS = [
+  { code: "SG", label: "新加坡", currency: "SGD" },
+  { code: "US", label: "美国", currency: "USD" },
+  { code: "TR", label: "土耳其", currency: "TRY" },
+  { code: "JP", label: "日本", currency: "JPY" },
+  { code: "HK", label: "中国香港", currency: "HKD" },
+  { code: "GB", label: "英国", currency: "GBP" },
+  { code: "EU", label: "欧元区", currency: "EUR" },
+  { code: "AU", label: "澳大利亚", currency: "AUD" },
+  { code: "CA", label: "加拿大", currency: "CAD" },
+  { code: "IN", label: "印度", currency: "INR" },
+  { code: "BR", label: "巴西", currency: "BRL" },
+  { code: "MX", label: "墨西哥", currency: "MXN" },
+] as const;
+
 export default function PaymentPage() {
   const router = useRouter();
   const { accounts, isLoading } = useAccounts();
@@ -36,11 +51,13 @@ export default function PaymentPage() {
     generatePaymentLink,
     checkSubscription,
     markSubscription,
+    setOfficialPromoLink,
     uploadToTeamManager,
     openPaymentLink,
     isGeneratingPaymentLink,
     isCheckingSubscription,
     isMarkingSubscription,
+    isSettingOfficialPromoLink,
     isUploadingToTeamManager,
     formatPlanTypeLabel,
   } = useAccountPayments();
@@ -64,6 +81,13 @@ export default function PaymentPage() {
   const [detectedPlanType, setDetectedPlanType] = useState("");
   const [detectedRawPlanType, setDetectedRawPlanType] = useState("");
   const [manualPlanType, setManualPlanType] = useState<"free" | "plus" | "team">("plus");
+  const [officialPromoLinkDraft, setOfficialPromoLinkDraft] = useState("");
+  const selectedCountryOption = useMemo(
+    () => COUNTRY_OPTIONS.find((option) => option.code === country) ?? COUNTRY_OPTIONS[0],
+    [country]
+  );
+  const trialTitle = planType === "team" ? "Team 0 元试用 1 个月" : "Plus 0 元试用 1 个月";
+  const promoCampaignId = planType === "team" ? "team-1-month-free" : "plus-1-month-free";
 
   const filteredAccounts = useMemo(() => {
     const keyword = deferredAccountSearch.trim().toLowerCase();
@@ -106,6 +130,10 @@ export default function PaymentPage() {
     }
   }, [detectedPlanType]);
 
+  useEffect(() => {
+    setOfficialPromoLinkDraft(selectedAccount?.officialPromoLink || "");
+  }, [selectedAccount?.id, selectedAccount?.officialPromoLink]);
+
   const handleCheckSubscription = async () => {
     if (!selectedAccountId) {
       toast.error("请先选择账号");
@@ -142,6 +170,14 @@ export default function PaymentPage() {
     setGeneratedLink(result.link);
     setGeneratedAccountName(result.accountName);
     toast.success(`${result.accountName} 的 ${formatPlanTypeLabel(result.planType)} 支付链接已生成`);
+    return result.link;
+  };
+
+  const handleGenerateAndOpen = async (incognito = false) => {
+    const link = await handleGenerateLink();
+    if (!link) return;
+    await openPaymentLink(link, incognito);
+    toast.success(incognito ? "已尝试无痕打开支付页" : "已在浏览器打开支付页");
   };
 
   const handleMarkSubscription = async () => {
@@ -164,6 +200,17 @@ export default function PaymentPage() {
     await uploadToTeamManager(selectedAccountId);
   };
 
+  const handleSaveOfficialPromoLink = async () => {
+    if (!selectedAccountId) {
+      toast.error("请先选择账号");
+      return;
+    }
+    await setOfficialPromoLink({
+      accountId: selectedAccountId,
+      link: officialPromoLinkDraft.trim() || null,
+    });
+  };
+
   const copyGeneratedLink = async () => {
     if (!generatedLink) {
       toast.error("当前还没有支付链接");
@@ -182,14 +229,34 @@ export default function PaymentPage() {
               <CreditCard className="h-5 w-5" />
             </div>
             <div>
-              <CardTitle className="text-xl">支付中心</CardTitle>
+              <CardTitle className="text-xl">0 元首月开通</CardTitle>
               <p className="text-sm text-muted-foreground">
-                在主项目里直接生成 Plus / Team 支付链接，并检测账号当前订阅状态。
+                直接生成 OpenAI 官方试用 checkout 链接，用于开通 Plus / Team 首月优惠。
               </p>
             </div>
           </div>
         </CardHeader>
         <CardContent className="grid gap-5">
+          <div className="rounded-3xl border border-primary/20 bg-primary/8 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1.5">
+                <div className="text-xs uppercase tracking-[0.18em] text-primary/80">
+                  Trial Checkout
+                </div>
+                <div className="text-lg font-semibold">{trialTitle}</div>
+              <div className="text-sm text-muted-foreground">
+                  当前会生成带优惠活动参数的官方支付链接；如果你已经拿到 OpenAI 官方赠送的 0 元链接，建议直接绑定到账号并优先使用。
+              </div>
+              </div>
+              <div className="rounded-2xl border border-primary/20 bg-background/70 px-3 py-2 text-right">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Promo Campaign
+                </div>
+                <div className="font-mono text-sm text-primary">{promoCampaignId}</div>
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="payment-account-search">账号筛选</Label>
             <Input
@@ -244,11 +311,18 @@ export default function PaymentPage() {
 
             <div className="grid gap-2">
               <Label>计费国家</Label>
-              <Input
-                placeholder="SG / US / JP"
-                value={country}
-                onChange={(event) => setCountry(event.target.value.toUpperCase())}
-              />
+              <Select value={country} onValueChange={(value) => setCountry(value || "SG")}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COUNTRY_OPTIONS.map((option) => (
+                    <SelectItem key={option.code} value={option.code}>
+                      {option.label} ({option.code}) · {option.currency}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -308,7 +382,25 @@ export default function PaymentPage() {
               onClick={() => void handleGenerateLink()}
             >
               <Sparkles className="h-4 w-4" />
-              {isGeneratingPaymentLink ? "生成中..." : "生成支付链接"}
+              {isGeneratingPaymentLink ? "生成中..." : `生成 ${trialTitle} 链接`}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 gap-2 rounded-xl px-5"
+              disabled={!selectedAccountId || isGeneratingPaymentLink}
+              onClick={() => void handleGenerateAndOpen(false)}
+            >
+              <ExternalLink className="h-4 w-4" />
+              {isGeneratingPaymentLink ? "生成中..." : "生成后直接打开"}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 gap-2 rounded-xl px-5"
+              disabled={!selectedAccountId || isGeneratingPaymentLink}
+              onClick={() => void handleGenerateAndOpen(true)}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              {isGeneratingPaymentLink ? "生成中..." : "生成后无痕打开"}
             </Button>
             <Button
               variant="outline"
@@ -319,6 +411,57 @@ export default function PaymentPage() {
               <ShieldCheck className="h-4 w-4" />
               {isCheckingSubscription ? "检测中..." : "检测订阅状态"}
             </Button>
+          </div>
+
+          <div className="rounded-2xl border border-dashed border-border/60 bg-card/35 p-4 text-sm text-muted-foreground">
+            推荐直接用“生成后直接打开”。“无痕打开”当前只负责启动无痕窗口，不会自动注入账号登录态；
+            如果浏览器里没有登录对应账号，仍然需要手动登录后再完成首月试用开通。
+          </div>
+
+          <div className="grid gap-3 rounded-2xl border border-border/60 bg-card/45 p-4">
+            <div className="space-y-1">
+              <Label htmlFor="official-promo-link">官方赠送链接</Label>
+              <p className="text-xs text-muted-foreground">
+                把 OpenAI 官方邮件/活动页里给你的 0 元 checkout 链接保存到当前账号，后面直接从这里打开。
+              </p>
+            </div>
+            <Input
+              id="official-promo-link"
+              placeholder="https://chatgpt.com/checkout/openai_llc/cs_live_..."
+              value={officialPromoLinkDraft}
+              onChange={(event) => setOfficialPromoLinkDraft(event.target.value)}
+            />
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="outline"
+                className="h-11 gap-2 rounded-xl px-5"
+                disabled={!selectedAccountId || isSettingOfficialPromoLink}
+                onClick={() => void handleSaveOfficialPromoLink()}
+              >
+                <BadgeCheck className="h-4 w-4" />
+                {isSettingOfficialPromoLink ? "保存中..." : "保存官方链接"}
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 gap-2 rounded-xl px-5"
+                disabled={!selectedAccount?.officialPromoLink}
+                onClick={() => void openPaymentLink(selectedAccount?.officialPromoLink || "", false)}
+              >
+                <ExternalLink className="h-4 w-4" />
+                打开官方链接
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 gap-2 rounded-xl px-5"
+                disabled={!selectedAccountId || isSettingOfficialPromoLink}
+                onClick={() => {
+                  setOfficialPromoLinkDraft("");
+                  void setOfficialPromoLink({ accountId: selectedAccountId, link: null });
+                }}
+              >
+                清空
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-4 rounded-2xl border border-border/60 bg-card/45 p-4 md:grid-cols-[minmax(0,1fr)_auto_auto]">
@@ -406,8 +549,33 @@ export default function PaymentPage() {
                   {planType === "team" ? "ChatGPT Team" : "ChatGPT Plus"}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  国家 {country || "--"}{planType === "team" ? ` · ${workspaceName || "MyTeam"}` : ""}
+                  国家 {country || "--"} · {selectedCountryOption.currency}
+                  {planType === "team" ? ` · ${workspaceName || "MyTeam"}` : ""}
                 </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-border/60 bg-card/50 p-4">
+              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                <Sparkles className="h-3.5 w-3.5" />
+                当前试用策略
+              </div>
+              <div className="mt-3 text-lg font-semibold">{trialTitle}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {planType === "team" ? `席位 ${seatQuantity || "5"} · ${priceInterval === "year" ? "年付" : "月付"}` : "官方试用活动链接"}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-border/60 bg-card/50 p-4">
+              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                <BadgeCheck className="h-3.5 w-3.5" />
+                官方赠送入口
+              </div>
+              <div className="mt-3 text-lg font-semibold">
+                {selectedAccount?.officialPromoLink ? "已绑定" : "未绑定"}
+              </div>
+              <div className="mt-1 break-all text-xs text-muted-foreground">
+                {selectedAccount?.officialPromoLink || "把 OpenAI 官方送你的 checkout 链接粘贴到左侧即可"}
               </div>
             </div>
 
@@ -449,6 +617,9 @@ export default function PaymentPage() {
               </div>
               <div className="mt-2 text-sm font-medium">
                 {generatedAccountName || "尚未生成"}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {generatedLink ? `${trialTitle} · ${promoCampaignId}` : "生成后会显示官方 checkout 链接"}
               </div>
               <div className="mt-2 break-all font-mono text-[12px] text-muted-foreground">
                 {generatedLink || "生成后会显示在这里"}

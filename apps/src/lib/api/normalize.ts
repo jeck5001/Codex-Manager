@@ -191,6 +191,11 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     teamManagerUploadedAt: toNullableNumber(
       source.teamManagerUploadedAt ?? source.team_manager_uploaded_at
     ),
+    officialPromoLink:
+      asString(source.officialPromoLink ?? source.official_promo_link) || null,
+    officialPromoLinkUpdatedAt: toNullableNumber(
+      source.officialPromoLinkUpdatedAt ?? source.official_promo_link_updated_at
+    ),
     usage: usage ?? null,
   };
 }
