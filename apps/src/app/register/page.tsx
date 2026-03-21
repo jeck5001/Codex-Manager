@@ -67,6 +67,13 @@ const REGISTER_FAILURE_REASON_LABELS: Record<string, string> = {
   register_proxy_error: "注册代理异常",
 };
 
+const REGISTER_RETRY_STRATEGY_LABELS: Record<string, string> = {
+  same: "原样重试",
+  relax_email_wait: "延长验证码等待",
+  latest_email_otp: "强制取最新验证码",
+  refresh_proxy: "换代理重试",
+};
+
 function formatTimestamp(value: string) {
   return formatApiDateTime(value, { emptyLabel: "--", withSeconds: true });
 }
@@ -113,6 +120,23 @@ function resolveRegisterFailureReasonLabel(code: string, fallback?: string) {
     return REGISTER_FAILURE_REASON_LABELS[normalized];
   }
   return fallback || "失败原因";
+}
+
+function recommendedRetryStrategyForFailure(code: string): string {
+  switch (String(code || "").trim().toLowerCase()) {
+    case "register_email_otp_timeout":
+      return "relax_email_wait";
+    case "register_email_otp_invalid":
+      return "latest_email_otp";
+    case "register_proxy_error":
+      return "refresh_proxy";
+    default:
+      return "same";
+  }
+}
+
+function resolveRetryStrategyLabel(strategy: string) {
+  return REGISTER_RETRY_STRATEGY_LABELS[strategy] || REGISTER_RETRY_STRATEGY_LABELS.same;
 }
 
 export default function RegisterPage() {
@@ -190,6 +214,10 @@ export default function RegisterPage() {
           )
         : tasks,
     [failureCodeFilter, tasks],
+  );
+  const recommendedRetryStrategy = useMemo(
+    () => recommendedRetryStrategyForFailure(failureCodeFilter),
+    [failureCodeFilter],
   );
 
   useEffect(() => {
@@ -328,6 +356,19 @@ export default function RegisterPage() {
       return;
     }
     await deleteTask(pendingAction.task.taskUuid);
+  };
+
+  const handleRetryFailedTasksInView = async () => {
+    const failedTasks = filteredTasks.filter(
+      (task) => String(task.status || "").trim().toLowerCase() === "failed",
+    );
+    if (failedTasks.length === 0) {
+      return;
+    }
+    for (const task of failedTasks) {
+      const strategy = recommendedRetryStrategyForFailure(task.failureCode);
+      await retryTask(task.taskUuid, strategy);
+    }
   };
 
   return (
@@ -598,10 +639,27 @@ export default function RegisterPage() {
               </Select>
             </div>
             <div className="min-w-0 flex items-end justify-end">
-              <div className="text-sm text-muted-foreground">
-                {failureCodeFilter
-                  ? `当前页命中 ${filteredTasks.length} 条，共返回 ${total} 条任务`
-                  : `共 ${total} 条任务，当前第 ${page} / ${totalPages} 页`}
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <div className="text-sm text-muted-foreground">
+                  {failureCodeFilter
+                    ? `当前页命中 ${filteredTasks.length} 条，共返回 ${total} 条任务`
+                    : `共 ${total} 条任务，当前第 ${page} / ${totalPages} 页`}
+                </div>
+                {failureCodeFilter ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      isRetrying ||
+                      !filteredTasks.some(
+                        (task) => String(task.status || "").trim().toLowerCase() === "failed",
+                      )
+                    }
+                    onClick={() => void handleRetryFailedTasksInView()}
+                  >
+                    按推荐策略重试当前页
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -611,7 +669,7 @@ export default function RegisterPage() {
               已按失败原因筛选：{resolveRegisterFailureReasonLabel(
                 failureCodeFilter,
                 filteredTasks[0]?.failureLabel,
-              )}
+              )}，推荐策略：{resolveRetryStrategyLabel(recommendedRetryStrategy)}
             </div>
           ) : null}
 
@@ -698,7 +756,12 @@ export default function RegisterPage() {
                               size="icon"
                               title="重新发起"
                               disabled={!canRetry || isRetrying}
-                              onClick={() => void retryTask(task.taskUuid)}
+                              onClick={() =>
+                                void retryTask(
+                                  task.taskUuid,
+                                  recommendedRetryStrategyForFailure(task.failureCode),
+                                )
+                              }
                             >
                               <RotateCcw className="h-4 w-4" />
                             </Button>

@@ -86,7 +86,8 @@ export function useRegisterTasks(filters: RegisterTaskListParams = {}) {
   });
 
   const retryMutation = useMutation({
-    mutationFn: (taskUuid: string) => accountClient.retryRegisterTask(taskUuid),
+    mutationFn: ({ taskUuid, strategy }: { taskUuid: string; strategy?: string | null }) =>
+      accountClient.retryRegisterTask(taskUuid, strategy),
     onSuccess: async () => {
       await invalidateAll();
       toast.success("已重新发起注册任务");
@@ -104,7 +105,8 @@ export function useRegisterTasks(filters: RegisterTaskListParams = {}) {
     isStatsLoading: statsQuery.isLoading,
     refetchTasks: tasksQuery.refetch,
     cancelTask: cancelMutation.mutateAsync,
-    retryTask: retryMutation.mutateAsync,
+    retryTask: (taskUuid: string, strategy?: string | null) =>
+      retryMutation.mutateAsync({ taskUuid, strategy }),
     deleteTask: deleteMutation.mutateAsync,
     isCancelling: cancelMutation.isPending,
     isRetrying: retryMutation.isPending,
