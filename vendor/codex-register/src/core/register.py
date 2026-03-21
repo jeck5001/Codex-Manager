@@ -333,7 +333,6 @@ class RegistrationEngine:
     def _start_oauth(self) -> bool:
         """开始 OAuth 流程"""
         try:
-            self._log("开始 OAuth 授权流程...")
             self.oauth_start = self.oauth_manager.start_oauth()
             self._log(f"OAuth URL 已生成: {self.oauth_start.auth_url[:80]}...")
             return True
@@ -1283,7 +1282,6 @@ class RegistrationEngine:
             return resolution
 
         if resolution.page_type == "add_phone":
-            self._log("登录邮箱验证码校验后仍停留在 add_phone，结束当前会话回退", "warning")
             return resolution
 
         if self.oauth_start:
@@ -1326,7 +1324,6 @@ class RegistrationEngine:
             return None
 
         if page_type == "add_phone":
-            self._log(f"{stage} 仍然进入 add_phone", "warning")
             return None
 
         return None
@@ -1407,7 +1404,10 @@ class RegistrationEngine:
                     )
 
             if page_type == "add_phone":
-                self._log(f"{attempt_name} 仍被服务端要求手机号验证，跳过当前会话的无效重定向补救", "warning")
+                if recreate_session:
+                    self._log("新 OAuth 会话登录后仍停留在 add_phone", "warning")
+                else:
+                    self._log("当前会话登录后仍停留在 add_phone，切换新 OAuth 会话重试", "warning")
                 continue
 
             if self.oauth_start:
@@ -1425,7 +1425,6 @@ class RegistrationEngine:
                 self._log("OAuth 流程未初始化", "error")
                 return None
 
-            self._log("处理 OAuth 回调...")
             token_info = self.oauth_manager.handle_callback(
                 callback_url=callback_url,
                 expected_state=self.oauth_start.state,
