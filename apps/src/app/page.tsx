@@ -8,19 +8,29 @@ import {
   DollarSign,
   ExternalLink,
   PieChart,
+  RefreshCw,
+  RotateCcw,
   ShieldAlert,
+  Sparkles,
+  Trash2,
   Users,
+  Wrench,
   XCircle,
   Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
+import { accountClient } from "@/lib/api/account-client";
+import { serviceClient } from "@/lib/api/service-client";
+import { getAppErrorMessage } from "@/lib/api/transport";
 import { cn } from "@/lib/utils";
 import {
   formatCompactNumber,
@@ -151,6 +161,34 @@ function describeFailureDrilldownTarget(code: string): string {
     default:
       return "查看日志页";
   }
+}
+
+function recommendedRetryStrategyForFailure(code: string): string | null {
+  switch (String(code || "").trim().toLowerCase()) {
+    case "register_email_otp_timeout":
+      return "relax_email_wait";
+    case "register_email_otp_invalid":
+      return "latest_email_otp";
+    case "register_proxy_error":
+      return "refresh_proxy";
+    case "register_phone_required":
+      return null;
+    default:
+      return "same";
+  }
+}
+
+function countRecoverableRegisterFailures(
+  items: Array<{ code: string; count: number }>
+): number {
+  return items.reduce((sum, item) => {
+    if (!String(item.code || "").trim().toLowerCase().startsWith("register_")) {
+      return sum;
+    }
+    return recommendedRetryStrategyForFailure(item.code) == null
+      ? sum
+      : sum + Math.max(0, item.count || 0);
+  }, 0);
 }
 
 function formatPercent(value: number | null | undefined): string {
@@ -325,6 +363,7 @@ function StatProgressCard({
 
 export default function DashboardPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const {
     stats,
     currentAccount,
@@ -338,6 +377,94 @@ export default function DashboardPage() {
   const poolPrimary = stats.poolRemain?.primary ?? 0;
   const poolSecondary = stats.poolRemain?.secondary ?? 0;
   const usagePrediction = stats.usagePrediction;
+  const recoverableRegisterFailures = countRecoverableRegisterFailures(
+    failureReasonSummary,
+  );
+
+  const invalidateOperationalViews = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+      queryClient.invalidateQueries({ queryKey: ["usage"] }),
+      queryClient.invalidateQueries({ queryKey: ["usage-aggregate"] }),
+      queryClient.invalidateQueries({ queryKey: ["register-tasks"] }),
+      queryClient.invalidateQueries({ queryKey: ["register-stats"] }),
+      queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
+      queryClient.invalidateQueries({ queryKey: ["logs"] }),
+    ]);
+  };
+
+  const refreshUsageMutation = useMutation({
+    mutationFn: () => accountClient.refreshUsage(),
+    onSuccess: async () => {
+      await invalidateOperationalViews();
+      toast.success("已开始刷新全部账号用量");
+    },
+    onError: (error: unknown) => {
+      toast.error(`刷新全部用量失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const cleanupUnavailableMutation = useMutation({
+    mutationFn: () => accountClient.deleteUnavailableFree(),
+    onSuccess: async (result: { deleted?: number }) => {
+      await invalidateOperationalViews();
+      const deleted = Number(result?.deleted || 0);
+      toast.success(
+        deleted > 0
+          ? `已清理 ${deleted} 个不可用免费账号`
+          : "没有可清理的不可用免费账号"
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`清理不可用免费号失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const syncFreeProxyMutation = useMutation({
+    mutationFn: () =>
+      serviceClient.syncFreeProxyPool({ syncRegisterProxyPool: true }),
+    onSuccess: async (result) => {
+      await invalidateOperationalViews();
+      toast.success(
+        `已同步 ${result.appliedCount} 个代理，注册代理池总数 ${result.registerProxyTotalCount}`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`同步 freeproxy 失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const retryRecoverableRegisterMutation = useMutation({
+    mutationFn: async () => {
+      const result = await accountClient.listRegisterTasks({
+        page: 1,
+        pageSize: 100,
+        status: "failed",
+      });
+      const recoverableTasks = result.tasks.filter(
+        (task) => recommendedRetryStrategyForFailure(task.failureCode) != null,
+      );
+      for (const task of recoverableTasks) {
+        const strategy = recommendedRetryStrategyForFailure(task.failureCode);
+        if (!strategy) {
+          continue;
+        }
+        await accountClient.retryRegisterTask(task.taskUuid, strategy);
+      }
+      return { totalFailed: result.tasks.length, retried: recoverableTasks.length };
+    },
+    onSuccess: async (result) => {
+      await invalidateOperationalViews();
+      toast.success(
+        result.retried > 0
+          ? `已按策略重试 ${result.retried} 个失败注册任务`
+          : `最近 100 条失败注册里没有可自动恢复的任务（共 ${result.totalFailed} 条失败）`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`批量重试失败注册任务失败: ${getAppErrorMessage(error)}`);
+    },
+  });
 
   const openAccountById = (accountId: string) => {
     const params = new URLSearchParams();
@@ -371,6 +498,45 @@ export default function DashboardPage() {
     }
     router.push(`/accounts?${params.toString()}`);
   };
+
+  const toolboxActions = [
+    {
+      title: "刷新全部用量",
+      description: "重新拉取当前号池的额度和状态，适合刚同步账号或代理后执行。",
+      icon: RefreshCw,
+      tone: "text-sky-500",
+      disabled: !isServiceReady || refreshUsageMutation.isPending,
+      pending: refreshUsageMutation.isPending,
+      onClick: () => refreshUsageMutation.mutate(),
+    },
+    {
+      title: "重试可恢复注册失败",
+      description: "扫描最近 100 条失败注册，按验证码或代理策略自动批量重试。",
+      icon: RotateCcw,
+      tone: "text-emerald-500",
+      disabled: !isServiceReady || retryRecoverableRegisterMutation.isPending,
+      pending: retryRecoverableRegisterMutation.isPending,
+      onClick: () => retryRecoverableRegisterMutation.mutate(),
+    },
+    {
+      title: "清理不可用免费号",
+      description: "移除已不可用且无保留价值的免费账号，减少坏号污染。",
+      icon: Trash2,
+      tone: "text-amber-500",
+      disabled: !isServiceReady || cleanupUnavailableMutation.isPending,
+      pending: cleanupUnavailableMutation.isPending,
+      onClick: () => cleanupUnavailableMutation.mutate(),
+    },
+    {
+      title: "同步 freeproxy",
+      description: "从 freeproxy 拉取最新代理，并同步写入注册代理池。",
+      icon: Sparkles,
+      tone: "text-fuchsia-500",
+      disabled: !isServiceReady || syncFreeProxyMutation.isPending,
+      pending: syncFreeProxyMutation.isPending,
+      onClick: () => syncFreeProxyMutation.mutate(),
+    },
+  ] as const;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
@@ -469,6 +635,61 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      <Card className="glass-card border-none shadow-md">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-base font-semibold">一键修复工具箱</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              把常用修复动作集中到首页，适合代理失效、注册堆积或号池状态异常时快速处置。
+            </p>
+          </div>
+          <Badge variant="secondary" className="bg-primary/10 text-primary">
+            <Wrench className="mr-1 h-3.5 w-3.5" />
+            运维修复
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {toolboxActions.map((action) => (
+              <div
+                key={action.title}
+                className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className={cn("rounded-2xl bg-background/80 p-2", action.tone)}>
+                    <action.icon className="h-4 w-4" />
+                  </div>
+                  {action.pending ? <Badge variant="secondary">处理中</Badge> : null}
+                </div>
+                <p className="mt-3 text-sm font-semibold">{action.title}</p>
+                <p className="mt-2 min-h-[54px] text-[11px] leading-5 text-muted-foreground">
+                  {action.description}
+                </p>
+                <Button
+                  className="mt-3 w-full"
+                  variant="outline"
+                  disabled={action.disabled}
+                  onClick={action.onClick}
+                >
+                  {action.pending ? "执行中..." : "立即执行"}
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+            <span className="rounded-full bg-muted/50 px-2 py-1">
+              可恢复失败注册估算：{recoverableRegisterFailures} 条
+            </span>
+            <span className="rounded-full bg-muted/50 px-2 py-1">
+              当前隔离账号：{stats.isolated}
+            </span>
+            <span className="rounded-full bg-muted/50 px-2 py-1">
+              最近治理命中：{stats.recentGovernanceTotal}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         {isLoading ? (
