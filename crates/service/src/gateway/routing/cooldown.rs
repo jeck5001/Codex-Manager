@@ -5,6 +5,21 @@ use codexmanager_core::storage::now_ts;
 
 const DEFAULT_ACCOUNT_COOLDOWN_SECS: i64 = 20;
 const DEFAULT_ACCOUNT_COOLDOWN_4XX_SECS: i64 = DEFAULT_ACCOUNT_COOLDOWN_SECS;
+const ENV_ACCOUNT_COOLDOWN_AUTH_SECS: &str = "CODEXMANAGER_ACCOUNT_COOLDOWN_AUTH_SECS";
+const ENV_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS: &str =
+    "CODEXMANAGER_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS";
+const ENV_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS: &str =
+    "CODEXMANAGER_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS";
+const ENV_ACCOUNT_COOLDOWN_NETWORK_SECS: &str = "CODEXMANAGER_ACCOUNT_COOLDOWN_NETWORK_SECS";
+const ENV_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS: &str = "CODEXMANAGER_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS";
+const ENV_ACCOUNT_COOLDOWN_DEACTIVATED_SECS: &str =
+    "CODEXMANAGER_ACCOUNT_COOLDOWN_DEACTIVATED_SECS";
+const DEFAULT_ACCOUNT_COOLDOWN_AUTH_SECS: u64 = 300;
+const DEFAULT_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS: u64 = 45;
+const DEFAULT_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS: u64 = 30;
+const DEFAULT_ACCOUNT_COOLDOWN_NETWORK_SECS: u64 = 20;
+const DEFAULT_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS: u64 = 1800;
+const DEFAULT_ACCOUNT_COOLDOWN_DEACTIVATED_SECS: u64 = 21600;
 // 中文注释：offense 只用于“短时间内持续 429”场景；超过该时间视为新一轮，避免长期记仇导致误伤。
 const ACCOUNT_RATE_LIMIT_OFFENSE_FORGET_AFTER_SECS: i64 = 30 * 60;
 
@@ -21,7 +36,7 @@ struct AccountCooldownState {
 static ACCOUNT_COOLDOWN_UNTIL: OnceLock<Mutex<AccountCooldownState>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum CooldownReason {
+pub(crate) enum CooldownReason {
     Default,
     Network,
     RateLimited,
@@ -36,28 +51,41 @@ fn u64_to_i64_saturating(value: u64) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
 }
 
+fn env_u64_or(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(default)
+}
+
 fn cooldown_secs_for_reason(reason: CooldownReason) -> i64 {
     match reason {
         CooldownReason::Default => DEFAULT_ACCOUNT_COOLDOWN_SECS,
-        CooldownReason::Network => {
-            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_network_secs())
-        }
-        CooldownReason::RateLimited => {
-            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_rate_limited_secs())
-        }
-        CooldownReason::Upstream5xx => {
-            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_server_error_secs())
-        }
+        CooldownReason::Network => u64_to_i64_saturating(env_u64_or(
+            ENV_ACCOUNT_COOLDOWN_NETWORK_SECS,
+            DEFAULT_ACCOUNT_COOLDOWN_NETWORK_SECS,
+        )),
+        CooldownReason::RateLimited => u64_to_i64_saturating(env_u64_or(
+            ENV_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS,
+            DEFAULT_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS,
+        )),
+        CooldownReason::Upstream5xx => u64_to_i64_saturating(env_u64_or(
+            ENV_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS,
+            DEFAULT_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS,
+        )),
         CooldownReason::Upstream4xx => DEFAULT_ACCOUNT_COOLDOWN_4XX_SECS,
-        CooldownReason::Challenge => {
-            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_auth_secs())
-        }
-        CooldownReason::LowQuota => {
-            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_low_quota_secs())
-        }
-        CooldownReason::Deactivated => {
-            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_deactivated_secs())
-        }
+        CooldownReason::Challenge => u64_to_i64_saturating(env_u64_or(
+            ENV_ACCOUNT_COOLDOWN_AUTH_SECS,
+            DEFAULT_ACCOUNT_COOLDOWN_AUTH_SECS,
+        )),
+        CooldownReason::LowQuota => u64_to_i64_saturating(env_u64_or(
+            ENV_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS,
+            DEFAULT_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS,
+        )),
+        CooldownReason::Deactivated => u64_to_i64_saturating(env_u64_or(
+            ENV_ACCOUNT_COOLDOWN_DEACTIVATED_SECS,
+            DEFAULT_ACCOUNT_COOLDOWN_DEACTIVATED_SECS,
+        )),
     }
 }
 
@@ -115,7 +143,7 @@ fn decay_offense_count_for_success(
     }
 }
 
-pub(super) fn cooldown_reason_for_status(status: u16) -> CooldownReason {
+pub(crate) fn cooldown_reason_for_status(status: u16) -> CooldownReason {
     match status {
         429 => CooldownReason::RateLimited,
         500..=599 => CooldownReason::Upstream5xx,
@@ -125,7 +153,7 @@ pub(super) fn cooldown_reason_for_status(status: u16) -> CooldownReason {
     }
 }
 
-pub(super) fn is_account_in_cooldown(account_id: &str) -> bool {
+pub(crate) fn is_account_in_cooldown(account_id: &str) -> bool {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut state = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
     let now = now_ts();
@@ -139,7 +167,7 @@ pub(super) fn is_account_in_cooldown(account_id: &str) -> bool {
     }
 }
 
-pub(super) fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
+pub(crate) fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut guard = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
     let state = &mut *guard;
@@ -167,11 +195,11 @@ pub(super) fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
     }
 }
 
-pub(super) fn mark_account_cooldown_for_status(account_id: &str, status: u16) {
+pub(crate) fn mark_account_cooldown_for_status(account_id: &str, status: u16) {
     mark_account_cooldown(account_id, cooldown_reason_for_status(status));
 }
 
-pub(super) fn clear_account_cooldown(account_id: &str) {
+pub(crate) fn clear_account_cooldown(account_id: &str) {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut guard = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
     let state = &mut *guard;
