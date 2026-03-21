@@ -19,23 +19,21 @@
 
 适用范围：
 
-- `apps/src/`
-- `apps/index.html`
-- `apps/src/styles/`
+- `apps/src/app/`
+- `apps/src/components/`
+- `apps/src/lib/`
+- `apps/src/hooks/`
 
 最小验证：
 
 ```bash
-pnpm -C apps run test
 pnpm -C apps run build
-pnpm -C apps run test:ui
 ```
 
 说明：
 
-- `pnpm -C apps run test`：模块级 JS 单测
-- `pnpm -C apps run test:ui`：页面结构 / UI 级回归
-- `pnpm -C apps run build`：确认 Vite 构建仍正常
+- `pnpm -C apps run build`：确认 Next.js 静态导出链路仍正常
+- 若改动涉及运行时识别、Web RPC、桌面 / Web 差异处理，补跑第 4 节
 
 ## 3. 桌面端 / Tauri 改动
 
@@ -60,7 +58,39 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 -Bundle nsis -CleanDist
 
 - 只要改了 Tauri 桥接或桌面生命周期，最好至少做一次本地桌面构建验证。
 
-## 4. Rust 服务端改动
+## 4. Web 运行壳 / 部署兼容改动
+
+适用范围：
+
+- `crates/web/`
+- `apps/src/lib/api/transport.ts`
+- `apps/src/components/layout/app-bootstrap.tsx`
+- `apps/src/components/layout/header.tsx`
+- `apps/src/components/layout/sidebar.tsx`
+- Web 代理、`/api/runtime`、`/api/rpc`、部署方式相关改动
+
+最小验证：
+
+```bash
+pnpm -C apps run build
+cargo test -p codexmanager-web
+pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.test.ps1
+```
+
+建议补充：
+
+```powershell
+pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.ps1 `
+  -Base http://localhost:48761
+```
+
+说明：
+
+- `pnpm -C apps run build`：确认前端静态导出仍可生成
+- `cargo test -p codexmanager-web`：确认 Web 壳路由与运行时探针契约
+- `web_runtime_probe.test.ps1`：确认 Web 运行壳最小 smoke 链路的脚本行为
+
+## 5. Rust 服务端改动
 
 适用范围：
 
@@ -83,7 +113,7 @@ cargo build -p codexmanager-web --release
 cargo build -p codexmanager-start --release
 ```
 
-## 5. 协议适配 / 网关改动
+## 6. 协议适配 / 网关改动
 
 适用范围：
 
@@ -114,7 +144,7 @@ pwsh -NoLogo -NoProfile -File scripts/tests/chat_tools_hit_probe.ps1
 - 如果本地环境不具备真实上游账号，至少要跑 Rust 测试并保留探针执行说明。
 - 兼容性修复不能只验证一种客户端。
 
-## 6. 设置项 / 环境变量 / 持久化改动
+## 7. 设置项 / 环境变量 / 持久化改动
 
 适用范围：
 
@@ -126,7 +156,7 @@ pwsh -NoLogo -NoProfile -File scripts/tests/chat_tools_hit_probe.ps1
 最小验证：
 
 ```bash
-pnpm -C apps run test
+pnpm -C apps run build
 cargo test --workspace
 ```
 
@@ -137,7 +167,7 @@ cargo test --workspace
 - 是否需要同步到运行时
 - README / `CONTRIBUTING.md` / `ARCHITECTURE.md` 是否需要更新
 
-## 7. 发布链路改动
+## 8. 发布链路改动
 
 适用范围：
 
@@ -161,7 +191,7 @@ pwsh -NoLogo -NoProfile -File scripts/tests/rebuild.test.ps1
 - 产物命名没有漂移
 - prerelease / latest 行为没有漂移
 
-## 8. 文档治理改动
+## 9. 文档治理改动
 
 适用范围：
 
@@ -177,21 +207,27 @@ pwsh -NoLogo -NoProfile -File scripts/tests/rebuild.test.ps1
 - 检查文档职责是否重复
 - 检查版本号、产物名、workflow 名称是否与实际一致
 
-## 9. 提交前最小检查建议
+## 10. 提交前最小检查建议
 
 ### 常规改动
 
 ```bash
-pnpm -C apps run test
-cargo test --workspace
+pnpm -C apps run build
+cargo test -p codexmanager-web
 ```
 
 ### 前端页面改动
 
 ```bash
-pnpm -C apps run test
 pnpm -C apps run build
-pnpm -C apps run test:ui
+```
+
+### Web 兼容 / 部署改动
+
+```bash
+pnpm -C apps run build
+cargo test -p codexmanager-web
+pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.test.ps1
 ```
 
 ### 协议适配改动
@@ -201,7 +237,7 @@ cargo test --workspace
 pwsh -NoLogo -NoProfile -File scripts/tests/gateway_regression_suite.ps1
 ```
 
-## 10. 结果记录约定
+## 11. 结果记录约定
 
 - 能完整执行的验证，记录为“已执行”。
 - 受环境限制无法执行的验证，明确写成“未执行 + 原因”。
