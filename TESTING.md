@@ -85,6 +85,7 @@ pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.test.ps1
 ```powershell
 pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.ps1 `
   -Base http://localhost:48761
+pwsh -NoLogo -NoProfile -File scripts/tests/web_ui_smoke.ps1 -SkipBuild
 ```
 
 说明：
@@ -93,6 +94,7 @@ pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.ps1 `
 - `pnpm -C apps run test:runtime`：确认前端运行时契约和能力判定保持一致
 - `cargo test -p codexmanager-web`：确认 Web 壳路由与运行时探针契约
 - `web_runtime_probe.test.ps1`：确认 Web 运行壳最小 smoke 链路的脚本行为
+- `web_ui_smoke.ps1`：确认 Web 页面在 supported / unsupported 运行壳下的关键 UI 行为
 
 ## 5. Rust 服务端改动
 
