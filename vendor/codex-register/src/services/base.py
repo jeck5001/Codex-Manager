@@ -81,6 +81,7 @@ class BaseEmailService(abc.ABC):
         email: str,
         email_id: str = None,
         timeout: int = 120,
+        poll_interval: Optional[int] = None,
         pattern: str = r"(?<!\d)(\d{6})(?!\d)",
         otp_sent_at: Optional[float] = None,
     ) -> Optional[str]:
@@ -91,6 +92,7 @@ class BaseEmailService(abc.ABC):
             email: 邮箱地址
             email_id: 邮箱服务中的 ID（如果需要）
             timeout: 超时时间（秒）
+            poll_interval: 轮询间隔（秒）
             pattern: 验证码正则表达式
             otp_sent_at: OTP 发送时间戳，用于过滤旧邮件
 

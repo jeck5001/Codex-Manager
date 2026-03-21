@@ -20,6 +20,7 @@ from typing import Optional, Dict, Any, List
 from .base import BaseEmailService, EmailServiceError, EmailServiceType
 from ..core.http_client import HTTPClient, RequestConfig
 from ..config.constants import OTP_CODE_PATTERN
+from ..config.settings import get_settings
 
 
 logger = logging.getLogger(__name__)
@@ -361,6 +362,7 @@ class TempMailService(BaseEmailService):
         email: str,
         email_id: str = None,
         timeout: int = 120,
+        poll_interval: Optional[int] = None,
         pattern: str = OTP_CODE_PATTERN,
         otp_sent_at: Optional[float] = None,
     ) -> Optional[str]:
@@ -371,20 +373,28 @@ class TempMailService(BaseEmailService):
             email: 邮箱地址
             email_id: 未使用，保留接口兼容
             timeout: 超时时间（秒）
+            poll_interval: 轮询间隔（秒）
             pattern: 验证码正则
             otp_sent_at: OTP 发送时间戳（暂未使用）
 
         Returns:
             验证码字符串，超时返回 None
         """
-        logger.info(f"正在从 TempMail 邮箱 {email} 获取验证码...")
+        settings = get_settings()
+        actual_timeout = timeout or settings.email_code_timeout
+        actual_poll_interval = max(1, int(poll_interval or settings.email_code_poll_interval))
+
+        logger.info(
+            f"正在从 TempMail 邮箱 {email} 获取验证码..."
+            f"（超时 {actual_timeout}s，轮询间隔 {actual_poll_interval}s）"
+        )
 
         start_time = time.time()
         seen_mail_ids: set = set()
         used_codes = self._used_codes.setdefault(email.lower(), set())
         min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
-        while time.time() - start_time < timeout:
+        while time.time() - start_time < actual_timeout:
             try:
                 # 使用 admin API 查询邮件，通过 address 参数过滤
                 response = self._make_request(
@@ -396,7 +406,7 @@ class TempMailService(BaseEmailService):
                 # admin/mails 返回格式: {"results": [...], "total": N}
                 mails = response.get("results", [])
                 if not isinstance(mails, list):
-                    time.sleep(3)
+                    time.sleep(actual_poll_interval)
                     continue
 
                 for mail in mails:
@@ -433,7 +443,7 @@ class TempMailService(BaseEmailService):
             except Exception as e:
                 logger.debug(f"检查 TempMail 邮件时出错: {e}")
 
-            time.sleep(3)
+            time.sleep(actual_poll_interval)
 
         logger.warning(f"等待 TempMail 验证码超时: {email}")
         return None

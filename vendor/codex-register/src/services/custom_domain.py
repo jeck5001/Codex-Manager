@@ -14,6 +14,7 @@ from urllib.parse import urljoin
 from .base import BaseEmailService, EmailServiceError, EmailServiceType
 from ..core.http_client import HTTPClient, RequestConfig
 from ..config.constants import OTP_CODE_PATTERN
+from ..config.settings import get_settings
 
 
 logger = logging.getLogger(__name__)
@@ -306,6 +307,7 @@ class CustomDomainEmailService(BaseEmailService):
         email: str,
         email_id: str = None,
         timeout: int = 120,
+        poll_interval: Optional[int] = None,
         pattern: str = OTP_CODE_PATTERN,
         otp_sent_at: Optional[float] = None,
     ) -> Optional[str]:
@@ -316,6 +318,7 @@ class CustomDomainEmailService(BaseEmailService):
             email: 邮箱地址
             email_id: 邮箱 ID（如果不提供，从缓存中查找）
             timeout: 超时时间（秒）
+            poll_interval: 轮询间隔（秒）
             pattern: 验证码正则表达式
             otp_sent_at: OTP 发送时间戳（自定义域名服务暂不使用此参数）
 
@@ -335,21 +338,28 @@ class CustomDomainEmailService(BaseEmailService):
             logger.warning(f"未找到邮箱 {email} 的 ID，无法获取验证码")
             return None
 
-        logger.info(f"正在从自定义域名邮箱 {email} 获取验证码...")
+        settings = get_settings()
+        actual_timeout = timeout or settings.email_code_timeout
+        actual_poll_interval = max(1, int(poll_interval or settings.email_code_poll_interval))
+
+        logger.info(
+            f"正在从自定义域名邮箱 {email} 获取验证码..."
+            f"（超时 {actual_timeout}s，轮询间隔 {actual_poll_interval}s）"
+        )
 
         start_time = time.time()
         seen_message_ids = set()
         used_codes = self._used_codes.setdefault(email.lower(), set())
         min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
-        while time.time() - start_time < timeout:
+        while time.time() - start_time < actual_timeout:
             try:
                 # 获取邮件列表
                 response = self._make_request("GET", f"/api/emails/{target_email_id}")
 
                 messages = response.get("messages", [])
                 if not isinstance(messages, list):
-                    time.sleep(3)
+                    time.sleep(actual_poll_interval)
                     continue
 
                 for message in messages:
@@ -393,7 +403,7 @@ class CustomDomainEmailService(BaseEmailService):
                 logger.debug(f"检查邮件时出错: {e}")
 
             # 等待一段时间再检查
-            time.sleep(3)
+            time.sleep(actual_poll_interval)
 
         logger.warning(f"等待验证码超时: {email}")
         return None
