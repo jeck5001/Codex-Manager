@@ -151,6 +151,16 @@ export interface GovernanceSummaryItem {
   lastSeenAt: number | null;
 }
 
+export interface UsagePredictionSummary {
+  quotaProtectionEnabled: boolean;
+  quotaProtectionThresholdPercent: number;
+  readyAccountCount: number;
+  estimatedHoursToThreshold: number | null;
+  estimatedHoursToPoolExhaustion: number | null;
+  thresholdLimitedBy: string | null;
+  poolLimitedBy: string | null;
+}
+
 export interface ApiKey {
   id: string;
   name: string;
@@ -559,6 +569,7 @@ export interface StartupSnapshot {
   accounts: Account[];
   usageSnapshots: AccountUsage[];
   usageAggregateSummary: UsageAggregateSummary;
+  usagePredictionSummary: UsagePredictionSummary;
   failureReasonSummary: FailureReasonSummaryItem[];
   governanceSummary: GovernanceSummaryItem[];
   apiKeys: ApiKey[];

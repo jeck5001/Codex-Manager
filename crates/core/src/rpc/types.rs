@@ -208,6 +208,18 @@ pub struct GovernanceSummaryItem {
     pub last_seen_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsagePredictionSummaryResult {
+    pub quota_protection_enabled: bool,
+    pub quota_protection_threshold_percent: i64,
+    pub ready_account_count: i64,
+    pub estimated_hours_to_threshold: Option<f64>,
+    pub estimated_hours_to_pool_exhaustion: Option<f64>,
+    pub threshold_limited_by: Option<String>,
+    pub pool_limited_by: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiKeySummary {
@@ -369,6 +381,8 @@ pub struct StartupSnapshotResult {
     pub usage_snapshots: Vec<UsageSnapshotResult>,
     #[serde(default)]
     pub usage_aggregate_summary: UsageAggregateSummaryResult,
+    #[serde(default)]
+    pub usage_prediction_summary: UsagePredictionSummaryResult,
     #[serde(default)]
     pub failure_reason_summary: Vec<FailureReasonSummaryItem>,
     #[serde(default)]

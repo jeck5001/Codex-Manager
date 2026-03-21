@@ -8,6 +8,8 @@ pub(crate) mod http;
 pub(crate) mod keepalive;
 #[path = "usage_list.rs"]
 pub(crate) mod list;
+#[path = "usage_prediction.rs"]
+pub(crate) mod prediction;
 #[path = "usage_read.rs"]
 pub(crate) mod read;
 #[path = "usage_refresh.rs"]

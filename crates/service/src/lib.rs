@@ -62,6 +62,7 @@ pub(crate) use usage::aggregate as usage_aggregate;
 pub(crate) use usage::http as usage_http;
 pub(crate) use usage::keepalive as usage_keepalive;
 pub(crate) use usage::list as usage_list;
+pub(crate) use usage::prediction as usage_prediction;
 pub(crate) use usage::read as usage_read;
 pub(crate) use usage::refresh as usage_refresh;
 pub(crate) use usage::scheduler as usage_scheduler;
