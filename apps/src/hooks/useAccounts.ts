@@ -427,18 +427,23 @@ export function useAccounts() {
   });
 
   const exportMutation = useMutation({
-    mutationFn: () => accountClient.export(),
-    onSuccess: (result: ExportResult) => {
+    mutationFn: (accountIds: string[] = []) => accountClient.export(accountIds),
+    onSuccess: (result: ExportResult, accountIds) => {
       if (result?.canceled) {
         toast.info("已取消导出");
         return;
       }
       const exported = Number(result?.exported || 0);
       const outputDir = String(result?.outputDir || "").trim();
+      const selectedCount = Array.isArray(accountIds) ? accountIds.length : 0;
       toast.success(
         outputDir
-          ? `已导出 ${exported} 个账号到 ${outputDir}`
-          : `已导出 ${exported} 个账号`
+          ? selectedCount > 0
+            ? `已导出选中的 ${exported} 个账号到 ${outputDir}`
+            : `已导出 ${exported} 个账号到 ${outputDir}`
+          : selectedCount > 0
+            ? `已导出选中的 ${exported} 个账号`
+            : `已导出 ${exported} 个账号`
       );
     },
     onError: (error: unknown) => {
@@ -487,7 +492,7 @@ export function useAccounts() {
     deleteUnavailableFree: () => deleteUnavailableFreeMutation.mutate(),
     importByFile: () => importByFileMutation.mutate(),
     importByDirectory: () => importByDirectoryMutation.mutate(),
-    exportAccounts: () => exportMutation.mutate(),
+    exportAccounts: (accountIds?: string[]) => exportMutation.mutate(accountIds ?? []),
     setPreferredAccount: (accountId: string) => setManualPreferredMutation.mutate(accountId),
     clearPreferredAccount: () => clearManualPreferredMutation.mutate(),
     updateAccountSort: (accountId: string, sort: number) =>

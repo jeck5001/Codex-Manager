@@ -520,9 +520,44 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         }
         "account/export" => {
             let output_dir = super::str_param(req, "outputDir").unwrap_or("");
-            super::value_or_error(account_export::export_accounts_to_directory(output_dir))
+            let account_ids = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|value| value.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str())
+                        .map(|item| item.to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            super::value_or_error(account_export::export_accounts_to_directory(
+                output_dir,
+                &account_ids,
+            ))
         }
-        "account/exportData" => super::value_or_error(account_export::export_accounts_data()),
+        "account/exportData" => {
+            let account_ids = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|value| value.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str())
+                        .map(|item| item.to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            if account_ids.is_empty() {
+                super::value_or_error(account_export::export_accounts_data())
+            } else {
+                super::value_or_error(account_export::export_accounts_data_by_ids(&account_ids))
+            }
+        }
         "account/login/start" => {
             let login_type = super::str_param(req, "type").unwrap_or("chatgpt");
             if login_type.eq_ignore_ascii_case("chatgptAuthTokens") {

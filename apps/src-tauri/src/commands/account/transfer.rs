@@ -91,6 +91,7 @@ pub async fn service_account_import_by_file(_addr: Option<String>) -> Result<ser
 #[tauri::command]
 pub async fn service_account_export_by_account_files(
     addr: Option<String>,
+    account_ids: Option<Vec<String>>,
 ) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let selected_dir = FileDialog::new()
@@ -105,7 +106,8 @@ pub async fn service_account_export_by_account_files(
             }));
         };
         let params = serde_json::json!({
-          "outputDir": dir_path.to_string_lossy().to_string()
+          "outputDir": dir_path.to_string_lossy().to_string(),
+          "accountIds": account_ids.unwrap_or_default()
         });
         rpc_call("account/export", addr, Some(params))
     })

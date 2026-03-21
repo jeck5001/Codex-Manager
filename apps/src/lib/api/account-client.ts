@@ -69,6 +69,10 @@ interface AccountExportResult {
   outputDir?: string;
 }
 
+interface AccountExportPayload {
+  accountIds?: string[];
+}
+
 interface DeleteUnavailableFreeResult {
   deleted?: number;
 }
@@ -970,8 +974,17 @@ export const accountClient = {
       fileCount: picked.fileCount || picked.contents.length,
     };
   },
-  export: () =>
-    invoke<AccountExportResult>("service_account_export_by_account_files", withAddr()),
+  export: (accountIds?: string[]) =>
+    invoke<AccountExportResult>(
+      "service_account_export_by_account_files",
+      withAddr({
+        accountIds: Array.isArray(accountIds)
+          ? accountIds
+              .map((item) => String(item || "").trim())
+              .filter(Boolean)
+          : [],
+      } satisfies AccountExportPayload)
+    ),
 
   async getUsage(accountId: string): Promise<AccountUsage | null> {
     const result = await invoke<unknown>("service_usage_read", withAddr({ accountId }));
