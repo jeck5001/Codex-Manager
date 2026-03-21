@@ -281,6 +281,9 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
   const groupName = asString(source.groupName ?? source.group_name);
   const status = asString(source.status);
   const healthScore = asInteger(source.healthScore ?? source.health_score, 100, 0);
+  const cooldownUntil = toNullableNumber(
+    source.cooldownUntil ?? source.cooldown_until
+  );
   const availability = calcAvailability(usage, { status });
   const usageBuckets = getUsageDisplayBuckets(usage);
   const healthTier = deriveAccountHealthTier({
@@ -329,6 +332,15 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     lastIsolationAt: toNullableNumber(
       source.lastIsolationAt ?? source.last_isolation_at
     ),
+    cooldownUntil,
+    cooldownReasonCode:
+      asString(source.cooldownReasonCode ?? source.cooldown_reason_code) || null,
+    cooldownReason:
+      asString(source.cooldownReason ?? source.cooldown_reason) || null,
+    isInCooldown:
+      typeof cooldownUntil === "number" &&
+      Number.isFinite(cooldownUntil) &&
+      cooldownUntil > Math.floor(Date.now() / 1000),
     isIsolated:
       ["disabled", "inactive", "deactivated", "unavailable"].includes(
         status.toLowerCase()

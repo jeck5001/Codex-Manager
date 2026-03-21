@@ -48,6 +48,12 @@ pub struct AccountSummary {
     #[serde(default)]
     pub last_isolation_at: Option<i64>,
     #[serde(default)]
+    pub cooldown_until: Option<i64>,
+    #[serde(default)]
+    pub cooldown_reason_code: Option<String>,
+    #[serde(default)]
+    pub cooldown_reason: Option<String>,
+    #[serde(default)]
     pub subscription_plan_type: Option<String>,
     #[serde(default)]
     pub subscription_updated_at: Option<i64>,

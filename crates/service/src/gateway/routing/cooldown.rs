@@ -25,9 +25,22 @@ const ACCOUNT_RATE_LIMIT_OFFENSE_FORGET_AFTER_SECS: i64 = 30 * 60;
 
 const ACCOUNT_COOLDOWN_CLEANUP_INTERVAL_SECS: i64 = 30;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AccountCooldownEntry {
+    until: i64,
+    reason: CooldownReason,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AccountCooldownSnapshot {
+    pub until: i64,
+    pub reason_code: String,
+    pub reason_label: String,
+}
+
 #[derive(Default)]
 struct AccountCooldownState {
-    entries: HashMap<String, i64>,
+    entries: HashMap<String, AccountCooldownEntry>,
     offense_counts: HashMap<String, u32>,
     offense_last_at: HashMap<String, i64>,
     last_cleanup_at: i64,
@@ -45,6 +58,34 @@ pub(crate) enum CooldownReason {
     Challenge,
     LowQuota,
     Deactivated,
+}
+
+impl CooldownReason {
+    fn as_code(self) -> &'static str {
+        match self {
+            CooldownReason::Default => "default",
+            CooldownReason::Network => "network",
+            CooldownReason::RateLimited => "rate_limited",
+            CooldownReason::Upstream5xx => "upstream_5xx",
+            CooldownReason::Upstream4xx => "upstream_4xx",
+            CooldownReason::Challenge => "auth",
+            CooldownReason::LowQuota => "low_quota",
+            CooldownReason::Deactivated => "deactivated",
+        }
+    }
+
+    fn as_label(self) -> &'static str {
+        match self {
+            CooldownReason::Default => "默认冷却",
+            CooldownReason::Network => "网络异常",
+            CooldownReason::RateLimited => "速率限制",
+            CooldownReason::Upstream5xx => "上游 5xx",
+            CooldownReason::Upstream4xx => "上游 4xx",
+            CooldownReason::Challenge => "401/403 授权异常",
+            CooldownReason::LowQuota => "低配额保护",
+            CooldownReason::Deactivated => "账号已停用",
+        }
+    }
 }
 
 fn u64_to_i64_saturating(value: u64) -> i64 {
@@ -158,13 +199,34 @@ pub(crate) fn is_account_in_cooldown(account_id: &str) -> bool {
     let mut state = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
     let now = now_ts();
     match state.entries.get(account_id).copied() {
-        Some(until) if until > now => true,
+        Some(entry) if entry.until > now => true,
         Some(_) => {
             state.entries.remove(account_id);
             false
         }
         None => false,
     }
+}
+
+pub(crate) fn list_account_cooldowns() -> HashMap<String, AccountCooldownSnapshot> {
+    let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
+    let mut state = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
+    let now = now_ts();
+    maybe_cleanup_expired_cooldowns(&mut state, now);
+    state
+        .entries
+        .iter()
+        .map(|(account_id, entry)| {
+            (
+                account_id.clone(),
+                AccountCooldownSnapshot {
+                    until: entry.until,
+                    reason_code: entry.reason.as_code().to_string(),
+                    reason_label: entry.reason.as_label().to_string(),
+                },
+            )
+        })
+        .collect()
 }
 
 pub(crate) fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
@@ -182,15 +244,19 @@ pub(crate) fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
             reason,
             now,
         );
+    let next_entry = AccountCooldownEntry {
+        until: cooldown_until,
+        reason,
+    };
     // 中文注释：同账号短时间内可能触发不同失败类型；保留更晚的 until 可避免被较短冷却覆盖。
     match state.entries.get_mut(account_id) {
-        Some(until) => {
-            if cooldown_until > *until {
-                *until = cooldown_until;
+        Some(entry) => {
+            if next_entry.until > entry.until {
+                *entry = next_entry;
             }
         }
         None => {
-            state.entries.insert(account_id.to_string(), cooldown_until);
+            state.entries.insert(account_id.to_string(), next_entry);
         }
     }
 }
@@ -218,7 +284,7 @@ fn maybe_cleanup_expired_cooldowns(state: &mut AccountCooldownState, now: i64) {
         return;
     }
     state.last_cleanup_at = now;
-    state.entries.retain(|_, until| *until > now);
+    state.entries.retain(|_, entry| entry.until > now);
     let mut stale_offenses = Vec::new();
     for (account_id, last) in state.offense_last_at.iter() {
         if now.saturating_sub(*last) > ACCOUNT_RATE_LIMIT_OFFENSE_FORGET_AFTER_SECS {
