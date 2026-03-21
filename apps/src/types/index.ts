@@ -36,6 +36,10 @@ export interface Account {
   lastStatusChangedAt: number | null;
   lastGovernanceReason: string | null;
   lastGovernanceAt: number | null;
+  lastIsolationReasonCode: string | null;
+  lastIsolationReason: string | null;
+  lastIsolationAt: number | null;
+  isIsolated: boolean;
   isAvailable: boolean;
   isLowQuota: boolean;
   isDeactivated: boolean;

@@ -406,6 +406,9 @@ export default function DashboardPage() {
                   <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-rose-700 dark:text-rose-300">
                     风险 {stats.risky}
                   </span>
+                  <span className="rounded-full bg-fuchsia-500/10 px-2 py-0.5 text-fuchsia-700 dark:text-fuchsia-300">
+                    隔离 {stats.isolated}
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -426,7 +429,7 @@ export default function DashboardPage() {
               total={stats.total}
               icon={XCircle}
               color="text-red-500"
-              sub="额度耗尽或授权失效"
+              sub={`额度耗尽、授权失效或已隔离（当前隔离 ${stats.isolated}）`}
               onClick={() => openAccountsByStatus("deactivated")}
             />
 

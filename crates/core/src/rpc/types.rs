@@ -40,6 +40,12 @@ pub struct AccountSummary {
     #[serde(default)]
     pub last_governance_at: Option<i64>,
     #[serde(default)]
+    pub last_isolation_reason_code: Option<String>,
+    #[serde(default)]
+    pub last_isolation_reason: Option<String>,
+    #[serde(default)]
+    pub last_isolation_at: Option<i64>,
+    #[serde(default)]
     pub subscription_plan_type: Option<String>,
     #[serde(default)]
     pub subscription_updated_at: Option<i64>,

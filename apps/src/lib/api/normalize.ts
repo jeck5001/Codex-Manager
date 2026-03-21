@@ -293,6 +293,22 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     lastGovernanceAt: toNullableNumber(
       source.lastGovernanceAt ?? source.last_governance_at
     ),
+    lastIsolationReasonCode:
+      asString(
+        source.lastIsolationReasonCode ?? source.last_isolation_reason_code
+      ) || null,
+    lastIsolationReason:
+      asString(source.lastIsolationReason ?? source.last_isolation_reason) || null,
+    lastIsolationAt: toNullableNumber(
+      source.lastIsolationAt ?? source.last_isolation_at
+    ),
+    isIsolated:
+      ["disabled", "inactive", "deactivated", "unavailable"].includes(
+        status.toLowerCase()
+      ) &&
+      Boolean(
+        asString(source.lastIsolationReason ?? source.last_isolation_reason)
+      ),
     isAvailable: availability.level === "ok",
     isLowQuota: isLowQuotaUsage(usage),
     isDeactivated: status.toLowerCase() === "deactivated",

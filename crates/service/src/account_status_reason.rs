@@ -4,6 +4,8 @@ pub(crate) struct ParsedAccountStatusEvent {
     pub reason_code: Option<String>,
     pub reason_label: Option<String>,
     pub governance_reason_label: Option<String>,
+    pub isolation_reason_code: Option<String>,
+    pub isolation_reason_label: Option<String>,
 }
 
 pub(crate) fn parse_account_status_event(message: &str) -> ParsedAccountStatusEvent {
@@ -16,12 +18,19 @@ pub(crate) fn parse_account_status_event(message: &str) -> ParsedAccountStatusEv
         .as_deref()
         .and_then(map_governance_reason_label)
         .map(ToString::to_string);
+    let (isolation_reason_code, isolation_reason_label) = reason_code
+        .as_deref()
+        .and_then(map_isolation_reason)
+        .map(|(code, label)| (Some(code.to_string()), Some(label.to_string())))
+        .unwrap_or((None, None));
 
     ParsedAccountStatusEvent {
         status,
         reason_code,
         reason_label,
         governance_reason_label,
+        isolation_reason_code,
+        isolation_reason_label,
     }
 }
 
@@ -58,6 +67,25 @@ pub(crate) fn map_account_status_reason_label(reason: &str) -> &'static str {
     }
 }
 
+pub(crate) fn map_isolation_reason(reason: &str) -> Option<(&'static str, &'static str)> {
+    let normalized = reason.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "usage_http_deactivated" | "auto_governance_deactivated" => {
+            Some(("deactivated", "检测到账号已停用"))
+        }
+        "usage_http_401" | "auto_governance_auth_failures" => {
+            Some(("auth_invalid", "授权失效 / 401-403"))
+        }
+        "auto_governance_suspected" => Some(("suspected", "疑似风控/授权异常")),
+        "auto_governance_proxy_failures" => Some(("proxy_error", "代理异常")),
+        "auto_governance_refresh_token" => Some(("refresh_token", "Refresh 连续失效")),
+        _ if normalized.starts_with("refresh_token_invalid:") => {
+            Some(("refresh_token", map_account_status_reason_label(reason)))
+        }
+        _ => None,
+    }
+}
+
 fn extract_field(message: &str, key: &str) -> Option<String> {
     message
         .split_whitespace()
@@ -86,6 +114,14 @@ mod tests {
             parsed.governance_reason_label.as_deref(),
             Some("Refresh 连续失效")
         );
+        assert_eq!(
+            parsed.isolation_reason_code.as_deref(),
+            Some("refresh_token")
+        );
+        assert_eq!(
+            parsed.isolation_reason_label.as_deref(),
+            Some("Refresh 连续失效")
+        );
     }
 
     #[test]
@@ -102,6 +138,8 @@ mod tests {
             map_account_status_reason_label("auto_governance_proxy_failures"),
             "代理异常"
         );
+        assert_eq!(parsed.isolation_reason_code.as_deref(), Some("suspected"));
+        assert_eq!(parsed.isolation_reason_label.as_deref(), Some("疑似风控/授权异常"));
     }
 
     #[test]
@@ -113,6 +151,16 @@ mod tests {
         assert_eq!(
             map_account_status_reason_label("refresh_token_invalid:invalidated"),
             "Refresh 已失效"
+        );
+    }
+
+    #[test]
+    fn map_isolation_reason_covers_direct_status_failures() {
+        let parsed = parse_account_status_event("status=unavailable reason=usage_http_401");
+        assert_eq!(parsed.isolation_reason_code.as_deref(), Some("auth_invalid"));
+        assert_eq!(
+            parsed.isolation_reason_label.as_deref(),
+            Some("授权失效 / 401-403")
         );
     }
 }

@@ -90,6 +90,7 @@ export function useDashboardStats() {
   const healthyAccounts = accounts.filter((item) => item.healthTier === "healthy").length;
   const warningAccounts = accounts.filter((item) => item.healthTier === "warning").length;
   const riskyAccounts = accounts.filter((item) => item.healthTier === "risky").length;
+  const isolatedAccounts = accounts.filter((item) => item.isIsolated).length;
 
   return {
     stats: {
@@ -125,6 +126,7 @@ export function useDashboardStats() {
       healthy: healthyAccounts,
       warning: warningAccounts,
       risky: riskyAccounts,
+      isolated: isolatedAccounts,
       recentFailureTotal,
       recentGovernanceTotal,
     },
