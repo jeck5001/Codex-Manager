@@ -783,6 +783,73 @@ class RegistrationEngine:
             self._log(f"跟随重定向失败: {e}", "error")
             return None
 
+    def _extract_workspace_id_from_token(self, token: str) -> Optional[str]:
+        """从 token 中提取 workspace / organization ID"""
+        try:
+            import base64
+            import json as json_module
+
+            raw = str(token or "").strip()
+            if not raw:
+                return None
+
+            parts = raw.split(".")
+            if len(parts) < 2:
+                return None
+
+            payload = parts[1]
+            pad = "=" * ((4 - (len(payload) % 4)) % 4)
+            decoded = base64.urlsafe_b64decode((payload + pad).encode("ascii"))
+            data = json_module.loads(decoded.decode("utf-8"))
+
+            def _clean(value: Any) -> str:
+                if value is None:
+                    return ""
+                return str(value).strip()
+
+            def _find(mapping: Any) -> str:
+                if not isinstance(mapping, dict):
+                    return ""
+
+                for key in (
+                    "workspace_id",
+                    "organization_id",
+                    "org_id",
+                    "chatgpt_account_id",
+                ):
+                    value = _clean(mapping.get(key))
+                    if value:
+                        return value
+
+                organizations = mapping.get("organizations")
+                if isinstance(organizations, list):
+                    default_org = next(
+                        (
+                            item for item in organizations
+                            if isinstance(item, dict) and item.get("is_default") is True
+                        ),
+                        None,
+                    )
+                    for item in ([default_org] if default_org else []) + [
+                        item for item in organizations if isinstance(item, dict) and item is not default_org
+                    ]:
+                        value = _clean(item.get("id"))
+                        if value:
+                            return value
+
+                for nested_key in ("auth", "https://api.openai.com/auth"):
+                    nested = mapping.get(nested_key)
+                    value = _find(nested)
+                    if value:
+                        return value
+
+                return ""
+
+            workspace_id = _find(data)
+            return workspace_id or None
+        except Exception:
+            return None
+
     def _handle_oauth_callback(self, callback_url: str) -> Optional[Dict[str, Any]]:
         """处理 OAuth 回调"""
         try:
@@ -918,21 +985,19 @@ class RegistrationEngine:
                     result.error_message = "创建用户账户失败"
                     return result
 
-            # 13. 获取 Workspace ID
+            # 13. 获取 Workspace ID（新版流程可能不再提前下发）
             self._log("13. 获取 Workspace ID...")
             workspace_id = self._get_workspace_id()
-            if not workspace_id:
-                result.error_message = "获取 Workspace ID 失败"
-                return result
-
-            result.workspace_id = workspace_id
-
-            # 14. 选择 Workspace
-            self._log("14. 选择 Workspace...")
-            continue_url = self._select_workspace(workspace_id)
-            if not continue_url:
-                result.error_message = "选择 Workspace 失败"
-                return result
+            if workspace_id:
+                result.workspace_id = workspace_id
+                self._log("14. 选择 Workspace...")
+                continue_url = self._select_workspace(workspace_id)
+                if not continue_url:
+                    self._log("workspace/select 失败，回退到原始 OAuth URL 继续流程", "warning")
+                    continue_url = self.oauth_start.auth_url
+            else:
+                self._log("未提前拿到 Workspace ID，回退到原始 OAuth URL 继续流程", "warning")
+                continue_url = self.oauth_start.auth_url
 
             # 15. 跟随重定向链
             self._log("15. 跟随重定向链...")
@@ -955,6 +1020,15 @@ class RegistrationEngine:
             result.id_token = token_info.get("id_token", "")
             result.password = self.password or ""  # 保存密码（已注册账号为空）
             result.cookies = self._serialize_session_cookies()
+
+            if not result.workspace_id:
+                result.workspace_id = (
+                    self._extract_workspace_id_from_token(result.id_token)
+                    or self._extract_workspace_id_from_token(result.access_token)
+                    or ""
+                )
+                if result.workspace_id:
+                    self._log(f"从 Token 中回填 Workspace ID: {result.workspace_id}")
 
             # 设置来源标记
             result.source = "login" if self._is_existing_account else "register"
