@@ -10,6 +10,7 @@
 - `chat_tools_hit_probe.cmd`
 - `codex_stream_probe.ps1`
 - `gateway_regression_suite.ps1`
+- `web_runtime_probe.ps1`
 
 特点：
 
@@ -23,6 +24,7 @@
 - `gateway_regression_suite.test.ps1`
 - `rebuild.test.ps1`
 - `release_version.test.ps1`
+- `web_runtime_probe.test.ps1`
 
 特点：
 
@@ -35,12 +37,18 @@
 2. 改协议适配或转发：再跑 `gateway_regression_suite.ps1`
 3. 改 tools/tool_calls：至少补跑 `chat_tools_hit_probe.ps1` 与 `-Stream`
 4. 改 responses/chat stream：补跑 `codex_stream_probe.ps1`
+5. 改 Web 运行壳、代理或部署方式：补跑 `web_runtime_probe.ps1`
 
 ## 示例
 
 ```powershell
 pwsh -NoLogo -NoProfile -File scripts/tests/gateway_regression_suite.ps1 `
   -Base http://localhost:48760 -ApiKey <key> -Model gpt-5.3-codex
+```
+
+```powershell
+pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.ps1 `
+  -Base http://localhost:48761
 ```
 
 ## 维护约定
