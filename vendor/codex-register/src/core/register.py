@@ -146,6 +146,8 @@ class RegistrationEngine:
         self._post_create_page_type: str = ""
         self._post_create_continue_url: str = ""
         self._last_login_recovery_page_type: str = ""
+        self._last_otp_error_code: str = ""
+        self._last_otp_error_message: str = ""
 
     def _log(self, message: str, level: str = "info"):
         """记录日志"""
@@ -206,6 +208,28 @@ class RegistrationEngine:
             or payload.get("callback_url")
             or payload.get("next_url")
         )
+
+    def _clear_otp_error_state(self):
+        """清空最近一次 OTP 校验错误状态"""
+        self._last_otp_error_code = ""
+        self._last_otp_error_message = ""
+
+    def _update_otp_error_state(self, response_json: Any):
+        """记录最近一次 OTP 校验错误状态"""
+        self._clear_otp_error_state()
+        if not isinstance(response_json, dict):
+            return
+
+        error = response_json.get("error")
+        if not isinstance(error, dict):
+            return
+
+        self._last_otp_error_code = self._clean_text(error.get("code"))
+        self._last_otp_error_message = self._clean_text(error.get("message"))
+
+    def _is_wrong_email_otp_code_error(self) -> bool:
+        """是否为错误验证码"""
+        return self._last_otp_error_code == "wrong_email_otp_code"
 
     def _workspace_id_from_mapping(self, data: Any) -> str:
         """从 auth/session 映射里提取 workspace / organization ID"""
@@ -666,6 +690,7 @@ class RegistrationEngine:
     def _validate_verification_code(self, code: str) -> bool:
         """验证验证码"""
         try:
+            self._clear_otp_error_state()
             code_body = f'{{"code":"{code}"}}'
 
             response = self.session.post(
@@ -679,7 +704,14 @@ class RegistrationEngine:
             )
 
             self._log(f"验证码校验状态: {response.status_code}")
-            return response.status_code == 200
+            if response.status_code == 200:
+                return True
+
+            try:
+                self._update_otp_error_state(response.json())
+            except Exception:
+                self._clear_otp_error_state()
+            return False
 
         except Exception as e:
             self._log(f"验证验证码失败: {e}", "error")
@@ -707,6 +739,7 @@ class RegistrationEngine:
     def _validate_verification_code_with_payload(self, code: str) -> Optional[Dict[str, Any]]:
         """验证验证码并返回响应载荷"""
         try:
+            self._clear_otp_error_state()
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["validate_otp"],
                 headers={
@@ -719,15 +752,53 @@ class RegistrationEngine:
 
             self._log(f"验证码校验状态: {response.status_code}")
             if response.status_code != 200:
+                try:
+                    response_json = response.json()
+                except Exception:
+                    response_json = None
+                self._update_otp_error_state(response_json)
                 self._log(f"验证码校验失败: {response.text[:300]}", "warning")
                 return None
 
             response_json = response.json()
+            self._clear_otp_error_state()
             self._log_auth_response_preview("验证码校验响应摘要", response_json)
             return response_json if isinstance(response_json, dict) else {}
         except Exception as e:
             self._log(f"验证验证码失败: {e}", "error")
             return None
+
+    def _wait_for_signup_verification_code(self) -> Optional[str]:
+        """等待注册阶段验证码，超时后自动重发一次"""
+        code = self._get_verification_code()
+        if code:
+            return code
+
+        self._log("首次等待验证码超时，尝试重发一次注册验证码...", "warning")
+        if not self._send_verification_code():
+            return None
+
+        return self._get_verification_code()
+
+    def _validate_signup_verification_code_with_retry(self, code: str) -> bool:
+        """验证注册阶段验证码，遇到旧验证码时自动重取一次"""
+        current_code = code
+        for attempt in range(2):
+            if self._validate_verification_code(current_code):
+                return True
+
+            if not self._is_wrong_email_otp_code_error() or attempt >= 1:
+                return False
+
+            self._log("注册阶段拿到的验证码不是最新一封，重发后再获取一次...", "warning")
+            if not self._send_verification_code():
+                return False
+
+            current_code = self._get_verification_code()
+            if not current_code:
+                return False
+
+        return False
 
     def _create_user_account(self) -> bool:
         """创建用户账户"""
@@ -1260,17 +1331,31 @@ class RegistrationEngine:
         self._log("登录后触发邮箱二次验证，开始获取验证码...", "warning")
         self._otp_sent_at = time.time()
 
-        code = self._get_verification_code()
-        if not code:
-            self._log("首次等待登录验证码超时，尝试重发一次...", "warning")
-            if not self._resend_email_verification_code():
-                return AuthResolutionResult()
-            code = self._get_verification_code()
-            if not code:
-                return AuthResolutionResult()
+        max_attempts = 3
+        code: Optional[str] = None
+        validate_payload: Optional[Dict[str, Any]] = None
 
-        validate_payload = self._validate_verification_code_with_payload(code)
-        if not validate_payload:
+        for attempt in range(max_attempts):
+            if attempt == 0:
+                code = self._get_verification_code()
+                if code:
+                    validate_payload = self._validate_verification_code_with_payload(code)
+            else:
+                reason = "首次等待登录验证码超时" if not code else "登录验证码不是最新一封或已失效"
+                self._log(f"{reason}，尝试重发后重新获取...", "warning")
+                if not self._resend_email_verification_code():
+                    return AuthResolutionResult()
+                code = self._get_verification_code()
+                if not code:
+                    continue
+                validate_payload = self._validate_verification_code_with_payload(code)
+
+            if validate_payload:
+                break
+
+            if not self._is_wrong_email_otp_code_error() and code:
+                return AuthResolutionResult()
+        else:
             return AuthResolutionResult()
 
         resolution = self._resolve_callback_from_auth_response(
@@ -1534,14 +1619,14 @@ class RegistrationEngine:
 
             # 10. 获取验证码
             self._log("10. 等待验证码...")
-            code = self._get_verification_code()
+            code = self._wait_for_signup_verification_code()
             if not code:
                 result.error_message = "获取验证码失败"
                 return result
 
             # 11. 验证验证码
             self._log("11. 验证验证码...")
-            if not self._validate_verification_code(code):
+            if not self._validate_signup_verification_code_with_retry(code):
                 result.error_message = "验证验证码失败"
                 return result
 

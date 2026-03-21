@@ -7,6 +7,7 @@ import re
 import time
 import json
 import logging
+from datetime import datetime
 from typing import Optional, Dict, Any, List
 from urllib.parse import urljoin
 
@@ -77,6 +78,51 @@ class CustomDomainEmailService(BaseEmailService):
         self._emails_cache: Dict[str, Dict[str, Any]] = {}
         self._last_config_check: float = 0
         self._cached_config: Optional[Dict[str, Any]] = None
+        self._used_codes: Dict[str, set[str]] = {}
+
+    @staticmethod
+    def _parse_message_timestamp(value: Any) -> Optional[float]:
+        """解析邮件时间戳，兼容秒/毫秒/ISO 字符串"""
+        if value is None or value == "":
+            return None
+
+        if isinstance(value, (int, float)):
+            timestamp = float(value)
+            if timestamp > 10**12:
+                timestamp /= 1000.0
+            return timestamp
+
+        text = str(value).strip()
+        if not text:
+            return None
+
+        if text.isdigit():
+            timestamp = float(text)
+            if timestamp > 10**12:
+                timestamp /= 1000.0
+            return timestamp
+
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return None
+
+    def _extract_message_timestamp(self, message: Dict[str, Any]) -> Optional[float]:
+        """提取邮件时间戳"""
+        for key in (
+            "createdAt",
+            "created_at",
+            "receivedAt",
+            "received_at",
+            "updatedAt",
+            "updated_at",
+            "date",
+            "timestamp",
+        ):
+            timestamp = self._parse_message_timestamp(message.get(key))
+            if timestamp:
+                return timestamp
+        return None
 
     def _get_headers(self) -> Dict[str, str]:
         """获取 API 请求头"""
@@ -293,6 +339,8 @@ class CustomDomainEmailService(BaseEmailService):
 
         start_time = time.time()
         seen_message_ids = set()
+        used_codes = self._used_codes.setdefault(email.lower(), set())
+        min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
         while time.time() - start_time < timeout:
             try:
@@ -310,6 +358,9 @@ class CustomDomainEmailService(BaseEmailService):
                         continue
 
                     seen_message_ids.add(message_id)
+                    message_timestamp = self._extract_message_timestamp(message)
+                    if message_timestamp and message_timestamp < min_timestamp:
+                        continue
 
                     # 检查是否是目标邮件
                     sender = str(message.get("from_address", "")).lower()
@@ -331,6 +382,9 @@ class CustomDomainEmailService(BaseEmailService):
                     match = re.search(pattern, re.sub(email_pattern, "", content))
                     if match:
                         code = match.group(1)
+                        if code in used_codes:
+                            continue
+                        used_codes.add(code)
                         logger.info(f"从自定义域名邮箱 {email} 找到验证码: {code}")
                         self.update_status(True)
                         return code

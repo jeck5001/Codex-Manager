@@ -9,9 +9,11 @@ import time
 import json
 import logging
 from email import message_from_string
+from email.utils import parsedate_to_datetime
 from email.header import decode_header, make_header
 from email.message import Message
 from email.policy import default as email_policy
+from datetime import datetime
 from html import unescape
 from typing import Optional, Dict, Any, List
 
@@ -67,6 +69,7 @@ class TempMailService(BaseEmailService):
 
         # 邮箱缓存：email -> {jwt, address}
         self._email_cache: Dict[str, Dict[str, Any]] = {}
+        self._used_codes: Dict[str, set[str]] = {}
 
     def _decode_mime_header(self, value: str) -> str:
         """解码 MIME 头，兼容 RFC 2047 编码主题。"""
@@ -158,6 +161,61 @@ class TempMailService(BaseEmailService):
             "body": body_text,
             "raw": raw,
         }
+
+    @staticmethod
+    def _parse_timestamp_value(value: Any) -> Optional[float]:
+        """解析时间值，兼容秒/毫秒/ISO 格式"""
+        if value is None or value == "":
+            return None
+
+        if isinstance(value, (int, float)):
+            timestamp = float(value)
+            if timestamp > 10**12:
+                timestamp /= 1000.0
+            return timestamp
+
+        text = str(value).strip()
+        if not text:
+            return None
+
+        if text.isdigit():
+            timestamp = float(text)
+            if timestamp > 10**12:
+                timestamp /= 1000.0
+            return timestamp
+
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return None
+
+    def _extract_mail_timestamp(self, mail: Dict[str, Any]) -> Optional[float]:
+        """提取邮件时间戳"""
+        for key in (
+            "createdAt",
+            "created_at",
+            "receivedAt",
+            "received_at",
+            "updatedAt",
+            "updated_at",
+            "date",
+            "timestamp",
+        ):
+            timestamp = self._parse_timestamp_value(mail.get(key))
+            if timestamp:
+                return timestamp
+
+        raw = str(mail.get("raw") or "").strip()
+        if raw:
+            try:
+                message = message_from_string(raw, policy=email_policy)
+                date_header = message.get("Date", "")
+                if date_header:
+                    return parsedate_to_datetime(date_header).timestamp()
+            except Exception:
+                return None
+
+        return None
 
     def _admin_headers(self) -> Dict[str, str]:
         """构造 admin 请求头"""
@@ -297,6 +355,8 @@ class TempMailService(BaseEmailService):
 
         start_time = time.time()
         seen_mail_ids: set = set()
+        used_codes = self._used_codes.setdefault(email.lower(), set())
+        min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
         while time.time() - start_time < timeout:
             try:
@@ -319,6 +379,9 @@ class TempMailService(BaseEmailService):
                         continue
 
                     seen_mail_ids.add(mail_id)
+                    message_timestamp = self._extract_mail_timestamp(mail)
+                    if message_timestamp and message_timestamp < min_timestamp:
+                        continue
 
                     parsed = self._extract_mail_fields(mail)
                     sender = parsed["sender"].lower()
@@ -334,6 +397,9 @@ class TempMailService(BaseEmailService):
                     match = re.search(pattern, content)
                     if match:
                         code = match.group(1)
+                        if code in used_codes:
+                            continue
+                        used_codes.add(code)
                         logger.info(f"从 TempMail 邮箱 {email} 找到验证码: {code}")
                         self.update_status(True)
                         return code
