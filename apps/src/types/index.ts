@@ -486,6 +486,9 @@ export interface BackgroundTaskSettings {
   gatewayKeepaliveIntervalSecs: number;
   tokenRefreshPollingEnabled: boolean;
   tokenRefreshPollIntervalSecs: number;
+  sessionProbePollingEnabled: boolean;
+  sessionProbeIntervalSecs: number;
+  sessionProbeSampleSize: number;
   usageRefreshWorkers: number;
   httpWorkerFactor: number;
   httpWorkerMin: number;

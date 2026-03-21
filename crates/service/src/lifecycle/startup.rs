@@ -44,5 +44,6 @@ pub fn start_server(addr: &str) -> std::io::Result<()> {
     crate::usage_refresh::ensure_usage_polling();
     crate::usage_refresh::ensure_gateway_keepalive();
     crate::usage_refresh::ensure_token_refresh_polling();
+    crate::usage_refresh::ensure_session_probe_polling();
     crate::http::server::start_http(addr)
 }

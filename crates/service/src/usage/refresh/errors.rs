@@ -41,7 +41,7 @@ pub(super) fn mark_usage_unreachable_if_needed(storage: &Storage, account_id: &s
         set_account_status(storage, account_id, "deactivated", "usage_http_deactivated");
         return;
     }
-    if err.starts_with("usage endpoint status 401") {
+    if error_contains_status_code(err, 401) {
         let current_status = storage
             .find_account_by_id(account_id)
             .ok()
@@ -72,7 +72,9 @@ fn usage_refresh_failure_event_window_secs() -> i64 {
 
 fn classify_usage_refresh_error(message: &str) -> String {
     let normalized = message.trim().to_ascii_lowercase();
-    if let Some(status_code) = extract_usage_status_code(&normalized) {
+    if let Some(status_code) = extract_usage_status_code(&normalized)
+        .or_else(|| extract_generic_status_code(&normalized))
+    {
         return format!("usage_status_{status_code}");
     }
     if usage_error_indicates_deactivated_account(message) {
@@ -113,6 +115,25 @@ fn extract_usage_status_code(message: &str) -> Option<u16> {
         return None;
     }
     digits.parse::<u16>().ok()
+}
+
+fn extract_generic_status_code(message: &str) -> Option<u16> {
+    for marker in ["status=", "status "] {
+        let Some(rest) = message.split_once(marker).map(|(_, value)| value) else {
+            continue;
+        };
+        let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+        if let Ok(parsed) = digits.parse::<u16>() {
+            return Some(parsed);
+        }
+    }
+    None
+}
+
+fn error_contains_status_code(message: &str, status_code: u16) -> bool {
+    extract_usage_status_code(message.trim())
+        .or_else(|| extract_generic_status_code(message.trim()))
+        .is_some_and(|value| value == status_code)
 }
 
 fn should_record_failure_event(
