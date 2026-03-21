@@ -251,10 +251,14 @@ function AccountKeyInfoCell({
   log,
   accountLabel,
   accountNameMap,
+  onFilterAccount,
+  onFilterKey,
 }: {
   log: RequestLog;
   accountLabel: string;
   accountNameMap: Map<string, string>;
+  onFilterAccount?: (accountId: string) => void;
+  onFilterKey?: (keyId: string) => void;
 }) {
   const displayAccount = accountLabel || log.accountId || "-";
   const hasNamedAccount =
@@ -334,13 +338,43 @@ function AccountKeyInfoCell({
               {log.keyId || "-"}
             </div>
           </div>
+          {log.accountId || log.keyId ? (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {log.accountId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 rounded-lg px-2.5 text-[11px]"
+                  onClick={() => onFilterAccount?.(log.accountId)}
+                >
+                  筛选账号
+                </Button>
+              ) : null}
+              {log.keyId ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 rounded-lg px-2.5 text-[11px]"
+                  onClick={() => onFilterKey?.(log.keyId)}
+                >
+                  筛选密钥
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </TooltipContent>
     </Tooltip>
   );
 }
 
-function RequestRouteInfoCell({ log }: { log: RequestLog }) {
+function RequestRouteInfoCell({
+  log,
+  onFilterPath,
+}: {
+  log: RequestLog;
+  onFilterPath?: (path: string) => void;
+}) {
   const displayPath = resolveDisplayRequestPath(log) || "-";
   const recordedPath = String(log.path || log.requestPath || "").trim();
   const originalPath = String(log.originalPath || "").trim();
@@ -416,13 +450,31 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
               </div>
             </div>
           ) : null}
+          {displayPath && displayPath !== "-" ? (
+            <div className="pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 rounded-lg px-2.5 text-[11px]"
+                onClick={() => onFilterPath?.(displayPath)}
+              >
+                筛选路径
+              </Button>
+            </div>
+          ) : null}
         </div>
       </TooltipContent>
     </Tooltip>
   );
 }
 
-function ErrorInfoCell({ error }: { error: string }) {
+function ErrorInfoCell({
+  error,
+  onFilterError,
+}: {
+  error: string;
+  onFilterError?: (error: string) => void;
+}) {
   const text = String(error || "").trim();
   if (!text) {
     return <span className="text-muted-foreground">-</span>;
@@ -436,8 +488,18 @@ function ErrorInfoCell({ error }: { error: string }) {
         </span>
       </TooltipTrigger>
       <TooltipContent className="max-w-md">
-        <div className="max-w-[360px] break-all font-mono text-[11px]">
-          {text}
+        <div className="flex max-w-[360px] flex-col gap-2">
+          <div className="break-all font-mono text-[11px]">{text}</div>
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 rounded-lg px-2.5 text-[11px]"
+              onClick={() => onFilterError?.(text)}
+            >
+              筛选错误
+            </Button>
+          </div>
         </div>
       </TooltipContent>
     </Tooltip>
@@ -638,6 +700,19 @@ function LogsPageContent() {
       params.set("statusFilter", statusFilter);
     }
     router.push(`/logs?${params.toString()}`);
+  };
+  const handleApplySearchFilter = (query: string, statusFilter: StatusFilter = filter) => {
+    setSearch(query);
+    setFilter(statusFilter);
+    setPage(1);
+    const params = new URLSearchParams();
+    if (query.trim()) {
+      params.set("query", query.trim());
+    }
+    if (statusFilter !== "all") {
+      params.set("statusFilter", statusFilter);
+    }
+    router.push(params.size > 0 ? `/logs?${params.toString()}` : "/logs");
   };
 
   return (
@@ -880,7 +955,12 @@ function LogsPageContent() {
                       {formatTsFromSeconds(log.createdAt, "未知时间")}
                     </TableCell>
                     <TableCell className="px-4 py-3 align-top">
-                      <RequestRouteInfoCell log={log} />
+                      <RequestRouteInfoCell
+                        log={log}
+                        onFilterPath={(path) =>
+                          handleApplySearchFilter(`path:${path}`)
+                        }
+                      />
                     </TableCell>
                     <TableCell className="px-4 py-3 align-top">
                       <AccountKeyInfoCell
@@ -890,6 +970,12 @@ function LogsPageContent() {
                           accountNameMap,
                         )}
                         accountNameMap={accountNameMap}
+                        onFilterAccount={(accountId) =>
+                          handleApplySearchFilter(`account:=${accountId}`)
+                        }
+                        onFilterKey={(keyId) =>
+                          handleApplySearchFilter(`key:=${keyId}`)
+                        }
                       />
                     </TableCell>
                     <TableCell className="px-4 py-3 align-top">
@@ -913,7 +999,12 @@ function LogsPageContent() {
                       </div>
                     </TableCell>
                     <TableCell className="px-4 py-3 text-left align-top">
-                      <ErrorInfoCell error={log.error} />
+                      <ErrorInfoCell
+                        error={log.error}
+                        onFilterError={(error) =>
+                          handleApplySearchFilter(`error:${error}`)
+                        }
+                      />
                     </TableCell>
                   </TableRow>
                 ))
