@@ -63,7 +63,22 @@ class TempmailService(BaseEmailService):
         # 状态变量
         self._email_cache: Dict[str, Dict[str, Any]] = {}
         self._last_check_time: float = 0
-        self._used_codes: Dict[str, set[str]] = {}
+        self._used_message_ids: Dict[str, set[str]] = {}
+
+    @staticmethod
+    def _message_identity(message: Dict[str, Any]) -> str:
+        """提取邮件唯一标识，兼容同码多封邮件场景。"""
+        for key in ("id", "message_id", "messageId", "mail_id", "mailId"):
+            value = message.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+
+        parts = [
+            str(message.get("date") or "").strip(),
+            str(message.get("from") or "").strip(),
+            str(message.get("subject") or "").strip(),
+        ]
+        return "|".join(part for part in parts if part)
 
     @staticmethod
     def _parse_message_timestamp(value: Any) -> Optional[float]:
@@ -196,7 +211,7 @@ class TempmailService(BaseEmailService):
 
         start_time = time.time()
         seen_ids = set()
-        used_codes = self._used_codes.setdefault(email.lower(), set())
+        used_message_ids = self._used_message_ids.setdefault(email.lower(), set())
         min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
         while time.time() - start_time < actual_timeout:
@@ -229,11 +244,11 @@ class TempmailService(BaseEmailService):
                     if not isinstance(msg, dict):
                         continue
 
-                    # 使用 date 作为唯一标识
+                    msg_identity = self._message_identity(msg)
                     msg_date = msg.get("date", 0)
-                    if not msg_date or msg_date in seen_ids:
+                    if not msg_identity or msg_identity in seen_ids or msg_identity in used_message_ids:
                         continue
-                    seen_ids.add(msg_date)
+                    seen_ids.add(msg_identity)
 
                     message_timestamp = self._parse_message_timestamp(msg_date)
                     if message_timestamp and message_timestamp < min_timestamp:
@@ -254,9 +269,7 @@ class TempmailService(BaseEmailService):
                     match = re.search(pattern, content)
                     if match:
                         code = match.group(1)
-                        if code in used_codes:
-                            continue
-                        used_codes.add(code)
+                        used_message_ids.add(msg_identity)
                         logger.info(f"找到验证码: {code}")
                         self.update_status(True)
                         return code

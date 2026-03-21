@@ -10,6 +10,7 @@ import {
   Mail,
   Plus,
   RefreshCw,
+  RotateCcw,
   Server,
   Trash2,
   Users,
@@ -110,8 +111,10 @@ export default function RegisterPage() {
     isStatsLoading,
     refetchTasks,
     cancelTask,
+    retryTask,
     deleteTask,
     isCancelling,
+    isRetrying,
     isDeleting,
   } = useRegisterTasks({
     page,
@@ -590,6 +593,7 @@ export default function RegisterPage() {
                     const normalizedStatus = String(task.status || "").trim().toLowerCase();
                     const canCancel =
                       normalizedStatus === "pending" || normalizedStatus === "running";
+                    const canRetry = normalizedStatus === "failed";
                     const canDelete = normalizedStatus !== "running";
                     return (
                       <TableRow key={task.taskUuid}>
@@ -628,6 +632,15 @@ export default function RegisterPage() {
                               onClick={() => void handleOpenDetail(task.taskUuid)}
                             >
                               <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="重新发起"
+                              disabled={!canRetry || isRetrying}
+                              onClick={() => void retryTask(task.taskUuid)}
+                            >
+                              <RotateCcw className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"

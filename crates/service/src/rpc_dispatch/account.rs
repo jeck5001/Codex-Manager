@@ -306,6 +306,10 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
             super::value_or_error(account_register::cancel_register_task(task_uuid))
         }
+        "account/register/task/retry" => {
+            let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
+            super::value_or_error(account_register::retry_register_task(task_uuid))
+        }
         "account/register/task/delete" => {
             let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
             super::value_or_error(account_register::delete_register_task(task_uuid))

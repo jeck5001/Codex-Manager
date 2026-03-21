@@ -142,7 +142,7 @@ class OutlookService(BaseEmailService):
         self._imap_semaphore = threading.Semaphore(5)
 
         # 验证码去重机制
-        self._used_codes: Dict[str, set] = {}
+        self._used_message_ids: Dict[str, set] = {}
 
     def _get_provider(
         self,
@@ -335,10 +335,10 @@ class OutlookService(BaseEmailService):
             f"提供者优先级: {[p.value for p in self.provider_priority]}"
         )
 
-        # 初始化验证码去重集合
-        if email not in self._used_codes:
-            self._used_codes[email] = set()
-        used_codes = self._used_codes[email]
+        # 初始化已处理邮件集合
+        if email not in self._used_message_ids:
+            self._used_message_ids[email] = set()
+        used_message_ids = self._used_message_ids[email]
 
         # 计算最小时间戳（留出 60 秒时钟偏差）
         min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
@@ -370,11 +370,10 @@ class OutlookService(BaseEmailService):
                         emails,
                         target_email=email,
                         min_timestamp=min_timestamp,
-                        used_codes=used_codes,
+                        used_message_ids=used_message_ids,
                     )
 
                     if code:
-                        used_codes.add(code)
                         elapsed = int(time.time() - start_time)
                         logger.info(
                             f"[{email}] 找到验证码: {code}，"
