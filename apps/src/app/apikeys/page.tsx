@@ -36,15 +36,14 @@ import {
 } from "@/components/ui/table";
 import { useApiKeys } from "@/hooks/useApiKeys";
 import { accountClient } from "@/lib/api/account-client";
-import { useAppStore } from "@/lib/store/useAppStore";
 import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { formatCompactNumber } from "@/lib/utils/usage";
 
 export default function ApiKeysPage() {
-  const { serviceStatus } = useAppStore();
   const {
     apiKeys,
     isLoading,
+    isServiceReady,
     deleteApiKey,
     toggleApiKeyStatus,
     refreshModels,
@@ -73,7 +72,7 @@ export default function ApiKeysPage() {
         return result;
       }, {});
     },
-    enabled: serviceStatus.connected,
+    enabled: isServiceReady,
     refetchInterval: 5000,
     retry: 1,
   });
@@ -138,6 +137,13 @@ export default function ApiKeysPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {!isServiceReady ? (
+        <Card className="glass-card border-none shadow-sm">
+          <CardContent className="pt-6 text-sm text-muted-foreground">
+            服务未连接，平台密钥与模型配置暂不可用；连接恢复后会自动继续加载。
+          </CardContent>
+        </Card>
+      ) : null}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold tracking-tight">平台密钥</h2>
@@ -150,12 +156,16 @@ export default function ApiKeysPage() {
             variant="outline"
             className="glass-card h-10 gap-2"
             onClick={() => refreshModels(true)}
-            disabled={isRefreshingModels}
+            disabled={!isServiceReady || isRefreshingModels}
           >
             <RefreshCw className={isRefreshingModels ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             刷新模型
           </Button>
-          <Button className="h-10 gap-2 shadow-lg shadow-primary/20" onClick={openCreateModal}>
+          <Button
+            className="h-10 gap-2 shadow-lg shadow-primary/20"
+            onClick={openCreateModal}
+            disabled={!isServiceReady}
+          >
             <Plus className="h-4 w-4" /> 创建密钥
           </Button>
         </div>
@@ -220,6 +230,7 @@ export default function ApiKeysPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-muted-foreground hover:text-primary"
+                            disabled={!isServiceReady}
                             onClick={() => void toggleSecret(key.id)}
                           >
                             {revealed ? (
@@ -232,6 +243,7 @@ export default function ApiKeysPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-muted-foreground hover:text-primary"
+                            disabled={!isServiceReady}
                             onClick={() => void copyToClipboard(key.id)}
                           >
                             <Copy className="h-3.5 w-3.5" />
@@ -261,7 +273,7 @@ export default function ApiKeysPage() {
                           <Switch
                             className="scale-75"
                             checked={isEnabled}
-                            disabled={isToggling}
+                            disabled={!isServiceReady || isToggling}
                             onCheckedChange={(enabled) =>
                               toggleApiKeyStatus({ id: key.id, enabled })
                             }
@@ -277,6 +289,7 @@ export default function ApiKeysPage() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-muted-foreground transition-colors hover:text-primary"
+                            disabled={!isServiceReady}
                             onClick={() => openEditModal(key.id)}
                             title="编辑配置"
                           >
@@ -290,16 +303,22 @@ export default function ApiKeysPage() {
                                 className="h-8 w-8"
                                 render={<span />}
                                 nativeButton={false}
+                                disabled={!isServiceReady}
                               >
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="gap-2" onClick={() => openEditModal(key.id)}>
+                              <DropdownMenuItem
+                                className="gap-2"
+                                disabled={!isServiceReady}
+                                onClick={() => openEditModal(key.id)}
+                              >
                                 设置模型与推理
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="gap-2 text-red-500"
+                                disabled={!isServiceReady}
                                 onClick={() => handleDelete(key.id)}
                               >
                                 <Trash2 className="h-4 w-4" /> 删除密钥

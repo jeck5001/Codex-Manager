@@ -87,6 +87,7 @@ test("resolveRuntimeCapabilityView 在桌面回退路径下暴露桌面能力", 
 
   assert.equal(view.mode, "desktop-tauri");
   assert.equal(view.isDesktopRuntime, true);
+  assert.equal(view.canAccessManagementRpc, true);
   assert.equal(view.canManageService, true);
   assert.equal(view.canSelfUpdate, true);
   assert.equal(view.canOpenLocalDir, true);
@@ -97,6 +98,7 @@ test("resolveRuntimeCapabilityView 在未探测到运行壳前保持 Web 保守�
 
   assert.equal(view.mode, "unsupported-web");
   assert.equal(view.isUnsupportedWebRuntime, true);
+  assert.equal(view.canAccessManagementRpc, false);
   assert.equal(view.canManageService, false);
   assert.equal(view.canUseBrowserFileImport, false);
   assert.equal(view.canUseBrowserDownloadExport, false);
@@ -108,6 +110,7 @@ test("resolveRuntimeCapabilityView 直接复用已探测到的 Web 网关能力"
 
   assert.equal(view.mode, "web-gateway");
   assert.equal(view.isDesktopRuntime, false);
+  assert.equal(view.canAccessManagementRpc, true);
   assert.equal(view.canManageService, false);
   assert.equal(view.canUseBrowserFileImport, true);
   assert.equal(view.canUseBrowserDownloadExport, true);

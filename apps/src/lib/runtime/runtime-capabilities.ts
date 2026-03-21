@@ -9,6 +9,7 @@ export type RuntimeCapabilityView = {
   mode: RuntimeMode;
   isDesktopRuntime: boolean;
   isUnsupportedWebRuntime: boolean;
+  canAccessManagementRpc: boolean;
   canManageService: boolean;
   canSelfUpdate: boolean;
   canCloseToTray: boolean;
@@ -160,6 +161,7 @@ export function resolveRuntimeCapabilityView(
     mode,
     isDesktopRuntime,
     isUnsupportedWebRuntime: mode === "unsupported-web",
+    canAccessManagementRpc: mode !== "unsupported-web",
     canManageService: resolvedCapabilities.canManageService,
     canSelfUpdate: resolvedCapabilities.canSelfUpdate,
     canCloseToTray: resolvedCapabilities.canCloseToTray,

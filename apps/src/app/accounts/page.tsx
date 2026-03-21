@@ -172,6 +172,7 @@ export default function AccountsPage() {
     accounts,
     groups,
     isLoading,
+    isServiceReady,
     refreshAccount,
     refreshAllAccounts,
     deleteAccount,
@@ -415,6 +416,13 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-6">
+      {!isServiceReady ? (
+        <Card className="glass-card border-none shadow-sm">
+          <CardContent className="pt-6 text-sm text-muted-foreground">
+            服务未连接，账号列表与相关操作暂不可用；连接恢复后会自动继续加载。
+          </CardContent>
+        </Card>
+      ) : null}
       <Card className="glass-card border-none shadow-md backdrop-blur-md">
         <CardContent className="grid gap-3 pt-0 lg:grid-cols-[200px_auto_minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
@@ -497,12 +505,14 @@ export default function AccountsPage() {
                   </DropdownMenuLabel>
                   <DropdownMenuItem
                     className="h-9 rounded-lg px-2"
+                    disabled={!isServiceReady}
                     onClick={() => setAddAccountModalOpen(true)}
                   >
                     <Plus className="mr-2 h-4 w-4" /> 添加账号
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="h-9 rounded-lg px-2"
+                    disabled={!isServiceReady}
                     onClick={() => importByFile()}
                   >
                     <FileUp className="mr-2 h-4 w-4" /> {importFileActionLabel}
@@ -510,6 +520,7 @@ export default function AccountsPage() {
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="h-9 rounded-lg px-2"
+                    disabled={!isServiceReady}
                     onClick={() => importByDirectory()}
                   >
                     <FolderOpen className="mr-2 h-4 w-4" /> {importDirectoryActionLabel}
@@ -517,7 +528,7 @@ export default function AccountsPage() {
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="h-9 rounded-lg px-2"
-                    disabled={isExporting}
+                    disabled={!isServiceReady || isExporting}
                     onClick={() => exportAccounts()}
                   >
                     <Download className="mr-2 h-4 w-4" />
@@ -533,7 +544,7 @@ export default function AccountsPage() {
                     清理
                   </DropdownMenuLabel>
                   <DropdownMenuItem
-                    disabled={!effectiveSelectedIds.length || isDeletingMany}
+                    disabled={!isServiceReady || !effectiveSelectedIds.length || isDeletingMany}
                     variant="destructive"
                     className="h-9 rounded-lg px-2"
                     onClick={handleDeleteSelected}
@@ -546,6 +557,7 @@ export default function AccountsPage() {
                   <DropdownMenuItem
                     variant="destructive"
                     className="h-9 rounded-lg px-2"
+                    disabled={!isServiceReady}
                     onClick={() => deleteUnavailableFree()}
                   >
                     <Trash2 className="mr-2 h-4 w-4" /> 一键清理不可用免费
@@ -553,6 +565,7 @@ export default function AccountsPage() {
                   <DropdownMenuItem
                     variant="destructive"
                     className="h-9 rounded-lg px-2"
+                    disabled={!isServiceReady}
                     onClick={handleDeleteBanned}
                   >
                     <Trash2 className="mr-2 h-4 w-4" /> 一键清理封禁账号
@@ -563,7 +576,7 @@ export default function AccountsPage() {
             <Button
               className="h-10 w-30 gap-1 rounded-xl shadow-lg shadow-primary/20"
               onClick={() => refreshAllAccounts()}
-              disabled={isRefreshingAllAccounts}
+              disabled={!isServiceReady || isRefreshingAllAccounts}
             >
               <RefreshCw
                 className={cn(
@@ -722,7 +735,7 @@ export default function AccountsPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-muted-foreground transition-colors hover:text-primary"
-                            disabled={isUpdatingSortAccountId === account.id}
+                            disabled={!isServiceReady || isUpdatingSortAccountId === account.id}
                             onClick={() => openSortEditor(account)}
                             title="编辑顺序"
                           >
@@ -758,6 +771,7 @@ export default function AccountsPage() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-muted-foreground transition-colors hover:text-primary"
+                            disabled={!isServiceReady}
                             onClick={() => openUsage(account)}
                             title="用量详情"
                           >
@@ -771,6 +785,7 @@ export default function AccountsPage() {
                                 className="h-8 w-8"
                                 render={<span />}
                                 nativeButton={false}
+                                disabled={!isServiceReady}
                               >
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
@@ -778,7 +793,7 @@ export default function AccountsPage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 className="gap-2"
-                                disabled={isUpdatingPreferred}
+                                disabled={!isServiceReady || isUpdatingPreferred}
                                 onClick={() =>
                                   manualPreferredAccountId === account.id
                                     ? clearPreferredAccount()
@@ -793,6 +808,7 @@ export default function AccountsPage() {
                               <DropdownMenuItem
                                 className="gap-2"
                                 disabled={
+                                  !isServiceReady ||
                                   isUpdatingStatusAccountId === account.id
                                 }
                                 onClick={() =>
@@ -822,6 +838,7 @@ export default function AccountsPage() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="gap-2 text-red-500"
+                                disabled={!isServiceReady}
                                 onClick={() => handleDeleteSingle(account)}
                               >
                                 <Trash2 className="h-4 w-4" /> 删除

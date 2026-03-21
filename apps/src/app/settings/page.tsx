@@ -272,7 +272,13 @@ export default function SettingsPage() {
   const { setAppSettings: setStoreSettings } = useAppStore();
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
-  const { isDesktopRuntime, canSelfUpdate, canOpenLocalDir, canCloseToTray } =
+  const {
+    isDesktopRuntime,
+    canAccessManagementRpc,
+    canSelfUpdate,
+    canOpenLocalDir,
+    canCloseToTray,
+  } =
     useRuntimeCapabilities();
   const lastSyncedSnapshotThemeRef = useRef<string | null>(null);
   const lastSyncedAppearancePresetRef = useRef<string | null>(null);
@@ -298,6 +304,7 @@ export default function SettingsPage() {
   const { data: snapshot, isLoading } = useQuery({
     queryKey: ["app-settings-snapshot"],
     queryFn: () => appClient.getSettings(),
+    enabled: canAccessManagementRpc,
   });
 
   const updateSettings = useMutation({

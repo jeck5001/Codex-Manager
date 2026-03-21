@@ -7,6 +7,7 @@ import { accountClient } from "@/lib/api/account-client";
 import { attachUsagesToAccounts } from "@/lib/api/normalize";
 import { serviceClient } from "@/lib/api/service-client";
 import { getAppErrorMessage } from "@/lib/api/transport";
+import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { useAppStore } from "@/lib/store/useAppStore";
 
 type ImportByDirectoryResult = Awaited<ReturnType<typeof accountClient.importByDirectory>>;
@@ -37,23 +38,35 @@ function formatUsageRefreshErrorMessage(error: unknown): string {
 export function useAccounts() {
   const queryClient = useQueryClient();
   const serviceStatus = useAppStore((state) => state.serviceStatus);
+  const { canAccessManagementRpc } = useRuntimeCapabilities();
+  const isServiceReady = canAccessManagementRpc && serviceStatus.connected;
+
+  const ensureServiceReady = (actionLabel: string): boolean => {
+    if (isServiceReady) {
+      return true;
+    }
+    toast.info(`服务未连接，暂时无法${actionLabel}`);
+    return false;
+  };
 
   const accountsQuery = useQuery({
     queryKey: ["accounts", "list"],
     queryFn: () => accountClient.list(),
+    enabled: isServiceReady,
     retry: 1,
   });
 
   const usagesQuery = useQuery({
     queryKey: ["usage", "list"],
     queryFn: () => accountClient.listUsage(),
+    enabled: isServiceReady,
     retry: 1,
   });
 
   const manualPreferredAccountQuery = useQuery({
     queryKey: ["gateway", "manual-account", serviceStatus.addr || null],
     queryFn: () => serviceClient.getManualPreferredAccountId(),
-    enabled: serviceStatus.connected,
+    enabled: isServiceReady,
     retry: 1,
   });
 
@@ -289,31 +302,65 @@ export function useAccounts() {
     accounts,
     groups,
     total: accountsQuery.data?.total || accounts.length,
-    isLoading: accountsQuery.isLoading || usagesQuery.isLoading,
+    isLoading: isServiceReady && (accountsQuery.isLoading || usagesQuery.isLoading),
+    isServiceReady,
     manualPreferredAccountId: manualPreferredAccountQuery.data || "",
-    refreshAccount: (accountId: string) => refreshAccountMutation.mutate(accountId),
+    refreshAccount: (accountId: string) => {
+      if (!ensureServiceReady("刷新账号")) return;
+      refreshAccountMutation.mutate(accountId);
+    },
     refreshAllAccounts: () => {
+      if (!ensureServiceReady("刷新账号")) return;
       if (!accounts.some((account) => !isAccountRefreshBlocked(account.status))) {
         toast.info("当前没有可刷新的账号");
         return;
       }
       refreshAllMutation.mutate();
     },
-    deleteAccount: (accountId: string) => deleteMutation.mutate(accountId),
-    deleteManyAccounts: (accountIds: string[]) => deleteManyMutation.mutate(accountIds),
-    deleteUnavailableFree: () => deleteUnavailableFreeMutation.mutate(),
-    importByFile: () => importByFileMutation.mutate(),
-    importByDirectory: () => importByDirectoryMutation.mutate(),
-    exportAccounts: () => exportMutation.mutate(),
-    setPreferredAccount: (accountId: string) => setManualPreferredMutation.mutate(accountId),
-    clearPreferredAccount: () => clearManualPreferredMutation.mutate(),
-    updateAccountSort: (accountId: string, sort: number) =>
-      updateAccountSortMutation.mutateAsync({ accountId, sort }),
+    deleteAccount: (accountId: string) => {
+      if (!ensureServiceReady("删除账号")) return;
+      deleteMutation.mutate(accountId);
+    },
+    deleteManyAccounts: (accountIds: string[]) => {
+      if (!ensureServiceReady("批量删除账号")) return;
+      deleteManyMutation.mutate(accountIds);
+    },
+    deleteUnavailableFree: () => {
+      if (!ensureServiceReady("清理账号")) return;
+      deleteUnavailableFreeMutation.mutate();
+    },
+    importByFile: () => {
+      if (!ensureServiceReady("导入账号")) return;
+      importByFileMutation.mutate();
+    },
+    importByDirectory: () => {
+      if (!ensureServiceReady("导入账号")) return;
+      importByDirectoryMutation.mutate();
+    },
+    exportAccounts: () => {
+      if (!ensureServiceReady("导出账号")) return;
+      exportMutation.mutate();
+    },
+    setPreferredAccount: (accountId: string) => {
+      if (!ensureServiceReady("设置优先账号")) return;
+      setManualPreferredMutation.mutate(accountId);
+    },
+    clearPreferredAccount: () => {
+      if (!ensureServiceReady("取消优先账号")) return;
+      clearManualPreferredMutation.mutate();
+    },
+    updateAccountSort: async (accountId: string, sort: number) => {
+      if (!ensureServiceReady("更新账号顺序")) return;
+      await updateAccountSortMutation.mutateAsync({ accountId, sort });
+    },
     toggleAccountStatus: (
       accountId: string,
       enabled: boolean,
       sourceStatus?: string | null
-    ) => toggleAccountStatusMutation.mutate({ accountId, enabled, sourceStatus }),
+    ) => {
+      if (!ensureServiceReady(enabled ? "启用账号" : "禁用账号")) return;
+      toggleAccountStatusMutation.mutate({ accountId, enabled, sourceStatus });
+    },
     isRefreshingAccountId:
       refreshAccountMutation.isPending && typeof refreshAccountMutation.variables === "string"
         ? refreshAccountMutation.variables
