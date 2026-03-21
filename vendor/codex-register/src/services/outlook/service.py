@@ -296,6 +296,7 @@ class OutlookService(BaseEmailService):
         email: str,
         email_id: str = None,
         timeout: int = None,
+        poll_interval: Optional[int] = None,
         pattern: str = None,
         otp_sent_at: Optional[float] = None,
     ) -> Optional[str]:
@@ -306,6 +307,7 @@ class OutlookService(BaseEmailService):
             email: 邮箱地址
             email_id: 未使用
             timeout: 超时时间（秒）
+            poll_interval: 轮询间隔（秒）
             pattern: 验证码正则表达式（未使用）
             otp_sent_at: OTP 发送时间戳
 
@@ -326,7 +328,7 @@ class OutlookService(BaseEmailService):
         # 获取验证码等待配置
         code_settings = get_email_code_settings()
         actual_timeout = timeout or code_settings["timeout"]
-        poll_interval = code_settings["poll_interval"]
+        actual_poll_interval = max(1, int(poll_interval or code_settings["poll_interval"]))
 
         logger.info(
             f"[{email}] 开始获取验证码，超时 {actual_timeout}s，"
@@ -385,7 +387,7 @@ class OutlookService(BaseEmailService):
                 logger.warning(f"[{email}] 检查出错: {e}")
 
             # 等待下次轮询
-            time.sleep(poll_interval)
+            time.sleep(actual_poll_interval)
 
         elapsed = int(time.time() - start_time)
         logger.warning(f"[{email}] 验证码超时 ({actual_timeout}s)，共轮询 {poll_count} 次")

@@ -149,6 +149,17 @@ class RegistrationEngine:
         self._last_otp_error_code: str = ""
         self._last_otp_error_message: str = ""
 
+    @staticmethod
+    def _get_email_code_wait_settings() -> Tuple[int, int]:
+        """获取验证码等待配置。"""
+        settings = get_settings()
+        timeout = max(30, int(getattr(settings, "email_code_timeout", 120) or 120))
+        poll_interval = max(
+            1,
+            min(30, int(getattr(settings, "email_code_poll_interval", 3) or 3)),
+        )
+        return timeout, poll_interval
+
     def _log(self, message: str, level: str = "info"):
         """记录日志"""
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -665,13 +676,18 @@ class RegistrationEngine:
     def _get_verification_code(self) -> Optional[str]:
         """获取验证码"""
         try:
-            self._log(f"正在等待邮箱 {self.email} 的验证码...")
+            timeout, poll_interval = self._get_email_code_wait_settings()
+            self._log(
+                f"正在等待邮箱 {self.email} 的验证码..."
+                f"（超时 {timeout}s，轮询间隔 {poll_interval}s）"
+            )
 
             email_id = self.email_info.get("service_id") if self.email_info else None
             code = self.email_service.get_verification_code(
                 email=self.email,
                 email_id=email_id,
-                timeout=120,
+                timeout=timeout,
+                poll_interval=poll_interval,
                 pattern=OTP_CODE_PATTERN,
                 otp_sent_at=self._otp_sent_at,
             )
