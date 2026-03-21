@@ -83,6 +83,7 @@ type StatusFilter =
   | "all"
   | "available"
   | "low_quota"
+  | "cooldown"
   | "deactivated"
   | "isolated"
   | "governed";
@@ -93,6 +94,8 @@ function normalizeStatusFilter(value: string | null | undefined): StatusFilter {
       return "available";
     case "low_quota":
       return "low_quota";
+    case "cooldown":
+      return "cooldown";
     case "deactivated":
       return "deactivated";
     case "isolated":
@@ -330,6 +333,7 @@ export default function AccountsPage() {
         statusFilter === "all" ||
         (statusFilter === "available" && account.isAvailable) ||
         (statusFilter === "low_quota" && account.isLowQuota) ||
+        (statusFilter === "cooldown" && account.isInCooldown) ||
         (statusFilter === "deactivated" && account.isDeactivated) ||
         (statusFilter === "isolated" && account.isIsolated) ||
         (statusFilter === "governed" && Boolean(account.lastGovernanceReason));
@@ -477,6 +481,7 @@ export default function AccountsPage() {
         all: "全部",
         available: "可用",
         low_quota: "低配额",
+        cooldown: "冷却中",
         deactivated: "已停用",
         isolated: "隔离中",
         governed: "最近治理",
@@ -876,6 +881,7 @@ export default function AccountsPage() {
                 { id: "all", label: "全部" },
                 { id: "available", label: "可用" },
                 { id: "low_quota", label: "低配额" },
+                { id: "cooldown", label: "冷却中" },
                 { id: "deactivated", label: "已停用" },
                 { id: "isolated", label: "隔离中" },
                 { id: "governed", label: "最近治理" },
@@ -1334,6 +1340,14 @@ export default function AccountsPage() {
                                 +{account.tags.length - 2}
                               </Badge>
                             ) : null}
+                            {account.isInCooldown ? (
+                              <Badge
+                                variant="secondary"
+                                className="h-4 shrink-0 bg-amber-500/15 px-1.5 text-[9px] text-amber-700 dark:text-amber-300"
+                              >
+                                冷却中
+                              </Badge>
+                            ) : null}
                             <Badge
                               variant="secondary"
                               className={cn(
@@ -1390,6 +1404,14 @@ export default function AccountsPage() {
                               隔离原因: {account.lastIsolationReason}
                               {account.lastIsolationAt
                                 ? ` · ${formatTsFromSeconds(account.lastIsolationAt, "--")}`
+                                : ""}
+                            </span>
+                          ) : null}
+                          {account.isInCooldown ? (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                              冷却中: {account.cooldownReason || "临时冷却"}
+                              {account.cooldownUntil
+                                ? ` · 至 ${formatTsFromSeconds(account.cooldownUntil, "--")}`
                                 : ""}
                             </span>
                           ) : null}
@@ -1480,6 +1502,13 @@ export default function AccountsPage() {
                               当前隔离: {account.lastIsolationReason}
                               {account.lastIsolationAt
                                 ? ` · ${formatTsFromSeconds(account.lastIsolationAt, "--")}`
+                                : ""}
+                            </div>
+                          ) : account.isInCooldown ? (
+                            <div className="rounded-md bg-amber-500/10 px-2 py-1 text-[10px] text-amber-700 dark:text-amber-300">
+                              冷却中: {account.cooldownReason || "临时冷却"}
+                              {account.cooldownUntil
+                                ? ` · 至 ${formatTsFromSeconds(account.cooldownUntil, "--")}`
                                 : ""}
                             </div>
                           ) : account.lastGovernanceReason ? (

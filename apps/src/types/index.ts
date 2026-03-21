@@ -40,6 +40,10 @@ export interface Account {
   lastIsolationReasonCode: string | null;
   lastIsolationReason: string | null;
   lastIsolationAt: number | null;
+  cooldownUntil: number | null;
+  cooldownReasonCode: string | null;
+  cooldownReason: string | null;
+  isInCooldown: boolean;
   isIsolated: boolean;
   isAvailable: boolean;
   isLowQuota: boolean;

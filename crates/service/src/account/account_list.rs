@@ -45,6 +45,7 @@ pub(crate) fn read_accounts(
     let payment_state_map = crate::account_payment::read_payment_state_map();
     let status_meta_map = read_account_status_meta_map(&storage);
     let account_tags_map = storage.list_account_tags().unwrap_or_default();
+    let cooldown_map = crate::gateway::list_account_cooldowns();
 
     if filter == AccountFilter::All {
         if pagination_requested {
@@ -72,6 +73,7 @@ pub(crate) fn read_accounts(
                             &payment_state_map,
                             &status_meta_map,
                             &account_tags_map,
+                            &cooldown_map,
                         )
                     })
                     .collect(),
@@ -95,6 +97,7 @@ pub(crate) fn read_accounts(
                         &payment_state_map,
                         &status_meta_map,
                         &account_tags_map,
+                        &cooldown_map,
                     )
                 })
                 .collect(),
@@ -131,6 +134,7 @@ pub(crate) fn read_accounts(
                         &payment_state_map,
                         &status_meta_map,
                         &account_tags_map,
+                        &cooldown_map,
                     )
                 })
                 .collect(),
@@ -159,6 +163,7 @@ pub(crate) fn read_accounts(
                     &payment_state_map,
                     &status_meta_map,
                     &account_tags_map,
+                    &cooldown_map,
                 )
             })
             .collect(),
@@ -264,10 +269,12 @@ fn to_account_summary(
     payment_state_map: &std::collections::BTreeMap<String, crate::account_payment::AccountPaymentState>,
     status_meta_map: &BTreeMap<String, AccountStatusMeta>,
     account_tags_map: &BTreeMap<String, Option<String>>,
+    cooldown_map: &std::collections::HashMap<String, crate::gateway::AccountCooldownSnapshot>,
 ) -> AccountSummary {
     let health_score = i64::from(crate::gateway::route_health_score(acc.id.as_str()));
     let payment_state = payment_state_map.get(&acc.id);
     let status_meta = status_meta_map.get(&acc.id);
+    let cooldown = cooldown_map.get(&acc.id);
     let label = resolve_account_display_label(storage, &acc);
     let tags = account_tags_map
         .get(&acc.id)
@@ -291,6 +298,9 @@ fn to_account_summary(
             .and_then(|meta| meta.last_isolation_reason_code.clone()),
         last_isolation_reason: status_meta.and_then(|meta| meta.last_isolation_reason.clone()),
         last_isolation_at: status_meta.and_then(|meta| meta.last_isolation_at),
+        cooldown_until: cooldown.map(|entry| entry.until),
+        cooldown_reason_code: cooldown.map(|entry| entry.reason_code.clone()),
+        cooldown_reason: cooldown.map(|entry| entry.reason_label.clone()),
         subscription_plan_type: payment_state.and_then(|state| state.subscription_plan_type.clone()),
         subscription_updated_at: payment_state.and_then(|state| state.subscription_updated_at),
         team_manager_uploaded_at: payment_state.and_then(|state| state.team_manager_uploaded_at),
