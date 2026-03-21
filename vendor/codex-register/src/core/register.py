@@ -135,6 +135,8 @@ class RegistrationEngine:
         self.logs: list = []
         self._otp_sent_at: Optional[float] = None  # OTP 发送时间戳
         self._is_existing_account: bool = False  # 是否为已注册账号（用于自动登录）
+        self._post_create_page_type: str = ""
+        self._post_create_continue_url: str = ""
 
     def _log(self, message: str, level: str = "info"):
         """记录日志"""
@@ -163,6 +165,106 @@ class RegistrationEngine:
             logger.warning(message)
         else:
             logger.info(message)
+
+    @staticmethod
+    def _clean_text(value: Any) -> str:
+        """清洗文本值"""
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def _workspace_id_from_mapping(self, data: Any) -> str:
+        """从 auth/session 映射里提取 workspace / organization ID"""
+        if not isinstance(data, dict):
+            return ""
+
+        direct_keys = (
+            "workspace_id",
+            "organization_id",
+            "org_id",
+            "default_workspace_id",
+            "default_organization_id",
+            "chatgpt_account_id",
+        )
+        item_keys = ("id", "workspace_id", "organization_id", "org_id")
+        nested_keys = (
+            "default_workspace",
+            "default_organization",
+            "workspace",
+            "organization",
+        )
+
+        for key in direct_keys:
+            candidate = self._clean_text(data.get(key))
+            if candidate:
+                return candidate
+
+        for nested_key in nested_keys:
+            nested = data.get(nested_key)
+            if isinstance(nested, dict):
+                for key in item_keys:
+                    candidate = self._clean_text(nested.get(key))
+                    if candidate:
+                        return candidate
+
+        for list_key in ("workspaces", "organizations"):
+            items = data.get(list_key)
+            if not isinstance(items, list):
+                continue
+
+            ordered_items = []
+            default_item = next(
+                (
+                    item for item in items
+                    if isinstance(item, dict) and item.get("is_default") is True
+                ),
+                None,
+            )
+            if default_item is not None:
+                ordered_items.append(default_item)
+            ordered_items.extend(
+                item for item in items
+                if isinstance(item, dict) and item is not default_item
+            )
+
+            for item in ordered_items:
+                for key in item_keys:
+                    candidate = self._clean_text(item.get(key))
+                    if candidate:
+                        return candidate
+
+        for nested_key in ("auth", "https://api.openai.com/auth"):
+            nested = data.get(nested_key)
+            candidate = self._workspace_id_from_mapping(nested)
+            if candidate:
+                return candidate
+
+        return ""
+
+    def _log_auth_response_preview(self, prefix: str, payload: Any):
+        """记录认证接口响应摘要"""
+        try:
+            if not isinstance(payload, dict):
+                return
+
+            preview = {}
+            for key in (
+                "continue_url",
+                "redirect_url",
+                "callback_url",
+                "next_url",
+                "page",
+                "type",
+                "payload",
+                "account",
+            ):
+                if key in payload:
+                    preview[key] = payload.get(key)
+
+            if preview:
+                self._log(f"{prefix}: {json.dumps(preview, ensure_ascii=False)[:500]}")
+        except Exception:
+            pass
 
     def _generate_password(self, length: int = DEFAULT_PASSWORD_LENGTH) -> str:
         """生成随机密码"""
@@ -550,6 +652,50 @@ class RegistrationEngine:
             self._log(f"验证验证码失败: {e}", "error")
             return False
 
+    def _resend_email_verification_code(self) -> bool:
+        """重新发送邮箱验证码（用于登录后二次验证）"""
+        try:
+            self._otp_sent_at = time.time()
+
+            response = self.session.post(
+                OPENAI_API_ENDPOINTS["resend_otp"],
+                headers={
+                    "referer": "https://auth.openai.com/email-verification",
+                    "accept": "application/json",
+                },
+            )
+
+            self._log(f"邮箱验证码重发状态: {response.status_code}")
+            return response.status_code == 200
+        except Exception as e:
+            self._log(f"重发邮箱验证码失败: {e}", "error")
+            return False
+
+    def _validate_verification_code_with_payload(self, code: str) -> Optional[Dict[str, Any]]:
+        """验证验证码并返回响应载荷"""
+        try:
+            response = self.session.post(
+                OPENAI_API_ENDPOINTS["validate_otp"],
+                headers={
+                    "referer": "https://auth.openai.com/email-verification",
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                },
+                data=json.dumps({"code": code}),
+            )
+
+            self._log(f"验证码校验状态: {response.status_code}")
+            if response.status_code != 200:
+                self._log(f"验证码校验失败: {response.text[:300]}", "warning")
+                return None
+
+            response_json = response.json()
+            self._log_auth_response_preview("验证码校验响应摘要", response_json)
+            return response_json if isinstance(response_json, dict) else {}
+        except Exception as e:
+            self._log(f"验证验证码失败: {e}", "error")
+            return None
+
     def _create_user_account(self) -> bool:
         """创建用户账户"""
         try:
@@ -573,131 +719,119 @@ class RegistrationEngine:
                 self._log(f"账户创建失败: {response.text[:200]}", "warning")
                 return False
 
+            try:
+                response_json = response.json()
+                if isinstance(response_json, dict):
+                    self._post_create_page_type = str(
+                        ((response_json.get("page") or {}).get("type") or "")
+                    ).strip()
+                    self._post_create_continue_url = str(
+                        response_json.get("continue_url") or response_json.get("redirect_url") or ""
+                    ).strip()
+                    preview = {}
+                    for key in (
+                        "continue_url",
+                        "redirect_url",
+                        "callback_url",
+                        "next_url",
+                        "page",
+                        "account",
+                    ):
+                        if key in response_json:
+                            preview[key] = response_json.get(key)
+                    if preview:
+                        self._log(f"账户创建响应摘要: {json.dumps(preview, ensure_ascii=False)[:500]}")
+            except Exception:
+                pass
+
             return True
 
         except Exception as e:
             self._log(f"创建账户失败: {e}", "error")
             return False
 
+    def _fetch_client_auth_session_dump(self) -> Optional[Dict[str, Any]]:
+        """获取 client auth session dump，作为 cookie 缺失时的兜底"""
+        try:
+            response = self.session.get(
+                OPENAI_API_ENDPOINTS["client_auth_session_dump"],
+                headers={
+                    "accept": "application/json",
+                    "referer": "https://auth.openai.com/",
+                },
+                timeout=15,
+            )
+
+            if response.status_code != 200:
+                self._log(
+                    f"client_auth_session_dump 获取失败: HTTP {response.status_code}",
+                    "warning",
+                )
+                return None
+
+            response_json = response.json()
+            auth_session = (response_json or {}).get("client_auth_session")
+            if isinstance(auth_session, dict):
+                return auth_session
+
+            self._log("client_auth_session_dump 响应缺少 client_auth_session", "warning")
+            return None
+        except Exception as e:
+            self._log(f"获取 client_auth_session_dump 失败: {e}", "warning")
+            return None
+
     def _get_workspace_id(self) -> Optional[str]:
         """获取 Workspace ID"""
         try:
             auth_cookie = self.session.cookies.get("oai-client-auth-session")
-            if not auth_cookie:
-                self._log("未能获取到授权 Cookie", "error")
-                return None
 
             import base64
             import json as json_module
 
             try:
-                segments = auth_cookie.split(".")
-                if not segments:
-                    self._log("授权 Cookie 格式错误", "error")
-                    return None
-
-                def _clean_str(value: Any) -> str:
-                    if value is None:
-                        return ""
-                    return str(value).strip()
-
-                def _workspace_id_from_mapping(data: Dict[str, Any]) -> str:
-                    if not isinstance(data, dict):
-                        return ""
-
-                    direct_keys = (
-                        "workspace_id",
-                        "organization_id",
-                        "org_id",
-                        "default_workspace_id",
-                        "default_organization_id",
-                    )
-                    item_keys = ("id", "workspace_id", "organization_id", "org_id")
-                    nested_keys = (
-                        "default_workspace",
-                        "default_organization",
-                        "workspace",
-                        "organization",
-                    )
-
-                    for key in direct_keys:
-                        candidate = _clean_str(data.get(key))
-                        if candidate:
-                            return candidate
-
-                    for nested_key in nested_keys:
-                        nested = data.get(nested_key)
-                        if isinstance(nested, dict):
-                            for key in item_keys:
-                                candidate = _clean_str(nested.get(key))
-                                if candidate:
-                                    return candidate
-
-                    for list_key in ("workspaces", "organizations"):
-                        items = data.get(list_key)
-                        if not isinstance(items, list):
-                            continue
-                        ordered_items = []
-                        default_item = next(
-                            (
-                                item for item in items
-                                if isinstance(item, dict) and item.get("is_default") is True
-                            ),
-                            None,
-                        )
-                        if default_item is not None:
-                            ordered_items.append(default_item)
-                        ordered_items.extend(
-                            item for item in items
-                            if isinstance(item, dict) and item is not default_item
-                        )
-                        for item in ordered_items:
-                            for key in item_keys:
-                                candidate = _clean_str(item.get(key))
-                                if candidate:
-                                    return candidate
-
-                    nested_auth = data.get("auth")
-                    if isinstance(nested_auth, dict):
-                        candidate = _workspace_id_from_mapping(nested_auth)
-                        if candidate:
-                            return candidate
-
-                    nested_openai_auth = data.get("https://api.openai.com/auth")
-                    if isinstance(nested_openai_auth, dict):
-                        candidate = _workspace_id_from_mapping(nested_openai_auth)
-                        if candidate:
-                            return candidate
-
-                    return ""
-
                 inspected_keys = []
-                for idx, payload in enumerate(segments):
-                    raw = _clean_str(payload)
-                    if not raw:
-                        continue
-                    pad = "=" * ((4 - (len(raw) % 4)) % 4)
-                    try:
-                        decoded = base64.urlsafe_b64decode((raw + pad).encode("ascii"))
-                        auth_json = json_module.loads(decoded.decode("utf-8"))
-                    except Exception:
-                        continue
+                if auth_cookie:
+                    segments = auth_cookie.split(".")
+                    if segments:
+                        for idx, payload in enumerate(segments):
+                            raw = self._clean_text(payload)
+                            if not raw:
+                                continue
+                            pad = "=" * ((4 - (len(raw) % 4)) % 4)
+                            try:
+                                decoded = base64.urlsafe_b64decode((raw + pad).encode("ascii"))
+                                auth_json = json_module.loads(decoded.decode("utf-8"))
+                            except Exception:
+                                continue
 
-                    if isinstance(auth_json, dict):
-                        inspected_keys.append(f"segment[{idx}]={','.join(sorted(auth_json.keys())[:8])}")
-                        workspace_id = _workspace_id_from_mapping(auth_json)
-                        if workspace_id:
-                            self._log(f"Workspace ID: {workspace_id}")
-                            return workspace_id
+                            if isinstance(auth_json, dict):
+                                inspected_keys.append(
+                                    f"segment[{idx}]={','.join(sorted(auth_json.keys())[:8])}"
+                                )
+                                workspace_id = self._workspace_id_from_mapping(auth_json)
+                                if workspace_id:
+                                    self._log(f"Workspace ID: {workspace_id}")
+                                    return workspace_id
+                    else:
+                        self._log("授权 Cookie 格式错误，尝试 client_auth_session_dump", "warning")
+                else:
+                    self._log("未能获取到授权 Cookie，尝试 client_auth_session_dump", "warning")
 
                 if inspected_keys:
                     self._log(
                         "授权 Cookie 里没有可识别的 workspace 信息，已检查: "
                         + " | ".join(inspected_keys),
-                        "error",
+                        "warning",
                     )
-                else:
-                    self._log("授权 Cookie 里没有可解析的 JSON segment", "error")
+                elif auth_cookie:
+                    self._log("授权 Cookie 里没有可解析的 JSON segment", "warning")
+
+                auth_session = self._fetch_client_auth_session_dump()
+                workspace_id = self._workspace_id_from_mapping(auth_session)
+                if workspace_id:
+                    self._log(f"Workspace ID (client_auth_session_dump): {workspace_id}")
+                    return workspace_id
+
                 return None
 
             except Exception as e:
@@ -742,6 +876,7 @@ class RegistrationEngine:
     def _follow_redirects(self, start_url: str) -> Optional[str]:
         """跟随重定向链，寻找回调 URL"""
         try:
+            import re
             current_url = start_url
             max_redirects = 6
 
@@ -759,6 +894,46 @@ class RegistrationEngine:
                 # 如果不是重定向状态码，停止
                 if response.status_code not in [301, 302, 303, 307, 308]:
                     self._log(f"非重定向状态码: {response.status_code}")
+                    body = response.text or ""
+                    page_title = ""
+                    title_match = re.search(r"<title>(.*?)</title>", body, re.IGNORECASE | re.DOTALL)
+                    if title_match:
+                        page_title = " ".join(title_match.group(1).split())[:120]
+                    if page_title:
+                        self._log(f"当前页面标题: {page_title}")
+
+                    discovered = []
+                    for pattern in (
+                        r'login_challenge[^& <>"\']*',
+                        r'consent_challenge[^& <>"\']*',
+                        r'/api/accounts/[^ <>"\']+',
+                        r'action="([^"]+)"',
+                        r'href="([^"]+)"',
+                    ):
+                        for match in re.finditer(pattern, body):
+                            value = match.group(1) if match.groups() else match.group(0)
+                            value = str(value or "").strip()
+                            if not value:
+                                continue
+                            if "code=" in value and "state=" in value:
+                                self._log(f"在页面内容里找到回调 URL: {value[:160]}...")
+                                return value
+                            if (
+                                "login" in value
+                                or "consent" in value
+                                or "authorize" in value
+                                or "/api/accounts/" in value
+                            ) and value not in discovered:
+                                discovered.append(value)
+                            if len(discovered) >= 8:
+                                break
+                        if len(discovered) >= 8:
+                            break
+                    if discovered:
+                        self._log("页面线索: " + " | ".join(item[:160] for item in discovered), "warning")
+                    snippet = " ".join(body[:500].split())
+                    if snippet:
+                        self._log(f"页面摘要: {snippet}", "warning")
                     break
 
                 if not location:
@@ -802,11 +977,6 @@ class RegistrationEngine:
             decoded = base64.urlsafe_b64decode((payload + pad).encode("ascii"))
             data = json_module.loads(decoded.decode("utf-8"))
 
-            def _clean(value: Any) -> str:
-                if value is None:
-                    return ""
-                return str(value).strip()
-
             def _find(mapping: Any) -> str:
                 if not isinstance(mapping, dict):
                     return ""
@@ -817,7 +987,7 @@ class RegistrationEngine:
                     "org_id",
                     "chatgpt_account_id",
                 ):
-                    value = _clean(mapping.get(key))
+                    value = self._clean_text(mapping.get(key))
                     if value:
                         return value
 
@@ -833,7 +1003,7 @@ class RegistrationEngine:
                     for item in ([default_org] if default_org else []) + [
                         item for item in organizations if isinstance(item, dict) and item is not default_org
                     ]:
-                        value = _clean(item.get("id"))
+                        value = self._clean_text(item.get("id"))
                         if value:
                             return value
 
@@ -849,6 +1019,357 @@ class RegistrationEngine:
             return workspace_id or None
         except Exception:
             return None
+
+    def _submit_login_identifier(self, did: Optional[str], sen_token: Optional[str]) -> Optional[Dict[str, Any]]:
+        """提交登录邮箱，进入登录密码页或后续 OAuth 页面"""
+        try:
+            login_body = json.dumps({
+                "username": {
+                    "value": self.email,
+                    "kind": "email",
+                }
+            })
+
+            headers = {
+                "referer": "https://auth.openai.com/log-in",
+                "accept": "application/json",
+                "content-type": "application/json",
+            }
+
+            if did and sen_token:
+                sentinel = json.dumps({
+                    "p": "",
+                    "t": "",
+                    "c": sen_token,
+                    "id": did,
+                    "flow": "authorize_continue",
+                })
+                headers["openai-sentinel-token"] = sentinel
+
+            response = self.session.post(
+                OPENAI_API_ENDPOINTS["login"],
+                headers=headers,
+                data=login_body,
+            )
+
+            self._log(f"登录邮箱提交状态: {response.status_code}")
+            if response.status_code != 200:
+                self._log(f"登录邮箱提交失败: {response.text[:300]}", "warning")
+                return None
+
+            response_json = response.json()
+            self._log_auth_response_preview("登录邮箱响应摘要", response_json)
+
+            page = (response_json or {}).get("page")
+            if not isinstance(page, dict):
+                self._log("登录邮箱响应缺少 page", "warning")
+                return None
+
+            page_type = self._clean_text(page.get("type"))
+            if page_type:
+                self._log(f"登录邮箱响应页面类型: {page_type}")
+            return page
+        except Exception as e:
+            self._log(f"提交登录邮箱失败: {e}", "error")
+            return None
+
+    def _verify_login_password(self, password: str) -> Optional[Dict[str, Any]]:
+        """提交登录密码"""
+        try:
+            response = self.session.post(
+                OPENAI_API_ENDPOINTS["verify_password"],
+                headers={
+                    "referer": "https://auth.openai.com/log-in/password",
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                },
+                data=json.dumps({"password": password}),
+            )
+
+            self._log(f"登录密码提交状态: {response.status_code}")
+            if response.status_code != 200:
+                self._log(f"登录密码提交失败: {response.text[:300]}", "warning")
+                return None
+
+            response_json = response.json()
+            self._log_auth_response_preview("登录密码响应摘要", response_json)
+
+            page = (response_json or {}).get("page")
+            if not isinstance(page, dict):
+                self._log("登录密码响应缺少 page", "warning")
+                return None
+
+            page_type = self._clean_text(page.get("type"))
+            if page_type:
+                self._log(f"登录密码响应页面类型: {page_type}")
+            return page
+        except Exception as e:
+            self._log(f"提交登录密码失败: {e}", "error")
+            return None
+
+    def _build_callback_url_from_page(self, page: Dict[str, Any]) -> Optional[str]:
+        """从 token_exchange 页面构造 OAuth 回调 URL"""
+        try:
+            if self._clean_text(page.get("type")) != "token_exchange":
+                return None
+
+            continue_url = self._clean_text(page.get("continue_url"))
+            payload = page.get("payload") if isinstance(page.get("payload"), dict) else {}
+
+            if not continue_url:
+                self._log("token_exchange 页面缺少 continue_url", "error")
+                return None
+
+            if "code=" in continue_url and "state=" in continue_url:
+                self._log(f"token_exchange 直接返回回调 URL: {continue_url[:100]}...")
+                return continue_url
+
+            import urllib.parse
+
+            parsed = urllib.parse.urlsplit(continue_url)
+            query = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
+            for key in ("code", "state", "error", "error_description"):
+                value = self._clean_text(payload.get(key))
+                if value:
+                    query[key] = value
+
+            callback_url = urllib.parse.urlunsplit((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                urllib.parse.urlencode(query),
+                parsed.fragment,
+            ))
+
+            if "code=" in callback_url and "state=" in callback_url:
+                self._log(f"从 token_exchange 页面构造回调 URL: {callback_url[:100]}...")
+                return callback_url
+
+            self._log("token_exchange 页面缺少 code/state", "error")
+            return None
+        except Exception as e:
+            self._log(f"构造 token_exchange 回调 URL 失败: {e}", "error")
+            return None
+
+    def _resolve_callback_from_continue_url(self, continue_url: str, stage: str) -> Optional[str]:
+        """根据 continue_url 推进到 OAuth 回调"""
+        try:
+            target_url = self._clean_text(continue_url)
+            if not target_url:
+                return None
+
+            if "code=" in target_url and "state=" in target_url:
+                self._log(f"{stage} 直接拿到回调 URL: {target_url[:100]}...")
+                return target_url
+
+            import urllib.parse
+
+            parsed = urllib.parse.urlsplit(target_url)
+            path = self._clean_text(parsed.path)
+
+            if path in (
+                "/workspace",
+                "/sign-in-with-chatgpt/codex/consent",
+                "/sign-in-with-chatgpt/codex/organization",
+            ):
+                workspace_id = self._get_workspace_id()
+                if not workspace_id:
+                    self._log(f"{stage} 需要 workspace，但当前还没拿到 workspace_id", "warning")
+                    return None
+
+                continue_after_select = self._select_workspace(workspace_id)
+                if not continue_after_select:
+                    return None
+                return self._follow_redirects(continue_after_select)
+
+            if path == "/add-phone":
+                self._log(f"{stage} 仍然指向 add_phone", "warning")
+                return None
+
+            return self._follow_redirects(target_url)
+        except Exception as e:
+            self._log(f"{stage} 解析 continue_url 失败: {e}", "error")
+            return None
+
+    def _resolve_callback_from_auth_response(self, payload: Dict[str, Any], stage: str) -> Optional[str]:
+        """根据认证接口响应推进到 OAuth 回调"""
+        if not isinstance(payload, dict):
+            return None
+
+        page = payload.get("page")
+        if isinstance(page, dict):
+            callback_url = self._resolve_callback_from_auth_page(page, stage)
+            if callback_url:
+                return callback_url
+
+        continue_url = self._clean_text(
+            payload.get("continue_url")
+            or payload.get("redirect_url")
+            or payload.get("callback_url")
+            or payload.get("next_url")
+        )
+        if continue_url:
+            return self._resolve_callback_from_continue_url(continue_url, stage)
+
+        return None
+
+    def _complete_login_email_otp_verification(self) -> Optional[str]:
+        """完成登录后的邮箱验证码验证，并继续推进 OAuth"""
+        self._log("登录后触发邮箱二次验证，开始获取验证码...", "warning")
+        self._otp_sent_at = time.time()
+
+        code = self._get_verification_code()
+        if not code:
+            self._log("首次等待登录验证码超时，尝试重发一次...", "warning")
+            if not self._resend_email_verification_code():
+                return None
+            code = self._get_verification_code()
+            if not code:
+                return None
+
+        validate_payload = self._validate_verification_code_with_payload(code)
+        if not validate_payload:
+            return None
+
+        callback_url = self._resolve_callback_from_auth_response(
+            validate_payload,
+            "登录邮箱验证码校验",
+        )
+        if callback_url:
+            return callback_url
+
+        continue_url = self._clean_text(
+            validate_payload.get("continue_url")
+            or validate_payload.get("redirect_url")
+        )
+        if continue_url:
+            self._log("登录邮箱验证码校验后未直接返回 page，尝试继续跟随 continue_url...", "warning")
+            return self._resolve_callback_from_continue_url(continue_url, "登录邮箱验证码校验")
+
+        if self.oauth_start:
+            self._log("登录邮箱验证码校验后未拿到 continue_url，回退到 OAuth URL 重试跳转...", "warning")
+            return self._follow_redirects(self.oauth_start.auth_url)
+
+        return None
+
+    def _resolve_callback_from_auth_page(self, page: Dict[str, Any], stage: str) -> Optional[str]:
+        """根据页面类型推进到 OAuth 回调"""
+        page_type = self._clean_text((page or {}).get("type"))
+        if not page_type:
+            self._log(f"{stage} 缺少 page.type", "warning")
+            return None
+
+        if page_type == "token_exchange":
+            return self._build_callback_url_from_page(page)
+
+        if page_type in (
+            "workspace",
+            "sign_in_with_chatgpt_codex_consent",
+            "sign_in_with_chatgpt_codex_org",
+        ):
+            workspace_id = self._get_workspace_id()
+            if not workspace_id:
+                self._log(f"{stage} 需要选择 Workspace，但暂未拿到 workspace_id", "warning")
+                return None
+
+            continue_url = self._select_workspace(workspace_id)
+            if not continue_url:
+                return None
+            return self._follow_redirects(continue_url)
+
+        if page_type == "external_url":
+            payload = page.get("payload") if isinstance(page.get("payload"), dict) else {}
+            external_url = self._clean_text(payload.get("url"))
+            if external_url:
+                self._log(f"{stage} 返回 external_url，继续跟随跳转...", "warning")
+                return self._follow_redirects(external_url)
+            return None
+
+        if page_type == "add_phone":
+            self._log(f"{stage} 仍然进入 add_phone", "warning")
+            return None
+
+        return None
+
+    def _restart_oauth_session_for_login(self) -> Tuple[Optional[str], Optional[str]]:
+        """新开 OAuth 会话，按已存在账号重新登录"""
+        try:
+            self.http_client.close()
+            self.http_client = OpenAIHTTPClient(proxy_url=self.proxy_url)
+            self.session = self.http_client.session
+
+            if not self._start_oauth():
+                return None, None
+
+            did = self._get_device_id()
+            if not did:
+                return None, None
+
+            sen_token = self._check_sentinel(did)
+            if sen_token:
+                self._log("新会话 Sentinel 检查通过")
+            else:
+                self._log("新会话 Sentinel 检查失败或未启用", "warning")
+
+            return did, sen_token
+        except Exception as e:
+            self._log(f"重建 OAuth 会话失败: {e}", "error")
+            return None, None
+
+    def _attempt_add_phone_login_bypass(self, did: Optional[str], sen_token: Optional[str]) -> Optional[str]:
+        """注册后若进入 add_phone，尝试改走登录流继续完成 OAuth"""
+        if not self.email or not self.password:
+            self._log("缺少邮箱或密码，无法执行 add_phone 登录回退", "error")
+            return None
+
+        attempts = [
+            ("当前会话", did, sen_token, False),
+            ("新 OAuth 会话", None, None, True),
+        ]
+
+        for attempt_name, current_did, current_sentinel, recreate_session in attempts:
+            if recreate_session:
+                self._log(f"add_phone 回退：切换到{attempt_name}重试登录链路...", "warning")
+                current_did, current_sentinel = self._restart_oauth_session_for_login()
+                if not current_did:
+                    continue
+            else:
+                self._log("检测到 add_phone，尝试改走登录链路继续 OAuth...", "warning")
+
+            login_page = self._submit_login_identifier(current_did, current_sentinel)
+            if not login_page:
+                continue
+
+            callback_url = self._resolve_callback_from_auth_page(login_page, f"{attempt_name}登录邮箱")
+            if callback_url:
+                return callback_url
+
+            page_type = self._clean_text(login_page.get("type"))
+            if page_type == "login_password":
+                password_page = self._verify_login_password(self.password)
+                if not password_page:
+                    continue
+
+                callback_url = self._resolve_callback_from_auth_page(password_page, f"{attempt_name}登录密码")
+                if callback_url:
+                    return callback_url
+
+                page_type = self._clean_text(password_page.get("type"))
+                if page_type == "email_otp_verification":
+                    callback_url = self._complete_login_email_otp_verification()
+                    if callback_url:
+                        return callback_url
+
+            if self.oauth_start:
+                self._log(f"{attempt_name} 未直接拿到回调，尝试重新跟随 OAuth URL...", "warning")
+                callback_url = self._follow_redirects(self.oauth_start.auth_url)
+                if callback_url:
+                    return callback_url
+
+            if page_type == "add_phone":
+                self._log(f"{attempt_name} 仍被服务端要求手机号验证", "warning")
+
+        return None
 
     def _handle_oauth_callback(self, callback_url: str) -> Optional[Dict[str, Any]]:
         """处理 OAuth 回调"""
@@ -886,6 +1407,8 @@ class RegistrationEngine:
         result = RegistrationResult(success=False, logs=self.logs)
 
         try:
+            callback_url: Optional[str] = None
+
             self._log("=" * 60)
             self._log("开始注册流程")
             self._log("=" * 60)
@@ -984,27 +1507,43 @@ class RegistrationEngine:
                 if not self._create_user_account():
                     result.error_message = "创建用户账户失败"
                     return result
+                if (
+                    self._post_create_page_type == "add_phone"
+                    or "add-phone" in self._post_create_continue_url
+                ):
+                    callback_url = self._attempt_add_phone_login_bypass(did, sen_token)
+                    if not callback_url:
+                        result.error_message = "OpenAI 注册后进入手机号验证，且登录回退未能拿到 OAuth 回调"
+                        result.metadata = {
+                            "blocked_step": "add_phone",
+                            "continue_url": self._post_create_continue_url,
+                        }
+                        self._log(result.error_message, "error")
+                        return result
 
-            # 13. 获取 Workspace ID（新版流程可能不再提前下发）
-            self._log("13. 获取 Workspace ID...")
-            workspace_id = self._get_workspace_id()
-            if workspace_id:
-                result.workspace_id = workspace_id
-                self._log("14. 选择 Workspace...")
-                continue_url = self._select_workspace(workspace_id)
-                if not continue_url:
-                    self._log("workspace/select 失败，回退到原始 OAuth URL 继续流程", "warning")
-                    continue_url = self.oauth_start.auth_url
+            if callback_url:
+                self._log("13. 已通过登录回退链路拿到 OAuth 回调，跳过 Workspace 预选择")
             else:
-                self._log("未提前拿到 Workspace ID，回退到原始 OAuth URL 继续流程", "warning")
-                continue_url = self.oauth_start.auth_url
+                # 13. 获取 Workspace ID（新版流程可能不再提前下发）
+                self._log("13. 获取 Workspace ID...")
+                workspace_id = self._get_workspace_id()
+                if workspace_id:
+                    result.workspace_id = workspace_id
+                    self._log("14. 选择 Workspace...")
+                    continue_url = self._select_workspace(workspace_id)
+                    if not continue_url:
+                        self._log("workspace/select 失败，回退到原始 OAuth URL 继续流程", "warning")
+                        continue_url = self.oauth_start.auth_url
+                else:
+                    self._log("未提前拿到 Workspace ID，回退到原始 OAuth URL 继续流程", "warning")
+                    continue_url = self.oauth_start.auth_url
 
-            # 15. 跟随重定向链
-            self._log("15. 跟随重定向链...")
-            callback_url = self._follow_redirects(continue_url)
-            if not callback_url:
-                result.error_message = "跟随重定向链失败"
-                return result
+                # 15. 跟随重定向链
+                self._log("15. 跟随重定向链...")
+                callback_url = self._follow_redirects(continue_url)
+                if not callback_url:
+                    result.error_message = "跟随重定向链失败"
+                    return result
 
             # 16. 处理 OAuth 回调
             self._log("16. 处理 OAuth 回调...")
