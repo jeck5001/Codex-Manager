@@ -191,6 +191,16 @@ class TempMailService(BaseEmailService):
 
     def _extract_mail_timestamp(self, mail: Dict[str, Any]) -> Optional[float]:
         """提取邮件时间戳"""
+        raw = str(mail.get("raw") or "").strip()
+        if raw:
+            try:
+                message = message_from_string(raw, policy=email_policy)
+                date_header = message.get("Date", "")
+                if date_header:
+                    return parsedate_to_datetime(date_header).timestamp()
+            except Exception:
+                pass
+
         for key in (
             "createdAt",
             "created_at",
@@ -205,17 +215,33 @@ class TempMailService(BaseEmailService):
             if timestamp:
                 return timestamp
 
-        raw = str(mail.get("raw") or "").strip()
-        if raw:
-            try:
-                message = message_from_string(raw, policy=email_policy)
-                date_header = message.get("Date", "")
-                if date_header:
-                    return parsedate_to_datetime(date_header).timestamp()
-            except Exception:
-                return None
-
         return None
+
+    def _extract_mail_identity(self, mail: Dict[str, Any]) -> str:
+        """提取邮件唯一标识，兼容不同 Worker 返回字段"""
+        for key in ("id", "_id", "messageId", "message_id", "mailId", "mail_id"):
+            value = self._clean_identifier(mail.get(key))
+            if value:
+                return value
+
+        address = self._clean_identifier(mail.get("address"))
+        subject = self._clean_identifier(mail.get("subject") or mail.get("title"))
+        timestamp = self._clean_identifier(
+            mail.get("createdAt")
+            or mail.get("created_at")
+            or mail.get("receivedAt")
+            or mail.get("received_at")
+            or mail.get("date")
+            or mail.get("timestamp")
+        )
+        return "|".join(part for part in (address, subject, timestamp) if part)
+
+    @staticmethod
+    def _clean_identifier(value: Any) -> str:
+        """清洗唯一标识字段"""
+        if value is None:
+            return ""
+        return str(value).strip()
 
     def _admin_headers(self) -> Dict[str, str]:
         """构造 admin 请求头"""
@@ -374,7 +400,7 @@ class TempMailService(BaseEmailService):
                     continue
 
                 for mail in mails:
-                    mail_id = mail.get("id")
+                    mail_id = self._extract_mail_identity(mail)
                     if not mail_id or mail_id in seen_mail_ids:
                         continue
 
