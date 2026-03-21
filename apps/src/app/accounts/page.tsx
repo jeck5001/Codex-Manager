@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BadgeCheck,
@@ -71,12 +71,50 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { cn } from "@/lib/utils";
 import {
   formatTsFromSeconds,
+  formatHealthTierLabel,
+  healthTierToneClass,
   isPrimaryWindowOnlyUsage,
   isSecondaryWindowOnlyUsage,
 } from "@/lib/utils/usage";
 import { Account } from "@/types";
 
-type StatusFilter = "all" | "available" | "low_quota" | "deactivated";
+type StatusFilter =
+  | "all"
+  | "available"
+  | "low_quota"
+  | "deactivated"
+  | "governed";
+
+function normalizeStatusFilter(value: string | null | undefined): StatusFilter {
+  switch (String(value || "").trim().toLowerCase()) {
+    case "available":
+      return "available";
+    case "low_quota":
+      return "low_quota";
+    case "deactivated":
+      return "deactivated";
+    case "governed":
+      return "governed";
+    default:
+      return "all";
+  }
+}
+
+function normalizeGovernanceFilter(value: string | null | undefined): string {
+  const nextValue = String(value || "").trim();
+  if (!nextValue || nextValue === "all") {
+    return "all";
+  }
+  return nextValue;
+}
+
+function normalizeStatusReasonFilter(value: string | null | undefined): string {
+  const nextValue = String(value || "").trim();
+  if (!nextValue || nextValue === "all") {
+    return "all";
+  }
+  return nextValue;
+}
 
 function formatGroupFilterLabel(value: string) {
   const nextValue = String(value || "").trim();
@@ -185,6 +223,8 @@ export default function AccountsPage() {
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [governanceFilter, setGovernanceFilter] = useState<string>("all");
+  const [statusReasonFilter, setStatusReasonFilter] = useState<string>("all");
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -219,7 +259,7 @@ export default function AccountsPage() {
     | null
   >(null);
 
-  const filteredAccounts = useMemo(() => {
+  const scopedAccounts = useMemo(() => {
     return accounts.filter((account) => {
       const matchSearch =
         !search ||
@@ -227,14 +267,27 @@ export default function AccountsPage() {
         account.id.toLowerCase().includes(search.toLowerCase());
       const matchGroup =
         groupFilter === "all" || (account.group || "默认") === groupFilter;
+      return matchSearch && matchGroup;
+    });
+  }, [accounts, groupFilter, search]);
+
+  const filteredAccounts = useMemo(() => {
+    return scopedAccounts.filter((account) => {
       const matchStatus =
         statusFilter === "all" ||
         (statusFilter === "available" && account.isAvailable) ||
         (statusFilter === "low_quota" && account.isLowQuota) ||
-        (statusFilter === "deactivated" && account.isDeactivated);
-      return matchSearch && matchGroup && matchStatus;
+        (statusFilter === "deactivated" && account.isDeactivated) ||
+        (statusFilter === "governed" && Boolean(account.lastGovernanceReason));
+      const matchGovernance =
+        governanceFilter === "all" ||
+        account.lastGovernanceReason === governanceFilter;
+      const matchStatusReason =
+        statusReasonFilter === "all" ||
+        account.lastStatusReason === statusReasonFilter;
+      return matchStatus && matchGovernance && matchStatusReason;
     });
-  }, [accounts, groupFilter, search, statusFilter]);
+  }, [governanceFilter, scopedAccounts, statusFilter, statusReasonFilter]);
 
   const pageSizeNumber = Number(pageSize) || 20;
   const totalPages = Math.max(
@@ -258,6 +311,42 @@ export default function AccountsPage() {
     () => filteredAccounts.filter((account) => account.isLowQuota),
     [filteredAccounts],
   );
+  const scopedGovernedAccounts = useMemo(
+    () => scopedAccounts.filter((account) => Boolean(account.lastGovernanceReason)),
+    [scopedAccounts],
+  );
+  const governanceOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const account of scopedGovernedAccounts) {
+      const label = String(account.lastGovernanceReason || "").trim();
+      if (!label) continue;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((left, right) => {
+        if (right.count !== left.count) {
+          return right.count - left.count;
+        }
+        return left.label.localeCompare(right.label, "zh-CN");
+      });
+  }, [scopedGovernedAccounts]);
+  const statusReasonOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const account of scopedAccounts) {
+      const label = String(account.lastStatusReason || "").trim();
+      if (!label) continue;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((left, right) => {
+        if (right.count !== left.count) {
+          return right.count - left.count;
+        }
+        return left.label.localeCompare(right.label, "zh-CN");
+      });
+  }, [scopedAccounts]);
   const selectedEnableIds = useMemo(
     () =>
       selectedAccounts
@@ -289,6 +378,13 @@ export default function AccountsPage() {
         .map((account) => account.id),
     [filteredLowQuotaAccounts],
   );
+  const governedEnableIds = useMemo(
+    () =>
+      scopedGovernedAccounts
+        .filter((account) => getAccountStatusAction(account).enable)
+        .map((account) => account.id),
+    [scopedGovernedAccounts],
+  );
 
   const visibleAccounts = useMemo(() => {
     const offset = (safePage - 1) * pageSizeNumber;
@@ -299,6 +395,20 @@ export default function AccountsPage() {
     () => accounts.find((account) => account.id === selectedAccountId) ?? null,
     [accounts, selectedAccountId],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    setStatusFilter(normalizeStatusFilter(params.get("status")));
+    setGovernanceFilter(
+      normalizeGovernanceFilter(params.get("governanceReason")),
+    );
+    setStatusReasonFilter(
+      normalizeStatusReasonFilter(params.get("statusReason")),
+    );
+  }, []);
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -312,6 +422,23 @@ export default function AccountsPage() {
 
   const handleStatusFilterChange = (value: StatusFilter) => {
     setStatusFilter(value);
+    if (value !== "governed") {
+      setGovernanceFilter("all");
+    }
+    setPage(1);
+  };
+
+  const handleGovernanceFilterChange = (value: string | null) => {
+    const nextValue = normalizeGovernanceFilter(value);
+    setGovernanceFilter(nextValue);
+    if (nextValue !== "all") {
+      setStatusFilter("governed");
+    }
+    setPage(1);
+  };
+
+  const handleStatusReasonFilterChange = (value: string | null) => {
+    setStatusReasonFilter(normalizeStatusReasonFilter(value));
     setPage(1);
   };
 
@@ -386,6 +513,18 @@ export default function AccountsPage() {
       return;
     }
     bulkToggleAccountStatus(targetIds, enabled, "低配额账号");
+  };
+
+  const handleBulkRestoreGoverned = () => {
+    if (!scopedGovernedAccounts.length) {
+      toast.info("当前搜索或分组范围内没有最近自动治理账号");
+      return;
+    }
+    if (!governedEnableIds.length) {
+      toast.info("最近自动治理账号里没有可恢复项");
+      return;
+    }
+    bulkToggleAccountStatus(governedEnableIds, true, "最近自动治理账号");
   };
 
   const handleBatchCheckSubscription = () => {
@@ -535,6 +674,7 @@ export default function AccountsPage() {
                 { id: "available", label: "可用" },
                 { id: "low_quota", label: "低配额" },
                 { id: "deactivated", label: "已停用" },
+                { id: "governed", label: "最近治理" },
               ].map((filter) => (
                 <button
                   key={filter.id}
@@ -552,6 +692,62 @@ export default function AccountsPage() {
                 </button>
               ))}
             </div>
+            {governanceOptions.length > 0 ? (
+              <Select
+                value={governanceFilter}
+                onValueChange={handleGovernanceFilterChange}
+              >
+                <SelectTrigger className="h-10 w-[200px] shrink-0 rounded-xl bg-card/50">
+                  <SelectValue placeholder="治理原因">
+                    {(value) => {
+                      const nextValue = String(value || "").trim();
+                      if (!nextValue || nextValue === "all") {
+                        return `全部治理原因 (${scopedGovernedAccounts.length})`;
+                      }
+                      return nextValue;
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    全部治理原因 ({scopedGovernedAccounts.length})
+                  </SelectItem>
+                  {governanceOptions.map((option) => (
+                    <SelectItem key={option.label} value={option.label}>
+                      {option.label} ({option.count})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            {statusReasonOptions.length > 0 ? (
+              <Select
+                value={statusReasonFilter}
+                onValueChange={handleStatusReasonFilterChange}
+              >
+                <SelectTrigger className="h-10 w-[200px] shrink-0 rounded-xl bg-card/50">
+                  <SelectValue placeholder="状态原因">
+                    {(value) => {
+                      const nextValue = String(value || "").trim();
+                      if (!nextValue || nextValue === "all") {
+                        return `全部状态原因 (${statusReasonOptions.length})`;
+                      }
+                      return nextValue;
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    全部状态原因 ({statusReasonOptions.length})
+                  </SelectItem>
+                  {statusReasonOptions.map((option) => (
+                    <SelectItem key={option.label} value={option.label}>
+                      {option.label} ({option.count})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
           </div>
 
           <div className="hidden min-w-0 lg:block" />
@@ -652,6 +848,14 @@ export default function AccountsPage() {
                   >
                     <PowerOff className="mr-2 h-4 w-4" /> 禁用低配额账号
                     <DropdownMenuShortcut>{lowQuotaDisableIds.length || "-"}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!governedEnableIds.length || isBulkUpdatingStatus}
+                    onClick={handleBulkRestoreGoverned}
+                  >
+                    <Power className="mr-2 h-4 w-4" /> 恢复最近治理账号
+                    <DropdownMenuShortcut>{governedEnableIds.length || "-"}</DropdownMenuShortcut>
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="h-9 rounded-lg px-2"
@@ -845,6 +1049,23 @@ export default function AccountsPage() {
                                 {String(account.subscriptionPlanType).toUpperCase()}
                               </Badge>
                             ) : null}
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                "h-4 shrink-0 px-1.5 text-[9px]",
+                                healthTierToneClass(account.healthTier)
+                              )}
+                            >
+                              {formatHealthTierLabel(account.healthTier)} {account.healthScore}
+                            </Badge>
+                            {account.lastGovernanceReason ? (
+                              <Badge
+                                variant="secondary"
+                                className="h-4 shrink-0 bg-rose-500/15 px-1.5 text-[9px] text-rose-700 dark:text-rose-300"
+                              >
+                                治理 {account.lastGovernanceReason}
+                              </Badge>
+                            ) : null}
                             {account.teamManagerUploadedAt ? (
                               <Badge
                                 variant="secondary"
@@ -864,6 +1085,14 @@ export default function AccountsPage() {
                               "从未刷新",
                             )}
                           </span>
+                          {account.lastStatusReason ? (
+                            <span className="text-[10px] text-muted-foreground">
+                              最近状态: {account.lastStatusReason}
+                              {account.lastStatusChangedAt
+                                ? ` · ${formatTsFromSeconds(account.lastStatusChangedAt, "--")}`
+                                : ""}
+                            </span>
+                          ) : null}
                           {account.subscriptionUpdatedAt ? (
                             <span className="text-[10px] text-muted-foreground">
                               订阅标记: {formatTsFromSeconds(account.subscriptionUpdatedAt, "--")}
@@ -907,25 +1136,52 @@ export default function AccountsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                "w-fit px-1.5 text-[9px]",
+                                healthTierToneClass(account.healthTier)
+                              )}
+                            >
+                              健康 {account.healthScore}
+                            </Badge>
+                          </div>
                           <div
-                            className={cn(
-                              "h-1.5 w-1.5 rounded-full",
-                              account.isAvailable
-                                ? "bg-green-500"
-                                : "bg-red-500",
-                            )}
-                          />
-                          <span
-                            className={cn(
-                              "text-[11px] font-medium",
-                              account.isAvailable
-                                ? "text-green-600 dark:text-green-400"
-                                : "text-red-600 dark:text-red-400",
-                            )}
+                            className="flex items-center gap-1.5"
                           >
-                            {account.availabilityText}
-                          </span>
+                            <div
+                              className={cn(
+                                "h-1.5 w-1.5 rounded-full",
+                                account.isAvailable
+                                  ? "bg-green-500"
+                                  : "bg-red-500",
+                              )}
+                            />
+                            <span
+                              className={cn(
+                                "text-[11px] font-medium",
+                                account.isAvailable
+                                  ? "text-green-600 dark:text-green-400"
+                                  : "text-red-600 dark:text-red-400",
+                              )}
+                            >
+                              {account.availabilityText}
+                            </span>
+                          </div>
+                          {account.lastGovernanceReason ? (
+                            <div className="rounded-md bg-rose-500/10 px-2 py-1 text-[10px] text-rose-700 dark:text-rose-300">
+                              自动治理: {account.lastGovernanceReason}
+                              {account.lastGovernanceAt
+                                ? ` · ${formatTsFromSeconds(account.lastGovernanceAt, "--")}`
+                                : ""}
+                            </div>
+                          ) : account.lastStatusReason ? (
+                            <div className="rounded-md bg-muted/40 px-2 py-1 text-[10px] text-muted-foreground">
+                              最近状态: {account.lastStatusReason}
+                            </div>
+                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell>

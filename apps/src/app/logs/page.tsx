@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -48,6 +48,19 @@ import { cn } from "@/lib/utils";
 import { RequestLog } from "@/types";
 
 type StatusFilter = "all" | "2xx" | "4xx" | "5xx";
+
+function normalizeStatusFilter(value: string | null | undefined): StatusFilter {
+  switch (String(value || "").trim().toLowerCase()) {
+    case "2xx":
+      return "2xx";
+    case "4xx":
+      return "4xx";
+    case "5xx":
+      return "5xx";
+    default:
+      return "all";
+  }
+}
 
 function getStatusBadge(statusCode: number | null) {
   if (statusCode == null) {
@@ -452,11 +465,19 @@ function LogsPageContent() {
   const { serviceStatus } = useAppStore();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState(() => searchParams.get("query") || "");
-  const [filter, setFilter] = useState<StatusFilter>("all");
+  const [filter, setFilter] = useState<StatusFilter>(() =>
+    normalizeStatusFilter(searchParams.get("statusFilter")),
+  );
   const [pageSize, setPageSize] = useState("10");
   const [page, setPage] = useState(1);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const pageSizeNumber = Number(pageSize) || 10;
+
+  useEffect(() => {
+    setSearch(searchParams.get("query") || "");
+    setFilter(normalizeStatusFilter(searchParams.get("statusFilter")));
+    setPage(1);
+  }, [searchParams]);
 
   const { data: accountsResult } = useQuery({
     queryKey: ["accounts", "lookup"],

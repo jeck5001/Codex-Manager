@@ -4,11 +4,14 @@ use std::sync::Once;
 
 mod account;
 mod account_identity;
+mod account_status_reason;
 mod apikey;
 pub(crate) mod app_settings;
 mod auth;
 mod errors;
+mod failure_summary;
 mod gateway;
+mod governance_summary;
 mod http;
 mod lifecycle;
 mod requestlog;

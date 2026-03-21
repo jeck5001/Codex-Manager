@@ -1,4 +1,5 @@
 export type AvailabilityLevel = "ok" | "warn" | "bad" | "unknown";
+export type AccountHealthTier = "healthy" | "warning" | "risky";
 
 export interface ServiceStatus {
   connected: boolean;
@@ -29,6 +30,12 @@ export interface Account {
   groupName: string;
   sort: number;
   status: string;
+  healthScore: number;
+  healthTier: AccountHealthTier;
+  lastStatusReason: string | null;
+  lastStatusChangedAt: number | null;
+  lastGovernanceReason: string | null;
+  lastGovernanceAt: number | null;
   isAvailable: boolean;
   isLowQuota: boolean;
   isDeactivated: boolean;
@@ -125,6 +132,23 @@ export interface UsageAggregateSummary {
   secondaryKnownCount: number;
   secondaryUnknownCount: number;
   secondaryRemainPercent: number | null;
+}
+
+export interface FailureReasonSummaryItem {
+  code: string;
+  label: string;
+  count: number;
+  affectedAccounts: number;
+  lastSeenAt: number | null;
+}
+
+export interface GovernanceSummaryItem {
+  code: string;
+  label: string;
+  targetStatus: string;
+  count: number;
+  affectedAccounts: number;
+  lastSeenAt: number | null;
 }
 
 export interface ApiKey {
@@ -458,6 +482,10 @@ export interface BackgroundTaskSettings {
   autoRegisterPoolEnabled: boolean;
   autoRegisterReadyAccountCount: number;
   autoRegisterReadyRemainPercent: number;
+  autoDisableRiskyAccountsEnabled: boolean;
+  autoDisableRiskyAccountsFailureThreshold: number;
+  autoDisableRiskyAccountsHealthScoreThreshold: number;
+  autoDisableRiskyAccountsLookbackMins: number;
 }
 
 export interface FreeProxySyncResult {
@@ -529,6 +557,8 @@ export interface StartupSnapshot {
   accounts: Account[];
   usageSnapshots: AccountUsage[];
   usageAggregateSummary: UsageAggregateSummary;
+  failureReasonSummary: FailureReasonSummaryItem[];
+  governanceSummary: GovernanceSummaryItem[];
   apiKeys: ApiKey[];
   apiModelOptions: ModelOption[];
   manualPreferredAccountId: string;

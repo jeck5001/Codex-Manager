@@ -6,6 +6,12 @@ use super::{
     AUTO_REGISTER_POOL_ENABLED, AUTO_REGISTER_READY_ACCOUNT_COUNT,
     AUTO_REGISTER_READY_REMAIN_PERCENT, DEFAULT_AUTO_REGISTER_READY_ACCOUNT_COUNT,
     DEFAULT_AUTO_REGISTER_READY_REMAIN_PERCENT,
+    AUTO_DISABLE_RISKY_ACCOUNTS_ENABLED, AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD,
+    AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD,
+    AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS,
+    DEFAULT_AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD,
+    DEFAULT_AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD,
+    DEFAULT_AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS,
     DEFAULT_GATEWAY_KEEPALIVE_INTERVAL_SECS, DEFAULT_HTTP_STREAM_WORKER_FACTOR,
     DEFAULT_HTTP_STREAM_WORKER_MIN, DEFAULT_HTTP_WORKER_FACTOR, DEFAULT_HTTP_WORKER_MIN,
     DEFAULT_TOKEN_REFRESH_POLL_INTERVAL_SECS, DEFAULT_USAGE_POLL_INTERVAL_SECS,
@@ -15,6 +21,10 @@ use super::{
     ENV_TOKEN_REFRESH_POLL_INTERVAL_SECS, ENV_USAGE_POLLING_ENABLED,
     ENV_USAGE_POLL_INTERVAL_SECS, ENV_AUTO_REGISTER_POOL_ENABLED,
     ENV_AUTO_REGISTER_READY_ACCOUNT_COUNT, ENV_AUTO_REGISTER_READY_REMAIN_PERCENT,
+    ENV_AUTO_DISABLE_RISKY_ACCOUNTS_ENABLED,
+    ENV_AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD,
+    ENV_AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD,
+    ENV_AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS,
     GATEWAY_KEEPALIVE_ENABLED, GATEWAY_KEEPALIVE_INTERVAL_SECS, HTTP_STREAM_WORKER_FACTOR,
     HTTP_STREAM_WORKER_MIN, HTTP_WORKER_FACTOR, HTTP_WORKER_MIN,
     MIN_GATEWAY_KEEPALIVE_INTERVAL_SECS, MIN_TOKEN_REFRESH_POLL_INTERVAL_SECS,
@@ -40,6 +50,10 @@ pub(crate) struct BackgroundTasksSettings {
     auto_register_pool_enabled: bool,
     auto_register_ready_account_count: usize,
     auto_register_ready_remain_percent: u64,
+    auto_disable_risky_accounts_enabled: bool,
+    auto_disable_risky_accounts_failure_threshold: usize,
+    auto_disable_risky_accounts_health_score_threshold: usize,
+    auto_disable_risky_accounts_lookback_mins: u64,
     requires_restart_keys: Vec<&'static str>,
 }
 
@@ -59,6 +73,10 @@ pub(crate) struct BackgroundTasksSettingsPatch {
     pub auto_register_pool_enabled: Option<bool>,
     pub auto_register_ready_account_count: Option<usize>,
     pub auto_register_ready_remain_percent: Option<u64>,
+    pub auto_disable_risky_accounts_enabled: Option<bool>,
+    pub auto_disable_risky_accounts_failure_threshold: Option<usize>,
+    pub auto_disable_risky_accounts_health_score_threshold: Option<usize>,
+    pub auto_disable_risky_accounts_lookback_mins: Option<u64>,
 }
 
 pub(crate) fn background_tasks_settings() -> BackgroundTasksSettings {
@@ -80,6 +98,14 @@ pub(crate) fn background_tasks_settings() -> BackgroundTasksSettings {
         auto_register_ready_account_count: AUTO_REGISTER_READY_ACCOUNT_COUNT
             .load(Ordering::Relaxed),
         auto_register_ready_remain_percent: AUTO_REGISTER_READY_REMAIN_PERCENT
+            .load(Ordering::Relaxed),
+        auto_disable_risky_accounts_enabled: AUTO_DISABLE_RISKY_ACCOUNTS_ENABLED
+            .load(Ordering::Relaxed),
+        auto_disable_risky_accounts_failure_threshold:
+            AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD.load(Ordering::Relaxed),
+        auto_disable_risky_accounts_health_score_threshold:
+            AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD.load(Ordering::Relaxed),
+        auto_disable_risky_accounts_lookback_mins: AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS
             .load(Ordering::Relaxed),
         requires_restart_keys: BACKGROUND_TASK_RESTART_REQUIRED_KEYS.to_vec(),
     }
@@ -166,6 +192,37 @@ pub(crate) fn set_background_tasks_settings(
         let normalized = value.min(100);
         AUTO_REGISTER_READY_REMAIN_PERCENT.store(normalized, Ordering::Relaxed);
         std::env::set_var(ENV_AUTO_REGISTER_READY_REMAIN_PERCENT, normalized.to_string());
+    }
+    if let Some(enabled) = patch.auto_disable_risky_accounts_enabled {
+        AUTO_DISABLE_RISKY_ACCOUNTS_ENABLED.store(enabled, Ordering::Relaxed);
+        std::env::set_var(
+            ENV_AUTO_DISABLE_RISKY_ACCOUNTS_ENABLED,
+            if enabled { "1" } else { "0" },
+        );
+    }
+    if let Some(value) = patch.auto_disable_risky_accounts_failure_threshold {
+        let normalized = value.max(1);
+        AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD.store(normalized, Ordering::Relaxed);
+        std::env::set_var(
+            ENV_AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD,
+            normalized.to_string(),
+        );
+    }
+    if let Some(value) = patch.auto_disable_risky_accounts_health_score_threshold {
+        let normalized = value.clamp(1, 200);
+        AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD.store(normalized, Ordering::Relaxed);
+        std::env::set_var(
+            ENV_AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD,
+            normalized.to_string(),
+        );
+    }
+    if let Some(value) = patch.auto_disable_risky_accounts_lookback_mins {
+        let normalized = value.max(1);
+        AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS.store(normalized, Ordering::Relaxed);
+        std::env::set_var(
+            ENV_AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS,
+            normalized.to_string(),
+        );
     }
 
     background_tasks_settings()
@@ -263,6 +320,34 @@ fn reload_background_tasks_from_env() {
             DEFAULT_AUTO_REGISTER_READY_REMAIN_PERCENT,
         )
         .min(100),
+        Ordering::Relaxed,
+    );
+    AUTO_DISABLE_RISKY_ACCOUNTS_ENABLED.store(
+        env_bool_or(ENV_AUTO_DISABLE_RISKY_ACCOUNTS_ENABLED, false),
+        Ordering::Relaxed,
+    );
+    AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD.store(
+        env_usize_or(
+            ENV_AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD,
+            DEFAULT_AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD,
+        )
+        .max(1),
+        Ordering::Relaxed,
+    );
+    AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD.store(
+        env_usize_or(
+            ENV_AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD,
+            DEFAULT_AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD,
+        )
+        .clamp(1, 200),
+        Ordering::Relaxed,
+    );
+    AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS.store(
+        env_u64_or(
+            ENV_AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS,
+            DEFAULT_AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS,
+        )
+        .max(1),
         Ordering::Relaxed,
     );
 }

@@ -48,7 +48,11 @@ fn reset_runtime_defaults() {
             "httpWorkerFactor": 4,
             "httpWorkerMin": 8,
             "httpStreamWorkerFactor": 1,
-            "httpStreamWorkerMin": 2
+            "httpStreamWorkerMin": 2,
+            "autoDisableRiskyAccountsEnabled": false,
+            "autoDisableRiskyAccountsFailureThreshold": 3,
+            "autoDisableRiskyAccountsHealthScoreThreshold": 60,
+            "autoDisableRiskyAccountsLookbackMins": 60
         }
     })));
 }

@@ -1603,6 +1603,127 @@ export default function SettingsPage() {
 
           <Card className="glass-card border-none shadow-md">
             <CardHeader>
+              <CardTitle className="text-base">风险账号自动治理</CardTitle>
+              <CardDescription>
+                后台轮询会扫描近期高风险失败事件，只对高置信度异常账号自动停用或标记停用
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/50 bg-background/35 p-4">
+                <div className="space-y-0.5">
+                  <Label>启用自动治理</Label>
+                  <p className="text-xs text-muted-foreground">
+                    目前只处理三类高风险情况：账号已停用、Refresh 连续失效、低健康分下连续 401/403。
+                  </p>
+                </div>
+                <Switch
+                  checked={snapshot.backgroundTasks.autoDisableRiskyAccountsEnabled}
+                  onCheckedChange={(value) =>
+                    updateBackgroundTasks({ autoDisableRiskyAccountsEnabled: value })
+                  }
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-2 rounded-2xl border border-border/50 bg-background/30 p-4">
+                  <Label>失败次数阈值</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={
+                      backgroundTaskDraft.autoDisableRiskyAccountsFailureThreshold ||
+                      stringifyNumber(
+                        snapshot.backgroundTasks.autoDisableRiskyAccountsFailureThreshold
+                      )
+                    }
+                    onChange={(event) =>
+                      setBackgroundTaskDraft((current) => ({
+                        ...current,
+                        autoDisableRiskyAccountsFailureThreshold: event.target.value,
+                      }))
+                    }
+                    onBlur={() =>
+                      saveBackgroundTaskField(
+                        "autoDisableRiskyAccountsFailureThreshold",
+                        1
+                      )
+                    }
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Refresh 连续失效，或 401/403 连续出现达到这个次数后才会进入治理判断。
+                  </p>
+                </div>
+
+                <div className="grid gap-2 rounded-2xl border border-border/50 bg-background/30 p-4">
+                  <Label>健康分阈值</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={
+                      backgroundTaskDraft.autoDisableRiskyAccountsHealthScoreThreshold ||
+                      stringifyNumber(
+                        snapshot.backgroundTasks.autoDisableRiskyAccountsHealthScoreThreshold
+                      )
+                    }
+                    onChange={(event) =>
+                      setBackgroundTaskDraft((current) => ({
+                        ...current,
+                        autoDisableRiskyAccountsHealthScoreThreshold: event.target.value,
+                      }))
+                    }
+                    onBlur={() =>
+                      saveBackgroundTaskField(
+                        "autoDisableRiskyAccountsHealthScoreThreshold",
+                        1,
+                        200
+                      )
+                    }
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    只有当账号健康分低于等于该值时，连续 401/403 才会被自动停用。
+                  </p>
+                </div>
+
+                <div className="grid gap-2 rounded-2xl border border-border/50 bg-background/30 p-4">
+                  <Label>回看窗口 (分钟)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={
+                      backgroundTaskDraft.autoDisableRiskyAccountsLookbackMins ||
+                      stringifyNumber(
+                        snapshot.backgroundTasks.autoDisableRiskyAccountsLookbackMins
+                      )
+                    }
+                    onChange={(event) =>
+                      setBackgroundTaskDraft((current) => ({
+                        ...current,
+                        autoDisableRiskyAccountsLookbackMins: event.target.value,
+                      }))
+                    }
+                    onBlur={() =>
+                      saveBackgroundTaskField("autoDisableRiskyAccountsLookbackMins", 1)
+                    }
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    统计最近这段时间内的失败事件，避免用很久以前的异常误伤当前账号。
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-border/60 bg-background/20 p-4 text-xs leading-6 text-muted-foreground">
+                自动治理是保守策略：
+                检测到“账号已停用”会直接标记为已停用；
+                Refresh 连续失效会自动禁用；
+                401/403 只有在连续触发且健康分已经很低时才会禁用。
+                429 限流不会自动禁用，避免把短时抖动账号误杀。
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
               <CardTitle className="text-base">Worker 并发参数</CardTitle>
               <CardDescription>调整执行单元并发规模；用量刷新并发会直接影响手动刷新和后台轮询</CardDescription>
             </CardHeader>

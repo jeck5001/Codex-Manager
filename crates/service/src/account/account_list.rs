@@ -1,13 +1,24 @@
 use codexmanager_core::{
     auth::parse_id_token_claims,
+    storage::Event,
     rpc::types::{AccountListParams, AccountListResult, AccountSummary},
     storage::{Account, Storage},
 };
+use std::collections::BTreeMap;
 
 use crate::storage_helpers::open_storage;
 
 const DEFAULT_ACCOUNT_PAGE_SIZE: i64 = 5;
 const MAX_ACCOUNT_PAGE_SIZE: i64 = 500;
+const ACCOUNT_STATUS_EVENT_LIMIT: i64 = 5_000;
+
+#[derive(Debug, Clone, Default)]
+struct AccountStatusMeta {
+    last_status_reason: Option<String>,
+    last_status_changed_at: Option<i64>,
+    last_governance_reason: Option<String>,
+    last_governance_at: Option<i64>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AccountFilter {
@@ -29,6 +40,7 @@ pub(crate) fn read_accounts(
     let group_filter = normalize_optional_text(params.group_filter);
     let filter = normalize_filter(params.filter);
     let payment_state_map = crate::account_payment::read_payment_state_map();
+    let status_meta_map = read_account_status_meta_map(&storage);
 
     if filter == AccountFilter::All {
         if pagination_requested {
@@ -49,7 +61,14 @@ pub(crate) fn read_accounts(
             return Ok(AccountListResult {
                 items: accounts
                     .into_iter()
-                    .map(|account| to_account_summary(&storage, account, &payment_state_map))
+                    .map(|account| {
+                        to_account_summary(
+                            &storage,
+                            account,
+                            &payment_state_map,
+                            &status_meta_map,
+                        )
+                    })
                     .collect(),
                 total,
                 page,
@@ -64,7 +83,14 @@ pub(crate) fn read_accounts(
         return Ok(AccountListResult {
             items: accounts
                 .into_iter()
-                .map(|account| to_account_summary(&storage, account, &payment_state_map))
+                .map(|account| {
+                    to_account_summary(
+                        &storage,
+                        account,
+                        &payment_state_map,
+                        &status_meta_map,
+                    )
+                })
                 .collect(),
             total,
             page: 1,
@@ -92,7 +118,14 @@ pub(crate) fn read_accounts(
         return Ok(AccountListResult {
             items: paged
                 .into_iter()
-                .map(|account| to_account_summary(&storage, account, &payment_state_map))
+                .map(|account| {
+                    to_account_summary(
+                        &storage,
+                        account,
+                        &payment_state_map,
+                        &status_meta_map,
+                    )
+                })
                 .collect(),
             total,
             page,
@@ -112,7 +145,14 @@ pub(crate) fn read_accounts(
     Ok(AccountListResult {
         items: accounts
             .into_iter()
-            .map(|account| to_account_summary(&storage, account, &payment_state_map))
+            .map(|account| {
+                to_account_summary(
+                    &storage,
+                    account,
+                    &payment_state_map,
+                    &status_meta_map,
+                )
+            })
             .collect(),
         total,
         page: 1,
@@ -214,8 +254,11 @@ fn to_account_summary(
     storage: &Storage,
     acc: Account,
     payment_state_map: &std::collections::BTreeMap<String, crate::account_payment::AccountPaymentState>,
+    status_meta_map: &BTreeMap<String, AccountStatusMeta>,
 ) -> AccountSummary {
+    let health_score = i64::from(crate::gateway::route_health_score(acc.id.as_str()));
     let payment_state = payment_state_map.get(&acc.id);
+    let status_meta = status_meta_map.get(&acc.id);
     let label = resolve_account_display_label(storage, &acc);
     AccountSummary {
         id: acc.id,
@@ -223,6 +266,11 @@ fn to_account_summary(
         group_name: acc.group_name,
         sort: acc.sort,
         status: acc.status,
+        health_score,
+        last_status_reason: status_meta.and_then(|meta| meta.last_status_reason.clone()),
+        last_status_changed_at: status_meta.and_then(|meta| meta.last_status_changed_at),
+        last_governance_reason: status_meta.and_then(|meta| meta.last_governance_reason.clone()),
+        last_governance_at: status_meta.and_then(|meta| meta.last_governance_at),
         subscription_plan_type: payment_state.and_then(|state| state.subscription_plan_type.clone()),
         subscription_updated_at: payment_state.and_then(|state| state.subscription_updated_at),
         team_manager_uploaded_at: payment_state.and_then(|state| state.team_manager_uploaded_at),
@@ -230,6 +278,43 @@ fn to_account_summary(
         official_promo_link_updated_at: payment_state
             .and_then(|state| state.official_promo_link_updated_at),
     }
+}
+
+fn read_account_status_meta_map(storage: &Storage) -> BTreeMap<String, AccountStatusMeta> {
+    let Ok(events) = storage.list_recent_events_by_type("account_status_update", 0, ACCOUNT_STATUS_EVENT_LIMIT) else {
+        return BTreeMap::new();
+    };
+    build_account_status_meta_map(events)
+}
+
+fn build_account_status_meta_map(events: Vec<Event>) -> BTreeMap<String, AccountStatusMeta> {
+    let mut result = BTreeMap::<String, AccountStatusMeta>::new();
+    for event in events {
+        let Some(account_id) = event
+            .account_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        let parsed = crate::account_status_reason::parse_account_status_event(event.message.as_str());
+        if parsed.reason_label.is_none() && parsed.governance_reason_label.is_none() {
+            continue;
+        }
+        let entry = result.entry(account_id.to_string()).or_default();
+        if entry.last_status_changed_at.is_none() {
+            entry.last_status_changed_at = Some(event.created_at);
+            entry.last_status_reason = parsed.reason_label.clone();
+        }
+        if entry.last_governance_at.is_none() {
+            if let Some(label) = parsed.governance_reason_label.clone() {
+                entry.last_governance_at = Some(event.created_at);
+                entry.last_governance_reason = Some(label);
+            }
+        }
+    }
+    result
 }
 
 fn resolve_account_display_label(storage: &Storage, account: &Account) -> String {

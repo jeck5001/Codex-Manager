@@ -77,6 +77,19 @@ export function useDashboardStats() {
     data?.manualPreferredAccountId
   );
   const recommendations = pickBestRecommendations(accounts);
+  const failureReasonSummary = data?.failureReasonSummary || [];
+  const governanceSummary = data?.governanceSummary || [];
+  const recentFailureTotal = failureReasonSummary.reduce(
+    (sum, item) => sum + item.count,
+    0
+  );
+  const recentGovernanceTotal = governanceSummary.reduce(
+    (sum, item) => sum + item.count,
+    0
+  );
+  const healthyAccounts = accounts.filter((item) => item.healthTier === "healthy").length;
+  const warningAccounts = accounts.filter((item) => item.healthTier === "warning").length;
+  const riskyAccounts = accounts.filter((item) => item.healthTier === "risky").length;
 
   return {
     stats: {
@@ -95,9 +108,16 @@ export function useDashboardStats() {
         secondaryKnownCount: data?.usageAggregateSummary.secondaryKnownCount ?? 0,
         secondaryBucketCount: data?.usageAggregateSummary.secondaryBucketCount ?? 0,
       },
+      healthy: healthyAccounts,
+      warning: warningAccounts,
+      risky: riskyAccounts,
+      recentFailureTotal,
+      recentGovernanceTotal,
     },
     currentAccount,
     recommendations,
+    failureReasonSummary,
+    governanceSummary,
     requestLogs: data?.requestLogs || [],
     isLoading: !isServiceReady || snapshotQuery.isPending || shouldWarmupPoll,
     isSyncingSnapshot: shouldWarmupPoll,

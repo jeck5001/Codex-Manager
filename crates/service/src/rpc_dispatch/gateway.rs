@@ -148,6 +148,22 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     req,
                     "autoRegisterReadyRemainPercent",
                 ),
+                auto_disable_risky_accounts_enabled: super::bool_param(
+                    req,
+                    "autoDisableRiskyAccountsEnabled",
+                ),
+                auto_disable_risky_accounts_failure_threshold: usize_param(
+                    req,
+                    "autoDisableRiskyAccountsFailureThreshold",
+                ),
+                auto_disable_risky_accounts_health_score_threshold: usize_param(
+                    req,
+                    "autoDisableRiskyAccountsHealthScoreThreshold",
+                ),
+                auto_disable_risky_accounts_lookback_mins: u64_param(
+                    req,
+                    "autoDisableRiskyAccountsLookbackMins",
+                ),
             };
             let input = crate::BackgroundTasksInput {
                 usage_polling_enabled: patch.usage_polling_enabled,
@@ -164,6 +180,13 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 auto_register_pool_enabled: patch.auto_register_pool_enabled,
                 auto_register_ready_account_count: patch.auto_register_ready_account_count,
                 auto_register_ready_remain_percent: patch.auto_register_ready_remain_percent,
+                auto_disable_risky_accounts_enabled: patch.auto_disable_risky_accounts_enabled,
+                auto_disable_risky_accounts_failure_threshold: patch
+                    .auto_disable_risky_accounts_failure_threshold,
+                auto_disable_risky_accounts_health_score_threshold: patch
+                    .auto_disable_risky_accounts_health_score_threshold,
+                auto_disable_risky_accounts_lookback_mins: patch
+                    .auto_disable_risky_accounts_lookback_mins,
             };
             super::value_or_error(crate::set_gateway_background_tasks(input))
         }
