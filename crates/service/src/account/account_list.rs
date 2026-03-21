@@ -18,6 +18,9 @@ struct AccountStatusMeta {
     last_status_changed_at: Option<i64>,
     last_governance_reason: Option<String>,
     last_governance_at: Option<i64>,
+    last_isolation_reason_code: Option<String>,
+    last_isolation_reason: Option<String>,
+    last_isolation_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -271,6 +274,10 @@ fn to_account_summary(
         last_status_changed_at: status_meta.and_then(|meta| meta.last_status_changed_at),
         last_governance_reason: status_meta.and_then(|meta| meta.last_governance_reason.clone()),
         last_governance_at: status_meta.and_then(|meta| meta.last_governance_at),
+        last_isolation_reason_code: status_meta
+            .and_then(|meta| meta.last_isolation_reason_code.clone()),
+        last_isolation_reason: status_meta.and_then(|meta| meta.last_isolation_reason.clone()),
+        last_isolation_at: status_meta.and_then(|meta| meta.last_isolation_at),
         subscription_plan_type: payment_state.and_then(|state| state.subscription_plan_type.clone()),
         subscription_updated_at: payment_state.and_then(|state| state.subscription_updated_at),
         team_manager_uploaded_at: payment_state.and_then(|state| state.team_manager_uploaded_at),
@@ -311,6 +318,13 @@ fn build_account_status_meta_map(events: Vec<Event>) -> BTreeMap<String, Account
             if let Some(label) = parsed.governance_reason_label.clone() {
                 entry.last_governance_at = Some(event.created_at);
                 entry.last_governance_reason = Some(label);
+            }
+        }
+        if entry.last_isolation_at.is_none() {
+            if let Some(label) = parsed.isolation_reason_label.clone() {
+                entry.last_isolation_at = Some(event.created_at);
+                entry.last_isolation_reason = Some(label);
+                entry.last_isolation_reason_code = parsed.isolation_reason_code.clone();
             }
         }
     }

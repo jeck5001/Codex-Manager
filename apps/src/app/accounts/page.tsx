@@ -84,6 +84,7 @@ type StatusFilter =
   | "available"
   | "low_quota"
   | "deactivated"
+  | "isolated"
   | "governed";
 
 function normalizeStatusFilter(value: string | null | undefined): StatusFilter {
@@ -94,6 +95,8 @@ function normalizeStatusFilter(value: string | null | undefined): StatusFilter {
       return "low_quota";
     case "deactivated":
       return "deactivated";
+    case "isolated":
+      return "isolated";
     case "governed":
       return "governed";
     default:
@@ -279,6 +282,7 @@ export default function AccountsPage() {
         (statusFilter === "available" && account.isAvailable) ||
         (statusFilter === "low_quota" && account.isLowQuota) ||
         (statusFilter === "deactivated" && account.isDeactivated) ||
+        (statusFilter === "isolated" && account.isIsolated) ||
         (statusFilter === "governed" && Boolean(account.lastGovernanceReason));
       const matchGovernance =
         governanceFilter === "all" ||
@@ -405,6 +409,7 @@ export default function AccountsPage() {
         available: "可用",
         low_quota: "低配额",
         deactivated: "已停用",
+        isolated: "隔离中",
         governed: "最近治理",
       };
       items.push({
@@ -762,6 +767,7 @@ export default function AccountsPage() {
                 { id: "available", label: "可用" },
                 { id: "low_quota", label: "低配额" },
                 { id: "deactivated", label: "已停用" },
+                { id: "isolated", label: "隔离中" },
                 { id: "governed", label: "最近治理" },
               ].map((filter) => (
                 <button
@@ -1174,7 +1180,14 @@ export default function AccountsPage() {
                             >
                               {formatHealthTierLabel(account.healthTier)} {account.healthScore}
                             </Badge>
-                            {account.lastGovernanceReason ? (
+                            {account.isIsolated && account.lastIsolationReason ? (
+                              <Badge
+                                variant="secondary"
+                                className="h-4 shrink-0 bg-rose-500/20 px-1.5 text-[9px] text-rose-700 dark:text-rose-300"
+                              >
+                                隔离 {account.lastIsolationReason}
+                              </Badge>
+                            ) : account.lastGovernanceReason ? (
                               <Badge
                                 variant="secondary"
                                 className="h-4 shrink-0 bg-rose-500/15 px-1.5 text-[9px] text-rose-700 dark:text-rose-300"
@@ -1206,6 +1219,14 @@ export default function AccountsPage() {
                               最近状态: {account.lastStatusReason}
                               {account.lastStatusChangedAt
                                 ? ` · ${formatTsFromSeconds(account.lastStatusChangedAt, "--")}`
+                                : ""}
+                            </span>
+                          ) : null}
+                          {account.lastIsolationReason ? (
+                            <span className="text-[10px] text-rose-600 dark:text-rose-400">
+                              隔离原因: {account.lastIsolationReason}
+                              {account.lastIsolationAt
+                                ? ` · ${formatTsFromSeconds(account.lastIsolationAt, "--")}`
                                 : ""}
                             </span>
                           ) : null}
@@ -1286,7 +1307,14 @@ export default function AccountsPage() {
                               {account.availabilityText}
                             </span>
                           </div>
-                          {account.lastGovernanceReason ? (
+                          {account.isIsolated && account.lastIsolationReason ? (
+                            <div className="rounded-md bg-rose-500/15 px-2 py-1 text-[10px] text-rose-700 dark:text-rose-300">
+                              当前隔离: {account.lastIsolationReason}
+                              {account.lastIsolationAt
+                                ? ` · ${formatTsFromSeconds(account.lastIsolationAt, "--")}`
+                                : ""}
+                            </div>
+                          ) : account.lastGovernanceReason ? (
                             <div className="rounded-md bg-rose-500/10 px-2 py-1 text-[10px] text-rose-700 dark:text-rose-300">
                               自动治理: {account.lastGovernanceReason}
                               {account.lastGovernanceAt
