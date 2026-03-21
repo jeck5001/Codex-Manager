@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Shield,
   Trash2,
+  X,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -606,6 +607,27 @@ function LogsPageContent() {
     router.push("/logs");
   };
 
+  const handleRemoveFilterItem = (key: string) => {
+    let nextSearch = search;
+    let nextFilter = filter;
+    if (key === "query") {
+      nextSearch = "";
+      setSearch("");
+    } else if (key === "status") {
+      nextFilter = "all";
+      setFilter("all");
+    }
+    setPage(1);
+    const params = new URLSearchParams();
+    if (nextSearch.trim()) {
+      params.set("query", nextSearch.trim());
+    }
+    if (nextFilter !== "all") {
+      params.set("statusFilter", nextFilter);
+    }
+    router.push(params.size > 0 ? `/logs?${params.toString()}` : "/logs");
+  };
+
   const handleApplyQuickFilter = (query: string, statusFilter: StatusFilter) => {
     setSearch(query);
     setFilter(statusFilter);
@@ -687,13 +709,16 @@ function LogsPageContent() {
             当前筛选:
           </span>
           {activeFilterItems.map((item) => (
-            <Badge
+            <button
+              type="button"
               key={item.key}
-              variant="secondary"
-              className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary"
+              className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary transition-colors hover:bg-primary/15"
+              onClick={() => handleRemoveFilterItem(item.key)}
+              title={`移除筛选：${item.label}`}
             >
-              {item.label}
-            </Badge>
+              <span>{item.label}</span>
+              <X className="h-3 w-3" />
+            </button>
           ))}
           <Button
             variant="ghost"
