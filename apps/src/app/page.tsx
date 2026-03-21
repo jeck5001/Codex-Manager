@@ -157,6 +157,24 @@ function formatPercent(value: number | null | undefined): string {
   return value == null ? "--" : `${Math.max(0, Math.round(value))}%`;
 }
 
+function formatPredictionDuration(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "--";
+  if (value <= 0) return "已触发";
+  if (value < 1) {
+    return `${Math.max(1, Math.round(value * 60))} 分钟`;
+  }
+  if (value < 24) {
+    return `${value.toFixed(value >= 10 ? 0 : 1).replace(/\.0$/, "")} 小时`;
+  }
+  const days = value / 24;
+  return `${days.toFixed(days >= 10 ? 0 : 1).replace(/\.0$/, "")} 天`;
+}
+
+function formatPredictionBucket(value: string | null | undefined): string {
+  if (!value) return "未知窗口";
+  return value === "secondary" ? "7天窗口" : "5小时窗口";
+}
+
 function PercentBar({ label, value, tone = "default" }: PercentBarProps) {
   const normalized = value == null ? 0 : Math.max(0, Math.min(100, Math.round(value)));
   const colorClass =
@@ -319,6 +337,7 @@ export default function DashboardPage() {
   } = useDashboardStats();
   const poolPrimary = stats.poolRemain?.primary ?? 0;
   const poolSecondary = stats.poolRemain?.secondary ?? 0;
+  const usagePrediction = stats.usagePrediction;
 
   const openAccountById = (accountId: string) => {
     const params = new URLSearchParams();
@@ -442,6 +461,84 @@ export default function DashboardPage() {
                     indicatorClassName={quotaIndicatorClass("blue")}
                   />
                 </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {isLoading ? (
+          Array.from({ length: 2 }).map((_, index) => (
+            <Skeleton key={index} className="h-36 w-full rounded-2xl" />
+          ))
+        ) : (
+          <>
+            <Card className="glass-card overflow-hidden border-none shadow-md backdrop-blur-md">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <div>
+                  <CardTitle className="text-sm font-medium">跌破保护阈值预计</CardTitle>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    按当前号池消耗速度，估算剩余额度跌破保护阈值的时间。
+                  </p>
+                </div>
+                <ShieldAlert className="h-4 w-4 text-amber-500" />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="text-2xl font-bold">
+                  {formatPredictionDuration(usagePrediction.estimatedHoursToThreshold)}
+                </div>
+                <div className="flex flex-wrap gap-2 text-[10px]">
+                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+                    阈值 {usagePrediction.quotaProtectionThresholdPercent}%
+                  </span>
+                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-blue-700 dark:text-blue-300">
+                    受限于 {formatPredictionBucket(usagePrediction.thresholdLimitedBy)}
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5",
+                      usagePrediction.quotaProtectionEnabled
+                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {usagePrediction.quotaProtectionEnabled
+                      ? "保护已开启"
+                      : "保护未开启，仅按阈值测算"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  当前满足保护阈值的可路由账号还有 {usagePrediction.readyAccountCount} 个。
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card overflow-hidden border-none shadow-md backdrop-blur-md">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <div>
+                  <CardTitle className="text-sm font-medium">号池可支撑时间</CardTitle>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    不看保护阈值，按当前耗用速度估算整个号池被吃空前还能撑多久。
+                  </p>
+                </div>
+                <Activity className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="text-2xl font-bold">
+                  {formatPredictionDuration(usagePrediction.estimatedHoursToPoolExhaustion)}
+                </div>
+                <div className="flex flex-wrap gap-2 text-[10px]">
+                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-blue-700 dark:text-blue-300">
+                    受限于 {formatPredictionBucket(usagePrediction.poolLimitedBy)}
+                  </span>
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">
+                    可用池 {stats.available} 个
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  这是保守版预测，基于最近一次额度快照倒推平均消耗速度，适合看补池时机，不代表精确 SLA。
+                </p>
               </CardContent>
             </Card>
           </>

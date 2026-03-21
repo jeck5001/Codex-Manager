@@ -23,6 +23,7 @@ import {
   RequestLogTodaySummary,
   StartupSnapshot,
   UsageAggregateSummary,
+  UsagePredictionSummary,
 } from "@/types";
 import {
   calcAvailability,
@@ -139,6 +140,40 @@ export function normalizeUsageAggregateSummary(payload: unknown): UsageAggregate
     secondaryKnownCount: asInteger(source.secondaryKnownCount, 0, 0),
     secondaryUnknownCount: asInteger(source.secondaryUnknownCount, 0, 0),
     secondaryRemainPercent: toNullableNumber(source.secondaryRemainPercent),
+  };
+}
+
+export function normalizeUsagePredictionSummary(
+  payload: unknown
+): UsagePredictionSummary {
+  const source = asObject(payload);
+  return {
+    quotaProtectionEnabled: asBoolean(
+      source.quotaProtectionEnabled ?? source.quota_protection_enabled,
+      false
+    ),
+    quotaProtectionThresholdPercent: asInteger(
+      source.quotaProtectionThresholdPercent ??
+        source.quota_protection_threshold_percent,
+      0,
+      0
+    ),
+    readyAccountCount: asInteger(
+      source.readyAccountCount ?? source.ready_account_count,
+      0,
+      0
+    ),
+    estimatedHoursToThreshold: toNullableNumber(
+      source.estimatedHoursToThreshold ?? source.estimated_hours_to_threshold
+    ),
+    estimatedHoursToPoolExhaustion: toNullableNumber(
+      source.estimatedHoursToPoolExhaustion ??
+        source.estimated_hours_to_pool_exhaustion
+    ),
+    thresholdLimitedBy:
+      asString(source.thresholdLimitedBy ?? source.threshold_limited_by) || null,
+    poolLimitedBy:
+      asString(source.poolLimitedBy ?? source.pool_limited_by) || null,
   };
 }
 
@@ -719,6 +754,9 @@ export function normalizeStartupSnapshot(payload: unknown): StartupSnapshot {
     accounts,
     usageSnapshots,
     usageAggregateSummary: normalizeUsageAggregateSummary(source.usageAggregateSummary),
+    usagePredictionSummary: normalizeUsagePredictionSummary(
+      source.usagePredictionSummary ?? source.usage_prediction_summary
+    ),
     failureReasonSummary: normalizeFailureReasonSummary(
       source.failureReasonSummary ?? source.failure_reason_summary
     ),

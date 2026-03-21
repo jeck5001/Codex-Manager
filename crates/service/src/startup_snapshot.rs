@@ -11,6 +11,7 @@ pub(crate) fn read_startup_snapshot(
     let accounts = account_list::read_accounts(AccountListParams::default(), false)?.items;
     let usage_snapshots = usage_list::read_usage_snapshots()?;
     let usage_aggregate_summary = usage_aggregate::read_usage_aggregate_summary()?;
+    let usage_prediction_summary = crate::usage_prediction::read_usage_prediction_summary()?;
     let failure_reason_summary = crate::failure_summary::read_failure_reason_summary()?;
     let governance_summary = crate::governance_summary::read_governance_summary()?;
     let api_keys = apikey_list::read_api_keys()?;
@@ -23,6 +24,7 @@ pub(crate) fn read_startup_snapshot(
         accounts,
         usage_snapshots,
         usage_aggregate_summary,
+        usage_prediction_summary,
         failure_reason_summary,
         governance_summary,
         api_keys,

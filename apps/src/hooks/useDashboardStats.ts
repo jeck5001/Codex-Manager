@@ -108,6 +108,20 @@ export function useDashboardStats() {
         secondaryKnownCount: data?.usageAggregateSummary.secondaryKnownCount ?? 0,
         secondaryBucketCount: data?.usageAggregateSummary.secondaryBucketCount ?? 0,
       },
+      usagePrediction: {
+        quotaProtectionEnabled:
+          data?.usagePredictionSummary.quotaProtectionEnabled ?? false,
+        quotaProtectionThresholdPercent:
+          data?.usagePredictionSummary.quotaProtectionThresholdPercent ?? 0,
+        readyAccountCount: data?.usagePredictionSummary.readyAccountCount ?? 0,
+        estimatedHoursToThreshold:
+          data?.usagePredictionSummary.estimatedHoursToThreshold ?? null,
+        estimatedHoursToPoolExhaustion:
+          data?.usagePredictionSummary.estimatedHoursToPoolExhaustion ?? null,
+        thresholdLimitedBy:
+          data?.usagePredictionSummary.thresholdLimitedBy ?? null,
+        poolLimitedBy: data?.usagePredictionSummary.poolLimitedBy ?? null,
+      },
       healthy: healthyAccounts,
       warning: warningAccounts,
       risky: riskyAccounts,
