@@ -23,16 +23,13 @@ import {
 const DEFAULT_SERVICE_ADDR = "localhost:48760";
 
 export function Header() {
-  const { serviceStatus, setServiceStatus, setAppSettings } = useAppStore();
+  const { serviceStatus, setServiceStatus, setAppSettings, runtimeCapabilities } = useAppStore();
   const pathname = usePathname();
   const [webPasswordModalOpen, setWebPasswordModalOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const [portInput, setPortInput] = useState("48760");
-
-  useEffect(() => {
-    setIsDesktop(isTauriRuntime());
-  }, []);
+  const canManageService =
+    runtimeCapabilities?.canManageService ?? isTauriRuntime();
 
   useEffect(() => {
     const current = String(serviceStatus.addr || DEFAULT_SERVICE_ADDR);
@@ -121,7 +118,7 @@ export function Header() {
         </div>
 
         <div className="flex shrink-0 items-center gap-4">
-          {isDesktop ? (
+          {canManageService ? (
             <div className="flex items-center gap-2 rounded-lg border bg-card/30 px-3 py-1.5 shadow-sm">
               <span className="text-xs font-medium text-muted-foreground">监听端口</span>
               <Input

@@ -15,7 +15,7 @@ import {
   STARTUP_SNAPSHOT_STALE_TIME,
 } from "@/lib/api/startup-snapshot";
 import { appClient } from "@/lib/api/app-client";
-import { isTauriRuntime } from "@/lib/api/transport";
+import { isTauriRuntime, loadRuntimeCapabilities } from "@/lib/api/transport";
 import { Button } from "@/components/ui/button";
 import { applyAppearancePreset } from "@/lib/appearance";
 import {
@@ -35,7 +35,13 @@ const BOOTSTRAP_RECOVERY_RETRY_MS = 1_200;
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export function AppBootstrap({ children }: { children: React.ReactNode }) {
-  const { setServiceStatus, setAppSettings, serviceStatus } = useAppStore();
+  const {
+    setServiceStatus,
+    setAppSettings,
+    setRuntimeCapabilities,
+    serviceStatus,
+    runtimeCapabilities,
+  } = useAppStore();
   const { setTheme } = useTheme();
   const queryClient = useQueryClient();
   const pathname = usePathname();
@@ -46,12 +52,18 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   const recoveryTimerRef = useRef<number | null>(null);
   const retryInitRef = useRef<(() => Promise<void>) | null>(null);
   const serviceStatusRef = useRef(serviceStatus);
+  const runtimeCapabilitiesRef = useRef(runtimeCapabilities);
   const [error, setError] = useState<string | null>(null);
-  const supportsLocalServiceStart = isTauriRuntime();
+  const supportsLocalServiceStart =
+    runtimeCapabilities?.canManageService ?? isTauriRuntime();
 
   useEffect(() => {
     serviceStatusRef.current = serviceStatus;
   }, [serviceStatus]);
+
+  useEffect(() => {
+    runtimeCapabilitiesRef.current = runtimeCapabilities;
+  }, [runtimeCapabilities]);
 
   const applyLowTransparency = (enabled: boolean) => {
     if (enabled) {
@@ -331,8 +343,6 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const init = useCallback(async () => {
-    const desktopRuntime = isTauriRuntime();
-
     // Only show full screen loading if we haven't initialized once
     if (!hasInitializedOnce.current) {
       setIsInitializing(true);
@@ -340,6 +350,24 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
+      const detectedRuntimeCapabilities = await loadRuntimeCapabilities(
+        runtimeCapabilitiesRef.current?.mode === "unsupported-web"
+      );
+      setRuntimeCapabilities(detectedRuntimeCapabilities);
+      const desktopRuntime = detectedRuntimeCapabilities.mode === "desktop-tauri";
+
+      if (detectedRuntimeCapabilities.mode === "unsupported-web") {
+        if (!hasInitializedOnce.current) {
+          setServiceStatus({ connected: false, version: "" });
+          setError(
+            detectedRuntimeCapabilities.unsupportedReason ||
+              "当前 Web 运行方式不受支持"
+          );
+        }
+        setIsInitializing(false);
+        return;
+      }
+
       const settings = await appClient.getSettings();
       const addr = normalizeServiceAddr(settings.serviceAddr || DEFAULT_SERVICE_ADDR);
       const currentServiceStatus = serviceStatusRef.current;
@@ -397,6 +425,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     initializeService,
     scheduleBootstrapRecovery,
     setAppSettings,
+    setRuntimeCapabilities,
     setServiceStatus,
     setTheme,
     startAndInitializeService,
@@ -404,7 +433,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   ]);
 
   const handleForceStart = async () => {
-    if (!isTauriRuntime()) {
+    if (!supportsLocalServiceStart) {
       void init();
       return;
     }
@@ -477,6 +506,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
 
   const showLoading = isInitializing && !hasInitializedOnce.current;
   const showError = !!error && !hasInitializedOnce.current;
+  const isUnsupportedWebRuntime = runtimeCapabilities?.mode === "unsupported-web";
 
   return (
     <>
@@ -503,8 +533,16 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
                 </div>
                 <div className="flex flex-col items-center gap-2 text-center">
                   <h2 className="text-xl font-bold tracking-tight text-destructive">
-                    无法同步核心服务状态
+                    {isUnsupportedWebRuntime
+                      ? "当前 Web 运行方式不受支持"
+                      : "无法同步核心服务状态"}
                   </h2>
+                  {isUnsupportedWebRuntime ? (
+                    <p className="px-4 text-center text-sm text-muted-foreground">
+                      请通过 `codexmanager-web` 打开页面，或在反向代理中同时提供
+                      `/api/runtime` 与 `/api/rpc`。
+                    </p>
+                  ) : null}
                   <p className="max-h-32 overflow-y-auto break-all rounded-lg bg-muted/50 p-3 font-mono text-[10px] text-muted-foreground">
                     {error}
                   </p>

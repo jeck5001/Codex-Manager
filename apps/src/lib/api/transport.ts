@@ -1,6 +1,7 @@
 import { invoke as tauriInvoke, isTauri as tauriIsTauri } from "@tauri-apps/api/core";
 import { fetchWithRetry, runWithControl, RequestOptions } from "../utils/request";
 import { useAppStore } from "../store/useAppStore";
+import { RuntimeCapabilities, RuntimeMode } from "../../types";
 
 type InvokeParams = Record<string, unknown>;
 
@@ -9,6 +10,17 @@ type WebCommandDescriptor = {
   mapParams?: (params?: InvokeParams) => InvokeParams;
   direct?: (params?: InvokeParams, options?: RequestOptions) => Promise<unknown>;
 };
+
+const DEFAULT_WEB_RPC_BASE_URL = "/api/rpc";
+const DEFAULT_RUNTIME_PROBE_URL = "/api/runtime";
+const CONFIGURED_WEB_RPC_BASE_URL = normalizeRpcBaseUrl(
+  process.env.NEXT_PUBLIC_CODEXMANAGER_RPC_BASE_URL
+);
+const DEFAULT_UNSUPPORTED_WEB_REASON =
+  "当前页面缺少 CodexManager Web 运行壳，无法访问管理 RPC。请通过 codexmanager-web 打开，或在反向代理中转发 /api/rpc。";
+
+let runtimeCapabilitiesCache: RuntimeCapabilities | null = null;
+let runtimeCapabilitiesPromise: Promise<RuntimeCapabilities> | null = null;
 
 const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   app_settings_get: { rpcMethod: "appSettings/get" },
@@ -142,6 +154,190 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function asBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function normalizeRpcBaseUrl(value: string | null | undefined): string {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return "";
+  }
+  return normalized.endsWith("/")
+    ? normalized.replace(/\/+$/, "") || DEFAULT_WEB_RPC_BASE_URL
+    : normalized;
+}
+
+function isRuntimeMode(value: string): value is RuntimeMode {
+  return (
+    value === "desktop-tauri" ||
+    value === "web-gateway" ||
+    value === "unsupported-web"
+  );
+}
+
+function buildDesktopRuntimeCapabilities(): RuntimeCapabilities {
+  return {
+    mode: "desktop-tauri",
+    rpcBaseUrl: DEFAULT_WEB_RPC_BASE_URL,
+    canManageService: true,
+    canSelfUpdate: true,
+    canCloseToTray: true,
+    canOpenLocalDir: true,
+    canUseBrowserFileImport: true,
+    canUseBrowserDownloadExport: true,
+    unsupportedReason: null,
+  };
+}
+
+function buildWebGatewayRuntimeCapabilities(
+  rpcBaseUrl = CONFIGURED_WEB_RPC_BASE_URL || DEFAULT_WEB_RPC_BASE_URL
+): RuntimeCapabilities {
+  return {
+    mode: "web-gateway",
+    rpcBaseUrl,
+    canManageService: false,
+    canSelfUpdate: false,
+    canCloseToTray: false,
+    canOpenLocalDir: false,
+    canUseBrowserFileImport: true,
+    canUseBrowserDownloadExport: true,
+    unsupportedReason: null,
+  };
+}
+
+function buildUnsupportedWebCapabilities(
+  reason = DEFAULT_UNSUPPORTED_WEB_REASON
+): RuntimeCapabilities {
+  return {
+    mode: "unsupported-web",
+    rpcBaseUrl: CONFIGURED_WEB_RPC_BASE_URL || DEFAULT_WEB_RPC_BASE_URL,
+    canManageService: false,
+    canSelfUpdate: false,
+    canCloseToTray: false,
+    canOpenLocalDir: false,
+    canUseBrowserFileImport: false,
+    canUseBrowserDownloadExport: false,
+    unsupportedReason: reason,
+  };
+}
+
+function cacheRuntimeCapabilities(
+  runtimeCapabilities: RuntimeCapabilities
+): RuntimeCapabilities {
+  runtimeCapabilitiesCache = runtimeCapabilities;
+  return runtimeCapabilities;
+}
+
+function normalizeRuntimeCapabilities(payload: unknown): RuntimeCapabilities {
+  const source = asRecord(payload) ?? {};
+  const modeValue = asString(source.mode);
+  const mode: RuntimeMode = isRuntimeMode(modeValue) ? modeValue : "web-gateway";
+  const defaultCapabilities =
+    mode === "desktop-tauri"
+      ? buildDesktopRuntimeCapabilities()
+      : mode === "unsupported-web"
+        ? buildUnsupportedWebCapabilities()
+        : buildWebGatewayRuntimeCapabilities();
+
+  return {
+    mode,
+    rpcBaseUrl:
+      normalizeRpcBaseUrl(asString(source.rpcBaseUrl)) ||
+      defaultCapabilities.rpcBaseUrl,
+    canManageService: asBoolean(
+      source.canManageService,
+      defaultCapabilities.canManageService
+    ),
+    canSelfUpdate: asBoolean(source.canSelfUpdate, defaultCapabilities.canSelfUpdate),
+    canCloseToTray: asBoolean(source.canCloseToTray, defaultCapabilities.canCloseToTray),
+    canOpenLocalDir: asBoolean(source.canOpenLocalDir, defaultCapabilities.canOpenLocalDir),
+    canUseBrowserFileImport: asBoolean(
+      source.canUseBrowserFileImport,
+      defaultCapabilities.canUseBrowserFileImport
+    ),
+    canUseBrowserDownloadExport: asBoolean(
+      source.canUseBrowserDownloadExport,
+      defaultCapabilities.canUseBrowserDownloadExport
+    ),
+    unsupportedReason:
+      asString(source.unsupportedReason) || defaultCapabilities.unsupportedReason || null,
+  };
+}
+
+async function probeRuntimeCapabilities(): Promise<RuntimeCapabilities | null> {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const response = await fetchWithRetry(
+      DEFAULT_RUNTIME_PROBE_URL,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      },
+      {
+        timeoutMs: 1500,
+        retries: 0,
+        shouldRetryStatus: () => false,
+      }
+    );
+    if (!response.ok) {
+      return null;
+    }
+    return normalizeRuntimeCapabilities(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export function getCachedRuntimeCapabilities(): RuntimeCapabilities | null {
+  if (isTauriRuntime()) {
+    return runtimeCapabilitiesCache ?? buildDesktopRuntimeCapabilities();
+  }
+  return runtimeCapabilitiesCache;
+}
+
+export async function loadRuntimeCapabilities(
+  force = false
+): Promise<RuntimeCapabilities> {
+  if (isTauriRuntime()) {
+    return cacheRuntimeCapabilities(buildDesktopRuntimeCapabilities());
+  }
+  if (!force && runtimeCapabilitiesCache) {
+    return runtimeCapabilitiesCache;
+  }
+  if (!force && runtimeCapabilitiesPromise) {
+    return runtimeCapabilitiesPromise;
+  }
+
+  runtimeCapabilitiesPromise = (async () => {
+    const probedRuntime = await probeRuntimeCapabilities();
+    if (probedRuntime) {
+      return cacheRuntimeCapabilities(probedRuntime);
+    }
+    if (CONFIGURED_WEB_RPC_BASE_URL) {
+      return cacheRuntimeCapabilities(
+        buildWebGatewayRuntimeCapabilities(CONFIGURED_WEB_RPC_BASE_URL)
+      );
+    }
+    return cacheRuntimeCapabilities(buildUnsupportedWebCapabilities());
+  })();
+
+  try {
+    return await runtimeCapabilitiesPromise;
+  } finally {
+    runtimeCapabilitiesPromise = null;
+  }
+}
+
 export function getAppErrorMessage(
   error: unknown,
   fallback = "操作失败"
@@ -202,8 +398,15 @@ async function postWebRpc<T>(
   params?: InvokeParams,
   options: RequestOptions = {}
 ): Promise<T> {
+  const runtimeCapabilities = await loadRuntimeCapabilities();
+  if (runtimeCapabilities.mode === "unsupported-web") {
+    throw new Error(
+      runtimeCapabilities.unsupportedReason || DEFAULT_UNSUPPORTED_WEB_REASON
+    );
+  }
+
   const response = await fetchWithRetry(
-    "/api/rpc",
+    runtimeCapabilities.rpcBaseUrl,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

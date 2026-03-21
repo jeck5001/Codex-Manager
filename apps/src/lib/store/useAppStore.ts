@@ -1,13 +1,15 @@
 import { create } from "zustand";
-import { AppSettings, ServiceStatus } from "../../types";
+import { AppSettings, RuntimeCapabilities, ServiceStatus } from "../../types";
 
 interface AppState {
   serviceStatus: ServiceStatus;
   appSettings: AppSettings;
+  runtimeCapabilities: RuntimeCapabilities | null;
   isSidebarOpen: boolean;
   
   setServiceStatus: (status: Partial<ServiceStatus>) => void;
   setAppSettings: (settings: Partial<AppSettings>) => void;
+  setRuntimeCapabilities: (capabilities: RuntimeCapabilities | null) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
 }
@@ -74,6 +76,7 @@ export const useAppStore = create<AppState>((set) => ({
     theme: "tech",
     appearancePreset: "classic",
   },
+  runtimeCapabilities: null,
   isSidebarOpen: true,
 
   setServiceStatus: (status) => 
@@ -81,6 +84,8 @@ export const useAppStore = create<AppState>((set) => ({
   
   setAppSettings: (settings) =>
     set((state) => ({ appSettings: { ...state.appSettings, ...settings } })),
+
+  setRuntimeCapabilities: (runtimeCapabilities) => set({ runtimeCapabilities }),
     
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   

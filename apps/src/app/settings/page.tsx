@@ -268,10 +268,15 @@ function buildReleaseUrl(summary: UpdateCheckSummary | null): string {
 }
 
 export default function SettingsPage() {
-  const { setAppSettings: setStoreSettings } = useAppStore();
+  const { setAppSettings: setStoreSettings, runtimeCapabilities } = useAppStore();
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
-  const isDesktopRuntime = isTauriRuntime();
+  const isDesktopRuntime =
+    runtimeCapabilities?.mode === "desktop-tauri" ||
+    (!runtimeCapabilities && isTauriRuntime());
+  const canSelfUpdate = runtimeCapabilities?.canSelfUpdate ?? isDesktopRuntime;
+  const canOpenLocalDir = runtimeCapabilities?.canOpenLocalDir ?? isDesktopRuntime;
+  const canCloseToTray = runtimeCapabilities?.canCloseToTray ?? false;
   const lastSyncedSnapshotThemeRef = useRef<string | null>(null);
   const lastSyncedAppearancePresetRef = useRef<string | null>(null);
   const autoUpdateCheckedRef = useRef(false);
@@ -480,14 +485,14 @@ export default function SettingsPage() {
     !preparedUpdate && lastUpdateCheck?.hasUpdate && lastUpdateCheck.canPrepare
   );
   const shouldShowUpdateLogsEntry = Boolean(
-    isDesktopRuntime && (preparedUpdate || lastUpdateCheck)
+    canOpenLocalDir && (preparedUpdate || lastUpdateCheck)
   );
   const updateActionLabel = hasPreparedUpdate
     ? "替换更新"
     : canDownloadUpdate
       ? "下载更新"
       : "检查更新";
-  const updateActionDescription = !isDesktopRuntime
+  const updateActionDescription = !canSelfUpdate
     ? "Web / Docker 版不提供桌面应用更新检查"
     : hasPreparedUpdate
       ? "更新包已下载完成，点击后确认替换当前版本"
@@ -843,7 +848,7 @@ export default function SettingsPage() {
                   variant="outline"
                   className="gap-2 self-start md:self-auto"
                   disabled={
-                    !isDesktopRuntime ||
+                    !canSelfUpdate ||
                     updateActionBusy
                   }
                   onClick={handleUpdateAction}
@@ -871,7 +876,7 @@ export default function SettingsPage() {
                 </div>
                 <Switch
                   checked={snapshot.closeToTrayOnClose}
-                  disabled={!snapshot.closeToTraySupported}
+                  disabled={!canCloseToTray || !snapshot.closeToTraySupported}
                   onCheckedChange={(value) =>
                     updateSettings.mutate({ closeToTrayOnClose: value })
                   }

@@ -16,7 +16,7 @@ use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use axum::Router;
+use axum::{Json, Router};
 use rand::RngCore;
 use tokio::sync::{watch, Mutex};
 use tower_http::services::{ServeDir, ServeFile};
@@ -138,6 +138,19 @@ fn escape_html(text: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+async fn runtime_info() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "mode": "web-gateway",
+        "rpcBaseUrl": "/api/rpc",
+        "canManageService": false,
+        "canSelfUpdate": false,
+        "canCloseToTray": false,
+        "canOpenLocalDir": false,
+        "canUseBrowserFileImport": true,
+        "canUseBrowserDownloadExport": true
+    }))
+}
+
 async fn serve_on_listener(
     listener: tokio::net::TcpListener,
     app: Router,
@@ -255,6 +268,7 @@ async fn async_main() {
         auth::web_auth_middleware,
     ));
     let app = Router::new()
+        .route("/api/runtime", get(runtime_info))
         .route("/__auth_status", get(auth::auth_status))
         .route("/__login", get(auth::login_page).post(auth::login_submit))
         .route("/__logout", get(auth::logout).post(auth::logout))
