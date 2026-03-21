@@ -7,6 +7,7 @@ import time
 import logging
 from typing import Optional, Dict, Any, List
 import json
+from datetime import datetime
 
 from curl_cffi import requests as cffi_requests
 
@@ -61,6 +62,35 @@ class TempmailService(BaseEmailService):
         # 状态变量
         self._email_cache: Dict[str, Dict[str, Any]] = {}
         self._last_check_time: float = 0
+        self._used_codes: Dict[str, set[str]] = {}
+
+    @staticmethod
+    def _parse_message_timestamp(value: Any) -> Optional[float]:
+        """解析邮件时间戳，兼容秒/毫秒/ISO 字符串"""
+        if value is None or value == "":
+            return None
+
+        if isinstance(value, (int, float)):
+            timestamp = float(value)
+            if timestamp > 10**12:
+                timestamp /= 1000.0
+            return timestamp
+
+        text = str(value).strip()
+        if not text:
+            return None
+
+        if text.isdigit():
+            timestamp = float(text)
+            if timestamp > 10**12:
+                timestamp /= 1000.0
+            return timestamp
+
+        try:
+            normalized = text.replace("Z", "+00:00")
+            return datetime.fromisoformat(normalized).timestamp()
+        except Exception:
+            return None
 
     def create_email(self, config: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -156,6 +186,8 @@ class TempmailService(BaseEmailService):
 
         start_time = time.time()
         seen_ids = set()
+        used_codes = self._used_codes.setdefault(email.lower(), set())
+        min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
         while time.time() - start_time < timeout:
             try:
@@ -193,6 +225,10 @@ class TempmailService(BaseEmailService):
                         continue
                     seen_ids.add(msg_date)
 
+                    message_timestamp = self._parse_message_timestamp(msg_date)
+                    if message_timestamp and message_timestamp < min_timestamp:
+                        continue
+
                     sender = str(msg.get("from", "")).lower()
                     subject = str(msg.get("subject", ""))
                     body = str(msg.get("body", ""))
@@ -208,6 +244,9 @@ class TempmailService(BaseEmailService):
                     match = re.search(pattern, content)
                     if match:
                         code = match.group(1)
+                        if code in used_codes:
+                            continue
+                        used_codes.add(code)
                         logger.info(f"找到验证码: {code}")
                         self.update_status(True)
                         return code
