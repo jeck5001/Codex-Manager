@@ -52,6 +52,8 @@ interface AccountHighlightCardProps {
   progressValue?: number | null | undefined;
   healthTier?: "healthy" | "warning" | "risky";
   healthScore?: number;
+  onOpenAccount?: () => void;
+  onOpenLogs?: () => void;
 }
 
 function openFailureDrilldown(
@@ -170,6 +172,8 @@ function AccountHighlightCard({
   progressValue,
   healthTier = "healthy",
   healthScore,
+  onOpenAccount,
+  onOpenLogs,
 }: AccountHighlightCardProps) {
   const iconToneClass =
     tone === "blue"
@@ -204,6 +208,30 @@ function AccountHighlightCard({
       {progressLabel ? (
         <div className="mt-3 border-t border-border/40 pt-3">
           <PercentBar label={progressLabel} value={progressValue} tone={tone} />
+        </div>
+      ) : null}
+      {onOpenAccount || onOpenLogs ? (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-border/40 pt-3">
+          {onOpenAccount ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg px-3 text-xs"
+              onClick={onOpenAccount}
+            >
+              查看账号
+            </Button>
+          ) : null}
+          {onOpenLogs ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-lg px-3 text-xs"
+              onClick={onOpenLogs}
+            >
+              查看日志
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -257,6 +285,18 @@ export default function DashboardPage() {
   } = useDashboardStats();
   const poolPrimary = stats.poolRemain?.primary ?? 0;
   const poolSecondary = stats.poolRemain?.secondary ?? 0;
+
+  const openAccountById = (accountId: string) => {
+    const params = new URLSearchParams();
+    params.set("query", accountId);
+    router.push(`/accounts?${params.toString()}`);
+  };
+
+  const openLogsByAccountId = (accountId: string) => {
+    const params = new URLSearchParams();
+    params.set("query", `account:=${accountId}`);
+    router.push(`/logs?${params.toString()}`);
+  };
 
   const openGovernedAccounts = (governanceReason?: string) => {
     const params = new URLSearchParams();
@@ -542,6 +582,8 @@ export default function DashboardPage() {
                   tone="green"
                   healthTier={currentAccount.healthTier}
                   healthScore={currentAccount.healthScore}
+                  onOpenAccount={() => openAccountById(currentAccount.id)}
+                  onOpenLogs={() => openLogsByAccountId(currentAccount.id)}
                 />
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="space-y-3 rounded-xl bg-muted/30 p-4">
@@ -592,6 +634,12 @@ export default function DashboardPage() {
                     progressValue={recommendations.primaryPick.primaryRemainPercent}
                     healthTier={recommendations.primaryPick.healthTier}
                     healthScore={recommendations.primaryPick.healthScore}
+                    onOpenAccount={() =>
+                      openAccountById(recommendations.primaryPick!.id)
+                    }
+                    onOpenLogs={() =>
+                      openLogsByAccountId(recommendations.primaryPick!.id)
+                    }
                   />
                 ) : null}
                 {recommendations.secondaryPick ? (
@@ -604,6 +652,12 @@ export default function DashboardPage() {
                     progressValue={recommendations.secondaryPick.secondaryRemainPercent}
                     healthTier={recommendations.secondaryPick.healthTier}
                     healthScore={recommendations.secondaryPick.healthScore}
+                    onOpenAccount={() =>
+                      openAccountById(recommendations.secondaryPick!.id)
+                    }
+                    onOpenLogs={() =>
+                      openLogsByAccountId(recommendations.secondaryPick!.id)
+                    }
                   />
                 ) : null}
               </>
