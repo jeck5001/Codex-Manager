@@ -30,6 +30,8 @@ pub(crate) fn map_governance_reason_label(reason: &str) -> Option<&'static str> 
         "auto_governance_deactivated" => Some("检测到账号已停用"),
         "auto_governance_refresh_token" => Some("Refresh 连续失效"),
         "auto_governance_auth_failures" => Some("401/403 连续失败"),
+        "auto_governance_suspected" => Some("疑似风控/授权异常"),
+        "auto_governance_proxy_failures" => Some("代理异常"),
         _ => None,
     }
 }
@@ -46,6 +48,8 @@ pub(crate) fn map_account_status_reason_label(reason: &str) -> &'static str {
         "auto_governance_deactivated" => "检测到账号已停用",
         "auto_governance_refresh_token" => "Refresh 连续失效",
         "auto_governance_auth_failures" => "401/403 连续失败",
+        "auto_governance_suspected" => "疑似风控/授权异常",
+        "auto_governance_proxy_failures" => "代理异常",
         "refresh_token_invalid:expired" => "Refresh 已过期",
         "refresh_token_invalid:reused" => "Refresh 已复用",
         "refresh_token_invalid:invalidated" => "Refresh 已失效",
@@ -81,6 +85,22 @@ mod tests {
         assert_eq!(
             parsed.governance_reason_label.as_deref(),
             Some("Refresh 连续失效")
+        );
+    }
+
+    #[test]
+    fn parse_account_status_event_supports_new_isolation_labels() {
+        let parsed = parse_account_status_event(
+            "status=disabled reason=auto_governance_suspected",
+        );
+        assert_eq!(parsed.reason_label.as_deref(), Some("疑似风控/授权异常"));
+        assert_eq!(
+            parsed.governance_reason_label.as_deref(),
+            Some("疑似风控/授权异常")
+        );
+        assert_eq!(
+            map_account_status_reason_label("auto_governance_proxy_failures"),
+            "代理异常"
         );
     }
 
