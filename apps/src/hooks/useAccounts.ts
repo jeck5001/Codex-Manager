@@ -44,6 +44,9 @@ function buildImportSummaryMessage(result: ImportByDirectoryResult): string {
 
 function formatUsageRefreshErrorMessage(error: unknown): string {
   const message = getAppErrorMessage(error);
+  if (message.toLowerCase().includes("your openai account has been deactivated")) {
+    return "账号已被 OpenAI 停用，已自动标记到停用列表";
+  }
   if (message.toLowerCase().includes("refresh token failed with status 401")) {
     return "账号长期未登录，refresh 已过期，已改为不可用状态";
   }
@@ -213,7 +216,8 @@ export function useAccounts() {
         .toLowerCase();
       toast.success(
         variables.enabled
-          ? normalizedSourceStatus === "inactive"
+          ? normalizedSourceStatus === "inactive" ||
+            normalizedSourceStatus === "deactivated"
             ? "账号已恢复"
             : "账号已启用"
           : "账号已禁用"
@@ -224,7 +228,8 @@ export function useAccounts() {
         .trim()
         .toLowerCase();
       const actionLabel = variables.enabled
-        ? normalizedSourceStatus === "inactive"
+        ? normalizedSourceStatus === "inactive" ||
+          normalizedSourceStatus === "deactivated"
           ? "恢复"
           : "启用"
         : "禁用";

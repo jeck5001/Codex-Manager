@@ -31,6 +31,7 @@ export interface Account {
   status: string;
   isAvailable: boolean;
   isLowQuota: boolean;
+  isDeactivated: boolean;
   lastRefreshAt: number | null;
   availabilityText: string;
   availabilityLevel: AvailabilityLevel;

@@ -14,6 +14,7 @@ enum AccountFilter {
     All,
     Active,
     Low,
+    Deactivated,
 }
 
 pub(crate) fn read_accounts(
@@ -140,6 +141,7 @@ fn normalize_filter(value: Option<String>) -> AccountFilter {
     {
         "active" => AccountFilter::Active,
         "low" => AccountFilter::Low,
+        "deactivated" => AccountFilter::Deactivated,
         _ => AccountFilter::All,
     }
 }
@@ -174,6 +176,9 @@ fn filtered_account_count(
         AccountFilter::Low => storage
             .account_count_low_quota(query, group_filter)
             .map_err(|err| format!("count low quota accounts failed: {err}")),
+        AccountFilter::Deactivated => storage
+            .account_count_deactivated(query, group_filter)
+            .map_err(|err| format!("count deactivated accounts failed: {err}")),
     }
 }
 
@@ -199,6 +204,9 @@ fn filtered_accounts(
         AccountFilter::Low => storage
             .list_accounts_low_quota(query, group_filter, pagination)
             .map_err(|err| format!("list low quota accounts failed: {err}")),
+        AccountFilter::Deactivated => storage
+            .list_accounts_deactivated(query, group_filter, pagination)
+            .map_err(|err| format!("list deactivated accounts failed: {err}")),
     }
 }
 

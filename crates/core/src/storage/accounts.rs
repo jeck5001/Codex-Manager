@@ -65,6 +65,14 @@ impl Storage {
         self.count_accounts_with_usage_mode(query, group_name, AccountUsageQueryMode::LowQuota)
     }
 
+    pub fn account_count_deactivated(
+        &self,
+        query: Option<&str>,
+        group_name: Option<&str>,
+    ) -> Result<i64> {
+        self.count_accounts_with_status(query, group_name, "deactivated")
+    }
+
     pub fn list_accounts(&self) -> Result<Vec<Account>> {
         self.list_accounts_filtered(None, None)
     }
@@ -113,6 +121,15 @@ impl Storage {
             AccountUsageQueryMode::LowQuota,
             pagination,
         )
+    }
+
+    pub fn list_accounts_deactivated(
+        &self,
+        query: Option<&str>,
+        group_name: Option<&str>,
+        pagination: Option<(i64, i64)>,
+    ) -> Result<Vec<Account>> {
+        self.query_accounts_with_status(query, group_name, "deactivated", pagination)
     }
 
     pub fn list_gateway_candidates(&self) -> Result<Vec<(Account, Token)>> {
@@ -306,6 +323,58 @@ impl Storage {
         self.conn
             .query_row(&sql, params_from_iter(params), |row| row.get(0))
     }
+
+    fn query_accounts_with_status(
+        &self,
+        query: Option<&str>,
+        group_name: Option<&str>,
+        status: &str,
+        pagination: Option<(i64, i64)>,
+    ) -> Result<Vec<Account>> {
+        let mut params = Vec::new();
+        let mut where_clause = build_account_where_clause(query, group_name, &mut params, "a");
+        append_where_clause(
+            &mut where_clause,
+            "LOWER(TRIM(COALESCE(a.status, ''))) = ?",
+        );
+        params.push(Value::Text(status.trim().to_ascii_lowercase()));
+        let mut sql = format!(
+            "SELECT {} FROM accounts a{where_clause} ORDER BY a.sort ASC, a.updated_at DESC",
+            account_select_columns("a"),
+        );
+
+        if let Some((offset, limit)) = pagination {
+            sql.push_str(" LIMIT ? OFFSET ?");
+            params.push(Value::Integer(limit.max(1)));
+            params.push(Value::Integer(offset.max(0)));
+        }
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut rows = stmt.query(params_from_iter(params))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next()? {
+            out.push(map_account_row(row)?);
+        }
+        Ok(out)
+    }
+
+    fn count_accounts_with_status(
+        &self,
+        query: Option<&str>,
+        group_name: Option<&str>,
+        status: &str,
+    ) -> Result<i64> {
+        let mut params = Vec::new();
+        let mut where_clause = build_account_where_clause(query, group_name, &mut params, "accounts");
+        append_where_clause(
+            &mut where_clause,
+            "LOWER(TRIM(COALESCE(accounts.status, ''))) = ?",
+        );
+        params.push(Value::Text(status.trim().to_ascii_lowercase()));
+        let sql = format!("SELECT COUNT(1) FROM accounts{where_clause}");
+        self.conn
+            .query_row(&sql, params_from_iter(params), |row| row.get(0))
+    }
 }
 
 fn normalize_optional_filter(value: Option<&str>) -> Option<String> {
@@ -433,7 +502,7 @@ fn account_usage_filter_clause(
 ) -> String {
     match mode {
         AccountUsageQueryMode::ActiveAvailable => format!(
-            "LOWER(TRIM(COALESCE({account_alias}.status, ''))) NOT IN ('inactive', 'disabled', 'unavailable')
+            "LOWER(TRIM(COALESCE({account_alias}.status, ''))) NOT IN ('inactive', 'disabled', 'unavailable', 'deactivated')
              AND {usage_alias}.account_id IS NOT NULL
              AND ({})",
             available_usage_clause(usage_alias)
