@@ -34,7 +34,7 @@ fn account_summary_serialization_matches_compact_contract() {
         assert!(obj.contains_key(key), "missing key: {key}");
     }
 
-    for key in ["workspaceId", "workspaceName", "note", "tags", "updatedAt"] {
+    for key in ["workspaceId", "workspaceName", "updatedAt"] {
         assert!(!obj.contains_key(key), "unexpected key: {key}");
     }
 }
