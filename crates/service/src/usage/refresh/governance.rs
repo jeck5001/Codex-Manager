@@ -16,6 +16,7 @@ struct GovernanceFailureStats {
     deactivated_failures: usize,
     refresh_token_failures: usize,
     auth_failures: usize,
+    proxy_failures: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +24,7 @@ enum GovernanceFailureKind {
     Deactivated,
     RefreshToken,
     Auth,
+    Proxy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,7 +32,8 @@ enum GovernanceAction {
     None,
     MarkDeactivated,
     DisableForRefreshToken,
-    DisableForUnauthorized,
+    DisableForSuspected,
+    DisableForProxy,
 }
 
 pub(crate) fn maybe_trigger_auto_account_governance() -> Result<(), String> {
@@ -118,12 +121,24 @@ pub(crate) fn maybe_trigger_auto_account_governance() -> Result<(), String> {
                 );
                 changed = changed.saturating_add(1);
             }
-            GovernanceAction::DisableForUnauthorized => {
+            GovernanceAction::DisableForSuspected => {
                 apply_governance_status(
                     &storage,
                     account_id.as_str(),
                     "disabled",
-                    "auto_governance_auth_failures",
+                    "auto_governance_suspected",
+                    stats,
+                    health_score,
+                    lookback_mins,
+                );
+                changed = changed.saturating_add(1);
+            }
+            GovernanceAction::DisableForProxy => {
+                apply_governance_status(
+                    &storage,
+                    account_id.as_str(),
+                    "disabled",
+                    "auto_governance_proxy_failures",
                     stats,
                     health_score,
                     lookback_mins,
@@ -171,6 +186,9 @@ fn aggregate_recent_failures(events: Vec<Event>) -> BTreeMap<String, GovernanceF
             GovernanceFailureKind::Auth => {
                 stats.auth_failures = stats.auth_failures.saturating_add(1);
             }
+            GovernanceFailureKind::Proxy => {
+                stats.proxy_failures = stats.proxy_failures.saturating_add(1);
+            }
         }
     }
     stats_map
@@ -185,6 +203,13 @@ fn classify_governance_failure(message: &str) -> Option<GovernanceFailureKind> {
     }
 
     let normalized = message.trim().to_ascii_lowercase();
+    if normalized.contains("proxy_auth_required")
+        || normalized.contains("proxy authentication required")
+        || normalized.contains("backend proxy error:")
+        || (normalized.contains("proxy") && normalized.contains("connect"))
+    {
+        return Some(GovernanceFailureKind::Proxy);
+    }
     if normalized.contains("status 401") || normalized.contains("status 403") {
         return Some(GovernanceFailureKind::Auth);
     }
@@ -207,8 +232,11 @@ fn decide_governance_action(
     if stats.refresh_token_failures >= failure_threshold {
         return GovernanceAction::DisableForRefreshToken;
     }
+    if stats.proxy_failures >= failure_threshold {
+        return GovernanceAction::DisableForProxy;
+    }
     if stats.auth_failures >= failure_threshold && health_score <= health_threshold {
-        return GovernanceAction::DisableForUnauthorized;
+        return GovernanceAction::DisableForSuspected;
     }
     GovernanceAction::None
 }
@@ -231,7 +259,7 @@ fn apply_governance_status(
 ) {
     crate::account_status::set_account_status(storage, account_id, status, reason);
     log::warn!(
-        "auto account governance applied: account_id={} status={} reason={} lookback_mins={} health_score={} deactivated_failures={} refresh_token_failures={} auth_failures={}",
+        "auto account governance applied: account_id={} status={} reason={} lookback_mins={} health_score={} deactivated_failures={} refresh_token_failures={} auth_failures={} proxy_failures={}",
         account_id,
         status,
         reason,
@@ -239,7 +267,8 @@ fn apply_governance_status(
         health_score,
         stats.deactivated_failures,
         stats.refresh_token_failures,
-        stats.auth_failures
+        stats.auth_failures,
+        stats.proxy_failures
     );
 }
 
@@ -269,6 +298,12 @@ mod tests {
             Some(GovernanceFailureKind::Auth)
         );
         assert_eq!(
+            classify_governance_failure(
+                "backend proxy error: proxy authentication required"
+            ),
+            Some(GovernanceFailureKind::Proxy)
+        );
+        assert_eq!(
             classify_governance_failure("usage endpoint status 429: rate limited"),
             None
         );
@@ -280,6 +315,7 @@ mod tests {
             deactivated_failures: 1,
             refresh_token_failures: 5,
             auth_failures: 5,
+            proxy_failures: 5,
         };
         assert_eq!(
             decide_governance_action("active", 120, stats, 3, 60),
@@ -297,14 +333,29 @@ mod tests {
             deactivated_failures: 0,
             refresh_token_failures: 0,
             auth_failures: 3,
+            proxy_failures: 0,
         };
         assert_eq!(
             decide_governance_action("active", 55, stats, 3, 60),
-            GovernanceAction::DisableForUnauthorized
+            GovernanceAction::DisableForSuspected
         );
         assert_eq!(
             decide_governance_action("active", 90, stats, 3, 60),
             GovernanceAction::None
+        );
+    }
+
+    #[test]
+    fn governance_decision_disables_proxy_failures_before_auth_suspected() {
+        let stats = GovernanceFailureStats {
+            deactivated_failures: 0,
+            refresh_token_failures: 0,
+            auth_failures: 1,
+            proxy_failures: 3,
+        };
+        assert_eq!(
+            decide_governance_action("active", 120, stats, 3, 60),
+            GovernanceAction::DisableForProxy
         );
     }
 }

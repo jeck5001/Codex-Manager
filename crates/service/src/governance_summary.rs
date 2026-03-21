@@ -92,6 +92,8 @@ fn classify_governance_reason(message: &str) -> Option<(&'static str, &'static s
         "auto_governance_deactivated" => "auto_deactivated",
         "auto_governance_refresh_token" => "refresh_token_disabled",
         "auto_governance_auth_failures" => "auth_failures_disabled",
+        "auto_governance_suspected" => "suspected_disabled",
+        "auto_governance_proxy_failures" => "proxy_failures_disabled",
         _ => return None,
     };
     let target_status = parsed.status.as_deref().unwrap_or("disabled");
@@ -121,6 +123,18 @@ mod tests {
                 "status=disabled reason=auto_governance_auth_failures"
             ),
             Some(("auth_failures_disabled", "401/403 连续失败", "disabled"))
+        );
+        assert_eq!(
+            classify_governance_reason(
+                "status=disabled reason=auto_governance_suspected"
+            ),
+            Some(("suspected_disabled", "疑似风控/授权异常", "disabled"))
+        );
+        assert_eq!(
+            classify_governance_reason(
+                "status=disabled reason=auto_governance_proxy_failures"
+            ),
+            Some(("proxy_failures_disabled", "代理异常", "disabled"))
         );
         assert_eq!(classify_governance_reason("status=disabled reason=manual"), None);
     }
