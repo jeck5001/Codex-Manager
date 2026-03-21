@@ -414,6 +414,7 @@ fn import_remote_account_for_email(
             refresh_token,
             id_token,
             cookies,
+            email_hint: Some(normalized_email.to_string()),
             chatgpt_account_id,
             workspace_id,
             chatgpt_plan_type: None,
