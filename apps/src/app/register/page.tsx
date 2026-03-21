@@ -122,7 +122,7 @@ function resolveRegisterFailureReasonLabel(code: string, fallback?: string) {
   return fallback || "失败原因";
 }
 
-function recommendedRetryStrategyForFailure(code: string): string {
+function recommendedRetryStrategyForFailure(code: string): string | null {
   switch (String(code || "").trim().toLowerCase()) {
     case "register_email_otp_timeout":
       return "relax_email_wait";
@@ -130,13 +130,37 @@ function recommendedRetryStrategyForFailure(code: string): string {
       return "latest_email_otp";
     case "register_proxy_error":
       return "refresh_proxy";
+    case "register_phone_required":
+      return null;
     default:
       return "same";
   }
 }
 
-function resolveRetryStrategyLabel(strategy: string) {
+function resolveRetryStrategyLabel(strategy: string | null) {
+  if (!strategy) {
+    return "不可自动重试";
+  }
   return REGISTER_RETRY_STRATEGY_LABELS[strategy] || REGISTER_RETRY_STRATEGY_LABELS.same;
+}
+
+function describeRetryStrategy(strategy: string | null) {
+  switch (strategy) {
+    case "relax_email_wait":
+      return "延长验证码等待时间，并缩短轮询间隔后重试。";
+    case "latest_email_otp":
+      return "强制以最新一封验证码为准，避免拿到旧验证码。";
+    case "refresh_proxy":
+      return "丢弃旧代理，重新挑选代理后再发起注册。";
+    case "same":
+      return "按原参数再跑一次，适合偶发网络抖动。";
+    default:
+      return "这类失败通常需要人工处理，不建议自动重试。";
+  }
+}
+
+function isRetryableRegisterFailure(code: string) {
+  return recommendedRetryStrategyForFailure(code) != null;
 }
 
 export default function RegisterPage() {
@@ -218,6 +242,59 @@ export default function RegisterPage() {
   const recommendedRetryStrategy = useMemo(
     () => recommendedRetryStrategyForFailure(failureCodeFilter),
     [failureCodeFilter],
+  );
+  const failedTaskStrategyGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        code: string;
+        label: string;
+        failedCount: number;
+        retryableCount: number;
+        blockedCount: number;
+        strategy: string | null;
+      }
+    >();
+    for (const task of tasks) {
+      if (String(task.status || "").trim().toLowerCase() !== "failed") {
+        continue;
+      }
+      const code = String(task.failureCode || "").trim().toLowerCase() || "unknown";
+      const existing = groups.get(code);
+      const strategy = recommendedRetryStrategyForFailure(code);
+      const retryable = strategy != null;
+      if (existing) {
+        existing.failedCount += 1;
+        if (retryable) {
+          existing.retryableCount += 1;
+        } else {
+          existing.blockedCount += 1;
+        }
+        continue;
+      }
+      groups.set(code, {
+        code,
+        label: resolveRegisterFailureReasonLabel(code, task.failureLabel),
+        failedCount: 1,
+        retryableCount: retryable ? 1 : 0,
+        blockedCount: retryable ? 0 : 1,
+        strategy,
+      });
+    }
+    return Array.from(groups.values()).sort((left, right) => {
+      if (right.failedCount !== left.failedCount) {
+        return right.failedCount - left.failedCount;
+      }
+      return left.label.localeCompare(right.label, "zh-CN");
+    });
+  }, [tasks]);
+  const recoverableFailedTaskCount = useMemo(
+    () =>
+      failedTaskStrategyGroups.reduce(
+        (sum, item) => sum + item.retryableCount,
+        0,
+      ),
+    [failedTaskStrategyGroups],
   );
 
   useEffect(() => {
@@ -360,14 +437,44 @@ export default function RegisterPage() {
 
   const handleRetryFailedTasksInView = async () => {
     const failedTasks = filteredTasks.filter(
-      (task) => String(task.status || "").trim().toLowerCase() === "failed",
+      (task) =>
+        String(task.status || "").trim().toLowerCase() === "failed" &&
+        isRetryableRegisterFailure(task.failureCode),
     );
     if (failedTasks.length === 0) {
       return;
     }
     for (const task of failedTasks) {
       const strategy = recommendedRetryStrategyForFailure(task.failureCode);
+      if (!strategy) {
+        continue;
+      }
       await retryTask(task.taskUuid, strategy);
+    }
+  };
+
+  const handleRetryByFailureGroup = async (failureCode: string) => {
+    const matchedTasks = tasks.filter(
+      (task) =>
+        String(task.status || "").trim().toLowerCase() === "failed" &&
+        String(task.failureCode || "").trim().toLowerCase() ===
+          String(failureCode || "").trim().toLowerCase(),
+    );
+    for (const task of matchedTasks) {
+      const strategy = recommendedRetryStrategyForFailure(task.failureCode);
+      if (!strategy) {
+        continue;
+      }
+      await retryTask(task.taskUuid, strategy);
+    }
+  };
+
+  const handleRetryRecoverableFailedTasks = async () => {
+    for (const group of failedTaskStrategyGroups) {
+      if (!group.strategy || group.retryableCount <= 0) {
+        continue;
+      }
+      await handleRetryByFailureGroup(group.code);
     }
   };
 
@@ -673,6 +780,81 @@ export default function RegisterPage() {
             </div>
           ) : null}
 
+          {failedTaskStrategyGroups.length > 0 ? (
+            <div className="space-y-3 rounded-2xl border border-border/50 bg-muted/15 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold">失败重试策略中心</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    基于当前页失败任务自动推荐处理方式。可恢复类型支持一键批量重试；手机号验证类会直接标记为不可自动重试。
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isRetrying || recoverableFailedTaskCount <= 0}
+                  onClick={() => void handleRetryRecoverableFailedTasks()}
+                >
+                  一键重试全部可恢复失败 ({recoverableFailedTaskCount})
+                </Button>
+              </div>
+              <div className="grid gap-3 xl:grid-cols-2">
+                {failedTaskStrategyGroups.map((group) => (
+                  <div
+                    key={group.code}
+                    className={cn(
+                      "rounded-xl border p-3 shadow-sm",
+                      group.strategy
+                        ? "border-emerald-500/20 bg-emerald-500/5"
+                        : "border-rose-500/20 bg-rose-500/5",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{group.label}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          推荐策略：{resolveRetryStrategyLabel(group.strategy)}
+                        </p>
+                      </div>
+                      <Badge variant="secondary" className="shrink-0">
+                        {group.failedCount} 条
+                      </Badge>
+                    </div>
+                    <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
+                      {describeRetryStrategy(group.strategy)}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                      <span className="rounded-full bg-background/70 px-2 py-1 text-muted-foreground">
+                        可重试 {group.retryableCount}
+                      </span>
+                      {group.blockedCount > 0 ? (
+                        <span className="rounded-full bg-rose-500/10 px-2 py-1 text-rose-700 dark:text-rose-300">
+                          不建议重试 {group.blockedCount}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setFailureCodeFilter(group.code)}
+                      >
+                        只看这类失败
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={!group.strategy || group.retryableCount <= 0 || isRetrying}
+                        onClick={() => void handleRetryByFailureGroup(group.code)}
+                      >
+                        按推荐策略重试
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           <div className="min-w-0 overflow-x-auto rounded-xl border border-border/50">
             <Table>
               <TableHeader>
@@ -706,8 +888,11 @@ export default function RegisterPage() {
                     const normalizedStatus = String(task.status || "").trim().toLowerCase();
                     const canCancel =
                       normalizedStatus === "pending" || normalizedStatus === "running";
-                    const canRetry = normalizedStatus === "failed";
+                    const canRetry =
+                      normalizedStatus === "failed" &&
+                      isRetryableRegisterFailure(task.failureCode);
                     const canDelete = normalizedStatus !== "running";
+                    const retryStrategy = recommendedRetryStrategyForFailure(task.failureCode);
                     return (
                       <TableRow key={task.taskUuid}>
                         <TableCell className="text-sm text-muted-foreground">
@@ -754,13 +939,16 @@ export default function RegisterPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              title="重新发起"
+                              title={
+                                canRetry
+                                  ? `按${resolveRetryStrategyLabel(retryStrategy)}重新发起`
+                                  : "该失败类型不建议自动重试"
+                              }
                               disabled={!canRetry || isRetrying}
                               onClick={() =>
-                                void retryTask(
-                                  task.taskUuid,
-                                  recommendedRetryStrategyForFailure(task.failureCode),
-                                )
+                                retryStrategy
+                                  ? void retryTask(task.taskUuid, retryStrategy)
+                                  : undefined
                               }
                             >
                               <RotateCcw className="h-4 w-4" />
