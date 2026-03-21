@@ -390,6 +390,35 @@ export default function AccountsPage() {
     const offset = (safePage - 1) * pageSizeNumber;
     return filteredAccounts.slice(offset, offset + pageSizeNumber);
   }, [filteredAccounts, pageSizeNumber, safePage]);
+  const activeFilterItems = useMemo(() => {
+    const items: Array<{ key: string; label: string }> = [];
+    if (search.trim()) {
+      items.push({ key: "search", label: `搜索 ${search.trim()}` });
+    }
+    if (groupFilter !== "all") {
+      items.push({ key: "group", label: `分组 ${groupFilter}` });
+    }
+    if (statusFilter !== "all") {
+      const statusLabelMap: Record<StatusFilter, string> = {
+        all: "全部",
+        available: "可用",
+        low_quota: "低配额",
+        deactivated: "已停用",
+        governed: "最近治理",
+      };
+      items.push({
+        key: "status",
+        label: `状态 ${statusLabelMap[statusFilter]}`,
+      });
+    }
+    if (governanceFilter !== "all") {
+      items.push({ key: "governance", label: `治理 ${governanceFilter}` });
+    }
+    if (statusReasonFilter !== "all") {
+      items.push({ key: "statusReason", label: `状态原因 ${statusReasonFilter}` });
+    }
+    return items;
+  }, [governanceFilter, groupFilter, search, statusFilter, statusReasonFilter]);
 
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.id === selectedAccountId) ?? null,
@@ -445,6 +474,16 @@ export default function AccountsPage() {
   const handlePageSizeChange = (value: string | null) => {
     setPageSize(value || "20");
     setPage(1);
+  };
+
+  const handleClearFilters = () => {
+    setSearch("");
+    setGroupFilter("all");
+    setStatusFilter("all");
+    setGovernanceFilter("all");
+    setStatusReasonFilter("all");
+    setPage(1);
+    router.push("/accounts");
   };
 
   const toggleSelect = (id: string) => {
@@ -942,6 +981,31 @@ export default function AccountsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {activeFilterItems.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 px-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            当前筛选:
+          </span>
+          {activeFilterItems.map((item) => (
+            <Badge
+              key={item.key}
+              variant="secondary"
+              className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary"
+            >
+              {item.label}
+            </Badge>
+          ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 rounded-full px-3 text-xs"
+            onClick={handleClearFilters}
+          >
+            清空筛选
+          </Button>
+        </div>
+      ) : null}
 
       <Card className="glass-card overflow-hidden border-none py-0 shadow-xl backdrop-blur-md">
         <CardContent className="p-0">
