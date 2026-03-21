@@ -1768,6 +1768,91 @@ export default function SettingsPage() {
 
           <Card className="glass-card border-none shadow-md">
             <CardHeader>
+              <CardTitle className="text-base">账号冷却期</CardTitle>
+              <CardDescription>
+                当账号触发认证失败、限流、低配额或停用时，先冷却一段时间再重新参与路由，避免坏账号被短时间反复命中
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {[
+                  {
+                    key: "accountCooldownAuthSecs",
+                    label: "认证异常冷却 (秒)",
+                    description: "401/403 或 challenge 场景使用，建议设成几分钟。",
+                  },
+                  {
+                    key: "accountCooldownRateLimitedSecs",
+                    label: "429 限流首档 (秒)",
+                    description: "首次 429 的冷却时长；连续触发仍会自动叠加到更长梯度。",
+                  },
+                  {
+                    key: "accountCooldownServerErrorSecs",
+                    label: "5xx 冷却 (秒)",
+                    description: "上游服务端异常时的基础冷却时间。",
+                  },
+                  {
+                    key: "accountCooldownNetworkSecs",
+                    label: "网络异常冷却 (秒)",
+                    description: "连接超时、代理抖动、流中断等网络问题使用。",
+                  },
+                  {
+                    key: "accountCooldownLowQuotaSecs",
+                    label: "低配额冷却 (秒)",
+                    description: "用量刷新判定低配额或额度耗尽后使用，避免继续打到快见底账号。",
+                  },
+                  {
+                    key: "accountCooldownDeactivatedSecs",
+                    label: "停用账号冷却 (秒)",
+                    description: "命中 deactivated 后使用，建议设成较长时间。",
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.key}
+                    className="grid gap-2 rounded-2xl border border-border/50 bg-background/30 p-4"
+                  >
+                    <Label>{item.label}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={
+                        backgroundTaskDraft[item.key] ||
+                        stringifyNumber(
+                          snapshot.backgroundTasks[
+                            item.key as keyof BackgroundTaskSettings
+                          ] as number
+                        )
+                      }
+                      onChange={(event) =>
+                        setBackgroundTaskDraft((current) => ({
+                          ...current,
+                          [item.key]: event.target.value,
+                        }))
+                      }
+                      onBlur={() =>
+                        saveBackgroundTaskField(
+                          item.key as keyof BackgroundTaskSettings,
+                          0
+                        )
+                      }
+                    />
+                    <p className="text-[10px] leading-5 text-muted-foreground">
+                      {item.description}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-border/60 bg-background/20 p-4 text-xs leading-6 text-muted-foreground">
+                低配额与停用状态现在会显式进入冷却队列。
+                如果你想更激进地绕开异常账号，可以把认证异常和低配额冷却设长一点；
+                设为 <code>0</code> 则表示该类失败不额外施加冷却秒数。
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
               <CardTitle className="text-base">Worker 并发参数</CardTitle>
               <CardDescription>调整执行单元并发规模；用量刷新并发会直接影响手动刷新和后台轮询</CardDescription>
             </CardHeader>

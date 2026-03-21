@@ -19,16 +19,33 @@ pub(crate) fn apply_status_from_snapshot(
     record: &UsageSnapshotRecord,
 ) -> Availability {
     let availability = evaluate_snapshot(record);
-    if matches!(availability, Availability::Available) {
-        let current_status = storage
-            .find_account_by_id(&record.account_id)
-            .ok()
-            .flatten()
-            .map(|account| account.status)
-            .unwrap_or_default();
-        if !current_status.trim().eq_ignore_ascii_case("disabled") {
-            set_account_status(storage, &record.account_id, "active", "usage_ok");
+    match availability {
+        Availability::Available => {
+            let current_status = storage
+                .find_account_by_id(&record.account_id)
+                .ok()
+                .flatten()
+                .map(|account| account.status)
+                .unwrap_or_default();
+            if !current_status.trim().eq_ignore_ascii_case("disabled") {
+                set_account_status(storage, &record.account_id, "active", "usage_ok");
+            }
         }
+        Availability::Unavailable(reason)
+            if matches!(
+                reason,
+                "usage_protected_primary"
+                    | "usage_protected_secondary"
+                    | "usage_exhausted_primary"
+                    | "usage_exhausted_secondary"
+            ) =>
+        {
+            crate::gateway::mark_account_cooldown(
+                &record.account_id,
+                crate::gateway::CooldownReason::LowQuota,
+            );
+        }
+        Availability::Unavailable(_) => {}
     }
     availability
 }

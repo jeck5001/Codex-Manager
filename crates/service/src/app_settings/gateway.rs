@@ -38,6 +38,12 @@ pub struct BackgroundTasksInput {
     pub auto_disable_risky_accounts_failure_threshold: Option<usize>,
     pub auto_disable_risky_accounts_health_score_threshold: Option<usize>,
     pub auto_disable_risky_accounts_lookback_mins: Option<u64>,
+    pub account_cooldown_auth_secs: Option<u64>,
+    pub account_cooldown_rate_limited_secs: Option<u64>,
+    pub account_cooldown_server_error_secs: Option<u64>,
+    pub account_cooldown_network_secs: Option<u64>,
+    pub account_cooldown_low_quota_secs: Option<u64>,
+    pub account_cooldown_deactivated_secs: Option<u64>,
 }
 
 impl BackgroundTasksInput {
@@ -67,6 +73,12 @@ impl BackgroundTasksInput {
                 .auto_disable_risky_accounts_health_score_threshold,
             auto_disable_risky_accounts_lookback_mins: self
                 .auto_disable_risky_accounts_lookback_mins,
+            account_cooldown_auth_secs: self.account_cooldown_auth_secs,
+            account_cooldown_rate_limited_secs: self.account_cooldown_rate_limited_secs,
+            account_cooldown_server_error_secs: self.account_cooldown_server_error_secs,
+            account_cooldown_network_secs: self.account_cooldown_network_secs,
+            account_cooldown_low_quota_secs: self.account_cooldown_low_quota_secs,
+            account_cooldown_deactivated_secs: self.account_cooldown_deactivated_secs,
         }
     }
 }

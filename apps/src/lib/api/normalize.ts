@@ -54,6 +54,12 @@ const DEFAULT_BACKGROUND_TASKS: BackgroundTaskSettings = {
   autoDisableRiskyAccountsFailureThreshold: 3,
   autoDisableRiskyAccountsHealthScoreThreshold: 60,
   autoDisableRiskyAccountsLookbackMins: 60,
+  accountCooldownAuthSecs: 300,
+  accountCooldownRateLimitedSecs: 45,
+  accountCooldownServerErrorSecs: 30,
+  accountCooldownNetworkSecs: 20,
+  accountCooldownLowQuotaSecs: 1800,
+  accountCooldownDeactivatedSecs: 21600,
 };
 
 function asObject(payload: unknown): Record<string, unknown> {
@@ -651,6 +657,36 @@ export function normalizeBackgroundTasks(payload: unknown): BackgroundTaskSettin
       source.autoDisableRiskyAccountsLookbackMins,
       DEFAULT_BACKGROUND_TASKS.autoDisableRiskyAccountsLookbackMins,
       1
+    ),
+    accountCooldownAuthSecs: asInteger(
+      source.accountCooldownAuthSecs,
+      DEFAULT_BACKGROUND_TASKS.accountCooldownAuthSecs,
+      0
+    ),
+    accountCooldownRateLimitedSecs: asInteger(
+      source.accountCooldownRateLimitedSecs,
+      DEFAULT_BACKGROUND_TASKS.accountCooldownRateLimitedSecs,
+      0
+    ),
+    accountCooldownServerErrorSecs: asInteger(
+      source.accountCooldownServerErrorSecs,
+      DEFAULT_BACKGROUND_TASKS.accountCooldownServerErrorSecs,
+      0
+    ),
+    accountCooldownNetworkSecs: asInteger(
+      source.accountCooldownNetworkSecs,
+      DEFAULT_BACKGROUND_TASKS.accountCooldownNetworkSecs,
+      0
+    ),
+    accountCooldownLowQuotaSecs: asInteger(
+      source.accountCooldownLowQuotaSecs,
+      DEFAULT_BACKGROUND_TASKS.accountCooldownLowQuotaSecs,
+      0
+    ),
+    accountCooldownDeactivatedSecs: asInteger(
+      source.accountCooldownDeactivatedSecs,
+      DEFAULT_BACKGROUND_TASKS.accountCooldownDeactivatedSecs,
+      0
     ),
   };
 }
