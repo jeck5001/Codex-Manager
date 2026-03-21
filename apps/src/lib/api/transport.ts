@@ -125,7 +125,7 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
     direct: () => pickImportFilesFromBrowser(true),
   },
   service_account_export_by_account_files: {
-    direct: (_params, options) => exportAccountsViaBrowser(options),
+    direct: (params, options) => exportAccountsViaBrowser(params, options),
   },
   service_usage_read: { rpcMethod: "account/usage/read" },
   service_usage_list: { rpcMethod: "account/usage/list" },
@@ -548,6 +548,7 @@ async function pickImportFilesFromBrowser(directory: boolean): Promise<unknown> 
 }
 
 async function exportAccountsViaBrowser(
+  params?: Record<string, unknown>,
   options: RequestOptions = {}
 ): Promise<unknown> {
   if (typeof document === "undefined") {
@@ -555,7 +556,7 @@ async function exportAccountsViaBrowser(
   }
 
   const payload =
-    asRecord(await postWebRpc<unknown>("account/exportData", {}, options)) ?? {};
+    asRecord(await postWebRpc<unknown>("account/exportData", params ?? {}, options)) ?? {};
   const files = Array.isArray(payload.files)
     ? payload.files
         .map((item) => asRecord(item))

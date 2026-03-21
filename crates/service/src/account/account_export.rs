@@ -3,6 +3,7 @@ use codexmanager_core::{
     storage::{now_ts, Account, Token},
 };
 use serde::Serialize;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -62,6 +63,7 @@ struct ExportMetaPayload {
 
 pub(crate) fn export_accounts_to_directory(
     output_dir: &str,
+    account_ids: &[String],
 ) -> Result<AccountExportResult, String> {
     let normalized_output_dir = output_dir.trim();
     if normalized_output_dir.is_empty() {
@@ -77,7 +79,7 @@ pub(crate) fn export_accounts_to_directory(
     })?;
 
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
+    let accounts = load_accounts_for_export(&storage, account_ids)?;
     let total_accounts = accounts.len();
     let mut exported = 0usize;
     let mut skipped_missing_token = 0usize;
@@ -115,7 +117,7 @@ pub(crate) fn export_accounts_to_directory(
 
 pub(crate) fn export_accounts_data() -> Result<AccountExportDataResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
+    let accounts = load_accounts_for_export(&storage, &[])?;
     let total_accounts = accounts.len();
     let mut exported = 0usize;
     let mut skipped_missing_token = 0usize;
@@ -152,6 +154,67 @@ pub(crate) fn export_accounts_data() -> Result<AccountExportDataResult, String> 
         skipped_missing_token,
         files,
     })
+}
+
+pub(crate) fn export_accounts_data_by_ids(
+    account_ids: &[String],
+) -> Result<AccountExportDataResult, String> {
+    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let accounts = load_accounts_for_export(&storage, account_ids)?;
+    let total_accounts = accounts.len();
+    let mut exported = 0usize;
+    let mut skipped_missing_token = 0usize;
+    let mut files = Vec::new();
+    let mut file_name_counter: HashMap<String, usize> = HashMap::new();
+
+    for account in accounts {
+        let token = storage
+            .find_token_by_account_id(&account.id)
+            .map_err(|err| err.to_string())?;
+        let Some(token) = token else {
+            skipped_missing_token += 1;
+            continue;
+        };
+        let account = with_resolved_export_label(account, &token);
+
+        let file_path =
+            build_account_export_file_path(Path::new(""), &account, &mut file_name_counter);
+        let file_name = file_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(str::to_string)
+            .ok_or_else(|| "build export file name failed".to_string())?;
+        let json = build_account_export_json(&account, &token)?;
+        let content =
+            String::from_utf8(json).map_err(|err| format!("encode export utf8 failed: {err}"))?;
+        files.push(ExportAccountFile { file_name, content });
+        exported += 1;
+    }
+
+    Ok(AccountExportDataResult {
+        total_accounts,
+        exported,
+        skipped_missing_token,
+        files,
+    })
+}
+
+fn load_accounts_for_export(
+    storage: &codexmanager_core::storage::Storage,
+    account_ids: &[String],
+) -> Result<Vec<Account>, String> {
+    let selected_ids = account_ids
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    let mut accounts = storage.list_accounts().map_err(|err| err.to_string())?;
+    if selected_ids.is_empty() {
+        return Ok(accounts);
+    }
+    accounts.retain(|account| selected_ids.contains(&account.id));
+    Ok(accounts)
 }
 
 fn build_account_export_file_path(

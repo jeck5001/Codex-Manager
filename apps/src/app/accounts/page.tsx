@@ -605,7 +605,7 @@ export default function AccountsPage() {
                   <DropdownMenuItem
                     className="h-9 rounded-lg px-2"
                     disabled={isExporting}
-                    onClick={() => exportAccounts()}
+                    onClick={() => exportAccounts(effectiveSelectedIds)}
                   >
                     <Download className="mr-2 h-4 w-4" />
                     导出账号
