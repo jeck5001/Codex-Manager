@@ -501,6 +501,12 @@ export interface BackgroundTaskSettings {
   autoDisableRiskyAccountsFailureThreshold: number;
   autoDisableRiskyAccountsHealthScoreThreshold: number;
   autoDisableRiskyAccountsLookbackMins: number;
+  accountCooldownAuthSecs: number;
+  accountCooldownRateLimitedSecs: number;
+  accountCooldownServerErrorSecs: number;
+  accountCooldownNetworkSecs: number;
+  accountCooldownLowQuotaSecs: number;
+  accountCooldownDeactivatedSecs: number;
 }
 
 export interface FreeProxySyncResult {

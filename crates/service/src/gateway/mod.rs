@@ -97,8 +97,11 @@ pub(crate) fn record_http_queue_enqueue_failure() {
 #[cfg(test)]
 use cooldown::cooldown_reason_for_status;
 use cooldown::{
-    clear_account_cooldown, is_account_in_cooldown, mark_account_cooldown,
-    mark_account_cooldown_for_status, CooldownReason,
+    is_account_in_cooldown,
+};
+pub(crate) use cooldown::{
+    clear_account_cooldown, mark_account_cooldown, mark_account_cooldown_for_status,
+    CooldownReason,
 };
 #[cfg(test)]
 pub(super) use failover::should_failover_after_refresh;

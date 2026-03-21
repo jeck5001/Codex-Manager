@@ -39,9 +39,17 @@ pub(super) fn mark_usage_unreachable_if_needed(storage: &Storage, account_id: &s
     }
     if usage_error_indicates_deactivated_account(err) {
         set_account_status(storage, account_id, "deactivated", "usage_http_deactivated");
+        crate::gateway::mark_account_cooldown(
+            account_id,
+            crate::gateway::CooldownReason::Deactivated,
+        );
         return;
     }
-    if error_contains_status_code(err, 401) {
+    if error_contains_status_code(err, 401) || error_contains_status_code(err, 403) {
+        crate::gateway::mark_account_cooldown(
+            account_id,
+            crate::gateway::CooldownReason::Challenge,
+        );
         let current_status = storage
             .find_account_by_id(account_id)
             .ok()

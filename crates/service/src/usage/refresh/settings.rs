@@ -38,6 +38,22 @@ use super::{
     USAGE_REFRESH_WORKERS, USAGE_REFRESH_WORKERS_ENV,
 };
 
+const ENV_ACCOUNT_COOLDOWN_AUTH_SECS: &str = "CODEXMANAGER_ACCOUNT_COOLDOWN_AUTH_SECS";
+const ENV_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS: &str =
+    "CODEXMANAGER_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS";
+const ENV_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS: &str =
+    "CODEXMANAGER_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS";
+const ENV_ACCOUNT_COOLDOWN_NETWORK_SECS: &str = "CODEXMANAGER_ACCOUNT_COOLDOWN_NETWORK_SECS";
+const ENV_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS: &str = "CODEXMANAGER_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS";
+const ENV_ACCOUNT_COOLDOWN_DEACTIVATED_SECS: &str =
+    "CODEXMANAGER_ACCOUNT_COOLDOWN_DEACTIVATED_SECS";
+const DEFAULT_ACCOUNT_COOLDOWN_AUTH_SECS: u64 = 300;
+const DEFAULT_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS: u64 = 45;
+const DEFAULT_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS: u64 = 30;
+const DEFAULT_ACCOUNT_COOLDOWN_NETWORK_SECS: u64 = 20;
+const DEFAULT_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS: u64 = 1800;
+const DEFAULT_ACCOUNT_COOLDOWN_DEACTIVATED_SECS: u64 = 21600;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BackgroundTasksSettings {
@@ -62,6 +78,12 @@ pub(crate) struct BackgroundTasksSettings {
     auto_disable_risky_accounts_failure_threshold: usize,
     auto_disable_risky_accounts_health_score_threshold: usize,
     auto_disable_risky_accounts_lookback_mins: u64,
+    account_cooldown_auth_secs: u64,
+    account_cooldown_rate_limited_secs: u64,
+    account_cooldown_server_error_secs: u64,
+    account_cooldown_network_secs: u64,
+    account_cooldown_low_quota_secs: u64,
+    account_cooldown_deactivated_secs: u64,
     requires_restart_keys: Vec<&'static str>,
 }
 
@@ -88,6 +110,12 @@ pub(crate) struct BackgroundTasksSettingsPatch {
     pub auto_disable_risky_accounts_failure_threshold: Option<usize>,
     pub auto_disable_risky_accounts_health_score_threshold: Option<usize>,
     pub auto_disable_risky_accounts_lookback_mins: Option<u64>,
+    pub account_cooldown_auth_secs: Option<u64>,
+    pub account_cooldown_rate_limited_secs: Option<u64>,
+    pub account_cooldown_server_error_secs: Option<u64>,
+    pub account_cooldown_network_secs: Option<u64>,
+    pub account_cooldown_low_quota_secs: Option<u64>,
+    pub account_cooldown_deactivated_secs: Option<u64>,
 }
 
 pub(crate) fn background_tasks_settings() -> BackgroundTasksSettings {
@@ -121,6 +149,12 @@ pub(crate) fn background_tasks_settings() -> BackgroundTasksSettings {
             AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD.load(Ordering::Relaxed),
         auto_disable_risky_accounts_lookback_mins: AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS
             .load(Ordering::Relaxed),
+        account_cooldown_auth_secs: account_cooldown_auth_secs(),
+        account_cooldown_rate_limited_secs: account_cooldown_rate_limited_secs(),
+        account_cooldown_server_error_secs: account_cooldown_server_error_secs(),
+        account_cooldown_network_secs: account_cooldown_network_secs(),
+        account_cooldown_low_quota_secs: account_cooldown_low_quota_secs(),
+        account_cooldown_deactivated_secs: account_cooldown_deactivated_secs(),
         requires_restart_keys: BACKGROUND_TASK_RESTART_REQUIRED_KEYS.to_vec(),
     }
 }
@@ -254,6 +288,24 @@ pub(crate) fn set_background_tasks_settings(
             ENV_AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS,
             normalized.to_string(),
         );
+    }
+    if let Some(value) = patch.account_cooldown_auth_secs {
+        std::env::set_var(ENV_ACCOUNT_COOLDOWN_AUTH_SECS, value.to_string());
+    }
+    if let Some(value) = patch.account_cooldown_rate_limited_secs {
+        std::env::set_var(ENV_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS, value.to_string());
+    }
+    if let Some(value) = patch.account_cooldown_server_error_secs {
+        std::env::set_var(ENV_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS, value.to_string());
+    }
+    if let Some(value) = patch.account_cooldown_network_secs {
+        std::env::set_var(ENV_ACCOUNT_COOLDOWN_NETWORK_SECS, value.to_string());
+    }
+    if let Some(value) = patch.account_cooldown_low_quota_secs {
+        std::env::set_var(ENV_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS, value.to_string());
+    }
+    if let Some(value) = patch.account_cooldown_deactivated_secs {
+        std::env::set_var(ENV_ACCOUNT_COOLDOWN_DEACTIVATED_SECS, value.to_string());
     }
 
     background_tasks_settings()
@@ -428,4 +480,46 @@ fn env_u64_or(name: &str, default: u64) -> u64 {
         .ok()
         .and_then(|value| value.trim().parse::<u64>().ok())
         .unwrap_or(default)
+}
+
+pub(crate) fn account_cooldown_auth_secs() -> u64 {
+    env_u64_or(
+        ENV_ACCOUNT_COOLDOWN_AUTH_SECS,
+        DEFAULT_ACCOUNT_COOLDOWN_AUTH_SECS,
+    )
+}
+
+pub(crate) fn account_cooldown_rate_limited_secs() -> u64 {
+    env_u64_or(
+        ENV_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS,
+        DEFAULT_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS,
+    )
+}
+
+pub(crate) fn account_cooldown_server_error_secs() -> u64 {
+    env_u64_or(
+        ENV_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS,
+        DEFAULT_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS,
+    )
+}
+
+pub(crate) fn account_cooldown_network_secs() -> u64 {
+    env_u64_or(
+        ENV_ACCOUNT_COOLDOWN_NETWORK_SECS,
+        DEFAULT_ACCOUNT_COOLDOWN_NETWORK_SECS,
+    )
+}
+
+pub(crate) fn account_cooldown_low_quota_secs() -> u64 {
+    env_u64_or(
+        ENV_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS,
+        DEFAULT_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS,
+    )
+}
+
+pub(crate) fn account_cooldown_deactivated_secs() -> u64 {
+    env_u64_or(
+        ENV_ACCOUNT_COOLDOWN_DEACTIVATED_SECS,
+        DEFAULT_ACCOUNT_COOLDOWN_DEACTIVATED_SECS,
+    )
 }

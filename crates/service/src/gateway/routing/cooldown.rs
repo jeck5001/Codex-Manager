@@ -4,13 +4,7 @@ use std::sync::{Mutex, OnceLock};
 use codexmanager_core::storage::now_ts;
 
 const DEFAULT_ACCOUNT_COOLDOWN_SECS: i64 = 20;
-const DEFAULT_ACCOUNT_COOLDOWN_NETWORK_SECS: i64 = DEFAULT_ACCOUNT_COOLDOWN_SECS;
-const DEFAULT_ACCOUNT_COOLDOWN_429_SECS: i64 = 45;
-const DEFAULT_ACCOUNT_COOLDOWN_5XX_SECS: i64 = 30;
 const DEFAULT_ACCOUNT_COOLDOWN_4XX_SECS: i64 = DEFAULT_ACCOUNT_COOLDOWN_SECS;
-const DEFAULT_ACCOUNT_COOLDOWN_CHALLENGE_SECS: i64 = 6;
-const ACCOUNT_RATE_LIMIT_COOLDOWN_LADDER_SECS: [i64; 4] =
-    [DEFAULT_ACCOUNT_COOLDOWN_429_SECS, 300, 1800, 7200];
 // 中文注释：offense 只用于“短时间内持续 429”场景；超过该时间视为新一轮，避免长期记仇导致误伤。
 const ACCOUNT_RATE_LIMIT_OFFENSE_FORGET_AFTER_SECS: i64 = 30 * 60;
 
@@ -34,24 +28,47 @@ pub(super) enum CooldownReason {
     Upstream5xx,
     Upstream4xx,
     Challenge,
+    LowQuota,
+    Deactivated,
+}
+
+fn u64_to_i64_saturating(value: u64) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
 }
 
 fn cooldown_secs_for_reason(reason: CooldownReason) -> i64 {
     match reason {
         CooldownReason::Default => DEFAULT_ACCOUNT_COOLDOWN_SECS,
-        CooldownReason::Network => DEFAULT_ACCOUNT_COOLDOWN_NETWORK_SECS,
-        CooldownReason::RateLimited => DEFAULT_ACCOUNT_COOLDOWN_429_SECS,
-        CooldownReason::Upstream5xx => DEFAULT_ACCOUNT_COOLDOWN_5XX_SECS,
+        CooldownReason::Network => {
+            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_network_secs())
+        }
+        CooldownReason::RateLimited => {
+            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_rate_limited_secs())
+        }
+        CooldownReason::Upstream5xx => {
+            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_server_error_secs())
+        }
         CooldownReason::Upstream4xx => DEFAULT_ACCOUNT_COOLDOWN_4XX_SECS,
-        CooldownReason::Challenge => DEFAULT_ACCOUNT_COOLDOWN_CHALLENGE_SECS,
+        CooldownReason::Challenge => {
+            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_auth_secs())
+        }
+        CooldownReason::LowQuota => {
+            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_low_quota_secs())
+        }
+        CooldownReason::Deactivated => {
+            u64_to_i64_saturating(crate::usage_refresh::account_cooldown_deactivated_secs())
+        }
     }
 }
 
 fn rate_limit_cooldown_secs_for_offense(offense_count: u32) -> i64 {
-    let idx = offense_count
-        .saturating_sub(1)
-        .min((ACCOUNT_RATE_LIMIT_COOLDOWN_LADDER_SECS.len() - 1) as u32) as usize;
-    ACCOUNT_RATE_LIMIT_COOLDOWN_LADDER_SECS[idx]
+    let base = cooldown_secs_for_reason(CooldownReason::RateLimited);
+    match offense_count {
+        0 | 1 => base,
+        2 => base.max(300),
+        3 => base.max(1800),
+        _ => base.max(7200),
+    }
 }
 
 fn cooldown_secs_for_mark(

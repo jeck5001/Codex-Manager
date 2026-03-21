@@ -168,6 +168,21 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     req,
                     "autoDisableRiskyAccountsLookbackMins",
                 ),
+                account_cooldown_auth_secs: u64_param(req, "accountCooldownAuthSecs"),
+                account_cooldown_rate_limited_secs: u64_param(
+                    req,
+                    "accountCooldownRateLimitedSecs",
+                ),
+                account_cooldown_server_error_secs: u64_param(
+                    req,
+                    "accountCooldownServerErrorSecs",
+                ),
+                account_cooldown_network_secs: u64_param(req, "accountCooldownNetworkSecs"),
+                account_cooldown_low_quota_secs: u64_param(req, "accountCooldownLowQuotaSecs"),
+                account_cooldown_deactivated_secs: u64_param(
+                    req,
+                    "accountCooldownDeactivatedSecs",
+                ),
             };
             let input = crate::BackgroundTasksInput {
                 usage_polling_enabled: patch.usage_polling_enabled,
@@ -194,6 +209,12 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     .auto_disable_risky_accounts_health_score_threshold,
                 auto_disable_risky_accounts_lookback_mins: patch
                     .auto_disable_risky_accounts_lookback_mins,
+                account_cooldown_auth_secs: patch.account_cooldown_auth_secs,
+                account_cooldown_rate_limited_secs: patch.account_cooldown_rate_limited_secs,
+                account_cooldown_server_error_secs: patch.account_cooldown_server_error_secs,
+                account_cooldown_network_secs: patch.account_cooldown_network_secs,
+                account_cooldown_low_quota_secs: patch.account_cooldown_low_quota_secs,
+                account_cooldown_deactivated_secs: patch.account_cooldown_deactivated_secs,
             };
             super::value_or_error(crate::set_gateway_background_tasks(input))
         }
