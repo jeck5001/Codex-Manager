@@ -587,34 +587,118 @@ class RegistrationEngine:
                 self._log("未能获取到授权 Cookie", "error")
                 return None
 
-            # 解码 JWT
             import base64
             import json as json_module
 
             try:
                 segments = auth_cookie.split(".")
-                if len(segments) < 1:
+                if not segments:
                     self._log("授权 Cookie 格式错误", "error")
                     return None
 
-                # 解码第一个 segment
-                payload = segments[0]
-                pad = "=" * ((4 - (len(payload) % 4)) % 4)
-                decoded = base64.urlsafe_b64decode((payload + pad).encode("ascii"))
-                auth_json = json_module.loads(decoded.decode("utf-8"))
+                def _clean_str(value: Any) -> str:
+                    if value is None:
+                        return ""
+                    return str(value).strip()
 
-                workspaces = auth_json.get("workspaces") or []
-                if not workspaces:
-                    self._log("授权 Cookie 里没有 workspace 信息", "error")
-                    return None
+                def _workspace_id_from_mapping(data: Dict[str, Any]) -> str:
+                    if not isinstance(data, dict):
+                        return ""
 
-                workspace_id = str((workspaces[0] or {}).get("id") or "").strip()
-                if not workspace_id:
-                    self._log("无法解析 workspace_id", "error")
-                    return None
+                    direct_keys = (
+                        "workspace_id",
+                        "organization_id",
+                        "org_id",
+                        "default_workspace_id",
+                        "default_organization_id",
+                    )
+                    item_keys = ("id", "workspace_id", "organization_id", "org_id")
+                    nested_keys = (
+                        "default_workspace",
+                        "default_organization",
+                        "workspace",
+                        "organization",
+                    )
 
-                self._log(f"Workspace ID: {workspace_id}")
-                return workspace_id
+                    for key in direct_keys:
+                        candidate = _clean_str(data.get(key))
+                        if candidate:
+                            return candidate
+
+                    for nested_key in nested_keys:
+                        nested = data.get(nested_key)
+                        if isinstance(nested, dict):
+                            for key in item_keys:
+                                candidate = _clean_str(nested.get(key))
+                                if candidate:
+                                    return candidate
+
+                    for list_key in ("workspaces", "organizations"):
+                        items = data.get(list_key)
+                        if not isinstance(items, list):
+                            continue
+                        ordered_items = []
+                        default_item = next(
+                            (
+                                item for item in items
+                                if isinstance(item, dict) and item.get("is_default") is True
+                            ),
+                            None,
+                        )
+                        if default_item is not None:
+                            ordered_items.append(default_item)
+                        ordered_items.extend(
+                            item for item in items
+                            if isinstance(item, dict) and item is not default_item
+                        )
+                        for item in ordered_items:
+                            for key in item_keys:
+                                candidate = _clean_str(item.get(key))
+                                if candidate:
+                                    return candidate
+
+                    nested_auth = data.get("auth")
+                    if isinstance(nested_auth, dict):
+                        candidate = _workspace_id_from_mapping(nested_auth)
+                        if candidate:
+                            return candidate
+
+                    nested_openai_auth = data.get("https://api.openai.com/auth")
+                    if isinstance(nested_openai_auth, dict):
+                        candidate = _workspace_id_from_mapping(nested_openai_auth)
+                        if candidate:
+                            return candidate
+
+                    return ""
+
+                inspected_keys = []
+                for idx, payload in enumerate(segments):
+                    raw = _clean_str(payload)
+                    if not raw:
+                        continue
+                    pad = "=" * ((4 - (len(raw) % 4)) % 4)
+                    try:
+                        decoded = base64.urlsafe_b64decode((raw + pad).encode("ascii"))
+                        auth_json = json_module.loads(decoded.decode("utf-8"))
+                    except Exception:
+                        continue
+
+                    if isinstance(auth_json, dict):
+                        inspected_keys.append(f"segment[{idx}]={','.join(sorted(auth_json.keys())[:8])}")
+                        workspace_id = _workspace_id_from_mapping(auth_json)
+                        if workspace_id:
+                            self._log(f"Workspace ID: {workspace_id}")
+                            return workspace_id
+
+                if inspected_keys:
+                    self._log(
+                        "授权 Cookie 里没有可识别的 workspace 信息，已检查: "
+                        + " | ".join(inspected_keys),
+                        "error",
+                    )
+                else:
+                    self._log("授权 Cookie 里没有可解析的 JSON segment", "error")
+                return None
 
             except Exception as e:
                 self._log(f"解析授权 Cookie 失败: {e}", "error")
