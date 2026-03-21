@@ -1,6 +1,6 @@
 use super::{
-    AccountListParams, AccountListResult, AccountSummary, RequestLogFilterSummaryResult,
-    RequestLogListParams, RequestLogListResult, RequestLogSummary,
+    AccountListParams, AccountListResult, AccountSummary, GovernanceSummaryItem,
+    RequestLogFilterSummaryResult, RequestLogListParams, RequestLogListResult, RequestLogSummary,
 };
 
 #[test]
@@ -11,9 +11,16 @@ fn account_summary_serialization_matches_compact_contract() {
         group_name: Some("TEAM".to_string()),
         sort: 10,
         status: "active".to_string(),
+        health_score: 108,
+        last_status_reason: Some("手动禁用".to_string()),
+        last_status_changed_at: Some(11),
+        last_governance_reason: Some("Refresh 连续失效".to_string()),
+        last_governance_at: Some(12),
         subscription_plan_type: Some("plus".to_string()),
         subscription_updated_at: Some(1),
         team_manager_uploaded_at: Some(2),
+        official_promo_link: Some("https://example.com".to_string()),
+        official_promo_link_updated_at: Some(3),
     };
 
     let value = serde_json::to_value(summary).expect("serialize account summary");
@@ -25,6 +32,11 @@ fn account_summary_serialization_matches_compact_contract() {
         "groupName",
         "sort",
         "status",
+        "healthScore",
+        "lastStatusReason",
+        "lastStatusChangedAt",
+        "lastGovernanceReason",
+        "lastGovernanceAt",
         "subscriptionPlanType",
         "subscriptionUpdatedAt",
         "teamManagerUploadedAt",
@@ -56,9 +68,16 @@ fn account_list_result_serialization_includes_pagination_fields() {
             group_name: Some("TEAM".to_string()),
             sort: 10,
             status: "active".to_string(),
+            health_score: 108,
+            last_status_reason: Some("手动禁用".to_string()),
+            last_status_changed_at: Some(11),
+            last_governance_reason: Some("Refresh 连续失效".to_string()),
+            last_governance_at: Some(12),
             subscription_plan_type: Some("team".to_string()),
             subscription_updated_at: Some(1),
             team_manager_uploaded_at: Some(2),
+            official_promo_link: Some("https://example.com".to_string()),
+            official_promo_link_updated_at: Some(3),
         }],
         total: 9,
         page: 2,
@@ -68,6 +87,31 @@ fn account_list_result_serialization_includes_pagination_fields() {
     let value = serde_json::to_value(result).expect("serialize account list result");
     let obj = value.as_object().expect("account list result object");
     for key in ["items", "total", "page", "pageSize"] {
+        assert!(obj.contains_key(key), "missing key: {key}");
+    }
+}
+
+#[test]
+fn governance_summary_item_serialization_uses_camel_case() {
+    let result = GovernanceSummaryItem {
+        code: "refresh_token_disabled".to_string(),
+        label: "Refresh 连续失效".to_string(),
+        target_status: "disabled".to_string(),
+        count: 2,
+        affected_accounts: 2,
+        last_seen_at: Some(1),
+    };
+
+    let value = serde_json::to_value(result).expect("serialize governance summary");
+    let obj = value.as_object().expect("governance summary object");
+    for key in [
+        "code",
+        "label",
+        "targetStatus",
+        "count",
+        "affectedAccounts",
+        "lastSeenAt",
+    ] {
         assert!(obj.contains_key(key), "missing key: {key}");
     }
 }

@@ -1,6 +1,12 @@
 "use client";
 
-import { Account, AccountUsage, AvailabilityLevel, RequestLog } from "@/types";
+import {
+  Account,
+  AccountHealthTier,
+  AccountUsage,
+  AvailabilityLevel,
+  RequestLog,
+} from "@/types";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   year: "numeric",
@@ -310,6 +316,22 @@ export function canParticipateInRouting(level: AvailabilityLevel): boolean {
   return level !== "warn" && level !== "bad";
 }
 
+export function formatHealthTierLabel(tier: AccountHealthTier): string {
+  if (tier === "healthy") return "优秀";
+  if (tier === "warning") return "预警";
+  return "风险";
+}
+
+export function healthTierToneClass(tier: AccountHealthTier): string {
+  if (tier === "healthy") {
+    return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+  }
+  if (tier === "warning") {
+    return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+  }
+  return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+}
+
 export function pickCurrentAccount(
   accounts: Account[],
   requestLogs: RequestLog[],
@@ -361,18 +383,44 @@ export function pickBestRecommendations(accounts: Account[]): {
     if (
       account.primaryRemainPercent != null &&
       (!primaryPick ||
-        (primaryPick.primaryRemainPercent ?? -1) < account.primaryRemainPercent)
+        compareRecommendationCandidate(
+          account,
+          primaryPick,
+          "primaryRemainPercent"
+        ) > 0)
     ) {
       primaryPick = account;
     }
     if (
       account.secondaryRemainPercent != null &&
       (!secondaryPick ||
-        (secondaryPick.secondaryRemainPercent ?? -1) < account.secondaryRemainPercent)
+        compareRecommendationCandidate(
+          account,
+          secondaryPick,
+          "secondaryRemainPercent"
+        ) > 0)
     ) {
       secondaryPick = account;
     }
   }
 
   return { primaryPick, secondaryPick };
+}
+
+function compareRecommendationCandidate(
+  left: Account,
+  right: Account,
+  quotaField: "primaryRemainPercent" | "secondaryRemainPercent"
+): number {
+  const leftHealth = Number(left.healthScore || 0);
+  const rightHealth = Number(right.healthScore || 0);
+  if (leftHealth !== rightHealth) {
+    return leftHealth - rightHealth;
+  }
+  const leftQuota = Number(left[quotaField] ?? -1);
+  const rightQuota = Number(right[quotaField] ?? -1);
+  if (leftQuota !== rightQuota) {
+    return leftQuota - rightQuota;
+  }
+  return left.name.localeCompare(right.name, "zh-Hans-CN");
 }

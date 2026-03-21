@@ -206,6 +206,7 @@ pub(crate) use request_entry::handle_gateway_request;
 use request_gate::{request_gate_lock, RequestGateAcquireError};
 use request_log::write_request_log;
 use route_hint::apply_route_strategy;
+pub(crate) use route_quality::route_health_score;
 use route_quality::record_route_quality;
 pub(crate) use runtime_config::front_proxy_max_body_bytes;
 use runtime_config::{

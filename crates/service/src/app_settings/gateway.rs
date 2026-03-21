@@ -31,6 +31,10 @@ pub struct BackgroundTasksInput {
     pub auto_register_pool_enabled: Option<bool>,
     pub auto_register_ready_account_count: Option<usize>,
     pub auto_register_ready_remain_percent: Option<u64>,
+    pub auto_disable_risky_accounts_enabled: Option<bool>,
+    pub auto_disable_risky_accounts_failure_threshold: Option<usize>,
+    pub auto_disable_risky_accounts_health_score_threshold: Option<usize>,
+    pub auto_disable_risky_accounts_lookback_mins: Option<u64>,
 }
 
 impl BackgroundTasksInput {
@@ -50,6 +54,13 @@ impl BackgroundTasksInput {
             auto_register_pool_enabled: self.auto_register_pool_enabled,
             auto_register_ready_account_count: self.auto_register_ready_account_count,
             auto_register_ready_remain_percent: self.auto_register_ready_remain_percent,
+            auto_disable_risky_accounts_enabled: self.auto_disable_risky_accounts_enabled,
+            auto_disable_risky_accounts_failure_threshold: self
+                .auto_disable_risky_accounts_failure_threshold,
+            auto_disable_risky_accounts_health_score_threshold: self
+                .auto_disable_risky_accounts_health_score_threshold,
+            auto_disable_risky_accounts_lookback_mins: self
+                .auto_disable_risky_accounts_lookback_mins,
         }
     }
 }

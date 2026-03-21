@@ -30,6 +30,16 @@ pub struct AccountSummary {
     pub sort: i64,
     pub status: String,
     #[serde(default)]
+    pub health_score: i64,
+    #[serde(default)]
+    pub last_status_reason: Option<String>,
+    #[serde(default)]
+    pub last_status_changed_at: Option<i64>,
+    #[serde(default)]
+    pub last_governance_reason: Option<String>,
+    #[serde(default)]
+    pub last_governance_at: Option<i64>,
+    #[serde(default)]
     pub subscription_plan_type: Option<String>,
     #[serde(default)]
     pub subscription_updated_at: Option<i64>,
@@ -175,6 +185,27 @@ pub struct UsageAggregateSummaryResult {
     pub secondary_known_count: i64,
     pub secondary_unknown_count: i64,
     pub secondary_remain_percent: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FailureReasonSummaryItem {
+    pub code: String,
+    pub label: String,
+    pub count: i64,
+    pub affected_accounts: i64,
+    pub last_seen_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GovernanceSummaryItem {
+    pub code: String,
+    pub label: String,
+    pub target_status: String,
+    pub count: i64,
+    pub affected_accounts: i64,
+    pub last_seen_at: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -338,6 +369,10 @@ pub struct StartupSnapshotResult {
     pub usage_snapshots: Vec<UsageSnapshotResult>,
     #[serde(default)]
     pub usage_aggregate_summary: UsageAggregateSummaryResult,
+    #[serde(default)]
+    pub failure_reason_summary: Vec<FailureReasonSummaryItem>,
+    #[serde(default)]
+    pub governance_summary: Vec<GovernanceSummaryItem>,
     pub api_keys: Vec<ApiKeySummary>,
     pub api_model_options: Vec<ModelOption>,
     pub manual_preferred_account_id: Option<String>,

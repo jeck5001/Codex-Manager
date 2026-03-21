@@ -8,9 +8,12 @@ import {
   ApiKeyCreateResult,
   ApiKeyUsageStat,
   AppSettings,
+  AccountHealthTier,
   BackgroundTaskSettings,
   DeviceAuthInfo,
   EnvOverrideCatalogItem,
+  FailureReasonSummaryItem,
+  GovernanceSummaryItem,
   FreeProxySyncResult,
   LoginStartResult,
   ModelOption,
@@ -43,6 +46,10 @@ const DEFAULT_BACKGROUND_TASKS: BackgroundTaskSettings = {
   autoRegisterPoolEnabled: false,
   autoRegisterReadyAccountCount: 2,
   autoRegisterReadyRemainPercent: 20,
+  autoDisableRiskyAccountsEnabled: false,
+  autoDisableRiskyAccountsFailureThreshold: 3,
+  autoDisableRiskyAccountsHealthScoreThreshold: 60,
+  autoDisableRiskyAccountsLookbackMins: 60,
 };
 
 function asObject(payload: unknown): Record<string, unknown> {
@@ -135,6 +142,54 @@ export function normalizeUsageAggregateSummary(payload: unknown): UsageAggregate
   };
 }
 
+export function normalizeFailureReasonSummary(
+  payload: unknown
+): FailureReasonSummaryItem[] {
+  return asArray(payload)
+    .map((item) => {
+      const source = asObject(item);
+      const code = asString(source.code);
+      if (!code) return null;
+      return {
+        code,
+        label: asString(source.label) || code,
+        count: asInteger(source.count, 0, 0),
+        affectedAccounts: asInteger(
+          source.affectedAccounts ?? source.affected_accounts,
+          0,
+          0
+        ),
+        lastSeenAt: toNullableNumber(source.lastSeenAt ?? source.last_seen_at),
+      };
+    })
+    .filter((item): item is FailureReasonSummaryItem => Boolean(item));
+}
+
+export function normalizeGovernanceSummary(
+  payload: unknown
+): GovernanceSummaryItem[] {
+  return asArray(payload)
+    .map((item) => {
+      const source = asObject(item);
+      const code = asString(source.code);
+      if (!code) return null;
+      return {
+        code,
+        label: asString(source.label) || code,
+        targetStatus:
+          asString(source.targetStatus ?? source.target_status) || "disabled",
+        count: asInteger(source.count, 0, 0),
+        affectedAccounts: asInteger(
+          source.affectedAccounts ?? source.affected_accounts,
+          0,
+          0
+        ),
+        lastSeenAt: toNullableNumber(source.lastSeenAt ?? source.last_seen_at),
+      };
+    })
+    .filter((item): item is GovernanceSummaryItem => Boolean(item));
+}
+
 export function normalizeTodaySummary(payload: unknown): RequestLogTodaySummary {
   const source = asObject(payload);
   const inputTokens = asInteger(source.inputTokens, 0, 0);
@@ -163,8 +218,15 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
   const name = asString(source.label || source.name) || id;
   const groupName = asString(source.groupName ?? source.group_name);
   const status = asString(source.status);
+  const healthScore = asInteger(source.healthScore ?? source.health_score, 100, 0);
   const availability = calcAvailability(usage, { status });
   const usageBuckets = getUsageDisplayBuckets(usage);
+  const healthTier = deriveAccountHealthTier({
+    status,
+    healthScore,
+    availabilityLevel: availability.level,
+    isLowQuota: isLowQuotaUsage(usage),
+  });
 
   return {
     id,
@@ -175,6 +237,18 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     groupName,
     sort: asInteger(source.sort ?? source.priority, 0, 0),
     status,
+    healthScore,
+    healthTier,
+    lastStatusReason:
+      asString(source.lastStatusReason ?? source.last_status_reason) || null,
+    lastStatusChangedAt: toNullableNumber(
+      source.lastStatusChangedAt ?? source.last_status_changed_at
+    ),
+    lastGovernanceReason:
+      asString(source.lastGovernanceReason ?? source.last_governance_reason) || null,
+    lastGovernanceAt: toNullableNumber(
+      source.lastGovernanceAt ?? source.last_governance_at
+    ),
     isAvailable: availability.level === "ok",
     isLowQuota: isLowQuotaUsage(usage),
     isDeactivated: status.toLowerCase() === "deactivated",
@@ -199,6 +273,29 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     ),
     usage: usage ?? null,
   };
+}
+
+function deriveAccountHealthTier(input: {
+  status: string;
+  healthScore: number;
+  availabilityLevel: string;
+  isLowQuota: boolean;
+}): AccountHealthTier {
+  const normalizedStatus = String(input.status || "").trim().toLowerCase();
+  if (
+    ["deactivated", "disabled", "inactive", "unavailable"].includes(normalizedStatus) ||
+    input.healthScore < 70
+  ) {
+    return "risky";
+  }
+  if (
+    input.isLowQuota ||
+    input.availabilityLevel !== "ok" ||
+    input.healthScore < 100
+  ) {
+    return "warning";
+  }
+  return "healthy";
 }
 
 export function normalizeAccountList(
@@ -484,6 +581,25 @@ export function normalizeBackgroundTasks(payload: unknown): BackgroundTaskSettin
       DEFAULT_BACKGROUND_TASKS.autoRegisterReadyRemainPercent,
       0
     ),
+    autoDisableRiskyAccountsEnabled: asBoolean(
+      source.autoDisableRiskyAccountsEnabled,
+      DEFAULT_BACKGROUND_TASKS.autoDisableRiskyAccountsEnabled
+    ),
+    autoDisableRiskyAccountsFailureThreshold: asInteger(
+      source.autoDisableRiskyAccountsFailureThreshold,
+      DEFAULT_BACKGROUND_TASKS.autoDisableRiskyAccountsFailureThreshold,
+      1
+    ),
+    autoDisableRiskyAccountsHealthScoreThreshold: asInteger(
+      source.autoDisableRiskyAccountsHealthScoreThreshold,
+      DEFAULT_BACKGROUND_TASKS.autoDisableRiskyAccountsHealthScoreThreshold,
+      1
+    ),
+    autoDisableRiskyAccountsLookbackMins: asInteger(
+      source.autoDisableRiskyAccountsLookbackMins,
+      DEFAULT_BACKGROUND_TASKS.autoDisableRiskyAccountsLookbackMins,
+      1
+    ),
   };
 }
 
@@ -603,6 +719,12 @@ export function normalizeStartupSnapshot(payload: unknown): StartupSnapshot {
     accounts,
     usageSnapshots,
     usageAggregateSummary: normalizeUsageAggregateSummary(source.usageAggregateSummary),
+    failureReasonSummary: normalizeFailureReasonSummary(
+      source.failureReasonSummary ?? source.failure_reason_summary
+    ),
+    governanceSummary: normalizeGovernanceSummary(
+      source.governanceSummary ?? source.governance_summary
+    ),
     apiKeys: normalizeApiKeyList(source.apiKeys),
     apiModelOptions: normalizeModelOptions(source.apiModelOptions),
     manualPreferredAccountId: asString(source.manualPreferredAccountId),

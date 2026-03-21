@@ -7,17 +7,26 @@ import {
   Database,
   DollarSign,
   PieChart,
+  ShieldAlert,
   Users,
   XCircle,
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
 import { cn } from "@/lib/utils";
-import { formatCompactNumber } from "@/lib/utils/usage";
+import {
+  formatCompactNumber,
+  formatHealthTierLabel,
+  formatTsFromSeconds,
+  healthTierToneClass,
+} from "@/lib/utils/usage";
 
 interface StatProgressCardProps {
   title: string;
@@ -41,6 +50,78 @@ interface AccountHighlightCardProps {
   tone?: "green" | "blue";
   progressLabel?: string;
   progressValue?: number | null | undefined;
+  healthTier?: "healthy" | "warning" | "risky";
+  healthScore?: number;
+}
+
+function openFailureDrilldown(
+  router: ReturnType<typeof useRouter>,
+  code: string,
+  label: string,
+) {
+  const normalized = String(code || "").trim().toLowerCase();
+  const accountParams = new URLSearchParams();
+  const logParams = new URLSearchParams();
+
+  switch (normalized) {
+    case "account_deactivated":
+      accountParams.set("status", "deactivated");
+      accountParams.set("statusReason", "检测到账号已停用");
+      router.push(`/accounts?${accountParams.toString()}`);
+      return;
+    case "refresh_token_expired":
+      accountParams.set("statusReason", "Refresh 已过期");
+      router.push(`/accounts?${accountParams.toString()}`);
+      return;
+    case "refresh_token_reused":
+      accountParams.set("statusReason", "Refresh 已复用");
+      router.push(`/accounts?${accountParams.toString()}`);
+      return;
+    case "refresh_token_invalidated":
+      accountParams.set("statusReason", "Refresh 已失效");
+      router.push(`/accounts?${accountParams.toString()}`);
+      return;
+    case "refresh_token_invalid":
+      accountParams.set("statusReason", "Refresh 刷新失败");
+      router.push(`/accounts?${accountParams.toString()}`);
+      return;
+    case "usage_unauthorized":
+      accountParams.set("statusReason", "授权失效");
+      router.push(`/accounts?${accountParams.toString()}`);
+      return;
+    case "usage_forbidden":
+      logParams.set("query", "status:403");
+      logParams.set("statusFilter", "4xx");
+      router.push(`/logs?${logParams.toString()}`);
+      return;
+    case "usage_rate_limited":
+      logParams.set("query", "status:429");
+      logParams.set("statusFilter", "4xx");
+      router.push(`/logs?${logParams.toString()}`);
+      return;
+    case "usage_upstream_server_error":
+      logParams.set("query", "status:5xx");
+      logParams.set("statusFilter", "5xx");
+      router.push(`/logs?${logParams.toString()}`);
+      return;
+    case "network_timeout":
+      logParams.set("query", "error:timeout");
+      router.push(`/logs?${logParams.toString()}`);
+      return;
+    case "network_dns":
+      logParams.set("query", "error:dns");
+      router.push(`/logs?${logParams.toString()}`);
+      return;
+    case "network_connection":
+      logParams.set("query", "error:connect");
+      router.push(`/logs?${logParams.toString()}`);
+      return;
+    default:
+      if (label) {
+        logParams.set("query", label);
+      }
+      router.push(logParams.size > 0 ? `/logs?${logParams.toString()}` : "/logs");
+    }
 }
 
 function formatPercent(value: number | null | undefined): string {
@@ -87,6 +168,8 @@ function AccountHighlightCard({
   tone = "green",
   progressLabel,
   progressValue,
+  healthTier = "healthy",
+  healthScore,
 }: AccountHighlightCardProps) {
   const iconToneClass =
     tone === "blue"
@@ -109,6 +192,14 @@ function AccountHighlightCard({
           <p className="truncate text-sm font-semibold leading-5">{name}</p>
           <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
         </div>
+        {healthScore != null ? (
+          <Badge
+            variant="secondary"
+            className={cn("shrink-0 px-2 py-0.5 text-[10px]", healthTierToneClass(healthTier))}
+          >
+            {formatHealthTierLabel(healthTier)} {healthScore}
+          </Badge>
+        ) : null}
       </div>
       {progressLabel ? (
         <div className="mt-3 border-t border-border/40 pt-3">
@@ -153,10 +244,28 @@ function StatProgressCard({
 }
 
 export default function DashboardPage() {
-  const { stats, currentAccount, recommendations, requestLogs, isLoading, isServiceReady } =
-    useDashboardStats();
+  const router = useRouter();
+  const {
+    stats,
+    currentAccount,
+    recommendations,
+    failureReasonSummary,
+    governanceSummary,
+    requestLogs,
+    isLoading,
+    isServiceReady,
+  } = useDashboardStats();
   const poolPrimary = stats.poolRemain?.primary ?? 0;
   const poolSecondary = stats.poolRemain?.secondary ?? 0;
+
+  const openGovernedAccounts = (governanceReason?: string) => {
+    const params = new URLSearchParams();
+    params.set("status", "governed");
+    if (governanceReason) {
+      params.set("governanceReason", governanceReason);
+    }
+    router.push(`/accounts?${params.toString()}`);
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
@@ -178,6 +287,17 @@ export default function DashboardPage() {
                 <div className="mt-4 flex w-fit items-center gap-2 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-600 dark:text-blue-400">
                   <Activity className="h-3 w-3" />
                   最近日志 {requestLogs.length} 条
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-[10px]">
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">
+                    优秀 {stats.healthy}
+                  </span>
+                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+                    预警 {stats.warning}
+                  </span>
+                  <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-rose-700 dark:text-rose-300">
+                    风险 {stats.risky}
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -285,6 +405,120 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      <Card className="glass-card border-none shadow-md">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-base font-semibold">近24小时失败原因</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              先把失败原因收敛清楚，后面健康分、自动隔离和自动补池都会基于这里继续演进。
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+            <ShieldAlert className="h-3.5 w-3.5" />
+            失败事件 {stats.recentFailureTotal}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton key={index} className="h-24 w-full rounded-2xl" />
+              ))}
+            </div>
+          ) : failureReasonSummary.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {failureReasonSummary.slice(0, 4).map((item) => (
+                <button
+                  type="button"
+                  key={item.code}
+                  className="rounded-2xl border border-border/40 bg-accent/20 p-4 text-left shadow-sm transition-colors hover:border-amber-400/40 hover:bg-amber-500/5"
+                  onClick={() => openFailureDrilldown(router, item.code, item.label)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{item.label}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        影响账号 {item.affectedAccounts}
+                      </p>
+                    </div>
+                    <div className="rounded-full bg-background/80 px-2 py-1 text-xs font-bold">
+                      {item.count}
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>最近一次</span>
+                    <span>{formatTsFromSeconds(item.lastSeenAt, "--")}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-accent/20 p-4 text-sm text-muted-foreground">
+              最近 24 小时没有记录到账号刷新失败事件。
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="glass-card border-none shadow-md">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-base font-semibold">近24小时自动治理</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              这里展示后台自动停用或标记停用的命中结果，方便判断治理策略是否过于激进或过于保守。
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            className="h-auto rounded-full bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-600 hover:bg-rose-500/15 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-400"
+            onClick={() => openGovernedAccounts()}
+          >
+            <ShieldAlert className="mr-2 h-3.5 w-3.5" />
+            治理命中 {stats.recentGovernanceTotal}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton key={index} className="h-24 w-full rounded-2xl" />
+              ))}
+            </div>
+          ) : governanceSummary.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {governanceSummary.slice(0, 3).map((item) => (
+                <button
+                  type="button"
+                  key={item.code}
+                  className="rounded-2xl border border-border/40 bg-accent/20 p-4 text-left shadow-sm transition-colors hover:border-rose-400/40 hover:bg-rose-500/5"
+                  onClick={() => openGovernedAccounts(item.label)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{item.label}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        影响账号 {item.affectedAccounts}
+                      </p>
+                    </div>
+                    <div className="rounded-full bg-background/80 px-2 py-1 text-xs font-bold">
+                      {item.count}
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>目标状态 {item.targetStatus}</span>
+                    <span>{formatTsFromSeconds(item.lastSeenAt, "--")}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-accent/20 p-4 text-sm text-muted-foreground">
+              最近 24 小时没有记录到自动治理命中事件。
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="glass-card min-h-[300px] border-none shadow-md">
           <CardHeader className="flex flex-row items-center justify-between">
@@ -306,6 +540,8 @@ export default function DashboardPage() {
                   name={currentAccount.name}
                   subtitle={currentAccount.id}
                   tone="green"
+                  healthTier={currentAccount.healthTier}
+                  healthScore={currentAccount.healthScore}
                 />
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="space-y-3 rounded-xl bg-muted/30 p-4">
@@ -354,6 +590,8 @@ export default function DashboardPage() {
                     tone="green"
                     progressLabel="剩余额度"
                     progressValue={recommendations.primaryPick.primaryRemainPercent}
+                    healthTier={recommendations.primaryPick.healthTier}
+                    healthScore={recommendations.primaryPick.healthScore}
                   />
                 ) : null}
                 {recommendations.secondaryPick ? (
@@ -364,6 +602,8 @@ export default function DashboardPage() {
                     tone="blue"
                     progressLabel="剩余额度"
                     progressValue={recommendations.secondaryPick.secondaryRemainPercent}
+                    healthTier={recommendations.secondaryPick.healthTier}
+                    healthScore={recommendations.secondaryPick.healthScore}
                   />
                 ) : null}
               </>

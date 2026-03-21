@@ -526,6 +526,92 @@ fn rpc_app_settings_can_roundtrip_auto_register_pool_settings() {
 }
 
 #[test]
+fn rpc_app_settings_can_roundtrip_auto_disable_risky_accounts_settings() {
+    let _ctx = RpcTestContext::new("rpc-app-settings-auto-disable-risky");
+    let set_server = codexmanager_service::start_one_shot_server().expect("start server");
+
+    let set_req = JsonRpcRequest {
+        id: 37,
+        method: "appSettings/set".to_string(),
+        params: Some(serde_json::json!({
+            "backgroundTasks": {
+                "autoDisableRiskyAccountsEnabled": true,
+                "autoDisableRiskyAccountsFailureThreshold": 4,
+                "autoDisableRiskyAccountsHealthScoreThreshold": 55,
+                "autoDisableRiskyAccountsLookbackMins": 90
+            }
+        })),
+    };
+    let set_json = serde_json::to_string(&set_req).expect("serialize");
+    let set_resp = post_rpc(&set_server.addr, &set_json);
+    let set_result = set_resp.get("result").expect("result");
+    let set_background_tasks = set_result
+        .get("backgroundTasks")
+        .expect("background tasks snapshot");
+    assert_eq!(
+        set_background_tasks
+            .get("autoDisableRiskyAccountsEnabled")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        set_background_tasks
+            .get("autoDisableRiskyAccountsFailureThreshold")
+            .and_then(|value| value.as_u64()),
+        Some(4)
+    );
+    assert_eq!(
+        set_background_tasks
+            .get("autoDisableRiskyAccountsHealthScoreThreshold")
+            .and_then(|value| value.as_u64()),
+        Some(55)
+    );
+    assert_eq!(
+        set_background_tasks
+            .get("autoDisableRiskyAccountsLookbackMins")
+            .and_then(|value| value.as_u64()),
+        Some(90)
+    );
+
+    let get_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let get_req = JsonRpcRequest {
+        id: 38,
+        method: "appSettings/get".to_string(),
+        params: None,
+    };
+    let get_json = serde_json::to_string(&get_req).expect("serialize");
+    let get_resp = post_rpc(&get_server.addr, &get_json);
+    let get_result = get_resp.get("result").expect("result");
+    let get_background_tasks = get_result
+        .get("backgroundTasks")
+        .expect("background tasks snapshot");
+    assert_eq!(
+        get_background_tasks
+            .get("autoDisableRiskyAccountsEnabled")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        get_background_tasks
+            .get("autoDisableRiskyAccountsFailureThreshold")
+            .and_then(|value| value.as_u64()),
+        Some(4)
+    );
+    assert_eq!(
+        get_background_tasks
+            .get("autoDisableRiskyAccountsHealthScoreThreshold")
+            .and_then(|value| value.as_u64()),
+        Some(55)
+    );
+    assert_eq!(
+        get_background_tasks
+            .get("autoDisableRiskyAccountsLookbackMins")
+            .and_then(|value| value.as_u64()),
+        Some(90)
+    );
+}
+
+#[test]
 fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
     let ctx = RpcTestContext::new("rpc-account-list-active-filter");
     let storage = Storage::open(ctx.db_path()).expect("open db");
