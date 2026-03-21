@@ -84,6 +84,14 @@ class SignupFormResult:
     error_message: str = ""
 
 
+@dataclass
+class AuthResolutionResult:
+    """认证响应推进结果"""
+    callback_url: Optional[str] = None
+    page_type: str = ""
+    continue_url: str = ""
+
+
 class RegistrationEngine:
     """
     注册引擎
@@ -137,6 +145,7 @@ class RegistrationEngine:
         self._is_existing_account: bool = False  # 是否为已注册账号（用于自动登录）
         self._post_create_page_type: str = ""
         self._post_create_continue_url: str = ""
+        self._last_login_recovery_page_type: str = ""
 
     def _log(self, message: str, level: str = "info"):
         """记录日志"""
@@ -172,6 +181,31 @@ class RegistrationEngine:
         if value is None:
             return ""
         return str(value).strip()
+
+    def _extract_auth_page_type(self, payload: Any) -> str:
+        """从认证响应或 page 对象中提取页面类型"""
+        if not isinstance(payload, dict):
+            return ""
+
+        page = payload.get("page")
+        if isinstance(page, dict):
+            page_type = self._clean_text(page.get("type"))
+            if page_type:
+                return page_type
+
+        return self._clean_text(payload.get("type"))
+
+    def _extract_auth_continue_url(self, payload: Any) -> str:
+        """从认证响应中提取 continue_url"""
+        if not isinstance(payload, dict):
+            return ""
+
+        return self._clean_text(
+            payload.get("continue_url")
+            or payload.get("redirect_url")
+            or payload.get("callback_url")
+            or payload.get("next_url")
+        )
 
     def _workspace_id_from_mapping(self, data: Any) -> str:
         """从 auth/session 映射里提取 workspace / organization ID"""
@@ -1191,30 +1225,39 @@ class RegistrationEngine:
             self._log(f"{stage} 解析 continue_url 失败: {e}", "error")
             return None
 
-    def _resolve_callback_from_auth_response(self, payload: Dict[str, Any], stage: str) -> Optional[str]:
+    def _resolve_callback_from_auth_response(
+        self,
+        payload: Dict[str, Any],
+        stage: str,
+    ) -> AuthResolutionResult:
         """根据认证接口响应推进到 OAuth 回调"""
+        result = AuthResolutionResult()
         if not isinstance(payload, dict):
-            return None
+            return result
+
+        result.page_type = self._extract_auth_page_type(payload)
+        result.continue_url = self._extract_auth_continue_url(payload)
 
         page = payload.get("page")
         if isinstance(page, dict):
             callback_url = self._resolve_callback_from_auth_page(page, stage)
             if callback_url:
-                return callback_url
+                result.callback_url = callback_url
+                return result
+            if result.page_type == "add_phone":
+                return result
 
-        continue_url = self._clean_text(
-            payload.get("continue_url")
-            or payload.get("redirect_url")
-            or payload.get("callback_url")
-            or payload.get("next_url")
-        )
-        if continue_url:
-            return self._resolve_callback_from_continue_url(continue_url, stage)
+        if result.continue_url:
+            result.callback_url = self._resolve_callback_from_continue_url(
+                result.continue_url,
+                stage,
+            )
 
-        return None
+        return result
 
-    def _complete_login_email_otp_verification(self) -> Optional[str]:
+    def _complete_login_email_otp_verification(self) -> AuthResolutionResult:
         """完成登录后的邮箱验证码验证，并继续推进 OAuth"""
+        self._last_login_recovery_page_type = ""
         self._log("登录后触发邮箱二次验证，开始获取验证码...", "warning")
         self._otp_sent_at = time.time()
 
@@ -1222,35 +1265,32 @@ class RegistrationEngine:
         if not code:
             self._log("首次等待登录验证码超时，尝试重发一次...", "warning")
             if not self._resend_email_verification_code():
-                return None
+                return AuthResolutionResult()
             code = self._get_verification_code()
             if not code:
-                return None
+                return AuthResolutionResult()
 
         validate_payload = self._validate_verification_code_with_payload(code)
         if not validate_payload:
-            return None
+            return AuthResolutionResult()
 
-        callback_url = self._resolve_callback_from_auth_response(
+        resolution = self._resolve_callback_from_auth_response(
             validate_payload,
             "登录邮箱验证码校验",
         )
-        if callback_url:
-            return callback_url
+        self._last_login_recovery_page_type = resolution.page_type
+        if resolution.callback_url:
+            return resolution
 
-        continue_url = self._clean_text(
-            validate_payload.get("continue_url")
-            or validate_payload.get("redirect_url")
-        )
-        if continue_url:
-            self._log("登录邮箱验证码校验后未直接返回 page，尝试继续跟随 continue_url...", "warning")
-            return self._resolve_callback_from_continue_url(continue_url, "登录邮箱验证码校验")
+        if resolution.page_type == "add_phone":
+            self._log("登录邮箱验证码校验后仍停留在 add_phone，结束当前会话回退", "warning")
+            return resolution
 
         if self.oauth_start:
             self._log("登录邮箱验证码校验后未拿到 continue_url，回退到 OAuth URL 重试跳转...", "warning")
-            return self._follow_redirects(self.oauth_start.auth_url)
+            resolution.callback_url = self._follow_redirects(self.oauth_start.auth_url)
 
-        return None
+        return resolution
 
     def _resolve_callback_from_auth_page(self, page: Dict[str, Any], stage: str) -> Optional[str]:
         """根据页面类型推进到 OAuth 回调"""
@@ -1328,6 +1368,7 @@ class RegistrationEngine:
         ]
 
         for attempt_name, current_did, current_sentinel, recreate_session in attempts:
+            self._last_login_recovery_page_type = ""
             if recreate_session:
                 self._log(f"add_phone 回退：切换到{attempt_name}重试登录链路...", "warning")
                 current_did, current_sentinel = self._restart_oauth_session_for_login()
@@ -1356,18 +1397,24 @@ class RegistrationEngine:
 
                 page_type = self._clean_text(password_page.get("type"))
                 if page_type == "email_otp_verification":
-                    callback_url = self._complete_login_email_otp_verification()
-                    if callback_url:
-                        return callback_url
+                    otp_resolution = self._complete_login_email_otp_verification()
+                    if otp_resolution.callback_url:
+                        return otp_resolution.callback_url
+                    page_type = (
+                        otp_resolution.page_type
+                        or self._last_login_recovery_page_type
+                        or page_type
+                    )
+
+            if page_type == "add_phone":
+                self._log(f"{attempt_name} 仍被服务端要求手机号验证，跳过当前会话的无效重定向补救", "warning")
+                continue
 
             if self.oauth_start:
                 self._log(f"{attempt_name} 未直接拿到回调，尝试重新跟随 OAuth URL...", "warning")
                 callback_url = self._follow_redirects(self.oauth_start.auth_url)
                 if callback_url:
                     return callback_url
-
-            if page_type == "add_phone":
-                self._log(f"{attempt_name} 仍被服务端要求手机号验证", "warning")
 
         return None
 
