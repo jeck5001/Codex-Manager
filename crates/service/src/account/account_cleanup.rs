@@ -95,6 +95,19 @@ pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFree
         result.deleted_account_ids.push(account.id);
     }
 
+    crate::operation_audit::record_operation_audit(
+        "cleanup_unavailable_free_accounts",
+        "清理不可用免费号",
+        format!(
+            "扫描 {} 个账号，删除 {} 个，跳过可用 {} 个，跳过禁用 {} 个，跳过非免费 {} 个",
+            result.scanned,
+            result.deleted,
+            result.skipped_available,
+            result.skipped_disabled,
+            result.skipped_non_free
+        ),
+    );
+
     Ok(result)
 }
 #[cfg(test)]

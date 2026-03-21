@@ -14,6 +14,8 @@ mod gateway;
 mod governance_summary;
 mod http;
 mod lifecycle;
+mod operation_audit;
+mod operation_audit_summary;
 mod requestlog;
 mod rpc_dispatch;
 mod runtime;

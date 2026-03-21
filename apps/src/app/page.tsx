@@ -370,6 +370,7 @@ export default function DashboardPage() {
     recommendations,
     failureReasonSummary,
     governanceSummary,
+    operationAudits,
     requestLogs,
     isLoading,
     isServiceReady,
@@ -874,6 +875,52 @@ export default function DashboardPage() {
           ) : (
             <div className="rounded-2xl bg-accent/20 p-4 text-sm text-muted-foreground">
               最近 24 小时没有记录到账号刷新失败事件。
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="glass-card border-none shadow-md">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-base font-semibold">最近操作审计</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              这里记录最近触发的关键运维动作，先覆盖高频修复类操作，方便回溯系统刚刚做了什么。
+            </p>
+          </div>
+          <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-300">
+            最近 {operationAudits.length} 条
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton key={index} className="h-24 rounded-2xl" />
+              ))}
+            </div>
+          ) : operationAudits.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {operationAudits.map((item) => (
+                <div
+                  key={`${item.action}-${item.createdAt || 0}`}
+                  className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-semibold">{item.label}</p>
+                    <span className="rounded-full bg-background/80 px-2 py-1 text-[10px] text-muted-foreground">
+                      {formatTsFromSeconds(item.createdAt, "--")}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+                    {item.detail || "--"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-accent/20 p-4 text-sm text-muted-foreground">
+              还没有记录到可展示的运维操作审计事件。
             </div>
           )}
         </CardContent>

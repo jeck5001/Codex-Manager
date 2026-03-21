@@ -150,7 +150,7 @@ fn apply_freeproxy_catalog(
         false
     };
 
-    Ok(FreeProxySyncResult {
+    let result = FreeProxySyncResult {
         source_url: options.source_url,
         source_updated_at: catalog.updated_at,
         fetched_count: catalog.data.len(),
@@ -170,7 +170,19 @@ fn apply_freeproxy_catalog(
         register_proxy_created_count: register_proxy_sync.created_count,
         register_proxy_updated_count: register_proxy_sync.updated_count,
         register_proxy_total_count: register_proxy_sync.total_count,
-    })
+    };
+    crate::operation_audit::record_operation_audit(
+        "freeproxy_sync",
+        "同步 freeproxy 代理池",
+        format!(
+            "抓取 {} 个，匹配 {} 个，应用 {} 个，注册代理池总数 {}",
+            result.fetched_count,
+            result.matched_count,
+            result.applied_count,
+            result.register_proxy_total_count
+        ),
+    );
+    Ok(result)
 }
 
 #[derive(Debug, Clone, Default)]

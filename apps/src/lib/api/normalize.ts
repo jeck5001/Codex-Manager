@@ -17,6 +17,7 @@ import {
   FreeProxySyncResult,
   LoginStartResult,
   ModelOption,
+  OperationAuditItem,
   RequestLog,
   RequestLogFilterSummary,
   RequestLogListResult,
@@ -232,6 +233,23 @@ export function normalizeGovernanceSummary(
       };
     })
     .filter((item): item is GovernanceSummaryItem => Boolean(item));
+}
+
+export function normalizeOperationAudits(payload: unknown): OperationAuditItem[] {
+  return asArray(payload)
+    .map((item) => {
+      const source = asObject(item);
+      const action = asString(source.action);
+      if (!action) return null;
+      return {
+        action,
+        label: asString(source.label) || action,
+        detail: asString(source.detail),
+        accountId: asString(source.accountId ?? source.account_id) || null,
+        createdAt: toNullableNumber(source.createdAt ?? source.created_at),
+      };
+    })
+    .filter((item): item is OperationAuditItem => Boolean(item));
 }
 
 export function normalizeTodaySummary(payload: unknown): RequestLogTodaySummary {
@@ -831,6 +849,9 @@ export function normalizeStartupSnapshot(payload: unknown): StartupSnapshot {
     ),
     governanceSummary: normalizeGovernanceSummary(
       source.governanceSummary ?? source.governance_summary
+    ),
+    operationAudits: normalizeOperationAudits(
+      source.operationAudits ?? source.operation_audits
     ),
     apiKeys: normalizeApiKeyList(source.apiKeys),
     apiModelOptions: normalizeModelOptions(source.apiModelOptions),

@@ -155,6 +155,14 @@ export interface GovernanceSummaryItem {
   lastSeenAt: number | null;
 }
 
+export interface OperationAuditItem {
+  action: string;
+  label: string;
+  detail: string;
+  accountId: string | null;
+  createdAt: number | null;
+}
+
 export interface UsagePredictionSummary {
   quotaProtectionEnabled: boolean;
   quotaProtectionThresholdPercent: number;
@@ -585,6 +593,7 @@ export interface StartupSnapshot {
   usagePredictionSummary: UsagePredictionSummary;
   failureReasonSummary: FailureReasonSummaryItem[];
   governanceSummary: GovernanceSummaryItem[];
+  operationAudits: OperationAuditItem[];
   apiKeys: ApiKey[];
   apiModelOptions: ModelOption[];
   manualPreferredAccountId: string;
