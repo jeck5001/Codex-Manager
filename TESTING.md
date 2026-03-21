@@ -28,11 +28,13 @@
 
 ```bash
 pnpm -C apps run build
+pnpm -C apps run test:runtime
 ```
 
 说明：
 
 - `pnpm -C apps run build`：确认 Next.js 静态导出链路仍正常
+- `pnpm -C apps run test:runtime`：确认运行时能力判定和桌面 / Web 能力降级逻辑未回归
 - 若改动涉及运行时识别、Web RPC、桌面 / Web 差异处理，补跑第 4 节
 
 ## 3. 桌面端 / Tauri 改动
@@ -73,6 +75,7 @@ pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 -Bundle nsis -CleanDist
 
 ```bash
 pnpm -C apps run build
+pnpm -C apps run test:runtime
 cargo test -p codexmanager-web
 pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.test.ps1
 ```
@@ -87,6 +90,7 @@ pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.ps1 `
 说明：
 
 - `pnpm -C apps run build`：确认前端静态导出仍可生成
+- `pnpm -C apps run test:runtime`：确认前端运行时契约和能力判定保持一致
 - `cargo test -p codexmanager-web`：确认 Web 壳路由与运行时探针契约
 - `web_runtime_probe.test.ps1`：确认 Web 运行壳最小 smoke 链路的脚本行为
 
@@ -213,6 +217,7 @@ pwsh -NoLogo -NoProfile -File scripts/tests/rebuild.test.ps1
 
 ```bash
 pnpm -C apps run build
+pnpm -C apps run test:runtime
 cargo test -p codexmanager-web
 ```
 
@@ -220,12 +225,14 @@ cargo test -p codexmanager-web
 
 ```bash
 pnpm -C apps run build
+pnpm -C apps run test:runtime
 ```
 
 ### Web 兼容 / 部署改动
 
 ```bash
 pnpm -C apps run build
+pnpm -C apps run test:runtime
 cargo test -p codexmanager-web
 pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.test.ps1
 ```
