@@ -128,7 +128,7 @@ class EmailParser:
         emails: List[EmailMessage],
         target_email: Optional[str] = None,
         min_timestamp: int = 0,
-        used_codes: Optional[set] = None,
+        used_message_ids: Optional[set] = None,
     ) -> Optional[str]:
         """
         从邮件列表中查找验证码
@@ -137,12 +137,12 @@ class EmailParser:
             emails: 邮件列表
             target_email: 目标邮箱地址
             min_timestamp: 最小时间戳（用于过滤旧邮件）
-            used_codes: 已使用的验证码集合（用于去重）
+            used_message_ids: 已处理的邮件 ID 集合（用于去重）
 
         Returns:
             验证码字符串，如果未找到返回 None
         """
-        used_codes = used_codes or set()
+        used_message_ids = used_message_ids or set()
 
         for email in emails:
             # 时间戳过滤
@@ -155,18 +155,19 @@ class EmailParser:
             if not self.is_openai_verification_email(email, target_email):
                 continue
 
+            if email.id and email.id in used_message_ids:
+                logger.debug(f"跳过已处理邮件: {email.id}")
+                continue
+
             # 提取验证码
             code = self.extract_verification_code(email)
             if code:
-                # 去重检查
-                if code in used_codes:
-                    logger.debug(f"跳过已使用的验证码: {code}")
-                    continue
-
                 logger.info(
                     f"[{target_email or 'unknown'}] 找到验证码: {code}, "
                     f"邮件主题: {email.subject[:30]}"
                 )
+                if email.id:
+                    used_message_ids.add(email.id)
                 return code
 
         return None

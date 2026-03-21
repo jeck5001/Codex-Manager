@@ -85,6 +85,17 @@ export function useRegisterTasks(filters: RegisterTaskListParams = {}) {
     },
   });
 
+  const retryMutation = useMutation({
+    mutationFn: (taskUuid: string) => accountClient.retryRegisterTask(taskUuid),
+    onSuccess: async () => {
+      await invalidateAll();
+      toast.success("已重新发起注册任务");
+    },
+    onError: (error: unknown) => {
+      toast.error(`重新发起失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   return {
     tasks: tasksQuery.data?.tasks || [],
     total: tasksQuery.data?.total || 0,
@@ -93,8 +104,10 @@ export function useRegisterTasks(filters: RegisterTaskListParams = {}) {
     isStatsLoading: statsQuery.isLoading,
     refetchTasks: tasksQuery.refetch,
     cancelTask: cancelMutation.mutateAsync,
+    retryTask: retryMutation.mutateAsync,
     deleteTask: deleteMutation.mutateAsync,
     isCancelling: cancelMutation.isPending,
+    isRetrying: retryMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };
 }

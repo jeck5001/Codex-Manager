@@ -115,6 +115,58 @@ class BatchRegistrationResponse(BaseModel):
     tasks: List[RegistrationTaskResponse]
 
 
+def _infer_email_service_type_from_task(task: RegistrationTask) -> Optional[str]:
+    """从历史任务推断邮箱服务类型。"""
+    if task.email_service and task.email_service.service_type:
+        return str(task.email_service.service_type).strip()
+
+    logs = (task.logs or "").lower()
+    if "正在创建 temp_mail 邮箱" in logs or "从 tempmail 邮箱" in logs:
+        return EmailServiceType.TEMP_MAIL.value
+    if "正在从自定义域名邮箱" in logs or "自定义域名邮箱" in logs:
+        return EmailServiceType.CUSTOM_DOMAIN.value
+    if "outlook" in logs:
+        return EmailServiceType.OUTLOOK.value
+    if "正在创建 tempmail 邮箱" in logs or "tempmail.lol" in logs:
+        return EmailServiceType.TEMPMAIL.value
+
+    return EmailServiceType.TEMPMAIL.value
+
+
+def _create_single_registration_task(
+    db,
+    background_tasks: BackgroundTasks,
+    email_service_type: str,
+    proxy: Optional[str] = None,
+    email_service_config: Optional[dict] = None,
+    email_service_id: Optional[int] = None,
+    auto_upload_cpa: bool = False,
+    cpa_service_id: Optional[int] = None,
+) -> RegistrationTask:
+    """创建并启动单个注册任务。"""
+    task_uuid = str(uuid.uuid4())
+    task = crud.create_registration_task(
+        db,
+        task_uuid=task_uuid,
+        email_service_id=email_service_id,
+        proxy=proxy,
+    )
+
+    background_tasks.add_task(
+        run_registration_task,
+        task_uuid,
+        email_service_type,
+        proxy,
+        email_service_config,
+        email_service_id,
+        "",
+        "",
+        auto_upload_cpa,
+        cpa_service_id,
+    )
+    return task
+
+
 class TaskListResponse(BaseModel):
     """任务列表响应"""
     total: int
@@ -694,29 +746,17 @@ async def start_registration(
             detail=f"无效的邮箱服务类型: {request.email_service_type}"
         )
 
-    # 创建任务
-    task_uuid = str(uuid.uuid4())
-
     with get_db() as db:
-        task = crud.create_registration_task(
-            db,
-            task_uuid=task_uuid,
-            proxy=request.proxy
+        task = _create_single_registration_task(
+            db=db,
+            background_tasks=background_tasks,
+            email_service_type=request.email_service_type,
+            proxy=request.proxy,
+            email_service_config=request.email_service_config,
+            email_service_id=request.email_service_id,
+            auto_upload_cpa=request.auto_upload_cpa,
+            cpa_service_id=request.cpa_service_id,
         )
-
-    # 在后台运行注册任务
-    background_tasks.add_task(
-        run_registration_task,
-        task_uuid,
-        request.email_service_type,
-        request.proxy,
-        request.email_service_config,
-        request.email_service_id,
-        "",
-        "",
-        request.auto_upload_cpa,
-        request.cpa_service_id
-    )
 
     return task_to_response(task)
 
@@ -896,6 +936,31 @@ async def cancel_task(task_uuid: str):
         task = crud.update_registration_task(db, task_uuid, status="cancelled")
 
         return {"success": True, "message": "任务已取消"}
+
+
+@router.post("/tasks/{task_uuid}/retry", response_model=RegistrationTaskResponse)
+async def retry_task(task_uuid: str, background_tasks: BackgroundTasks):
+    """重新发起失败的注册任务。"""
+    with get_db() as db:
+        task = crud.get_registration_task(db, task_uuid)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        if task.status != "failed":
+            raise HTTPException(status_code=400, detail="只有失败任务才可以重新发起")
+
+        email_service_type = _infer_email_service_type_from_task(task)
+        if not email_service_type:
+            raise HTTPException(status_code=400, detail="无法识别原任务的邮箱服务类型")
+
+        retried_task = _create_single_registration_task(
+            db=db,
+            background_tasks=background_tasks,
+            email_service_type=email_service_type,
+            proxy=task.proxy,
+            email_service_id=task.email_service_id,
+        )
+        return task_to_response(retried_task)
 
 
 @router.delete("/tasks/{task_uuid}")

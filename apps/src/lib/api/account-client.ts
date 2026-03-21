@@ -886,6 +886,8 @@ export const accountClient = {
   },
   cancelRegisterTask: (taskUuid: string) =>
     invoke("service_account_register_task_cancel", withAddr({ taskUuid })),
+  retryRegisterTask: (taskUuid: string) =>
+    invoke("service_account_register_task_retry", withAddr({ taskUuid })),
   deleteRegisterTask: (taskUuid: string) =>
     invoke("service_account_register_task_delete", withAddr({ taskUuid })),
   async startRegisterOutlookBatch(

@@ -418,8 +418,19 @@ class OutlookService(BaseEmailService):
         # IMAP 连接限制（防止限流）
         self._imap_semaphore = threading.Semaphore(5)
 
-        # 验证码去重机制：email -> set of used codes
-        self._used_codes: Dict[str, set] = {}
+        # 邮件去重机制：email -> set of processed message ids
+        self._used_message_ids: Dict[str, set] = {}
+
+    @staticmethod
+    def _mail_identity(mail: Dict[str, Any]) -> str:
+        """提取邮件唯一标识，避免同码多封邮件被误跳过。"""
+        parts = [
+            str(mail.get("date") or "").strip(),
+            str(mail.get("subject") or "").strip(),
+            str(mail.get("from") or "").strip(),
+            str(mail.get("raw") or "").strip(),
+        ]
+        return "|".join(part for part in parts if part)
 
     def create_email(self, config: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -497,10 +508,10 @@ class OutlookService(BaseEmailService):
 
         logger.info(f"[{email}] 开始获取验证码，超时 {actual_timeout}s，OTP发送时间: {otp_sent_at}")
 
-        # 初始化验证码去重集合
-        if email not in self._used_codes:
-            self._used_codes[email] = set()
-        used_codes = self._used_codes[email]
+        # 初始化已处理邮件集合
+        if email not in self._used_message_ids:
+            self._used_message_ids[email] = set()
+        used_message_ids = self._used_message_ids[email]
 
         # 计算最小时间戳（留出 60 秒时钟偏差）
         min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
@@ -534,6 +545,11 @@ class OutlookService(BaseEmailService):
                         logger.debug(f"[{email}] 搜索到 {len(emails)} 封邮件（未读={only_unseen}），耗时 {search_elapsed:.2f}s")
 
                         for mail in emails:
+                            mail_identity = self._mail_identity(mail)
+                            if mail_identity and mail_identity in used_message_ids:
+                                logger.debug(f"[{email}] 跳过已处理邮件")
+                                continue
+
                             # 时间戳过滤
                             mail_ts = mail.get("date_timestamp", 0)
                             if min_timestamp > 0 and mail_ts > 0 and mail_ts < min_timestamp:
@@ -547,12 +563,8 @@ class OutlookService(BaseEmailService):
                             # 提取验证码
                             code = self._extract_code_from_mail(mail, pattern)
                             if code:
-                                # 去重检查
-                                if code in used_codes:
-                                    logger.debug(f"[{email}] 跳过已使用的验证码: {code}")
-                                    continue
-
-                                used_codes.add(code)
+                                if mail_identity:
+                                    used_message_ids.add(mail_identity)
                                 elapsed = int(time.time() - start_time)
                                 logger.info(f"[{email}] 找到验证码: {code}，总耗时 {elapsed}s，轮询 {poll_count} 次")
                                 self.update_status(True)

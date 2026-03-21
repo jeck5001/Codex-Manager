@@ -61,6 +61,7 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_account_register_tasks_list: { rpcMethod: "account/register/tasks/list" },
   service_account_register_stats: { rpcMethod: "account/register/stats" },
   service_account_register_task_cancel: { rpcMethod: "account/register/task/cancel" },
+  service_account_register_task_retry: { rpcMethod: "account/register/task/retry" },
   service_account_register_task_delete: { rpcMethod: "account/register/task/delete" },
   service_account_register_outlook_accounts: {
     rpcMethod: "account/register/outlookAccounts",

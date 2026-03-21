@@ -561,6 +561,17 @@ pub(crate) fn cancel_register_task(task_uuid: &str) -> Result<Value, String> {
     )
 }
 
+pub(crate) fn retry_register_task(task_uuid: &str) -> Result<Value, String> {
+    let task_uuid = task_uuid.trim();
+    if task_uuid.is_empty() {
+        return Err("taskUuid is required".to_string());
+    }
+    register_post_json(
+        &format!("/api/registration/tasks/{task_uuid}/retry"),
+        &json!({}),
+    )
+}
+
 pub(crate) fn delete_register_task(task_uuid: &str) -> Result<Value, String> {
     let task_uuid = task_uuid.trim();
     if task_uuid.is_empty() {

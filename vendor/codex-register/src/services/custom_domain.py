@@ -79,7 +79,7 @@ class CustomDomainEmailService(BaseEmailService):
         self._emails_cache: Dict[str, Dict[str, Any]] = {}
         self._last_config_check: float = 0
         self._cached_config: Optional[Dict[str, Any]] = None
-        self._used_codes: Dict[str, set[str]] = {}
+        self._used_message_ids: Dict[str, set[str]] = {}
 
     @staticmethod
     def _parse_message_timestamp(value: Any) -> Optional[float]:
@@ -349,7 +349,7 @@ class CustomDomainEmailService(BaseEmailService):
 
         start_time = time.time()
         seen_message_ids = set()
-        used_codes = self._used_codes.setdefault(email.lower(), set())
+        used_message_ids = self._used_message_ids.setdefault(email.lower(), set())
         min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
         while time.time() - start_time < actual_timeout:
@@ -364,7 +364,7 @@ class CustomDomainEmailService(BaseEmailService):
 
                 for message in messages:
                     message_id = message.get("id")
-                    if not message_id or message_id in seen_message_ids:
+                    if not message_id or message_id in seen_message_ids or message_id in used_message_ids:
                         continue
 
                     seen_message_ids.add(message_id)
@@ -392,9 +392,7 @@ class CustomDomainEmailService(BaseEmailService):
                     match = re.search(pattern, re.sub(email_pattern, "", content))
                     if match:
                         code = match.group(1)
-                        if code in used_codes:
-                            continue
-                        used_codes.add(code)
+                        used_message_ids.add(message_id)
                         logger.info(f"从自定义域名邮箱 {email} 找到验证码: {code}")
                         self.update_status(True)
                         return code

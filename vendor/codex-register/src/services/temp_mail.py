@@ -70,7 +70,7 @@ class TempMailService(BaseEmailService):
 
         # 邮箱缓存：email -> {jwt, address}
         self._email_cache: Dict[str, Dict[str, Any]] = {}
-        self._used_codes: Dict[str, set[str]] = {}
+        self._used_mail_ids: Dict[str, set[str]] = {}
 
     def _decode_mime_header(self, value: str) -> str:
         """解码 MIME 头，兼容 RFC 2047 编码主题。"""
@@ -391,7 +391,7 @@ class TempMailService(BaseEmailService):
 
         start_time = time.time()
         seen_mail_ids: set = set()
-        used_codes = self._used_codes.setdefault(email.lower(), set())
+        used_mail_ids = self._used_mail_ids.setdefault(email.lower(), set())
         min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
         while time.time() - start_time < actual_timeout:
@@ -411,7 +411,7 @@ class TempMailService(BaseEmailService):
 
                 for mail in mails:
                     mail_id = self._extract_mail_identity(mail)
-                    if not mail_id or mail_id in seen_mail_ids:
+                    if not mail_id or mail_id in seen_mail_ids or mail_id in used_mail_ids:
                         continue
 
                     seen_mail_ids.add(mail_id)
@@ -433,9 +433,7 @@ class TempMailService(BaseEmailService):
                     match = re.search(pattern, content)
                     if match:
                         code = match.group(1)
-                        if code in used_codes:
-                            continue
-                        used_codes.add(code)
+                        used_mail_ids.add(mail_id)
                         logger.info(f"从 TempMail 邮箱 {email} 找到验证码: {code}")
                         self.update_status(True)
                         return code
