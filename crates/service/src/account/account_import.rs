@@ -108,15 +108,21 @@ pub(crate) fn import_account_auth_json(
     let batch_size = import_batch_size();
 
     for content in contents {
-        let items = parse_items_from_content(&content)?;
-        import_items_in_batches(
-            &storage,
-            &mut index,
-            &mut result,
-            &mut progress,
-            items,
-            batch_size,
-        );
+        match parse_items_from_content(&content) {
+            Ok(items) => {
+                import_items_in_batches(
+                    &storage,
+                    &mut index,
+                    &mut result,
+                    &mut progress,
+                    items,
+                    batch_size,
+                );
+            }
+            Err(err) => {
+                record_import_error(&mut result, &mut progress, err);
+            }
+        }
     }
 
     progress.finish();
@@ -170,6 +176,22 @@ fn import_items_in_batches(
             }
         }
         progress.finish_batch();
+    }
+}
+
+fn record_import_error(
+    result: &mut AccountImportResult,
+    progress: &mut AccountImportProgress,
+    message: String,
+) {
+    result.total += 1;
+    result.failed += 1;
+    progress.on_item_failure();
+    if result.errors.len() < MAX_ERROR_ITEMS {
+        result.errors.push(AccountImportError {
+            index: result.total,
+            message,
+        });
     }
 }
 

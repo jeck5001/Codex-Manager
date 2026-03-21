@@ -470,6 +470,11 @@ function mapKeyIdToId(params?: InvokeParams): InvokeParams {
   };
 }
 
+function isSupportedBrowserImportFile(file: File): boolean {
+  const normalizedName = String(file.name || "").trim().toLowerCase();
+  return normalizedName.endsWith(".json") || normalizedName.endsWith(".txt");
+}
+
 async function pickImportFilesFromBrowser(directory: boolean): Promise<unknown> {
   if (typeof document === "undefined") {
     throw new Error("当前环境不支持浏览器文件选择");
@@ -528,22 +533,50 @@ async function pickImportFilesFromBrowser(directory: boolean): Promise<unknown> 
           return;
         }
 
-        const contents = await Promise.all(files.map((file) => file.text()));
-        const filePaths = files.map((file) => {
-          const relativePath =
-            (file as File & { webkitRelativePath?: string }).webkitRelativePath ||
-            file.name;
-          return relativePath || file.name;
-        });
+        const importableFiles = files.filter(isSupportedBrowserImportFile);
+        if (!importableFiles.length) {
+          fail(
+            new Error(
+              directory
+                ? "所选目录中没有可导入的 .json 或 .txt 文件"
+                : "请选择 .json 或 .txt 文件"
+            )
+          );
+          return;
+        }
+
+        const fileEntries = await Promise.all(
+          importableFiles.map(async (file) => {
+            const content = await file.text();
+            const relativePath =
+              (file as File & { webkitRelativePath?: string }).webkitRelativePath ||
+              file.name;
+            return {
+              content,
+              path: relativePath || file.name,
+            };
+          })
+        );
+        const nonEmptyEntries = fileEntries.filter(
+          (entry) => entry.content.trim().length > 0
+        );
+        if (!nonEmptyEntries.length) {
+          fail(new Error("未在所选文件中找到可导入内容"));
+          return;
+        }
+
+        const filePaths = nonEmptyEntries.map((entry) => entry.path);
+        const contents = nonEmptyEntries.map((entry) => entry.content);
+        const directorySourcePath = filePaths[0] || fileEntries[0]?.path || "";
         const directoryPath = directory
-          ? filePaths[0]?.split("/")[0] || filePaths[0]?.split("\\")[0] || ""
+          ? directorySourcePath.split("/")[0] || directorySourcePath.split("\\")[0] || ""
           : "";
 
         finish({
           ok: true,
           canceled: false,
           directoryPath,
-          fileCount: files.length,
+          fileCount: importableFiles.length,
           filePaths,
           contents,
         });

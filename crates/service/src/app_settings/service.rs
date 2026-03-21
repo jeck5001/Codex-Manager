@@ -5,6 +5,8 @@ use super::{
 
 pub const DEFAULT_ADDR: &str = "localhost:48760";
 pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:48760";
+pub const DEFAULT_WEB_ADDR: &str = "localhost:48761";
+pub const DEFAULT_WEB_BIND_ADDR: &str = "0.0.0.0:48761";
 pub const SERVICE_BIND_MODE_SETTING_KEY: &str = "service.bind_mode";
 pub const SERVICE_BIND_MODE_LOOPBACK: &str = "loopback";
 pub const SERVICE_BIND_MODE_ALL_INTERFACES: &str = "all_interfaces";
@@ -59,7 +61,8 @@ fn current_env_service_bind_mode() -> Option<String> {
         .unwrap_or(normalized.as_str());
     let mode = match host {
         "0.0.0.0" | "::" | "[::]" => SERVICE_BIND_MODE_ALL_INTERFACES,
-        _ => SERVICE_BIND_MODE_LOOPBACK,
+        "localhost" | "127.0.0.1" | "::1" | "[::1]" => return None,
+        _ => return None,
     };
     Some(mode.to_string())
 }
@@ -88,6 +91,37 @@ pub fn default_listener_bind_addr() -> String {
         DEFAULT_BIND_ADDR.to_string()
     } else {
         DEFAULT_ADDR.to_string()
+    }
+}
+
+pub fn default_web_listener_addr() -> String {
+    let service_addr = current_saved_service_addr();
+    let Some((host, port_text)) = service_addr.rsplit_once(':') else {
+        return if bind_all_interfaces_enabled() {
+            DEFAULT_WEB_BIND_ADDR.to_string()
+        } else {
+            DEFAULT_WEB_ADDR.to_string()
+        };
+    };
+    let Ok(port) = port_text.parse::<u16>() else {
+        return if bind_all_interfaces_enabled() {
+            DEFAULT_WEB_BIND_ADDR.to_string()
+        } else {
+            DEFAULT_WEB_ADDR.to_string()
+        };
+    };
+    let web_port = port.saturating_add(1);
+
+    match host {
+        "0.0.0.0" | "::" | "[::]" => format!("0.0.0.0:{web_port}"),
+        "localhost" | "127.0.0.1" | "::1" | "[::1]" => {
+            if bind_all_interfaces_enabled() {
+                format!("0.0.0.0:{web_port}")
+            } else {
+                format!("localhost:{web_port}")
+            }
+        }
+        _ => format!("{host}:{web_port}"),
     }
 }
 

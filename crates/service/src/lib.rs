@@ -69,7 +69,8 @@ pub use app_settings::{
     current_gateway_user_agent_version, current_lightweight_mode_on_close_to_tray_setting,
     current_saved_service_addr, current_service_bind_mode, current_ui_appearance_preset,
     current_ui_low_transparency_enabled, current_ui_theme, current_update_auto_check_enabled,
-    default_listener_bind_addr, listener_bind_addr, residency_requirement_options,
+    default_listener_bind_addr, default_web_listener_addr, listener_bind_addr,
+    residency_requirement_options,
     set_close_to_tray_on_close_setting, set_gateway_background_tasks,
     set_gateway_free_account_max_model, set_gateway_originator,
     set_gateway_request_compression_enabled, set_gateway_residency_requirement,
@@ -89,7 +90,8 @@ pub use app_settings::{
     APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
     APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY,
     APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY, DEFAULT_ADDR, DEFAULT_BIND_ADDR,
-    SERVICE_BIND_MODE_ALL_INTERFACES, SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
+    DEFAULT_WEB_ADDR, DEFAULT_WEB_BIND_ADDR, SERVICE_BIND_MODE_ALL_INTERFACES,
+    SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
     WEB_ACCESS_SESSION_COOKIE_NAME,
 };
 pub use auth::{

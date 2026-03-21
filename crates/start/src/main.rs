@@ -11,7 +11,6 @@ use std::time::Duration;
 
 const ENV_CANDIDATES: [&str; 3] = ["codexmanager.env", "CodexManager.env", ".env"];
 const DEFAULT_SERVICE_ADDR: &str = "localhost:48760";
-const DEFAULT_WEB_ADDR: &str = "localhost:48761";
 
 #[cfg(target_os = "windows")]
 mod windows_job {
@@ -176,6 +175,13 @@ fn resolve_addr(var: &str, default: &str) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
+fn resolve_web_addr() -> String {
+    std::env::var("CODEXMANAGER_WEB_ADDR")
+        .ok()
+        .and_then(|v| normalize_addr(&v))
+        .unwrap_or_else(codexmanager_service::default_web_listener_addr)
+}
+
 fn normalize_connect_addr(raw: &str) -> String {
     let normalized = normalize_addr(raw).unwrap_or_else(|| raw.trim().to_string());
     let Some((host, port)) = normalized.rsplit_once(':') else {
@@ -263,6 +269,29 @@ fn simple_get_best_effort(addr: &str, path: &str) {
     let _ = stream.write_all(req.as_bytes());
 }
 
+fn wait_for_port_closed(addr: &str, attempts: usize) -> bool {
+    for _ in 0..attempts {
+        if !tcp_probe(addr) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    !tcp_probe(addr)
+}
+
+fn stop_existing_service_best_effort(addr: &str) -> bool {
+    codexmanager_service::request_shutdown(addr);
+    wait_for_port_closed(addr, 30)
+}
+
+fn stop_existing_web_best_effort(bind_addr: &str, open_addr: &str) -> bool {
+    simple_get_best_effort(open_addr, "/__quit");
+    if !open_addr.eq_ignore_ascii_case(bind_addr) {
+        simple_get_best_effort(bind_addr, "/__quit");
+    }
+    wait_for_port_closed(open_addr, 30)
+}
+
 fn bin_path(dir: &Path, name: &str) -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -285,12 +314,16 @@ fn spawn_child(bin: &Path, service_bind_addr: Option<&str>) -> std::io::Result<C
 fn main() {
     // 让 start.exe 也支持同目录 env 文件，保持与 service/web 一致。
     load_env_from_exe_dir_best_effort();
+    // 进一步对齐 service/web 的便携化初始化，确保 DB/RPC token 落点一致。
+    codexmanager_service::portable::bootstrap_current_process();
+    let _ = codexmanager_service::initialize_storage_if_needed();
+    codexmanager_service::sync_runtime_settings_from_storage();
 
     let dir = exe_dir();
     let configured_service_addr = resolve_addr("CODEXMANAGER_SERVICE_ADDR", DEFAULT_SERVICE_ADDR);
     let service_addr = normalize_connect_addr(&configured_service_addr);
     let service_bind_addr = codexmanager_service::listener_bind_addr(&service_addr);
-    let web_addr = resolve_addr("CODEXMANAGER_WEB_ADDR", DEFAULT_WEB_ADDR);
+    let web_addr = resolve_web_addr();
     let web_open_addr = browser_open_addr(&web_addr);
 
     let service_bin = bin_path(&dir, "codexmanager-service");
@@ -321,7 +354,15 @@ fn main() {
     let mut spawned_service = false;
     let mut service_child: Option<Child> = None;
     if tcp_probe(&service_addr) {
-        println!("service 已在运行，跳过拉起。");
+        println!("检测到 service 已在运行，尝试重启以应用当前配置...");
+        if !stop_existing_service_best_effort(&service_addr) {
+            eprintln!("service 端口仍被占用，请先关闭旧实例：{service_addr}");
+            std::process::exit(1);
+        }
+    }
+    if tcp_probe(&service_addr) {
+        eprintln!("service 端口仍被占用，请先关闭旧实例：{service_addr}");
+        std::process::exit(1);
     } else if !service_bin.is_file() {
         eprintln!("service 不可达且缺少文件：{}", service_bin.display());
         std::process::exit(1);
@@ -345,11 +386,12 @@ fn main() {
         }
     }
 
-    // web 若已运行：直接打开浏览器，然后退出（避免占用端口再次启动失败）。
-    if tcp_probe(&web_addr) {
-        println!("web 已在运行，直接打开浏览器。");
-        let _ = webbrowser::open(&format!("http://{web_open_addr}/"));
-        return;
+    if tcp_probe(&web_open_addr) || tcp_probe(&web_addr) {
+        println!("检测到 web 已在运行，尝试重启以应用当前配置...");
+        if !stop_existing_web_best_effort(&web_addr, &web_open_addr) {
+            eprintln!("web 端口仍被占用，请先关闭旧实例：http://{web_open_addr}/");
+            std::process::exit(1);
+        }
     }
 
     println!("正在启动 web...");

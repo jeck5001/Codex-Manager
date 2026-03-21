@@ -65,8 +65,6 @@ const ENV_DESCRIPTION_MAP: Record<string, string> = {
     "控制连接上游服务器时的超时时间，单位秒；主要影响握手和网络建立阶段。",
   CODEXMANAGER_UPSTREAM_BASE_URL:
     "控制默认上游地址；修改后，网关会把请求转发到新的目标地址。",
-  CODEXMANAGER_WEB_ADDR:
-    "控制 codexmanager-web / codexmanager-start 的监听地址；设置为 0.0.0.0 用于允许局域网访问，但浏览器应使用 127.0.0.1 或本机 IP 打开。该项需要重启相关进程；若同目录 codexmanager.env 已设置该变量，启动时会优先使用文件值。",
 };
 
 const THEMES = [
@@ -905,7 +903,7 @@ export default function SettingsPage() {
                 <Globe className="h-4 w-4 text-primary" />
                 <CardTitle className="text-base">服务监听</CardTitle>
               </div>
-              <CardDescription>控制服务仅本机访问，或开放给局域网中的其他设备访问</CardDescription>
+              <CardDescription>统一控制 Service 与 Web 的监听模式，决定仅本机访问还是开放给局域网</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="grid gap-2">
@@ -960,7 +958,7 @@ export default function SettingsPage() {
 
               <p className="text-[10px] text-muted-foreground">
                 切换到 <code>0.0.0.0</code> 后，局域网设备可通过当前机器 IP 访问；
-                设置保存后需要重启服务才会生效。
+                设置保存后需要重启相关进程才会生效，Web 监听地址会默认跟随这里的模式。
               </p>
             </CardContent>
           </Card>

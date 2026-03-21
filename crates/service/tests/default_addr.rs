@@ -56,6 +56,19 @@ fn default_bind_addr_is_all_interfaces() {
 }
 
 #[test]
+fn default_web_addr_is_localhost() {
+    assert_eq!(codexmanager_service::DEFAULT_WEB_ADDR, "localhost:48761");
+}
+
+#[test]
+fn default_web_bind_addr_is_all_interfaces() {
+    assert_eq!(
+        codexmanager_service::DEFAULT_WEB_BIND_ADDR,
+        "0.0.0.0:48761"
+    );
+}
+
+#[test]
 fn listener_bind_addr_defaults_to_loopback() {
     with_bind_mode(None, || {
         assert_eq!(
@@ -92,6 +105,65 @@ fn listener_bind_addr_maps_loopback_to_all_interfaces_when_enabled() {
             );
         },
     );
+}
+
+#[test]
+fn default_web_listener_addr_tracks_service_bind_mode() {
+    with_bind_mode(None, || {
+        assert_eq!(
+            codexmanager_service::default_web_listener_addr(),
+            "localhost:48761"
+        );
+    });
+
+    with_bind_mode(
+        Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES),
+        || {
+            assert_eq!(
+                codexmanager_service::default_web_listener_addr(),
+                "0.0.0.0:48761"
+            );
+        },
+    );
+}
+
+#[test]
+fn default_web_listener_addr_tracks_service_port_offset() {
+    let _guard = env_lock().lock().expect("env lock");
+    let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
+    let previous_service_addr = std::env::var("CODEXMANAGER_SERVICE_ADDR").ok();
+
+    let db_path = unique_temp_db_path();
+    std::env::set_var("CODEXMANAGER_DB_PATH", &db_path);
+    std::env::set_var("CODEXMANAGER_SERVICE_ADDR", "localhost:49760");
+
+    let storage = Storage::open(&db_path).expect("open storage");
+    storage.init().expect("init storage");
+    storage
+        .set_app_setting(
+            codexmanager_service::SERVICE_BIND_MODE_SETTING_KEY,
+            codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES,
+            now_ts(),
+        )
+        .expect("set service bind mode");
+    drop(storage);
+
+    assert_eq!(
+        codexmanager_service::default_web_listener_addr(),
+        "0.0.0.0:49761"
+    );
+
+    if let Some(value) = previous_service_addr {
+        std::env::set_var("CODEXMANAGER_SERVICE_ADDR", value);
+    } else {
+        std::env::remove_var("CODEXMANAGER_SERVICE_ADDR");
+    }
+    if let Some(value) = previous_db_path {
+        std::env::set_var("CODEXMANAGER_DB_PATH", value);
+    } else {
+        std::env::remove_var("CODEXMANAGER_DB_PATH");
+    }
+    let _ = std::fs::remove_file(&db_path);
 }
 
 #[test]

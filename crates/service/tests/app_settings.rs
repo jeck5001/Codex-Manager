@@ -836,6 +836,77 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
 }
 
 #[test]
+fn loopback_service_addr_env_keeps_saved_bind_mode_effective() {
+    with_temp_db(|db_path| {
+        let storage = Storage::open(db_path).expect("open storage");
+        storage
+            .set_app_setting(
+                codexmanager_service::SERVICE_BIND_MODE_SETTING_KEY,
+                codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES,
+                now_ts(),
+            )
+            .expect("save service bind mode");
+        drop(storage);
+
+        let _env = override_env_vars(&[("CODEXMANAGER_SERVICE_ADDR", Some("localhost:49760"))]);
+
+        let snapshot = codexmanager_service::app_settings_get().expect("get app settings");
+
+        assert_eq!(
+            snapshot.get("serviceAddr").and_then(|value| value.as_str()),
+            Some("localhost:49760")
+        );
+        assert_eq!(
+            snapshot
+                .get("serviceListenMode")
+                .and_then(|value| value.as_str()),
+            Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES)
+        );
+        assert_eq!(
+            codexmanager_service::listener_bind_addr("localhost:49760"),
+            "0.0.0.0:49760"
+        );
+    });
+}
+
+#[test]
+fn app_settings_set_service_listen_mode_overrides_loopback_env_snapshot() {
+    with_temp_db(|_| {
+        let _env = override_env_vars(&[("CODEXMANAGER_SERVICE_ADDR", Some("localhost:49760"))]);
+
+        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
+            "serviceListenMode": "all_interfaces"
+        })))
+        .expect("save service listen mode");
+
+        assert_eq!(
+            snapshot
+                .get("serviceAddr")
+                .and_then(|value| value.as_str()),
+            Some("localhost:49760")
+        );
+        assert_eq!(
+            snapshot
+                .get("serviceListenMode")
+                .and_then(|value| value.as_str()),
+            Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES)
+        );
+
+        let refreshed = codexmanager_service::app_settings_get().expect("get app settings");
+        assert_eq!(
+            refreshed
+                .get("serviceListenMode")
+                .and_then(|value| value.as_str()),
+            Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES)
+        );
+        assert_eq!(
+            codexmanager_service::listener_bind_addr("localhost:49760"),
+            "0.0.0.0:49760"
+        );
+    });
+}
+
+#[test]
 fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
     with_temp_db(|db_path| {
         let snapshot = codexmanager_service::app_settings_set(Some(&json!({
@@ -896,6 +967,12 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
             .and_then(|value| value.as_array())
             .is_some_and(|items| items
                 .iter()
+                .any(|item| item.as_str() == Some("CODEXMANAGER_WEB_ADDR"))));
+        assert!(snapshot
+            .get("envOverrideReservedKeys")
+            .and_then(|value| value.as_array())
+            .is_some_and(|items| items
+                .iter()
                 .any(|item| item.as_str() == Some("CODEXMANAGER_ROUTE_STRATEGY"))));
         assert!(snapshot
             .get("envOverrideReservedKeys")
@@ -925,6 +1002,48 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
         );
         assert!(!stored.contains_key("CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS"));
         assert!(!stored.contains_key("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS"));
+    });
+}
+
+#[test]
+fn app_settings_get_drops_web_addr_from_persisted_env_snapshot() {
+    with_temp_db(|db_path| {
+        let storage = Storage::open(db_path).expect("open storage");
+        storage
+            .set_app_setting(
+                codexmanager_service::APP_SETTING_ENV_OVERRIDES_KEY,
+                &serde_json::to_string(&json!({
+                    "CODEXMANAGER_WEB_ADDR": "0.0.0.0:48761",
+                    "CODEXMANAGER_WEB_ROOT": "D:/tmp/web"
+                }))
+                .expect("serialize env overrides"),
+                now_ts(),
+            )
+            .expect("save env overrides");
+        drop(storage);
+
+        let snapshot = codexmanager_service::app_settings_get().expect("get app settings");
+
+        assert!(snapshot
+            .get("envOverrides")
+            .and_then(|value| value.get("CODEXMANAGER_WEB_ADDR"))
+            .is_none());
+        assert_eq!(
+            snapshot
+                .get("envOverrides")
+                .and_then(|value| value.get("CODEXMANAGER_WEB_ROOT"))
+                .and_then(|value| value.as_str()),
+            Some("D:/tmp/web")
+        );
+
+        let stored = read_env_overrides_map(db_path);
+        assert!(!stored.contains_key("CODEXMANAGER_WEB_ADDR"));
+        assert_eq!(
+            stored
+                .get("CODEXMANAGER_WEB_ROOT")
+                .and_then(|value| value.as_str()),
+            Some("D:/tmp/web")
+        );
     });
 }
 

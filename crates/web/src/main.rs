@@ -21,7 +21,6 @@ use rand::RngCore;
 use tokio::sync::{watch, Mutex};
 use tower_http::services::{ServeDir, ServeFile};
 
-const DEFAULT_WEB_ADDR: &str = "localhost:48761";
 const WEB_AUTH_COOKIE_NAME: &str = "codexmanager_web_auth";
 
 #[derive(Clone)]
@@ -95,7 +94,7 @@ fn resolve_service_addr() -> String {
 fn resolve_web_addr() -> String {
     read_env_trim("CODEXMANAGER_WEB_ADDR")
         .and_then(|v| normalize_addr(&v))
-        .unwrap_or_else(|| DEFAULT_WEB_ADDR.to_string())
+        .unwrap_or_else(codexmanager_service::default_web_listener_addr)
 }
 
 fn resolve_web_root() -> PathBuf {
@@ -208,8 +207,13 @@ async fn async_main() {
     let rpc_token = codexmanager_service::rpc_auth_token().to_string();
 
     let spawned_service: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
-    let spawn_err =
-        service_gateway::ensure_service_running(&service_addr, &exe_dir(), &spawned_service).await;
+    let spawn_err = service_gateway::ensure_service_running(
+        &service_addr,
+        &rpc_token,
+        &exe_dir(),
+        &spawned_service,
+    )
+    .await;
 
     let mut missing_detail = format!(
         "web root invalid: {} (index.html missing)",

@@ -1,13 +1,29 @@
 use super::{
-    extract_token_payload, import_single_item, resolve_logical_account_id, ExistingAccountIndex,
-    ImportTokenPayload,
+    extract_token_payload, import_account_auth_json, import_single_item,
+    resolve_logical_account_id, ExistingAccountIndex, ImportTokenPayload,
 };
 use crate::account_identity::build_account_storage_id;
 use codexmanager_core::storage::{now_ts, Account, Storage};
 use serde_json::json;
+use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const TEST_ID_TOKEN_WS_A: &str = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdWItMSIsImVtYWlsIjoidGVzdEBleGFtcGxlLmNvbSIsIndvcmtzcGFjZV9pZCI6IndzLWEiLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiY2dwdC0xIn19.sig";
 const TEST_ID_TOKEN_META: &str = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdWItMSIsImVtYWlsIjoibWV0YUBleGFtcGxlLmNvbSIsIndvcmtzcGFjZV9pZCI6IndzLW1ldGEiLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiY2dwdC1tZXRhIn19.sig";
+
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn unique_temp_db_path() -> PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    std::env::temp_dir().join(format!("codexmanager-account-import-test-{unique}.db"))
+}
 
 fn payload() -> ImportTokenPayload {
     ImportTokenPayload {
@@ -233,4 +249,50 @@ fn import_single_item_prefers_meta_fields_for_new_account() {
         Some("cgpt-manual")
     );
     assert_eq!(accounts[0].workspace_id.as_deref(), Some("ws-manual"));
+}
+
+#[test]
+fn import_account_auth_json_keeps_valid_items_when_one_content_is_invalid() {
+    let _guard = env_lock().lock().expect("env lock");
+    let db_path = unique_temp_db_path();
+    let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
+    std::env::set_var("CODEXMANAGER_DB_PATH", &db_path);
+
+    let storage = Storage::open(&db_path).expect("open storage");
+    storage.init().expect("init storage");
+    drop(storage);
+
+    let result = import_account_auth_json(vec![
+        json!({
+            "type": "codex",
+            "email": "valid@example.com",
+            "id_token": TEST_ID_TOKEN_META,
+            "account_id": "valid-account",
+            "access_token": "access.valid",
+            "refresh_token": "refresh.valid"
+        })
+        .to_string(),
+        "not-json".to_string(),
+    ])
+    .expect("import account auth json");
+
+    assert_eq!(result.total, 2);
+    assert_eq!(result.created, 1);
+    assert_eq!(result.updated, 0);
+    assert_eq!(result.failed, 1);
+    assert!(result.errors.iter().any(|item| {
+        item.message.contains("invalid JSON object stream")
+    }));
+
+    let storage = Storage::open(&db_path).expect("reopen storage");
+    let accounts = storage.list_accounts().expect("list accounts");
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].label, "meta@example.com");
+
+    if let Some(value) = previous_db_path {
+        std::env::set_var("CODEXMANAGER_DB_PATH", value);
+    } else {
+        std::env::remove_var("CODEXMANAGER_DB_PATH");
+    }
+    let _ = std::fs::remove_file(&db_path);
 }
