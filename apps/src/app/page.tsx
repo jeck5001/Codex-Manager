@@ -36,6 +36,7 @@ interface StatProgressCardProps {
   icon: LucideIcon;
   color: string;
   sub: string;
+  onClick?: () => void;
 }
 
 interface PercentBarProps {
@@ -260,11 +261,18 @@ function StatProgressCard({
   icon: Icon,
   color,
   sub,
+  onClick,
 }: StatProgressCardProps) {
   const percentage = total > 0 ? Math.min(Math.round((value / total) * 100), 100) : 0;
 
   return (
-    <Card className="glass-card overflow-hidden border-none shadow-md backdrop-blur-md transition-all hover:scale-[1.02]">
+    <Card
+      className={cn(
+        "glass-card overflow-hidden border-none shadow-md backdrop-blur-md transition-all hover:scale-[1.02]",
+        onClick ? "cursor-pointer hover:shadow-lg" : "",
+      )}
+      onClick={onClick}
+    >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium">{title}</CardTitle>
         <Icon className={cn("h-4 w-4", color)} />
@@ -307,6 +315,18 @@ export default function DashboardPage() {
     router.push(`/accounts?${params.toString()}`);
   };
 
+  const openAccountsByStatus = (
+    status: "all" | "available" | "low_quota" | "deactivated" | "governed",
+  ) => {
+    if (status === "all") {
+      router.push("/accounts");
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set("status", status);
+    router.push(`/accounts?${params.toString()}`);
+  };
+
   const openLogsByAccountId = (accountId: string) => {
     const params = new URLSearchParams();
     params.set("query", `account:=${accountId}`);
@@ -331,7 +351,10 @@ export default function DashboardPage() {
           ))
         ) : (
           <>
-            <Card className="glass-card overflow-hidden border-none shadow-md backdrop-blur-md transition-all hover:scale-[1.02]">
+            <Card
+              className="glass-card cursor-pointer overflow-hidden border-none shadow-md backdrop-blur-md transition-all hover:scale-[1.02] hover:shadow-lg"
+              onClick={() => openAccountsByStatus("all")}
+            >
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">总账号数</CardTitle>
                 <Users className="h-4 w-4 text-blue-500" />
@@ -364,6 +387,7 @@ export default function DashboardPage() {
               icon={CheckCircle2}
               color="text-green-500"
               sub="当前健康可调用的账号"
+              onClick={() => openAccountsByStatus("available")}
             />
 
             <StatProgressCard
@@ -373,9 +397,13 @@ export default function DashboardPage() {
               icon={XCircle}
               color="text-red-500"
               sub="额度耗尽或授权失效"
+              onClick={() => openAccountsByStatus("deactivated")}
             />
 
-            <Card className="overflow-hidden border-none bg-primary/10 shadow-md backdrop-blur-md transition-all hover:scale-[1.02]">
+            <Card
+              className="cursor-pointer overflow-hidden border-none bg-primary/10 shadow-md backdrop-blur-md transition-all hover:scale-[1.02] hover:shadow-lg"
+              onClick={() => openAccountsByStatus("low_quota")}
+            >
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-primary">账号池剩余</CardTitle>
                 <PieChart className="h-4 w-4 text-primary" />
