@@ -342,6 +342,11 @@ impl Storage {
             include_str!("../../migrations/033_login_sessions_workspace_id.sql"),
             |s| s.ensure_login_session_workspace_column(),
         )?;
+        self.apply_sql_or_compat_migration(
+            "034_restore_account_tags",
+            include_str!("../../migrations/034_restore_account_tags.sql"),
+            |s| s.ensure_account_tags_column(),
+        )?;
         self.ensure_request_token_stats_table()?;
         Ok(())
     }

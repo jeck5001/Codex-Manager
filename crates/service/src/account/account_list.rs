@@ -44,6 +44,7 @@ pub(crate) fn read_accounts(
     let filter = normalize_filter(params.filter);
     let payment_state_map = crate::account_payment::read_payment_state_map();
     let status_meta_map = read_account_status_meta_map(&storage);
+    let account_tags_map = storage.list_account_tags().unwrap_or_default();
 
     if filter == AccountFilter::All {
         if pagination_requested {
@@ -70,6 +71,7 @@ pub(crate) fn read_accounts(
                             account,
                             &payment_state_map,
                             &status_meta_map,
+                            &account_tags_map,
                         )
                     })
                     .collect(),
@@ -92,6 +94,7 @@ pub(crate) fn read_accounts(
                         account,
                         &payment_state_map,
                         &status_meta_map,
+                        &account_tags_map,
                     )
                 })
                 .collect(),
@@ -127,6 +130,7 @@ pub(crate) fn read_accounts(
                         account,
                         &payment_state_map,
                         &status_meta_map,
+                        &account_tags_map,
                     )
                 })
                 .collect(),
@@ -154,6 +158,7 @@ pub(crate) fn read_accounts(
                     account,
                     &payment_state_map,
                     &status_meta_map,
+                    &account_tags_map,
                 )
             })
             .collect(),
@@ -258,15 +263,23 @@ fn to_account_summary(
     acc: Account,
     payment_state_map: &std::collections::BTreeMap<String, crate::account_payment::AccountPaymentState>,
     status_meta_map: &BTreeMap<String, AccountStatusMeta>,
+    account_tags_map: &BTreeMap<String, Option<String>>,
 ) -> AccountSummary {
     let health_score = i64::from(crate::gateway::route_health_score(acc.id.as_str()));
     let payment_state = payment_state_map.get(&acc.id);
     let status_meta = status_meta_map.get(&acc.id);
     let label = resolve_account_display_label(storage, &acc);
+    let tags = account_tags_map
+        .get(&acc.id)
+        .cloned()
+        .flatten()
+        .map(|raw| parse_account_tags(raw.as_str()))
+        .unwrap_or_default();
     AccountSummary {
         id: acc.id,
         label,
         group_name: acc.group_name,
+        tags,
         sort: acc.sort,
         status: acc.status,
         health_score,
@@ -368,4 +381,12 @@ fn resolve_account_display_label(storage: &Storage, account: &Account) -> String
         return account.id.clone();
     }
     label.to_string()
+}
+
+fn parse_account_tags(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect()
 }

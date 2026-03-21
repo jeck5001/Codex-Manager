@@ -594,6 +594,12 @@ pub(crate) fn complete_login_with_redirect(
     let existing_account = storage
         .find_account_by_id(&account_key)
         .map_err(|e| e.to_string())?;
+    let existing_tags = storage
+        .list_account_tags()
+        .map_err(|e| e.to_string())?
+        .get(&account_key)
+        .cloned()
+        .flatten();
     let sort = existing_account
         .as_ref()
         .map(|account| account.sort)
@@ -616,6 +622,10 @@ pub(crate) fn complete_login_with_redirect(
     };
     storage
         .insert_account(&account)
+        .map_err(|e| e.to_string())?;
+    let desired_tags = session.tags.clone().or(existing_tags);
+    storage
+        .update_account_tags(&account_key, desired_tags.as_deref())
         .map_err(|e| e.to_string())?;
 
     // 写入 token

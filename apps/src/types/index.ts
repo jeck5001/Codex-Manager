@@ -28,6 +28,7 @@ export interface Account {
   priority: number;
   label: string;
   groupName: string;
+  tags: string[];
   sort: number;
   status: string;
   healthScore: number;

@@ -76,6 +76,23 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let status = super::str_param(req, "status").unwrap_or("");
             super::value_or_error(account_update_many::update_accounts_status(account_ids, status))
         }
+        "account/updateManyTags" => {
+            let account_ids = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|value| value.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str())
+                        .map(|item| item.to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let tags = super::string_param(req, "tags");
+            super::value_or_error(account_update_many::update_accounts_tags(account_ids, tags.as_deref()))
+        }
         "account/import" => {
             let mut contents = req
                 .params

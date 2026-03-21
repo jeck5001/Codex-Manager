@@ -289,6 +289,14 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     availabilityLevel: availability.level,
     isLowQuota: isLowQuotaUsage(usage),
   });
+  const tags = Array.isArray(source.tags)
+    ? source.tags
+        .map((item) => asString(item))
+        .filter(Boolean)
+    : asString(source.tags)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
 
   return {
     id,
@@ -297,6 +305,7 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     priority: asInteger(source.sort ?? source.priority, 0, 0),
     label: name,
     groupName,
+    tags,
     sort: asInteger(source.sort ?? source.priority, 0, 0),
     status,
     healthScore,
