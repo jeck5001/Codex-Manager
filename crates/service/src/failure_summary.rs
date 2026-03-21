@@ -1,11 +1,15 @@
+use chrono::{DateTime, NaiveDateTime, Utc};
 use codexmanager_core::rpc::types::FailureReasonSummaryItem;
 use codexmanager_core::storage::now_ts;
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::storage_helpers::open_storage;
 
 const DEFAULT_FAILURE_SUMMARY_WINDOW_SECS: i64 = 24 * 60 * 60;
 const DEFAULT_FAILURE_SUMMARY_EVENT_LIMIT: i64 = 500;
+const DEFAULT_REGISTER_FAILURE_PAGE_SIZE: i64 = 100;
+const DEFAULT_REGISTER_FAILURE_PAGE_LIMIT: i64 = 3;
 
 #[derive(Debug, Clone)]
 struct FailureReasonAggregate {
@@ -14,6 +18,109 @@ struct FailureReasonAggregate {
     count: i64,
     last_seen_at: Option<i64>,
     account_ids: BTreeSet<String>,
+}
+
+fn record_failure_reason(
+    aggregates: &mut BTreeMap<String, FailureReasonAggregate>,
+    code: &str,
+    label: &str,
+    last_seen_at: i64,
+    account_or_entity_id: Option<&str>,
+) {
+    let entry = aggregates
+        .entry(code.to_string())
+        .or_insert_with(|| FailureReasonAggregate {
+            code: code.to_string(),
+            label: label.to_string(),
+            count: 0,
+            last_seen_at: None,
+            account_ids: BTreeSet::new(),
+        });
+    entry.count += 1;
+    entry.last_seen_at = Some(
+        entry
+            .last_seen_at
+            .map(|current| current.max(last_seen_at))
+            .unwrap_or(last_seen_at),
+    );
+    if let Some(identifier) = account_or_entity_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        entry.account_ids.insert(identifier.to_string());
+    }
+}
+
+fn parse_register_task_ts(raw: Option<&str>) -> Option<i64> {
+    let value = raw?.trim();
+    if value.is_empty() {
+        return None;
+    }
+
+    DateTime::parse_from_rfc3339(value)
+        .map(|dt| dt.timestamp())
+        .ok()
+        .or_else(|| {
+            NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f")
+                .ok()
+                .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc).timestamp())
+        })
+}
+
+fn merge_register_failure_summary(
+    aggregates: &mut BTreeMap<String, FailureReasonAggregate>,
+    since_ts: i64,
+) -> Result<(), String> {
+    for page in 1..=DEFAULT_REGISTER_FAILURE_PAGE_LIMIT {
+        let payload =
+            crate::account_register::list_register_tasks(page, DEFAULT_REGISTER_FAILURE_PAGE_SIZE, Some("failed"))?;
+        let Some(tasks) = payload.get("tasks").and_then(Value::as_array) else {
+            break;
+        };
+        if tasks.is_empty() {
+            break;
+        }
+
+        let mut reached_old_records = false;
+        for task in tasks {
+            let completed_at = task.get("completed_at").or_else(|| task.get("completedAt")).and_then(Value::as_str);
+            let created_at = task.get("created_at").or_else(|| task.get("createdAt")).and_then(Value::as_str);
+            let task_ts = parse_register_task_ts(completed_at)
+                .or_else(|| parse_register_task_ts(created_at))
+                .unwrap_or_default();
+            if task_ts < since_ts {
+                reached_old_records = true;
+                continue;
+            }
+
+            let error_message = task
+                .get("error_message")
+                .or_else(|| task.get("errorMessage"))
+                .and_then(Value::as_str);
+            let logs = task.get("logs").and_then(Value::as_str).unwrap_or_default();
+            let failure_reason = task
+                .get("failureCode")
+                .and_then(Value::as_str)
+                .zip(task.get("failureLabel").and_then(Value::as_str))
+                .or_else(|| crate::account_register::classify_register_failure_reason(error_message, logs));
+            let Some((code, label)) = failure_reason else {
+                continue;
+            };
+
+            let affected_id = task
+                .get("email")
+                .and_then(Value::as_str)
+                .or_else(|| task.get("task_uuid").and_then(Value::as_str))
+                .or_else(|| task.get("taskUuid").and_then(Value::as_str));
+            record_failure_reason(aggregates, code, label, task_ts, affected_id);
+        }
+
+        if reached_old_records {
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 pub(crate) fn read_failure_reason_summary() -> Result<Vec<FailureReasonSummaryItem>, String> {
@@ -26,30 +133,15 @@ pub(crate) fn read_failure_reason_summary() -> Result<Vec<FailureReasonSummaryIt
     let mut aggregates = BTreeMap::<String, FailureReasonAggregate>::new();
     for event in events {
         let (code, label) = classify_failure_reason(&event.message);
-        let entry = aggregates
-            .entry(code.to_string())
-            .or_insert_with(|| FailureReasonAggregate {
-                code: code.to_string(),
-                label: label.to_string(),
-                count: 0,
-                last_seen_at: None,
-                account_ids: BTreeSet::new(),
-            });
-        entry.count += 1;
-        entry.last_seen_at = Some(
-            entry
-                .last_seen_at
-                .map(|current| current.max(event.created_at))
-                .unwrap_or(event.created_at),
-        );
-        if let Some(account_id) = event
+        let account_id = event
             .account_id
             .as_deref()
             .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            entry.account_ids.insert(account_id.to_string());
-        }
+            .filter(|value| !value.is_empty());
+        record_failure_reason(&mut aggregates, code, label, event.created_at, account_id);
+    }
+    if let Err(err) = merge_register_failure_summary(&mut aggregates, since_ts) {
+        log::warn!("read register failure summary skipped: {err}");
     }
 
     let mut items = aggregates

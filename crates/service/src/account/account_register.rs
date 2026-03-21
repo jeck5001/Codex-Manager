@@ -19,6 +19,8 @@ pub(crate) struct RegisterTaskReadResponse {
     started_at: Option<String>,
     completed_at: Option<String>,
     error_message: Option<String>,
+    failure_code: Option<String>,
+    failure_label: Option<String>,
     email: Option<String>,
     can_import: bool,
     result: Value,
@@ -194,6 +196,95 @@ fn task_logs(logs_payload: &Value) -> Vec<String> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+fn normalize_failure_text(error_message: Option<&str>, logs: &str) -> String {
+    [error_message.unwrap_or_default(), logs]
+        .into_iter()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_ascii_lowercase()
+}
+
+pub(crate) fn classify_register_failure_reason(
+    error_message: Option<&str>,
+    logs: &str,
+) -> Option<(&'static str, &'static str)> {
+    let normalized = normalize_failure_text(error_message, logs);
+    if normalized.trim().is_empty() {
+        return None;
+    }
+
+    if normalized.contains("add_phone")
+        || normalized.contains("手机号验证")
+        || normalized.contains("phone verification")
+        || normalized.contains("blocked_step") && normalized.contains("phone")
+    {
+        return Some(("register_phone_required", "注册触发手机号验证"));
+    }
+
+    if normalized.contains("wrong_email_otp_code")
+        || normalized.contains("wrong code. please check it and try again")
+        || normalized.contains("登录验证码不是最新一封或已失效")
+        || normalized.contains("验证码错误")
+    {
+        return Some(("register_email_otp_invalid", "邮箱验证码错误或已过期"));
+    }
+
+    if normalized.contains("等待验证码超时")
+        || normalized.contains("验证码超时")
+        || normalized.contains("email otp timeout")
+    {
+        return Some(("register_email_otp_timeout", "邮箱验证码超时"));
+    }
+
+    if (normalized.contains("proxy") || normalized.contains("代理"))
+        && (normalized.contains("error")
+            || normalized.contains("异常")
+            || normalized.contains("timeout")
+            || normalized.contains("timed out")
+            || normalized.contains("connect")
+            || normalized.contains("refused")
+            || normalized.contains("auth required")
+            || normalized.contains("认证"))
+    {
+        return Some(("register_proxy_error", "注册代理异常"));
+    }
+
+    None
+}
+
+fn enrich_register_task_value(task: &mut Value) {
+    let Some(object) = task.as_object_mut() else {
+        return;
+    };
+    let status = object
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if !matches!(status.as_str(), "failed" | "cancelled") {
+        return;
+    }
+
+    let error_message = object
+        .get("error_message")
+        .or_else(|| object.get("errorMessage"))
+        .and_then(Value::as_str);
+    let logs = object
+        .get("logs")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    if let Some((code, label)) = classify_register_failure_reason(error_message, logs.as_str()) {
+        object.insert("failureCode".to_string(), Value::String(code.to_string()));
+        object.insert("failureLabel".to_string(), Value::String(label.to_string()));
+    }
 }
 
 fn task_uuid_array_from_items(items: &[Value]) -> Vec<Value> {
@@ -543,7 +634,13 @@ pub(crate) fn list_register_tasks(
     if let Some(status) = status.map(str::trim).filter(|value| !value.is_empty()) {
         query.push(("status".to_string(), status.to_string()));
     }
-    register_get_json_with_query("/api/registration/tasks", &query)
+    let mut payload = register_get_json_with_query("/api/registration/tasks", &query)?;
+    if let Some(items) = payload.get_mut("tasks").and_then(Value::as_array_mut) {
+        for item in items {
+            enrich_register_task_value(item);
+        }
+    }
+    Ok(payload)
 }
 
 pub(crate) fn register_stats() -> Result<Value, String> {
@@ -900,6 +997,14 @@ pub(crate) fn read_register_task(task_uuid: &str) -> Result<RegisterTaskReadResp
     let logs_payload = register_get_json(&format!("/api/registration/tasks/{task_id}/logs"))?;
     let status = task_status(&task);
     let email = task_result_email(&task);
+    let logs = task_logs(&logs_payload);
+    let joined_logs = logs.join("\n");
+    let error_message = task_string_field(&task, "error_message");
+    let failure_reason = if matches!(status.trim().to_ascii_lowercase().as_str(), "failed" | "cancelled") {
+        classify_register_failure_reason(error_message.as_deref(), joined_logs.as_str())
+    } else {
+        None
+    };
     Ok(RegisterTaskReadResponse {
         task_uuid: task_id.to_string(),
         status: status.clone(),
@@ -908,11 +1013,13 @@ pub(crate) fn read_register_task(task_uuid: &str) -> Result<RegisterTaskReadResp
         created_at: task_string_field(&task, "created_at"),
         started_at: task_string_field(&task, "started_at"),
         completed_at: task_string_field(&task, "completed_at"),
-        error_message: task_string_field(&task, "error_message"),
+        error_message,
+        failure_code: failure_reason.map(|(code, _)| code.to_string()),
+        failure_label: failure_reason.map(|(_, label)| label.to_string()),
         email: email.clone(),
         can_import: status.eq_ignore_ascii_case("completed") && email.is_some(),
         result: task.get("result").cloned().unwrap_or(Value::Null),
-        logs: task_logs(&logs_payload),
+        logs,
     })
 }
 
@@ -956,7 +1063,10 @@ pub(crate) fn import_register_account_by_email(email: &str) -> Result<Value, Str
 
 #[cfg(test)]
 mod tests {
-    use super::{normalized_register_service_url, pick_remote_account_by_email};
+    use super::{
+        classify_register_failure_reason, normalized_register_service_url,
+        pick_remote_account_by_email,
+    };
 
     #[test]
     fn normalized_register_service_url_uses_default_and_trims_slash() {
@@ -979,5 +1089,32 @@ mod tests {
         let picked = pick_remote_account_by_email(&items, "target@example.com")
             .expect("account should match");
         assert_eq!(picked.get("id").and_then(|value| value.as_i64()), Some(2));
+    }
+
+    #[test]
+    fn classify_register_failure_reason_detects_phone_required() {
+        assert_eq!(
+            classify_register_failure_reason(
+                Some("OpenAI 注册后进入手机号验证，且登录回退未能拿到 OAuth 回调"),
+                "",
+            ),
+            Some(("register_phone_required", "注册触发手机号验证"))
+        );
+    }
+
+    #[test]
+    fn classify_register_failure_reason_detects_email_otp_timeout() {
+        assert_eq!(
+            classify_register_failure_reason(None, "等待验证码超时"),
+            Some(("register_email_otp_timeout", "邮箱验证码超时"))
+        );
+    }
+
+    #[test]
+    fn classify_register_failure_reason_detects_proxy_error() {
+        assert_eq!(
+            classify_register_failure_reason(Some("proxy authentication required"), ""),
+            Some(("register_proxy_error", "注册代理异常"))
+        );
     }
 }

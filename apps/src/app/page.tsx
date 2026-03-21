@@ -68,6 +68,12 @@ function openFailureDrilldown(
   const logParams = new URLSearchParams();
 
   switch (normalized) {
+    case "register_email_otp_timeout":
+    case "register_email_otp_invalid":
+    case "register_phone_required":
+    case "register_proxy_error":
+      router.push(`/register?status=failed&failureCode=${encodeURIComponent(normalized)}`);
+      return;
     case "account_deactivated":
       accountParams.set("status", "deactivated");
       accountParams.set("statusReason", "检测到账号已停用");
@@ -137,6 +143,11 @@ function describeFailureDrilldownTarget(code: string): string {
     case "refresh_token_invalid":
     case "usage_unauthorized":
       return "查看账号页";
+    case "register_email_otp_timeout":
+    case "register_email_otp_invalid":
+    case "register_phone_required":
+    case "register_proxy_error":
+      return "查看注册页";
     default:
       return "查看日志页";
   }

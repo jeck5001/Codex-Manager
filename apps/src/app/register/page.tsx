@@ -60,6 +60,13 @@ type PendingAction =
 
 const PAGE_SIZE = 20;
 
+const REGISTER_FAILURE_REASON_LABELS: Record<string, string> = {
+  register_email_otp_timeout: "邮箱验证码超时",
+  register_email_otp_invalid: "邮箱验证码错误或已过期",
+  register_phone_required: "注册触发手机号验证",
+  register_proxy_error: "注册代理异常",
+};
+
 function formatTimestamp(value: string) {
   return formatApiDateTime(value, { emptyLabel: "--", withSeconds: true });
 }
@@ -93,6 +100,21 @@ function isTaskActive(status: string) {
   return normalized === "pending" || normalized === "running";
 }
 
+function normalizeRegisterStatusFilter(value: string | null): string {
+  if (value === "pending" || value === "running" || value === "completed" || value === "failed" || value === "cancelled") {
+    return value;
+  }
+  return "all";
+}
+
+function resolveRegisterFailureReasonLabel(code: string, fallback?: string) {
+  const normalized = String(code || "").trim().toLowerCase();
+  if (normalized && REGISTER_FAILURE_REASON_LABELS[normalized]) {
+    return REGISTER_FAILURE_REASON_LABELS[normalized];
+  }
+  return fallback || "失败原因";
+}
+
 export default function RegisterPage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -102,6 +124,7 @@ export default function RegisterPage() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [monitorTaskUuid, setMonitorTaskUuid] = useState("");
+  const [failureCodeFilter, setFailureCodeFilter] = useState("");
 
   const {
     tasks,
@@ -159,6 +182,27 @@ export default function RegisterPage() {
   const activeTasks = latestTasks.filter((task) => isTaskActive(task.status));
   const recentAccounts = recentAccountsQuery.data?.items || [];
   const recentAccountPreview = recentAccounts.slice(0, 4);
+  const filteredTasks = useMemo(
+    () =>
+      failureCodeFilter
+        ? tasks.filter(
+            (task) => String(task.failureCode || "").trim().toLowerCase() === failureCodeFilter,
+          )
+        : tasks,
+    [failureCodeFilter, tasks],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const nextStatusFilter = normalizeRegisterStatusFilter(params.get("status"));
+    const nextFailureCode = (params.get("failureCode") || "").trim().toLowerCase();
+    setStatusFilter((current) => (current === nextStatusFilter ? current : nextStatusFilter));
+    setFailureCodeFilter((current) => (current === nextFailureCode ? current : nextFailureCode));
+    setPage(1);
+  }, []);
 
   useEffect(() => {
     const candidates = activeTasks.length > 0 ? activeTasks : latestTasks;
@@ -555,10 +599,21 @@ export default function RegisterPage() {
             </div>
             <div className="min-w-0 flex items-end justify-end">
               <div className="text-sm text-muted-foreground">
-                共 {total} 条任务，当前第 {page} / {totalPages} 页
+                {failureCodeFilter
+                  ? `当前页命中 ${filteredTasks.length} 条，共返回 ${total} 条任务`
+                  : `共 ${total} 条任务，当前第 ${page} / ${totalPages} 页`}
               </div>
             </div>
           </div>
+
+          {failureCodeFilter ? (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+              已按失败原因筛选：{resolveRegisterFailureReasonLabel(
+                failureCodeFilter,
+                filteredTasks[0]?.failureLabel,
+              )}
+            </div>
+          ) : null}
 
           <div className="min-w-0 overflow-x-auto rounded-xl border border-border/50">
             <Table>
@@ -581,14 +636,14 @@ export default function RegisterPage() {
                       </TableCell>
                     </TableRow>
                   ))
-                ) : tasks.length === 0 ? (
+                ) : filteredTasks.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="h-40 text-center text-muted-foreground">
                       当前筛选下暂无注册任务
                     </TableCell>
                   </TableRow>
                 ) : (
-                  tasks.map((task) => {
+                  filteredTasks.map((task) => {
                     const statusMeta = getStatusMeta(task.status);
                     const normalizedStatus = String(task.status || "").trim().toLowerCase();
                     const canCancel =
@@ -607,6 +662,11 @@ export default function RegisterPage() {
                         </TableCell>
                         <TableCell className="max-w-[180px]">
                           <div className="truncate text-sm">{task.email || "--"}</div>
+                          {task.failureLabel ? (
+                            <div className="truncate text-[11px] text-amber-600 dark:text-amber-300">
+                              {task.failureLabel}
+                            </div>
+                          ) : null}
                           {task.errorMessage ? (
                             <div className="truncate text-[11px] text-red-500">
                               {task.errorMessage}
@@ -726,6 +786,10 @@ export default function RegisterPage() {
                 <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
                   <p className="text-xs text-muted-foreground">注册邮箱</p>
                   <p className="mt-1 text-sm">{detailTask.email || "--"}</p>
+                </div>
+                <div className="rounded-lg border border-border/50 bg-muted/20 p-3 md:col-span-2">
+                  <p className="text-xs text-muted-foreground">失败原因</p>
+                  <p className="mt-1 text-sm">{detailTask.failureLabel || detailTask.errorMessage || "--"}</p>
                 </div>
               </div>
               <Textarea

@@ -240,6 +240,16 @@ function normalizeRegisterTaskSnapshot(value: unknown): RegisterTaskSnapshot {
       : typeof source.error_message === "string"
         ? source.error_message
         : "",
+    failureCode: typeof source.failureCode === "string"
+      ? source.failureCode
+      : typeof source.failure_code === "string"
+        ? source.failure_code
+        : "",
+    failureLabel: typeof source.failureLabel === "string"
+      ? source.failureLabel
+      : typeof source.failure_label === "string"
+        ? source.failure_label
+        : "",
     email: typeof source.email === "string" && source.email
       ? source.email
       : emailFromResult,

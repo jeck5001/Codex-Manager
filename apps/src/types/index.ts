@@ -377,6 +377,8 @@ export interface RegisterTaskSnapshot {
   startedAt: string;
   completedAt: string;
   errorMessage: string;
+  failureCode: string;
+  failureLabel: string;
   email: string;
   canImport: boolean;
   logs: string[];
