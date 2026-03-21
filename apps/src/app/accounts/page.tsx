@@ -71,6 +71,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAccounts } from "@/hooks/useAccounts";
+import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { cn } from "@/lib/utils";
 import { buildStaticRouteUrl } from "@/lib/utils/static-routes";
@@ -355,6 +356,7 @@ export default function AccountsPage() {
     toggleAccountStatus,
     isUpdatingStatusAccountId,
   } = useAccounts();
+  usePageTransitionReady(!isServiceReady || !isLoading);
 
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState("all");

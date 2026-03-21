@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { appClient } from "@/lib/api/app-client";
 import { getAppErrorMessage } from "@/lib/api/transport";
 import { useAppStore } from "@/lib/store/useAppStore";
+import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
+import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import {
   APPEARANCE_PRESETS,
@@ -267,7 +269,8 @@ function buildReleaseUrl(summary: UpdateCheckSummary | null): string {
 }
 
 export default function SettingsPage() {
-  const { setAppSettings: setStoreSettings } = useAppStore();
+  const setStoreSettings = useAppStore((state) => state.setAppSettings);
+  const storedSettings = useAppStore((state) => state.appSettings);
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
   const {
@@ -278,6 +281,7 @@ export default function SettingsPage() {
     canCloseToTray,
   } =
     useRuntimeCapabilities();
+  const isSnapshotQueryEnabled = useDeferredDesktopActivation(canAccessManagementRpc);
   const lastSyncedSnapshotThemeRef = useRef<string | null>(null);
   const lastSyncedAppearancePresetRef = useRef<string | null>(null);
   const autoUpdateCheckedRef = useRef(false);
@@ -299,11 +303,15 @@ export default function SettingsPage() {
   >({});
   const [backgroundTaskDraft, setBackgroundTaskDraft] = useState<Record<string, string>>({});
 
-  const { data: snapshot, isLoading } = useQuery({
+  const { data: fetchedSnapshot, isLoading, isError: isSnapshotError } = useQuery({
     queryKey: ["app-settings-snapshot"],
     queryFn: () => appClient.getSettings(),
-    enabled: canAccessManagementRpc,
+    enabled: isSnapshotQueryEnabled,
   });
+  const snapshot = fetchedSnapshot ?? storedSettings;
+  usePageTransitionReady(
+    !canAccessManagementRpc || Boolean(snapshot) || isSnapshotError,
+  );
 
   const updateSettings = useMutation({
     mutationFn: (patch: Partial<AppSettings> & { _silent?: boolean }) => {
@@ -760,7 +768,7 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
-  if (isLoading || !snapshot) {
+  if ((canAccessManagementRpc && !isSnapshotQueryEnabled) || !snapshot) {
     return <div className="flex h-64 items-center justify-center text-muted-foreground">加载配置中...</div>;
   }
 

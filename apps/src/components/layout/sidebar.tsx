@@ -17,11 +17,11 @@ import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { useAppStore } from "@/lib/store/useAppStore";
 import {
   memo,
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
   useRef,
+  useState,
   type MouseEvent,
 } from "react";
 
@@ -33,21 +33,27 @@ const NAV_ITEMS = [
   { name: "设置", href: "/settings/", icon: Settings },
 ];
 const DESKTOP_NAVIGATION_FALLBACK_MS = 2_500;
+const DESKTOP_ROUTE_WARMUP_TIMEOUT_MS = 4_000;
 
 const NavItem = memo(({
   item,
   isActive,
   isSidebarOpen,
   onNavigate,
+  onPrefetch,
 }: {
   item: typeof NAV_ITEMS[0],
   isActive: boolean,
   isSidebarOpen: boolean,
   onNavigate: (href: string, event: MouseEvent<HTMLAnchorElement>) => void,
+  onPrefetch: (href: string) => void,
 }) => (
   <a
     href={item.href}
     onClick={(event) => onNavigate(item.href, event)}
+    onPointerDown={() => onPrefetch(item.href)}
+    onMouseEnter={() => onPrefetch(item.href)}
+    onFocus={() => onPrefetch(item.href)}
     className={cn(
       "flex items-center gap-3 rounded-lg px-3 py-2 transition-all duration-200 hover:bg-accent hover:text-accent-foreground",
       isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground"
@@ -63,26 +69,51 @@ NavItem.displayName = "NavItem";
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { isSidebarOpen, toggleSidebar } = useAppStore();
+  const {
+    isSidebarOpen,
+    toggleSidebar,
+    setPendingRoutePath,
+  } = useAppStore();
   const { isDesktopRuntime } = useRuntimeCapabilities();
   const normalizedPathname = normalizeRoutePath(pathname);
+  const [optimisticPathname, setOptimisticPathname] = useState<string | null>(null);
   const desktopNavigationFallbackTimerRef = useRef<number | null>(null);
+  const prefetchedRouteSetRef = useRef<Set<string>>(new Set());
+  const activePathname = optimisticPathname || normalizedPathname;
+
+  const prefetchRoute = useCallback(
+    (href: string) => {
+      const normalizedHref = normalizeRoutePath(href);
+      if (!normalizedHref || normalizedHref === normalizedPathname) {
+        return;
+      }
+      if (prefetchedRouteSetRef.current.has(normalizedHref)) {
+        return;
+      }
+      prefetchedRouteSetRef.current.add(normalizedHref);
+      router.prefetch(href);
+    },
+    [normalizedPathname, router],
+  );
 
   const handleNavigate = useCallback(
     (href: string, event: MouseEvent<HTMLAnchorElement>) => {
       const nextPath = normalizeRoutePath(href);
       if (nextPath === normalizedPathname) {
         event.preventDefault();
+        setPendingRoutePath("");
         return;
       }
 
       event.preventDefault();
+      setOptimisticPathname(nextPath);
+      if (isDesktopRuntime) {
+        setPendingRoutePath(nextPath);
+      }
       if (isDesktopRuntime) {
         const currentPath = normalizeRoutePath(window.location.pathname);
 
-        startTransition(() => {
-          router.push(href);
-        });
+        router.push(href);
 
         if (process.env.NODE_ENV === "production") {
           if (desktopNavigationFallbackTimerRef.current !== null) {
@@ -101,10 +132,11 @@ export function Sidebar() {
 
       router.push(href);
     },
-    [isDesktopRuntime, normalizedPathname, router],
+    [isDesktopRuntime, normalizedPathname, router, setPendingRoutePath],
   );
 
   useEffect(() => {
+    setOptimisticPathname(null);
     if (desktopNavigationFallbackTimerRef.current !== null) {
       window.clearTimeout(desktopNavigationFallbackTimerRef.current);
       desktopNavigationFallbackTimerRef.current = null;
@@ -120,7 +152,7 @@ export function Sidebar() {
   }, []);
 
   useEffect(() => {
-    if (isDesktopRuntime) {
+    if (typeof window === "undefined") {
       return;
     }
 
@@ -131,37 +163,92 @@ export function Sidebar() {
       ) => number;
       cancelIdleCallback?: (handle: number) => void;
     };
+    const controllers: AbortController[] = [];
 
-    const prefetchRoutes = () => {
-      for (const item of NAV_ITEMS) {
-        if (normalizeRoutePath(item.href) !== normalizedPathname) {
-          router.prefetch(item.href);
+    const warmRouteDocument = async (href: string) => {
+      const normalizedHref = normalizeRoutePath(href);
+      if (!normalizedHref || normalizedHref === normalizedPathname) {
+        return;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(
+        () => controller.abort(),
+        DESKTOP_ROUTE_WARMUP_TIMEOUT_MS
+      );
+      controllers.push(controller);
+      try {
+        await fetch(href, {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "force-cache",
+          signal: controller.signal,
+          headers: {
+            "x-codexmanager-route-warmup": "1",
+          },
+        });
+      } catch {
+        // 中文注释：路由文档预热失败时静默回退，不影响正常导航。
+      } finally {
+        window.clearTimeout(timeoutId);
+        const index = controllers.indexOf(controller);
+        if (index >= 0) {
+          controllers.splice(index, 1);
         }
       }
     };
+
+    const prefetchRoutes = () => {
+      for (const item of NAV_ITEMS) {
+        prefetchRoute(item.href);
+        if (isDesktopRuntime) {
+          void warmRouteDocument(item.href);
+        }
+      }
+    };
+
+    if (isDesktopRuntime) {
+      prefetchRoutes();
+      return () => {
+        for (const controller of controllers) {
+          controller.abort();
+        }
+      };
+    }
 
     if (runtime.requestIdleCallback) {
       const idleId = runtime.requestIdleCallback(() => prefetchRoutes(), {
         timeout: 1200,
       });
-      return () => runtime.cancelIdleCallback?.(idleId);
+      return () => {
+        runtime.cancelIdleCallback?.(idleId);
+        for (const controller of controllers) {
+          controller.abort();
+        }
+      };
     }
 
     const timer = globalThis.setTimeout(prefetchRoutes, 120);
-    return () => globalThis.clearTimeout(timer);
-  }, [isDesktopRuntime, normalizedPathname, router]);
+    return () => {
+      globalThis.clearTimeout(timer);
+      for (const controller of controllers) {
+        controller.abort();
+      }
+    };
+  }, [isDesktopRuntime, normalizedPathname, prefetchRoute]);
 
   const renderedItems = useMemo(() => 
     NAV_ITEMS.map((item) => (
       <NavItem 
         key={item.href} 
         item={item} 
-        isActive={normalizeRoutePath(item.href) === normalizedPathname} 
+        isActive={normalizeRoutePath(item.href) === activePathname} 
         isSidebarOpen={isSidebarOpen}
         onNavigate={handleNavigate}
+        onPrefetch={prefetchRoute}
       />
     )),
-    [handleNavigate, normalizedPathname, isSidebarOpen]
+    [activePathname, handleNavigate, isSidebarOpen, prefetchRoute]
   );
 
   return (

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { accountClient } from "@/lib/api/account-client";
 import { getAppErrorMessage } from "@/lib/api/transport";
+import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { useAppStore } from "@/lib/store/useAppStore";
 
@@ -14,6 +15,7 @@ export function useApiKeys() {
   const serviceStatus = useAppStore((state) => state.serviceStatus);
   const { canAccessManagementRpc } = useRuntimeCapabilities();
   const isServiceReady = canAccessManagementRpc && serviceStatus.connected;
+  const areApiKeyQueriesEnabled = useDeferredDesktopActivation(isServiceReady);
 
   const ensureServiceReady = (actionLabel: string): boolean => {
     if (isServiceReady) {
@@ -26,14 +28,14 @@ export function useApiKeys() {
   const apiKeysQuery = useQuery({
     queryKey: ["apikeys"],
     queryFn: () => accountClient.listApiKeys(),
-    enabled: isServiceReady,
+    enabled: areApiKeyQueriesEnabled,
     retry: 1,
   });
 
   const modelsQuery = useQuery({
     queryKey: ["apikey-models"],
     queryFn: () => accountClient.listModels(false),
-    enabled: isServiceReady,
+    enabled: areApiKeyQueriesEnabled,
     retry: 1,
   });
 
@@ -114,8 +116,9 @@ export function useApiKeys() {
   return {
     apiKeys: apiKeysQuery.data || [],
     models: modelsQuery.data || [],
-    isLoading: isServiceReady && apiKeysQuery.isLoading,
-    isModelsLoading: modelsQuery.isLoading,
+    isLoading: isServiceReady && (!areApiKeyQueriesEnabled || apiKeysQuery.isLoading),
+    isModelsLoading:
+      isServiceReady && (!areApiKeyQueriesEnabled || modelsQuery.isLoading),
     isServiceReady,
     createApiKey: async (params: ApiKeyPayload) => {
       if (!ensureServiceReady("创建密钥")) return;

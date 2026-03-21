@@ -7,6 +7,7 @@ import { accountClient } from "@/lib/api/account-client";
 import { attachUsagesToAccounts } from "@/lib/api/normalize";
 import { serviceClient } from "@/lib/api/service-client";
 import { getAppErrorMessage } from "@/lib/api/transport";
+import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { useAppStore } from "@/lib/store/useAppStore";
 
@@ -40,6 +41,7 @@ export function useAccounts() {
   const serviceStatus = useAppStore((state) => state.serviceStatus);
   const { canAccessManagementRpc } = useRuntimeCapabilities();
   const isServiceReady = canAccessManagementRpc && serviceStatus.connected;
+  const areAccountQueriesEnabled = useDeferredDesktopActivation(isServiceReady);
 
   const ensureServiceReady = (actionLabel: string): boolean => {
     if (isServiceReady) {
@@ -52,21 +54,21 @@ export function useAccounts() {
   const accountsQuery = useQuery({
     queryKey: ["accounts", "list"],
     queryFn: () => accountClient.list(),
-    enabled: isServiceReady,
+    enabled: areAccountQueriesEnabled,
     retry: 1,
   });
 
   const usagesQuery = useQuery({
     queryKey: ["usage", "list"],
     queryFn: () => accountClient.listUsage(),
-    enabled: isServiceReady,
+    enabled: areAccountQueriesEnabled,
     retry: 1,
   });
 
   const manualPreferredAccountQuery = useQuery({
     queryKey: ["gateway", "manual-account", serviceStatus.addr || null],
     queryFn: () => serviceClient.getManualPreferredAccountId(),
-    enabled: isServiceReady,
+    enabled: areAccountQueriesEnabled,
     retry: 1,
   });
 
@@ -354,7 +356,9 @@ export function useAccounts() {
     accounts,
     planTypes,
     total: accountsQuery.data?.total || accounts.length,
-    isLoading: isServiceReady && (accountsQuery.isLoading || usagesQuery.isLoading),
+    isLoading:
+      isServiceReady &&
+      (!areAccountQueriesEnabled || accountsQuery.isLoading || usagesQuery.isLoading),
     isServiceReady,
     manualPreferredAccountId: manualPreferredAccountQuery.data || "",
     refreshAccount: (accountId: string) => {

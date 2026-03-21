@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import {
   buildStartupSnapshotQueryKey,
   hasStartupSnapshotSignal,
@@ -17,6 +18,7 @@ import { pickBestRecommendations, pickCurrentAccount } from "@/lib/utils/usage";
 export function useDashboardStats() {
   const serviceStatus = useAppStore((state) => state.serviceStatus);
   const isServiceReady = serviceStatus.connected;
+  const isSnapshotQueryEnabled = useDeferredDesktopActivation(isServiceReady);
   const warmupStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -36,7 +38,7 @@ export function useDashboardStats() {
       serviceClient.getStartupSnapshot({
         requestLogLimit: STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT,
       }),
-    enabled: isServiceReady,
+    enabled: isSnapshotQueryEnabled,
     retry: 1,
     staleTime: STARTUP_SNAPSHOT_STALE_TIME,
     refetchInterval: (query) => {
@@ -99,7 +101,11 @@ export function useDashboardStats() {
     currentAccount,
     recommendations,
     requestLogs: data?.requestLogs || [],
-    isLoading: !isServiceReady || snapshotQuery.isPending || shouldWarmupPoll,
+    isLoading:
+      !isServiceReady ||
+      !isSnapshotQueryEnabled ||
+      snapshotQuery.isPending ||
+      shouldWarmupPoll,
     isSyncingSnapshot: shouldWarmupPoll,
     isServiceReady,
     isError: snapshotQuery.isError,

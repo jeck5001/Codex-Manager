@@ -6,12 +6,14 @@ interface AppState {
   appSettings: AppSettings;
   runtimeCapabilities: RuntimeCapabilities | null;
   isSidebarOpen: boolean;
+  pendingRoutePath: string;
   
   setServiceStatus: (status: Partial<ServiceStatus>) => void;
   setAppSettings: (settings: Partial<AppSettings>) => void;
   setRuntimeCapabilities: (capabilities: RuntimeCapabilities | null) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
+  setPendingRoutePath: (path: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -78,6 +80,7 @@ export const useAppStore = create<AppState>((set) => ({
   },
   runtimeCapabilities: null,
   isSidebarOpen: true,
+  pendingRoutePath: "",
 
   setServiceStatus: (status) => 
     set((state) => ({ serviceStatus: { ...state.serviceStatus, ...status } })),
@@ -90,4 +93,6 @@ export const useAppStore = create<AppState>((set) => ({
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   
   setSidebarOpen: (open) => set({ isSidebarOpen: open }),
+
+  setPendingRoutePath: (path) => set({ pendingRoutePath: path }),
 }));

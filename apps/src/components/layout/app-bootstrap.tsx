@@ -33,6 +33,7 @@ const PRIMARY_PAGE_ROUTES = ["/", "/accounts/", "/apikeys/", "/logs/", "/setting
 const DEV_ROUTE_WARMUP_TIMEOUT_MS = 12_000;
 const STARTUP_WARMUP_LABEL = "[startup warmup]";
 const BOOTSTRAP_RECOVERY_RETRY_MS = 1_200;
+const DESKTOP_PRIMARY_WARMUP_DELAY_MS = 2_500;
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export function AppBootstrap({ children }: { children: React.ReactNode }) {
@@ -53,6 +54,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   const hasInitializedOnce = useRef(false);
   const hasWarmedDevRoutes = useRef(false);
   const recoveryTimerRef = useRef<number | null>(null);
+  const delayedPrimaryWarmupTimerRef = useRef<number | null>(null);
   const retryInitRef = useRef<(() => Promise<void>) | null>(null);
   const serviceStatusRef = useRef(serviceStatus);
   const runtimeCapabilitiesRef = useRef(runtimeCapabilities);
@@ -214,14 +216,29 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
         );
       }
 
-      try {
-        await warmupPrimaryPages(addr);
-      } catch (warmupError) {
-        console.warn(
-          `${STARTUP_WARMUP_LABEL} primary page warmup failed`,
-          warmupError,
-        );
+      const runPrimaryWarmup = () => {
+        void warmupPrimaryPages(addr).catch((warmupError) => {
+          console.warn(
+            `${STARTUP_WARMUP_LABEL} primary page warmup failed`,
+            warmupError,
+          );
+        });
+      };
+
+      const isDesktopWarmup =
+        runtimeCapabilitiesRef.current?.mode === "desktop-tauri";
+      if (!isDesktopWarmup || typeof window === "undefined") {
+        runPrimaryWarmup();
+        return;
       }
+
+      if (delayedPrimaryWarmupTimerRef.current !== null) {
+        window.clearTimeout(delayedPrimaryWarmupTimerRef.current);
+      }
+      delayedPrimaryWarmupTimerRef.current = window.setTimeout(() => {
+        delayedPrimaryWarmupTimerRef.current = null;
+        runPrimaryWarmup();
+      }, DESKTOP_PRIMARY_WARMUP_DELAY_MS);
     },
     [prefetchStartupSnapshot, warmupPrimaryPages],
   );
@@ -487,6 +504,9 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     return () => {
       if (recoveryTimerRef.current !== null) {
         window.clearTimeout(recoveryTimerRef.current);
+      }
+      if (delayedPrimaryWarmupTimerRef.current !== null) {
+        window.clearTimeout(delayedPrimaryWarmupTimerRef.current);
       }
     };
   }, []);

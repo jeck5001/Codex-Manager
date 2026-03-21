@@ -35,6 +35,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useApiKeys } from "@/hooks/useApiKeys";
+import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
+import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { accountClient } from "@/lib/api/account-client";
 import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { formatCompactNumber } from "@/lib/utils/usage";
@@ -43,6 +45,7 @@ export default function ApiKeysPage() {
   const {
     apiKeys,
     isLoading,
+    isModelsLoading,
     isServiceReady,
     deleteApiKey,
     toggleApiKeyStatus,
@@ -51,6 +54,10 @@ export default function ApiKeysPage() {
     isToggling,
     isRefreshingModels,
   } = useApiKeys();
+  const isUsageQueryEnabled = useDeferredDesktopActivation(isServiceReady);
+  usePageTransitionReady(
+    !isServiceReady || (!isLoading && !isModelsLoading),
+  );
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
   const [loadingSecretId, setLoadingSecretId] = useState<string | null>(null);
   const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
@@ -72,7 +79,7 @@ export default function ApiKeysPage() {
         return result;
       }, {});
     },
-    enabled: isServiceReady,
+    enabled: isUsageQueryEnabled,
     refetchInterval: 5000,
     retry: 1,
   });

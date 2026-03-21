@@ -42,6 +42,8 @@ import {
 } from "@/components/ui/table";
 import { accountClient } from "@/lib/api/account-client";
 import { serviceClient } from "@/lib/api/service-client";
+import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
+import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { useAppStore } from "@/lib/store/useAppStore";
 import { formatCompactNumber, formatTsFromSeconds } from "@/lib/utils/usage";
 import { cn } from "@/lib/utils";
@@ -451,6 +453,7 @@ function LogsPageContent() {
   const searchParams = useSearchParams();
   const { serviceStatus } = useAppStore();
   const queryClient = useQueryClient();
+  const areLogQueriesEnabled = useDeferredDesktopActivation(serviceStatus.connected);
   const [search, setSearch] = useState(() => searchParams.get("query") || "");
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [pageSize, setPageSize] = useState("10");
@@ -461,12 +464,12 @@ function LogsPageContent() {
   const { data: accountsResult } = useQuery({
     queryKey: ["accounts", "lookup"],
     queryFn: () => accountClient.list(),
-    enabled: serviceStatus.connected,
+    enabled: areLogQueriesEnabled,
     staleTime: 60_000,
     retry: 1,
   });
 
-  const { data: logsResult, isLoading } = useQuery({
+  const { data: logsResult, isLoading, isError: isLogsError } = useQuery({
     queryKey: ["logs", "list", search, filter, page, pageSizeNumber],
     queryFn: () =>
       serviceClient.listRequestLogs({
@@ -475,20 +478,20 @@ function LogsPageContent() {
         page,
         pageSize: pageSizeNumber,
       }),
-    enabled: serviceStatus.connected,
+    enabled: areLogQueriesEnabled,
     refetchInterval: 5000,
     retry: 1,
     placeholderData: (previousData) => previousData,
   });
 
-  const { data: summaryResult } = useQuery({
+  const { data: summaryResult, isError: isSummaryError } = useQuery({
     queryKey: ["logs", "summary", search, filter],
     queryFn: () =>
       serviceClient.getRequestLogSummary({
         query: search,
         statusFilter: filter,
       }),
-    enabled: serviceStatus.connected,
+    enabled: areLogQueriesEnabled,
     refetchInterval: 5000,
     retry: 1,
     placeholderData: (previousData) => previousData,
@@ -519,6 +522,13 @@ function LogsPageContent() {
   }, [accountsResult?.items]);
 
   const logs = logsResult?.items || [];
+  const isLogsLoading =
+    serviceStatus.connected && (!areLogQueriesEnabled || isLoading);
+  usePageTransitionReady(
+    !serviceStatus.connected ||
+      (!isLogsLoading &&
+        (Boolean(summaryResult) || isLogsError || isSummaryError)),
+  );
   const currentPage = logsResult?.page || page;
   const summary = summaryResult || {
     totalCount: logsResult?.total || 0,
@@ -684,7 +694,7 @@ function LogsPageContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
+              {isLogsLoading ? (
                 Array.from({ length: 10 }).map((_, index) => (
                   <TableRow key={index}>
                     <TableCell>
