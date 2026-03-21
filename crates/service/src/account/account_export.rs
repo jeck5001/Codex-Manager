@@ -1,4 +1,7 @@
-use codexmanager_core::storage::{now_ts, Account, Token};
+use codexmanager_core::{
+    auth::parse_id_token_claims,
+    storage::{now_ts, Account, Token},
+};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -89,6 +92,7 @@ pub(crate) fn export_accounts_to_directory(
             skipped_missing_token += 1;
             continue;
         };
+        let account = with_resolved_export_label(account, &token);
 
         let file_path =
             build_account_export_file_path(&output_path, &account, &mut file_name_counter);
@@ -126,6 +130,7 @@ pub(crate) fn export_accounts_data() -> Result<AccountExportDataResult, String> 
             skipped_missing_token += 1;
             continue;
         };
+        let account = with_resolved_export_label(account, &token);
 
         let file_path =
             build_account_export_file_path(Path::new(""), &account, &mut file_name_counter);
@@ -217,6 +222,44 @@ fn sanitize_file_stem(value: &str) -> String {
     out.trim_matches(|ch: char| ch == ' ' || ch == '.')
         .trim()
         .to_string()
+}
+
+fn with_resolved_export_label(mut account: Account, token: &Token) -> Account {
+    let label = account.label.trim();
+    let is_placeholder = label.is_empty()
+        || account
+            .chatgpt_account_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            == Some(label)
+        || account
+            .workspace_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            == Some(label);
+
+    if !is_placeholder {
+        account.label = label.to_string();
+        return account;
+    }
+
+    for raw in [&token.id_token, &token.access_token] {
+        if let Ok(claims) = parse_id_token_claims(raw) {
+            if let Some(email) = claims.email.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                account.label = email.to_string();
+                return account;
+            }
+        }
+    }
+
+    account.label = if label.is_empty() {
+        account.id.clone()
+    } else {
+        label.to_string()
+    };
+    account
 }
 
 #[cfg(test)]

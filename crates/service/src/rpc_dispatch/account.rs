@@ -532,6 +532,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     refresh_token: first_string_param(req, &["refreshToken", "refresh_token"]),
                     id_token: first_string_param(req, &["idToken", "id_token"]),
                     cookies: first_string_param(req, &["cookies", "cookie"]),
+                    email_hint: first_string_param(req, &["email", "emailHint", "email_hint"]),
                     chatgpt_account_id: first_string_param(
                         req,
                         &["chatgptAccountId", "chatgpt_account_id", "accountId"],

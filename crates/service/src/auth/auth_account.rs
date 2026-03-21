@@ -68,6 +68,7 @@ pub(crate) struct ChatgptAuthTokensLoginInput {
     pub(crate) refresh_token: Option<String>,
     pub(crate) id_token: Option<String>,
     pub(crate) cookies: Option<String>,
+    pub(crate) email_hint: Option<String>,
     pub(crate) chatgpt_account_id: Option<String>,
     pub(crate) workspace_id: Option<String>,
     pub(crate) chatgpt_plan_type: Option<String>,
@@ -89,6 +90,11 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
 
     let claims = parse_id_token_claims(access_token)
         .map_err(|err| format!("invalid access token jwt: {err}"))?;
+    let id_token_claims = input
+        .id_token
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .and_then(|value| parse_id_token_claims(value).ok());
     let subject_account_id = claims.sub.trim();
     if subject_account_id.is_empty() {
         return Err("access token missing subject".to_string());
@@ -137,13 +143,18 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
     let existing_account = storage
         .find_account_by_id(&account_id)
         .map_err(|err| err.to_string())?;
+    let label = choose_account_label(
+        input.email_hint.as_deref(),
+        id_token_claims.as_ref()
+            .and_then(|claims| claims.email.as_deref()),
+        claims.email.as_deref(),
+        existing_account.as_ref().map(|account| account.label.as_str()),
+        &resolved_scope_id,
+    );
     let now = now_ts();
     let account = Account {
         id: account_id.clone(),
-        label: claims
-            .email
-            .clone()
-            .unwrap_or_else(|| resolved_scope_id.clone()),
+        label,
         issuer: std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string()),
         chatgpt_account_id: chatgpt_account_id.clone(),
         workspace_id: workspace_id.clone(),
@@ -191,6 +202,32 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
         chatgpt_account_id: chatgpt_account_id.unwrap_or_else(|| resolved_scope_id.clone()),
         workspace_id: resolved_scope_id,
     })
+}
+
+fn choose_account_label(
+    email_hint: Option<&str>,
+    id_token_email: Option<&str>,
+    access_token_email: Option<&str>,
+    existing_label: Option<&str>,
+    fallback_scope_id: &str,
+) -> String {
+    for candidate in [email_hint, id_token_email, access_token_email] {
+        let normalized = candidate
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if let Some(value) = normalized {
+            return value.to_string();
+        }
+    }
+
+    if let Some(value) = existing_label
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != fallback_scope_id)
+    {
+        return value.to_string();
+    }
+
+    fallback_scope_id.to_string()
 }
 
 pub(crate) fn read_current_account(refresh_token: bool) -> Result<AccountReadResponse, String> {

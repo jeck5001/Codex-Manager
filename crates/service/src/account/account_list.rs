@@ -1,6 +1,7 @@
 use codexmanager_core::{
+    auth::parse_id_token_claims,
     rpc::types::{AccountListParams, AccountListResult, AccountSummary},
-    storage::Account,
+    storage::{Account, Storage},
 };
 
 use crate::storage_helpers::open_storage;
@@ -47,7 +48,7 @@ pub(crate) fn read_accounts(
             return Ok(AccountListResult {
                 items: accounts
                     .into_iter()
-                    .map(|account| to_account_summary(account, &payment_state_map))
+                    .map(|account| to_account_summary(&storage, account, &payment_state_map))
                     .collect(),
                 total,
                 page,
@@ -62,7 +63,7 @@ pub(crate) fn read_accounts(
         return Ok(AccountListResult {
             items: accounts
                 .into_iter()
-                .map(|account| to_account_summary(account, &payment_state_map))
+                .map(|account| to_account_summary(&storage, account, &payment_state_map))
                 .collect(),
             total,
             page: 1,
@@ -90,7 +91,7 @@ pub(crate) fn read_accounts(
         return Ok(AccountListResult {
             items: paged
                 .into_iter()
-                .map(|account| to_account_summary(account, &payment_state_map))
+                .map(|account| to_account_summary(&storage, account, &payment_state_map))
                 .collect(),
             total,
             page,
@@ -110,7 +111,7 @@ pub(crate) fn read_accounts(
     Ok(AccountListResult {
         items: accounts
             .into_iter()
-            .map(|account| to_account_summary(account, &payment_state_map))
+            .map(|account| to_account_summary(&storage, account, &payment_state_map))
             .collect(),
         total,
         page: 1,
@@ -202,13 +203,15 @@ fn filtered_accounts(
 }
 
 fn to_account_summary(
+    storage: &Storage,
     acc: Account,
     payment_state_map: &std::collections::BTreeMap<String, crate::account_payment::AccountPaymentState>,
 ) -> AccountSummary {
     let payment_state = payment_state_map.get(&acc.id);
+    let label = resolve_account_display_label(storage, &acc);
     AccountSummary {
         id: acc.id,
-        label: acc.label,
+        label,
         group_name: acc.group_name,
         sort: acc.sort,
         status: acc.status,
@@ -219,4 +222,43 @@ fn to_account_summary(
         official_promo_link_updated_at: payment_state
             .and_then(|state| state.official_promo_link_updated_at),
     }
+}
+
+fn resolve_account_display_label(storage: &Storage, account: &Account) -> String {
+    let label = account.label.trim();
+    let is_placeholder = label.is_empty()
+        || account
+            .chatgpt_account_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            == Some(label)
+        || account
+            .workspace_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            == Some(label);
+    if !is_placeholder {
+        return label.to_string();
+    }
+
+    let token = storage
+        .find_token_by_account_id(&account.id)
+        .ok()
+        .flatten();
+    if let Some(token) = token {
+        for raw in [&token.id_token, &token.access_token] {
+            if let Ok(claims) = parse_id_token_claims(raw) {
+                if let Some(email) = claims.email.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                    return email.to_string();
+                }
+            }
+        }
+    }
+
+    if label.is_empty() {
+        return account.id.clone();
+    }
+    label.to_string()
 }
