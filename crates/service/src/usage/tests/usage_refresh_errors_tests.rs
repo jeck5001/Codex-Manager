@@ -1,5 +1,6 @@
 use super::{
-    classify_usage_refresh_error, should_record_failure_event_with_state, FailureThrottleKey,
+    classify_usage_refresh_error, should_record_failure_event_with_state,
+    usage_error_indicates_deactivated_account, FailureThrottleKey,
 };
 use std::collections::HashMap;
 
@@ -26,6 +27,16 @@ fn usage_refresh_error_class_catches_timeout_and_connection() {
         "connection"
     );
     assert_eq!(classify_usage_refresh_error("unknown error"), "other");
+}
+
+#[test]
+fn usage_refresh_error_class_catches_deactivated_account() {
+    let message = "HTTP 401: Your OpenAI account has been deactivated, please check your email for more information. If you feel this is an error, contact us through our help center at help.openai.com";
+    assert!(usage_error_indicates_deactivated_account(message));
+    assert_eq!(
+        classify_usage_refresh_error(message),
+        "account_deactivated"
+    );
 }
 
 #[test]

@@ -91,6 +91,10 @@ function isUnavailableAccount(account?: { status?: string } | null): boolean {
   return normalizedAccountStatus(account) === "unavailable";
 }
 
+function isDeactivatedAccount(account?: { status?: string } | null): boolean {
+  return normalizedAccountStatus(account) === "deactivated";
+}
+
 export function remainingPercent(value: number | null | undefined): number | null {
   const parsed = toNullableNumber(value);
   if (parsed == null) return null;
@@ -223,6 +227,9 @@ export function calcAvailability(
   }
   if (isUnavailableAccount(account)) {
     return { text: "不可用", level: "bad" };
+  }
+  if (isDeactivatedAccount(account)) {
+    return { text: "已停用", level: "bad" };
   }
   if (!usage) {
     return { text: "未知", level: "unknown" };

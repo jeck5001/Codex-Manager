@@ -177,6 +177,7 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     status,
     isAvailable: availability.level === "ok",
     isLowQuota: isLowQuotaUsage(usage),
+    isDeactivated: status.toLowerCase() === "deactivated",
     lastRefreshAt: usage?.capturedAt ?? null,
     availabilityText: availability.text,
     availabilityLevel: availability.level,

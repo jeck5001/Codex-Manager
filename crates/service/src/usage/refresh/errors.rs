@@ -37,6 +37,10 @@ pub(super) fn mark_usage_unreachable_if_needed(storage: &Storage, account_id: &s
     if mark_account_unavailable_for_refresh_token_error(storage, account_id, err) {
         return;
     }
+    if usage_error_indicates_deactivated_account(err) {
+        set_account_status(storage, account_id, "deactivated", "usage_http_deactivated");
+        return;
+    }
     if err.starts_with("usage endpoint status 401") {
         let current_status = storage
             .find_account_by_id(account_id)
@@ -46,6 +50,7 @@ pub(super) fn mark_usage_unreachable_if_needed(storage: &Storage, account_id: &s
             .unwrap_or_default();
         if !current_status.trim().eq_ignore_ascii_case("disabled")
             && !current_status.trim().eq_ignore_ascii_case("inactive")
+            && !current_status.trim().eq_ignore_ascii_case("deactivated")
         {
             set_account_status(storage, account_id, "unavailable", "usage_http_401");
         }
@@ -70,6 +75,9 @@ fn classify_usage_refresh_error(message: &str) -> String {
     if let Some(status_code) = extract_usage_status_code(&normalized) {
         return format!("usage_status_{status_code}");
     }
+    if usage_error_indicates_deactivated_account(message) {
+        return "account_deactivated".to_string();
+    }
     if let Some(reason) = crate::usage_http::refresh_token_auth_error_reason_from_message(message) {
         return format!("token_refresh_{}", reason.as_code());
     }
@@ -89,6 +97,13 @@ fn classify_usage_refresh_error(message: &str) -> String {
         return "token_refresh".to_string();
     }
     "other".to_string()
+}
+
+pub(super) fn usage_error_indicates_deactivated_account(message: &str) -> bool {
+    let normalized = message.trim().to_ascii_lowercase();
+    normalized.contains("your openai account has been deactivated")
+        || (normalized.contains("account has been deactivated")
+            && normalized.contains("help.openai.com"))
 }
 
 fn extract_usage_status_code(message: &str) -> Option<u16> {

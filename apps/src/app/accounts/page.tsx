@@ -76,7 +76,7 @@ import {
 } from "@/lib/utils/usage";
 import { Account } from "@/types";
 
-type StatusFilter = "all" | "available" | "low_quota";
+type StatusFilter = "all" | "available" | "low_quota" | "deactivated";
 
 function formatGroupFilterLabel(value: string) {
   const nextValue = String(value || "").trim();
@@ -134,7 +134,7 @@ function getAccountStatusAction(account: Account): {
   if (normalizedStatus === "disabled") {
     return { enable: true, label: "启用账号", icon: Power };
   }
-  if (normalizedStatus === "inactive") {
+  if (normalizedStatus === "inactive" || normalizedStatus === "deactivated") {
     return { enable: true, label: "恢复账号", icon: Power };
   }
   return { enable: false, label: "禁用账号", icon: PowerOff };
@@ -230,7 +230,8 @@ export default function AccountsPage() {
       const matchStatus =
         statusFilter === "all" ||
         (statusFilter === "available" && account.isAvailable) ||
-        (statusFilter === "low_quota" && account.isLowQuota);
+        (statusFilter === "low_quota" && account.isLowQuota) ||
+        (statusFilter === "deactivated" && account.isDeactivated);
       return matchSearch && matchGroup && matchStatus;
     });
   }, [accounts, groupFilter, search, statusFilter]);
@@ -533,6 +534,7 @@ export default function AccountsPage() {
                 { id: "all", label: "全部" },
                 { id: "available", label: "可用" },
                 { id: "low_quota", label: "低配额" },
+                { id: "deactivated", label: "已停用" },
               ].map((filter) => (
                 <button
                   key={filter.id}

@@ -250,7 +250,7 @@ fn count_ready_accounts(storage: &Storage, remain_percent_threshold: u64) -> Res
 fn account_status_is_routable(status: &str) -> bool {
     !matches!(
         status.trim().to_ascii_lowercase().as_str(),
-        "inactive" | "disabled" | "unavailable"
+        "inactive" | "disabled" | "unavailable" | "deactivated"
     )
 }
 
