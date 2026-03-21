@@ -52,10 +52,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let account_id = super::str_param(req, "accountId").unwrap_or("");
             let sort = super::i64_param(req, "sort");
             let status = super::string_param(req, "status");
+            let label = super::string_param(req, "label");
+            let note = super::string_param(req, "note");
+            let tags = super::string_param(req, "tags");
             super::ok_or_error(account_update::update_account(
                 account_id,
                 sort,
                 status.as_deref(),
+                label.as_deref(),
+                note.as_deref(),
+                tags.as_deref(),
             ))
         }
         "account/import" => {

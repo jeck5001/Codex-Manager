@@ -1,6 +1,6 @@
 use codexmanager_core::rpc::types::JsonRpcRequest;
 use codexmanager_core::storage::{
-    now_ts, Account, RequestLog, RequestTokenStat, Storage, UsageSnapshotRecord,
+    now_ts, Account, Event, RequestLog, RequestTokenStat, Storage, Token, UsageSnapshotRecord,
 };
 use std::fs;
 use std::io::{Read, Write};
@@ -322,6 +322,115 @@ fn rpc_account_list_supports_pagination() {
         items[0].get("status").and_then(|value| value.as_str()),
         Some("active")
     );
+    assert!(items[0].get("planType").is_some(), "missing planType field: {result}");
+}
+
+#[test]
+fn rpc_account_list_includes_account_plan_type() {
+    let ctx = RpcTestContext::new("rpc-account-list-plan-type");
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let now = now_ts();
+    storage
+        .insert_account(&Account {
+            id: "acc-plan-team".to_string(),
+            label: "Team Account".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("org-team".to_string()),
+            workspace_id: Some("org-team".to_string()),
+            group_name: Some("team".to_string()),
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc-plan-team".to_string(),
+            id_token: build_access_token("sub-team", "team@example.com", "org-team", "team"),
+            access_token: build_access_token("sub-team", "team@example.com", "org-team", "team"),
+            refresh_token: "refresh-team".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert token");
+    storage
+        .upsert_account_metadata("acc-plan-team", Some("主账号"), Some("高频,团队A"))
+        .expect("insert account metadata");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 76,
+        method: "account/list".to_string(),
+        params: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let item = v
+        .get("result")
+        .and_then(|value| value.get("items"))
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .expect("account item");
+
+    assert_eq!(
+        item.get("planType").and_then(|value| value.as_str()),
+        Some("team")
+    );
+    assert_eq!(
+        item.get("note").and_then(|value| value.as_str()),
+        Some("主账号")
+    );
+    assert_eq!(
+        item.get("tags").and_then(|value| value.as_str()),
+        Some("高频,团队A")
+    );
+    assert!(
+        item.get("planTypeRaw").is_some(),
+        "missing planTypeRaw field: {item}"
+    );
+}
+
+#[test]
+fn rpc_account_update_profile_updates_label_note_tags_and_sort() {
+    let ctx = RpcTestContext::new("rpc-account-update-profile");
+    ctx.seed_accounts(1);
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 78,
+        method: "account/update".to_string(),
+        params: Some(serde_json::json!({
+            "accountId": "acc-0",
+            "label": "主账号A",
+            "note": "团队共享主号",
+            "tags": "高频,团队A",
+            "sort": 7
+        })),
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+    assert_eq!(
+        result.get("ok").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    let account = storage
+        .find_account_by_id("acc-0")
+        .expect("find account")
+        .expect("account exists");
+    assert_eq!(account.label, "主账号A");
+    assert_eq!(account.sort, 7);
+
+    let metadata = storage
+        .find_account_metadata("acc-0")
+        .expect("find account metadata")
+        .expect("metadata exists");
+    assert_eq!(metadata.note.as_deref(), Some("团队共享主号"));
+    assert_eq!(metadata.tags.as_deref(), Some("高频,团队A"));
 }
 
 #[test]
@@ -523,6 +632,116 @@ fn rpc_account_delete_many_deletes_requested_accounts() {
         .map(|item| item.id)
         .collect::<Vec<_>>();
     assert_eq!(ids, vec!["acc-0", "acc-2"]);
+}
+
+#[test]
+fn rpc_account_delete_unavailable_free_removes_refresh_invalid_free_accounts() {
+    let ctx = RpcTestContext::new("rpc-account-delete-unavailable-free");
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let now = now_ts();
+    storage
+        .insert_account(&Account {
+            id: "acc-free-invalid".to_string(),
+            label: "Free Invalid".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("org-free-invalid".to_string()),
+            workspace_id: Some("org-free-invalid".to_string()),
+            group_name: None,
+            sort: 0,
+            status: "unavailable".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert unavailable free account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc-free-invalid".to_string(),
+            id_token: build_access_token(
+                "sub-free-invalid",
+                "free-invalid@example.com",
+                "org-free-invalid",
+                "free",
+            ),
+            access_token: build_access_token(
+                "sub-free-invalid",
+                "free-invalid@example.com",
+                "org-free-invalid",
+                "free",
+            ),
+            refresh_token: "refresh-free-invalid".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert free token");
+    storage
+        .insert_event(&Event {
+            account_id: Some("acc-free-invalid".to_string()),
+            event_type: "account_unavailable".to_string(),
+            message: "refresh_token_invalid:invalid_grant".to_string(),
+            created_at: now,
+        })
+        .expect("insert status reason");
+
+    storage
+        .insert_account(&Account {
+            id: "acc-pro-invalid".to_string(),
+            label: "Pro Invalid".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("org-pro-invalid".to_string()),
+            workspace_id: Some("org-pro-invalid".to_string()),
+            group_name: None,
+            sort: 1,
+            status: "unavailable".to_string(),
+            created_at: now + 1,
+            updated_at: now + 1,
+        })
+        .expect("insert unavailable pro account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc-pro-invalid".to_string(),
+            id_token: build_access_token(
+                "sub-pro-invalid",
+                "pro-invalid@example.com",
+                "org-pro-invalid",
+                "pro",
+            ),
+            access_token: build_access_token(
+                "sub-pro-invalid",
+                "pro-invalid@example.com",
+                "org-pro-invalid",
+                "pro",
+            ),
+            refresh_token: "refresh-pro-invalid".to_string(),
+            api_key_access_token: None,
+            last_refresh: now + 1,
+        })
+        .expect("insert pro token");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 77,
+        method: "account/deleteUnavailableFree".to_string(),
+        params: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize delete");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+
+    assert_eq!(
+        result.get("deleted").and_then(|value| value.as_u64()),
+        Some(1)
+    );
+    let deleted_ids = result
+        .get("deletedAccountIds")
+        .and_then(|value| value.as_array())
+        .expect("deleted ids");
+    assert_eq!(deleted_ids.len(), 1);
+    assert_eq!(deleted_ids[0].as_str(), Some("acc-free-invalid"));
+
+    let remaining = storage.list_accounts().expect("list accounts");
+    let remaining_ids = remaining.into_iter().map(|item| item.id).collect::<Vec<_>>();
+    assert_eq!(remaining_ids, vec!["acc-pro-invalid"]);
 }
 
 #[test]

@@ -172,6 +172,42 @@ fn storage_login_session_roundtrip() {
 }
 
 #[test]
+fn storage_account_metadata_roundtrip_and_delete_cleanup() {
+    let mut storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    let account = Account {
+        id: "acc-meta-1".to_string(),
+        label: "metadata account".to_string(),
+        issuer: "https://auth.openai.com".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    storage.insert_account(&account).expect("insert account");
+    storage
+        .upsert_account_metadata("acc-meta-1", Some("主账号"), Some("高频,团队A"))
+        .expect("upsert metadata");
+
+    let metadata = storage
+        .find_account_metadata("acc-meta-1")
+        .expect("find metadata")
+        .expect("metadata exists");
+    assert_eq!(metadata.note.as_deref(), Some("主账号"));
+    assert_eq!(metadata.tags.as_deref(), Some("高频,团队A"));
+
+    storage.delete_account("acc-meta-1").expect("delete account");
+    assert!(storage
+        .find_account_metadata("acc-meta-1")
+        .expect("find metadata after delete")
+        .is_none());
+}
+
+#[test]
 fn storage_can_update_account_status() {
     let storage = Storage::open_in_memory().expect("open in memory");
     storage.init().expect("init schema");
@@ -247,32 +283,14 @@ fn storage_account_usage_filters_support_sql_pagination() {
     let now = now_ts();
 
     let accounts = [
-        (
-            "acc-active-1",
-            "active",
-            Some("alpha"),
-            Some(10.0),
-            Some(10.0),
-        ),
-        ("acc-low-1", "active", Some("alpha"), Some(85.0), Some(85.0)),
-        (
-            "acc-inactive-low",
-            "inactive",
-            Some("beta"),
-            Some(90.0),
-            Some(90.0),
-        ),
-        (
-            "acc-healthy-1",
-            "healthy",
-            Some("beta"),
-            Some(30.0),
-            Some(30.0),
-        ),
-        ("acc-no-snapshot", "active", Some("beta"), None, None),
+        ("acc-active-1", "active", Some(10.0), Some(10.0)),
+        ("acc-low-1", "active", Some(85.0), Some(85.0)),
+        ("acc-inactive-low", "inactive", Some(90.0), Some(90.0)),
+        ("acc-healthy-1", "healthy", Some(30.0), Some(30.0)),
+        ("acc-no-snapshot", "active", None, None),
     ];
 
-    for (idx, (id, status, group_name, primary_used, low_used)) in accounts.iter().enumerate() {
+    for (idx, (id, status, primary_used, low_used)) in accounts.iter().enumerate() {
         storage
             .insert_account(&Account {
                 id: (*id).to_string(),
@@ -280,7 +298,7 @@ fn storage_account_usage_filters_support_sql_pagination() {
                 issuer: "https://auth.openai.com".to_string(),
                 chatgpt_account_id: None,
                 workspace_id: None,
-                group_name: group_name.map(|value| value.to_string()),
+                group_name: None,
                 sort: idx as i64,
                 status: (*status).to_string(),
                 created_at: now + idx as i64,
@@ -327,14 +345,14 @@ fn storage_account_usage_filters_support_sql_pagination() {
         .collect::<Vec<_>>();
     assert_eq!(active_ids, vec!["acc-active-1", "acc-low-1"]);
 
-    let low_alpha = storage
-        .list_accounts_low_quota(None, Some("alpha"), None)
-        .expect("list low alpha");
-    let low_alpha_ids = low_alpha
+    let low_quota_accounts = storage
+        .list_accounts_low_quota(None, None, None)
+        .expect("list low quota accounts");
+    let low_quota_ids = low_quota_accounts
         .iter()
         .map(|account| account.id.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(low_alpha_ids, vec!["acc-low-1"]);
+    assert_eq!(low_quota_ids, vec!["acc-low-1", "acc-inactive-low"]);
 }
 
 #[test]

@@ -30,6 +30,10 @@ pub struct AccountSummary {
     pub sort: i64,
     pub status: String,
     pub status_reason: Option<String>,
+    pub plan_type: Option<String>,
+    pub plan_type_raw: Option<String>,
+    pub note: Option<String>,
+    pub tags: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

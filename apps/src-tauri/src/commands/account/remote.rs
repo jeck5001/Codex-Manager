@@ -43,6 +43,9 @@ fn account_update_payload(
     account_id: String,
     sort: Option<i64>,
     status: Option<String>,
+    label: Option<String>,
+    note: Option<String>,
+    tags: Option<String>,
 ) -> Option<serde_json::Value> {
     let mut params = serde_json::Map::new();
     params.insert("accountId".to_string(), serde_json::json!(account_id));
@@ -54,6 +57,15 @@ fn account_update_payload(
         if !trimmed.is_empty() {
             params.insert("status".to_string(), serde_json::json!(trimmed));
         }
+    }
+    if let Some(value) = label {
+        params.insert("label".to_string(), serde_json::json!(value));
+    }
+    if let Some(value) = note {
+        params.insert("note".to_string(), serde_json::json!(value));
+    }
+    if let Some(value) = tags {
+        params.insert("tags".to_string(), serde_json::json!(value));
     }
     if params.is_empty() {
         None
@@ -110,11 +122,14 @@ pub async fn service_account_update(
     account_id: String,
     sort: Option<i64>,
     status: Option<String>,
+    label: Option<String>,
+    note: Option<String>,
+    tags: Option<String>,
 ) -> Result<serde_json::Value, String> {
     rpc_call_in_background(
         "account/update",
         addr,
-        account_update_payload(account_id, sort, status),
+        account_update_payload(account_id, sort, status, label, note, tags),
     )
     .await
 }
@@ -125,8 +140,15 @@ mod tests {
 
     #[test]
     fn account_update_payload_supports_status_only_updates() {
-        let actual = account_update_payload("acc-1".to_string(), None, Some("active".to_string()))
-            .expect("payload");
+        let actual = account_update_payload(
+            "acc-1".to_string(),
+            None,
+            Some("active".to_string()),
+            None,
+            None,
+            None,
+        )
+        .expect("payload");
         let expected = serde_json::json!({
             "accountId": "acc-1",
             "status": "active"
@@ -136,7 +158,8 @@ mod tests {
 
     #[test]
     fn account_update_payload_supports_sort_only_updates() {
-        let actual = account_update_payload("acc-1".to_string(), Some(5), None).expect("payload");
+        let actual = account_update_payload("acc-1".to_string(), Some(5), None, None, None, None)
+            .expect("payload");
         let expected = serde_json::json!({
             "accountId": "acc-1",
             "sort": 5
@@ -146,8 +169,15 @@ mod tests {
 
     #[test]
     fn account_update_payload_omits_blank_status() {
-        let actual = account_update_payload("acc-1".to_string(), None, Some("   ".to_string()))
-            .expect("payload");
+        let actual = account_update_payload(
+            "acc-1".to_string(),
+            None,
+            Some("   ".to_string()),
+            None,
+            None,
+            None,
+        )
+        .expect("payload");
         let expected = serde_json::json!({
             "accountId": "acc-1"
         });

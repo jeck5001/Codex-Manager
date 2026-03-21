@@ -617,6 +617,13 @@ pub(crate) fn complete_login_with_redirect(
     storage
         .insert_account(&account)
         .map_err(|e| e.to_string())?;
+    storage
+        .upsert_account_metadata(
+            &account_key,
+            session.note.as_deref(),
+            session.tags.as_deref(),
+        )
+        .map_err(|e| e.to_string())?;
 
     // 写入 token
     let token = Token {

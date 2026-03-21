@@ -48,6 +48,8 @@ struct ImportAccountMeta {
     label: Option<String>,
     issuer: Option<String>,
     group_name: Option<String>,
+    note: Option<String>,
+    tags: Option<String>,
     workspace_id: Option<String>,
     chatgpt_account_id: Option<String>,
 }
@@ -395,6 +397,8 @@ fn import_single_item(
         .group_name
         .clone()
         .filter(|value| !value.trim().is_empty());
+    let note = meta.note.clone().filter(|value| !value.trim().is_empty());
+    let tags = meta.tags.clone().filter(|value| !value.trim().is_empty());
 
     let now = now_ts();
     let (account_id, account, created) =
@@ -451,6 +455,14 @@ fn import_single_item(
 
     storage
         .insert_account(&account)
+        .map_err(|e| e.to_string())?;
+    let existing_metadata = storage
+        .find_account_metadata(&account_id)
+        .map_err(|e| e.to_string())?;
+    let merged_note = note.or_else(|| existing_metadata.as_ref().and_then(|value| value.note.clone()));
+    let merged_tags = tags.or_else(|| existing_metadata.as_ref().and_then(|value| value.tags.clone()));
+    storage
+        .upsert_account_metadata(&account_id, merged_note.as_deref(), merged_tags.as_deref())
         .map_err(|e| e.to_string())?;
     let token = Token {
         account_id: account_id.clone(),
@@ -600,6 +612,8 @@ fn extract_account_meta(item: &Value) -> ImportAccountMeta {
             (item, "group_name"),
             (item, "groupName"),
         ]),
+        note: optional_string_any(&[(meta, "note"), (item, "note")]),
+        tags: optional_tags_any(&[(meta, "tags"), (item, "tags")]),
         workspace_id: optional_string_any(&[
             (meta, "workspace_id"),
             (meta, "workspaceId"),
@@ -648,6 +662,45 @@ fn optional_string(value: &Value, key: &str) -> Option<String> {
 fn optional_string_any(candidates: &[(&Value, &str)]) -> Option<String> {
     for (value, key) in candidates {
         if let Some(found) = optional_string(value, key) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn optional_tags(value: &Value, key: &str) -> Option<String> {
+    let value = value.get(key)?;
+    if let Some(text) = value.as_str() {
+        let normalized = text
+            .split(',')
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .collect::<Vec<_>>();
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized.join(","))
+        }
+    } else if let Some(items) = value.as_array() {
+        let normalized = items
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .collect::<Vec<_>>();
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized.join(","))
+        }
+    } else {
+        None
+    }
+}
+
+fn optional_tags_any(candidates: &[(&Value, &str)]) -> Option<String> {
+    for (value, key) in candidates {
+        if let Some(found) = optional_tags(value, key) {
             return Some(found);
         }
     }

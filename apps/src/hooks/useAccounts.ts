@@ -77,15 +77,38 @@ export function useAccounts() {
     );
   }, [accountsQuery.data?.items, usagesQuery.data]);
 
-  const groups = useMemo(() => {
+  const planTypes = useMemo(() => {
     const map = new Map<string, number>();
+    const sortOrder = [
+      "free",
+      "go",
+      "plus",
+      "pro",
+      "team",
+      "business",
+      "enterprise",
+      "edu",
+      "unknown",
+    ];
+    const getSortIndex = (value: string) => {
+      const index = sortOrder.indexOf(value);
+      return index === -1 ? sortOrder.length : index;
+    };
+
     for (const account of accounts) {
-      const group = account.group || "默认";
-      map.set(group, (map.get(group) || 0) + 1);
+      const planType = String(account.planType || "").trim().toLowerCase() || "unknown";
+      map.set(planType, (map.get(planType) || 0) + 1);
     }
+
     return Array.from(map.entries())
-      .sort((left, right) => left[0].localeCompare(right[0], "zh-Hans-CN"))
-      .map(([label, count]) => ({ label, count }));
+      .sort((left, right) => {
+        const sortDiff = getSortIndex(left[0]) - getSortIndex(right[0]);
+        if (sortDiff !== 0) {
+          return sortDiff;
+        }
+        return left[0].localeCompare(right[0], "zh-Hans-CN");
+      })
+      .map(([value, count]) => ({ value, count }));
   }, [accounts]);
 
   const invalidateAll = async () => {
@@ -180,6 +203,35 @@ export function useAccounts() {
     },
     onError: (error: unknown) => {
       toast.error(`更新顺序失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const updateAccountProfileMutation = useMutation({
+    mutationFn: ({
+      accountId,
+      label,
+      note,
+      tags,
+      sort,
+    }: {
+      accountId: string;
+      label?: string | null;
+      note?: string | null;
+      tags?: string[] | string | null;
+      sort?: number | null;
+    }) =>
+      accountClient.updateProfile(accountId, {
+        label,
+        note,
+        tags,
+        sort,
+      }),
+    onSuccess: async () => {
+      await invalidateAll();
+      toast.success("账号信息已更新");
+    },
+    onError: (error: unknown) => {
+      toast.error(`更新账号信息失败: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -300,7 +352,7 @@ export function useAccounts() {
 
   return {
     accounts,
-    groups,
+    planTypes,
     total: accountsQuery.data?.total || accounts.length,
     isLoading: isServiceReady && (accountsQuery.isLoading || usagesQuery.isLoading),
     isServiceReady,
@@ -353,6 +405,18 @@ export function useAccounts() {
       if (!ensureServiceReady("更新账号顺序")) return;
       await updateAccountSortMutation.mutateAsync({ accountId, sort });
     },
+    updateAccountProfile: async (
+      accountId: string,
+      params: {
+        label?: string | null;
+        note?: string | null;
+        tags?: string[] | string | null;
+        sort?: number | null;
+      }
+    ) => {
+      if (!ensureServiceReady("更新账号信息")) return;
+      await updateAccountProfileMutation.mutateAsync({ accountId, ...params });
+    },
     toggleAccountStatus: (
       accountId: string,
       enabled: boolean,
@@ -377,6 +441,15 @@ export function useAccounts() {
       "accountId" in updateAccountSortMutation.variables
         ? String(
             (updateAccountSortMutation.variables as { accountId?: unknown }).accountId || ""
+          )
+        : "",
+    isUpdatingProfileAccountId:
+      updateAccountProfileMutation.isPending &&
+      updateAccountProfileMutation.variables &&
+      typeof updateAccountProfileMutation.variables === "object" &&
+      "accountId" in updateAccountProfileMutation.variables
+        ? String(
+            (updateAccountProfileMutation.variables as { accountId?: unknown }).accountId || ""
           )
         : "",
     isUpdatingStatusAccountId:

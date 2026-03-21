@@ -64,6 +64,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { cn } from "@/lib/utils";
@@ -79,12 +85,46 @@ import { Account } from "@/types";
 
 type StatusFilter = "all" | "available" | "low_quota" | "banned";
 
-function formatGroupFilterLabel(value: string) {
+function formatAccountPlanValueLabel(value: string) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  switch (normalized) {
+    case "free":
+      return "FREE";
+    case "go":
+      return "GO";
+    case "plus":
+      return "PLUS";
+    case "pro":
+      return "PRO";
+    case "team":
+      return "TEAM";
+    case "business":
+      return "BUSINESS";
+    case "enterprise":
+      return "ENTERPRISE";
+    case "edu":
+      return "EDU";
+    case "unknown":
+      return "未知";
+    default:
+      return normalized ? normalized.toUpperCase() : "未知";
+  }
+}
+
+function normalizeAccountPlanKey(account: Account) {
+  return String(account.planType || "")
+    .trim()
+    .toLowerCase() || "unknown";
+}
+
+function formatPlanFilterLabel(value: string) {
   const nextValue = String(value || "").trim();
   if (!nextValue || nextValue === "all") {
-    return "全部分组";
+    return "全部类型";
   }
-  return nextValue;
+  return formatAccountPlanValueLabel(nextValue);
 }
 
 function formatStatusFilterLabel(value: string) {
@@ -165,12 +205,133 @@ function getAccountStatusAction(account: Account): {
   return { enable: false, label: "禁用账号", icon: PowerOff };
 }
 
+function formatAccountPlanLabel(account: Account): string | null {
+  const normalized = normalizeAccountPlanKey(account);
+  return normalized === "unknown"
+    ? null
+    : formatAccountPlanValueLabel(normalized);
+}
+
+function getAccountPlanBadgeClassName(planLabel: string | null): string {
+  switch (planLabel) {
+    case "FREE":
+      return "bg-slate-500/10 text-slate-700 dark:text-slate-300";
+    case "GO":
+      return "bg-sky-500/10 text-sky-700 dark:text-sky-300";
+    case "PLUS":
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    case "PRO":
+      return "bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300";
+    case "TEAM":
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "BUSINESS":
+      return "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300";
+    case "ENTERPRISE":
+      return "bg-rose-500/10 text-rose-700 dark:text-rose-300";
+    case "EDU":
+      return "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300";
+    default:
+      return "bg-accent/50";
+  }
+}
+
+function formatAccountTags(tags: string[]): string {
+  return tags
+    .map((tag) => String(tag || "").trim())
+    .filter(Boolean)
+    .join("、");
+}
+
+function normalizeTagsDraft(tagsDraft: string): string[] {
+  return tagsDraft
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function AccountInfoCell({
+  account,
+  isPreferred,
+}: {
+  account: Account;
+  isPreferred: boolean;
+}) {
+  const accountPlanLabel = formatAccountPlanLabel(account);
+  const tagsText = formatAccountTags(account.tags);
+  const noteText = String(account.note || "").trim();
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<div />} className="block cursor-help text-left">
+        <div className="flex flex-col overflow-hidden">
+          <div className="flex items-center gap-2 overflow-hidden">
+            <span className="truncate text-sm font-semibold">{account.name}</span>
+            {accountPlanLabel ? (
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "h-4 shrink-0 px-1.5 text-[9px]",
+                  getAccountPlanBadgeClassName(accountPlanLabel),
+                )}
+              >
+                {accountPlanLabel}
+              </Badge>
+            ) : null}
+            {isPreferred ? (
+              <Badge
+                variant="secondary"
+                className="h-4 shrink-0 bg-amber-500/15 px-1.5 text-[9px] text-amber-700 dark:text-amber-300"
+              >
+                优先
+              </Badge>
+            ) : null}
+          </div>
+          <span className="truncate font-mono text-[10px] uppercase text-muted-foreground opacity-60">
+            {account.id.slice(0, 16)}...
+          </span>
+          <span className="mt-1 text-[10px] text-muted-foreground">
+            最近刷新: {formatTsFromSeconds(account.lastRefreshAt, "从未刷新")}
+          </span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-sm">
+        <div className="flex min-w-[260px] flex-col gap-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-background/70">账号类型</div>
+              <div className="font-medium">{accountPlanLabel || "未知"}</div>
+            </div>
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-background/70">当前状态</div>
+              <div className="font-medium">{account.availabilityText || "未知"}</div>
+            </div>
+          </div>
+          <div className="space-y-0.5">
+            <div className="text-[10px] text-background/70">标签</div>
+            <div className="break-words">{tagsText || "未设置"}</div>
+          </div>
+          <div className="space-y-0.5">
+            <div className="text-[10px] text-background/70">备注</div>
+            <div className="whitespace-pre-wrap break-words">
+              {noteText || "未设置"}
+            </div>
+          </div>
+          <div className="space-y-0.5">
+            <div className="text-[10px] text-background/70">账号 ID</div>
+            <div className="break-all font-mono text-[11px]">{account.id}</div>
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export default function AccountsPage() {
   const router = useRouter();
   const { isDesktopRuntime, canUseBrowserDownloadExport } = useRuntimeCapabilities();
   const {
     accounts,
-    groups,
+    planTypes,
     isLoading,
     isServiceReady,
     refreshAccount,
@@ -189,14 +350,14 @@ export default function AccountsPage() {
     setPreferredAccount,
     clearPreferredAccount,
     isUpdatingPreferred,
-    updateAccountSort,
-    isUpdatingSortAccountId,
+    updateAccountProfile,
+    isUpdatingProfileAccountId,
     toggleAccountStatus,
     isUpdatingStatusAccountId,
   } = useAccounts();
 
   const [search, setSearch] = useState("");
-  const [groupFilter, setGroupFilter] = useState("all");
+  const [planFilter, setPlanFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
@@ -204,10 +365,16 @@ export default function AccountsPage() {
   const [addAccountModalOpen, setAddAccountModalOpen] = useState(false);
   const [usageModalOpen, setUsageModalOpen] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [labelDraft, setLabelDraft] = useState("");
+  const [tagsDraft, setTagsDraft] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
   const [sortDraft, setSortDraft] = useState("");
-  const [sortDialogState, setSortDialogState] = useState<{
+  const [accountEditorState, setAccountEditorState] = useState<{
     accountId: string;
     accountName: string;
+    currentLabel: string;
+    currentTags: string;
+    currentNote: string;
     currentSort: number;
   } | null>(null);
   const [deleteDialogState, setDeleteDialogState] = useState<
@@ -233,16 +400,16 @@ export default function AccountsPage() {
         !search ||
         account.name.toLowerCase().includes(search.toLowerCase()) ||
         account.id.toLowerCase().includes(search.toLowerCase());
-      const matchGroup =
-        groupFilter === "all" || (account.group || "默认") === groupFilter;
+      const matchPlan =
+        planFilter === "all" || normalizeAccountPlanKey(account) === planFilter;
       const matchStatus =
         statusFilter === "all" ||
         (statusFilter === "available" && account.isAvailable) ||
         (statusFilter === "low_quota" && account.isLowQuota) ||
         (statusFilter === "banned" && isBannedAccount(account));
-      return matchSearch && matchGroup && matchStatus;
+      return matchSearch && matchPlan && matchStatus;
     });
-  }, [accounts, groupFilter, search, statusFilter]);
+  }, [accounts, planFilter, search, statusFilter]);
 
   const statusFilterOptions = useMemo(
     () => [
@@ -286,14 +453,21 @@ export default function AccountsPage() {
     () => accounts.find((account) => account.id === selectedAccountId) ?? null,
     [accounts, selectedAccountId],
   );
+  const currentEditingAccount = useMemo(
+    () =>
+      accountEditorState
+        ? accounts.find((account) => account.id === accountEditorState.accountId) ?? null
+        : null,
+    [accountEditorState, accounts],
+  );
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
     setPage(1);
   };
 
-  const handleGroupFilterChange = (value: string | null) => {
-    setGroupFilter(value || "all");
+  const handlePlanFilterChange = (value: string | null) => {
+    setPlanFilter(value || "all");
     setPage(1);
   };
 
@@ -364,39 +538,65 @@ export default function AccountsPage() {
     setDeleteDialogState({ kind: "single", account });
   };
 
-  const openSortEditor = (account: Account) => {
-    setSortDialogState({
+  const openAccountEditor = (account: Account) => {
+    setAccountEditorState({
       accountId: account.id,
       accountName: account.name,
+      currentLabel: account.label,
+      currentTags: account.tags.join(", "),
+      currentNote: account.note || "",
       currentSort: account.priority,
     });
+    setLabelDraft(account.label);
+    setTagsDraft(account.tags.join(", "));
+    setNoteDraft(account.note || "");
     setSortDraft(String(account.priority));
   };
 
-  const handleConfirmSort = async () => {
-    if (!sortDialogState) return;
+  const handleConfirmAccountEditor = async () => {
+    if (!accountEditorState) return;
 
-    const raw = sortDraft.trim();
-    if (!raw) {
+    const nextLabel = labelDraft.trim();
+    const nextTags = normalizeTagsDraft(tagsDraft);
+    const nextTagsText = nextTags.join(", ");
+    const nextNote = noteDraft.trim();
+
+    if (!nextLabel) {
+      toast.error("请输入账号名称");
+      return;
+    }
+
+    const rawSort = sortDraft.trim();
+    if (!rawSort) {
       toast.error("请输入顺序值");
       return;
     }
 
-    const parsed = Number(raw);
+    const parsed = Number(rawSort);
     if (!Number.isFinite(parsed)) {
       toast.error("顺序必须是数字");
       return;
     }
 
     const nextSort = Math.max(0, Math.trunc(parsed));
-    if (nextSort === sortDialogState.currentSort) {
-      setSortDialogState(null);
+    if (
+      nextLabel === accountEditorState.currentLabel &&
+      nextTagsText === accountEditorState.currentTags &&
+      nextNote === accountEditorState.currentNote &&
+      nextSort === accountEditorState.currentSort
+    ) {
+      setAccountEditorState(null);
       return;
     }
 
     try {
-      await updateAccountSort(sortDialogState.accountId, nextSort);
-      setSortDialogState(null);
+      await updateAccountProfile(accountEditorState.accountId, {
+        label: nextLabel,
+        note: nextNote || null,
+        tags: nextTags,
+        sort: nextSort,
+      });
+      setAccountEditorState(null);
     } catch {
       // mutation 已统一处理 toast，这里保持弹窗不关闭
     }
@@ -435,19 +635,19 @@ export default function AccountsPage() {
           </div>
 
           <div className="flex shrink-0 items-center gap-3">
-            <Select value={groupFilter} onValueChange={handleGroupFilterChange}>
+            <Select value={planFilter} onValueChange={handlePlanFilterChange}>
               <SelectTrigger className="h-10 w-[140px] shrink-0 rounded-xl bg-card/50">
-                <SelectValue placeholder="全部分组">
-                  {(value) => formatGroupFilterLabel(String(value || ""))}
+                <SelectValue placeholder="全部类型">
+                  {(value) => formatPlanFilterLabel(String(value || ""))}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  全部分组 ({accounts.length})
+                  全部类型 ({accounts.length})
                 </SelectItem>
-                {groups.map((group) => (
-                  <SelectItem key={group.label} value={group.label}>
-                    {group.label} ({group.count})
+                {planTypes.map((planType) => (
+                  <SelectItem key={planType.value} value={planType.value}>
+                    {formatAccountPlanValueLabel(planType.value)} ({planType.count})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -660,63 +860,36 @@ export default function AccountsPage() {
                     );
                     const usageBuckets = getUsageDisplayBuckets(account.usage);
                     const statusAction = getAccountStatusAction(account);
-                  const StatusActionIcon = statusAction.icon;
-                  return (
-                    <TableRow key={account.id} className="group">
-                      <TableCell className="text-center">
-                        <Checkbox
-                          checked={effectiveSelectedIds.includes(account.id)}
-                          onCheckedChange={() => toggleSelect(account.id)}
-                        />
-                      </TableCell>
-                      <TableCell className="max-w-[220px]">
-                        <div className="flex flex-col overflow-hidden">
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            <span className="truncate text-sm font-semibold">
-                              {account.name}
-                            </span>
-                            <Badge
-                              variant="secondary"
-                              className="h-4 shrink-0 bg-accent/50 px-1.5 text-[9px]"
-                            >
-                              {account.group || "默认"}
-                            </Badge>
-                            {manualPreferredAccountId === account.id ? (
-                              <Badge
-                                variant="secondary"
-                                className="h-4 shrink-0 bg-amber-500/15 px-1.5 text-[9px] text-amber-700 dark:text-amber-300"
-                              >
-                                优先
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <span className="truncate font-mono text-[10px] uppercase text-muted-foreground opacity-60">
-                            {account.id.slice(0, 16)}...
-                          </span>
-                          <span className="mt-1 text-[10px] text-muted-foreground">
-                            最近刷新:{" "}
-                            {formatTsFromSeconds(
-                              account.lastRefreshAt,
-                              "从未刷新",
-                            )}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <QuotaProgress
-                          label="5小时"
-                          remainPercent={account.primaryRemainPercent}
-                          resetsAt={usageBuckets.primaryResetsAt}
-                          icon={RefreshCw}
-                          tone="green"
-                          emptyText={secondaryWindowOnly ? "未提供" : "--"}
-                          emptyResetText={
-                            secondaryWindowOnly ? "未提供" : "未知"
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <QuotaProgress
+                    const StatusActionIcon = statusAction.icon;
+                    return (
+                      <TableRow key={account.id} className="group">
+                        <TableCell className="text-center">
+                          <Checkbox
+                            checked={effectiveSelectedIds.includes(account.id)}
+                            onCheckedChange={() => toggleSelect(account.id)}
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-[220px]">
+                          <AccountInfoCell
+                            account={account}
+                            isPreferred={manualPreferredAccountId === account.id}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <QuotaProgress
+                            label="5小时"
+                            remainPercent={account.primaryRemainPercent}
+                            resetsAt={usageBuckets.primaryResetsAt}
+                            icon={RefreshCw}
+                            tone="green"
+                            emptyText={secondaryWindowOnly ? "未提供" : "--"}
+                            emptyResetText={
+                              secondaryWindowOnly ? "未提供" : "未知"
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <QuotaProgress
                           label="7天"
                           remainPercent={account.secondaryRemainPercent}
                           resetsAt={usageBuckets.secondaryResetsAt}
@@ -735,9 +908,9 @@ export default function AccountsPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-muted-foreground transition-colors hover:text-primary"
-                            disabled={!isServiceReady || isUpdatingSortAccountId === account.id}
-                            onClick={() => openSortEditor(account)}
-                            title="编辑顺序"
+                            disabled={!isServiceReady || isUpdatingProfileAccountId === account.id}
+                            onClick={() => openAccountEditor(account)}
+                            title="编辑账号信息"
                           >
                             <PencilLine className="h-3.5 w-3.5" />
                           </Button>
@@ -952,54 +1125,107 @@ export default function AccountsPage() {
         onConfirm={handleConfirmDelete}
       />
       <Dialog
-        open={Boolean(sortDialogState)}
+        open={Boolean(accountEditorState)}
         onOpenChange={(open) => {
-          if (!open && !isUpdatingSortAccountId) {
-            setSortDialogState(null);
+          if (!open && !isUpdatingProfileAccountId) {
+            setAccountEditorState(null);
           }
         }}
       >
-        <DialogContent className="glass-card border-none sm:max-w-[420px]">
+        <DialogContent className="glass-card border-none sm:max-w-[560px]">
           <DialogHeader>
-            <DialogTitle>编辑账号顺序</DialogTitle>
+            <DialogTitle>编辑账号信息</DialogTitle>
             <DialogDescription>
-              {sortDialogState
-                ? `修改 ${sortDialogState.accountName} 的排序值。值越小越靠前。`
-                : "修改账号的排序值。"}
+              {accountEditorState
+                ? `修改 ${accountEditorState.accountName} 的名称、标签、备注与排序。`
+                : "修改账号的基础资料。"}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-2 py-2">
-            <Label htmlFor="account-sort-input">顺序值</Label>
-            <Input
-              id="account-sort-input"
-              type="number"
-              min={0}
-              step={1}
-              value={sortDraft}
-              disabled={Boolean(isUpdatingSortAccountId)}
-              onChange={(event) => setSortDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void handleConfirmSort();
-                }
-              }}
-            />
-            <p className="text-[11px] text-muted-foreground">
-              仅修改当前账号的排序值，不会自动重排其它账号。
-            </p>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="account-label-input">账号名称</Label>
+                <Input
+                  id="account-label-input"
+                  value={labelDraft}
+                  disabled={Boolean(isUpdatingProfileAccountId)}
+                  onChange={(event) => setLabelDraft(event.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="account-tags-input">标签（逗号分隔）</Label>
+                <Input
+                  id="account-tags-input"
+                  value={tagsDraft}
+                  disabled={Boolean(isUpdatingProfileAccountId)}
+                  onChange={(event) => setTagsDraft(event.target.value)}
+                  placeholder="例如：高频, 团队A"
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="account-note-input">备注</Label>
+              <Textarea
+                id="account-note-input"
+                value={noteDraft}
+                disabled={Boolean(isUpdatingProfileAccountId)}
+                onChange={(event) => setNoteDraft(event.target.value)}
+                placeholder="例如：主账号 / 测试号 / 团队共享"
+                className="min-h-[108px]"
+              />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_120px] sm:items-end">
+              <div className="grid gap-2">
+                <Label htmlFor="account-sort-input">顺序值</Label>
+                <Input
+                  id="account-sort-input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={sortDraft}
+                  disabled={Boolean(isUpdatingProfileAccountId)}
+                  onChange={(event) => setSortDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleConfirmAccountEditor();
+                    }
+                  }}
+                />
+              </div>
+              <div className="grid gap-1 rounded-xl bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                <span>值越小越靠前</span>
+                <span>仅修改当前账号</span>
+              </div>
+            </div>
+            <div className="grid gap-3 rounded-xl bg-muted/20 px-3 py-3 text-[11px] text-muted-foreground sm:grid-cols-2">
+              <div className="space-y-1">
+                <div>账号 ID</div>
+                <div className="break-all font-mono">
+                  {accountEditorState?.accountId || "-"}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div>账号类型</div>
+                <div className="font-medium text-foreground/80">
+                  {currentEditingAccount
+                    ? formatAccountPlanLabel(currentEditingAccount) || "未知"
+                    : "未知"}
+                </div>
+              </div>
+            </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
               variant="outline"
-              disabled={Boolean(isUpdatingSortAccountId)}
-              onClick={() => setSortDialogState(null)}
+              disabled={Boolean(isUpdatingProfileAccountId)}
+              onClick={() => setAccountEditorState(null)}
             >
               取消
             </Button>
             <Button
-              disabled={Boolean(isUpdatingSortAccountId)}
-              onClick={() => void handleConfirmSort()}
+              disabled={Boolean(isUpdatingProfileAccountId)}
+              onClick={() => void handleConfirmAccountEditor()}
             >
               保存
             </Button>

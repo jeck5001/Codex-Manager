@@ -18,13 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select";
 import { accountClient } from "@/lib/api/account-client";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { useAppStore } from "@/lib/store/useAppStore";
@@ -37,11 +30,6 @@ interface AddAccountModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-const GROUP_LABELS: Record<string, string> = {
-  TEAM: "团队 (TEAM)",
-  PERSONAL: "个人 (PERSONAL)",
-};
 
 function pickImportTokenField(record: unknown, keys: string[]): string {
   const source = record && typeof record === "object" && !Array.isArray(record)
@@ -152,7 +140,6 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   // Login Form
   const [tags, setTags] = useState("");
   const [note, setNote] = useState("");
-  const [group, setGroup] = useState("");
   const [loginUrl, setLoginUrl] = useState("");
   const [manualCallback, setManualCallback] = useState("");
 
@@ -170,7 +157,6 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setLoginHint("");
     setTags("");
     setNote("");
-    setGroup("");
     setLoginUrl("");
     setManualCallback("");
     setBulkContent("");
@@ -261,7 +247,6 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
       const result = await accountClient.startLogin({
         tags: tags.split(",").map(t => t.trim()).filter(Boolean),
         note,
-        group: group || null,
       });
       setLoginUrl(result.authUrl);
       if (result.warning) {
@@ -377,38 +362,14 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                     : unavailableMessage}
                 </div>
               ) : null}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>标签 (逗号分隔)</Label>
-                  <Input
-                    placeholder="例如：高频, 团队A"
-                    value={tags}
-                    disabled={!isServiceReady}
-                    onChange={e => setTags(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>分组</Label>
-                  <Select
-                    value={group}
-                    onValueChange={(val) => val && setGroup(val)}
-                    disabled={!isServiceReady}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="选择分组">
-                        {(value) => {
-                          const nextValue = String(value || "").trim();
-                          if (!nextValue) return "选择分组";
-                          return GROUP_LABELS[nextValue] || nextValue;
-                        }}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="TEAM">团队 (TEAM)</SelectItem>
-                      <SelectItem value="PERSONAL">个人 (PERSONAL)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label>标签 (逗号分隔)</Label>
+                <Input
+                  placeholder="例如：高频, 团队A"
+                  value={tags}
+                  disabled={!isServiceReady}
+                  onChange={e => setTags(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label>备注/描述</Label>

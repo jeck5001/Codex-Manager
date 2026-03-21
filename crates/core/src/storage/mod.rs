@@ -4,6 +4,7 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod accounts;
+mod account_metadata;
 mod api_keys;
 mod conversation_bindings;
 mod events;
@@ -26,6 +27,14 @@ pub struct Account {
     pub sort: i64,
     pub status: String,
     pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccountMetadata {
+    pub account_id: String,
+    pub note: Option<String>,
+    pub tags: Option<String>,
     pub updated_at: i64,
 }
 
@@ -368,13 +377,17 @@ impl Storage {
             include_str!("../../migrations/035_api_key_profiles_service_tier.sql"),
             |s| s.ensure_api_key_service_tier_column(),
         )?;
+        self.apply_sql_migration(
+            "036_accounts_metadata_and_drop_group_name",
+            include_str!("../../migrations/036_accounts_metadata_and_drop_group_name.sql"),
+        )?;
         self.ensure_request_token_stats_table()?;
         Ok(())
     }
 
     pub fn insert_login_session(&self, session: &LoginSession) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO login_sessions (login_id, code_verifier, state, status, error, workspace_id, note, tags, group_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO login_sessions (login_id, code_verifier, state, status, error, workspace_id, note, tags, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             (
                 &session.login_id,
                 &session.code_verifier,
@@ -384,7 +397,6 @@ impl Storage {
                 &session.workspace_id,
                 &session.note,
                 &session.tags,
-                &session.group_name,
                 session.created_at,
                 session.updated_at,
             ),
@@ -394,7 +406,7 @@ impl Storage {
 
     pub fn get_login_session(&self, login_id: &str) -> Result<Option<LoginSession>> {
         let mut stmt = self.conn.prepare(
-            "SELECT login_id, code_verifier, state, status, error, workspace_id, note, tags, group_name, created_at, updated_at FROM login_sessions WHERE login_id = ?1",
+            "SELECT login_id, code_verifier, state, status, error, workspace_id, note, tags, created_at, updated_at FROM login_sessions WHERE login_id = ?1",
         )?;
         let mut rows = stmt.query([login_id])?;
         if let Some(row) = rows.next()? {
@@ -407,9 +419,9 @@ impl Storage {
                 workspace_id: row.get(5)?,
                 note: row.get(6)?,
                 tags: row.get(7)?,
-                group_name: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
+                group_name: None,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
             }))
         } else {
             Ok(None)

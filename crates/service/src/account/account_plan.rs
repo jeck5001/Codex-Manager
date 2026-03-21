@@ -8,6 +8,12 @@ const MINUTES_PER_HOUR: i64 = 60;
 const MINUTES_PER_DAY: i64 = 24 * MINUTES_PER_HOUR;
 const ROUNDING_BIAS: i64 = 3;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResolvedAccountPlan {
+    pub(crate) normalized: String,
+    pub(crate) raw: Option<String>,
+}
+
 pub(crate) fn extract_plan_type_from_id_token(id_token: &str) -> Option<String> {
     parse_id_token_claims(id_token)
         .ok()
@@ -29,11 +35,41 @@ pub(crate) fn is_free_plan_type(plan_type: Option<&str>) -> bool {
 }
 
 pub(crate) fn is_free_plan_from_credits_json(raw_credits_json: Option<&str>) -> bool {
+    is_free_plan_type(extract_plan_type_from_credits_json(raw_credits_json).as_deref())
+}
+
+pub(crate) fn resolve_account_plan(
+    token: Option<&Token>,
+    snapshot: Option<&UsageSnapshotRecord>,
+) -> Option<ResolvedAccountPlan> {
+    let token_plan = token
+        .and_then(|value| extract_plan_type_from_id_token(&value.access_token))
+        .or_else(|| token.and_then(|value| extract_plan_type_from_id_token(&value.id_token)));
+    if let Some(plan) = token_plan.as_deref().and_then(normalize_plan_type) {
+        return Some(plan);
+    }
+
+    let usage_plan = snapshot.and_then(|value| extract_plan_type_from_credits_json(value.credits_json.as_deref()));
+    if let Some(plan) = usage_plan.as_deref().and_then(normalize_plan_type) {
+        return Some(plan);
+    }
+
+    if snapshot.is_some_and(is_single_window_long_usage_snapshot) {
+        return Some(ResolvedAccountPlan {
+            normalized: "free".to_string(),
+            raw: None,
+        });
+    }
+
+    None
+}
+
+pub(crate) fn extract_plan_type_from_credits_json(raw_credits_json: Option<&str>) -> Option<String> {
     let Some(raw_credits_json) = raw_credits_json else {
-        return false;
+        return None;
     };
     let Ok(value) = serde_json::from_str::<Value>(raw_credits_json) else {
-        return false;
+        return None;
     };
     let keys = [
         "plan_type",
@@ -45,8 +81,7 @@ pub(crate) fn is_free_plan_from_credits_json(raw_credits_json: Option<&str>) -> 
         "accountType",
         "type",
     ];
-    let extracted = extract_string_by_keys_recursive(&value, &keys);
-    is_free_plan_type(extracted.as_deref())
+    extract_string_by_keys_recursive(&value, &keys)
 }
 
 pub(crate) fn is_single_window_long_usage_snapshot(snapshot: &UsageSnapshotRecord) -> bool {
@@ -113,11 +148,58 @@ fn extract_string_by_keys_recursive(value: &Value, keys: &[&str]) -> Option<Stri
     None
 }
 
+fn normalize_plan_type(value: &str) -> Option<ResolvedAccountPlan> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let normalized = trimmed.to_ascii_lowercase();
+    let known = if normalized.contains("free") {
+        Some("free")
+    } else if normalized == "go"
+        || normalized.ends_with("_go")
+        || normalized.contains("chatgpt_go")
+    {
+        Some("go")
+    } else if normalized.contains("plus") {
+        Some("plus")
+    } else if normalized.contains("business") {
+        Some("business")
+    } else if normalized.contains("team") {
+        Some("team")
+    } else if normalized.contains("enterprise") {
+        Some("enterprise")
+    } else if normalized == "edu" || normalized.contains("education") {
+        Some("edu")
+    } else if normalized.contains("pro") {
+        Some("pro")
+    } else {
+        None
+    };
+
+    Some(match known {
+        Some(plan) => ResolvedAccountPlan {
+            normalized: plan.to_string(),
+            raw: if plan == normalized {
+                None
+            } else {
+                Some(trimmed.to_string())
+            },
+        },
+        None => ResolvedAccountPlan {
+            normalized: "unknown".to_string(),
+            raw: Some(trimmed.to_string()),
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_plan_type_from_id_token, is_free_or_single_window_account,
+        extract_plan_type_from_credits_json, extract_plan_type_from_id_token,
+        is_free_or_single_window_account,
         is_free_plan_from_credits_json, is_free_plan_type, is_single_window_long_usage_snapshot,
+        normalize_plan_type, resolve_account_plan,
     };
     use codexmanager_core::storage::{now_ts, Account, Storage, Token, UsageSnapshotRecord};
 
@@ -173,6 +255,15 @@ mod tests {
     fn free_plan_detection_accepts_credits_json_marker() {
         let credits_json = r#"{"planType":"free"}"#;
         assert!(is_free_plan_from_credits_json(Some(credits_json)));
+    }
+
+    #[test]
+    fn extract_plan_type_from_credits_json_reads_nested_value() {
+        let credits_json = r#"{"subscription":{"planType":"business"}}"#;
+        assert_eq!(
+            extract_plan_type_from_credits_json(Some(credits_json)).as_deref(),
+            Some("business")
+        );
     }
 
     #[test]
@@ -259,5 +350,63 @@ mod tests {
             "acc-weekly",
             &token
         ));
+    }
+
+    #[test]
+    fn normalize_plan_type_maps_known_variants() {
+        assert_eq!(
+            normalize_plan_type("ChatGPT_Free")
+                .map(|plan| (plan.normalized, plan.raw)),
+            Some(("free".to_string(), Some("ChatGPT_Free".to_string())))
+        );
+        assert_eq!(
+            normalize_plan_type("education")
+                .map(|plan| (plan.normalized, plan.raw)),
+            Some(("edu".to_string(), Some("education".to_string())))
+        );
+        assert_eq!(
+            normalize_plan_type("pro")
+                .map(|plan| (plan.normalized, plan.raw)),
+            Some(("pro".to_string(), None))
+        );
+    }
+
+    #[test]
+    fn resolve_account_plan_prefers_token_claims_and_falls_back_to_usage() {
+        let token = Token {
+            account_id: "acc-plus".to_string(),
+            id_token: "header.payload.sig".to_string(),
+            access_token: {
+                let header = encode_base64url(br#"{"alg":"none","typ":"JWT"}"#);
+                let payload = encode_base64url(
+                    serde_json::json!({
+                        "sub": "acc-plus",
+                        "https://api.openai.com/auth": {
+                            "chatgpt_plan_type": "plus"
+                        }
+                    })
+                    .to_string()
+                    .as_bytes(),
+                );
+                format!("{header}.{payload}.sig")
+            },
+            refresh_token: "refresh".to_string(),
+            api_key_access_token: None,
+            last_refresh: now_ts(),
+        };
+        let usage = UsageSnapshotRecord {
+            account_id: "acc-plus".to_string(),
+            used_percent: Some(10.0),
+            window_minutes: Some(300),
+            resets_at: None,
+            secondary_used_percent: Some(20.0),
+            secondary_window_minutes: Some(10_080),
+            secondary_resets_at: None,
+            credits_json: Some(r#"{"planType":"free"}"#.to_string()),
+            captured_at: now_ts(),
+        };
+
+        let resolved = resolve_account_plan(Some(&token), Some(&usage)).expect("resolve plan");
+        assert_eq!(resolved.normalized, "plus");
     }
 }

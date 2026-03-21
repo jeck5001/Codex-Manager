@@ -32,7 +32,7 @@ const NAV_ITEMS = [
   { name: "请求日志", href: "/logs/", icon: FileText },
   { name: "设置", href: "/settings/", icon: Settings },
 ];
-const DESKTOP_NAVIGATION_FALLBACK_MS = 500;
+const DESKTOP_NAVIGATION_FALLBACK_MS = 2_500;
 
 const NavItem = memo(({
   item,
@@ -79,20 +79,23 @@ export function Sidebar() {
       event.preventDefault();
       if (isDesktopRuntime) {
         const currentPath = normalizeRoutePath(window.location.pathname);
-        if (desktopNavigationFallbackTimerRef.current !== null) {
-          window.clearTimeout(desktopNavigationFallbackTimerRef.current);
-        }
 
         startTransition(() => {
           router.push(href);
         });
 
-        desktopNavigationFallbackTimerRef.current = window.setTimeout(() => {
-          desktopNavigationFallbackTimerRef.current = null;
-          if (normalizeRoutePath(window.location.pathname) === currentPath) {
-            window.location.assign(href);
+        if (process.env.NODE_ENV === "production") {
+          if (desktopNavigationFallbackTimerRef.current !== null) {
+            window.clearTimeout(desktopNavigationFallbackTimerRef.current);
           }
-        }, DESKTOP_NAVIGATION_FALLBACK_MS);
+
+          desktopNavigationFallbackTimerRef.current = window.setTimeout(() => {
+            desktopNavigationFallbackTimerRef.current = null;
+            if (normalizeRoutePath(window.location.pathname) === currentPath) {
+              window.location.assign(href);
+            }
+          }, DESKTOP_NAVIGATION_FALLBACK_MS);
+        }
         return;
       }
 

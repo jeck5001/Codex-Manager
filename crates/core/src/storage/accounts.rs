@@ -11,14 +11,13 @@ enum AccountUsageQueryMode {
 impl Storage {
     pub fn insert_account(&self, account: &Account) -> Result<()> {
         self.conn.execute(
-            "INSERT OR REPLACE INTO accounts (id, label, issuer, chatgpt_account_id, workspace_id, group_name, sort, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT OR REPLACE INTO accounts (id, label, issuer, chatgpt_account_id, workspace_id, sort, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             (
                 &account.id,
                 &account.label,
                 &account.issuer,
                 &account.chatgpt_account_id,
                 &account.workspace_id,
-                &account.group_name,
                 account.sort,
                 &account.status,
                 account.created_at,
@@ -147,7 +146,7 @@ impl Storage {
 
     pub fn find_account_by_id(&self, account_id: &str) -> Result<Option<Account>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, label, issuer, chatgpt_account_id, workspace_id, group_name, sort, status, created_at, updated_at
+            "SELECT id, label, issuer, chatgpt_account_id, workspace_id, sort, status, created_at, updated_at
              FROM accounts
              WHERE id = ?1
              LIMIT 1",
@@ -164,6 +163,22 @@ impl Storage {
         self.conn.execute(
             "UPDATE accounts SET sort = ?1, updated_at = ?2 WHERE id = ?3",
             (sort, now_ts(), account_id),
+        )?;
+        Ok(())
+    }
+
+    pub fn update_account_label(&self, account_id: &str, label: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE accounts SET label = ?1, updated_at = ?2 WHERE id = ?3",
+            (label, now_ts(), account_id),
+        )?;
+        Ok(())
+    }
+
+    pub fn touch_account_updated_at(&self, account_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE accounts SET updated_at = ?1 WHERE id = ?2",
+            (now_ts(), account_id),
         )?;
         Ok(())
     }
@@ -186,6 +201,7 @@ impl Storage {
 
     pub fn delete_account(&mut self, account_id: &str) -> Result<()> {
         let tx = self.conn.transaction()?;
+        tx.execute("DELETE FROM account_metadata WHERE account_id = ?1", [account_id])?;
         tx.execute("DELETE FROM tokens WHERE account_id = ?1", [account_id])?;
         tx.execute(
             "DELETE FROM usage_snapshots WHERE account_id = ?1",
@@ -327,6 +343,7 @@ fn build_account_where_clause(
     table_name: &str,
 ) -> String {
     let mut clauses = Vec::new();
+    let _ = group_name;
 
     if let Some(keyword) = normalize_optional_filter(query) {
         let pattern = format!("%{keyword}%");
@@ -337,14 +354,6 @@ fn build_account_where_clause(
         ));
         params.push(Value::Text(pattern.clone()));
         params.push(Value::Text(pattern));
-    }
-
-    if let Some(group) = normalize_optional_filter(group_name) {
-        clauses.push(format!(
-            "{} = ?",
-            qualified_column(table_name, "group_name")
-        ));
-        params.push(Value::Text(group));
     }
 
     if clauses.is_empty() {
@@ -432,7 +441,6 @@ fn account_select_columns(table_name: &str) -> String {
         "issuer",
         "chatgpt_account_id",
         "workspace_id",
-        "group_name",
         "sort",
         "status",
         "created_at",
@@ -470,11 +478,11 @@ fn map_account_row_from_offset(row: &Row<'_>, offset: usize) -> Result<Account> 
         issuer: row.get(offset + 2)?,
         chatgpt_account_id: row.get(offset + 3)?,
         workspace_id: row.get(offset + 4)?,
-        group_name: row.get(offset + 5)?,
-        sort: row.get(offset + 6)?,
-        status: row.get(offset + 7)?,
-        created_at: row.get(offset + 8)?,
-        updated_at: row.get(offset + 9)?,
+        group_name: None,
+        sort: row.get(offset + 5)?,
+        status: row.get(offset + 6)?,
+        created_at: row.get(offset + 7)?,
+        updated_at: row.get(offset + 8)?,
     })
 }
 
@@ -491,6 +499,6 @@ fn map_token_row_from_offset(row: &Row<'_>, offset: usize) -> Result<Token> {
 
 fn map_gateway_candidate_row(row: &Row<'_>) -> Result<(Account, Token)> {
     let account = map_account_row_from_offset(row, 0)?;
-    let token = map_token_row_from_offset(row, 10)?;
+    let token = map_token_row_from_offset(row, 9)?;
     Ok((account, token))
 }

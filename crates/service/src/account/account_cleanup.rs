@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::account_availability::{evaluate_snapshot, Availability};
 use crate::account_plan::{
-    extract_plan_type_from_id_token, is_free_plan_from_credits_json, is_free_plan_type,
+    resolve_account_plan, ResolvedAccountPlan,
 };
 use crate::storage_helpers::open_storage;
 
@@ -45,42 +45,52 @@ pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFree
     for account in accounts {
         result.scanned += 1;
 
-        if account.status.trim().eq_ignore_ascii_case("disabled") {
+        let normalized_status = account.status.trim().to_ascii_lowercase();
+        if normalized_status == "disabled" {
             result.skipped_disabled += 1;
             continue;
         }
 
         let snapshot = usage_by_account.get(&account.id);
-        let Some(snapshot) = snapshot else {
-            result.skipped_missing_usage += 1;
-            continue;
-        };
-        if matches!(evaluate_snapshot(snapshot), Availability::Available) {
-            result.skipped_available += 1;
-            continue;
+        if normalized_status != "unavailable" {
+            let Some(snapshot) = snapshot else {
+                result.skipped_missing_usage += 1;
+                continue;
+            };
+            if matches!(evaluate_snapshot(snapshot), Availability::Available) {
+                result.skipped_available += 1;
+                continue;
+            }
         }
 
         let token = storage
             .find_token_by_account_id(&account.id)
             .map_err(|err| err.to_string())?;
-        let Some(token) = token else {
-            result.skipped_missing_token += 1;
+        let resolved_plan = resolve_account_plan(token.as_ref(), snapshot);
+        let Some(plan) = resolved_plan.as_ref() else {
+            if snapshot.is_none() && token.is_none() {
+                result.skipped_missing_usage += 1;
+            } else if token.is_none() {
+                result.skipped_missing_token += 1;
+            } else {
+                result.skipped_non_free += 1;
+            }
             continue;
         };
-
-        let plan_type = extract_plan_type_from_id_token(&token.id_token);
-        if !is_free_plan_type(plan_type.as_deref())
-            && !is_free_plan_from_credits_json(snapshot.credits_json.as_deref())
-        {
+        if plan.normalized != "free" {
             result.skipped_non_free += 1;
             continue;
         }
+        let Some(_token) = token else {
+            result.skipped_missing_token += 1;
+            continue;
+        };
 
         storage
             .delete_account(&account.id)
             .map_err(|err| err.to_string())?;
 
-        let event_message = match plan_type.as_deref() {
+        let event_message = match plan_label_for_event(resolved_plan.as_ref()) {
             Some(plan) => format!("bulk delete unavailable free account: plan={plan}"),
             None => "bulk delete unavailable free account".to_string(),
         };
@@ -97,29 +107,13 @@ pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFree
 
     Ok(result)
 }
-#[cfg(test)]
-mod tests {
-    use super::{is_free_plan_from_credits_json, is_free_plan_type};
 
-    #[test]
-    fn free_plan_detection_accepts_common_variants() {
-        assert!(is_free_plan_type(Some("free")));
-        assert!(is_free_plan_type(Some("ChatGPT_Free")));
-        assert!(is_free_plan_type(Some("free_tier")));
-    }
-
-    #[test]
-    fn free_plan_detection_rejects_paid_or_unknown_variants() {
-        assert!(!is_free_plan_type(None));
-        assert!(!is_free_plan_type(Some("")));
-        assert!(!is_free_plan_type(Some("plus")));
-        assert!(!is_free_plan_type(Some("pro")));
-        assert!(!is_free_plan_type(Some("team")));
-    }
-
-    #[test]
-    fn free_plan_detection_accepts_credits_json_marker() {
-        let credits_json = r#"{"planType":"free"}"#;
-        assert!(is_free_plan_from_credits_json(Some(credits_json)));
-    }
+fn plan_label_for_event(plan: Option<&ResolvedAccountPlan>) -> Option<&str> {
+    plan.and_then(|value| {
+        if value.normalized == "unknown" {
+            value.raw.as_deref()
+        } else {
+            Some(value.normalized.as_str())
+        }
+    })
 }

@@ -80,6 +80,21 @@ function normalizeStringRecord(payload: unknown): Record<string, string> {
   }, {});
 }
 
+function asStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => asString(item))
+      .filter((item) => item.length > 0);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 export function normalizeUsageSnapshot(payload: unknown): AccountUsage | null {
   const source = asObject(payload);
   const accountId = asString(source.accountId ?? source.account_id);
@@ -173,6 +188,10 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     sort: asInteger(source.sort ?? source.priority, 0, 0),
     status,
     statusReason,
+    planType: asString(source.planType ?? source.plan_type) || null,
+    planTypeRaw: asString(source.planTypeRaw ?? source.plan_type_raw) || null,
+    note: asString(source.note) || null,
+    tags: asStringArray(source.tags),
     isAvailable: availability.level === "ok",
     isLowQuota: isLowQuotaUsage(usage),
     lastRefreshAt: usage?.capturedAt ?? null,

@@ -1,9 +1,10 @@
 use codexmanager_core::{
     rpc::types::{AccountListParams, AccountListResult, AccountSummary},
-    storage::Account,
+    storage::{Account, AccountMetadata, Token, UsageSnapshotRecord},
 };
 use std::collections::HashMap;
 
+use crate::account_plan::resolve_account_plan;
 use crate::storage_helpers::open_storage;
 
 const DEFAULT_ACCOUNT_PAGE_SIZE: i64 = 5;
@@ -193,7 +194,14 @@ fn filtered_accounts(
     }
 }
 
-fn to_account_summary_with_reason(acc: Account, status_reason: Option<String>) -> AccountSummary {
+fn to_account_summary_with_reason(
+    acc: Account,
+    status_reason: Option<String>,
+    plan_type: Option<String>,
+    plan_type_raw: Option<String>,
+    note: Option<String>,
+    tags: Option<String>,
+) -> AccountSummary {
     AccountSummary {
         id: acc.id,
         label: acc.label,
@@ -201,6 +209,10 @@ fn to_account_summary_with_reason(acc: Account, status_reason: Option<String>) -
         sort: acc.sort,
         status: acc.status,
         status_reason,
+        plan_type,
+        plan_type_raw,
+        note,
+        tags,
     }
 }
 
@@ -215,16 +227,51 @@ fn to_account_summaries(
     let status_reasons = storage
         .latest_account_status_reasons(&account_ids)
         .map_err(|err| format!("load account status reasons failed: {err}"))?;
+    let tokens = storage
+        .list_tokens()
+        .map_err(|err| format!("load account tokens failed: {err}"))?
+        .into_iter()
+        .map(|token| (token.account_id.clone(), token))
+        .collect::<HashMap<String, Token>>();
+    let usages = storage
+        .latest_usage_snapshots_by_account()
+        .map_err(|err| format!("load account usage snapshots failed: {err}"))?
+        .into_iter()
+        .map(|snapshot| (snapshot.account_id.clone(), snapshot))
+        .collect::<HashMap<String, UsageSnapshotRecord>>();
+    let metadata = storage
+        .list_account_metadata()
+        .map_err(|err| format!("load account metadata failed: {err}"))?
+        .into_iter()
+        .map(|item| (item.account_id.clone(), item))
+        .collect::<HashMap<String, AccountMetadata>>();
     Ok(accounts
         .into_iter()
-        .map(|account| map_account_summary(account, &status_reasons))
+        .map(|account| map_account_summary(account, &status_reasons, &tokens, &usages, &metadata))
         .collect())
 }
 
 fn map_account_summary(
     account: Account,
     status_reasons: &HashMap<String, String>,
+    tokens: &HashMap<String, Token>,
+    usages: &HashMap<String, UsageSnapshotRecord>,
+    metadata: &HashMap<String, AccountMetadata>,
 ) -> AccountSummary {
-    let status_reason = status_reasons.get(&account.id).cloned();
-    to_account_summary_with_reason(account, status_reason)
+    let account_id = account.id.clone();
+    let status_reason = status_reasons.get(&account_id).cloned();
+    let plan = resolve_account_plan(tokens.get(&account_id), usages.get(&account_id));
+    let account_metadata = metadata.get(&account_id);
+    let (plan_type, plan_type_raw) = match plan {
+        Some(value) => (Some(value.normalized), value.raw),
+        None => (None, None),
+    };
+    to_account_summary_with_reason(
+        account,
+        status_reason,
+        plan_type,
+        plan_type_raw,
+        account_metadata.and_then(|value| value.note.clone()),
+        account_metadata.and_then(|value| value.tags.clone()),
+    )
 }

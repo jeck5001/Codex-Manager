@@ -44,6 +44,10 @@ export interface Account {
   sort: number;
   status: string;
   statusReason: string;
+  planType: string | null;
+  planTypeRaw: string | null;
+  note: string | null;
+  tags: string[];
   isAvailable: boolean;
   isLowQuota: boolean;
   lastRefreshAt: number | null;
