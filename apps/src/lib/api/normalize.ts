@@ -39,6 +39,9 @@ const DEFAULT_BACKGROUND_TASKS: BackgroundTaskSettings = {
   gatewayKeepaliveIntervalSecs: 180,
   tokenRefreshPollingEnabled: true,
   tokenRefreshPollIntervalSecs: 60,
+  sessionProbePollingEnabled: false,
+  sessionProbeIntervalSecs: 300,
+  sessionProbeSampleSize: 2,
   usageRefreshWorkers: 4,
   httpWorkerFactor: 4,
   httpWorkerMin: 8,
@@ -575,6 +578,20 @@ export function normalizeBackgroundTasks(payload: unknown): BackgroundTaskSettin
     tokenRefreshPollIntervalSecs: asInteger(
       source.tokenRefreshPollIntervalSecs,
       DEFAULT_BACKGROUND_TASKS.tokenRefreshPollIntervalSecs,
+      1
+    ),
+    sessionProbePollingEnabled: asBoolean(
+      source.sessionProbePollingEnabled,
+      DEFAULT_BACKGROUND_TASKS.sessionProbePollingEnabled
+    ),
+    sessionProbeIntervalSecs: asInteger(
+      source.sessionProbeIntervalSecs,
+      DEFAULT_BACKGROUND_TASKS.sessionProbeIntervalSecs,
+      1
+    ),
+    sessionProbeSampleSize: asInteger(
+      source.sessionProbeSampleSize,
+      DEFAULT_BACKGROUND_TASKS.sessionProbeSampleSize,
       1
     ),
     usageRefreshWorkers: asInteger(

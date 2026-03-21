@@ -1472,6 +1472,11 @@ export default function SettingsPage() {
                   enabledKey: "tokenRefreshPollingEnabled",
                   intervalKey: "tokenRefreshPollIntervalSecs",
                 },
+                {
+                  label: "登录态巡检线程",
+                  enabledKey: "sessionProbePollingEnabled",
+                  intervalKey: "sessionProbeIntervalSecs",
+                },
               ].map((task) => (
                 <div
                   key={task.enabledKey}
@@ -1517,6 +1522,45 @@ export default function SettingsPage() {
                   </div>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
+              <CardTitle className="text-base">登录态有效性巡检</CardTitle>
+              <CardDescription>
+                周期性抽检少量账号，提前发现 401/403、停用或代理异常，不等真实请求打过去才暴露
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-2 rounded-2xl border border-border/50 bg-background/30 p-4">
+                  <Label>单轮抽检账号数</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={
+                      backgroundTaskDraft.sessionProbeSampleSize ||
+                      stringifyNumber(snapshot.backgroundTasks.sessionProbeSampleSize)
+                    }
+                    onChange={(event) =>
+                      setBackgroundTaskDraft((current) => ({
+                        ...current,
+                        sessionProbeSampleSize: event.target.value,
+                      }))
+                    }
+                    onBlur={() => saveBackgroundTaskField("sessionProbeSampleSize", 1)}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    每轮只抽样少量账号，尽量用轻量巡检换取提前预警，避免对号池造成额外压力。
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-dashed border-border/60 bg-background/20 p-4 text-xs leading-6 text-muted-foreground">
+                  巡检会复用模型列表探针判断登录态是否还能走核心鉴权链路。
+                  失败结果会进入首页失败看板，也会参与现有自动治理判断。
+                </div>
+              </div>
             </CardContent>
           </Card>
 

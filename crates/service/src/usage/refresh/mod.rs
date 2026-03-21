@@ -32,12 +32,15 @@ mod runner;
 mod settings;
 mod autofill;
 mod governance;
+mod probe;
 
 static USAGE_POLLING_STARTED: OnceLock<()> = OnceLock::new();
 static GATEWAY_KEEPALIVE_STARTED: OnceLock<()> = OnceLock::new();
 static TOKEN_REFRESH_POLLING_STARTED: OnceLock<()> = OnceLock::new();
+static SESSION_PROBE_POLLING_STARTED: OnceLock<()> = OnceLock::new();
 static BACKGROUND_TASKS_CONFIG_LOADED: OnceLock<()> = OnceLock::new();
 static USAGE_POLL_CURSOR: AtomicUsize = AtomicUsize::new(0);
+static SESSION_PROBE_CURSOR: AtomicUsize = AtomicUsize::new(0);
 static USAGE_POLLING_ENABLED: AtomicBool = AtomicBool::new(true);
 static USAGE_POLL_INTERVAL_SECS: AtomicU64 = AtomicU64::new(DEFAULT_USAGE_POLL_INTERVAL_SECS);
 static GATEWAY_KEEPALIVE_ENABLED: AtomicBool = AtomicBool::new(true);
@@ -46,6 +49,11 @@ static GATEWAY_KEEPALIVE_INTERVAL_SECS: AtomicU64 =
 static TOKEN_REFRESH_POLLING_ENABLED: AtomicBool = AtomicBool::new(true);
 static TOKEN_REFRESH_POLL_INTERVAL_SECS_ATOMIC: AtomicU64 =
     AtomicU64::new(DEFAULT_TOKEN_REFRESH_POLL_INTERVAL_SECS);
+static SESSION_PROBE_POLLING_ENABLED: AtomicBool = AtomicBool::new(false);
+static SESSION_PROBE_INTERVAL_SECS: AtomicU64 =
+    AtomicU64::new(DEFAULT_SESSION_PROBE_INTERVAL_SECS);
+static SESSION_PROBE_SAMPLE_SIZE: AtomicUsize =
+    AtomicUsize::new(DEFAULT_SESSION_PROBE_SAMPLE_SIZE);
 static USAGE_REFRESH_WORKERS: AtomicUsize = AtomicUsize::new(DEFAULT_USAGE_REFRESH_WORKERS);
 static HTTP_WORKER_FACTOR: AtomicUsize = AtomicUsize::new(DEFAULT_HTTP_WORKER_FACTOR);
 static HTTP_WORKER_MIN: AtomicUsize = AtomicUsize::new(DEFAULT_HTTP_WORKER_MIN);
@@ -73,6 +81,9 @@ const ENV_GATEWAY_KEEPALIVE_ENABLED: &str = "CODEXMANAGER_GATEWAY_KEEPALIVE_ENAB
 const ENV_GATEWAY_KEEPALIVE_INTERVAL_SECS: &str = "CODEXMANAGER_GATEWAY_KEEPALIVE_INTERVAL_SECS";
 const ENV_TOKEN_REFRESH_POLLING_ENABLED: &str = "CODEXMANAGER_TOKEN_REFRESH_POLLING_ENABLED";
 const ENV_TOKEN_REFRESH_POLL_INTERVAL_SECS: &str = "CODEXMANAGER_TOKEN_REFRESH_POLL_INTERVAL_SECS";
+const ENV_SESSION_PROBE_POLLING_ENABLED: &str = "CODEXMANAGER_SESSION_PROBE_POLLING_ENABLED";
+const ENV_SESSION_PROBE_INTERVAL_SECS: &str = "CODEXMANAGER_SESSION_PROBE_INTERVAL_SECS";
+const ENV_SESSION_PROBE_SAMPLE_SIZE: &str = "CODEXMANAGER_SESSION_PROBE_SAMPLE_SIZE";
 const COMMON_POLL_JITTER_ENV: &str = "CODEXMANAGER_POLL_JITTER_SECS";
 const COMMON_POLL_FAILURE_BACKOFF_MAX_ENV: &str = "CODEXMANAGER_POLL_FAILURE_BACKOFF_MAX_SECS";
 const USAGE_POLL_JITTER_ENV: &str = "CODEXMANAGER_USAGE_POLL_JITTER_SECS";
@@ -98,6 +109,8 @@ const DEFAULT_HTTP_WORKER_FACTOR: usize = 4;
 const DEFAULT_HTTP_WORKER_MIN: usize = 8;
 const DEFAULT_HTTP_STREAM_WORKER_FACTOR: usize = 1;
 const DEFAULT_HTTP_STREAM_WORKER_MIN: usize = 2;
+const DEFAULT_SESSION_PROBE_INTERVAL_SECS: u64 = 300;
+const DEFAULT_SESSION_PROBE_SAMPLE_SIZE: usize = 2;
 const DEFAULT_AUTO_REGISTER_READY_ACCOUNT_COUNT: usize = 2;
 const DEFAULT_AUTO_REGISTER_READY_REMAIN_PERCENT: u64 = 20;
 const DEFAULT_AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD: usize = 3;
@@ -112,6 +125,7 @@ const GATEWAY_KEEPALIVE_FAILURE_BACKOFF_MAX_ENV: &str =
     "CODEXMANAGER_GATEWAY_KEEPALIVE_FAILURE_BACKOFF_MAX_SECS";
 const DEFAULT_TOKEN_REFRESH_POLL_INTERVAL_SECS: u64 = 60;
 const MIN_TOKEN_REFRESH_POLL_INTERVAL_SECS: u64 = 10;
+const MIN_SESSION_PROBE_INTERVAL_SECS: u64 = 30;
 const TOKEN_REFRESH_FAILURE_BACKOFF_MAX_SECS: u64 = 300;
 const TOKEN_REFRESH_AHEAD_SECS: i64 = 600;
 const TOKEN_REFRESH_FALLBACK_AGE_SECS: i64 = 2700;
@@ -155,12 +169,16 @@ use self::batch::{next_usage_poll_cursor, usage_poll_batch_indices};
 use self::errors::{
     mark_usage_unreachable_if_needed, record_usage_refresh_failure, should_retry_with_refresh,
 };
+pub(crate) use self::probe::run_session_probe_batch;
 #[cfg(test)]
 pub(crate) use self::queue::{
     clear_pending_usage_refresh_tasks_for_tests, is_usage_refresh_task_pending_for_tests,
 };
 pub(crate) use self::queue::enqueue_usage_refresh_with_worker;
-use self::runner::{gateway_keepalive_loop, token_refresh_polling_loop, usage_polling_loop};
+use self::runner::{
+    gateway_keepalive_loop, session_probe_polling_loop, token_refresh_polling_loop,
+    usage_polling_loop,
+};
 use self::settings::ensure_background_tasks_config_loaded;
 pub(crate) use self::settings::{
     background_tasks_settings, reload_background_tasks_runtime_from_env,
@@ -187,6 +205,13 @@ pub(crate) fn ensure_token_refresh_polling() {
     ensure_background_tasks_config_loaded();
     TOKEN_REFRESH_POLLING_STARTED.get_or_init(|| {
         spawn_background_loop("token-refresh-polling", token_refresh_polling_loop);
+    });
+}
+
+pub(crate) fn ensure_session_probe_polling() {
+    ensure_background_tasks_config_loaded();
+    SESSION_PROBE_POLLING_STARTED.get_or_init(|| {
+        spawn_background_loop("session-probe-polling", session_probe_polling_loop);
     });
 }
 

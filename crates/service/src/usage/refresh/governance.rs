@@ -210,7 +210,11 @@ fn classify_governance_failure(message: &str) -> Option<GovernanceFailureKind> {
     {
         return Some(GovernanceFailureKind::Proxy);
     }
-    if normalized.contains("status 401") || normalized.contains("status 403") {
+    if normalized.contains("status 401")
+        || normalized.contains("status=401")
+        || normalized.contains("status 403")
+        || normalized.contains("status=403")
+    {
         return Some(GovernanceFailureKind::Auth);
     }
     None

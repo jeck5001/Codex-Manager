@@ -8,12 +8,15 @@ use super::{
     maybe_trigger_auto_account_governance,
     maybe_trigger_auto_register_pool_fill,
     refresh_tokens_before_expiry_for_all_accounts, refresh_usage_for_polling_batch,
+    run_session_probe_batch,
     run_gateway_keepalive_once, COMMON_POLL_FAILURE_BACKOFF_MAX_ENV, COMMON_POLL_JITTER_ENV,
     DEFAULT_GATEWAY_KEEPALIVE_FAILURE_BACKOFF_MAX_SECS, DEFAULT_GATEWAY_KEEPALIVE_JITTER_SECS,
     DEFAULT_USAGE_POLL_FAILURE_BACKOFF_MAX_SECS, DEFAULT_USAGE_POLL_JITTER_SECS,
     GATEWAY_KEEPALIVE_ENABLED, GATEWAY_KEEPALIVE_FAILURE_BACKOFF_MAX_ENV,
     GATEWAY_KEEPALIVE_INTERVAL_SECS, GATEWAY_KEEPALIVE_JITTER_ENV,
-    TOKEN_REFRESH_FAILURE_BACKOFF_MAX_SECS, TOKEN_REFRESH_POLLING_ENABLED,
+    SESSION_PROBE_INTERVAL_SECS, SESSION_PROBE_POLLING_ENABLED,
+    TOKEN_REFRESH_FAILURE_BACKOFF_MAX_SECS,
+    TOKEN_REFRESH_POLLING_ENABLED,
     TOKEN_REFRESH_POLL_INTERVAL_SECS_ATOMIC, USAGE_POLLING_ENABLED,
     USAGE_POLL_FAILURE_BACKOFF_MAX_ENV, USAGE_POLL_INTERVAL_SECS, USAGE_POLL_JITTER_ENV,
 };
@@ -87,6 +90,18 @@ pub(super) fn token_refresh_polling_loop() {
         || 0,
         |interval_secs| TOKEN_REFRESH_FAILURE_BACKOFF_MAX_SECS.max(interval_secs),
         refresh_tokens_before_expiry_for_all_accounts,
+        |_| true,
+    );
+}
+
+pub(super) fn session_probe_polling_loop() {
+    run_dynamic_poll_loop(
+        "session probe polling",
+        || SESSION_PROBE_POLLING_ENABLED.load(Ordering::Relaxed),
+        || SESSION_PROBE_INTERVAL_SECS.load(Ordering::Relaxed),
+        || 0,
+        |interval_secs| TOKEN_REFRESH_FAILURE_BACKOFF_MAX_SECS.max(interval_secs),
+        run_session_probe_batch,
         |_| true,
     );
 }

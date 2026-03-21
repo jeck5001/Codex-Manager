@@ -25,48 +25,66 @@ pub(crate) fn fetch_models_for_picker() -> Result<Vec<ModelOption>, String> {
         return Err("no available account".to_string());
     }
 
-    let upstream_base = super::resolve_upstream_base_url();
-    let base = upstream_base.as_str();
-    let upstream_fallback_base = super::resolve_upstream_fallback_base_url(base);
-    let path = super::normalize_models_path("/v1/models");
-    let method = Method::GET;
     sort_model_picker_candidates(&storage, &mut candidates);
     let mut last_error = "models request failed".to_string();
     for (account, mut token) in candidates {
-        let client = super::upstream_client_for_account(account.id.as_str());
-        match send_models_request(
-            &client,
-            &storage,
-            &method,
-            &upstream_base,
-            &path,
-            &account,
-            &mut token,
-        ) {
+        match execute_models_request(&storage, &account, &mut token) {
             Ok(response_body) => return Ok(parse_model_options(&response_body)),
             Err(err) => {
-                // ChatGPT upstream occasionally returns HTML challenge. Try OpenAI fallback.
-                if should_retry_models_with_openai_fallback(&err) {
-                    if let Some(fallback_base) = upstream_fallback_base.as_deref() {
-                        if let Ok(response_body) = send_models_request(
-                            &client,
-                            &storage,
-                            &method,
-                            fallback_base,
-                            &path,
-                            &account,
-                            &mut token,
-                        ) {
-                            return Ok(parse_model_options(&response_body));
-                        }
-                    }
-                }
                 last_error = err;
             }
         }
     }
 
     Err(last_error)
+}
+
+pub(crate) fn probe_models_for_account(
+    storage: &Storage,
+    account: &Account,
+    token: &mut Token,
+) -> Result<(), String> {
+    execute_models_request(storage, account, token).map(|_| ())
+}
+
+fn execute_models_request(
+    storage: &Storage,
+    account: &Account,
+    token: &mut Token,
+) -> Result<Vec<u8>, String> {
+    let upstream_base = super::resolve_upstream_base_url();
+    let base = upstream_base.as_str();
+    let upstream_fallback_base = super::resolve_upstream_fallback_base_url(base);
+    let path = super::normalize_models_path("/v1/models");
+    let method = Method::GET;
+    let client = super::upstream_client_for_account(account.id.as_str());
+    match send_models_request(
+        &client,
+        storage,
+        &method,
+        &upstream_base,
+        &path,
+        account,
+        token,
+    ) {
+        Ok(response_body) => Ok(response_body),
+        Err(err) => {
+            if should_retry_models_with_openai_fallback(&err) {
+                if let Some(fallback_base) = upstream_fallback_base.as_deref() {
+                    return send_models_request(
+                        &client,
+                        storage,
+                        &method,
+                        fallback_base,
+                        &path,
+                        account,
+                        token,
+                    );
+                }
+            }
+            Err(err)
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

@@ -134,6 +134,10 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 token_refresh_polling_enabled: super::bool_param(req, "tokenRefreshPollingEnabled")
                     .or_else(|| super::bool_param(req, "tokenRefreshPolling")),
                 token_refresh_poll_interval_secs: u64_param(req, "tokenRefreshPollIntervalSecs"),
+                session_probe_polling_enabled: super::bool_param(req, "sessionProbePollingEnabled")
+                    .or_else(|| super::bool_param(req, "sessionProbePolling")),
+                session_probe_interval_secs: u64_param(req, "sessionProbeIntervalSecs"),
+                session_probe_sample_size: usize_param(req, "sessionProbeSampleSize"),
                 usage_refresh_workers: usize_param(req, "usageRefreshWorkers"),
                 http_worker_factor: usize_param(req, "httpWorkerFactor"),
                 http_worker_min: usize_param(req, "httpWorkerMin"),
@@ -172,6 +176,9 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 gateway_keepalive_interval_secs: patch.gateway_keepalive_interval_secs,
                 token_refresh_polling_enabled: patch.token_refresh_polling_enabled,
                 token_refresh_poll_interval_secs: patch.token_refresh_poll_interval_secs,
+                session_probe_polling_enabled: patch.session_probe_polling_enabled,
+                session_probe_interval_secs: patch.session_probe_interval_secs,
+                session_probe_sample_size: patch.session_probe_sample_size,
                 usage_refresh_workers: patch.usage_refresh_workers,
                 http_worker_factor: patch.http_worker_factor,
                 http_worker_min: patch.http_worker_min,

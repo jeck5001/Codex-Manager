@@ -178,16 +178,16 @@ fn classify_failure_reason(message: &str) -> (&'static str, &'static str) {
             _ => ("refresh_token_invalid", "Refresh 刷新失败"),
         };
     }
-    if normalized.contains("status 429") {
+    if normalized.contains("status 429") || normalized.contains("status=429") {
         return ("usage_rate_limited", "接口限流");
     }
-    if normalized.contains("status 403") {
+    if normalized.contains("status 403") || normalized.contains("status=403") {
         return ("usage_forbidden", "访问受限");
     }
-    if normalized.contains("status 401") {
+    if normalized.contains("status 401") || normalized.contains("status=401") {
         return ("usage_unauthorized", "授权失效");
     }
-    if normalized.contains("status 5") {
+    if normalized.contains("status 5") || normalized.contains("status=5") {
         return ("usage_upstream_server_error", "上游服务异常");
     }
     if normalized.contains("timeout") {
