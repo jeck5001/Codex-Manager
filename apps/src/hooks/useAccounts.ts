@@ -267,6 +267,36 @@ export function useAccounts() {
     },
   });
 
+  const bulkUpdateTagsMutation = useMutation({
+    mutationFn: ({
+      accountIds,
+      tags,
+    }: {
+      accountIds: string[];
+      tags: string[] | string | null;
+    }) => accountClient.updateManyTags(accountIds, tags),
+    onSuccess: async (result, variables) => {
+      await invalidateAll();
+      const updated = Number(result?.updated || 0);
+      const skipped = Number(result?.skipped || 0);
+      const failed = Number(result?.failed || 0);
+      const normalizedTags = Array.isArray(variables.tags)
+        ? variables.tags.map((item) => String(item || "").trim()).filter(Boolean)
+        : String(variables.tags || "")
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+      toast.success(
+        normalizedTags.length > 0
+          ? `标签更新完成：更新 ${updated}，跳过 ${skipped}，失败 ${failed}`
+          : `标签清空完成：更新 ${updated}，跳过 ${skipped}，失败 ${failed}`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`批量更新标签失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   const checkSubscriptionMutation = useMutation({
     mutationFn: ({
       accountId,
@@ -526,6 +556,8 @@ export function useAccounts() {
       enabled: boolean,
       scopeLabel?: string
     ) => bulkToggleAccountStatusMutation.mutate({ accountIds, enabled, scopeLabel }),
+    updateManyTags: (accountIds: string[], tags: string[] | string | null) =>
+      bulkUpdateTagsMutation.mutate({ accountIds, tags }),
     isRefreshingAccountId:
       refreshAccountMutation.isPending && typeof refreshAccountMutation.variables === "string"
         ? refreshAccountMutation.variables
@@ -554,6 +586,7 @@ export function useAccounts() {
           )
         : "",
     isBulkUpdatingStatus: bulkToggleAccountStatusMutation.isPending,
+    isBulkUpdatingTags: bulkUpdateTagsMutation.isPending,
     isCheckingSubscriptionAccountId:
       checkSubscriptionMutation.isPending &&
       checkSubscriptionMutation.variables &&

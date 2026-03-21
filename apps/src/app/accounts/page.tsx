@@ -120,6 +120,14 @@ function normalizeStatusReasonFilter(value: string | null | undefined): string {
   return nextValue;
 }
 
+function normalizeTagFilter(value: string | null | undefined): string {
+  const nextValue = String(value || "").trim();
+  if (!nextValue || nextValue === "all") {
+    return "all";
+  }
+  return nextValue;
+}
+
 function formatGroupFilterLabel(value: string) {
   const nextValue = String(value || "").trim();
   if (!nextValue || nextValue === "all") {
@@ -182,6 +190,39 @@ function getAccountStatusAction(account: Account): {
   return { enable: false, label: "禁用账号", icon: PowerOff };
 }
 
+function getSharedTags(accounts: Account[]): string[] {
+  if (accounts.length === 0) {
+    return [];
+  }
+
+  const [firstAccount, ...restAccounts] = accounts;
+  const shared = new Set(
+    firstAccount.tags
+      .map((tag) => String(tag || "").trim())
+      .filter(Boolean),
+  );
+
+  for (const account of restAccounts) {
+    const currentTags = new Set(
+      account.tags
+        .map((tag) => String(tag || "").trim())
+        .filter(Boolean),
+    );
+    for (const tag of Array.from(shared)) {
+      if (!currentTags.has(tag)) {
+        shared.delete(tag);
+      }
+    }
+    if (shared.size === 0) {
+      break;
+    }
+  }
+
+  return Array.from(shared).sort((left, right) =>
+    left.localeCompare(right, "zh-CN"),
+  );
+}
+
 export default function AccountsPage() {
   const router = useRouter();
   const {
@@ -210,6 +251,8 @@ export default function AccountsPage() {
     isUpdatingStatusAccountId,
     bulkToggleAccountStatus,
     isBulkUpdatingStatus,
+    updateManyTags,
+    isBulkUpdatingTags,
     checkSubscription,
     checkSubscriptions,
     markSubscription,
@@ -229,6 +272,7 @@ export default function AccountsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [governanceFilter, setGovernanceFilter] = useState<string>("all");
   const [statusReasonFilter, setStatusReasonFilter] = useState<string>("all");
+  const [tagFilter, setTagFilter] = useState<string>("all");
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -262,6 +306,11 @@ export default function AccountsPage() {
     | { kind: "selected"; ids: string[]; count: number }
     | null
   >(null);
+  const [tagDialogState, setTagDialogState] = useState<
+    | { kind: "selected"; ids: string[]; count: number }
+    | null
+  >(null);
+  const [tagDraft, setTagDraft] = useState("");
 
   const scopedAccounts = useMemo(() => {
     return accounts.filter((account) => {
@@ -290,9 +339,11 @@ export default function AccountsPage() {
       const matchStatusReason =
         statusReasonFilter === "all" ||
         account.lastStatusReason === statusReasonFilter;
-      return matchStatus && matchGovernance && matchStatusReason;
+      const matchTag =
+        tagFilter === "all" || account.tags.includes(tagFilter);
+      return matchStatus && matchGovernance && matchStatusReason && matchTag;
     });
-  }, [governanceFilter, scopedAccounts, statusFilter, statusReasonFilter]);
+  }, [governanceFilter, scopedAccounts, statusFilter, statusReasonFilter, tagFilter]);
 
   const pageSizeNumber = Number(pageSize) || 20;
   const totalPages = Math.max(
@@ -342,6 +393,24 @@ export default function AccountsPage() {
       const label = String(account.lastStatusReason || "").trim();
       if (!label) continue;
       counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((left, right) => {
+        if (right.count !== left.count) {
+          return right.count - left.count;
+        }
+        return left.label.localeCompare(right.label, "zh-CN");
+      });
+  }, [scopedAccounts]);
+  const tagOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const account of scopedAccounts) {
+      for (const tag of account.tags) {
+        const label = String(tag || "").trim();
+        if (!label) continue;
+        counts.set(label, (counts.get(label) || 0) + 1);
+      }
     }
     return Array.from(counts.entries())
       .map(([label, count]) => ({ label, count }))
@@ -423,8 +492,11 @@ export default function AccountsPage() {
     if (statusReasonFilter !== "all") {
       items.push({ key: "statusReason", label: `状态原因 ${statusReasonFilter}` });
     }
+    if (tagFilter !== "all") {
+      items.push({ key: "tag", label: `标签 ${tagFilter}` });
+    }
     return items;
-  }, [governanceFilter, groupFilter, search, statusFilter, statusReasonFilter]);
+  }, [governanceFilter, groupFilter, search, statusFilter, statusReasonFilter, tagFilter]);
 
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.id === selectedAccountId) ?? null,
@@ -445,6 +517,7 @@ export default function AccountsPage() {
     setStatusReasonFilter(
       normalizeStatusReasonFilter(params.get("statusReason")),
     );
+    setTagFilter(normalizeTagFilter(params.get("tag")));
   }, []);
 
   const handleSearchChange = (value: string) => {
@@ -479,6 +552,11 @@ export default function AccountsPage() {
     setPage(1);
   };
 
+  const handleTagFilterChange = (value: string | null) => {
+    setTagFilter(normalizeTagFilter(value));
+    setPage(1);
+  };
+
   const handlePageSizeChange = (value: string | null) => {
     setPageSize(value || "20");
     setPage(1);
@@ -490,6 +568,7 @@ export default function AccountsPage() {
     setStatusFilter("all");
     setGovernanceFilter("all");
     setStatusReasonFilter("all");
+    setTagFilter("all");
     setPage(1);
     router.push("/accounts");
   };
@@ -500,6 +579,7 @@ export default function AccountsPage() {
     let nextStatusFilter = statusFilter;
     let nextGovernanceFilter = governanceFilter;
     let nextStatusReasonFilter = statusReasonFilter;
+    let nextTagFilter = tagFilter;
     if (key === "search") {
       nextSearch = "";
       setSearch("");
@@ -517,6 +597,9 @@ export default function AccountsPage() {
     } else if (key === "statusReason") {
       nextStatusReasonFilter = "all";
       setStatusReasonFilter("all");
+    } else if (key === "tag") {
+      nextTagFilter = "all";
+      setTagFilter("all");
     }
     setPage(1);
     const params = new URLSearchParams();
@@ -528,6 +611,9 @@ export default function AccountsPage() {
     }
     if (nextStatusReasonFilter !== "all") {
       params.set("statusReason", nextStatusReasonFilter);
+    }
+    if (nextTagFilter !== "all") {
+      params.set("tag", nextTagFilter);
     }
     if (nextSearch.trim()) {
       params.set("query", nextSearch.trim());
@@ -730,6 +816,30 @@ export default function AccountsPage() {
     );
   };
 
+  const openBatchTagDialog = () => {
+    if (!effectiveSelectedIds.length) {
+      toast.error("请先选择要打标签的账号");
+      return;
+    }
+    setTagDialogState({
+      kind: "selected",
+      ids: [...effectiveSelectedIds],
+      count: effectiveSelectedIds.length,
+    });
+    const commonTags = getSharedTags(selectedAccounts);
+    setTagDraft(commonTags.join(", "));
+  };
+
+  const handleConfirmTags = () => {
+    if (!tagDialogState) return;
+    const tags = tagDraft
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    updateManyTags(tagDialogState.ids, tags);
+    setTagDialogState(null);
+  };
+
   return (
     <div className="space-y-6">
       <Card className="glass-card border-none shadow-md backdrop-blur-md">
@@ -842,6 +952,34 @@ export default function AccountsPage() {
                 </SelectContent>
               </Select>
             ) : null}
+            {tagOptions.length > 0 ? (
+              <Select
+                value={tagFilter}
+                onValueChange={handleTagFilterChange}
+              >
+                <SelectTrigger className="h-10 w-[180px] shrink-0 rounded-xl bg-card/50">
+                  <SelectValue placeholder="标签">
+                    {(value) => {
+                      const nextValue = String(value || "").trim();
+                      if (!nextValue || nextValue === "all") {
+                        return `全部标签 (${tagOptions.length})`;
+                      }
+                      return nextValue;
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    全部标签 ({tagOptions.length})
+                  </SelectItem>
+                  {tagOptions.map((option) => (
+                    <SelectItem key={option.label} value={option.label}>
+                      {option.label} ({option.count})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
           </div>
 
           <div className="hidden min-w-0 lg:block" />
@@ -904,6 +1042,14 @@ export default function AccountsPage() {
                     <DropdownMenuShortcut>
                       {isExporting ? "..." : "ZIP"}
                     </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!effectiveSelectedIds.length || isBulkUpdatingTags}
+                    onClick={openBatchTagDialog}
+                  >
+                    <Pin className="mr-2 h-4 w-4" /> 批量设置标签
+                    <DropdownMenuShortcut>{effectiveSelectedIds.length || "-"}</DropdownMenuShortcut>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
@@ -1171,6 +1317,23 @@ export default function AccountsPage() {
                                 {String(account.subscriptionPlanType).toUpperCase()}
                               </Badge>
                             ) : null}
+                            {account.tags.slice(0, 2).map((tag) => (
+                              <Badge
+                                key={`${account.id}-${tag}`}
+                                variant="secondary"
+                                className="h-4 shrink-0 bg-violet-500/15 px-1.5 text-[9px] text-violet-700 dark:text-violet-300"
+                              >
+                                #{tag}
+                              </Badge>
+                            ))}
+                            {account.tags.length > 2 ? (
+                              <Badge
+                                variant="secondary"
+                                className="h-4 shrink-0 bg-muted/50 px-1.5 text-[9px]"
+                              >
+                                +{account.tags.length - 2}
+                              </Badge>
+                            ) : null}
                             <Badge
                               variant="secondary"
                               className={cn(
@@ -1233,6 +1396,11 @@ export default function AccountsPage() {
                           {account.subscriptionUpdatedAt ? (
                             <span className="text-[10px] text-muted-foreground">
                               订阅标记: {formatTsFromSeconds(account.subscriptionUpdatedAt, "--")}
+                            </span>
+                          ) : null}
+                          {account.tags.length > 0 ? (
+                            <span className="text-[10px] text-muted-foreground">
+                              标签: {account.tags.join(", ")}
                             </span>
                           ) : null}
                         </div>
@@ -1542,6 +1710,59 @@ export default function AccountsPage() {
         confirmVariant="destructive"
         onConfirm={handleConfirmDelete}
       />
+      <Dialog
+        open={Boolean(tagDialogState)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTagDialogState(null);
+          }
+        }}
+      >
+        <DialogContent className="glass-card border-none sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>批量设置标签</DialogTitle>
+            <DialogDescription>
+              {tagDialogState
+                ? `为选中的 ${tagDialogState.count} 个账号设置标签。多个标签使用英文逗号分隔，留空表示清空标签。`
+                : "为选中账号设置统一标签。"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <Label htmlFor="batch-account-tags-input">标签</Label>
+            <Input
+              id="batch-account-tags-input"
+              value={tagDraft}
+              disabled={isBulkUpdatingTags}
+              onChange={(event) => setTagDraft(event.target.value)}
+              placeholder="free, imported, high-quality"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  handleConfirmTags();
+                }
+              }}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              建议使用短标签，如 `free`、`team`、`risk`、`imported`。
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={isBulkUpdatingTags}
+              onClick={() => setTagDialogState(null)}
+            >
+              取消
+            </Button>
+            <Button
+              disabled={isBulkUpdatingTags}
+              onClick={handleConfirmTags}
+            >
+              {isBulkUpdatingTags ? "保存中..." : "保存标签"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={Boolean(markSubscriptionDialogState)}
         onOpenChange={(open) => {

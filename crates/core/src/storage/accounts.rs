@@ -1,4 +1,5 @@
 use rusqlite::{params_from_iter, types::Value, Result, Row};
+use std::collections::BTreeMap;
 
 use super::{now_ts, Account, Storage, Token};
 
@@ -185,6 +186,28 @@ impl Storage {
         Ok(())
     }
 
+    pub fn update_account_tags(&self, account_id: &str, tags: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE accounts SET tags = ?1, updated_at = ?2 WHERE id = ?3",
+            (tags, now_ts(), account_id),
+        )?;
+        Ok(())
+    }
+
+    pub fn list_account_tags(&self) -> Result<BTreeMap<String, Option<String>>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, tags FROM accounts ORDER BY sort ASC, updated_at DESC")?;
+        let mut rows = stmt.query([])?;
+        let mut result = BTreeMap::new();
+        while let Some(row) = rows.next()? {
+            let account_id: String = row.get(0)?;
+            let tags: Option<String> = row.get(1)?;
+            result.insert(account_id, tags);
+        }
+        Ok(result)
+    }
+
     pub fn update_account_status(&self, account_id: &str, status: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE accounts SET status = ?1, updated_at = ?2 WHERE id = ?3",
@@ -221,6 +244,11 @@ impl Storage {
         self.ensure_column("login_sessions", "note", "TEXT")?;
         self.ensure_column("login_sessions", "tags", "TEXT")?;
         self.ensure_column("login_sessions", "group_name", "TEXT")?;
+        Ok(())
+    }
+
+    pub(super) fn ensure_account_tags_column(&self) -> Result<()> {
+        self.ensure_column("accounts", "tags", "TEXT")?;
         Ok(())
     }
 

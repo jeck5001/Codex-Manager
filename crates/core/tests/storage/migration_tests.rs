@@ -183,11 +183,20 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
         )
         .expect("count 033 migration");
     assert_eq!(applied_033, 1);
+    let applied_034: i64 = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '034_restore_account_tags'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count 034 migration");
+    assert_eq!(applied_034, 1);
 
     assert!(!storage
         .has_column("accounts", "note")
         .expect("check accounts.note"));
-    assert!(!storage
+    assert!(storage
         .has_column("accounts", "tags")
         .expect("check accounts.tags"));
     assert!(!storage

@@ -427,8 +427,15 @@ fn import_single_item(
             (account_id.clone(), created, true)
         };
 
+    let preserved_tags = storage
+        .list_account_tags()
+        .ok()
+        .and_then(|map| map.get(&account_id).cloned().flatten());
     storage
         .insert_account(&account)
+        .map_err(|e| e.to_string())?;
+    storage
+        .update_account_tags(&account_id, preserved_tags.as_deref())
         .map_err(|e| e.to_string())?;
     let token = Token {
         account_id: account_id.clone(),

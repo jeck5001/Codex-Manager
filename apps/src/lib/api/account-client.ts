@@ -661,6 +661,16 @@ export const accountClient = {
       "service_account_update_many",
       withAddr({ accountIds, status })
     ),
+  updateManyTags: (accountIds: string[], tags: string[] | string | null) =>
+    invoke<AccountBulkStatusUpdateResult>(
+      "service_account_update_many_tags",
+      withAddr({
+        accountIds,
+        tags: Array.isArray(tags)
+          ? tags.map((item) => String(item || "").trim()).filter(Boolean).join(",")
+          : tags || null,
+      })
+    ),
   generatePaymentLink: (payload: {
     accountId: string;
     planType: "plus" | "team";

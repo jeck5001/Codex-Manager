@@ -26,6 +26,7 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   },
   service_account_update: { rpcMethod: "account/update" },
   service_account_update_many: { rpcMethod: "account/updateMany" },
+  service_account_update_many_tags: { rpcMethod: "account/updateManyTags" },
   service_account_payment_generate_link: {
     rpcMethod: "account/payment/generateLink",
   },

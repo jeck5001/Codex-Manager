@@ -143,6 +143,12 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
     let existing_account = storage
         .find_account_by_id(&account_id)
         .map_err(|err| err.to_string())?;
+    let existing_tags = storage
+        .list_account_tags()
+        .map_err(|err| err.to_string())?
+        .get(&account_id)
+        .cloned()
+        .flatten();
     let label = choose_account_label(
         input.email_hint.as_deref(),
         id_token_claims.as_ref()
@@ -174,6 +180,9 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
     };
     storage
         .insert_account(&account)
+        .map_err(|err| err.to_string())?;
+    storage
+        .update_account_tags(&account_id, existing_tags.as_deref())
         .map_err(|err| err.to_string())?;
 
     let mut token = Token {

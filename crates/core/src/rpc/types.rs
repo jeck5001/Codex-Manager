@@ -27,6 +27,8 @@ pub struct AccountSummary {
     pub id: String,
     pub label: String,
     pub group_name: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub sort: i64,
     pub status: String,
     #[serde(default)]
