@@ -308,7 +308,8 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         }
         "account/register/task/retry" => {
             let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
-            super::value_or_error(account_register::retry_register_task(task_uuid))
+            let strategy = first_str_param(req, &["strategy"]);
+            super::value_or_error(account_register::retry_register_task(task_uuid, strategy))
         }
         "account/register/task/delete" => {
             let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");

@@ -103,7 +103,9 @@ class RegistrationEngine:
         email_service: BaseEmailService,
         proxy_url: Optional[str] = None,
         callback_logger: Optional[Callable[[str], None]] = None,
-        task_uuid: Optional[str] = None
+        task_uuid: Optional[str] = None,
+        email_code_timeout_override: Optional[int] = None,
+        email_code_poll_interval_override: Optional[int] = None,
     ):
         """
         初始化注册引擎
@@ -113,6 +115,8 @@ class RegistrationEngine:
             proxy_url: 代理 URL
             callback_logger: 日志回调函数
             task_uuid: 任务 UUID（用于数据库记录）
+            email_code_timeout_override: 本次任务专用验证码等待超时覆盖值
+            email_code_poll_interval_override: 本次任务专用验证码轮询间隔覆盖值
         """
         self.email_service = email_service
         self.proxy_url = proxy_url
@@ -142,6 +146,8 @@ class RegistrationEngine:
         self.session_token: Optional[str] = None  # 会话令牌
         self.logs: list = []
         self._otp_sent_at: Optional[float] = None  # OTP 发送时间戳
+        self._email_code_timeout_override = email_code_timeout_override
+        self._email_code_poll_interval_override = email_code_poll_interval_override
         self._is_existing_account: bool = False  # 是否为已注册账号（用于自动登录）
         self._post_create_page_type: str = ""
         self._post_create_continue_url: str = ""
@@ -149,14 +155,27 @@ class RegistrationEngine:
         self._last_otp_error_code: str = ""
         self._last_otp_error_message: str = ""
 
-    @staticmethod
-    def _get_email_code_wait_settings() -> Tuple[int, int]:
+    def _get_email_code_wait_settings(self) -> Tuple[int, int]:
         """获取验证码等待配置。"""
         settings = get_settings()
-        timeout = max(30, int(getattr(settings, "email_code_timeout", 120) or 120))
+        timeout = max(
+            30,
+            int(
+                self._email_code_timeout_override
+                or getattr(settings, "email_code_timeout", 120)
+                or 120
+            ),
+        )
         poll_interval = max(
             1,
-            min(30, int(getattr(settings, "email_code_poll_interval", 3) or 3)),
+            min(
+                30,
+                int(
+                    self._email_code_poll_interval_override
+                    or getattr(settings, "email_code_poll_interval", 3)
+                    or 3
+                ),
+            ),
         )
         return timeout, poll_interval
 

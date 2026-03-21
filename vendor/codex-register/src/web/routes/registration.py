@@ -115,6 +115,14 @@ class BatchRegistrationResponse(BaseModel):
     tasks: List[RegistrationTaskResponse]
 
 
+class RetryTaskRequest(BaseModel):
+    """失败任务重试策略"""
+    strategy: Optional[str] = Field(
+        default=None,
+        description="same | refresh_proxy | relax_email_wait | latest_email_otp",
+    )
+
+
 def _infer_email_service_type_from_task(task: RegistrationTask) -> Optional[str]:
     """从历史任务推断邮箱服务类型。"""
     if task.email_service and task.email_service.service_type:
@@ -258,6 +266,37 @@ def _normalize_email_service_config(
     return normalized
 
 
+def _merge_runtime_email_service_config(
+    base_config: Optional[dict],
+    runtime_config: Optional[dict],
+) -> dict:
+    merged = base_config.copy() if base_config else {}
+    if runtime_config:
+        merged.update(runtime_config)
+    return merged
+
+
+def _build_retry_runtime_config(task: RegistrationTask, strategy: Optional[str]) -> dict:
+    normalized = (strategy or "").strip().lower()
+    if not normalized or normalized == "same":
+        return {}
+    if normalized == "refresh_proxy":
+        return {"retry_strategy": normalized}
+    if normalized == "relax_email_wait":
+        return {
+            "retry_strategy": normalized,
+            "email_code_timeout_override": 240,
+            "email_code_poll_interval_override": 2,
+        }
+    if normalized == "latest_email_otp":
+        return {
+            "retry_strategy": normalized,
+            "email_code_timeout_override": 180,
+            "email_code_poll_interval_override": 2,
+        }
+    raise HTTPException(status_code=400, detail="不支持的重试策略")
+
+
 def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: Optional[str], email_service_config: Optional[dict], email_service_id: Optional[int] = None, log_prefix: str = "", batch_id: str = "", auto_upload_cpa: bool = False, cpa_service_id: Optional[int] = None):
     """
     在线程池中执行的同步注册任务
@@ -314,6 +353,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                 if db_service:
                     service_type = EmailServiceType(db_service.service_type)
                     config = _normalize_email_service_config(service_type, db_service.config, actual_proxy_url)
+                    config = _merge_runtime_email_service_config(config, email_service_config)
                     # 更新任务关联的邮箱服务
                     crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
                     logger.info(f"使用数据库邮箱服务: {db_service.name} (ID: {db_service.id}, 类型: {service_type.value})")
@@ -338,6 +378,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
 
                     if db_service and db_service.config:
                         config = _normalize_email_service_config(service_type, db_service.config, actual_proxy_url)
+                        config = _merge_runtime_email_service_config(config, email_service_config)
                         crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
                         logger.info(f"使用数据库自定义域名服务: {db_service.name}")
                     elif settings.custom_domain_base_url and settings.custom_domain_api_key:
@@ -346,6 +387,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                             "api_key": settings.custom_domain_api_key.get_secret_value() if settings.custom_domain_api_key else "",
                             "proxy_url": actual_proxy_url,
                         }
+                        config = _merge_runtime_email_service_config(config, email_service_config)
                     else:
                         raise ValueError("没有可用的自定义域名邮箱服务，请先在设置中配置")
                 elif service_type == EmailServiceType.OUTLOOK:
@@ -377,12 +419,13 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
 
                     if selected_service and selected_service.config:
                         config = selected_service.config.copy()
+                        config = _merge_runtime_email_service_config(config, email_service_config)
                         crud.update_registration_task(db, task_uuid, email_service_id=selected_service.id)
                         logger.info(f"使用数据库 Outlook 账户: {selected_service.name}")
                     else:
                         raise ValueError("所有 Outlook 账户都已注册过 OpenAI 账号，请添加新的 Outlook 账户")
                 else:
-                    config = email_service_config or {}
+                    config = _merge_runtime_email_service_config({}, email_service_config)
 
             email_service = EmailServiceFactory.create(service_type, config)
 
@@ -393,7 +436,9 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                 email_service=email_service,
                 proxy_url=actual_proxy_url,
                 callback_logger=log_callback,
-                task_uuid=task_uuid
+                task_uuid=task_uuid,
+                email_code_timeout_override=config.get("email_code_timeout_override"),
+                email_code_poll_interval_override=config.get("email_code_poll_interval_override"),
             )
 
             # 执行注册
@@ -939,7 +984,11 @@ async def cancel_task(task_uuid: str):
 
 
 @router.post("/tasks/{task_uuid}/retry", response_model=RegistrationTaskResponse)
-async def retry_task(task_uuid: str, background_tasks: BackgroundTasks):
+async def retry_task(
+    task_uuid: str,
+    background_tasks: BackgroundTasks,
+    payload: Optional[RetryTaskRequest] = None,
+):
     """重新发起失败的注册任务。"""
     with get_db() as db:
         task = crud.get_registration_task(db, task_uuid)
@@ -953,11 +1002,17 @@ async def retry_task(task_uuid: str, background_tasks: BackgroundTasks):
         if not email_service_type:
             raise HTTPException(status_code=400, detail="无法识别原任务的邮箱服务类型")
 
+        runtime_config = _build_retry_runtime_config(task, payload.strategy if payload else None)
+        retry_proxy = task.proxy
+        if runtime_config.get("retry_strategy") == "refresh_proxy":
+            retry_proxy = None
+
         retried_task = _create_single_registration_task(
             db=db,
             background_tasks=background_tasks,
             email_service_type=email_service_type,
-            proxy=task.proxy,
+            proxy=retry_proxy,
+            email_service_config=runtime_config or None,
             email_service_id=task.email_service_id,
         )
         return task_to_response(retried_task)
