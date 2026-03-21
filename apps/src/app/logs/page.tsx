@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -461,6 +461,7 @@ function ModelEffortCell({ log }: { log: RequestLog }) {
 }
 
 function LogsPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { serviceStatus } = useAppStore();
   const queryClient = useQueryClient();
@@ -552,6 +553,17 @@ function LogsPageContent() {
     1,
     Math.ceil((logsResult?.total || 0) / pageSizeNumber),
   );
+  const activeFilterItems = useMemo(() => {
+    const items: Array<{ key: string; label: string }> = [];
+    const nextSearch = search.trim();
+    if (nextSearch) {
+      items.push({ key: "query", label: `搜索 ${nextSearch}` });
+    }
+    if (filter !== "all") {
+      items.push({ key: "status", label: `状态 ${filter.toUpperCase()}` });
+    }
+    return items;
+  }, [filter, search]);
 
   const currentFilterLabel =
     filter === "all"
@@ -564,6 +576,13 @@ function LogsPageContent() {
   const compactMetaText = `${summary.filteredCount}/${summary.totalCount} 条 · ${currentFilterLabel} · ${
     serviceStatus.connected ? "5 秒刷新" : "服务未连接"
   }`;
+
+  const handleClearFilters = () => {
+    setSearch("");
+    setFilter("all");
+    setPage(1);
+    router.push("/logs");
+  };
 
   return (
     <div className="animate-in space-y-5 fade-in duration-500">
@@ -627,6 +646,31 @@ function LogsPageContent() {
           </div>
         </CardContent>
       </Card>
+
+      {activeFilterItems.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 px-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            当前筛选:
+          </span>
+          {activeFilterItems.map((item) => (
+            <Badge
+              key={item.key}
+              variant="secondary"
+              className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary"
+            >
+              {item.label}
+            </Badge>
+          ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 rounded-full px-3 text-xs"
+            onClick={handleClearFilters}
+          >
+            清空筛选
+          </Button>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
