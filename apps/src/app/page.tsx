@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Database,
   DollarSign,
+  ExternalLink,
   PieChart,
   ShieldAlert,
   Users,
@@ -124,6 +125,20 @@ function openFailureDrilldown(
       }
       router.push(logParams.size > 0 ? `/logs?${logParams.toString()}` : "/logs");
     }
+}
+
+function describeFailureDrilldownTarget(code: string): string {
+  switch (String(code || "").trim().toLowerCase()) {
+    case "account_deactivated":
+    case "refresh_token_expired":
+    case "refresh_token_reused":
+    case "refresh_token_invalidated":
+    case "refresh_token_invalid":
+    case "usage_unauthorized":
+      return "查看账号页";
+    default:
+      return "查看日志页";
+  }
 }
 
 function formatPercent(value: number | null | undefined): string {
@@ -489,6 +504,10 @@ export default function DashboardPage() {
                     <span>最近一次</span>
                     <span>{formatTsFromSeconds(item.lastSeenAt, "--")}</span>
                   </div>
+                  <div className="mt-2 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+                    <ExternalLink className="h-3 w-3" />
+                    <span>{describeFailureDrilldownTarget(item.code)}</span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -547,6 +566,10 @@ export default function DashboardPage() {
                   <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground">
                     <span>目标状态 {item.targetStatus}</span>
                     <span>{formatTsFromSeconds(item.lastSeenAt, "--")}</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1 text-[11px] text-rose-600 dark:text-rose-400">
+                    <ExternalLink className="h-3 w-3" />
+                    <span>查看账号页</span>
                   </div>
                 </button>
               ))}
