@@ -79,6 +79,7 @@ export function useDashboardStats() {
   const recommendations = pickBestRecommendations(accounts);
   const failureReasonSummary = data?.failureReasonSummary || [];
   const governanceSummary = data?.governanceSummary || [];
+  const operationAudits = data?.operationAudits || [];
   const recentFailureTotal = failureReasonSummary.reduce(
     (sum, item) => sum + item.count,
     0
@@ -134,6 +135,7 @@ export function useDashboardStats() {
     recommendations,
     failureReasonSummary,
     governanceSummary,
+    operationAudits,
     requestLogs: data?.requestLogs || [],
     isLoading: !isServiceReady || snapshotQuery.isPending || shouldWarmupPoll,
     isSyncingSnapshot: shouldWarmupPoll,

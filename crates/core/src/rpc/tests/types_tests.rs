@@ -1,5 +1,6 @@
 use super::{
     AccountListParams, AccountListResult, AccountSummary, GovernanceSummaryItem,
+    OperationAuditItem,
     RequestLogFilterSummaryResult, RequestLogListParams, RequestLogListResult, RequestLogSummary,
 };
 
@@ -121,6 +122,23 @@ fn governance_summary_item_serialization_uses_camel_case() {
         "affectedAccounts",
         "lastSeenAt",
     ] {
+        assert!(obj.contains_key(key), "missing key: {key}");
+    }
+}
+
+#[test]
+fn operation_audit_item_serialization_uses_camel_case() {
+    let result = OperationAuditItem {
+        action: "freeproxy_sync".to_string(),
+        label: "同步 freeproxy 代理池".to_string(),
+        detail: "已同步 20 个代理".to_string(),
+        account_id: None,
+        created_at: Some(1),
+    };
+
+    let value = serde_json::to_value(result).expect("serialize operation audit item");
+    let obj = value.as_object().expect("operation audit object");
+    for key in ["action", "label", "detail", "accountId", "createdAt"] {
         assert!(obj.contains_key(key), "missing key: {key}");
     }
 }

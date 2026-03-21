@@ -14,6 +14,7 @@ pub(crate) fn read_startup_snapshot(
     let usage_prediction_summary = crate::usage_prediction::read_usage_prediction_summary()?;
     let failure_reason_summary = crate::failure_summary::read_failure_reason_summary()?;
     let governance_summary = crate::governance_summary::read_governance_summary()?;
+    let operation_audits = crate::operation_audit_summary::read_recent_operation_audits()?;
     let api_keys = apikey_list::read_api_keys()?;
     let api_model_options = apikey_models::read_model_options(false)?.items;
     let manual_preferred_account_id = gateway::manual_preferred_account();
@@ -27,6 +28,7 @@ pub(crate) fn read_startup_snapshot(
         usage_prediction_summary,
         failure_reason_summary,
         governance_summary,
+        operation_audits,
         api_keys,
         api_model_options,
         manual_preferred_account_id,

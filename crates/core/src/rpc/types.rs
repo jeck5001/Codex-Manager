@@ -216,6 +216,16 @@ pub struct GovernanceSummaryItem {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OperationAuditItem {
+    pub action: String,
+    pub label: String,
+    pub detail: String,
+    pub account_id: Option<String>,
+    pub created_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UsagePredictionSummaryResult {
     pub quota_protection_enabled: bool,
     pub quota_protection_threshold_percent: i64,
@@ -393,6 +403,8 @@ pub struct StartupSnapshotResult {
     pub failure_reason_summary: Vec<FailureReasonSummaryItem>,
     #[serde(default)]
     pub governance_summary: Vec<GovernanceSummaryItem>,
+    #[serde(default)]
+    pub operation_audits: Vec<OperationAuditItem>,
     pub api_keys: Vec<ApiKeySummary>,
     pub api_model_options: Vec<ModelOption>,
     pub manual_preferred_account_id: Option<String>,

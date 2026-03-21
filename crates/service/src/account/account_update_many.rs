@@ -89,6 +89,27 @@ pub(crate) fn update_accounts_status(
         result.updated_account_ids.push(account_id);
     }
 
+    crate::operation_audit::record_operation_audit(
+        if normalized_status == "disabled" {
+            "account_bulk_disable"
+        } else {
+            "account_bulk_enable"
+        },
+        if normalized_status == "disabled" {
+            "批量禁用账号"
+        } else {
+            "批量启用账号"
+        },
+        format!(
+            "请求 {} 个，更新 {} 个，跳过 {} 个，失败 {} 个，目标状态 {}",
+            result.requested,
+            result.updated,
+            result.skipped,
+            result.failed,
+            result.target_status
+        ),
+    );
+
     Ok(result)
 }
 

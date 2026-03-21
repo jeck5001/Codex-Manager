@@ -667,12 +667,22 @@ pub(crate) fn retry_register_task(task_uuid: &str, strategy: Option<&str>) -> Re
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
-    register_post_json(
+    let result = register_post_json(
         &format!("/api/registration/tasks/{task_uuid}/retry"),
         &json!({
             "strategy": strategy,
         }),
-    )
+    )?;
+    crate::operation_audit::record_operation_audit(
+        "register_task_retry",
+        "重试注册任务",
+        format!(
+            "任务 {}，策略 {}",
+            task_uuid,
+            strategy.as_deref().unwrap_or("same")
+        ),
+    );
+    Ok(result)
 }
 
 pub(crate) fn delete_register_task(task_uuid: &str) -> Result<Value, String> {
