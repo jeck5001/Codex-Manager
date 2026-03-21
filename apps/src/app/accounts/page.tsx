@@ -20,6 +20,7 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -430,6 +431,8 @@ export default function AccountsPage() {
       return;
     }
     const params = new URLSearchParams(window.location.search);
+    setSearch(String(params.get("query") || "").trim());
+    setGroupFilter(String(params.get("group") || "all").trim() || "all");
     setStatusFilter(normalizeStatusFilter(params.get("status")));
     setGovernanceFilter(
       normalizeGovernanceFilter(params.get("governanceReason")),
@@ -484,6 +487,52 @@ export default function AccountsPage() {
     setStatusReasonFilter("all");
     setPage(1);
     router.push("/accounts");
+  };
+
+  const handleRemoveFilterItem = (key: string) => {
+    let nextSearch = search;
+    let nextGroupFilter = groupFilter;
+    let nextStatusFilter = statusFilter;
+    let nextGovernanceFilter = governanceFilter;
+    let nextStatusReasonFilter = statusReasonFilter;
+    if (key === "search") {
+      nextSearch = "";
+      setSearch("");
+    } else if (key === "group") {
+      nextGroupFilter = "all";
+      setGroupFilter("all");
+    } else if (key === "status") {
+      nextStatusFilter = "all";
+      nextGovernanceFilter = "all";
+      setStatusFilter("all");
+      setGovernanceFilter("all");
+    } else if (key === "governance") {
+      nextGovernanceFilter = "all";
+      setGovernanceFilter("all");
+    } else if (key === "statusReason") {
+      nextStatusReasonFilter = "all";
+      setStatusReasonFilter("all");
+    }
+    setPage(1);
+    const params = new URLSearchParams();
+    if (nextStatusFilter !== "all") {
+      params.set("status", nextStatusFilter);
+    }
+    if (nextGovernanceFilter !== "all") {
+      params.set("governanceReason", nextGovernanceFilter);
+    }
+    if (nextStatusReasonFilter !== "all") {
+      params.set("statusReason", nextStatusReasonFilter);
+    }
+    if (nextSearch.trim()) {
+      params.set("query", nextSearch.trim());
+    }
+    if (nextGroupFilter !== "all") {
+      params.set("group", nextGroupFilter);
+    }
+    router.push(
+      params.size > 0 ? `/accounts?${params.toString()}` : "/accounts",
+    );
   };
 
   const toggleSelect = (id: string) => {
@@ -988,13 +1037,16 @@ export default function AccountsPage() {
             当前筛选:
           </span>
           {activeFilterItems.map((item) => (
-            <Badge
+            <button
+              type="button"
               key={item.key}
-              variant="secondary"
-              className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary"
+              className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary transition-colors hover:bg-primary/15"
+              onClick={() => handleRemoveFilterItem(item.key)}
+              title={`移除筛选：${item.label}`}
             >
-              {item.label}
-            </Badge>
+              <span>{item.label}</span>
+              <X className="h-3 w-3" />
+            </button>
           ))}
           <Button
             variant="ghost"
