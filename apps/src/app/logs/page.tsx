@@ -49,6 +49,21 @@ import { RequestLog } from "@/types";
 
 type StatusFilter = "all" | "2xx" | "4xx" | "5xx";
 
+const QUICK_LOG_FILTERS: Array<{
+  key: string;
+  label: string;
+  query: string;
+  statusFilter: StatusFilter;
+}> = [
+  { key: "429", label: "429 限流", query: "status:429", statusFilter: "4xx" },
+  { key: "401", label: "401 授权", query: "status:401", statusFilter: "4xx" },
+  { key: "403", label: "403 拒绝", query: "status:403", statusFilter: "4xx" },
+  { key: "timeout", label: "超时", query: "error:timeout", statusFilter: "all" },
+  { key: "dns", label: "DNS", query: "error:dns", statusFilter: "all" },
+  { key: "connect", label: "连接失败", query: "error:connect", statusFilter: "all" },
+  { key: "5xx", label: "5xx 上游", query: "status:5xx", statusFilter: "5xx" },
+];
+
 function normalizeStatusFilter(value: string | null | undefined): StatusFilter {
   switch (String(value || "").trim().toLowerCase()) {
     case "2xx":
@@ -564,6 +579,13 @@ function LogsPageContent() {
     }
     return items;
   }, [filter, search]);
+  const activeQuickFilterKey = useMemo(() => {
+    const nextSearch = search.trim();
+    const matched = QUICK_LOG_FILTERS.find(
+      (item) => item.query === nextSearch && item.statusFilter === filter,
+    );
+    return matched?.key ?? null;
+  }, [filter, search]);
 
   const currentFilterLabel =
     filter === "all"
@@ -582,6 +604,18 @@ function LogsPageContent() {
     setFilter("all");
     setPage(1);
     router.push("/logs");
+  };
+
+  const handleApplyQuickFilter = (query: string, statusFilter: StatusFilter) => {
+    setSearch(query);
+    setFilter(statusFilter);
+    setPage(1);
+    const params = new URLSearchParams();
+    params.set("query", query);
+    if (statusFilter !== "all") {
+      params.set("statusFilter", statusFilter);
+    }
+    router.push(`/logs?${params.toString()}`);
   };
 
   return (
@@ -671,6 +705,28 @@ function LogsPageContent() {
           </Button>
         </div>
       ) : null}
+
+      <div className="flex flex-wrap items-center gap-2 px-1">
+        <span className="text-xs font-medium text-muted-foreground">
+          快捷筛选:
+        </span>
+        {QUICK_LOG_FILTERS.map((item) => (
+          <Button
+            key={item.key}
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-7 rounded-full px-3 text-xs",
+              activeQuickFilterKey === item.key
+                ? "bg-primary/10 text-primary hover:bg-primary/15"
+                : ""
+            )}
+            onClick={() => handleApplyQuickFilter(item.query, item.statusFilter)}
+          >
+            {item.label}
+          </Button>
+        ))}
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
