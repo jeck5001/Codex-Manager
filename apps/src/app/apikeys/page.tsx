@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Copy,
@@ -35,6 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useApiKeys } from "@/hooks/useApiKeys";
+import { useDesktopPageActive } from "@/hooks/useDesktopPageActive";
 import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { accountClient } from "@/lib/api/account-client";
@@ -54,8 +55,10 @@ export default function ApiKeysPage() {
     isToggling,
     isRefreshingModels,
   } = useApiKeys();
+  const isPageActive = useDesktopPageActive("/apikeys/");
   const isUsageQueryEnabled = useDeferredDesktopActivation(isServiceReady);
   usePageTransitionReady(
+    "/apikeys/",
     !isServiceReady || (!isLoading && !isModelsLoading),
   );
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
@@ -63,6 +66,15 @@ export default function ApiKeysPage() {
   const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
   const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
   const [deleteKeyId, setDeleteKeyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isPageActive) {
+      return;
+    }
+    setApiKeyModalOpen(false);
+    setEditingKeyId(null);
+    setDeleteKeyId(null);
+  }, [isPageActive]);
 
   const editingApiKey = useMemo(
     () => apiKeys.find((item) => item.id === editingKeyId) || null,
@@ -79,7 +91,7 @@ export default function ApiKeysPage() {
         return result;
       }, {});
     },
-    enabled: isUsageQueryEnabled,
+    enabled: isUsageQueryEnabled && isPageActive,
     refetchInterval: 5000,
     retry: 1,
   });

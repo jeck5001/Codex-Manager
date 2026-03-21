@@ -156,7 +156,7 @@ function StatProgressCard({
 export default function DashboardPage() {
   const { stats, currentAccount, recommendations, requestLogs, isLoading, isServiceReady } =
     useDashboardStats();
-  usePageTransitionReady(!isServiceReady || !isLoading);
+  usePageTransitionReady("/", !isServiceReady || !isLoading);
   const poolPrimary = stats.poolRemain?.primary ?? 0;
   const poolSecondary = stats.poolRemain?.secondary ?? 0;
 

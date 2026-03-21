@@ -208,7 +208,6 @@ export function Sidebar() {
     };
 
     if (isDesktopRuntime) {
-      prefetchRoutes();
       return () => {
         for (const controller of controllers) {
           controller.abort();

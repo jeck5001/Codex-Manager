@@ -6,10 +6,15 @@ import { toast } from "sonner";
 import { accountClient } from "@/lib/api/account-client";
 import { attachUsagesToAccounts } from "@/lib/api/normalize";
 import { serviceClient } from "@/lib/api/service-client";
+import {
+  buildStartupSnapshotQueryKey,
+  STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT,
+} from "@/lib/api/startup-snapshot";
 import { getAppErrorMessage } from "@/lib/api/transport";
 import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { useAppStore } from "@/lib/store/useAppStore";
+import { AccountListResult, StartupSnapshot } from "@/types";
 
 type ImportByDirectoryResult = Awaited<ReturnType<typeof accountClient.importByDirectory>>;
 type ImportByFileResult = Awaited<ReturnType<typeof accountClient.importByFile>>;
@@ -42,6 +47,16 @@ export function useAccounts() {
   const { canAccessManagementRpc } = useRuntimeCapabilities();
   const isServiceReady = canAccessManagementRpc && serviceStatus.connected;
   const areAccountQueriesEnabled = useDeferredDesktopActivation(isServiceReady);
+  const startupSnapshot = queryClient.getQueryData<StartupSnapshot>(
+    buildStartupSnapshotQueryKey(
+      serviceStatus.addr,
+      STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT
+    )
+  );
+  const startupAccounts = startupSnapshot?.accounts || [];
+  const startupUsages = startupSnapshot?.usageSnapshots || [];
+  const startupManualPreferredAccountId = startupSnapshot?.manualPreferredAccountId || "";
+  const hasStartupAccountSnapshot = startupAccounts.length > 0;
 
   const ensureServiceReady = (actionLabel: string): boolean => {
     if (isServiceReady) {
@@ -56,6 +71,16 @@ export function useAccounts() {
     queryFn: () => accountClient.list(),
     enabled: areAccountQueriesEnabled,
     retry: 1,
+    placeholderData: (previousData): AccountListResult | undefined =>
+      previousData ||
+      (startupAccounts.length > 0
+        ? {
+            items: startupAccounts,
+            total: startupAccounts.length,
+            page: 1,
+            pageSize: startupAccounts.length,
+          }
+        : undefined),
   });
 
   const usagesQuery = useQuery({
@@ -63,6 +88,8 @@ export function useAccounts() {
     queryFn: () => accountClient.listUsage(),
     enabled: areAccountQueriesEnabled,
     retry: 1,
+    placeholderData: (previousData) =>
+      previousData || (startupUsages.length > 0 ? startupUsages : undefined),
   });
 
   const manualPreferredAccountQuery = useQuery({
@@ -70,6 +97,8 @@ export function useAccounts() {
     queryFn: () => serviceClient.getManualPreferredAccountId(),
     enabled: areAccountQueriesEnabled,
     retry: 1,
+    placeholderData: (previousData) =>
+      previousData ?? startupManualPreferredAccountId,
   });
 
   const accounts = useMemo(() => {
@@ -358,6 +387,7 @@ export function useAccounts() {
     total: accountsQuery.data?.total || accounts.length,
     isLoading:
       isServiceReady &&
+      !hasStartupAccountSnapshot &&
       (!areAccountQueriesEnabled || accountsQuery.isLoading || usagesQuery.isLoading),
     isServiceReady,
     manualPreferredAccountId: manualPreferredAccountQuery.data || "",

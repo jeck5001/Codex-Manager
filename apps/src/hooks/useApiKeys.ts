@@ -3,10 +3,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { accountClient } from "@/lib/api/account-client";
+import {
+  buildStartupSnapshotQueryKey,
+  STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT,
+} from "@/lib/api/startup-snapshot";
 import { getAppErrorMessage } from "@/lib/api/transport";
 import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { useAppStore } from "@/lib/store/useAppStore";
+import { StartupSnapshot } from "@/types";
 
 type ApiKeyPayload = Parameters<typeof accountClient.createApiKey>[0];
 
@@ -16,6 +21,16 @@ export function useApiKeys() {
   const { canAccessManagementRpc } = useRuntimeCapabilities();
   const isServiceReady = canAccessManagementRpc && serviceStatus.connected;
   const areApiKeyQueriesEnabled = useDeferredDesktopActivation(isServiceReady);
+  const startupSnapshot = queryClient.getQueryData<StartupSnapshot>(
+    buildStartupSnapshotQueryKey(
+      serviceStatus.addr,
+      STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT
+    )
+  );
+  const startupApiKeys = startupSnapshot?.apiKeys || [];
+  const startupApiModels = startupSnapshot?.apiModelOptions || [];
+  const hasStartupApiKeySnapshot = startupApiKeys.length > 0;
+  const hasStartupApiModelSnapshot = startupApiModels.length > 0;
 
   const ensureServiceReady = (actionLabel: string): boolean => {
     if (isServiceReady) {
@@ -30,6 +45,8 @@ export function useApiKeys() {
     queryFn: () => accountClient.listApiKeys(),
     enabled: areApiKeyQueriesEnabled,
     retry: 1,
+    placeholderData: (previousData) =>
+      previousData || (startupApiKeys.length > 0 ? startupApiKeys : undefined),
   });
 
   const modelsQuery = useQuery({
@@ -37,6 +54,8 @@ export function useApiKeys() {
     queryFn: () => accountClient.listModels(false),
     enabled: areApiKeyQueriesEnabled,
     retry: 1,
+    placeholderData: (previousData) =>
+      previousData || (startupApiModels.length > 0 ? startupApiModels : undefined),
   });
 
   const invalidateAll = async () => {
@@ -116,9 +135,14 @@ export function useApiKeys() {
   return {
     apiKeys: apiKeysQuery.data || [],
     models: modelsQuery.data || [],
-    isLoading: isServiceReady && (!areApiKeyQueriesEnabled || apiKeysQuery.isLoading),
+    isLoading:
+      isServiceReady &&
+      !hasStartupApiKeySnapshot &&
+      (!areApiKeyQueriesEnabled || apiKeysQuery.isLoading),
     isModelsLoading:
-      isServiceReady && (!areApiKeyQueriesEnabled || modelsQuery.isLoading),
+      isServiceReady &&
+      !hasStartupApiModelSnapshot &&
+      (!areApiKeyQueriesEnabled || modelsQuery.isLoading),
     isServiceReady,
     createApiKey: async (params: ApiKeyPayload) => {
       if (!ensureServiceReady("创建密钥")) return;

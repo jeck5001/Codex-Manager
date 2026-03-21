@@ -103,7 +103,7 @@ export function useDashboardStats() {
     requestLogs: data?.requestLogs || [],
     isLoading:
       !isServiceReady ||
-      !isSnapshotQueryEnabled ||
+      (!isSnapshotQueryEnabled && !data) ||
       snapshotQuery.isPending ||
       shouldWarmupPoll,
     isSyncingSnapshot: shouldWarmupPoll,

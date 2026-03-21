@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -41,13 +41,24 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { accountClient } from "@/lib/api/account-client";
+import {
+  buildStartupSnapshotQueryKey,
+  STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT,
+} from "@/lib/api/startup-snapshot";
 import { serviceClient } from "@/lib/api/service-client";
+import { useDesktopPageActive } from "@/hooks/useDesktopPageActive";
 import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { useAppStore } from "@/lib/store/useAppStore";
 import { formatCompactNumber, formatTsFromSeconds } from "@/lib/utils/usage";
 import { cn } from "@/lib/utils";
-import { RequestLog } from "@/types";
+import {
+  AccountListResult,
+  RequestLog,
+  RequestLogFilterSummary,
+  RequestLogListResult,
+  StartupSnapshot,
+} from "@/types";
 
 type StatusFilter = "all" | "2xx" | "4xx" | "5xx";
 
@@ -449,24 +460,71 @@ function ModelEffortCell({ log }: { log: RequestLog }) {
   );
 }
 
+function buildSummaryPlaceholder(logs: RequestLog[]): RequestLogFilterSummary {
+  const successCount = logs.filter((item) => {
+    const statusCode = item.statusCode ?? 0;
+    return statusCode >= 200 && statusCode < 300;
+  }).length;
+  const errorCount = logs.filter((item) => {
+    const statusCode = item.statusCode;
+    return Boolean(String(item.error || "").trim()) || (statusCode != null && statusCode >= 400);
+  }).length;
+  const totalTokens = logs.reduce(
+    (sum, item) => sum + Math.max(0, item.totalTokens || 0),
+    0
+  );
+
+  return {
+    totalCount: logs.length,
+    filteredCount: logs.length,
+    successCount,
+    errorCount,
+    totalTokens,
+  };
+}
+
 function LogsPageContent() {
   const searchParams = useSearchParams();
   const { serviceStatus } = useAppStore();
+  const isPageActive = useDesktopPageActive("/logs/");
   const queryClient = useQueryClient();
   const areLogQueriesEnabled = useDeferredDesktopActivation(serviceStatus.connected);
-  const [search, setSearch] = useState(() => searchParams.get("query") || "");
+  const routeQuery = searchParams.get("query") || "";
+  const [search, setSearch] = useState(routeQuery);
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [pageSize, setPageSize] = useState("10");
   const [page, setPage] = useState(1);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const pageSizeNumber = Number(pageSize) || 10;
+  const startupSnapshot = queryClient.getQueryData<StartupSnapshot>(
+    buildStartupSnapshotQueryKey(
+      serviceStatus.addr,
+      STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT
+    )
+  );
+  const startupAccounts = startupSnapshot?.accounts || [];
+  const startupRequestLogs = startupSnapshot?.requestLogs || [];
+  const canUseStartupLogsPlaceholder =
+    !routeQuery.trim() && !search.trim() && filter === "all" && page === 1;
+  const hasStartupLogsSnapshot =
+    canUseStartupLogsPlaceholder && startupRequestLogs.length > 0;
 
   const { data: accountsResult } = useQuery({
     queryKey: ["accounts", "lookup"],
     queryFn: () => accountClient.list(),
-    enabled: areLogQueriesEnabled,
+    enabled: areLogQueriesEnabled && isPageActive,
     staleTime: 60_000,
     retry: 1,
+    placeholderData: (previousData): AccountListResult | undefined =>
+      previousData ||
+      (startupAccounts.length > 0
+        ? {
+            items: startupAccounts,
+            total: startupAccounts.length,
+            page: 1,
+            pageSize: startupAccounts.length,
+          }
+        : undefined),
   });
 
   const { data: logsResult, isLoading, isError: isLogsError } = useQuery({
@@ -478,10 +536,19 @@ function LogsPageContent() {
         page,
         pageSize: pageSizeNumber,
       }),
-    enabled: areLogQueriesEnabled,
+    enabled: areLogQueriesEnabled && isPageActive,
     refetchInterval: 5000,
     retry: 1,
-    placeholderData: (previousData) => previousData,
+    placeholderData: (previousData): RequestLogListResult | undefined =>
+      previousData ||
+      (hasStartupLogsSnapshot
+        ? {
+            items: startupRequestLogs,
+            total: startupRequestLogs.length,
+            page: 1,
+            pageSize: pageSizeNumber,
+          }
+        : undefined),
   });
 
   const { data: summaryResult, isError: isSummaryError } = useQuery({
@@ -491,10 +558,14 @@ function LogsPageContent() {
         query: search,
         statusFilter: filter,
       }),
-    enabled: areLogQueriesEnabled,
+    enabled: areLogQueriesEnabled && isPageActive,
     refetchInterval: 5000,
     retry: 1,
-    placeholderData: (previousData) => previousData,
+    placeholderData: (previousData) =>
+      previousData ||
+      (canUseStartupLogsPlaceholder
+        ? buildSummaryPlaceholder(startupRequestLogs)
+        : undefined),
   });
 
   const clearMutation = useMutation({
@@ -523,8 +594,11 @@ function LogsPageContent() {
 
   const logs = logsResult?.items || [];
   const isLogsLoading =
-    serviceStatus.connected && (!areLogQueriesEnabled || isLoading);
+    serviceStatus.connected &&
+    !hasStartupLogsSnapshot &&
+    (!areLogQueriesEnabled || isLoading);
   usePageTransitionReady(
+    "/logs/",
     !serviceStatus.connected ||
       (!isLogsLoading &&
         (Boolean(summaryResult) || isLogsError || isSummaryError)),
@@ -541,6 +615,18 @@ function LogsPageContent() {
     1,
     Math.ceil((logsResult?.total || 0) / pageSizeNumber),
   );
+
+  useEffect(() => {
+    setSearch((current) => (current === routeQuery ? current : routeQuery));
+    setPage(1);
+  }, [routeQuery]);
+
+  useEffect(() => {
+    if (isPageActive) {
+      return;
+    }
+    setClearConfirmOpen(false);
+  }, [isPageActive]);
 
   const currentFilterLabel =
     filter === "all"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart3,
@@ -71,6 +71,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAccounts } from "@/hooks/useAccounts";
+import { useDesktopPageActive } from "@/hooks/useDesktopPageActive";
 import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { cn } from "@/lib/utils";
@@ -356,7 +357,8 @@ export default function AccountsPage() {
     toggleAccountStatus,
     isUpdatingStatusAccountId,
   } = useAccounts();
-  usePageTransitionReady(!isServiceReady || !isLoading);
+  const isPageActive = useDesktopPageActive("/accounts/");
+  usePageTransitionReady("/accounts/", !isServiceReady || !isLoading);
 
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState("all");
@@ -395,6 +397,17 @@ export default function AccountsPage() {
     : !isDesktopRuntime && canUseBrowserDownloadExport
       ? "DL"
       : "ZIP";
+
+  useEffect(() => {
+    if (isPageActive) {
+      return;
+    }
+    setAddAccountModalOpen(false);
+    setUsageModalOpen(false);
+    setSelectedAccountId("");
+    setDeleteDialogState(null);
+    setAccountEditorState(null);
+  }, [isPageActive]);
 
   const filteredAccounts = useMemo(() => {
     return accounts.filter((account) => {

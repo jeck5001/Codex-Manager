@@ -24,7 +24,10 @@ import {
   isExpectedInitializeResult,
   normalizeServiceAddr,
 } from "@/lib/utils/service";
-import { getCanonicalStaticRouteUrl } from "@/lib/utils/static-routes";
+import {
+  getCanonicalStaticRouteUrl,
+  normalizeRoutePath,
+} from "@/lib/utils/static-routes";
 
 const DEFAULT_SERVICE_ADDR = "localhost:48760";
 const PRIMARY_PAGE_WARMUP_STALE_TIME = 30_000;
@@ -33,7 +36,6 @@ const PRIMARY_PAGE_ROUTES = ["/", "/accounts/", "/apikeys/", "/logs/", "/setting
 const DEV_ROUTE_WARMUP_TIMEOUT_MS = 12_000;
 const STARTUP_WARMUP_LABEL = "[startup warmup]";
 const BOOTSTRAP_RECOVERY_RETRY_MS = 1_200;
-const DESKTOP_PRIMARY_WARMUP_DELAY_MS = 2_500;
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export function AppBootstrap({ children }: { children: React.ReactNode }) {
@@ -54,7 +56,6 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   const hasInitializedOnce = useRef(false);
   const hasWarmedDevRoutes = useRef(false);
   const recoveryTimerRef = useRef<number | null>(null);
-  const delayedPrimaryWarmupTimerRef = useRef<number | null>(null);
   const retryInitRef = useRef<(() => Promise<void>) | null>(null);
   const serviceStatusRef = useRef(serviceStatus);
   const runtimeCapabilitiesRef = useRef(runtimeCapabilities);
@@ -207,6 +208,10 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
 
   const warmupConnectedService = useCallback(
     async (addr: string) => {
+      if (runtimeCapabilitiesRef.current?.mode === "desktop-tauri") {
+        return;
+      }
+
       try {
         await prefetchStartupSnapshot(addr);
       } catch (warmupError) {
@@ -225,26 +230,37 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
         });
       };
 
-      const isDesktopWarmup =
-        runtimeCapabilitiesRef.current?.mode === "desktop-tauri";
-      if (!isDesktopWarmup || typeof window === "undefined") {
-        runPrimaryWarmup();
-        return;
-      }
-
-      if (delayedPrimaryWarmupTimerRef.current !== null) {
-        window.clearTimeout(delayedPrimaryWarmupTimerRef.current);
-      }
-      delayedPrimaryWarmupTimerRef.current = window.setTimeout(() => {
-        delayedPrimaryWarmupTimerRef.current = null;
-        runPrimaryWarmup();
-      }, DESKTOP_PRIMARY_WARMUP_DELAY_MS);
+      runPrimaryWarmup();
     },
     [prefetchStartupSnapshot, warmupPrimaryPages],
   );
 
+  const shouldBlockOnInitialDashboardSnapshot = useCallback(
+    (desktopRuntime: boolean) =>
+      desktopRuntime &&
+      !hasInitializedOnce.current &&
+      normalizeRoutePath(pathname) === "/",
+    [pathname],
+  );
+
   const applyConnectedServiceState = useCallback(
-    (addr: string, version: string, lowTransparency: boolean) => {
+    async (
+      addr: string,
+      version: string,
+      lowTransparency: boolean,
+      options?: { blockOnDashboardSnapshot?: boolean },
+    ) => {
+      if (options?.blockOnDashboardSnapshot) {
+        try {
+          await prefetchStartupSnapshot(addr);
+        } catch (warmupError) {
+          console.warn(
+            `${STARTUP_WARMUP_LABEL} initial dashboard snapshot prefetch failed`,
+            warmupError,
+          );
+        }
+      }
+
       if (recoveryTimerRef.current !== null) {
         window.clearTimeout(recoveryTimerRef.current);
         recoveryTimerRef.current = null;
@@ -259,7 +275,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       hasInitializedOnce.current = true;
       void warmupConnectedService(addr);
     },
-    [setServiceStatus, warmupConnectedService],
+    [prefetchStartupSnapshot, setServiceStatus, warmupConnectedService],
   );
 
   const scheduleBootstrapRecovery = useCallback(() => {
@@ -275,7 +291,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   const tryRecoverServiceAfterFailure = useCallback(
     async (addr: string, lowTransparency: boolean) => {
       const recovered = await initializeService(addr, 6);
-      applyConnectedServiceState(addr, recovered.version, lowTransparency);
+      await applyConnectedServiceState(addr, recovered.version, lowTransparency);
     },
     [applyConnectedServiceState, initializeService],
   );
@@ -374,6 +390,8 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       );
       setRuntimeCapabilities(detectedRuntimeCapabilities);
       const desktopRuntime = detectedRuntimeCapabilities.mode === "desktop-tauri";
+      const shouldBlockOnDashboardSnapshot =
+        shouldBlockOnInitialDashboardSnapshot(desktopRuntime);
 
       if (detectedRuntimeCapabilities.mode === "unsupported-web") {
         if (!hasInitializedOnce.current) {
@@ -415,10 +433,11 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
           }
           initializeResult = await startAndInitializeService(addr);
         }
-        applyConnectedServiceState(
+        await applyConnectedServiceState(
           addr,
           initializeResult.version,
           settings.lowTransparency,
+          { blockOnDashboardSnapshot: shouldBlockOnDashboardSnapshot },
         );
       } catch (serviceError: unknown) {
         try {
@@ -442,12 +461,14 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   }, [
     applyConnectedServiceState,
     initializeService,
+    pathname,
     scheduleBootstrapRecovery,
     setAppSettings,
     setRuntimeCapabilities,
     setServiceStatus,
     setTheme,
     startAndInitializeService,
+    shouldBlockOnInitialDashboardSnapshot,
     tryRecoverServiceAfterFailure,
   ]);
 
@@ -471,10 +492,14 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       
       setAppSettings(settings);
       const initializeResult = await startAndInitializeService(addr);
-      applyConnectedServiceState(
+      await applyConnectedServiceState(
         addr,
         initializeResult.version,
         settings.lowTransparency,
+        {
+          blockOnDashboardSnapshot:
+            shouldBlockOnInitialDashboardSnapshot(true),
+        },
       );
       toast.success("服务已启动");
     } catch (startError: unknown) {
@@ -504,9 +529,6 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     return () => {
       if (recoveryTimerRef.current !== null) {
         window.clearTimeout(recoveryTimerRef.current);
-      }
-      if (delayedPrimaryWarmupTimerRef.current !== null) {
-        window.clearTimeout(delayedPrimaryWarmupTimerRef.current);
       }
     };
   }, []);

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { appClient } from "@/lib/api/app-client";
 import { getAppErrorMessage } from "@/lib/api/transport";
 import { useAppStore } from "@/lib/store/useAppStore";
+import { useDesktopPageActive } from "@/hooks/useDesktopPageActive";
 import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
@@ -281,6 +282,7 @@ export default function SettingsPage() {
     canCloseToTray,
   } =
     useRuntimeCapabilities();
+  const isPageActive = useDesktopPageActive("/settings/");
   const isSnapshotQueryEnabled = useDeferredDesktopActivation(canAccessManagementRpc);
   const lastSyncedSnapshotThemeRef = useRef<string | null>(null);
   const lastSyncedAppearancePresetRef = useRef<string | null>(null);
@@ -306,10 +308,11 @@ export default function SettingsPage() {
   const { data: fetchedSnapshot, isLoading, isError: isSnapshotError } = useQuery({
     queryKey: ["app-settings-snapshot"],
     queryFn: () => appClient.getSettings(),
-    enabled: isSnapshotQueryEnabled,
+    enabled: isSnapshotQueryEnabled && isPageActive,
   });
   const snapshot = fetchedSnapshot ?? storedSettings;
   usePageTransitionReady(
+    "/settings/",
     !canAccessManagementRpc || Boolean(snapshot) || isSnapshotError,
   );
 
@@ -467,6 +470,13 @@ export default function SettingsPage() {
     if (typeof window === "undefined") return;
     window.sessionStorage.setItem(SETTINGS_ACTIVE_TAB_KEY, activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (isPageActive) {
+      return;
+    }
+    setUpdateDialogOpen(false);
+  }, [isPageActive]);
 
   useEffect(() => {
     if (!isDesktopRuntime || !snapshot?.updateAutoCheck || autoUpdateCheckedRef.current) {
