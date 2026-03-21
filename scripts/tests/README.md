@@ -12,6 +12,7 @@
 - `gateway_regression_suite.ps1`
 - `web_runtime_probe.ps1`
 - `web_ui_smoke.ps1`
+- `web_shell_smoke.ps1`
 
 特点：
 
@@ -19,6 +20,7 @@
 - 大多数脚本需要真实 `Base` / `ApiKey` / `Model`
 - 结果更偏 smoke / compatibility probe，而不是纯离线单元测试
 - `web_ui_smoke.ps1` 例外：它使用本地 mock Web 运行壳验证页面级兼容，不依赖真实 service
+- `web_shell_smoke.ps1` 例外：它会在隔离数据目录里自行拉起 `codexmanager-service` 与 `codexmanager-web`
 
 ### 可进入 CI 的脚本测试
 
@@ -41,6 +43,7 @@
 4. 改 responses/chat stream：补跑 `codex_stream_probe.ps1`
 5. 改 Web 运行壳、代理或部署方式：补跑 `web_runtime_probe.ps1`
 6. 改 Web 页面兼容、弹窗交互或运行时降级：补跑 `web_ui_smoke.ps1`
+7. 改真实 Web 壳联调或发布前回归：补跑 `web_shell_smoke.ps1`
 
 ## 示例
 
@@ -56,6 +59,11 @@ pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.ps1 `
 
 ```powershell
 pwsh -NoLogo -NoProfile -File scripts/tests/web_ui_smoke.ps1 -SkipBuild
+```
+
+```powershell
+pwsh -NoLogo -NoProfile -File scripts/tests/web_shell_smoke.ps1 `
+  -SkipFrontendBuild -SkipRustBuild
 ```
 
 ## 维护约定

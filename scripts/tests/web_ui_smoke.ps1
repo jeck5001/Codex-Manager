@@ -11,132 +11,8 @@ $mockServerScript = Join-Path $repoRoot "scripts\tests\web_ui_mock_server.mjs"
 $supportedSession = "codexmanager-web-ui-smoke-supported"
 $unsupportedSession = "codexmanager-web-ui-smoke-unsupported"
 $playwrightCliStateDir = Join-Path $repoRoot ".playwright-cli"
-$npxCommand = try {
-  (Get-Command npx.cmd -ErrorAction Stop).Source
-} catch {
-  (Get-Command npx -ErrorAction Stop).Source
-}
-
-function Invoke-PlaywrightCli {
-  param(
-    [string]$Session,
-    [string[]]$CliArgs
-  )
-
-  $args = @("--yes", "--package", "@playwright/cli", "playwright-cli")
-  if ($Session) {
-    $args += "-s=$Session"
-  }
-  $args += $CliArgs
-
-  $output = & $npxCommand @args 2>&1 | Out-String
-  if ($LASTEXITCODE -ne 0) {
-    throw "playwright-cli failed:`n$output"
-  }
-  return $output.Trim()
-}
-
-function Get-PlaywrightEvalResult {
-  param(
-    [string]$Session,
-    [string]$Expression
-  )
-
-  $output = Invoke-PlaywrightCli -Session $Session -CliArgs @("eval", $Expression)
-  $match = [regex]::Match($output, "(?s)### Result\s*(.+?)(?:\r?\n### |\s*$)")
-  if (-not $match.Success) {
-    throw "Cannot parse playwright eval result:`n$output"
-  }
-  return $match.Groups[1].Value.Trim()
-}
-
-function ConvertTo-JsSingleQuotedLiteral {
-  param(
-    [string]$Text
-  )
-
-  $value = [string]$Text
-  $value = $value.Replace("\", "\\")
-  $value = $value.Replace("'", "\'")
-  $value = $value.Replace("`r", "\r")
-  $value = $value.Replace("`n", "\n")
-  return "'$value'"
-}
-
-function Wait-PageCondition {
-  param(
-    [string]$Session,
-    [string]$Expression,
-    [string]$Description,
-    [int]$TimeoutMs = 90000
-  )
-
-  $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMs)
-  $lastResult = ""
-  $lastError = ""
-  do {
-    try {
-      $result = Get-PlaywrightEvalResult -Session $Session -Expression $Expression
-      $lastResult = $result
-      if ($result -match "^\s*true\s*$") {
-        return
-      }
-    } catch {
-      $lastError = $_.Exception.Message
-    }
-    Start-Sleep -Milliseconds 250
-  } while ([DateTime]::UtcNow -lt $deadline)
-
-  throw "Timed out waiting for: $Description`nLastResult: $lastResult`nLastError: $lastError"
-}
-
-function Wait-PageText {
-  param(
-    [string]$Session,
-    [string]$Text,
-    [int]$TimeoutMs = 90000
-  )
-
-  $textLiteral = ConvertTo-JsSingleQuotedLiteral -Text $Text
-  Wait-PageCondition -Session $Session -Expression "document.body.innerText.includes($textLiteral)" -Description "page text '$Text'" -TimeoutMs $TimeoutMs
-}
-
-function Invoke-PageClickByText {
-  param(
-    [string]$Session,
-    [string]$Text,
-    [int]$TimeoutMs = 10000
-  )
-
-  $xpath = "//*[self::button or @role='button' or @role='menuitem'][contains(normalize-space(.), '$Text')]"
-  $xpathLiteral = ConvertTo-JsSingleQuotedLiteral -Text $xpath
-  $expression = "(document.evaluate($xpathLiteral, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue?.click(), Boolean(document.evaluate($xpathLiteral, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue))"
-  Wait-PageCondition -Session $Session -Expression $expression -Description "click '$Text'" -TimeoutMs $TimeoutMs
-}
-
-function Assert-NodeEnabledByText {
-  param(
-    [string]$Session,
-    [string]$Text,
-    [string]$Description
-  )
-
-  $xpath = "//*[self::button or self::input or self::textarea or @role='button'][contains(normalize-space(.), '$Text') or @value='$Text' or @placeholder='$Text']"
-  $xpathLiteral = ConvertTo-JsSingleQuotedLiteral -Text $xpath
-  $expression = "(window.__codexNode = document.evaluate($xpathLiteral, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue, Boolean(window.__codexNode) && !window.__codexNode.disabled && ((window.__codexNode.getAttribute && (window.__codexNode.getAttribute('aria-disabled') || '').toLowerCase()) !== 'true'))"
-  Wait-PageCondition -Session $Session -Expression $expression -Description $Description
-}
-
-function Assert-ElementEnabled {
-  param(
-    [string]$Session,
-    [string]$Selector,
-    [string]$Description
-  )
-
-  $selectorLiteral = ConvertTo-JsSingleQuotedLiteral -Text $Selector
-  Wait-PageCondition -Session $Session -Expression "(window.__codexNode = document.querySelector($selectorLiteral), Boolean(window.__codexNode) && !window.__codexNode.disabled)" -Description $Description
-}
+. (Join-Path $PSScriptRoot "playwright_cli_helpers.ps1")
+$npxCommand = Resolve-PlaywrightCliCommand
 
 function New-BackgroundProcess {
   param(
@@ -193,32 +69,6 @@ function Stop-BackgroundProcess {
   }
 }
 
-function Close-PlaywrightSession {
-  param(
-    [string]$Session
-  )
-
-  try {
-    Invoke-PlaywrightCli -Session $Session -CliArgs @("close") | Out-Null
-  } catch {
-  }
-}
-
-function Remove-TransientPath {
-  param(
-    [string]$Path
-  )
-
-  if (-not (Test-Path $Path)) {
-    return
-  }
-
-  try {
-    Remove-Item -Path $Path -Recurse -Force -ErrorAction Stop
-  } catch {
-  }
-}
-
 if (-not $SkipBuild) {
   & pnpm -C apps run build:desktop
   if ($LASTEXITCODE -ne 0) {
@@ -231,7 +81,7 @@ $unsupportedServer = $null
 
 try {
   Remove-TransientPath -Path $playwrightCliStateDir
-  Invoke-PlaywrightCli -Session "" -CliArgs @("close-all") | Out-Null
+  Invoke-PlaywrightCli -CommandPath $npxCommand -Session "" -CliArgs @("close-all") | Out-Null
 
   $supportedServer = New-BackgroundProcess -FilePath "node" -ArgumentList @(
     $mockServerScript,
@@ -242,34 +92,34 @@ try {
   ) -WorkingDirectory $repoRoot
   Wait-HttpOk -Url "http://127.0.0.1:$SupportedPort/__health" -Description "supported mock server"
 
-  Invoke-PlaywrightCli -Session $supportedSession -CliArgs @("open", "http://127.0.0.1:$SupportedPort/accounts/") | Out-Null
+  Invoke-PlaywrightCli -CommandPath $npxCommand -Session $supportedSession -CliArgs @("open", "http://127.0.0.1:$SupportedPort/accounts/") | Out-Null
   Start-Sleep -Seconds 3
-  Wait-PageText -Session $supportedSession -Text "账号管理"
-  Wait-PageText -Session $supportedSession -Text "demo-primary@example.com"
+  Wait-PageText -CommandPath $npxCommand -Session $supportedSession -Text "账号管理"
+  Wait-PageText -CommandPath $npxCommand -Session $supportedSession -Text "demo-primary@example.com"
 
-  Invoke-PageClickByText -Session $supportedSession -Text "账号操作"
-  Invoke-PageClickByText -Session $supportedSession -Text "添加账号"
-  Wait-PageText -Session $supportedSession -Text "新增账号"
-  Assert-NodeEnabledByText -Session $supportedSession -Text "登录授权" -Description "login button should be enabled in add account modal"
+  Invoke-PageClickByText -CommandPath $npxCommand -Session $supportedSession -Text "账号操作"
+  Invoke-PageClickByText -CommandPath $npxCommand -Session $supportedSession -Text "添加账号"
+  Wait-PageText -CommandPath $npxCommand -Session $supportedSession -Text "新增账号"
+  Assert-NodeEnabledByText -CommandPath $npxCommand -Session $supportedSession -Text "登录授权" -Description "login button should be enabled in add account modal"
 
-  Invoke-PlaywrightCli -Session $supportedSession -CliArgs @("goto", "http://127.0.0.1:$SupportedPort/apikeys/") | Out-Null
+  Invoke-PlaywrightCli -CommandPath $npxCommand -Session $supportedSession -CliArgs @("goto", "http://127.0.0.1:$SupportedPort/apikeys/") | Out-Null
   Start-Sleep -Seconds 2
-  Wait-PageText -Session $supportedSession -Text "平台密钥"
-  Wait-PageText -Session $supportedSession -Text "Web Smoke Key"
-  Invoke-PageClickByText -Session $supportedSession -Text "创建密钥"
-  Wait-PageText -Session $supportedSession -Text "创建平台密钥"
-  Assert-ElementEnabled -Session $supportedSession -Selector "#name" -Description "api key name input should be enabled"
+  Wait-PageText -CommandPath $npxCommand -Session $supportedSession -Text "平台密钥"
+  Wait-PageText -CommandPath $npxCommand -Session $supportedSession -Text "Web Smoke Key"
+  Invoke-PageClickByText -CommandPath $npxCommand -Session $supportedSession -Text "创建密钥"
+  Wait-PageText -CommandPath $npxCommand -Session $supportedSession -Text "创建平台密钥"
+  Assert-ElementEnabled -CommandPath $npxCommand -Session $supportedSession -Selector "#name" -Description "api key name input should be enabled"
 
-  Invoke-PlaywrightCli -Session $supportedSession -CliArgs @("goto", "http://127.0.0.1:$SupportedPort/logs/") | Out-Null
+  Invoke-PlaywrightCli -CommandPath $npxCommand -Session $supportedSession -CliArgs @("goto", "http://127.0.0.1:$SupportedPort/logs/") | Out-Null
   Start-Sleep -Seconds 2
-  Wait-PageText -Session $supportedSession -Text "请求日志"
-  Wait-PageText -Session $supportedSession -Text "/v1/responses"
+  Wait-PageText -CommandPath $npxCommand -Session $supportedSession -Text "请求日志"
+  Wait-PageText -CommandPath $npxCommand -Session $supportedSession -Text "/v1/responses"
 
-  Invoke-PageClickByText -Session $supportedSession -Text "密码"
-  Wait-PageText -Session $supportedSession -Text "访问密码"
-  Assert-ElementEnabled -Session $supportedSession -Selector "#password" -Description "web password input should be enabled"
+  Invoke-PageClickByText -CommandPath $npxCommand -Session $supportedSession -Text "密码"
+  Wait-PageText -CommandPath $npxCommand -Session $supportedSession -Text "访问密码"
+  Assert-ElementEnabled -CommandPath $npxCommand -Session $supportedSession -Selector "#password" -Description "web password input should be enabled"
 
-  Close-PlaywrightSession -Session $supportedSession
+  Close-PlaywrightSession -CommandPath $npxCommand -Session $supportedSession
   Stop-BackgroundProcess -Process $supportedServer
   $supportedServer = $null
 
@@ -282,10 +132,10 @@ try {
   ) -WorkingDirectory $repoRoot
   Wait-HttpOk -Url "http://127.0.0.1:$UnsupportedPort/" -Description "unsupported mock server"
 
-  Invoke-PlaywrightCli -Session $unsupportedSession -CliArgs @("open", "http://127.0.0.1:$UnsupportedPort/") | Out-Null
+  Invoke-PlaywrightCli -CommandPath $npxCommand -Session $unsupportedSession -CliArgs @("open", "http://127.0.0.1:$UnsupportedPort/") | Out-Null
   Start-Sleep -Seconds 3
-  Wait-PageText -Session $unsupportedSession -Text "当前 Web 运行方式不受支持" -TimeoutMs 45000
-  Wait-PageText -Session $unsupportedSession -Text "/api/runtime" -TimeoutMs 45000
+  Wait-PageText -CommandPath $npxCommand -Session $unsupportedSession -Text "当前 Web 运行方式不受支持" -TimeoutMs 45000
+  Wait-PageText -CommandPath $npxCommand -Session $unsupportedSession -Text "/api/runtime" -TimeoutMs 45000
 
   [pscustomobject]@{
     SupportedBase = "http://127.0.0.1:$SupportedPort"
@@ -297,10 +147,10 @@ try {
     UnsupportedOverlay = "ok"
   }
 } finally {
-  Close-PlaywrightSession -Session $supportedSession
-  Close-PlaywrightSession -Session $unsupportedSession
+  Close-PlaywrightSession -CommandPath $npxCommand -Session $supportedSession
+  Close-PlaywrightSession -CommandPath $npxCommand -Session $unsupportedSession
   try {
-    Invoke-PlaywrightCli -Session "" -CliArgs @("close-all") | Out-Null
+    Invoke-PlaywrightCli -CommandPath $npxCommand -Session "" -CliArgs @("close-all") | Out-Null
   } catch {
   }
   Stop-BackgroundProcess -Process $supportedServer

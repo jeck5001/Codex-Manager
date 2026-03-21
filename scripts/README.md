@@ -16,6 +16,7 @@
 - `tests/gateway_regression_suite.ps1`：协议回归统一入口
 - `tests/web_runtime_probe.ps1`：Web 运行壳最小冒烟探针
 - `tests/web_ui_smoke.ps1`：Web 管理页页面级冒烟脚本（本地 mock 运行壳）
+- `tests/web_shell_smoke.ps1`：真实 `codexmanager-web` + `codexmanager-service` 页面级冒烟脚本（隔离数据目录）
 - `tests/*.test.ps1`：脚本级回归测试
 
 ### 发布
@@ -43,7 +44,8 @@
 2. 协议验证优先走 `tests/gateway_regression_suite.ps1`
 3. Web 代理、部署或运行壳改动，优先补跑 `tests/web_runtime_probe.ps1`
 4. Web 页面兼容或交互降级改动，补跑 `tests/web_ui_smoke.ps1`
-5. 若脚本只服务 CI，尽量通过 README 或 workflow 注释说明，不要让它伪装成本地通用入口
+5. 真实 `codexmanager-web` 联调或发布前冒烟，补跑 `tests/web_shell_smoke.ps1`
+6. 若脚本只服务 CI，尽量通过 README 或 workflow 注释说明，不要让它伪装成本地通用入口
 
 ## 相关文档
 

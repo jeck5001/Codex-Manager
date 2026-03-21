@@ -86,6 +86,8 @@ pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.test.ps1
 pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.ps1 `
   -Base http://localhost:48761
 pwsh -NoLogo -NoProfile -File scripts/tests/web_ui_smoke.ps1 -SkipBuild
+pwsh -NoLogo -NoProfile -File scripts/tests/web_shell_smoke.ps1 `
+  -SkipFrontendBuild -SkipRustBuild
 ```
 
 说明：
@@ -95,6 +97,7 @@ pwsh -NoLogo -NoProfile -File scripts/tests/web_ui_smoke.ps1 -SkipBuild
 - `cargo test -p codexmanager-web`：确认 Web 壳路由与运行时探针契约
 - `web_runtime_probe.test.ps1`：确认 Web 运行壳最小 smoke 链路的脚本行为
 - `web_ui_smoke.ps1`：确认 Web 页面在 supported / unsupported 运行壳下的关键 UI 行为
+- `web_shell_smoke.ps1`：确认真实 `codexmanager-web` + `codexmanager-service` 组合在隔离数据目录里的关键 UI 行为
 
 ## 5. Rust 服务端改动
 
