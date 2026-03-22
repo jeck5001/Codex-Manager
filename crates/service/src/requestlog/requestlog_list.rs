@@ -90,9 +90,14 @@ fn clamp_page(page: i64, total: i64, page_size: i64) -> i64 {
     normalized_page.min(total_pages)
 }
 
-fn to_request_log_summary(item: RequestLog) -> RequestLogSummary {
+pub(crate) fn to_request_log_summary(item: RequestLog) -> RequestLogSummary {
     let attempted_account_ids = item
         .attempted_account_ids_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+        .unwrap_or_default();
+    let model_fallback_path = item
+        .model_fallback_path_json
         .as_deref()
         .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
         .unwrap_or_default();
@@ -102,6 +107,9 @@ fn to_request_log_summary(item: RequestLog) -> RequestLogSummary {
         account_id: item.account_id,
         initial_account_id: item.initial_account_id,
         attempted_account_ids,
+        route_strategy: item.route_strategy,
+        requested_model: item.requested_model,
+        model_fallback_path,
         request_path: item.request_path,
         original_path: item.original_path,
         adapted_path: item.adapted_path,

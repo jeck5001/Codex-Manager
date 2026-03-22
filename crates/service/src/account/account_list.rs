@@ -1,7 +1,7 @@
 use codexmanager_core::{
     auth::parse_id_token_claims,
-    storage::Event,
     rpc::types::{AccountListParams, AccountListResult, AccountSummary},
+    storage::Event,
     storage::{Account, Storage},
 };
 use std::collections::BTreeMap;
@@ -266,7 +266,10 @@ fn filtered_accounts(
 fn to_account_summary(
     storage: &Storage,
     acc: Account,
-    payment_state_map: &std::collections::BTreeMap<String, crate::account_payment::AccountPaymentState>,
+    payment_state_map: &std::collections::BTreeMap<
+        String,
+        crate::account_payment::AccountPaymentState,
+    >,
     status_meta_map: &BTreeMap<String, AccountStatusMeta>,
     account_tags_map: &BTreeMap<String, Option<String>>,
     cooldown_map: &std::collections::HashMap<String, crate::gateway::AccountCooldownSnapshot>,
@@ -301,7 +304,8 @@ fn to_account_summary(
         cooldown_until: cooldown.map(|entry| entry.until),
         cooldown_reason_code: cooldown.map(|entry| entry.reason_code.clone()),
         cooldown_reason: cooldown.map(|entry| entry.reason_label.clone()),
-        subscription_plan_type: payment_state.and_then(|state| state.subscription_plan_type.clone()),
+        subscription_plan_type: payment_state
+            .and_then(|state| state.subscription_plan_type.clone()),
         subscription_updated_at: payment_state.and_then(|state| state.subscription_updated_at),
         team_manager_uploaded_at: payment_state.and_then(|state| state.team_manager_uploaded_at),
         official_promo_link: payment_state.and_then(|state| state.official_promo_link.clone()),
@@ -311,7 +315,9 @@ fn to_account_summary(
 }
 
 fn read_account_status_meta_map(storage: &Storage) -> BTreeMap<String, AccountStatusMeta> {
-    let Ok(events) = storage.list_recent_events_by_type("account_status_update", 0, ACCOUNT_STATUS_EVENT_LIMIT) else {
+    let Ok(events) =
+        storage.list_recent_events_by_type("account_status_update", 0, ACCOUNT_STATUS_EVENT_LIMIT)
+    else {
         return BTreeMap::new();
     };
     build_account_status_meta_map(events)
@@ -328,7 +334,8 @@ fn build_account_status_meta_map(events: Vec<Event>) -> BTreeMap<String, Account
         else {
             continue;
         };
-        let parsed = crate::account_status_reason::parse_account_status_event(event.message.as_str());
+        let parsed =
+            crate::account_status_reason::parse_account_status_event(event.message.as_str());
         if parsed.reason_label.is_none() && parsed.governance_reason_label.is_none() {
             continue;
         }
@@ -373,14 +380,16 @@ fn resolve_account_display_label(storage: &Storage, account: &Account) -> String
         return label.to_string();
     }
 
-    let token = storage
-        .find_token_by_account_id(&account.id)
-        .ok()
-        .flatten();
+    let token = storage.find_token_by_account_id(&account.id).ok().flatten();
     if let Some(token) = token {
         for raw in [&token.id_token, &token.access_token] {
             if let Ok(claims) = parse_id_token_claims(raw) {
-                if let Some(email) = claims.email.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                if let Some(email) = claims
+                    .email
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
                     return email.to_string();
                 }
             }

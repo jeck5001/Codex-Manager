@@ -513,16 +513,18 @@ export default function AccountsPage() {
       return;
     }
     const params = new URLSearchParams(window.location.search);
-    setSearch(String(params.get("query") || "").trim());
-    setGroupFilter(String(params.get("group") || "all").trim() || "all");
-    setStatusFilter(normalizeStatusFilter(params.get("status")));
-    setGovernanceFilter(
-      normalizeGovernanceFilter(params.get("governanceReason")),
-    );
-    setStatusReasonFilter(
-      normalizeStatusReasonFilter(params.get("statusReason")),
-    );
-    setTagFilter(normalizeTagFilter(params.get("tag")));
+    queueMicrotask(() => {
+      setSearch(String(params.get("query") || "").trim());
+      setGroupFilter(String(params.get("group") || "all").trim() || "all");
+      setStatusFilter(normalizeStatusFilter(params.get("status")));
+      setGovernanceFilter(
+        normalizeGovernanceFilter(params.get("governanceReason")),
+      );
+      setStatusReasonFilter(
+        normalizeStatusReasonFilter(params.get("statusReason")),
+      );
+      setTagFilter(normalizeTagFilter(params.get("tag")));
+    });
   }, []);
 
   const handleSearchChange = (value: string) => {

@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod accounts;
 mod api_keys;
 mod events;
+mod model_pricing;
 mod model_options;
 mod request_log_query;
 mod request_logs;
@@ -81,6 +82,9 @@ pub struct RequestLog {
     pub account_id: Option<String>,
     pub initial_account_id: Option<String>,
     pub attempted_account_ids_json: Option<String>,
+    pub route_strategy: Option<String>,
+    pub requested_model: Option<String>,
+    pub model_fallback_path_json: Option<String>,
     pub request_path: String,
     pub original_path: Option<String>,
     pub adapted_path: Option<String>,
@@ -154,6 +158,84 @@ pub struct ApiKey {
     pub status: String,
     pub created_at: i64,
     pub last_used_at: Option<i64>,
+    pub expires_at: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApiKeyRateLimit {
+    pub key_id: String,
+    pub rpm: Option<i64>,
+    pub tpm: Option<i64>,
+    pub daily_limit: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApiKeyModelFallback {
+    pub key_id: String,
+    pub model_chain_json: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApiKeyResponseCacheConfig {
+    pub key_id: String,
+    pub enabled: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelPricing {
+    pub model_slug: String,
+    pub input_price_per_1k: f64,
+    pub output_price_per_1k: f64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CostUsageSummary {
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CostSummaryKeyRow {
+    pub key_id: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CostSummaryModelRow {
+    pub model: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CostSummaryDayRow {
+    pub day: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -347,6 +429,40 @@ impl Storage {
             include_str!("../../migrations/034_restore_account_tags.sql"),
             |s| s.ensure_account_tags_column(),
         )?;
+        self.apply_sql_or_compat_migration(
+            "035_request_logs_route_strategy",
+            include_str!("../../migrations/035_request_logs_route_strategy.sql"),
+            |s| s.ensure_request_log_route_strategy_column(),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "036_api_keys_expires_at",
+            include_str!("../../migrations/036_api_keys_expires_at.sql"),
+            |s| s.ensure_api_key_expires_at_column(),
+        )?;
+        self.apply_sql_migration(
+            "037_api_key_rate_limits",
+            include_str!("../../migrations/037_api_key_rate_limits.sql"),
+        )?;
+        self.ensure_api_key_rate_limits_table()?;
+        self.apply_sql_migration(
+            "038_api_key_model_fallbacks",
+            include_str!("../../migrations/038_api_key_model_fallbacks.sql"),
+        )?;
+        self.ensure_api_key_model_fallbacks_table()?;
+        self.apply_sql_or_compat_migration(
+            "039_request_logs_model_fallback",
+            include_str!("../../migrations/039_request_logs_model_fallback.sql"),
+            |s| s.ensure_request_log_model_fallback_columns(),
+        )?;
+        self.apply_sql_migration(
+            "040_model_pricing",
+            include_str!("../../migrations/040_model_pricing.sql"),
+        )?;
+        self.apply_sql_migration(
+            "041_api_key_response_cache",
+            include_str!("../../migrations/041_api_key_response_cache.sql"),
+        )?;
+        self.ensure_model_pricing_table()?;
         self.ensure_request_token_stats_table()?;
         Ok(())
     }

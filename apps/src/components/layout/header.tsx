@@ -57,6 +57,8 @@ export function Header() {
         return "平台密钥";
       case "/logs":
         return "请求日志";
+      case "/costs":
+        return "费用统计";
       case "/settings":
         return "应用设置";
       default:

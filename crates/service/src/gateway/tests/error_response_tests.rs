@@ -1,4 +1,4 @@
-use super::{terminal_text_response, with_trace_id_header};
+use super::{terminal_text_response, with_retry_after_header, with_trace_id_header};
 use tiny_http::Response;
 
 #[test]
@@ -57,4 +57,20 @@ fn with_trace_id_header_appends_trace_header() {
         })
         .map(|item| item.value.as_str().to_string());
     assert_eq!(trace_header.as_deref(), Some("trc_ok_1"));
+}
+
+#[test]
+fn with_retry_after_header_appends_retry_after_header() {
+    let response = with_retry_after_header(Response::from_string("ok"), Some(12));
+    let retry_after = response
+        .headers()
+        .iter()
+        .find(|item| {
+            item.field
+                .as_str()
+                .as_str()
+                .eq_ignore_ascii_case("Retry-After")
+        })
+        .map(|item| item.value.as_str().to_string());
+    assert_eq!(retry_after.as_deref(), Some("12"));
 }

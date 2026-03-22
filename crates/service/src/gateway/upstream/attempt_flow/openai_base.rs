@@ -1,5 +1,8 @@
 use bytes::Bytes;
 use codexmanager_core::storage::{Account, Storage, Token};
+use reqwest::header::CONTENT_TYPE;
+
+use super::super::support::outcome::{decide_upstream_outcome, UpstreamOutcomeDecision};
 
 pub(super) enum OpenAiAttemptResult {
     Upstream(reqwest::blocking::Response),
@@ -27,6 +30,7 @@ pub(super) fn handle_openai_base_attempt<F>(
 where
     F: FnMut(Option<&str>, u16, Option<&str>),
 {
+    let (upstream_url, _url_alt) = super::super::super::compute_upstream_url(base, path);
     match super::super::super::try_openai_fallback(
         client,
         storage,
@@ -43,29 +47,31 @@ where
         debug,
     ) {
         Ok(Some(resp)) => {
-            let status = resp.status().as_u16();
-            if status < 400 {
-                super::super::super::clear_account_cooldown(&account.id);
-            } else {
-                super::super::super::mark_account_cooldown_for_status(&account.id, status);
-            }
-            log_gateway_result(
-                Some(base),
+            let status = resp.status();
+            let content_type = resp.headers().get(CONTENT_TYPE);
+            match decide_upstream_outcome(
+                storage,
+                &account.id,
                 status,
-                if status >= 400 {
-                    Some("openai upstream non-success")
-                } else {
-                    None
-                },
-            );
-            OpenAiAttemptResult::Upstream(resp)
+                content_type,
+                upstream_url.as_str(),
+                has_more_candidates,
+                &mut log_gateway_result,
+            ) {
+                UpstreamOutcomeDecision::Failover => OpenAiAttemptResult::Failover,
+                UpstreamOutcomeDecision::RespondUpstream => OpenAiAttemptResult::Upstream(resp),
+            }
         }
         Ok(None) => {
             super::super::super::mark_account_cooldown(
                 &account.id,
                 super::super::super::CooldownReason::Network,
             );
-            log_gateway_result(Some(base), 502, Some("openai upstream unavailable"));
+            log_gateway_result(
+                Some(upstream_url.as_str()),
+                502,
+                Some("openai upstream unavailable"),
+            );
             // 中文注释：OpenAI 上游不可用时如果还有候选账号就继续 failover，
             // 不这样做会把单账号瞬时抖动放大成整次请求失败。
             if has_more_candidates {
@@ -82,7 +88,7 @@ where
                 &account.id,
                 super::super::super::CooldownReason::Network,
             );
-            log_gateway_result(Some(base), 502, Some(err.as_str()));
+            log_gateway_result(Some(upstream_url.as_str()), 502, Some(err.as_str()));
             // 中文注释：异常分支同样优先切换候选账号，
             // 只有最后一个候选才直接向客户端返回错误，避免过早失败。
             if has_more_candidates {

@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { 
   LayoutDashboard, 
+  BarChart3,
   Mail,
   Users, 
   Sparkles,
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { name: "邮箱服务", href: "/email-services/", icon: Mail },
   { name: "平台密钥", href: "/apikeys/", icon: Key },
   { name: "请求日志", href: "/logs/", icon: FileText },
+  { name: "费用统计", href: "/costs/", icon: BarChart3 },
   { name: "设置", href: "/settings/", icon: Settings },
 ];
 const DESKTOP_NAVIGATION_FALLBACK_MS = 500;

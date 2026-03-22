@@ -34,6 +34,7 @@ const PRIMARY_PAGE_ROUTES = [
   "/email-services/",
   "/apikeys/",
   "/logs/",
+  "/costs/",
   "/settings/",
 ] as const;
 const DEV_ROUTE_WARMUP_TIMEOUT_MS = 12_000;

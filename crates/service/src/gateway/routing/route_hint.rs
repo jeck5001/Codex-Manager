@@ -8,8 +8,14 @@ use std::time::{Duration, Instant};
 const ROUTE_STRATEGY_ENV: &str = "CODEXMANAGER_ROUTE_STRATEGY";
 const ROUTE_MODE_ORDERED: u8 = 0;
 const ROUTE_MODE_BALANCED_ROUND_ROBIN: u8 = 1;
+const ROUTE_MODE_WEIGHTED: u8 = 2;
+const ROUTE_MODE_LEAST_LATENCY: u8 = 3;
+const ROUTE_MODE_COST_FIRST: u8 = 4;
 const ROUTE_STRATEGY_ORDERED: &str = "ordered";
 const ROUTE_STRATEGY_BALANCED: &str = "balanced";
+const ROUTE_STRATEGY_WEIGHTED: &str = "weighted";
+const ROUTE_STRATEGY_LEAST_LATENCY: &str = "least-latency";
+const ROUTE_STRATEGY_COST_FIRST: &str = "cost-first";
 const ROUTE_HEALTH_P2C_ENABLED_ENV: &str = "CODEXMANAGER_ROUTE_HEALTH_P2C_ENABLED";
 const ROUTE_HEALTH_P2C_ORDERED_WINDOW_ENV: &str = "CODEXMANAGER_ROUTE_HEALTH_P2C_ORDERED_WINDOW";
 const ROUTE_HEALTH_P2C_BALANCED_WINDOW_ENV: &str = "CODEXMANAGER_ROUTE_HEALTH_P2C_BALANCED_WINDOW";
@@ -71,11 +77,17 @@ pub(crate) fn apply_route_strategy(
     }
 
     let mode = route_mode();
-    if mode == ROUTE_MODE_BALANCED_ROUND_ROBIN {
-        let start = next_start_index(key_id, model, candidates.len());
-        if start > 0 {
-            candidates.rotate_left(start);
+    match mode {
+        ROUTE_MODE_BALANCED_ROUND_ROBIN => {
+            let start = next_start_index(key_id, model, candidates.len());
+            if start > 0 {
+                candidates.rotate_left(start);
+            }
         }
+        ROUTE_MODE_WEIGHTED => apply_weighted_rotation(candidates, key_id, model),
+        ROUTE_MODE_LEAST_LATENCY => apply_least_latency_order(candidates),
+        ROUTE_MODE_COST_FIRST => apply_cost_first_order(candidates),
+        _ => {}
     }
 
     apply_health_p2c(candidates, key_id, model, mode);
@@ -106,10 +118,12 @@ fn route_mode() -> u8 {
 }
 
 fn route_mode_label(mode: u8) -> &'static str {
-    if mode == ROUTE_MODE_BALANCED_ROUND_ROBIN {
-        ROUTE_STRATEGY_BALANCED
-    } else {
-        ROUTE_STRATEGY_ORDERED
+    match mode {
+        ROUTE_MODE_BALANCED_ROUND_ROBIN => ROUTE_STRATEGY_BALANCED,
+        ROUTE_MODE_WEIGHTED => ROUTE_STRATEGY_WEIGHTED,
+        ROUTE_MODE_LEAST_LATENCY => ROUTE_STRATEGY_LEAST_LATENCY,
+        ROUTE_MODE_COST_FIRST => ROUTE_STRATEGY_COST_FIRST,
+        _ => ROUTE_STRATEGY_ORDERED,
     }
 }
 
@@ -119,6 +133,13 @@ fn parse_route_mode(raw: &str) -> Option<u8> {
         ROUTE_STRATEGY_BALANCED | "round_robin" | "round-robin" | "rr" => {
             Some(ROUTE_MODE_BALANCED_ROUND_ROBIN)
         }
+        ROUTE_STRATEGY_WEIGHTED | "weighted_round_robin" | "weighted-rr" => {
+            Some(ROUTE_MODE_WEIGHTED)
+        }
+        ROUTE_STRATEGY_LEAST_LATENCY | "least_latency" | "latency" => {
+            Some(ROUTE_MODE_LEAST_LATENCY)
+        }
+        ROUTE_STRATEGY_COST_FIRST | "cost_first" => Some(ROUTE_MODE_COST_FIRST),
         _ => None,
     }
 }
@@ -131,7 +152,7 @@ pub(crate) fn current_route_strategy() -> &'static str {
 pub(crate) fn set_route_strategy(strategy: &str) -> Result<&'static str, String> {
     let Some(mode) = parse_route_mode(strategy) else {
         return Err(
-            "invalid strategy; use ordered or balanced (aliases: round_robin/round-robin/rr)"
+            "invalid strategy; use ordered / balanced / weighted / least-latency / cost-first"
                 .to_string(),
         );
     };
@@ -143,6 +164,97 @@ pub(crate) fn set_route_strategy(strategy: &str) -> Result<&'static str, String>
         state.maintenance_tick = 0;
     }
     Ok(route_mode_label(mode))
+}
+
+fn apply_weighted_rotation(candidates: &mut [(Account, Token)], key_id: &str, model: Option<&str>) {
+    let weights = load_route_weights(candidates);
+    let Some(selected_idx) = weighted_rotation_index(weights.as_slice(), key_id, model) else {
+        return;
+    };
+    if selected_idx > 0 {
+        candidates.rotate_left(selected_idx);
+    }
+}
+
+fn apply_least_latency_order(candidates: &mut [(Account, Token)]) {
+    candidates.sort_by(|left, right| {
+        let left_latency =
+            super::route_latency::average_route_latency_ms(left.0.id.as_str()).unwrap_or(i64::MAX);
+        let right_latency =
+            super::route_latency::average_route_latency_ms(right.0.id.as_str()).unwrap_or(i64::MAX);
+        left_latency
+            .cmp(&right_latency)
+            .then_with(|| left.0.sort.cmp(&right.0.sort))
+            .then_with(|| left.0.id.cmp(&right.0.id))
+    });
+}
+
+fn apply_cost_first_order(candidates: &mut [(Account, Token)]) {
+    let payment_state_map = crate::account_payment::read_payment_state_map();
+    candidates.sort_by(|left, right| {
+        let left_priority = payment_state_map
+            .get(left.0.id.as_str())
+            .and_then(|state| state.subscription_plan_type.as_deref())
+            .map(plan_priority)
+            .unwrap_or(3);
+        let right_priority = payment_state_map
+            .get(right.0.id.as_str())
+            .and_then(|state| state.subscription_plan_type.as_deref())
+            .map(plan_priority)
+            .unwrap_or(3);
+        left_priority
+            .cmp(&right_priority)
+            .then_with(|| left.0.sort.cmp(&right.0.sort))
+            .then_with(|| left.0.id.cmp(&right.0.id))
+    });
+}
+
+fn load_route_weights(candidates: &[(Account, Token)]) -> Vec<usize> {
+    let usage_map = crate::storage_helpers::open_storage()
+        .and_then(|storage| storage.latest_usage_snapshots_by_account().ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|item| (item.account_id, usage_weight(item.used_percent)))
+        .collect::<HashMap<_, _>>();
+
+    candidates
+        .iter()
+        .map(|(account, _)| usage_map.get(account.id.as_str()).copied().unwrap_or(10))
+        .collect()
+}
+
+fn weighted_rotation_index(weights: &[usize], key_id: &str, model: Option<&str>) -> Option<usize> {
+    let total_weight = weights.iter().copied().sum::<usize>();
+    if total_weight == 0 {
+        return None;
+    }
+    let ticket = next_start_index(key_id, model, total_weight);
+    let mut running = 0_usize;
+    Some(
+        weights
+            .iter()
+            .position(|weight| {
+                running = running.saturating_add(*weight);
+                ticket < running
+            })
+            .unwrap_or(0),
+    )
+}
+
+fn usage_weight(used_percent: Option<f64>) -> usize {
+    let remain = used_percent
+        .map(|value| (100.0 - value).clamp(1.0, 100.0))
+        .unwrap_or(10.0);
+    remain.round() as usize
+}
+
+fn plan_priority(plan_type: &str) -> usize {
+    match plan_type.trim().to_ascii_lowercase().as_str() {
+        "free" => 0,
+        "plus" => 1,
+        "pro" | "team" | "business" | "enterprise" => 2,
+        _ => 3,
+    }
 }
 
 pub(crate) fn get_manual_preferred_account() -> Option<String> {
@@ -480,6 +592,7 @@ impl RouteRoundRobinState {
 #[cfg(test)]
 fn clear_route_state_for_tests() {
     super::route_quality::clear_route_quality_for_tests();
+    super::route_latency::clear_route_latency_for_tests();
     if let Some(lock) = ROUTE_STATE.get() {
         let mut state = crate::lock_utils::lock_recover(lock, "route_state");
         state.next_start_by_key_model.clear();

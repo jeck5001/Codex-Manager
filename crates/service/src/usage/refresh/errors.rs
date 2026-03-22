@@ -80,16 +80,16 @@ fn usage_refresh_failure_event_window_secs() -> i64 {
 
 fn classify_usage_refresh_error(message: &str) -> String {
     let normalized = message.trim().to_ascii_lowercase();
-    if let Some(status_code) = extract_usage_status_code(&normalized)
-        .or_else(|| extract_generic_status_code(&normalized))
+    if let Some(reason) = crate::usage_http::refresh_token_auth_error_reason_from_message(message) {
+        return format!("token_refresh_{}", reason.as_code());
+    }
+    if let Some(status_code) =
+        extract_usage_status_code(&normalized).or_else(|| extract_generic_status_code(&normalized))
     {
         return format!("usage_status_{status_code}");
     }
     if usage_error_indicates_deactivated_account(message) {
         return "account_deactivated".to_string();
-    }
-    if let Some(reason) = crate::usage_http::refresh_token_auth_error_reason_from_message(message) {
-        return format!("token_refresh_{}", reason.as_code());
     }
     if normalized.contains("timeout") {
         return "timeout".to_string();

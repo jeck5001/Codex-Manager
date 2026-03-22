@@ -51,6 +51,7 @@ pub(in super::super) struct CandidateExecutorParams<'a> {
     pub(in super::super) request_shape: Option<&'a str>,
     pub(in super::super) trace_id: &'a str,
     pub(in super::super) model_for_log: Option<&'a str>,
+    pub(in super::super) request_model_override: Option<&'a str>,
     pub(in super::super) response_adapter: super::super::super::ResponseAdapter,
     pub(in super::super) tool_name_restore_map: &'a super::super::super::ToolNameRestoreMap,
     pub(in super::super) context: &'a GatewayUpstreamExecutionContext<'a>,
@@ -59,6 +60,9 @@ pub(in super::super) struct CandidateExecutorParams<'a> {
     pub(in super::super) started_at: Instant,
     pub(in super::super) client_is_stream: bool,
     pub(in super::super) upstream_is_stream: bool,
+    pub(in super::super) actual_model_header: Option<&'a str>,
+    pub(in super::super) response_cache_key: Option<&'a str>,
+    pub(in super::super) has_more_models: bool,
     pub(in super::super) debug: bool,
     pub(in super::super) allow_openai_fallback: bool,
     pub(in super::super) disable_challenge_stateless_retry: bool,
@@ -78,6 +82,7 @@ pub(in super::super) fn execute_candidate_sequence(
         request_shape,
         trace_id,
         model_for_log,
+        request_model_override,
         response_adapter,
         tool_name_restore_map,
         context,
@@ -86,6 +91,9 @@ pub(in super::super) fn execute_candidate_sequence(
         started_at,
         client_is_stream,
         upstream_is_stream,
+        actual_model_header,
+        response_cache_key,
+        has_more_models,
         debug,
         allow_openai_fallback,
         disable_challenge_stateless_retry,
@@ -116,13 +124,14 @@ pub(in super::super) fn execute_candidate_sequence(
         let strip_session_affinity =
             state.strip_session_affinity(&account, idx, setup.anthropic_has_prompt_cache_key);
         let attempt_model_override = free_account_model_override(storage, &account, &token);
-        let attempt_model_for_log = attempt_model_override.as_deref().or(model_for_log);
+        let effective_model_override = attempt_model_override.as_deref().or(request_model_override);
+        let attempt_model_for_log = effective_model_override.or(model_for_log);
         let body_for_attempt = state.body_for_attempt(
             path,
             body,
             strip_session_affinity,
             setup,
-            attempt_model_override.as_deref(),
+            effective_model_override,
         );
         context.log_candidate_start(&account.id, idx, strip_session_affinity);
         if let Some(skip_reason) = context.should_skip_candidate(&account.id, idx) {
@@ -165,6 +174,7 @@ pub(in super::super) fn execute_candidate_sequence(
 
         let mut inflight_guard = Some(super::super::super::acquire_account_inflight(&account.id));
         let mut attempt_trace = CandidateAttemptTrace::default();
+        let has_more_candidates = context.has_more_candidates(idx) || has_more_models;
         let decision = run_candidate_attempt(CandidateAttemptParams {
             storage,
             method,
@@ -180,7 +190,7 @@ pub(in super::super) fn execute_candidate_sequence(
             debug,
             allow_openai_fallback,
             disable_challenge_stateless_retry,
-            has_more_candidates: context.has_more_candidates(idx),
+            has_more_candidates,
             context,
             setup,
             trace: &mut attempt_trace,
@@ -219,8 +229,7 @@ pub(in super::super) fn execute_candidate_sequence(
                     && !strip_session_affinity
                     && (incoming_turn_state.is_some() || setup.has_body_encrypted_content)
                 {
-                    let retry_body =
-                        state.retry_body(path, body, setup, attempt_model_override.as_deref());
+                    let retry_body = state.retry_body(path, body, setup, effective_model_override);
                     let retry_decision = run_candidate_attempt(CandidateAttemptParams {
                         storage,
                         method,
@@ -236,7 +245,7 @@ pub(in super::super) fn execute_candidate_sequence(
                         debug,
                         allow_openai_fallback,
                         disable_challenge_stateless_retry,
-                        has_more_candidates: context.has_more_candidates(idx),
+                        has_more_candidates,
                         context,
                         setup,
                         trace: &mut attempt_trace,
@@ -295,7 +304,9 @@ pub(in super::super) fn execute_candidate_sequence(
                     path,
                     trace_id,
                     started_at,
+                    actual_model_header,
                     attempt_model_for_log,
+                    response_cache_key,
                     Some(attempted_account_ids.as_slice()),
                 )?;
                 return Ok(CandidateExecutionResult::Handled);

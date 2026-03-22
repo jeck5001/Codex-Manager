@@ -1,6 +1,8 @@
 use rusqlite::{Result, Row};
 
-use super::{now_ts, ApiKey, Storage};
+use super::{
+    now_ts, ApiKey, ApiKeyModelFallback, ApiKeyRateLimit, ApiKeyResponseCacheConfig, Storage,
+};
 
 const API_KEY_SELECT_SQL: &str = "SELECT
     k.id,
@@ -15,14 +17,15 @@ const API_KEY_SELECT_SQL: &str = "SELECT
     k.key_hash,
     k.status,
     k.created_at,
-    k.last_used_at
+    k.last_used_at,
+    k.expires_at
  FROM api_keys k
  LEFT JOIN api_key_profiles p ON p.key_id = k.id";
 
 impl Storage {
     pub fn insert_api_key(&self, key: &ApiKey) -> Result<()> {
         self.conn.execute(
-            "INSERT OR REPLACE INTO api_keys (id, name, model_slug, reasoning_effort, key_hash, status, created_at, last_used_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT OR REPLACE INTO api_keys (id, name, model_slug, reasoning_effort, key_hash, status, created_at, last_used_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             (
                 &key.id,
                 &key.name,
@@ -32,6 +35,7 @@ impl Storage {
                 &key.status,
                 key.created_at,
                 &key.last_used_at,
+                &key.expires_at,
             ),
         )?;
         self.conn.execute(
@@ -114,6 +118,14 @@ impl Storage {
         self.conn.execute(
             "UPDATE api_keys SET status = ?1 WHERE id = ?2",
             (status, key_id),
+        )?;
+        Ok(())
+    }
+
+    pub fn update_api_key_expiration(&self, key_id: &str, expires_at: Option<i64>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE api_keys SET expires_at = ?1 WHERE id = ?2",
+            (expires_at, key_id),
         )?;
         Ok(())
     }
@@ -230,8 +242,154 @@ impl Storage {
     pub fn delete_api_key(&self, key_id: &str) -> Result<()> {
         self.conn
             .execute("DELETE FROM api_key_secrets WHERE key_id = ?1", [key_id])?;
+        self.conn.execute(
+            "DELETE FROM api_key_rate_limits WHERE key_id = ?1",
+            [key_id],
+        )?;
+        self.conn.execute(
+            "DELETE FROM api_key_model_fallbacks WHERE key_id = ?1",
+            [key_id],
+        )?;
         self.conn
             .execute("DELETE FROM api_keys WHERE id = ?1", [key_id])?;
+        Ok(())
+    }
+
+    pub fn find_api_key_rate_limit_by_id(&self, key_id: &str) -> Result<Option<ApiKeyRateLimit>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT key_id, rpm, tpm, daily_limit, created_at, updated_at
+             FROM api_key_rate_limits
+             WHERE key_id = ?1
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query([key_id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(ApiKeyRateLimit {
+                key_id: row.get(0)?,
+                rpm: row.get(1)?,
+                tpm: row.get(2)?,
+                daily_limit: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn upsert_api_key_rate_limit(
+        &self,
+        key_id: &str,
+        rpm: Option<i64>,
+        tpm: Option<i64>,
+        daily_limit: Option<i64>,
+    ) -> Result<()> {
+        if rpm.is_none() && tpm.is_none() && daily_limit.is_none() {
+            self.conn.execute(
+                "DELETE FROM api_key_rate_limits WHERE key_id = ?1",
+                [key_id],
+            )?;
+            return Ok(());
+        }
+
+        let now = now_ts();
+        self.conn.execute(
+            "INSERT INTO api_key_rate_limits (key_id, rpm, tpm, daily_limit, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+             ON CONFLICT(key_id) DO UPDATE SET
+               rpm = excluded.rpm,
+               tpm = excluded.tpm,
+               daily_limit = excluded.daily_limit,
+               updated_at = excluded.updated_at",
+            (key_id, rpm, tpm, daily_limit, now),
+        )?;
+        Ok(())
+    }
+
+    pub fn find_api_key_model_fallback_by_id(
+        &self,
+        key_id: &str,
+    ) -> Result<Option<ApiKeyModelFallback>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT key_id, model_chain_json, created_at, updated_at
+             FROM api_key_model_fallbacks
+             WHERE key_id = ?1
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query([key_id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(ApiKeyModelFallback {
+                key_id: row.get(0)?,
+                model_chain_json: row.get(1)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn upsert_api_key_model_fallback(
+        &self,
+        key_id: &str,
+        model_chain: &[String],
+    ) -> Result<()> {
+        if model_chain.is_empty() {
+            self.conn.execute(
+                "DELETE FROM api_key_model_fallbacks WHERE key_id = ?1",
+                [key_id],
+            )?;
+            return Ok(());
+        }
+
+        let now = now_ts();
+        let model_chain_json = serde_json::to_string(model_chain).map_err(|err| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(err))
+        })?;
+        self.conn.execute(
+            "INSERT INTO api_key_model_fallbacks (key_id, model_chain_json, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?3)
+             ON CONFLICT(key_id) DO UPDATE SET
+               model_chain_json = excluded.model_chain_json,
+               updated_at = excluded.updated_at",
+            (key_id, model_chain_json, now),
+        )?;
+        Ok(())
+    }
+
+    pub fn find_api_key_response_cache_config_by_id(
+        &self,
+        key_id: &str,
+    ) -> Result<Option<ApiKeyResponseCacheConfig>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT key_id, enabled, created_at, updated_at
+             FROM api_key_response_cache_configs
+             WHERE key_id = ?1
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query([key_id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(ApiKeyResponseCacheConfig {
+                key_id: row.get(0)?,
+                enabled: row.get::<_, i64>(1)? != 0,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn upsert_api_key_response_cache_config(&self, key_id: &str, enabled: bool) -> Result<()> {
+        let now = now_ts();
+        self.conn.execute(
+            "INSERT INTO api_key_response_cache_configs (key_id, enabled, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?3)
+             ON CONFLICT(key_id) DO UPDATE SET
+               enabled = excluded.enabled,
+               updated_at = excluded.updated_at",
+            (key_id, if enabled { 1 } else { 0 }, now),
+        )?;
         Ok(())
     }
 
@@ -267,6 +425,47 @@ impl Storage {
 
     pub(super) fn ensure_api_key_reasoning_column(&self) -> Result<()> {
         self.ensure_column("api_keys", "reasoning_effort", "TEXT")?;
+        Ok(())
+    }
+
+    pub(super) fn ensure_api_key_expires_at_column(&self) -> Result<()> {
+        self.ensure_column("api_keys", "expires_at", "INTEGER")?;
+        Ok(())
+    }
+
+    pub(super) fn ensure_api_key_rate_limits_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS api_key_rate_limits (
+                key_id TEXT PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
+                rpm INTEGER,
+                tpm INTEGER,
+                daily_limit INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_api_key_rate_limits_updated_at ON api_key_rate_limits(updated_at)",
+            [],
+        )?;
+        Ok(())
+    }
+
+    pub(super) fn ensure_api_key_model_fallbacks_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS api_key_model_fallbacks (
+                key_id TEXT PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
+                model_chain_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_api_key_model_fallbacks_updated_at ON api_key_model_fallbacks(updated_at)",
+            [],
+        )?;
         Ok(())
     }
 
@@ -357,5 +556,6 @@ fn map_api_key_row(row: &Row<'_>) -> Result<ApiKey> {
         status: row.get(10)?,
         created_at: row.get(11)?,
         last_used_at: row.get(12)?,
+        expires_at: row.get(13)?,
     })
 }

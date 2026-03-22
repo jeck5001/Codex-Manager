@@ -3,11 +3,7 @@ use serde_json::json;
 
 const OPERATION_AUDIT_EVENT_TYPE: &str = "operation_audit";
 
-pub(crate) fn record_operation_audit(
-    action: &str,
-    label: &str,
-    detail: impl Into<String>,
-) {
+pub(crate) fn record_operation_audit(action: &str, label: &str, detail: impl Into<String>) {
     let Some(storage) = crate::storage_helpers::open_storage() else {
         return;
     };

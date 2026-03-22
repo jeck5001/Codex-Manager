@@ -71,6 +71,7 @@ fn gateway_cpa_no_cookie_header_mode_suppresses_affinity_headers_on_responses() 
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -196,6 +197,7 @@ fn gateway_cpa_no_cookie_header_mode_binds_prompt_cache_key_to_session_only() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -327,6 +329,7 @@ fn gateway_cpa_no_cookie_header_mode_skips_post_retries_on_404() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -434,6 +437,7 @@ fn gateway_cpa_no_cookie_header_mode_keeps_account_header_on_compact() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 

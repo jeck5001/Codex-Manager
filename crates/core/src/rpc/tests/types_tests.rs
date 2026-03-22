@@ -1,7 +1,9 @@
 use super::{
-    AccountListParams, AccountListResult, AccountSummary, GovernanceSummaryItem,
-    OperationAuditItem,
-    RequestLogFilterSummaryResult, RequestLogListParams, RequestLogListResult, RequestLogSummary,
+    AccountListParams, AccountListResult, AccountSummary, CostExportResult, CostSummaryParams,
+    DashboardAccountStatusBucket, DashboardGatewayMetricsResult, DashboardHealthResult,
+    DashboardTrendPoint, DashboardTrendResult, GovernanceSummaryItem, ModelPricingItem,
+    OperationAuditItem, RequestLogFilterSummaryResult, RequestLogListParams, RequestLogListResult,
+    RequestLogSummary,
 };
 
 #[test]
@@ -163,6 +165,9 @@ fn request_log_summary_serialization_includes_trace_route_fields() {
         account_id: Some("acc_1".to_string()),
         initial_account_id: Some("acc_free".to_string()),
         attempted_account_ids: vec!["acc_free".to_string(), "acc_1".to_string()],
+        route_strategy: Some("weighted".to_string()),
+        requested_model: Some("o3".to_string()),
+        model_fallback_path: vec!["o3".to_string(), "o4-mini".to_string()],
         request_path: "/v1/responses".to_string(),
         original_path: Some("/v1/chat/completions".to_string()),
         adapted_path: Some("/v1/responses".to_string()),
@@ -191,11 +196,62 @@ fn request_log_summary_serialization_includes_trace_route_fields() {
         "attemptedAccountIds",
         "originalPath",
         "adaptedPath",
+        "routeStrategy",
         "responseAdapter",
         "requestPath",
         "upstreamUrl",
         "durationMs",
     ] {
+        assert!(obj.contains_key(key), "missing key: {key}");
+    }
+}
+
+#[test]
+fn model_pricing_item_serialization_uses_camel_case() {
+    let item = ModelPricingItem {
+        model_slug: "o3".to_string(),
+        input_price_per_1k: 0.02,
+        output_price_per_1k: 0.08,
+        updated_at: Some(1),
+    };
+
+    let value = serde_json::to_value(item).expect("serialize model pricing item");
+    let obj = value.as_object().expect("model pricing object");
+    for key in [
+        "modelSlug",
+        "inputPricePer1k",
+        "outputPricePer1k",
+        "updatedAt",
+    ] {
+        assert!(obj.contains_key(key), "missing key: {key}");
+    }
+}
+
+#[test]
+fn cost_summary_params_serialization_uses_camel_case() {
+    let params = CostSummaryParams {
+        preset: Some("custom".to_string()),
+        start_ts: Some(1),
+        end_ts: Some(2),
+    };
+
+    let value = serde_json::to_value(params).expect("serialize cost summary params");
+    let obj = value.as_object().expect("cost summary params object");
+    for key in ["preset", "startTs", "endTs"] {
+        assert!(obj.contains_key(key), "missing key: {key}");
+    }
+}
+
+#[test]
+fn cost_export_result_serialization_uses_camel_case() {
+    let result = CostExportResult {
+        file_name: "costs.csv".to_string(),
+        content: "a,b\n1,2\n".to_string(),
+    };
+
+    let value = serde_json::to_value(result).expect("serialize cost export result");
+    let obj = value.as_object().expect("cost export result object");
+    for key in ["fileName", "content"] {
         assert!(obj.contains_key(key), "missing key: {key}");
     }
 }
@@ -219,6 +275,9 @@ fn request_log_list_result_serialization_includes_pagination_fields() {
             account_id: Some("acc_1".to_string()),
             initial_account_id: Some("acc_free".to_string()),
             attempted_account_ids: vec!["acc_free".to_string(), "acc_1".to_string()],
+            route_strategy: Some("least-latency".to_string()),
+            requested_model: Some("o3".to_string()),
+            model_fallback_path: vec!["o3".to_string(), "o4-mini".to_string()],
             request_path: "/v1/responses".to_string(),
             original_path: Some("/v1/chat/completions".to_string()),
             adapted_path: Some("/v1/responses".to_string()),
@@ -246,6 +305,56 @@ fn request_log_list_result_serialization_includes_pagination_fields() {
     let value = serde_json::to_value(result).expect("serialize request log list result");
     let obj = value.as_object().expect("request log list result object");
     for key in ["items", "total", "page", "pageSize"] {
+        assert!(obj.contains_key(key), "missing key: {key}");
+    }
+}
+
+#[test]
+fn dashboard_health_result_serialization_uses_camel_case() {
+    let result = DashboardHealthResult {
+        generated_at: 123,
+        account_status_buckets: vec![DashboardAccountStatusBucket {
+            key: "online".to_string(),
+            label: "在线".to_string(),
+            count: 6,
+            percent: 60,
+        }],
+        gateway_metrics: DashboardGatewayMetricsResult {
+            window_minutes: 5,
+            total_requests: 20,
+            success_requests: 18,
+            error_requests: 2,
+            qps: 0.07,
+            success_rate: 90.0,
+            p50_latency_ms: Some(120),
+            p95_latency_ms: Some(280),
+            p99_latency_ms: Some(500),
+        },
+    };
+
+    let value = serde_json::to_value(result).expect("serialize dashboard health");
+    let obj = value.as_object().expect("dashboard health object");
+    for key in ["generatedAt", "accountStatusBuckets", "gatewayMetrics"] {
+        assert!(obj.contains_key(key), "missing key: {key}");
+    }
+}
+
+#[test]
+fn dashboard_trend_result_serialization_uses_camel_case() {
+    let result = DashboardTrendResult {
+        generated_at: 456,
+        bucket_minutes: 1,
+        points: vec![DashboardTrendPoint {
+            bucket_ts: 450,
+            request_count: 12,
+            error_count: 3,
+            error_rate: 25.0,
+        }],
+    };
+
+    let value = serde_json::to_value(result).expect("serialize dashboard trend");
+    let obj = value.as_object().expect("dashboard trend object");
+    for key in ["generatedAt", "bucketMinutes", "points"] {
         assert!(obj.contains_key(key), "missing key: {key}");
     }
 }

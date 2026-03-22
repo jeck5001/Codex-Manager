@@ -371,6 +371,8 @@ pub(in super::super) fn proxy_azure_request(
         Some(tool_name_restore_map),
         is_stream,
         Some(trace_id),
+        None,
+        None,
     )?;
     let bridge_ok = bridge.is_ok(is_stream);
     let bridge_error = bridge.error_message(is_stream);

@@ -100,7 +100,8 @@ pub(crate) fn compute_usage_prediction_summary(
     let mut ready_account_count = 0_i64;
 
     for account in accounts.iter().filter(|account| {
-        account_status_is_routable(account.status.as_str()) && token_account_ids.contains(&account.id)
+        account_status_is_routable(account.status.as_str())
+            && token_account_ids.contains(&account.id)
     }) {
         let Some(snapshot) = usage_map.get(account.id.as_str()).copied() else {
             continue;
@@ -111,9 +112,19 @@ pub(crate) fn compute_usage_prediction_summary(
         }
 
         if primary_belongs_to_secondary(snapshot) {
-            observe_window(&mut secondary, snapshot.used_percent, snapshot.window_minutes, threshold_percent);
+            observe_window(
+                &mut secondary,
+                snapshot.used_percent,
+                snapshot.window_minutes,
+                threshold_percent,
+            );
         } else {
-            observe_window(&mut primary, snapshot.used_percent, snapshot.window_minutes, threshold_percent);
+            observe_window(
+                &mut primary,
+                snapshot.used_percent,
+                snapshot.window_minutes,
+                threshold_percent,
+            );
         }
 
         observe_window(
@@ -204,7 +215,10 @@ fn snapshot_meets_ready_threshold(
         return false;
     }
 
-    match (snapshot.secondary_used_percent, snapshot.secondary_window_minutes) {
+    match (
+        snapshot.secondary_used_percent,
+        snapshot.secondary_window_minutes,
+    ) {
         (None, None) => true,
         (Some(secondary_used), Some(_)) => remaining_percent(secondary_used) >= threshold,
         _ => false,
@@ -219,7 +233,8 @@ fn primary_belongs_to_secondary(snapshot: &UsageSnapshotRecord) -> bool {
     let has_secondary_signal =
         snapshot.secondary_used_percent.is_some() || snapshot.secondary_window_minutes.is_some();
     !has_secondary_signal
-        && (is_long_window(snapshot.window_minutes) || is_free_plan_usage(snapshot.credits_json.as_deref()))
+        && (is_long_window(snapshot.window_minutes)
+            || is_free_plan_usage(snapshot.credits_json.as_deref()))
 }
 
 fn is_long_window(window_minutes: Option<i64>) -> bool {
@@ -337,7 +352,10 @@ mod tests {
 
     #[test]
     fn prediction_summary_routes_free_single_window_accounts_to_secondary() {
-        let accounts = vec![account("free-1", "active"), account("disabled-1", "disabled")];
+        let accounts = vec![
+            account("free-1", "active"),
+            account("disabled-1", "disabled"),
+        ];
         let usage_items = vec![
             snapshot(
                 "free-1",

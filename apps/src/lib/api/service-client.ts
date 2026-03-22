@@ -1,7 +1,14 @@
 import { invoke, withAddr } from "./transport";
 import {
   normalizeAppSettings,
+  normalizeDashboardHealth,
+  normalizeDashboardTrend,
   normalizeFreeProxySyncResult,
+  normalizeGatewayResponseCacheStats,
+  normalizeCostExportResult,
+  normalizeCostSummary,
+  normalizeModelPricingList,
+  normalizeRequestLogExportResult,
   normalizeRequestLogFilterSummary,
   normalizeRequestLogListResult,
   normalizeStartupSnapshot,
@@ -9,7 +16,14 @@ import {
 } from "./normalize";
 import {
   BackgroundTaskSettings,
+  CostExportResult,
+  CostSummaryResult,
+  DashboardHealth,
+  DashboardTrend,
   FreeProxySyncResult,
+  GatewayResponseCacheStats,
+  ModelPricingItem,
+  RequestLogExportResult,
   RequestLogFilterSummary,
   RequestLogListResult,
   RequestLogTodaySummary,
@@ -95,6 +109,11 @@ export const serviceClient = {
       "service_gateway_background_tasks_set",
       withAddr({ ...(settings as unknown as Record<string, unknown>) })
     ),
+  async getGatewayCacheStats(): Promise<GatewayResponseCacheStats> {
+    const result = await invoke<unknown>("service_gateway_cache_stats", withAddr());
+    return normalizeGatewayResponseCacheStats(result);
+  },
+  clearGatewayCache: () => invoke("service_gateway_cache_clear", withAddr()),
 
   async listRequestLogs(params?: {
     query?: string;
@@ -126,6 +145,21 @@ export const serviceClient = {
     );
     return normalizeRequestLogFilterSummary(result);
   },
+  async exportRequestLogs(params?: {
+    format?: string;
+    query?: string;
+    statusFilter?: string;
+  }): Promise<RequestLogExportResult> {
+    const result = await invoke<unknown>(
+      "service_requestlog_export",
+      withAddr({
+        format: params?.format || "csv",
+        query: params?.query || "",
+        statusFilter: params?.statusFilter || "all",
+      })
+    );
+    return normalizeRequestLogExportResult(result);
+  },
   clearRequestLogs: () => invoke("service_requestlog_clear", withAddr()),
   async getTodaySummary(): Promise<RequestLogTodaySummary> {
     const result = await invoke<unknown>(
@@ -134,6 +168,53 @@ export const serviceClient = {
     );
     return normalizeTodaySummary(result);
   },
+  async getDashboardHealth(): Promise<DashboardHealth> {
+    const result = await invoke<unknown>("service_dashboard_health", withAddr());
+    return normalizeDashboardHealth(result);
+  },
+  async getDashboardTrend(): Promise<DashboardTrend> {
+    const result = await invoke<unknown>("service_dashboard_trend", withAddr());
+    return normalizeDashboardTrend(result);
+  },
+  async getCostSummary(params?: {
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<CostSummaryResult> {
+    const result = await invoke<unknown>(
+      "service_stats_cost_summary",
+      withAddr({
+        preset: params?.preset || "month",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
+      })
+    );
+    return normalizeCostSummary(result);
+  },
+  async exportCostSummary(params?: {
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<CostExportResult> {
+    const result = await invoke<unknown>(
+      "service_stats_cost_export",
+      withAddr({
+        preset: params?.preset || "month",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
+      })
+    );
+    return normalizeCostExportResult(result);
+  },
+  async getCostModelPricing(): Promise<ModelPricingItem[]> {
+    const result = await invoke<unknown>(
+      "service_stats_cost_model_pricing_get",
+      withAddr()
+    );
+    return normalizeModelPricingList(result);
+  },
+  setCostModelPricing: (items: ModelPricingItem[]) =>
+    invoke("service_stats_cost_model_pricing_set", withAddr({ items })),
 
   getListenConfig: () => invoke<unknown>("service_listen_config_get", withAddr()),
   setListenConfig: (mode: string) =>

@@ -30,7 +30,7 @@ export const useAppStore = create<AppState>((set) => ({
     serviceListenMode: "loopback",
     serviceListenModeOptions: ["loopback", "all_interfaces"],
     routeStrategy: "ordered",
-    routeStrategyOptions: ["ordered", "balanced"],
+    routeStrategyOptions: ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
     freeAccountMaxModel: "auto",
     freeAccountMaxModelOptions: [
       "auto",
@@ -49,6 +49,9 @@ export const useAppStore = create<AppState>((set) => ({
     quotaProtectionEnabled: false,
     quotaProtectionThresholdPercent: 10,
     requestCompressionEnabled: true,
+    responseCacheEnabled: false,
+    responseCacheTtlSecs: 3600,
+    responseCacheMaxEntries: 256,
     gatewayOriginator: "codex_cli_rs",
     gatewayResidencyRequirement: "",
     gatewayResidencyRequirementOptions: ["", "us"],

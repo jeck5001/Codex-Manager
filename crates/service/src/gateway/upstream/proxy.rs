@@ -13,6 +13,81 @@ use super::proxy_pipeline::request_setup::prepare_request_setup;
 use super::proxy_pipeline::response_finalize::respond_terminal;
 use super::support::precheck::{prepare_candidates_for_proxy, CandidatePrecheckResult};
 
+fn normalize_model_name(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn build_model_attempt_chain(
+    requested_model: Option<&str>,
+    configured_chain: &[String],
+) -> Vec<String> {
+    let mut chain = Vec::new();
+    if let Some(requested_model) = requested_model.and_then(normalize_model_name) {
+        chain.push(requested_model);
+    }
+    for model in configured_chain {
+        let Some(model) = normalize_model_name(model) else {
+            continue;
+        };
+        if chain.iter().any(|item| item == &model) {
+            continue;
+        }
+        chain.push(model);
+    }
+    chain
+}
+
+fn load_model_attempt_chain(
+    storage: &codexmanager_core::storage::Storage,
+    key_id: &str,
+    requested_model: Option<&str>,
+) -> Vec<String> {
+    let configured_chain = storage
+        .find_api_key_model_fallback_by_id(key_id)
+        .ok()
+        .flatten()
+        .map(|config| crate::apikey_model_fallback::parse_model_chain(&config.model_chain_json))
+        .unwrap_or_default();
+    build_model_attempt_chain(requested_model, configured_chain.as_slice())
+}
+
+fn build_api_key_response_cache_key(
+    storage: &codexmanager_core::storage::Storage,
+    key_id: &str,
+    original_path: &str,
+    body: &[u8],
+    client_is_stream: bool,
+) -> Option<String> {
+    if client_is_stream {
+        return None;
+    }
+
+    let enabled = match storage.find_api_key_response_cache_config_by_id(key_id) {
+        Ok(Some(config)) => config.enabled,
+        Ok(None) => false,
+        Err(err) => {
+            log::warn!(
+                "event=gateway_response_cache_key_config_read_failed key_id={} error={}",
+                key_id,
+                err
+            );
+            false
+        }
+    };
+    if !enabled {
+        return None;
+    }
+
+    super::super::build_response_cache_key(original_path, body)
+}
+
+fn append_attempted_account_ids(target: &mut Vec<String>, source: &[String]) {
+    for account_id in source {
+        target.push(account_id.clone());
+    }
+}
+
 fn exhausted_gateway_error_for_log(
     attempted_account_ids: &[String],
     skipped_cooldown: usize,
@@ -77,6 +152,7 @@ pub(in super::super) fn proxy_validated_request(
     } = validated;
     let started_at = Instant::now();
     let client_is_stream = is_stream;
+    let requested_model = model_for_log.clone();
     let is_compact_path =
         path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?");
     // 中文注释：对齐 CPA：/v1/responses 上游固定走 SSE。
@@ -84,6 +160,13 @@ pub(in super::super) fn proxy_validated_request(
     let upstream_is_stream =
         client_is_stream || (path.starts_with("/v1/responses") && !is_compact_path);
     let request_deadline = super::support::deadline::request_deadline(started_at, client_is_stream);
+    let response_cache_key = build_api_key_response_cache_key(
+        &storage,
+        key_id.as_str(),
+        original_path.as_str(),
+        body.as_ref(),
+        client_is_stream,
+    );
 
     super::super::trace_log::log_request_start(
         trace_id.as_str(),
@@ -96,6 +179,43 @@ pub(in super::super) fn proxy_validated_request(
         protocol_type.as_str(),
     );
     super::super::trace_log::log_request_body_preview(trace_id.as_str(), body.as_ref());
+
+    if let Some(cache_key) = response_cache_key.as_deref() {
+        if let Some(cached) = super::super::response_cache::lookup_response_cache(cache_key) {
+            let context = GatewayUpstreamExecutionContext::new(
+                &trace_id,
+                &storage,
+                &key_id,
+                &original_path,
+                &path,
+                &request_method,
+                response_adapter,
+                protocol_type.as_str(),
+                cached.actual_model.as_deref().or(model_for_log.as_deref()),
+                requested_model.as_deref(),
+                reasoning_for_log.as_deref(),
+                None,
+                0,
+                super::super::account_max_inflight_limit(),
+            );
+            context.log_final_result_with_model(
+                None,
+                Some("cache://response-cache"),
+                cached.actual_model.as_deref().or(model_for_log.as_deref()),
+                cached.status_code,
+                cached.usage,
+                None,
+                started_at.elapsed().as_millis(),
+                None,
+            );
+            super::super::response_cache::respond_with_cached_response(
+                request,
+                trace_id.as_str(),
+                &cached,
+            )?;
+            return Ok(());
+        }
+    }
 
     if protocol_type == PROTOCOL_AZURE_OPENAI {
         return super::protocol::azure_openai::proxy_azure_request(
@@ -120,7 +240,7 @@ pub(in super::super) fn proxy_validated_request(
         );
     }
 
-    let (request, mut candidates) = match prepare_candidates_for_proxy(
+    let (request, candidates) = match prepare_candidates_for_proxy(
         request,
         &storage,
         trace_id.as_str(),
@@ -138,33 +258,11 @@ pub(in super::super) fn proxy_validated_request(
         } => (request, candidates),
         CandidatePrecheckResult::Responded => return Ok(()),
     };
-    let setup = prepare_request_setup(
-        path.as_str(),
-        protocol_type.as_str(),
-        has_prompt_cache_key,
-        &incoming_headers,
-        &body,
-        &mut candidates,
-        key_id.as_str(),
-        model_for_log.as_deref(),
-        trace_id.as_str(),
-    );
-    let base = setup.upstream_base.as_str();
-
-    let context = GatewayUpstreamExecutionContext::new(
-        &trace_id,
-        &storage,
-        &key_id,
-        &original_path,
-        &path,
-        &request_method,
-        response_adapter,
-        protocol_type.as_str(),
-        model_for_log.as_deref(),
-        reasoning_for_log.as_deref(),
-        setup.candidate_count,
-        setup.account_max_inflight,
-    );
+    let base = super::config::resolve_upstream_base_url();
+    let base_candidates = candidates;
+    let model_attempt_chain =
+        load_model_attempt_chain(&storage, &key_id, requested_model.as_deref());
+    let model_attempt_count = model_attempt_chain.len().max(1);
     let allow_openai_fallback = false;
     let disable_challenge_stateless_retry = !(protocol_type == PROTOCOL_ANTHROPIC_NATIVE
         && body.len() <= 2 * 1024)
@@ -176,71 +274,152 @@ pub(in super::super) fn proxy_validated_request(
         model_for_log.as_deref(),
         request_deadline,
     );
-    let exhausted = match execute_candidate_sequence(
-        request,
-        candidates,
-        CandidateExecutorParams {
-            storage: &storage,
-            method: &method,
-            incoming_headers: &incoming_headers,
-            body: &body,
-            path: path.as_str(),
-            request_shape: request_shape.as_deref(),
-            trace_id: trace_id.as_str(),
-            model_for_log: model_for_log.as_deref(),
+    let mut request = request;
+    let mut attempted_account_ids_all = Vec::new();
+    let mut skipped_cooldown_total = 0usize;
+    let mut skipped_inflight_total = 0usize;
+    let mut last_attempt_url = None;
+    let mut last_attempt_error = None;
+    for model_idx in 0..model_attempt_count {
+        let current_model_for_log = model_attempt_chain
+            .get(model_idx)
+            .map(String::as_str)
+            .or(requested_model.as_deref());
+        let model_fallback_path = (model_attempt_chain.len() > 1
+            && model_idx < model_attempt_chain.len())
+        .then_some(&model_attempt_chain[..=model_idx]);
+        let mut candidates = base_candidates.clone();
+        let setup = prepare_request_setup(
+            path.as_str(),
+            protocol_type.as_str(),
+            has_prompt_cache_key,
+            &incoming_headers,
+            &body,
+            &mut candidates,
+            key_id.as_str(),
+            current_model_for_log,
+            trace_id.as_str(),
+        );
+        let context = GatewayUpstreamExecutionContext::new(
+            &trace_id,
+            &storage,
+            &key_id,
+            &original_path,
+            &path,
+            &request_method,
             response_adapter,
-            tool_name_restore_map: &tool_name_restore_map,
-            context: &context,
-            setup: &setup,
-            request_deadline,
-            started_at,
-            client_is_stream,
-            upstream_is_stream,
-            debug,
-            allow_openai_fallback,
-            disable_challenge_stateless_retry,
-        },
-    )? {
-        CandidateExecutionResult::Handled => return Ok(()),
-        CandidateExecutionResult::Exhausted {
+            protocol_type.as_str(),
+            current_model_for_log,
+            requested_model.as_deref(),
+            reasoning_for_log.as_deref(),
+            model_fallback_path.map(|items| items as &[String]),
+            setup.candidate_count,
+            setup.account_max_inflight,
+        );
+        let has_more_models = model_idx + 1 < model_attempt_chain.len();
+        match execute_candidate_sequence(
             request,
-            attempted_account_ids,
-            skipped_cooldown,
-            skipped_inflight,
-            last_attempt_url,
-            last_attempt_error,
-        } => (
-            request,
-            attempted_account_ids,
-            skipped_cooldown,
-            skipped_inflight,
-            last_attempt_url,
-            last_attempt_error,
-        ),
-    };
-    let (
-        request,
-        attempted_account_ids,
-        skipped_cooldown,
-        skipped_inflight,
-        last_attempt_url,
-        last_attempt_error,
-    ) = exhausted;
+            candidates,
+            CandidateExecutorParams {
+                storage: &storage,
+                method: &method,
+                incoming_headers: &incoming_headers,
+                body: &body,
+                path: path.as_str(),
+                request_shape: request_shape.as_deref(),
+                trace_id: trace_id.as_str(),
+                model_for_log: current_model_for_log,
+                request_model_override: current_model_for_log,
+                response_adapter,
+                tool_name_restore_map: &tool_name_restore_map,
+                context: &context,
+                setup: &setup,
+                request_deadline,
+                started_at,
+                client_is_stream,
+                upstream_is_stream,
+                actual_model_header: if model_idx > 0 {
+                    current_model_for_log
+                } else {
+                    None
+                },
+                response_cache_key: response_cache_key.as_deref(),
+                has_more_models,
+                debug,
+                allow_openai_fallback,
+                disable_challenge_stateless_retry,
+            },
+        )? {
+            CandidateExecutionResult::Handled => return Ok(()),
+            CandidateExecutionResult::Exhausted {
+                request: returned_request,
+                attempted_account_ids,
+                skipped_cooldown,
+                skipped_inflight,
+                last_attempt_url: current_last_attempt_url,
+                last_attempt_error: current_last_attempt_error,
+            } => {
+                request = returned_request;
+                append_attempted_account_ids(
+                    &mut attempted_account_ids_all,
+                    attempted_account_ids.as_slice(),
+                );
+                skipped_cooldown_total += skipped_cooldown;
+                skipped_inflight_total += skipped_inflight;
+                last_attempt_url = current_last_attempt_url;
+                last_attempt_error = current_last_attempt_error;
+
+                if has_more_models {
+                    log::warn!(
+                        "event=gateway_model_fallback trace_id={} key_id={} requested_model={} next_model={}",
+                        trace_id,
+                        key_id,
+                        current_model_for_log.unwrap_or("-"),
+                        model_attempt_chain
+                            .get(model_idx + 1)
+                            .map(String::as_str)
+                            .unwrap_or("-"),
+                    );
+                }
+            }
+        }
+    }
     let final_error = exhausted_gateway_error_for_log(
-        attempted_account_ids.as_slice(),
-        skipped_cooldown,
-        skipped_inflight,
+        attempted_account_ids_all.as_slice(),
+        skipped_cooldown_total,
+        skipped_inflight_total,
         last_attempt_error.as_deref(),
     );
 
-    context.log_final_result(
+    let final_model_for_log = model_attempt_chain
+        .last()
+        .map(String::as_str)
+        .or(requested_model.as_deref());
+    let final_context = GatewayUpstreamExecutionContext::new(
+        &trace_id,
+        &storage,
+        &key_id,
+        &original_path,
+        &path,
+        &request_method,
+        response_adapter,
+        protocol_type.as_str(),
+        final_model_for_log,
+        requested_model.as_deref(),
+        reasoning_for_log.as_deref(),
+        (model_attempt_chain.len() > 1).then_some(model_attempt_chain.as_slice()),
+        base_candidates.len(),
+        crate::gateway::runtime_config::account_max_inflight_limit(),
+    );
+
+    final_context.log_final_result(
         None,
-        last_attempt_url.as_deref().or(Some(base)),
+        last_attempt_url.as_deref().or(Some(base.as_str())),
         503,
         RequestLogUsage::default(),
         Some(final_error.as_str()),
         started_at.elapsed().as_millis(),
-        (!attempted_account_ids.is_empty()).then_some(attempted_account_ids.as_slice()),
+        (!attempted_account_ids_all.is_empty()).then_some(attempted_account_ids_all.as_slice()),
     );
     respond_terminal(
         request,
@@ -252,7 +431,7 @@ pub(in super::super) fn proxy_validated_request(
 
 #[cfg(test)]
 mod tests {
-    use super::exhausted_gateway_error_for_log;
+    use super::{build_model_attempt_chain, exhausted_gateway_error_for_log};
 
     #[test]
     fn exhausted_gateway_error_includes_attempts_skips_and_last_error() {
@@ -275,5 +454,20 @@ mod tests {
         let message = exhausted_gateway_error_for_log(&[], 2, 0, None);
 
         assert!(message.contains("kind=no_available_account_cooldown"));
+    }
+
+    #[test]
+    fn build_model_attempt_chain_keeps_requested_model_first_and_dedupes() {
+        let chain = build_model_attempt_chain(
+            Some("o3"),
+            &[
+                "o3".to_string(),
+                "o4-mini".to_string(),
+                "gpt-4o".to_string(),
+                "o4-mini".to_string(),
+            ],
+        );
+
+        assert_eq!(chain, vec!["o3", "o4-mini", "gpt-4o"]);
     }
 }

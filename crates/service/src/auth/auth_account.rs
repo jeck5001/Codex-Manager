@@ -151,10 +151,13 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
         .flatten();
     let label = choose_account_label(
         input.email_hint.as_deref(),
-        id_token_claims.as_ref()
+        id_token_claims
+            .as_ref()
             .and_then(|claims| claims.email.as_deref()),
         claims.email.as_deref(),
-        existing_account.as_ref().map(|account| account.label.as_str()),
+        existing_account
+            .as_ref()
+            .map(|account| account.label.as_str()),
         &resolved_scope_id,
     );
     let now = now_ts();
@@ -221,9 +224,7 @@ fn choose_account_label(
     fallback_scope_id: &str,
 ) -> String {
     for candidate in [email_hint, id_token_email, access_token_email] {
-        let normalized = candidate
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
+        let normalized = candidate.map(str::trim).filter(|value| !value.is_empty());
         if let Some(value) = normalized {
             return value.to_string();
         }

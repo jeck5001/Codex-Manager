@@ -44,16 +44,22 @@ pub(crate) fn summarize_upstream_error_hint_from_body(
 }
 
 fn push_trace_id_header(headers: &mut Vec<Header>, trace_id: &str) {
-    let Some(trace_id) = Some(trace_id)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
+    push_optional_static_header(
+        headers,
+        crate::error_codes::TRACE_ID_HEADER_NAME,
+        Some(trace_id),
+    );
+}
+
+pub(super) fn push_optional_static_header(
+    headers: &mut Vec<Header>,
+    name: &str,
+    value: Option<&str>,
+) {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
         return;
     };
-    if let Ok(header) = Header::from_bytes(
-        crate::error_codes::TRACE_ID_HEADER_NAME.as_bytes(),
-        trace_id.as_bytes(),
-    ) {
+    if let Ok(header) = Header::from_bytes(name.as_bytes(), value.as_bytes()) {
         headers.push(header);
     }
 }
@@ -69,6 +75,8 @@ pub(super) fn respond_with_upstream(
     tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
     is_stream: bool,
     trace_id: Option<&str>,
+    actual_model_header: Option<&str>,
+    response_cache_key: Option<&str>,
 ) -> Result<UpstreamResponseBridgeResult, String> {
     delivery::respond_with_upstream(
         request,
@@ -79,6 +87,8 @@ pub(super) fn respond_with_upstream(
         tool_name_restore_map,
         is_stream,
         trace_id,
+        actual_model_header,
+        response_cache_key,
     )
 }
 pub(super) use stream_readers::{

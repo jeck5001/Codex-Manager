@@ -19,6 +19,7 @@ fn sample_api_key(
         status: "active".to_string(),
         created_at: 0,
         last_used_at: None,
+        expires_at: None,
     }
 }
 

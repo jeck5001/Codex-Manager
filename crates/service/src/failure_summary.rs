@@ -72,8 +72,11 @@ fn merge_register_failure_summary(
     since_ts: i64,
 ) -> Result<(), String> {
     for page in 1..=DEFAULT_REGISTER_FAILURE_PAGE_LIMIT {
-        let payload =
-            crate::account_register::list_register_tasks(page, DEFAULT_REGISTER_FAILURE_PAGE_SIZE, Some("failed"))?;
+        let payload = crate::account_register::list_register_tasks(
+            page,
+            DEFAULT_REGISTER_FAILURE_PAGE_SIZE,
+            Some("failed"),
+        )?;
         let Some(tasks) = payload.get("tasks").and_then(Value::as_array) else {
             break;
         };
@@ -83,8 +86,14 @@ fn merge_register_failure_summary(
 
         let mut reached_old_records = false;
         for task in tasks {
-            let completed_at = task.get("completed_at").or_else(|| task.get("completedAt")).and_then(Value::as_str);
-            let created_at = task.get("created_at").or_else(|| task.get("createdAt")).and_then(Value::as_str);
+            let completed_at = task
+                .get("completed_at")
+                .or_else(|| task.get("completedAt"))
+                .and_then(Value::as_str);
+            let created_at = task
+                .get("created_at")
+                .or_else(|| task.get("createdAt"))
+                .and_then(Value::as_str);
             let task_ts = parse_register_task_ts(completed_at)
                 .or_else(|| parse_register_task_ts(created_at))
                 .unwrap_or_default();
@@ -102,7 +111,9 @@ fn merge_register_failure_summary(
                 .get("failureCode")
                 .and_then(Value::as_str)
                 .zip(task.get("failureLabel").and_then(Value::as_str))
-                .or_else(|| crate::account_register::classify_register_failure_reason(error_message, logs));
+                .or_else(|| {
+                    crate::account_register::classify_register_failure_reason(error_message, logs)
+                });
             let Some((code, label)) = failure_reason else {
                 continue;
             };
@@ -127,7 +138,11 @@ pub(crate) fn read_failure_reason_summary() -> Result<Vec<FailureReasonSummaryIt
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let since_ts = now_ts().saturating_sub(DEFAULT_FAILURE_SUMMARY_WINDOW_SECS);
     let events = storage
-        .list_recent_events_by_type("usage_refresh_failed", since_ts, DEFAULT_FAILURE_SUMMARY_EVENT_LIMIT)
+        .list_recent_events_by_type(
+            "usage_refresh_failed",
+            since_ts,
+            DEFAULT_FAILURE_SUMMARY_EVENT_LIMIT,
+        )
         .map_err(|err| format!("list failure events failed: {err}"))?;
 
     let mut aggregates = BTreeMap::<String, FailureReasonAggregate>::new();

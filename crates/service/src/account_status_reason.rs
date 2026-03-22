@@ -101,9 +101,8 @@ mod tests {
 
     #[test]
     fn parse_account_status_event_extracts_reason_and_governance_label() {
-        let parsed = parse_account_status_event(
-            "status=disabled reason=auto_governance_refresh_token",
-        );
+        let parsed =
+            parse_account_status_event("status=disabled reason=auto_governance_refresh_token");
         assert_eq!(parsed.status.as_deref(), Some("disabled"));
         assert_eq!(
             parsed.reason_code.as_deref(),
@@ -126,9 +125,7 @@ mod tests {
 
     #[test]
     fn parse_account_status_event_supports_new_isolation_labels() {
-        let parsed = parse_account_status_event(
-            "status=disabled reason=auto_governance_suspected",
-        );
+        let parsed = parse_account_status_event("status=disabled reason=auto_governance_suspected");
         assert_eq!(parsed.reason_label.as_deref(), Some("疑似风控/授权异常"));
         assert_eq!(
             parsed.governance_reason_label.as_deref(),
@@ -139,7 +136,10 @@ mod tests {
             "代理异常"
         );
         assert_eq!(parsed.isolation_reason_code.as_deref(), Some("suspected"));
-        assert_eq!(parsed.isolation_reason_label.as_deref(), Some("疑似风控/授权异常"));
+        assert_eq!(
+            parsed.isolation_reason_label.as_deref(),
+            Some("疑似风控/授权异常")
+        );
     }
 
     #[test]
@@ -157,7 +157,10 @@ mod tests {
     #[test]
     fn map_isolation_reason_covers_direct_status_failures() {
         let parsed = parse_account_status_event("status=unavailable reason=usage_http_401");
-        assert_eq!(parsed.isolation_reason_code.as_deref(), Some("auth_invalid"));
+        assert_eq!(
+            parsed.isolation_reason_code.as_deref(),
+            Some("auth_invalid")
+        );
         assert_eq!(
             parsed.isolation_reason_label.as_deref(),
             Some("授权失效 / 401-403")

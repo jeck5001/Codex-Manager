@@ -9,27 +9,30 @@ use super::{
     current_env_overrides, current_gateway_free_account_max_model, current_gateway_originator,
     current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
-    current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
-    current_lightweight_mode_on_close_to_tray_setting, current_saved_service_addr,
-    current_service_bind_mode, current_ui_appearance_preset, current_ui_low_transparency_enabled,
-    current_ui_theme, current_update_auto_check_enabled, env_override_catalog_value,
-    env_override_reserved_keys, env_override_unsupported_keys, get_persisted_app_setting,
-    parse_bool_with_default, residency_requirement_options, save_env_overrides_value,
-    save_persisted_app_setting, save_persisted_bool_setting, sync_runtime_settings_from_storage,
-    APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
+    current_gateway_response_cache_enabled, current_gateway_response_cache_max_entries,
+    current_gateway_response_cache_ttl_secs, current_gateway_sse_keepalive_interval_ms,
+    current_gateway_upstream_stream_timeout_ms, current_lightweight_mode_on_close_to_tray_setting,
+    current_saved_service_addr, current_service_bind_mode, current_ui_appearance_preset,
+    current_ui_low_transparency_enabled, current_ui_theme, current_update_auto_check_enabled,
+    env_override_catalog_value, env_override_reserved_keys, env_override_unsupported_keys,
+    get_persisted_app_setting, parse_bool_with_default, residency_requirement_options,
+    save_env_overrides_value, save_persisted_app_setting, save_persisted_bool_setting,
+    sync_runtime_settings_from_storage, APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
-    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
+    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
+    APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
-    APP_SETTING_TEAM_MANAGER_API_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_URL_KEY,
-    APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
     APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_SERVICE_ADDR_KEY,
-    APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
-    APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
+    APP_SETTING_TEAM_MANAGER_API_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_URL_KEY,
+    APP_SETTING_TEAM_MANAGER_ENABLED_KEY, APP_SETTING_UI_APPEARANCE_PRESET_KEY,
+    APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY,
+    APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
     SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
 };
 
@@ -69,6 +72,9 @@ pub(super) fn current_app_settings_value(
     let quota_protection_enabled = current_gateway_quota_protection_enabled();
     let quota_protection_threshold_percent = current_gateway_quota_protection_threshold_percent();
     let request_compression_enabled = current_gateway_request_compression_enabled();
+    let response_cache_enabled = current_gateway_response_cache_enabled();
+    let response_cache_ttl_secs = current_gateway_response_cache_ttl_secs();
+    let response_cache_max_entries = current_gateway_response_cache_max_entries();
     let gateway_originator = current_gateway_originator();
     let gateway_residency_requirement = current_gateway_residency_requirement().unwrap_or_default();
     let free_account_max_model_options =
@@ -102,6 +108,9 @@ pub(super) fn current_app_settings_value(
         quota_protection_enabled,
         quota_protection_threshold_percent,
         request_compression_enabled,
+        response_cache_enabled,
+        response_cache_ttl_secs,
+        response_cache_max_entries,
         &gateway_originator,
         &gateway_residency_requirement,
         cpa_no_cookie_header_mode_enabled,
@@ -127,12 +136,15 @@ pub(super) fn current_app_settings_value(
             SERVICE_BIND_MODE_ALL_INTERFACES
         ],
         "routeStrategy": route_strategy,
-        "routeStrategyOptions": ["ordered", "balanced"],
+        "routeStrategyOptions": ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
         "freeAccountMaxModel": free_account_max_model,
         "freeAccountMaxModelOptions": free_account_max_model_options,
         "quotaProtectionEnabled": quota_protection_enabled,
         "quotaProtectionThresholdPercent": quota_protection_threshold_percent,
         "requestCompressionEnabled": request_compression_enabled,
+        "responseCacheEnabled": response_cache_enabled,
+        "responseCacheTtlSecs": response_cache_ttl_secs,
+        "responseCacheMaxEntries": response_cache_max_entries,
         "gatewayOriginator": gateway_originator,
         "gatewayResidencyRequirement": gateway_residency_requirement,
         "gatewayResidencyRequirementOptions": residency_requirement_options(),
@@ -207,6 +219,9 @@ fn persist_current_snapshot(
     quota_protection_enabled: bool,
     quota_protection_threshold_percent: u64,
     request_compression_enabled: bool,
+    response_cache_enabled: bool,
+    response_cache_ttl_secs: u64,
+    response_cache_max_entries: usize,
     gateway_originator: &str,
     gateway_residency_requirement: &str,
     cpa_no_cookie_header_mode_enabled: bool,
@@ -250,6 +265,18 @@ fn persist_current_snapshot(
     let _ = save_persisted_bool_setting(
         APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
         request_compression_enabled,
+    );
+    let _ = save_persisted_bool_setting(
+        APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
+        response_cache_enabled,
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY,
+        Some(&response_cache_ttl_secs.to_string()),
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
+        Some(&response_cache_max_entries.to_string()),
     );
     let _ =
         save_persisted_app_setting(APP_SETTING_GATEWAY_ORIGINATOR_KEY, Some(gateway_originator));

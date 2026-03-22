@@ -17,6 +17,7 @@ pub(crate) fn create_api_key(
     protocol_type: Option<String>,
     upstream_base_url: Option<String>,
     static_headers_json: Option<String>,
+    expires_at: Option<i64>,
 ) -> Result<ApiKeyCreateResult, String> {
     // 创建平台 Key 并写入存储
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
@@ -41,6 +42,7 @@ pub(crate) fn create_api_key(
         status: "active".to_string(),
         created_at: now_ts(),
         last_used_at: None,
+        expires_at,
     };
     storage.insert_api_key(&record).map_err(|e| e.to_string())?;
     if let Err(err) = storage.upsert_api_key_secret(&key_id, &key) {

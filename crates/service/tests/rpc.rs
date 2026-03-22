@@ -109,7 +109,7 @@ impl Drop for RpcTestContext {
 }
 
 fn post_rpc_raw(addr: &str, body: &str, headers: &[(&str, &str)]) -> (u16, String) {
-    let mut stream = TcpStream::connect(addr).expect("connect server");
+    let mut stream = connect_with_retry(addr);
     let mut request = format!("POST /rpc HTTP/1.1\r\nHost: {addr}\r\n");
     for (name, value) in headers {
         request.push_str(name);
@@ -131,6 +131,20 @@ fn post_rpc_raw(addr: &str, body: &str, headers: &[(&str, &str)]) -> (u16, Strin
         .expect("status");
     let body = buf.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
     (status, body)
+}
+
+fn connect_with_retry(addr: &str) -> TcpStream {
+    let mut last_error = None;
+    for _ in 0..100 {
+        match TcpStream::connect(addr) {
+            Ok(stream) => return stream,
+            Err(err) => {
+                last_error = Some(err);
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+    panic!("connect server: {:?}", last_error.expect("connect error"));
 }
 
 fn post_rpc(addr: &str, body: &str) -> serde_json::Value {
@@ -1158,6 +1172,9 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
                 account_id: Some("acc-page".to_string()),
                 initial_account_id: Some("acc-free".to_string()),
                 attempted_account_ids_json: Some(r#"["acc-free","acc-page"]"#.to_string()),
+                route_strategy: Some("least-latency".to_string()),
+                requested_model: None,
+                model_fallback_path_json: None,
                 request_path: "/v1/responses".to_string(),
                 original_path: Some("/v1/responses".to_string()),
                 adapted_path: Some("/v1/responses".to_string()),
@@ -1245,6 +1262,12 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
             .and_then(|value| value.as_array())
             .map(|items| items.len()),
         Some(2)
+    );
+    assert_eq!(
+        items[0]
+            .get("routeStrategy")
+            .and_then(|value| value.as_str()),
+        Some("least-latency")
     );
 
     let summary_server = codexmanager_service::start_one_shot_server().expect("start server");

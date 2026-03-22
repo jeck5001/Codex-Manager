@@ -259,6 +259,7 @@ pub struct ApiKeySummary {
     pub status: String,
     pub created_at: i64,
     pub last_used_at: Option<i64>,
+    pub expires_at: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -283,6 +284,125 @@ pub struct ApiKeyUsageStatListResult {
 pub struct ApiKeyCreateResult {
     pub id: String,
     pub key: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiKeyRateLimitConfig {
+    pub key_id: String,
+    pub rpm: Option<i64>,
+    pub tpm: Option<i64>,
+    pub daily_limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiKeyModelFallbackConfig {
+    pub key_id: String,
+    #[serde(default)]
+    pub model_chain: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiKeyResponseCacheConfig {
+    pub key_id: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelPricingItem {
+    pub model_slug: String,
+    pub input_price_per_1k: f64,
+    pub output_price_per_1k: f64,
+    #[serde(default)]
+    pub updated_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelPricingListResult {
+    pub items: Vec<ModelPricingItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostSummaryParams {
+    #[serde(default)]
+    pub preset: Option<String>,
+    #[serde(default)]
+    pub start_ts: Option<i64>,
+    #[serde(default)]
+    pub end_ts: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostUsageSummaryResult {
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostSummaryKeyItem {
+    pub key_id: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostSummaryModelItem {
+    pub model: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostSummaryDayItem {
+    pub day: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostSummaryResult {
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    pub total: CostUsageSummaryResult,
+    #[serde(default)]
+    pub by_key: Vec<CostSummaryKeyItem>,
+    #[serde(default)]
+    pub by_model: Vec<CostSummaryModelItem>,
+    #[serde(default)]
+    pub by_day: Vec<CostSummaryDayItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostExportResult {
+    pub file_name: String,
+    pub content: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -313,6 +433,10 @@ pub struct RequestLogSummary {
     pub initial_account_id: Option<String>,
     #[serde(default)]
     pub attempted_account_ids: Vec<String>,
+    pub route_strategy: Option<String>,
+    pub requested_model: Option<String>,
+    #[serde(default)]
+    pub model_fallback_path: Vec<String>,
     pub request_path: String,
     pub original_path: Option<String>,
     pub adapted_path: Option<String>,
@@ -377,6 +501,26 @@ pub struct RequestLogListResult {
     pub page_size: i64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestLogExportParams {
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub status_filter: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestLogExportResult {
+    pub format: String,
+    pub file_name: String,
+    pub content: String,
+    pub record_count: i64,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequestLogFilterSummaryResult {
@@ -396,6 +540,57 @@ pub struct RequestLogTodaySummaryResult {
     pub reasoning_output_tokens: i64,
     pub today_tokens: i64,
     pub estimated_cost: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardAccountStatusBucket {
+    pub key: String,
+    pub label: String,
+    pub count: i64,
+    pub percent: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardGatewayMetricsResult {
+    pub window_minutes: i64,
+    pub total_requests: i64,
+    pub success_requests: i64,
+    pub error_requests: i64,
+    pub qps: f64,
+    pub success_rate: f64,
+    pub p50_latency_ms: Option<i64>,
+    pub p95_latency_ms: Option<i64>,
+    pub p99_latency_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardHealthResult {
+    pub generated_at: i64,
+    #[serde(default)]
+    pub account_status_buckets: Vec<DashboardAccountStatusBucket>,
+    #[serde(default)]
+    pub gateway_metrics: DashboardGatewayMetricsResult,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardTrendPoint {
+    pub bucket_ts: i64,
+    pub request_count: i64,
+    pub error_count: i64,
+    pub error_rate: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardTrendResult {
+    pub generated_at: i64,
+    pub bucket_minutes: i64,
+    #[serde(default)]
+    pub points: Vec<DashboardTrendPoint>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -7,6 +7,10 @@ macro_rules! invoke_handler {
             crate::commands::service::service_initialize,
             crate::commands::service::service_rpc_token,
             crate::commands::startup::service_startup_snapshot,
+            crate::commands::stats::service_stats_cost_summary,
+            crate::commands::stats::service_stats_cost_export,
+            crate::commands::stats::service_stats_cost_model_pricing_get,
+            crate::commands::stats::service_stats_cost_model_pricing_set,
             // account
             crate::commands::account::remote::service_account_list,
             crate::commands::account::remote::service_account_delete,
@@ -35,6 +39,7 @@ macro_rules! invoke_handler {
             // request log
             crate::commands::requestlog::service_requestlog_list,
             crate::commands::requestlog::service_requestlog_summary,
+            crate::commands::requestlog::service_requestlog_export,
             crate::commands::requestlog::service_requestlog_clear,
             crate::commands::requestlog::service_requestlog_today_summary,
             // settings
@@ -48,6 +53,8 @@ macro_rules! invoke_handler {
             crate::commands::settings::gateway::service_gateway_header_policy_get,
             crate::commands::settings::gateway::service_gateway_header_policy_set,
             crate::commands::settings::gateway::service_gateway_background_tasks_get,
+            crate::commands::settings::gateway::service_gateway_cache_stats,
+            crate::commands::settings::gateway::service_gateway_cache_clear,
             crate::commands::settings::gateway::service_gateway_background_tasks_set,
             crate::commands::settings::gateway::service_gateway_upstream_proxy_get,
             crate::commands::settings::gateway::service_gateway_upstream_proxy_set,
@@ -69,11 +76,18 @@ macro_rules! invoke_handler {
             // api key
             crate::commands::apikey::service_apikey_list,
             crate::commands::apikey::service_apikey_read_secret,
+            crate::commands::apikey::service_apikey_rate_limit_get,
+            crate::commands::apikey::service_apikey_rate_limit_set,
+            crate::commands::apikey::service_apikey_model_fallback_get,
+            crate::commands::apikey::service_apikey_model_fallback_set,
+            crate::commands::apikey::service_apikey_response_cache_get,
+            crate::commands::apikey::service_apikey_response_cache_set,
             crate::commands::apikey::service_apikey_create,
             crate::commands::apikey::service_apikey_models,
             crate::commands::apikey::service_apikey_usage_stats,
             crate::commands::apikey::service_apikey_update_model,
             crate::commands::apikey::service_apikey_delete,
+            crate::commands::apikey::service_apikey_renew,
             crate::commands::apikey::service_apikey_disable,
             crate::commands::apikey::service_apikey_enable,
             // system

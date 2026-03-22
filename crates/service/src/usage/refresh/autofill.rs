@@ -28,7 +28,9 @@ pub(crate) fn maybe_trigger_auto_register_pool_fill() -> Result<(), String> {
     }
 
     let ready_account_target = AUTO_REGISTER_READY_ACCOUNT_COUNT.load(Ordering::Relaxed);
-    let ready_remain_percent = AUTO_REGISTER_READY_REMAIN_PERCENT.load(Ordering::Relaxed).min(100);
+    let ready_remain_percent = AUTO_REGISTER_READY_REMAIN_PERCENT
+        .load(Ordering::Relaxed)
+        .min(100);
 
     if ready_account_target == 0 {
         return Ok(());
@@ -266,7 +268,10 @@ fn snapshot_meets_ready_threshold(
         return false;
     }
 
-    match (snapshot.secondary_used_percent, snapshot.secondary_window_minutes) {
+    match (
+        snapshot.secondary_used_percent,
+        snapshot.secondary_window_minutes,
+    ) {
         (None, None) => true,
         (Some(secondary_used), Some(_)) => remaining_percent(secondary_used) >= threshold,
         _ => false,
@@ -308,9 +313,10 @@ fn resolve_auto_register_service_plan() -> Result<AutoRegisterServicePlan, Strin
             label: "tempmail".to_string(),
         });
     }
-    if let Some((id, label)) =
-        first_service_from_group(&payload, &["customDomain", "custom_domain", "custom-domain"])
-    {
+    if let Some((id, label)) = first_service_from_group(
+        &payload,
+        &["customDomain", "custom_domain", "custom-domain"],
+    ) {
         return Ok(AutoRegisterServicePlan {
             service_type: "custom_domain".to_string(),
             email_service_id: Some(id),
@@ -428,8 +434,14 @@ mod tests {
 
     #[test]
     fn ready_threshold_requires_all_known_usage_windows_to_meet_remaining_percent() {
-        assert!(snapshot_meets_ready_threshold(&snapshot(Some(70.0), None), 20));
-        assert!(!snapshot_meets_ready_threshold(&snapshot(Some(81.0), None), 20));
+        assert!(snapshot_meets_ready_threshold(
+            &snapshot(Some(70.0), None),
+            20
+        ));
+        assert!(!snapshot_meets_ready_threshold(
+            &snapshot(Some(81.0), None),
+            20
+        ));
         assert!(snapshot_meets_ready_threshold(
             &snapshot(Some(70.0), Some(75.0)),
             20

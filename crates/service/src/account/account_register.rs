@@ -90,7 +90,11 @@ fn read_json_response(response: reqwest::blocking::Response) -> Result<Value, St
             .text()
             .unwrap_or_else(|_| String::from("<unreadable body>"));
         let snippet = body.chars().take(300).collect::<String>();
-        return Err(format!("register service http {}: {}", status.as_u16(), snippet));
+        return Err(format!(
+            "register service http {}: {}",
+            status.as_u16(),
+            snippet
+        ));
     }
     response
         .json::<Value>()
@@ -248,6 +252,8 @@ pub(crate) fn classify_register_failure_reason(
             || normalized.contains("connect")
             || normalized.contains("refused")
             || normalized.contains("auth required")
+            || normalized.contains("authentication required")
+            || normalized.contains("authentication failed")
             || normalized.contains("认证"))
     {
         return Some(("register_proxy_error", "注册代理异常"));
@@ -619,7 +625,10 @@ pub(crate) fn cancel_register_batch(batch_id: &str) -> Result<Value, String> {
     if batch_id.is_empty() {
         return Err("batchId is required".to_string());
     }
-    register_post_json(&format!("/api/registration/batch/{batch_id}/cancel"), &json!({}))
+    register_post_json(
+        &format!("/api/registration/batch/{batch_id}/cancel"),
+        &json!({}),
+    )
 }
 
 pub(crate) fn list_register_tasks(
@@ -658,7 +667,10 @@ pub(crate) fn cancel_register_task(task_uuid: &str) -> Result<Value, String> {
     )
 }
 
-pub(crate) fn retry_register_task(task_uuid: &str, strategy: Option<&str>) -> Result<Value, String> {
+pub(crate) fn retry_register_task(
+    task_uuid: &str,
+    strategy: Option<&str>,
+) -> Result<Value, String> {
     let task_uuid = task_uuid.trim();
     if task_uuid.is_empty() {
         return Err("taskUuid is required".to_string());
@@ -911,7 +923,10 @@ pub(crate) fn update_register_email_service(
         payload.insert("enabled".to_string(), Value::Bool(enabled));
     }
     if let Some(priority) = priority {
-        payload.insert("priority".to_string(), Value::Number(priority.max(0).into()));
+        payload.insert(
+            "priority".to_string(),
+            Value::Number(priority.max(0).into()),
+        );
     }
     if let Some(config) = config {
         payload.insert("config".to_string(), config);
@@ -933,7 +948,10 @@ pub(crate) fn test_register_email_service(service_id: i64) -> Result<Value, Stri
     if service_id < 1 {
         return Err("serviceId is required".to_string());
     }
-    register_post_json(&format!("/api/email-services/{service_id}/test"), &json!({}))
+    register_post_json(
+        &format!("/api/email-services/{service_id}/test"),
+        &json!({}),
+    )
 }
 
 pub(crate) fn set_register_email_service_enabled(
@@ -1016,7 +1034,10 @@ pub(crate) fn read_register_task(task_uuid: &str) -> Result<RegisterTaskReadResp
     let logs = task_logs(&logs_payload);
     let joined_logs = logs.join("\n");
     let error_message = task_string_field(&task, "error_message");
-    let failure_reason = if matches!(status.trim().to_ascii_lowercase().as_str(), "failed" | "cancelled") {
+    let failure_reason = if matches!(
+        status.trim().to_ascii_lowercase().as_str(),
+        "failed" | "cancelled"
+    ) {
         classify_register_failure_reason(error_message.as_deref(), joined_logs.as_str())
     } else {
         None

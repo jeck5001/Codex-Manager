@@ -68,6 +68,22 @@ fn status_429_on_last_candidate_keeps_upstream_response() {
 }
 
 #[test]
+fn status_500_with_more_candidates_triggers_failover() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let decision = decide_upstream_outcome(
+        &storage,
+        "acc-500",
+        reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        None,
+        "https://api.openai.com/v1/responses",
+        true,
+        |_, _, _| {},
+    );
+    assert!(matches!(decision, UpstreamOutcomeDecision::Failover));
+}
+
+#[test]
 fn challenge_with_more_candidates_triggers_failover() {
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
@@ -118,9 +134,7 @@ fn success_response_enqueues_usage_refresh_for_account() {
     );
 
     assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
-    assert!(crate::usage_refresh::is_usage_refresh_task_pending_for_tests(
-        "acc-success"
-    ));
+    assert!(crate::usage_refresh::is_usage_refresh_task_pending_for_tests("acc-success"));
 
     thread::sleep(Duration::from_millis(20));
     crate::usage_refresh::clear_pending_usage_refresh_tasks_for_tests();

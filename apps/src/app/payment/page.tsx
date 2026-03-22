@@ -109,16 +109,22 @@ export default function PaymentPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    setInitialAccountId(params.get("accountId") || "");
+    queueMicrotask(() => {
+      setInitialAccountId(params.get("accountId") || "");
+    });
   }, []);
 
   useEffect(() => {
     if (initialAccountId && accounts.some((account) => account.id === initialAccountId)) {
-      setSelectedAccountId(initialAccountId);
+      queueMicrotask(() => {
+        setSelectedAccountId(initialAccountId);
+      });
       return;
     }
     if (!selectedAccountId && accounts.length > 0) {
-      setSelectedAccountId(accounts[0].id);
+      queueMicrotask(() => {
+        setSelectedAccountId(accounts[0].id);
+      });
     }
   }, [accounts, initialAccountId, selectedAccountId]);
 
@@ -126,12 +132,16 @@ export default function PaymentPage() {
     if (!detectedPlanType) return;
     const normalized = String(detectedPlanType).trim().toLowerCase();
     if (normalized === "free" || normalized === "plus" || normalized === "team") {
-      setManualPlanType(normalized as "free" | "plus" | "team");
+      queueMicrotask(() => {
+        setManualPlanType(normalized as "free" | "plus" | "team");
+      });
     }
   }, [detectedPlanType]);
 
   useEffect(() => {
-    setOfficialPromoLinkDraft(selectedAccount?.officialPromoLink || "");
+    queueMicrotask(() => {
+      setOfficialPromoLinkDraft(selectedAccount?.officialPromoLink || "");
+    });
   }, [selectedAccount?.id, selectedAccount?.officialPromoLink]);
 
   const handleCheckSubscription = async () => {

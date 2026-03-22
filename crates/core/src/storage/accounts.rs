@@ -361,10 +361,7 @@ impl Storage {
     ) -> Result<Vec<Account>> {
         let mut params = Vec::new();
         let mut where_clause = build_account_where_clause(query, group_name, &mut params, "a");
-        append_where_clause(
-            &mut where_clause,
-            "LOWER(TRIM(COALESCE(a.status, ''))) = ?",
-        );
+        append_where_clause(&mut where_clause, "LOWER(TRIM(COALESCE(a.status, ''))) = ?");
         params.push(Value::Text(status.trim().to_ascii_lowercase()));
         let mut sql = format!(
             "SELECT {} FROM accounts a{where_clause} ORDER BY a.sort ASC, a.updated_at DESC",
@@ -393,7 +390,8 @@ impl Storage {
         status: &str,
     ) -> Result<i64> {
         let mut params = Vec::new();
-        let mut where_clause = build_account_where_clause(query, group_name, &mut params, "accounts");
+        let mut where_clause =
+            build_account_where_clause(query, group_name, &mut params, "accounts");
         append_where_clause(
             &mut where_clause,
             "LOWER(TRIM(COALESCE(accounts.status, ''))) = ?",

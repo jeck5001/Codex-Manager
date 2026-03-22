@@ -14,6 +14,10 @@ pub const APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY: &str =
     "gateway.quota_protection_threshold_percent";
 pub const APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY: &str =
     "gateway.request_compression_enabled";
+pub const APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY: &str = "gateway.response_cache_enabled";
+pub const APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY: &str = "gateway.response_cache_ttl_secs";
+pub const APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY: &str =
+    "gateway.response_cache_max_entries";
 pub const APP_SETTING_GATEWAY_ORIGINATOR_KEY: &str = "gateway.originator";
 pub const APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY: &str = "gateway.residency_requirement";
 pub const APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY: &str =

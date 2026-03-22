@@ -102,11 +102,7 @@ pub(crate) fn update_accounts_status(
         },
         format!(
             "请求 {} 个，更新 {} 个，跳过 {} 个，失败 {} 个，目标状态 {}",
-            result.requested,
-            result.updated,
-            result.skipped,
-            result.failed,
-            result.target_status
+            result.requested, result.updated, result.skipped, result.failed, result.target_status
         ),
     );
 

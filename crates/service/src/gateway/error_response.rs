@@ -16,6 +16,19 @@ pub(super) fn with_trace_id_header<R: std::io::Read>(
     response
 }
 
+pub(super) fn with_retry_after_header<R: std::io::Read>(
+    mut response: Response<R>,
+    retry_after_secs: Option<u64>,
+) -> Response<R> {
+    if let Some(retry_after_secs) = retry_after_secs {
+        let retry_after = retry_after_secs.max(1).to_string();
+        if let Ok(header) = Header::from_bytes(b"Retry-After".as_slice(), retry_after.as_bytes()) {
+            response.add_header(header);
+        }
+    }
+    response
+}
+
 pub(super) fn terminal_text_response(
     status_code: u16,
     message: impl Into<String>,

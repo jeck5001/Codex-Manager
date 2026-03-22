@@ -115,6 +115,80 @@ fn decode_chunked_body_if_needed(body: &str) -> String {
     String::from_utf8(out).unwrap_or(normalized)
 }
 
+fn parse_http_status_and_body(raw: &[u8]) -> Option<(u16, String)> {
+    let snapshot = parse_http_response_snapshot(raw)?;
+    Some((snapshot.status, snapshot.body))
+}
+
+#[derive(Debug)]
+pub(super) struct HttpResponseSnapshot {
+    pub(super) status: u16,
+    pub(super) headers: HashMap<String, String>,
+    pub(super) body: String,
+}
+
+fn parse_http_response_snapshot(raw: &[u8]) -> Option<HttpResponseSnapshot> {
+    let header_end = raw.windows(4).position(|window| window == b"\r\n\r\n")?;
+    let header_end = header_end + 4;
+    let status_line = std::str::from_utf8(
+        raw[..header_end]
+            .split(|byte| *byte == b'\n')
+            .next()
+            .unwrap_or_default(),
+    )
+    .ok()?;
+    let status = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|value| value.parse::<u16>().ok())?;
+
+    let headers_text = String::from_utf8_lossy(&raw[..header_end]);
+    let mut content_length = None;
+    let mut chunked = false;
+    let mut headers = HashMap::new();
+    for line in headers_text.lines().skip(1) {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        let name = name.trim().to_ascii_lowercase();
+        let value = value.trim().to_ascii_lowercase();
+        headers.insert(name.clone(), value.clone());
+        if name == "content-length" {
+            content_length = value.parse::<usize>().ok();
+        }
+        if name == "transfer-encoding" && value.contains("chunked") {
+            chunked = true;
+        }
+    }
+
+    let body_bytes = &raw[header_end..];
+    if let Some(content_length) = content_length {
+        if body_bytes.len() < content_length {
+            return None;
+        }
+        let body = String::from_utf8_lossy(&body_bytes[..content_length]).to_string();
+        return Some(HttpResponseSnapshot { status, headers, body });
+    }
+
+    if chunked {
+        let body_raw = String::from_utf8_lossy(body_bytes).to_string();
+        if !body_raw.contains("\r\n0\r\n\r\n") && !body_raw.contains("\n0\n\n") {
+            return None;
+        }
+        return Some(HttpResponseSnapshot {
+            status,
+            headers,
+            body: decode_chunked_body_if_needed(&body_raw),
+        });
+    }
+
+    Some(HttpResponseSnapshot {
+        status,
+        headers,
+        body: String::from_utf8_lossy(body_bytes).to_string(),
+    })
+}
+
 pub(super) fn post_http_raw(
     addr: &str,
     path: &str,
@@ -135,19 +209,73 @@ pub(super) fn post_http_raw(
         request.push_str(&format!("Content-Length: {}\r\n\r\n{}", body.len(), body));
         stream.write_all(request.as_bytes()).expect("write");
 
-        let mut buf = String::new();
-        stream.read_to_string(&mut buf).expect("read");
-        if let Some(status) = buf
-            .lines()
-            .next()
-            .and_then(|line| line.split_whitespace().nth(1))
-            .and_then(|value| value.parse::<u16>().ok())
-        {
-            let body_raw = buf.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
-            let body = decode_chunked_body_if_needed(&body_raw);
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            match stream.read(&mut buf) {
+                Ok(0) => break,
+                Ok(read) => raw.extend_from_slice(&buf[..read]),
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                    ) =>
+                {
+                    break;
+                }
+                Err(err) => panic!("read: {err}"),
+            }
+        }
+        if let Some((status, body)) = parse_http_status_and_body(&raw) {
             return (status, body);
         }
-        last_raw = buf;
+        last_raw = String::from_utf8_lossy(&raw).to_string();
+        thread::sleep(Duration::from_millis(50));
+    }
+    panic!("status parse failed, raw response: {last_raw:?}");
+}
+
+pub(super) fn post_http_response(
+    addr: &str,
+    path: &str,
+    body: &str,
+    headers: &[(&str, &str)],
+) -> HttpResponseSnapshot {
+    let mut last_raw = String::new();
+    for _ in 0..20 {
+        let mut stream = TcpStream::connect(addr).expect("connect server");
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+        let mut request = format!("POST {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n");
+        for (name, value) in headers {
+            request.push_str(name);
+            request.push_str(": ");
+            request.push_str(value);
+            request.push_str("\r\n");
+        }
+        request.push_str(&format!("Content-Length: {}\r\n\r\n{}", body.len(), body));
+        stream.write_all(request.as_bytes()).expect("write");
+
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            match stream.read(&mut buf) {
+                Ok(0) => break,
+                Ok(read) => raw.extend_from_slice(&buf[..read]),
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                    ) =>
+                {
+                    break;
+                }
+                Err(err) => panic!("read: {err}"),
+            }
+        }
+        if let Some(snapshot) = parse_http_response_snapshot(&raw) {
+            return snapshot;
+        }
+        last_raw = String::from_utf8_lossy(&raw).to_string();
         thread::sleep(Duration::from_millis(50));
     }
     panic!("status parse failed, raw response: {last_raw:?}");
@@ -168,19 +296,27 @@ pub(super) fn get_http_raw(addr: &str, path: &str, headers: &[(&str, &str)]) -> 
         request.push_str("\r\n");
         stream.write_all(request.as_bytes()).expect("write");
 
-        let mut buf = String::new();
-        stream.read_to_string(&mut buf).expect("read");
-        if let Some(status) = buf
-            .lines()
-            .next()
-            .and_then(|line| line.split_whitespace().nth(1))
-            .and_then(|value| value.parse::<u16>().ok())
-        {
-            let body_raw = buf.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
-            let body = decode_chunked_body_if_needed(&body_raw);
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            match stream.read(&mut buf) {
+                Ok(0) => break,
+                Ok(read) => raw.extend_from_slice(&buf[..read]),
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                    ) =>
+                {
+                    break;
+                }
+                Err(err) => panic!("read: {err}"),
+            }
+        }
+        if let Some((status, body)) = parse_http_status_and_body(&raw) {
             return (status, body);
         }
-        last_raw = buf;
+        last_raw = String::from_utf8_lossy(&raw).to_string();
         thread::sleep(Duration::from_millis(50));
     }
     panic!("status parse failed, raw response: {last_raw:?}");

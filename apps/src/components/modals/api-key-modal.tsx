@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { 
   Dialog, 
   DialogContent, 
@@ -12,6 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   Select, 
   SelectContent, 
@@ -53,6 +55,12 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
   const [upstreamBaseUrl, setUpstreamBaseUrl] = useState("");
   const [azureEndpoint, setAzureEndpoint] = useState("");
   const [azureApiKey, setAzureApiKey] = useState("");
+  const [expiresAtInput, setExpiresAtInput] = useState("");
+  const [rpmInput, setRpmInput] = useState("");
+  const [tpmInput, setTpmInput] = useState("");
+  const [dailyLimitInput, setDailyLimitInput] = useState("");
+  const [fallbackModelsText, setFallbackModelsText] = useState("");
+  const [responseCacheEnabled, setResponseCacheEnabled] = useState(false);
   const [generatedKey, setGeneratedKey] = useState("");
   
   const [isLoading, setIsLoading] = useState(false);
@@ -62,6 +70,24 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
     queryKey: ["apikey-models"],
     queryFn: () => accountClient.listModels(false),
     enabled: open,
+  });
+  const { data: rateLimitConfig } = useQuery({
+    queryKey: ["apikey-rate-limit", apiKey?.id],
+    queryFn: () => accountClient.getApiKeyRateLimit(String(apiKey?.id || "")),
+    enabled: open && Boolean(apiKey?.id),
+    retry: 1,
+  });
+  const { data: modelFallbackConfig } = useQuery({
+    queryKey: ["apikey-model-fallback", apiKey?.id],
+    queryFn: () => accountClient.getApiKeyModelFallback(String(apiKey?.id || "")),
+    enabled: open && Boolean(apiKey?.id),
+    retry: 1,
+  });
+  const { data: responseCacheConfig } = useQuery({
+    queryKey: ["apikey-response-cache", apiKey?.id],
+    queryFn: () => accountClient.getApiKeyResponseCache(String(apiKey?.id || "")),
+    enabled: open && Boolean(apiKey?.id),
+    retry: 1,
   });
 
   const modelLabelMap = Object.fromEntries(
@@ -79,6 +105,12 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
       setUpstreamBaseUrl("");
       setAzureEndpoint("");
       setAzureApiKey("");
+      setExpiresAtInput("");
+      setRpmInput("");
+      setTpmInput("");
+      setDailyLimitInput("");
+      setFallbackModelsText("");
+      setResponseCacheEnabled(false);
       setGeneratedKey("");
       return;
     }
@@ -105,7 +137,19 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
       setAzureEndpoint("");
       setAzureApiKey("");
     }
-  }, [apiKey, open]);
+    setExpiresAtInput(apiKey.expiresAt ? toDateTimeLocalValue(apiKey.expiresAt) : "");
+    setFallbackModelsText(
+      formatModelChainInput(modelFallbackConfig?.modelChain || [])
+    );
+    setResponseCacheEnabled(responseCacheConfig?.enabled === true);
+  }, [apiKey, modelFallbackConfig?.modelChain, open, responseCacheConfig?.enabled]);
+
+  useEffect(() => {
+    if (!open || !apiKey?.id) return;
+    setRpmInput(formatLimitInput(rateLimitConfig?.rpm));
+    setTpmInput(formatLimitInput(rateLimitConfig?.tpm));
+    setDailyLimitInput(formatLimitInput(rateLimitConfig?.dailyLimit));
+  }, [apiKey?.id, open, rateLimitConfig]);
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -123,19 +167,41 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
         protocolType,
         upstreamBaseUrl: protocolType === "azure_openai" ? azureEndpoint : (upstreamBaseUrl || null),
         staticHeadersJson: Object.keys(staticHeaders).length > 0 ? JSON.stringify(staticHeaders) : null,
+        expiresAt: expiresAtInput ? parseDateTimeLocalValue(expiresAtInput) : null,
+      };
+      const rateLimitParams = {
+        rpm: parseLimitInput(rpmInput),
+        tpm: parseLimitInput(tpmInput),
+        dailyLimit: parseLimitInput(dailyLimitInput),
+      };
+      const modelFallbackParams = {
+        modelChain: parseModelChainInput(fallbackModelsText),
       };
 
       if (apiKey?.id) {
         await accountClient.updateApiKey(apiKey.id, params);
+        await accountClient.setApiKeyRateLimit(apiKey.id, rateLimitParams);
+        await accountClient.setApiKeyModelFallback(apiKey.id, modelFallbackParams);
+        await accountClient.setApiKeyResponseCache(apiKey.id, {
+          enabled: responseCacheEnabled,
+        });
         toast.success("密钥配置已更新");
       } else {
         const result = await accountClient.createApiKey(params);
         setGeneratedKey(result.key);
+        await accountClient.setApiKeyRateLimit(result.id, rateLimitParams);
+        await accountClient.setApiKeyModelFallback(result.id, modelFallbackParams);
+        await accountClient.setApiKeyResponseCache(result.id, {
+          enabled: responseCacheEnabled,
+        });
         toast.success("平台密钥已创建");
       }
       
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["apikeys"] }),
+        queryClient.invalidateQueries({ queryKey: ["apikey-rate-limit"] }),
+        queryClient.invalidateQueries({ queryKey: ["apikey-model-fallback"] }),
+        queryClient.invalidateQueries({ queryKey: ["apikey-response-cache"] }),
         queryClient.invalidateQueries({ queryKey: ["apikey-models"] }),
         queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
       ]);
@@ -243,6 +309,100 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
             </Select>
           </div>
 
+          {!apiKey?.id ? (
+            <div className="grid gap-2">
+              <Label htmlFor="expires-at">过期时间 (可选)</Label>
+              <Input
+                id="expires-at"
+                type="datetime-local"
+                value={expiresAtInput}
+                onChange={(e) => setExpiresAtInput(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                不填写则永不过期；到期后网关会返回 401，并可在列表页执行续期。
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">
+              当前过期时间：
+              {expiresAtInput ? " 已设置，续期请在列表页操作。" : " 永不过期。"}
+            </p>
+          )}
+
+          <div className="grid gap-4 rounded-xl border border-primary/10 bg-accent/20 p-4">
+            <div className="space-y-1">
+              <Label>请求限流 (可选)</Label>
+              <p className="text-[11px] text-muted-foreground">
+                留空表示不限流；配置后会在鉴权通过后、路由前直接返回 429。
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="grid gap-2">
+                <Label htmlFor="rpm-limit" className="text-xs">RPM</Label>
+                <Input
+                  id="rpm-limit"
+                  type="number"
+                  min="1"
+                  placeholder="例如 10"
+                  value={rpmInput}
+                  onChange={(e) => setRpmInput(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="tpm-limit" className="text-xs">TPM</Label>
+                <Input
+                  id="tpm-limit"
+                  type="number"
+                  min="1"
+                  placeholder="例如 1000"
+                  value={tpmInput}
+                  onChange={(e) => setTpmInput(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="daily-limit" className="text-xs">日上限</Label>
+                <Input
+                  id="daily-limit"
+                  type="number"
+                  min="1"
+                  placeholder="例如 50"
+                  value={dailyLimitInput}
+                  onChange={(e) => setDailyLimitInput(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 rounded-xl border border-primary/10 bg-accent/20 p-4">
+            <div className="space-y-1">
+              <Label htmlFor="model-fallback-chain">模型降级链 (可选)</Label>
+              <p className="text-[11px] text-muted-foreground">
+                按顺序逐行填写备选模型；当当前模型在所有账号上都失败后，会自动尝试下一项。
+              </p>
+            </div>
+            <Textarea
+              id="model-fallback-chain"
+              placeholder={"o3\no4-mini\ngpt-4o"}
+              value={fallbackModelsText}
+              onChange={(e) => setFallbackModelsText(e.target.value)}
+              className="min-h-[108px] font-mono text-xs"
+            />
+          </div>
+
+          <div className="flex items-start justify-between gap-4 rounded-xl border border-primary/10 bg-accent/20 p-4">
+            <div className="space-y-1">
+              <Label htmlFor="response-cache-enabled">响应缓存</Label>
+              <p className="text-[11px] text-muted-foreground">
+                仅对当前 API Key 生效；启用后，非流式相同请求可命中网关响应缓存。
+              </p>
+            </div>
+            <Switch
+              checked={responseCacheEnabled}
+              onCheckedChange={setResponseCacheEnabled}
+              aria-label="切换 API Key 响应缓存"
+            />
+          </div>
+
           {protocolType === "azure_openai" ? (
             <div className="grid gap-4 p-4 rounded-xl bg-accent/20 border border-primary/10">
                <div className="grid gap-2">
@@ -306,4 +466,54 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
       </DialogContent>
     </Dialog>
   );
+}
+
+function parseDateTimeLocalValue(value: string): number | null {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+  return Math.floor(timestamp / 1000);
+}
+
+function toDateTimeLocalValue(timestamp: number): string {
+  const date = new Date(timestamp * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function parseLimitInput(value: string): number | null {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.floor(parsed);
+}
+
+function formatLimitInput(value: number | null | undefined): string {
+  return value && value > 0 ? String(Math.floor(value)) : "";
+}
+
+function parseModelChainInput(value: string): string[] {
+  const seen = new Set<string>();
+  const models: string[] = [];
+  for (const item of value.split(/\r?\n|,/)) {
+    const normalized = item.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    models.push(normalized);
+  }
+  return models;
+}
+
+function formatModelChainInput(value: string[]): string {
+  return value.filter((item) => item.trim().length > 0).join("\n");
 }

@@ -9,7 +9,9 @@ use super::{
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
-    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
+    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
+    APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
 };
@@ -144,6 +146,42 @@ pub fn set_gateway_request_compression_enabled(enabled: bool) -> Result<bool, St
 
 pub fn current_gateway_request_compression_enabled() -> bool {
     gateway::request_compression_enabled()
+}
+
+pub fn set_gateway_response_cache_enabled(enabled: bool) -> Result<bool, String> {
+    let applied = gateway::set_response_cache_enabled(enabled);
+    save_persisted_bool_setting(APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY, applied)?;
+    Ok(applied)
+}
+
+pub fn current_gateway_response_cache_enabled() -> bool {
+    gateway::current_response_cache_config().enabled
+}
+
+pub fn set_gateway_response_cache_ttl_secs(ttl_secs: u64) -> Result<u64, String> {
+    let applied = gateway::set_response_cache_ttl_secs(ttl_secs)?;
+    save_persisted_app_setting(
+        APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY,
+        Some(&applied.to_string()),
+    )?;
+    Ok(applied)
+}
+
+pub fn current_gateway_response_cache_ttl_secs() -> u64 {
+    gateway::current_response_cache_ttl_secs()
+}
+
+pub fn set_gateway_response_cache_max_entries(max_entries: usize) -> Result<usize, String> {
+    let applied = gateway::set_response_cache_max_entries(max_entries)?;
+    save_persisted_app_setting(
+        APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
+        Some(&applied.to_string()),
+    )?;
+    Ok(applied)
+}
+
+pub fn current_gateway_response_cache_max_entries() -> usize {
+    gateway::current_response_cache_max_entries()
 }
 
 pub fn set_gateway_originator(originator: &str) -> Result<String, String> {

@@ -4,8 +4,7 @@ use std::collections::BTreeMap;
 use super::{
     open_storage, AUTO_DISABLE_RISKY_ACCOUNTS_ENABLED,
     AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD,
-    AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD,
-    AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS,
+    AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD, AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS,
 };
 
 const AUTO_GOVERNANCE_SCAN_EVENT_LIMIT: i64 = 2_000;
@@ -302,9 +301,7 @@ mod tests {
             Some(GovernanceFailureKind::Auth)
         );
         assert_eq!(
-            classify_governance_failure(
-                "backend proxy error: proxy authentication required"
-            ),
+            classify_governance_failure("backend proxy error: proxy authentication required"),
             Some(GovernanceFailureKind::Proxy)
         );
         assert_eq!(

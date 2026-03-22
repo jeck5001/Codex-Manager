@@ -1,6 +1,11 @@
-use codexmanager_core::rpc::types::{JsonRpcRequest, JsonRpcResponse, RequestLogListParams};
+use codexmanager_core::rpc::types::{
+    JsonRpcRequest, JsonRpcResponse, RequestLogExportParams, RequestLogListParams,
+};
 
-use crate::{requestlog_clear, requestlog_list, requestlog_summary, requestlog_today_summary};
+use crate::{
+    requestlog_clear, requestlog_export, requestlog_list, requestlog_summary,
+    requestlog_today_summary,
+};
 
 pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     let result = match req.method.as_str() {
@@ -22,6 +27,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 query,
                 status_filter,
             ))
+        }
+        "requestlog/export" => {
+            let params = req
+                .params
+                .clone()
+                .map(serde_json::from_value::<RequestLogExportParams>)
+                .transpose()
+                .map(|params| params.unwrap_or_default())
+                .map_err(|err| format!("invalid requestlog/export params: {err}"));
+            super::value_or_error(params.and_then(requestlog_export::export_request_logs))
         }
         "requestlog/clear" => super::ok_or_error(requestlog_clear::clear_request_logs()),
         "requestlog/today_summary" => {

@@ -88,7 +88,9 @@ pub(super) fn finalize_upstream_response(
     path: &str,
     trace_id: &str,
     started_at: std::time::Instant,
+    actual_model_header: Option<&str>,
     model_for_log: Option<&str>,
+    response_cache_key: Option<&str>,
     attempted_account_ids: Option<&[String]>,
 ) -> Result<(), String> {
     let status_code = response.status().as_u16();
@@ -103,6 +105,8 @@ pub(super) fn finalize_upstream_response(
         Some(tool_name_restore_map),
         client_is_stream,
         Some(trace_id),
+        actual_model_header,
+        response_cache_key,
     )?;
     let bridge_output_text_len = bridge
         .usage

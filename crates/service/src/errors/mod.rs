@@ -17,6 +17,7 @@ pub(crate) enum ErrorCode {
     UpstreamTimeout,
     UpstreamChallengeBlocked,
     UpstreamRateLimited,
+    ApiKeyRateLimited,
     UpstreamNotFound,
     UpstreamNonSuccess,
     NoAvailableAccount,
@@ -39,6 +40,7 @@ impl ErrorCode {
             Self::UpstreamTimeout => "upstream_timeout",
             Self::UpstreamChallengeBlocked => "upstream_challenge_blocked",
             Self::UpstreamRateLimited => "upstream_rate_limited",
+            Self::ApiKeyRateLimited => "api_key_rate_limited",
             Self::UpstreamNotFound => "upstream_not_found",
             Self::UpstreamNonSuccess => "upstream_non_success",
             Self::NoAvailableAccount => "no_available_account",
@@ -89,6 +91,9 @@ pub(crate) fn classify_message(message: &str) -> ErrorCode {
     }
     if normalized == "upstream rate-limited" {
         return ErrorCode::UpstreamRateLimited;
+    }
+    if normalized.starts_with("api key ") && normalized.contains("limit exceeded") {
+        return ErrorCode::ApiKeyRateLimited;
     }
     if normalized == "upstream not-found failover" {
         return ErrorCode::UpstreamNotFound;
@@ -203,6 +208,10 @@ mod tests {
         assert_eq!(
             classify_message("上游被安全验证拦截（Cloudflare/WAF）"),
             ErrorCode::UpstreamChallengeBlocked
+        );
+        assert_eq!(
+            classify_message("api key rpm limit exceeded"),
+            ErrorCode::ApiKeyRateLimited
         );
         assert_eq!(
             classify_message("上游流中途中断（未正常结束）"),

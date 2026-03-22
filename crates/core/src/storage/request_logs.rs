@@ -41,16 +41,20 @@ impl Storage {
     pub fn insert_request_log(&self, log: &RequestLog) -> Result<i64> {
         self.conn.execute(
             "INSERT INTO request_logs (
-                trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json,
+                trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json, route_strategy,
+                requested_model, model_fallback_path_json,
                 request_path, original_path, adapted_path,
                 method, model, reasoning_effort, response_adapter, upstream_url, status_code, duration_ms, error, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             params![
                 &log.trace_id,
                 &log.key_id,
                 &log.account_id,
                 &log.initial_account_id,
                 &log.attempted_account_ids_json,
+                &log.route_strategy,
+                &log.requested_model,
+                &log.model_fallback_path_json,
                 &log.request_path,
                 &log.original_path,
                 &log.adapted_path,
@@ -76,16 +80,20 @@ impl Storage {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "INSERT INTO request_logs (
-                trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json,
+                trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json, route_strategy,
+                requested_model, model_fallback_path_json,
                 request_path, original_path, adapted_path,
                 method, model, reasoning_effort, response_adapter, upstream_url, status_code, duration_ms, error, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             params![
                 &log.trace_id,
                 &log.key_id,
                 &log.account_id,
                 &log.initial_account_id,
                 &log.attempted_account_ids_json,
+                &log.route_strategy,
+                &log.requested_model,
+                &log.model_fallback_path_json,
                 &log.request_path,
                 &log.original_path,
                 &log.adapted_path,
@@ -148,7 +156,8 @@ impl Storage {
         let filters = build_request_log_filters(query, status_filter);
         let sql = format!(
             "SELECT
-                r.trace_id, r.key_id, r.account_id, r.initial_account_id, r.attempted_account_ids_json,
+                r.trace_id, r.key_id, r.account_id, r.initial_account_id, r.attempted_account_ids_json, r.route_strategy,
+                r.requested_model, r.model_fallback_path_json,
                 r.request_path, r.original_path, r.adapted_path,
                 r.method, r.model, r.reasoning_effort, r.response_adapter, r.upstream_url, r.status_code, r.duration_ms,
                 t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
@@ -254,6 +263,9 @@ impl Storage {
                 account_id TEXT,
                 initial_account_id TEXT,
                 attempted_account_ids_json TEXT,
+                route_strategy TEXT,
+                requested_model TEXT,
+                model_fallback_path_json TEXT,
                 request_path TEXT NOT NULL,
                 original_path TEXT,
                 adapted_path TEXT,
@@ -313,6 +325,17 @@ impl Storage {
         Ok(())
     }
 
+    pub(super) fn ensure_request_log_route_strategy_column(&self) -> Result<()> {
+        self.ensure_column("request_logs", "route_strategy", "TEXT")?;
+        Ok(())
+    }
+
+    pub(super) fn ensure_request_log_model_fallback_columns(&self) -> Result<()> {
+        self.ensure_column("request_logs", "requested_model", "TEXT")?;
+        self.ensure_column("request_logs", "model_fallback_path_json", "TEXT")?;
+        Ok(())
+    }
+
     pub(super) fn ensure_request_log_duration_column(&self) -> Result<()> {
         self.ensure_column("request_logs", "duration_ms", "INTEGER")?;
         Ok(())
@@ -323,6 +346,8 @@ impl Storage {
         self.ensure_request_log_reasoning_column()?;
         self.ensure_request_log_account_tokens_cost_columns()?;
         self.ensure_request_log_trace_context_columns()?;
+        self.ensure_request_log_route_strategy_column()?;
+        self.ensure_request_log_model_fallback_columns()?;
 
         let legacy_columns = [
             "input_tokens",
@@ -352,6 +377,9 @@ impl Storage {
                 account_id TEXT,
                 initial_account_id TEXT,
                 attempted_account_ids_json TEXT,
+                route_strategy TEXT,
+                requested_model TEXT,
+                model_fallback_path_json TEXT,
                 request_path TEXT NOT NULL,
                 original_path TEXT,
                 adapted_path TEXT,
@@ -366,12 +394,13 @@ impl Storage {
                 created_at INTEGER NOT NULL
              );
              INSERT INTO request_logs (
-                id, trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json,
+                id, trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json, route_strategy,
+                requested_model, model_fallback_path_json,
                 request_path, original_path, adapted_path,
                 method, model, reasoning_effort, response_adapter, upstream_url, status_code, duration_ms, error, created_at
              )
              SELECT
-                id, trace_id, key_id, account_id, NULL, NULL, request_path, original_path, adapted_path,
+                id, trace_id, key_id, account_id, NULL, NULL, NULL, NULL, NULL, request_path, original_path, adapted_path,
                 method, model, reasoning_effort, response_adapter, upstream_url, status_code, NULL, error, created_at
              FROM request_logs_legacy_028;
              DROP TABLE request_logs_legacy_028;",
@@ -390,24 +419,27 @@ fn map_request_log_row(row: &Row<'_>) -> Result<RequestLog> {
         account_id: row.get(2)?,
         initial_account_id: row.get(3)?,
         attempted_account_ids_json: row.get(4)?,
-        request_path: row.get(5)?,
-        original_path: row.get(6)?,
-        adapted_path: row.get(7)?,
-        method: row.get(8)?,
-        model: row.get(9)?,
-        reasoning_effort: row.get(10)?,
-        response_adapter: row.get(11)?,
-        upstream_url: row.get(12)?,
-        status_code: row.get(13)?,
-        duration_ms: row.get(14)?,
-        input_tokens: row.get(15)?,
-        cached_input_tokens: row.get(16)?,
-        output_tokens: row.get(17)?,
-        total_tokens: row.get(18)?,
-        reasoning_output_tokens: row.get(19)?,
-        estimated_cost_usd: row.get(20)?,
-        error: row.get(21)?,
-        created_at: row.get(22)?,
+        route_strategy: row.get(5)?,
+        requested_model: row.get(6)?,
+        model_fallback_path_json: row.get(7)?,
+        request_path: row.get(8)?,
+        original_path: row.get(9)?,
+        adapted_path: row.get(10)?,
+        method: row.get(11)?,
+        model: row.get(12)?,
+        reasoning_effort: row.get(13)?,
+        response_adapter: row.get(14)?,
+        upstream_url: row.get(15)?,
+        status_code: row.get(16)?,
+        duration_ms: row.get(17)?,
+        input_tokens: row.get(18)?,
+        cached_input_tokens: row.get(19)?,
+        output_tokens: row.get(20)?,
+        total_tokens: row.get(21)?,
+        reasoning_output_tokens: row.get(22)?,
+        estimated_cost_usd: row.get(23)?,
+        error: row.get(24)?,
+        created_at: row.get(25)?,
     })
 }
 
@@ -477,10 +509,13 @@ fn append_request_log_query_clause(
                 "(r.request_path LIKE ?
                     OR IFNULL(r.initial_account_id,'') LIKE ?
                     OR IFNULL(r.attempted_account_ids_json,'') LIKE ?
+                    OR IFNULL(r.requested_model,'') LIKE ?
+                    OR IFNULL(r.model_fallback_path_json,'') LIKE ?
                     OR IFNULL(r.original_path,'') LIKE ?
                     OR IFNULL(r.adapted_path,'') LIKE ?
                     OR r.method LIKE ?
                     OR IFNULL(r.account_id,'') LIKE ?
+                    OR IFNULL(r.route_strategy,'') LIKE ?
                     OR IFNULL(r.model,'') LIKE ?
                     OR IFNULL(r.reasoning_effort,'') LIKE ?
                     OR IFNULL(r.response_adapter,'') LIKE ?
@@ -497,7 +532,7 @@ fn append_request_log_query_clause(
                     OR IFNULL(CAST(t.estimated_cost_usd AS TEXT),'') LIKE ?)"
                     .to_string(),
             );
-            for _ in 0..21 {
+            for _ in 0..24 {
                 params.push(Value::Text(pattern.clone()));
             }
         }

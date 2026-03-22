@@ -128,16 +128,14 @@ fn country_currency(country: &str) -> &'static str {
 }
 
 fn extract_oai_did(cookies: &str) -> Option<String> {
-    cookies
-        .split(';')
-        .find_map(|part| {
-            let trimmed = part.trim();
-            trimmed
-                .strip_prefix("oai-did=")
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
-        })
+    cookies.split(';').find_map(|part| {
+        let trimmed = part.trim();
+        trimmed
+            .strip_prefix("oai-did=")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    })
 }
 
 fn payment_headers(access_token: &str, cookies: Option<&str>) -> Vec<(&'static str, String)> {
@@ -192,14 +190,14 @@ fn read_session_state_map() -> BTreeMap<String, AccountSessionState> {
 }
 
 fn save_payment_state_map(map: &BTreeMap<String, AccountPaymentState>) -> Result<(), String> {
-    let raw =
-        serde_json::to_string(map).map_err(|err| format!("serialize payment state failed: {err}"))?;
+    let raw = serde_json::to_string(map)
+        .map_err(|err| format!("serialize payment state failed: {err}"))?;
     save_persisted_app_setting(APP_SETTING_ACCOUNT_PAYMENT_STATE_KEY, Some(&raw))
 }
 
 fn save_session_state_map(map: &BTreeMap<String, AccountSessionState>) -> Result<(), String> {
-    let raw =
-        serde_json::to_string(map).map_err(|err| format!("serialize session state failed: {err}"))?;
+    let raw = serde_json::to_string(map)
+        .map_err(|err| format!("serialize session state failed: {err}"))?;
     save_persisted_app_setting(APP_SETTING_ACCOUNT_SESSION_STATE_KEY, Some(&raw))
 }
 
@@ -268,7 +266,12 @@ fn account_cookies(account_id: &str) -> Option<String> {
 
 fn read_team_manager_settings() -> TeamManagerSettings {
     let enabled = get_persisted_app_setting(APP_SETTING_TEAM_MANAGER_ENABLED_KEY)
-        .map(|raw| matches!(raw.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .map(|raw| {
+            matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
         .unwrap_or(false);
 
     TeamManagerSettings {
@@ -388,7 +391,11 @@ fn generate_checkout_link(
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
             .unwrap_or("payment checkout failed");
-        return Err(format!("payment checkout http {}: {}", status.as_u16(), detail));
+        return Err(format!(
+            "payment checkout http {}: {}",
+            status.as_u16(),
+            detail
+        ));
     }
 
     let checkout_session_id = payload

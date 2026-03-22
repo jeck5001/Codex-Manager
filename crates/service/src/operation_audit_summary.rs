@@ -3,8 +3,8 @@ use codexmanager_core::rpc::types::OperationAuditItem;
 const DEFAULT_OPERATION_AUDIT_LIMIT: i64 = 8;
 
 pub(crate) fn read_recent_operation_audits() -> Result<Vec<OperationAuditItem>, String> {
-    let storage = crate::storage_helpers::open_storage()
-        .ok_or_else(|| "storage unavailable".to_string())?;
+    let storage =
+        crate::storage_helpers::open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let events = storage
         .list_recent_events_by_type(
             crate::operation_audit::operation_audit_event_type(),

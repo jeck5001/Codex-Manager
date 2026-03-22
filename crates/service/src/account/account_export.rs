@@ -310,7 +310,12 @@ fn with_resolved_export_label(mut account: Account, token: &Token) -> Account {
 
     for raw in [&token.id_token, &token.access_token] {
         if let Ok(claims) = parse_id_token_claims(raw) {
-            if let Some(email) = claims.email.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+            if let Some(email) = claims
+                .email
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
                 account.label = email.to_string();
                 return account;
             }
