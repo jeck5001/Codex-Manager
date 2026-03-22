@@ -210,7 +210,66 @@ fn set_route_strategy_accepts_aliases_and_reports_canonical_name() {
         "balanced"
     );
     assert_eq!(current_route_strategy(), "balanced");
+    assert_eq!(
+        set_route_strategy("weighted").expect("set weighted"),
+        "weighted"
+    );
+    assert_eq!(
+        set_route_strategy("least_latency").expect("set least latency alias"),
+        "least-latency"
+    );
+    assert_eq!(
+        set_route_strategy("cost_first").expect("set cost-first alias"),
+        "cost-first"
+    );
     assert!(set_route_strategy("unsupported").is_err());
+}
+
+#[test]
+fn weighted_rotation_prefers_higher_weight_candidate() {
+    let _guard = route_strategy_test_guard();
+    clear_route_state_for_tests();
+
+    let mut low = 0;
+    let mut high = 0;
+    for _ in 0..100 {
+        let index =
+            weighted_rotation_index(&[20, 80], "gk_weighted", Some("gpt-5.3-codex")).unwrap();
+        if index == 0 {
+            low += 1;
+        } else {
+            high += 1;
+        }
+    }
+
+    assert!(high > low);
+}
+
+#[test]
+fn least_latency_prefers_account_with_lower_recent_latency() {
+    let _guard = route_strategy_test_guard();
+    clear_route_state_for_tests();
+    super::super::route_latency::record_route_latency("acc-a", 600);
+    super::super::route_latency::record_route_latency("acc-b", 120);
+
+    let mut candidates = candidate_list();
+    apply_least_latency_order(&mut candidates);
+    assert_eq!(account_ids(&candidates)[0], "acc-b");
+}
+
+#[test]
+fn plan_priority_orders_free_before_plus_and_team() {
+    assert!(plan_priority("free") < plan_priority("plus"));
+    assert!(plan_priority("plus") < plan_priority("team"));
+}
+
+#[test]
+fn plan_priority_normalizes_paid_variants_into_stable_buckets() {
+    assert_eq!(plan_priority("pro"), plan_priority("team"));
+    assert_eq!(plan_priority("team"), plan_priority("business"));
+    assert_eq!(plan_priority("team"), plan_priority("enterprise"));
+    assert!(plan_priority("plus") < plan_priority("pro"));
+    assert!(plan_priority("unknown") > plan_priority("team"));
 }
 
 #[test]

@@ -1,5 +1,6 @@
 use codexmanager_core::storage::{
-    now_ts, Account, ApiKey, RequestLog, RequestTokenStat, Storage, Token, UsageSnapshotRecord,
+    now_ts, Account, ApiKey, ModelPricing, RequestLog, RequestTokenStat, Storage, Token,
+    UsageSnapshotRecord,
 };
 use std::ffi::OsString;
 
@@ -267,6 +268,54 @@ fn storage_updates_account_status_only_when_changed() {
         .expect("find account")
         .expect("account exists");
     assert_eq!(loaded.status, "inactive");
+}
+
+#[test]
+fn storage_can_roundtrip_api_key_response_cache_config() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    let now = now_ts();
+    let key = ApiKey {
+        id: "gk-response-cache-roundtrip".to_string(),
+        name: Some("cache".to_string()),
+        model_slug: Some("gpt-5.3-codex".to_string()),
+        reasoning_effort: Some("medium".to_string()),
+        client_type: "codex".to_string(),
+        protocol_type: "openai_compat".to_string(),
+        auth_scheme: "authorization_bearer".to_string(),
+        upstream_base_url: None,
+        static_headers_json: None,
+        key_hash: "hash-response-cache-roundtrip".to_string(),
+        status: "active".to_string(),
+        created_at: now,
+        last_used_at: None,
+        expires_at: None,
+    };
+    storage.insert_api_key(&key).expect("insert api key");
+
+    assert!(storage
+        .find_api_key_response_cache_config_by_id(&key.id)
+        .expect("find empty config")
+        .is_none());
+
+    storage
+        .upsert_api_key_response_cache_config(&key.id, true)
+        .expect("enable response cache");
+    let enabled = storage
+        .find_api_key_response_cache_config_by_id(&key.id)
+        .expect("find enabled config")
+        .expect("enabled config exists");
+    assert!(enabled.enabled);
+
+    storage
+        .upsert_api_key_response_cache_config(&key.id, false)
+        .expect("disable response cache");
+    let disabled = storage
+        .find_api_key_response_cache_config_by_id(&key.id)
+        .expect("find disabled config")
+        .expect("disabled config exists");
+    assert!(!disabled.enabled);
 }
 
 #[test]
@@ -611,6 +660,9 @@ fn request_logs_support_prefixed_query_filters() {
             account_id: Some("acc-1".to_string()),
             initial_account_id: Some("acc-1".to_string()),
             attempted_account_ids_json: Some(r#"["acc-1"]"#.to_string()),
+            route_strategy: Some("weighted".to_string()),
+            requested_model: None,
+            model_fallback_path_json: None,
             request_path: "/v1/responses".to_string(),
             original_path: Some("/v1/chat/completions".to_string()),
             adapted_path: Some("/v1/responses".to_string()),
@@ -639,6 +691,9 @@ fn request_logs_support_prefixed_query_filters() {
             account_id: Some("acc-1".to_string()),
             initial_account_id: Some("acc-1".to_string()),
             attempted_account_ids_json: Some(r#"["acc-1"]"#.to_string()),
+            route_strategy: Some("least-latency".to_string()),
+            requested_model: None,
+            model_fallback_path_json: None,
             request_path: "/v1/responses".to_string(),
             original_path: Some("/v1/responses".to_string()),
             adapted_path: Some("/v1/responses".to_string()),
@@ -667,6 +722,9 @@ fn request_logs_support_prefixed_query_filters() {
             account_id: Some("acc-2".to_string()),
             initial_account_id: Some("acc-2".to_string()),
             attempted_account_ids_json: Some(r#"["acc-2"]"#.to_string()),
+            route_strategy: Some("cost-first".to_string()),
+            requested_model: None,
+            model_fallback_path_json: None,
             request_path: "/v1/models".to_string(),
             original_path: Some("/v1/models".to_string()),
             adapted_path: Some("/v1/models".to_string()),
@@ -735,6 +793,15 @@ fn request_logs_support_prefixed_query_filters() {
         Some("OpenAIChatCompletionsJson")
     );
 
+    let strategy_filtered = storage
+        .list_request_logs(Some("least-latency"), 100)
+        .expect("filter by route strategy");
+    assert_eq!(strategy_filtered.len(), 1);
+    assert_eq!(
+        strategy_filtered[0].route_strategy.as_deref(),
+        Some("least-latency")
+    );
+
     let fallback_filtered = storage
         .list_request_logs(Some("timeout"), 100)
         .expect("fallback fuzzy query");
@@ -757,6 +824,9 @@ fn request_log_today_summary_reads_from_token_stats_table() {
             account_id: Some("acc-summary".to_string()),
             initial_account_id: Some("acc-summary".to_string()),
             attempted_account_ids_json: Some(r#"["acc-summary"]"#.to_string()),
+            route_strategy: Some("weighted".to_string()),
+            requested_model: None,
+            model_fallback_path_json: None,
             request_path: "/v1/responses".to_string(),
             original_path: Some("/v1/responses".to_string()),
             adapted_path: Some("/v1/responses".to_string()),
@@ -818,6 +888,9 @@ fn insert_request_log_with_token_stat_writes_both_tables_in_one_call() {
                 account_id: Some("acc-atomic".to_string()),
                 initial_account_id: Some("acc-atomic".to_string()),
                 attempted_account_ids_json: Some(r#"["acc-atomic"]"#.to_string()),
+                route_strategy: Some("balanced".to_string()),
+                requested_model: None,
+                model_fallback_path_json: None,
                 request_path: "/v1/responses".to_string(),
                 original_path: Some("/v1/responses".to_string()),
                 adapted_path: Some("/v1/responses".to_string()),
@@ -884,6 +957,9 @@ fn clear_request_logs_keeps_token_stats_for_usage_summary() {
             account_id: Some("acc-clear".to_string()),
             initial_account_id: Some("acc-clear".to_string()),
             attempted_account_ids_json: Some(r#"["acc-clear"]"#.to_string()),
+            route_strategy: Some("ordered".to_string()),
+            requested_model: None,
+            model_fallback_path_json: None,
             request_path: "/v1/responses".to_string(),
             original_path: Some("/v1/responses".to_string()),
             adapted_path: Some("/v1/responses".to_string()),
@@ -1042,6 +1118,7 @@ fn usage_snapshots_can_prune_history_per_account() {
 fn storage_api_keys_include_profile_fields() {
     let storage = Storage::open_in_memory().expect("open in memory");
     storage.init().expect("init schema");
+    let expires_at = now_ts() + 3600;
 
     storage
         .insert_api_key(&ApiKey {
@@ -1058,6 +1135,7 @@ fn storage_api_keys_include_profile_fields() {
             status: "active".to_string(),
             created_at: now_ts(),
             last_used_at: None,
+            expires_at: Some(expires_at),
         })
         .expect("insert key");
 
@@ -1071,6 +1149,7 @@ fn storage_api_keys_include_profile_fields() {
     assert_eq!(key.protocol_type, "anthropic_native");
     assert_eq!(key.auth_scheme, "x_api_key");
     assert_eq!(key.model_slug.as_deref(), Some("claude-sonnet-4"));
+    assert_eq!(key.expires_at, Some(expires_at));
 }
 
 #[test]
@@ -1093,6 +1172,7 @@ fn storage_can_roundtrip_api_key_secret() {
             status: "active".to_string(),
             created_at: now_ts(),
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert key");
 
@@ -1110,4 +1190,197 @@ fn storage_can_roundtrip_api_key_secret() {
         .find_api_key_secret_by_id("key-secret-1")
         .expect("load removed secret");
     assert!(removed.is_none());
+}
+
+#[test]
+fn storage_can_roundtrip_api_key_rate_limit_config() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    storage
+        .insert_api_key(&ApiKey {
+            id: "key-rate-1".to_string(),
+            name: Some("rate".to_string()),
+            model_slug: None,
+            reasoning_effort: None,
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: "hash-rate-1".to_string(),
+            status: "active".to_string(),
+            created_at: now_ts(),
+            last_used_at: None,
+            expires_at: None,
+        })
+        .expect("insert key");
+
+    storage
+        .upsert_api_key_rate_limit("key-rate-1", Some(10), Some(1000), Some(50))
+        .expect("upsert rate limit");
+    let config = storage
+        .find_api_key_rate_limit_by_id("key-rate-1")
+        .expect("load rate limit")
+        .expect("rate limit exists");
+    assert_eq!(config.key_id, "key-rate-1");
+    assert_eq!(config.rpm, Some(10));
+    assert_eq!(config.tpm, Some(1000));
+    assert_eq!(config.daily_limit, Some(50));
+
+    storage
+        .upsert_api_key_rate_limit("key-rate-1", None, None, None)
+        .expect("clear rate limit");
+    let cleared = storage
+        .find_api_key_rate_limit_by_id("key-rate-1")
+        .expect("reload rate limit");
+    assert!(cleared.is_none(), "rate limit row should be removed");
+}
+
+#[test]
+fn storage_can_roundtrip_api_key_model_fallback_config() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    storage
+        .insert_api_key(&ApiKey {
+            id: "key-fallback-1".to_string(),
+            name: Some("fallback".to_string()),
+            model_slug: Some("o3".to_string()),
+            reasoning_effort: None,
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: "hash-fallback-1".to_string(),
+            status: "active".to_string(),
+            created_at: now_ts(),
+            last_used_at: None,
+            expires_at: None,
+        })
+        .expect("insert key");
+
+    storage
+        .upsert_api_key_model_fallback(
+            "key-fallback-1",
+            &[
+                "o3".to_string(),
+                "o4-mini".to_string(),
+                "gpt-4o".to_string(),
+            ],
+        )
+        .expect("upsert model fallback");
+    let config = storage
+        .find_api_key_model_fallback_by_id("key-fallback-1")
+        .expect("load model fallback")
+        .expect("model fallback exists");
+    assert_eq!(config.key_id, "key-fallback-1");
+    assert_eq!(config.model_chain_json, r#"["o3","o4-mini","gpt-4o"]"#);
+
+    storage
+        .upsert_api_key_model_fallback("key-fallback-1", &[])
+        .expect("clear model fallback");
+    let cleared = storage
+        .find_api_key_model_fallback_by_id("key-fallback-1")
+        .expect("reload model fallback");
+    assert!(cleared.is_none(), "model fallback row should be removed");
+}
+
+#[test]
+fn storage_can_roundtrip_model_pricing_config() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    storage
+        .replace_model_pricing(&[
+            ModelPricing {
+                model_slug: "gpt-4o".to_string(),
+                input_price_per_1k: 0.005,
+                output_price_per_1k: 0.015,
+                updated_at: now_ts(),
+            },
+            ModelPricing {
+                model_slug: "o3".to_string(),
+                input_price_per_1k: 0.02,
+                output_price_per_1k: 0.08,
+                updated_at: now_ts(),
+            },
+        ])
+        .expect("replace model pricing");
+
+    let items = storage.list_model_pricing().expect("list pricing");
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].model_slug, "gpt-4o");
+    assert_eq!(items[1].model_slug, "o3");
+    assert_eq!(items[1].input_price_per_1k, 0.02);
+    assert_eq!(items[1].output_price_per_1k, 0.08);
+
+    storage
+        .replace_model_pricing(&[])
+        .expect("clear model pricing");
+    let cleared = storage.list_model_pricing().expect("list cleared pricing");
+    assert!(cleared.is_empty(), "model pricing rows should be removed");
+}
+
+#[test]
+fn storage_can_summarize_cost_usage_by_key_model_and_day() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    storage
+        .insert_request_token_stat(&RequestTokenStat {
+            request_log_id: 1,
+            key_id: Some("key-a".to_string()),
+            account_id: Some("acc-a".to_string()),
+            model: Some("o3".to_string()),
+            input_tokens: Some(100),
+            cached_input_tokens: Some(20),
+            output_tokens: Some(30),
+            total_tokens: Some(110),
+            reasoning_output_tokens: Some(5),
+            estimated_cost_usd: Some(1.2),
+            created_at: 1_700_000_000,
+        })
+        .expect("insert token stat 1");
+    storage
+        .insert_request_token_stat(&RequestTokenStat {
+            request_log_id: 2,
+            key_id: Some("key-b".to_string()),
+            account_id: Some("acc-b".to_string()),
+            model: Some("gpt-4o".to_string()),
+            input_tokens: Some(50),
+            cached_input_tokens: Some(0),
+            output_tokens: Some(25),
+            total_tokens: Some(75),
+            reasoning_output_tokens: Some(0),
+            estimated_cost_usd: Some(0.4),
+            created_at: 1_700_086_400,
+        })
+        .expect("insert token stat 2");
+
+    let total = storage
+        .summarize_cost_usage_between(1_699_999_000, 1_700_172_800)
+        .expect("summarize total");
+    assert_eq!(total.request_count, 2);
+    assert_eq!(total.total_tokens, 185);
+    assert!((total.estimated_cost_usd - 1.6).abs() < 0.0001);
+
+    let by_key = storage
+        .summarize_cost_usage_by_key_between(1_699_999_000, 1_700_172_800)
+        .expect("summarize by key");
+    assert_eq!(by_key.len(), 2);
+    assert_eq!(by_key[0].key_id, "key-a");
+
+    let by_model = storage
+        .summarize_cost_usage_by_model_between(1_699_999_000, 1_700_172_800)
+        .expect("summarize by model");
+    assert_eq!(by_model.len(), 2);
+    assert_eq!(by_model[0].model, "o3");
+
+    let by_day = storage
+        .summarize_cost_usage_by_day_between(1_699_999_000, 1_700_172_800)
+        .expect("summarize by day");
+    assert!(!by_day.is_empty());
+    assert_eq!(by_day.iter().map(|item| item.request_count).sum::<i64>(), 2);
 }

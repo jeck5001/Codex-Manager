@@ -59,6 +59,24 @@ export function useDashboardStats() {
     },
     refetchIntervalInBackground: true,
   });
+  const dashboardHealthQuery = useQuery({
+    queryKey: ["dashboard-health", serviceStatus.addr],
+    queryFn: () => serviceClient.getDashboardHealth(),
+    enabled: isServiceReady,
+    retry: 1,
+    staleTime: 15_000,
+    refetchInterval: isServiceReady ? 30_000 : false,
+    refetchIntervalInBackground: true,
+  });
+  const dashboardTrendQuery = useQuery({
+    queryKey: ["dashboard-trend", serviceStatus.addr],
+    queryFn: () => serviceClient.getDashboardTrend(),
+    enabled: isServiceReady,
+    retry: 1,
+    staleTime: 15_000,
+    refetchInterval: isServiceReady ? 30_000 : false,
+    refetchIntervalInBackground: true,
+  });
 
   const data = snapshotQuery.data;
   const accounts = data?.accounts || [];
@@ -136,8 +154,13 @@ export function useDashboardStats() {
     failureReasonSummary,
     governanceSummary,
     operationAudits,
+    dashboardHealth: dashboardHealthQuery.data ?? null,
+    dashboardTrend: dashboardTrendQuery.data ?? null,
     requestLogs: data?.requestLogs || [],
     isLoading: !isServiceReady || snapshotQuery.isPending || shouldWarmupPoll,
+    isDashboardLoading:
+      isServiceReady &&
+      (dashboardHealthQuery.isPending || dashboardTrendQuery.isPending),
     isSyncingSnapshot: shouldWarmupPoll,
     isServiceReady,
     isError: snapshotQuery.isError,

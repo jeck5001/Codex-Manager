@@ -36,6 +36,21 @@ pub async fn service_requestlog_summary(
 }
 
 #[tauri::command]
+pub async fn service_requestlog_export(
+    addr: Option<String>,
+    format: Option<String>,
+    query: Option<String>,
+    status_filter: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "format": format,
+        "query": query,
+        "statusFilter": status_filter
+    });
+    rpc_call_in_background("requestlog/export", addr, Some(params)).await
+}
+
+#[tauri::command]
 pub async fn service_requestlog_today_summary(
     addr: Option<String>,
 ) -> Result<serde_json::Value, String> {

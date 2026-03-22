@@ -3,12 +3,13 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use super::{
-    save_persisted_app_setting, save_persisted_bool_setting,
-    set_close_to_tray_on_close_setting, set_env_overrides, set_gateway_background_tasks,
-    set_gateway_cpa_no_cookie_header_mode, set_gateway_free_account_max_model,
-    set_gateway_originator, set_gateway_quota_protection_enabled,
-    set_gateway_quota_protection_threshold_percent, set_gateway_request_compression_enabled,
-    set_gateway_residency_requirement, set_gateway_route_strategy,
+    save_persisted_app_setting, save_persisted_bool_setting, set_close_to_tray_on_close_setting,
+    set_env_overrides, set_gateway_background_tasks, set_gateway_cpa_no_cookie_header_mode,
+    set_gateway_free_account_max_model, set_gateway_originator,
+    set_gateway_quota_protection_enabled, set_gateway_quota_protection_threshold_percent,
+    set_gateway_request_compression_enabled, set_gateway_residency_requirement,
+    set_gateway_response_cache_enabled, set_gateway_response_cache_max_entries,
+    set_gateway_response_cache_ttl_secs, set_gateway_route_strategy,
     set_gateway_sse_keepalive_interval_ms, set_gateway_upstream_proxy_url,
     set_gateway_upstream_stream_timeout_ms, set_lightweight_mode_on_close_to_tray_setting,
     set_saved_service_addr, set_service_bind_mode, set_ui_appearance_preset,
@@ -32,6 +33,9 @@ pub(super) struct AppSettingsPatch {
     quota_protection_enabled: Option<bool>,
     quota_protection_threshold_percent: Option<u64>,
     request_compression_enabled: Option<bool>,
+    response_cache_enabled: Option<bool>,
+    response_cache_ttl_secs: Option<u64>,
+    response_cache_max_entries: Option<usize>,
     gateway_originator: Option<String>,
     gateway_residency_requirement: Option<String>,
     cpa_no_cookie_header_mode_enabled: Option<bool>,
@@ -94,6 +98,15 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     if let Some(enabled) = patch.request_compression_enabled {
         let _ = set_gateway_request_compression_enabled(enabled)?;
     }
+    if let Some(enabled) = patch.response_cache_enabled {
+        let _ = set_gateway_response_cache_enabled(enabled)?;
+    }
+    if let Some(ttl_secs) = patch.response_cache_ttl_secs {
+        let _ = set_gateway_response_cache_ttl_secs(ttl_secs)?;
+    }
+    if let Some(max_entries) = patch.response_cache_max_entries {
+        let _ = set_gateway_response_cache_max_entries(max_entries)?;
+    }
     if let Some(originator) = patch.gateway_originator {
         let _ = set_gateway_originator(&originator)?;
     }
@@ -122,12 +135,16 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
         let _ = save_persisted_bool_setting(crate::APP_SETTING_TEAM_MANAGER_ENABLED_KEY, enabled)?;
     }
     if let Some(api_url) = patch.team_manager_api_url {
-        let _ =
-            save_persisted_app_setting(crate::APP_SETTING_TEAM_MANAGER_API_URL_KEY, Some(&api_url))?;
+        let _ = save_persisted_app_setting(
+            crate::APP_SETTING_TEAM_MANAGER_API_URL_KEY,
+            Some(&api_url),
+        )?;
     }
     if let Some(api_key) = patch.team_manager_api_key {
-        let _ =
-            save_persisted_app_setting(crate::APP_SETTING_TEAM_MANAGER_API_KEY_KEY, Some(&api_key))?;
+        let _ = save_persisted_app_setting(
+            crate::APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
+            Some(&api_key),
+        )?;
     }
     if let Some(password) = patch.web_access_password {
         let _ = crate::set_web_access_password(Some(&password))?;

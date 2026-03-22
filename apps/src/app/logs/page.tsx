@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Database,
+  Download,
   RefreshCw,
   Shield,
   Trash2,
@@ -49,6 +50,7 @@ import { cn } from "@/lib/utils";
 import { RequestLog } from "@/types";
 
 type StatusFilter = "all" | "2xx" | "4xx" | "5xx";
+type ExportFormat = "csv" | "json";
 
 const QUICK_LOG_FILTERS: Array<{
   key: string;
@@ -247,6 +249,45 @@ function formatModelEffortDisplay(log: RequestLog): string {
   return model || effort || "-";
 }
 
+function normalizeModelFallbackPath(log: RequestLog): string[] {
+  return Array.isArray(log.modelFallbackPath)
+    ? log.modelFallbackPath.filter((item) => String(item || "").trim().length > 0)
+    : [];
+}
+
+function resolveRequestedModel(log: RequestLog): string {
+  return String(log.requestedModel || "").trim();
+}
+
+function didModelFallback(log: RequestLog): boolean {
+  const requestedModel = resolveRequestedModel(log);
+  const actualModel = String(log.model || "").trim();
+  const fallbackPath = normalizeModelFallbackPath(log);
+  return (
+    fallbackPath.length > 1 ||
+    (requestedModel.length > 0 &&
+      actualModel.length > 0 &&
+      requestedModel !== actualModel)
+  );
+}
+
+function formatModelFallbackPath(log: RequestLog): string {
+  const fallbackPath = normalizeModelFallbackPath(log);
+  if (fallbackPath.length > 0) {
+    return fallbackPath.join(" -> ");
+  }
+  const requestedModel = resolveRequestedModel(log);
+  const actualModel = String(log.model || "").trim();
+  if (
+    requestedModel.length > 0 &&
+    actualModel.length > 0 &&
+    requestedModel !== actualModel
+  ) {
+    return `${requestedModel} -> ${actualModel}`;
+  }
+  return "";
+}
+
 function AccountKeyInfoCell({
   log,
   accountLabel,
@@ -390,6 +431,11 @@ function RequestRouteInfoCell({
           <span className="max-w-[200px] truncate text-muted-foreground">
             {displayPath}
           </span>
+          {log.routeStrategy ? (
+            <span className="text-[10px] text-muted-foreground">
+              策略 {log.routeStrategy}
+            </span>
+          ) : null}
         </div>
       </TooltipTrigger>
       <TooltipContent className="max-w-md">
@@ -431,6 +477,14 @@ function RequestRouteInfoCell({
               <div className="text-[10px] text-background/70">适配器</div>
               <div className="break-all font-mono text-[11px]">
                 {log.responseAdapter}
+              </div>
+            </div>
+          ) : null}
+          {log.routeStrategy ? (
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-background/70">路由策略</div>
+              <div className="break-all font-mono text-[11px]">
+                {log.routeStrategy}
               </div>
             </div>
           ) : null}
@@ -510,18 +564,40 @@ function ModelEffortCell({ log }: { log: RequestLog }) {
   const model = String(log.model || "").trim();
   const effort = String(log.reasoningEffort || "").trim();
   const display = formatModelEffortDisplay(log);
+  const requestedModel = resolveRequestedModel(log);
+  const fallbackPathLabel = formatModelFallbackPath(log);
+  const hasFallback = didModelFallback(log);
 
   return (
     <Tooltip>
       <TooltipTrigger render={<div />} className="block text-left">
-        <span className="block max-w-[160px] truncate font-medium text-foreground">
-          {display}
-        </span>
+        <div className="flex flex-col gap-1">
+          <span className="block max-w-[160px] truncate font-medium text-foreground">
+            {display}
+          </span>
+          {hasFallback ? (
+            <span className="block max-w-[180px] truncate text-[10px] text-amber-500">
+              降级 {fallbackPathLabel}
+            </span>
+          ) : requestedModel ? (
+            <span className="block max-w-[180px] truncate text-[10px] text-muted-foreground">
+              请求 {requestedModel}
+            </span>
+          ) : null}
+        </div>
       </TooltipTrigger>
       <TooltipContent className="max-w-sm">
         <div className="flex min-w-[200px] flex-col gap-2">
+          {requestedModel ? (
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-background/70">请求模型</div>
+              <div className="break-all font-mono text-[11px]">
+                {requestedModel}
+              </div>
+            </div>
+          ) : null}
           <div className="space-y-0.5">
-            <div className="text-[10px] text-background/70">模型</div>
+            <div className="text-[10px] text-background/70">实际模型</div>
             <div className="break-all font-mono text-[11px]">
               {model || "-"}
             </div>
@@ -530,6 +606,12 @@ function ModelEffortCell({ log }: { log: RequestLog }) {
             <div className="text-[10px] text-background/70">推理</div>
             <div className="break-all font-mono text-[11px]">
               {effort || "-"}
+            </div>
+          </div>
+          <div className="space-y-0.5">
+            <div className="text-[10px] text-background/70">模型降级</div>
+            <div className="break-all font-mono text-[11px]">
+              {hasFallback ? fallbackPathLabel : "未发生降级"}
             </div>
           </div>
         </div>
@@ -550,12 +632,15 @@ function LogsPageContent() {
   const [pageSize, setPageSize] = useState("10");
   const [page, setPage] = useState(1);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("csv");
   const pageSizeNumber = Number(pageSize) || 10;
 
   useEffect(() => {
-    setSearch(searchParams.get("query") || "");
-    setFilter(normalizeStatusFilter(searchParams.get("statusFilter")));
-    setPage(1);
+    queueMicrotask(() => {
+      setSearch(searchParams.get("query") || "");
+      setFilter(normalizeStatusFilter(searchParams.get("statusFilter")));
+      setPage(1);
+    });
   }, [searchParams]);
 
   const { data: accountsResult } = useQuery({
@@ -606,6 +691,37 @@ function LogsPageContent() {
     },
     onError: (error: unknown) => {
       toast.error(error instanceof Error ? error.message : String(error));
+    },
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: () =>
+      serviceClient.exportRequestLogs({
+        format: exportFormat,
+        query: search,
+        statusFilter: filter,
+      }),
+    onSuccess: (result) => {
+      const mimeType =
+        result.format === "json"
+          ? "application/json;charset=utf-8"
+          : "text/csv;charset=utf-8";
+      const blob = new Blob([result.content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download =
+        result.fileName ||
+        `codexmanager-requestlogs.${result.format === "json" ? "json" : "csv"}`;
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      toast.success(`已导出 ${result.recordCount} 条日志`);
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "导出失败");
     },
   });
 
@@ -750,6 +866,30 @@ function LogsPageContent() {
             ))}
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <Select
+              value={exportFormat}
+              onValueChange={(value) =>
+                setExportFormat(value === "json" ? "json" : "csv")
+              }
+            >
+              <SelectTrigger className="glass-card h-9 w-[92px] rounded-xl px-3 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="csv">CSV</SelectItem>
+                <SelectItem value="json">JSON</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              className="glass-card h-9 rounded-xl px-3.5"
+              onClick={() => exportMutation.mutate()}
+              disabled={exportMutation.isPending || !serviceStatus.connected}
+            >
+              <Download className="mr-1.5 h-4 w-4" />
+              {exportMutation.isPending ? "导出中..." : "导出"}
+            </Button>
             <Button
               variant="outline"
               size="sm"

@@ -69,10 +69,13 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
                         None,
                     );
                 }
-                let response = super::error_response::terminal_text_response(
-                    err.status_code,
-                    err.message,
-                    Some(trace_id.as_str()),
+                let response = super::error_response::with_retry_after_header(
+                    super::error_response::terminal_text_response(
+                        err.status_code,
+                        err.message,
+                        Some(trace_id.as_str()),
+                    ),
+                    err.retry_after_secs,
                 );
                 let _ = request.respond(response);
                 return Ok(());

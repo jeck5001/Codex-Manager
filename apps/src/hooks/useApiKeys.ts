@@ -25,6 +25,8 @@ export function useApiKeys() {
   const invalidateAll = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["apikeys"] }),
+      queryClient.invalidateQueries({ queryKey: ["apikey-rate-limit"] }),
+      queryClient.invalidateQueries({ queryKey: ["apikey-model-fallback"] }),
       queryClient.invalidateQueries({ queryKey: ["apikey-models"] }),
       queryClient.invalidateQueries({ queryKey: ["apikey-usage-stats"] }),
       queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
@@ -62,6 +64,18 @@ export function useApiKeys() {
     },
     onError: (error: unknown) => {
       toast.error(`更新失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const renewMutation = useMutation({
+    mutationFn: ({ id, expiresAt }: { id: string; expiresAt: number | null }) =>
+      accountClient.renewApiKey(id, expiresAt),
+    onSuccess: async () => {
+      await invalidateAll();
+      toast.success("密钥已续期");
+    },
+    onError: (error: unknown) => {
+      toast.error(`续期失败: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -104,6 +118,7 @@ export function useApiKeys() {
     createApiKey: createMutation.mutateAsync,
     deleteApiKey: deleteMutation.mutate,
     updateApiKey: updateMutation.mutateAsync,
+    renewApiKey: renewMutation.mutateAsync,
     toggleApiKeyStatus: toggleStatusMutation.mutate,
     refreshModels: (refreshRemote = true) => refreshModelsMutation.mutate(refreshRemote),
     readApiKeySecret: (id: string) => readSecretMutation.mutateAsync(id),

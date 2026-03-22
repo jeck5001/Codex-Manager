@@ -132,8 +132,11 @@ where
                 }
                 Ok(None) => {}
                 Err(err) => {
-                    let refresh_token_invalid =
-                        mark_account_unavailable_for_refresh_token_error(storage, &account.id, &err);
+                    let refresh_token_invalid = mark_account_unavailable_for_refresh_token_error(
+                        storage,
+                        &account.id,
+                        &err,
+                    );
                     log::warn!(
                         "event=gateway_upstream_unauthorized_refresh_failed path={} account_id={} err={}",
                         path,

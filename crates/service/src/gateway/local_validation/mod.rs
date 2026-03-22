@@ -4,6 +4,7 @@ use tiny_http::Request;
 
 mod auth;
 mod io;
+mod rate_limit;
 mod request;
 
 pub(super) struct LocalValidationResult {
@@ -28,9 +29,11 @@ pub(super) struct LocalValidationResult {
     pub(super) method: Method,
 }
 
+#[derive(Debug)]
 pub(super) struct LocalValidationError {
     pub(super) status_code: u16,
     pub(super) message: String,
+    pub(super) retry_after_secs: Option<u64>,
 }
 
 impl LocalValidationError {
@@ -38,7 +41,13 @@ impl LocalValidationError {
         Self {
             status_code,
             message: message.into(),
+            retry_after_secs: None,
         }
+    }
+
+    pub(super) fn with_retry_after_secs(mut self, retry_after_secs: u64) -> Self {
+        self.retry_after_secs = Some(retry_after_secs.max(1));
+        self
     }
 }
 
@@ -53,6 +62,7 @@ pub(super) fn prepare_local_request(
 
     let storage = auth::open_storage_or_error()?;
     let api_key = auth::load_active_api_key(&storage, &platform_key, request.url(), debug)?;
+    rate_limit::check_api_key_rate_limit(&storage, &api_key, &body, request.url(), debug)?;
 
     request::build_local_validation_result(
         request,

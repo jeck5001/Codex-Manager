@@ -4,21 +4,37 @@ import {
   Account,
   AccountListResult,
   AccountUsage,
+  CostExportResult,
+  CostSummaryDayItem,
+  CostSummaryKeyItem,
+  CostSummaryModelItem,
+  CostSummaryResult,
+  CostUsageSummary,
   ApiKey,
   ApiKeyCreateResult,
+  ApiKeyModelFallback,
+  ApiKeyResponseCacheConfig,
+  ApiKeyRateLimit,
   ApiKeyUsageStat,
   AppSettings,
   AccountHealthTier,
   BackgroundTaskSettings,
+  DashboardAccountStatusBucket,
+  DashboardHealth,
+  DashboardTrend,
+  DashboardTrendPoint,
   DeviceAuthInfo,
   EnvOverrideCatalogItem,
   FailureReasonSummaryItem,
   GovernanceSummaryItem,
   FreeProxySyncResult,
+  GatewayResponseCacheStats,
   LoginStartResult,
+  ModelPricingItem,
   ModelOption,
   OperationAuditItem,
   RequestLog,
+  RequestLogExportResult,
   RequestLogFilterSummary,
   RequestLogListResult,
   RequestLogTodaySummary,
@@ -272,6 +288,77 @@ export function normalizeTodaySummary(payload: unknown): RequestLogTodaySummary 
   };
 }
 
+export function normalizeDashboardHealth(payload: unknown): DashboardHealth {
+  const source = asObject(payload);
+  const bucketItems = asArray(source.accountStatusBuckets ?? source.account_status_buckets);
+  const metricsSource = asObject(source.gatewayMetrics ?? source.gateway_metrics);
+
+  return {
+    generatedAt: toNullableNumber(source.generatedAt ?? source.generated_at),
+    accountStatusBuckets: bucketItems
+      .map((item): DashboardAccountStatusBucket | null => {
+        const bucket = asObject(item);
+        const key = asString(bucket.key);
+        if (!key) return null;
+        return {
+          key,
+          label: asString(bucket.label) || key,
+          count: asInteger(bucket.count, 0, 0),
+          percent: asInteger(bucket.percent, 0, 0),
+        };
+      })
+      .filter((item): item is DashboardAccountStatusBucket => Boolean(item)),
+    gatewayMetrics: {
+      windowMinutes: asInteger(metricsSource.windowMinutes ?? metricsSource.window_minutes, 5, 1),
+      totalRequests: asInteger(metricsSource.totalRequests ?? metricsSource.total_requests, 0, 0),
+      successRequests: asInteger(
+        metricsSource.successRequests ?? metricsSource.success_requests,
+        0,
+        0
+      ),
+      errorRequests: asInteger(metricsSource.errorRequests ?? metricsSource.error_requests, 0, 0),
+      qps: Math.max(0, toNullableNumber(metricsSource.qps) ?? 0),
+      successRate: Math.max(
+        0,
+        Math.min(100, toNullableNumber(metricsSource.successRate ?? metricsSource.success_rate) ?? 0)
+      ),
+      p50LatencyMs: toNullableNumber(
+        metricsSource.p50LatencyMs ?? metricsSource.p50_latency_ms
+      ),
+      p95LatencyMs: toNullableNumber(
+        metricsSource.p95LatencyMs ?? metricsSource.p95_latency_ms
+      ),
+      p99LatencyMs: toNullableNumber(
+        metricsSource.p99LatencyMs ?? metricsSource.p99_latency_ms
+      ),
+    },
+  };
+}
+
+export function normalizeDashboardTrend(payload: unknown): DashboardTrend {
+  const source = asObject(payload);
+  const points = asArray(source.points).map((item): DashboardTrendPoint | null => {
+    const point = asObject(item);
+    const bucketTs = asInteger(point.bucketTs ?? point.bucket_ts, 0, 0);
+    if (!bucketTs) return null;
+    return {
+      bucketTs,
+      requestCount: asInteger(point.requestCount ?? point.request_count, 0, 0),
+      errorCount: asInteger(point.errorCount ?? point.error_count, 0, 0),
+      errorRate: Math.max(
+        0,
+        Math.min(100, toNullableNumber(point.errorRate ?? point.error_rate) ?? 0)
+      ),
+    };
+  });
+
+  return {
+    generatedAt: toNullableNumber(source.generatedAt ?? source.generated_at),
+    bucketMinutes: asInteger(source.bucketMinutes ?? source.bucket_minutes, 1, 1),
+    points: points.filter((item): item is DashboardTrendPoint => Boolean(item)),
+  };
+}
+
 export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Account | null {
   const source = asObject(item);
   const id = asString(source.id);
@@ -459,6 +546,7 @@ export function normalizeApiKey(item: unknown): ApiKey | null {
     status: asString(source.status) || "enabled",
     createdAt: toNullableNumber(source.createdAt ?? source.created_at),
     lastUsedAt: toNullableNumber(source.lastUsedAt ?? source.last_used_at),
+    expiresAt: toNullableNumber(source.expiresAt ?? source.expires_at),
   };
 }
 
@@ -492,6 +580,34 @@ export function normalizeApiKeyUsageStats(payload: unknown): ApiKeyUsageStat[] {
       };
     })
     .filter((item): item is ApiKeyUsageStat => Boolean(item));
+}
+
+export function normalizeApiKeyRateLimit(payload: unknown): ApiKeyRateLimit {
+  const source = asObject(payload);
+  return {
+    keyId: asString(source.keyId ?? source.key_id),
+    rpm: toNullableNumber(source.rpm),
+    tpm: toNullableNumber(source.tpm),
+    dailyLimit: toNullableNumber(source.dailyLimit ?? source.daily_limit),
+  };
+}
+
+export function normalizeApiKeyModelFallback(payload: unknown): ApiKeyModelFallback {
+  const source = asObject(payload);
+  return {
+    keyId: asString(source.keyId ?? source.key_id),
+    modelChain: asArray(source.modelChain ?? source.model_chain)
+      .map((value) => asString(value))
+      .filter((value) => value.length > 0),
+  };
+}
+
+export function normalizeApiKeyResponseCache(payload: unknown): ApiKeyResponseCacheConfig {
+  const source = asObject(payload);
+  return {
+    keyId: asString(source.keyId ?? source.key_id),
+    enabled: asBoolean(source.enabled, false),
+  };
 }
 
 export function normalizeDeviceAuthInfo(payload: unknown): DeviceAuthInfo | null {
@@ -551,6 +667,11 @@ export function normalizeRequestLog(item: unknown): RequestLog | null {
     attemptedAccountIds: asArray(source.attemptedAccountIds ?? source.attempted_account_ids)
       .map((value) => asString(value))
       .filter((value) => value.length > 0),
+    routeStrategy: asString(source.routeStrategy ?? source.route_strategy),
+    requestedModel: asString(source.requestedModel ?? source.requested_model),
+    modelFallbackPath: asArray(source.modelFallbackPath ?? source.model_fallback_path)
+      .map((value) => asString(value))
+      .filter((value) => value.length > 0),
     requestPath,
     originalPath: asString(source.originalPath ?? source.original_path),
     adaptedPath: asString(source.adaptedPath ?? source.adapted_path),
@@ -579,6 +700,101 @@ export function normalizeRequestLog(item: unknown): RequestLog | null {
   };
 }
 
+export function normalizeModelPricingList(payload: unknown): ModelPricingItem[] {
+  const source = asObject(payload);
+  const items = asArray(source.items ?? payload);
+  return items
+    .map((item) => {
+      const entry = asObject(item);
+      const modelSlug = asString(entry.modelSlug ?? entry.model_slug);
+      if (!modelSlug) return null;
+      return {
+        modelSlug,
+        inputPricePer1k: toNullableNumber(
+          entry.inputPricePer1k ?? entry.input_price_per_1k
+        ) ?? 0,
+        outputPricePer1k: toNullableNumber(
+          entry.outputPricePer1k ?? entry.output_price_per_1k
+        ) ?? 0,
+        updatedAt: toNullableNumber(entry.updatedAt ?? entry.updated_at),
+      };
+    })
+    .filter((item): item is ModelPricingItem => Boolean(item));
+}
+
+function normalizeCostUsageSummary(payload: unknown): CostUsageSummary {
+  const source = asObject(payload);
+  return {
+    requestCount: asInteger(source.requestCount ?? source.request_count, 0, 0),
+    inputTokens: asInteger(source.inputTokens ?? source.input_tokens, 0, 0),
+    cachedInputTokens: asInteger(
+      source.cachedInputTokens ?? source.cached_input_tokens,
+      0,
+      0
+    ),
+    outputTokens: asInteger(source.outputTokens ?? source.output_tokens, 0, 0),
+    totalTokens: asInteger(source.totalTokens ?? source.total_tokens, 0, 0),
+    estimatedCostUsd:
+      toNullableNumber(source.estimatedCostUsd ?? source.estimated_cost_usd) ?? 0,
+  };
+}
+
+export function normalizeCostSummary(payload: unknown): CostSummaryResult {
+  const source = asObject(payload);
+  const byKey = asArray(source.byKey ?? source.by_key)
+    .map((item) => {
+      const entry = asObject(item);
+      const keyId = asString(entry.keyId ?? entry.key_id);
+      if (!keyId) return null;
+      return {
+        keyId,
+        ...normalizeCostUsageSummary(entry),
+      };
+    })
+    .filter((item): item is CostSummaryKeyItem => Boolean(item));
+  const byModel = asArray(source.byModel ?? source.by_model)
+    .map((item) => {
+      const entry = asObject(item);
+      const model = asString(entry.model);
+      if (!model) return null;
+      return {
+        model,
+        ...normalizeCostUsageSummary(entry),
+      };
+    })
+    .filter((item): item is CostSummaryModelItem => Boolean(item));
+  const byDay = asArray(source.byDay ?? source.by_day)
+    .map((item) => {
+      const entry = asObject(item);
+      const day = asString(entry.day);
+      if (!day) return null;
+      return {
+        day,
+        ...normalizeCostUsageSummary(entry),
+      };
+    })
+    .filter((item): item is CostSummaryDayItem => Boolean(item));
+
+  return {
+    preset: asString(source.preset) || "today",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    total: normalizeCostUsageSummary(source.total),
+    byKey,
+    byModel,
+    byDay,
+  };
+}
+
+export function normalizeCostExportResult(payload: unknown): CostExportResult {
+  const source = asObject(payload);
+  return {
+    fileName:
+      asString(source.fileName ?? source.file_name) || "codexmanager-costs.csv",
+    content: asString(source.content),
+  };
+}
+
 export function normalizeRequestLogs(payload: unknown): RequestLog[] {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload);
@@ -595,6 +811,16 @@ export function normalizeRequestLogListResult(payload: unknown): RequestLogListR
     total: asInteger(source.total, items.length, 0),
     page: asInteger(source.page, 1, 1),
     pageSize: asInteger(source.pageSize, items.length || 20, 1),
+  };
+}
+
+export function normalizeRequestLogExportResult(payload: unknown): RequestLogExportResult {
+  const source = asObject(payload);
+  return {
+    format: asString(source.format) || "csv",
+    fileName: asString(source.fileName ?? source.file_name) || "codexmanager-requestlogs.csv",
+    content: asString(source.content),
+    recordCount: asInteger(source.recordCount ?? source.record_count, 0, 0),
   };
 }
 
@@ -797,6 +1023,9 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
       0
     ),
     requestCompressionEnabled: asBoolean(source.requestCompressionEnabled, true),
+    responseCacheEnabled: asBoolean(source.responseCacheEnabled, false),
+    responseCacheTtlSecs: asInteger(source.responseCacheTtlSecs, 3600, 1),
+    responseCacheMaxEntries: asInteger(source.responseCacheMaxEntries, 256, 1),
     gatewayOriginator: asString(source.gatewayOriginator) || "codex_cli_rs",
     gatewayResidencyRequirement: asString(source.gatewayResidencyRequirement),
     gatewayResidencyRequirementOptions: asArray(
@@ -823,6 +1052,25 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     ),
     theme: asString(source.theme) || "tech",
     appearancePreset: asString(source.appearancePreset) || "classic",
+  };
+}
+
+export function normalizeGatewayResponseCacheStats(
+  payload: unknown
+): GatewayResponseCacheStats {
+  const source = asObject(payload);
+  return {
+    enabled: asBoolean(source.enabled, false),
+    ttlSecs: asInteger(source.ttlSecs ?? source.ttl_secs, 3600, 1),
+    maxEntries: asInteger(source.maxEntries ?? source.max_entries, 256, 1),
+    entryCount: asInteger(source.entryCount ?? source.entry_count, 0, 0),
+    estimatedBytes: asInteger(source.estimatedBytes ?? source.estimated_bytes, 0, 0),
+    hitCount: asInteger(source.hitCount ?? source.hit_count, 0, 0),
+    missCount: asInteger(source.missCount ?? source.miss_count, 0, 0),
+    hitRatePercent: Math.max(
+      0,
+      toNullableNumber(source.hitRatePercent ?? source.hit_rate_percent) ?? 0
+    ),
   };
 }
 

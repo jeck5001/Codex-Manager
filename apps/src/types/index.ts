@@ -192,6 +192,7 @@ export interface ApiKey {
   status: string;
   createdAt: number | null;
   lastUsedAt: number | null;
+  expiresAt: number | null;
 }
 
 export interface ApiKeyCreateResult {
@@ -202,6 +203,66 @@ export interface ApiKeyCreateResult {
 export interface ApiKeyUsageStat {
   keyId: string;
   totalTokens: number;
+}
+
+export interface ApiKeyRateLimit {
+  keyId: string;
+  rpm: number | null;
+  tpm: number | null;
+  dailyLimit: number | null;
+}
+
+export interface ApiKeyModelFallback {
+  keyId: string;
+  modelChain: string[];
+}
+
+export interface ApiKeyResponseCacheConfig {
+  keyId: string;
+  enabled: boolean;
+}
+
+export interface ModelPricingItem {
+  modelSlug: string;
+  inputPricePer1k: number;
+  outputPricePer1k: number;
+  updatedAt: number | null;
+}
+
+export interface CostUsageSummary {
+  requestCount: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+}
+
+export interface CostSummaryKeyItem extends CostUsageSummary {
+  keyId: string;
+}
+
+export interface CostSummaryModelItem extends CostUsageSummary {
+  model: string;
+}
+
+export interface CostSummaryDayItem extends CostUsageSummary {
+  day: string;
+}
+
+export interface CostSummaryResult {
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  total: CostUsageSummary;
+  byKey: CostSummaryKeyItem[];
+  byModel: CostSummaryModelItem[];
+  byDay: CostSummaryDayItem[];
+}
+
+export interface CostExportResult {
+  fileName: string;
+  content: string;
 }
 
 export interface ModelOption {
@@ -216,6 +277,9 @@ export interface RequestLog {
   accountId: string;
   initialAccountId: string;
   attemptedAccountIds: string[];
+  routeStrategy: string;
+  requestedModel: string;
+  modelFallbackPath: string[];
   requestPath: string;
   originalPath: string;
   adaptedPath: string;
@@ -244,6 +308,13 @@ export interface RequestLogListResult {
   pageSize: number;
 }
 
+export interface RequestLogExportResult {
+  format: string;
+  fileName: string;
+  content: string;
+  recordCount: number;
+}
+
 export interface RequestLogFilterSummary {
   totalCount: number;
   filteredCount: number;
@@ -264,6 +335,44 @@ export interface RequestLogTodaySummary {
   reasoningOutputTokens: number;
   todayTokens: number;
   estimatedCost: number;
+}
+
+export interface DashboardAccountStatusBucket {
+  key: string;
+  label: string;
+  count: number;
+  percent: number;
+}
+
+export interface DashboardGatewayMetrics {
+  windowMinutes: number;
+  totalRequests: number;
+  successRequests: number;
+  errorRequests: number;
+  qps: number;
+  successRate: number;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
+  p99LatencyMs: number | null;
+}
+
+export interface DashboardHealth {
+  generatedAt: number | null;
+  accountStatusBuckets: DashboardAccountStatusBucket[];
+  gatewayMetrics: DashboardGatewayMetrics;
+}
+
+export interface DashboardTrendPoint {
+  bucketTs: number;
+  requestCount: number;
+  errorCount: number;
+  errorRate: number;
+}
+
+export interface DashboardTrend {
+  generatedAt: number | null;
+  bucketMinutes: number;
+  points: DashboardTrendPoint[];
 }
 
 export interface DeviceAuthInfo {
@@ -564,6 +673,9 @@ export interface AppSettings {
   quotaProtectionEnabled: boolean;
   quotaProtectionThresholdPercent: number;
   requestCompressionEnabled: boolean;
+  responseCacheEnabled: boolean;
+  responseCacheTtlSecs: number;
+  responseCacheMaxEntries: number;
   gatewayOriginator: string;
   gatewayResidencyRequirement: string;
   gatewayResidencyRequirementOptions: string[];
@@ -583,6 +695,17 @@ export interface AppSettings {
   theme: string;
   appearancePreset: string;
   [key: string]: unknown;
+}
+
+export interface GatewayResponseCacheStats {
+  enabled: boolean;
+  ttlSecs: number;
+  maxEntries: number;
+  entryCount: number;
+  estimatedBytes: number;
+  hitCount: number;
+  missCount: number;
+  hitRatePercent: number;
 }
 
 export interface ServiceInitializationResult {

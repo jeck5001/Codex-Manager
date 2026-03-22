@@ -4,19 +4,54 @@ use tiny_http::{Header, Request, Response, StatusCode};
 
 use super::super::{
     adapt_upstream_response, adapt_upstream_response_with_tool_name_restore_map,
-    build_anthropic_error_body, ResponseAdapter, ToolNameRestoreMap,
+    build_anthropic_error_body, request_log::RequestLogUsage, ResponseAdapter, ToolNameRestoreMap,
 };
 use super::{
     collect_non_stream_json_from_sse_bytes, extract_error_hint_from_body,
     extract_error_message_from_json, looks_like_sse_payload, merge_usage, parse_usage_from_json,
-    push_trace_id_header, usage_has_signal, AnthropicSseReader, OpenAIChatCompletionsSseReader,
-    OpenAICompletionsSseReader, PassthroughSseCollector, PassthroughSseUsageReader,
-    SseKeepAliveFrame, UpstreamResponseBridgeResult, UpstreamResponseUsage,
+    push_optional_static_header, push_trace_id_header, usage_has_signal, AnthropicSseReader,
+    OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader, PassthroughSseCollector,
+    PassthroughSseUsageReader, SseKeepAliveFrame, UpstreamResponseBridgeResult,
+    UpstreamResponseUsage,
 };
 
 const REQUEST_ID_HEADER_CANDIDATES: &[&str] = &["x-request-id", "x-oai-request-id"];
 const CF_RAY_HEADER_NAME: &str = "cf-ray";
 const AUTH_ERROR_HEADER_NAME: &str = "x-openai-authorization-error";
+const ACTUAL_MODEL_HEADER_NAME: &str = "X-CodexManager-Actual-Model";
+
+fn maybe_append_cache_miss_header(headers: &mut Vec<Header>, cache_key: Option<&str>) {
+    if cache_key
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+    {
+        crate::gateway::append_cache_status_header(headers, "MISS");
+    }
+}
+
+fn maybe_store_non_stream_response_cache(
+    cache_key: Option<&str>,
+    status_code: u16,
+    content_type: &str,
+    body: &[u8],
+    usage: UpstreamResponseUsage,
+    actual_model_header: Option<&str>,
+) {
+    crate::gateway::response_cache::store_response_cache_entry(
+        cache_key,
+        status_code,
+        content_type,
+        body,
+        RequestLogUsage {
+            input_tokens: usage.input_tokens,
+            cached_input_tokens: usage.cached_input_tokens,
+            output_tokens: usage.output_tokens,
+            total_tokens: usage.total_tokens,
+            reasoning_output_tokens: usage.reasoning_output_tokens,
+        },
+        actual_model_header,
+    );
+}
 
 fn is_compact_request_path(path: &str) -> bool {
     path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?")
@@ -442,6 +477,8 @@ pub(crate) fn respond_with_upstream(
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
     is_stream: bool,
     trace_id: Option<&str>,
+    actual_model_header: Option<&str>,
+    response_cache_key: Option<&str>,
 ) -> Result<UpstreamResponseBridgeResult, String> {
     let keepalive_frame = resolve_stream_keepalive_frame(response_adapter, request_path);
     let upstream_request_id =
@@ -474,6 +511,11 @@ pub(crate) fn respond_with_upstream(
             if let Some(trace_id) = trace_id {
                 push_trace_id_header(&mut headers, trace_id);
             }
+            push_optional_static_header(
+                &mut headers,
+                ACTUAL_MODEL_HEADER_NAME,
+                actual_model_header,
+            );
             let is_json = upstream_content_type
                 .as_deref()
                 .map(|value| value.to_ascii_lowercase().contains("application/json"))
@@ -557,6 +599,25 @@ pub(crate) fn respond_with_upstream(
                             trace_id,
                         ));
                     }
+                    maybe_append_cache_miss_header(&mut headers, response_cache_key);
+                    maybe_store_non_stream_response_cache(
+                        response_cache_key,
+                        status.0,
+                        headers
+                            .iter()
+                            .find(|header| {
+                                header
+                                    .field
+                                    .as_str()
+                                    .as_str()
+                                    .eq_ignore_ascii_case("Content-Type")
+                            })
+                            .map(|header| header.value.as_str())
+                            .unwrap_or("application/json"),
+                        body.as_ref(),
+                        usage.clone(),
+                        actual_model_header,
+                    );
                     let len = Some(body.len());
                     let response =
                         Response::new(status, headers, std::io::Cursor::new(body), len, None);
@@ -640,6 +701,17 @@ pub(crate) fn respond_with_upstream(
                     upstream_cf_ray.as_deref(),
                     upstream_auth_error.as_deref(),
                     upstream_identity_error_code.as_deref(),
+                );
+                maybe_append_cache_miss_header(&mut headers, response_cache_key);
+                maybe_store_non_stream_response_cache(
+                    response_cache_key,
+                    status.0,
+                    upstream_content_type
+                        .as_deref()
+                        .unwrap_or("application/json"),
+                    upstream_body.as_ref(),
+                    usage.clone(),
+                    actual_model_header,
                 );
                 let len = Some(upstream_body.len());
                 let response = Response::new(
@@ -822,6 +894,11 @@ pub(crate) fn respond_with_upstream(
             if let Some(trace_id) = trace_id {
                 push_trace_id_header(&mut headers, trace_id);
             }
+            push_optional_static_header(
+                &mut headers,
+                ACTUAL_MODEL_HEADER_NAME,
+                actual_model_header,
+            );
             let is_sse = upstream_content_type
                 .as_deref()
                 .map(|value| value.to_ascii_lowercase().starts_with("text/event-stream"))
@@ -980,6 +1057,15 @@ pub(crate) fn respond_with_upstream(
             {
                 headers.push(content_type_header);
             }
+            maybe_append_cache_miss_header(&mut headers, response_cache_key);
+            maybe_store_non_stream_response_cache(
+                response_cache_key,
+                status.0,
+                content_type,
+                body.as_ref(),
+                usage.clone(),
+                actual_model_header,
+            );
             let len = Some(body.len());
             let response = Response::new(status, headers, std::io::Cursor::new(body), len, None);
             let delivery_error = request.respond(response).err().map(|err| err.to_string());
@@ -1033,6 +1119,11 @@ pub(crate) fn respond_with_upstream(
             if let Some(trace_id) = trace_id {
                 push_trace_id_header(&mut headers, trace_id);
             }
+            push_optional_static_header(
+                &mut headers,
+                ACTUAL_MODEL_HEADER_NAME,
+                actual_model_header,
+            );
             if response_adapter == ResponseAdapter::AnthropicSse
                 && (is_stream
                     || upstream_content_type
@@ -1106,6 +1197,15 @@ pub(crate) fn respond_with_upstream(
             {
                 headers.push(content_type_header);
             }
+            maybe_append_cache_miss_header(&mut headers, response_cache_key);
+            maybe_store_non_stream_response_cache(
+                response_cache_key,
+                status.0,
+                content_type,
+                body.as_ref(),
+                usage.clone(),
+                actual_model_header,
+            );
 
             let len = Some(body.len());
             let response = Response::new(status, headers, std::io::Cursor::new(body), len, None);

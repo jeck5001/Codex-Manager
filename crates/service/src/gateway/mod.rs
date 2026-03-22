@@ -31,8 +31,11 @@ mod request_helpers;
 mod request_log;
 #[path = "request/request_rewrite.rs"]
 mod request_rewrite;
+mod response_cache;
 #[path = "routing/route_hint.rs"]
 mod route_hint;
+#[path = "routing/route_latency.rs"]
+mod route_latency;
 #[path = "routing/route_quality.rs"]
 mod route_quality;
 #[path = "core/runtime_config.rs"]
@@ -96,9 +99,7 @@ pub(crate) fn record_http_queue_enqueue_failure() {
 }
 #[cfg(test)]
 use cooldown::cooldown_reason_for_status;
-use cooldown::{
-    is_account_in_cooldown,
-};
+use cooldown::is_account_in_cooldown;
 pub(crate) use cooldown::{
     clear_account_cooldown, list_account_cooldowns, mark_account_cooldown,
     mark_account_cooldown_for_status, AccountCooldownSnapshot, CooldownReason,
@@ -209,9 +210,16 @@ use openai_fallback::try_openai_fallback;
 pub(crate) use request_entry::handle_gateway_request;
 use request_gate::{request_gate_lock, RequestGateAcquireError};
 use request_log::write_request_log;
+pub(crate) use response_cache::{
+    append_cache_status_header, build_response_cache_key, clear_response_cache,
+    current_response_cache_config, current_response_cache_max_entries,
+    current_response_cache_stats, current_response_cache_ttl_secs, set_response_cache_enabled,
+    set_response_cache_max_entries, set_response_cache_ttl_secs,
+};
 use route_hint::apply_route_strategy;
-pub(crate) use route_quality::route_health_score;
+pub(crate) use route_latency::record_route_latency;
 use route_quality::record_route_quality;
+pub(crate) use route_quality::route_health_score;
 pub(crate) use runtime_config::front_proxy_max_body_bytes;
 use runtime_config::{
     account_max_inflight_limit, fresh_upstream_client, fresh_upstream_client_for_account,
@@ -227,16 +235,18 @@ use token_exchange::resolve_openai_bearer_token;
 use upstream::proxy::proxy_validated_request;
 
 pub(crate) fn reload_runtime_config_from_env() {
-    runtime_config::reload_from_env();
+    runtime_config::reload_from_env_and_refresh_clients();
     selection::reload_from_env();
     request_gate::clear_runtime_state();
     cooldown::clear_runtime_state();
     route_quality::clear_runtime_state();
+    route_latency::clear_runtime_state();
     route_hint::reload_from_env();
     upstream::config::reload_from_env();
     trace_log::reload_from_env();
     http_bridge::reload_from_env();
     protocol_adapter::prompt_cache::reload_runtime_state();
+    response_cache::reload_from_env();
 }
 
 pub(crate) fn current_route_strategy() -> &'static str {

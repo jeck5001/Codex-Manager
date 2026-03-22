@@ -1,6 +1,25 @@
 use rusqlite::Result;
 
-use super::{ApiKeyTokenUsageSummary, RequestLogTodaySummary, RequestTokenStat, Storage};
+use super::{
+    ApiKeyTokenUsageSummary, CostSummaryDayRow, CostSummaryKeyRow, CostSummaryModelRow,
+    CostUsageSummary, RequestLogTodaySummary, RequestTokenStat, Storage,
+};
+
+const NON_NEGATIVE_TOTAL_TOKENS_SQL: &str = "IFNULL(
+    SUM(
+        CASE
+            WHEN total_tokens IS NOT NULL THEN
+                CASE WHEN total_tokens > 0 THEN total_tokens ELSE 0 END
+            ELSE
+                CASE
+                    WHEN IFNULL(input_tokens, 0) - IFNULL(cached_input_tokens, 0) + IFNULL(output_tokens, 0) > 0
+                        THEN IFNULL(input_tokens, 0) - IFNULL(cached_input_tokens, 0) + IFNULL(output_tokens, 0)
+                    ELSE 0
+                END
+        END
+    ),
+    0
+)";
 
 impl Storage {
     pub fn insert_request_token_stat(&self, stat: &RequestTokenStat) -> Result<()> {
@@ -63,27 +82,15 @@ impl Storage {
 
     pub fn summarize_request_token_stats_by_key(&self) -> Result<Vec<ApiKeyTokenUsageSummary>> {
         let mut stmt = self.conn.prepare(
-            "SELECT
-                key_id,
-                IFNULL(
-                    SUM(
-                        CASE
-                            WHEN total_tokens IS NOT NULL THEN
-                                CASE WHEN total_tokens > 0 THEN total_tokens ELSE 0 END
-                            ELSE
-                                CASE
-                                    WHEN IFNULL(input_tokens, 0) - IFNULL(cached_input_tokens, 0) + IFNULL(output_tokens, 0) > 0
-                                        THEN IFNULL(input_tokens, 0) - IFNULL(cached_input_tokens, 0) + IFNULL(output_tokens, 0)
-                                    ELSE 0
-                                END
-                        END
-                    ),
-                    0
-                ) AS total_tokens
+            &format!(
+                "SELECT
+                    key_id,
+                    {NON_NEGATIVE_TOTAL_TOKENS_SQL} AS total_tokens
              FROM request_token_stats
              WHERE key_id IS NOT NULL AND TRIM(key_id) <> ''
              GROUP BY key_id
-             ORDER BY total_tokens DESC, key_id ASC",
+             ORDER BY total_tokens DESC, key_id ASC"
+            ),
         )?;
         let mut rows = stmt.query([])?;
         let mut items = Vec::new();
@@ -91,6 +98,146 @@ impl Storage {
             items.push(ApiKeyTokenUsageSummary {
                 key_id: row.get(0)?,
                 total_tokens: row.get(1)?,
+            });
+        }
+        Ok(items)
+    }
+
+    pub fn summarize_cost_usage_between(&self, start_ts: i64, end_ts: i64) -> Result<CostUsageSummary> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT
+                IFNULL(COUNT(*), 0),
+                IFNULL(SUM(IFNULL(input_tokens, 0)), 0),
+                IFNULL(SUM(IFNULL(cached_input_tokens, 0)), 0),
+                IFNULL(SUM(IFNULL(output_tokens, 0)), 0),
+                {NON_NEGATIVE_TOTAL_TOKENS_SQL},
+                IFNULL(SUM(IFNULL(estimated_cost_usd, 0.0)), 0.0)
+             FROM request_token_stats
+             WHERE created_at >= ?1 AND created_at < ?2"
+        ))?;
+        let mut rows = stmt.query((start_ts, end_ts))?;
+        if let Some(row) = rows.next()? {
+            return Ok(CostUsageSummary {
+                request_count: row.get(0)?,
+                input_tokens: row.get(1)?,
+                cached_input_tokens: row.get(2)?,
+                output_tokens: row.get(3)?,
+                total_tokens: row.get(4)?,
+                estimated_cost_usd: row.get(5)?,
+            });
+        }
+        Ok(CostUsageSummary {
+            request_count: 0,
+            input_tokens: 0,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 0,
+            estimated_cost_usd: 0.0,
+        })
+    }
+
+    pub fn summarize_cost_usage_by_key_between(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> Result<Vec<CostSummaryKeyRow>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT
+                key_id,
+                IFNULL(COUNT(*), 0),
+                IFNULL(SUM(IFNULL(input_tokens, 0)), 0),
+                IFNULL(SUM(IFNULL(cached_input_tokens, 0)), 0),
+                IFNULL(SUM(IFNULL(output_tokens, 0)), 0),
+                {NON_NEGATIVE_TOTAL_TOKENS_SQL},
+                IFNULL(SUM(IFNULL(estimated_cost_usd, 0.0)), 0.0)
+             FROM request_token_stats
+             WHERE created_at >= ?1 AND created_at < ?2
+               AND key_id IS NOT NULL AND TRIM(key_id) <> ''
+             GROUP BY key_id
+             ORDER BY estimated_cost_usd DESC, key_id ASC"
+        ))?;
+        let mut rows = stmt.query((start_ts, end_ts))?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next()? {
+            items.push(CostSummaryKeyRow {
+                key_id: row.get(0)?,
+                request_count: row.get(1)?,
+                input_tokens: row.get(2)?,
+                cached_input_tokens: row.get(3)?,
+                output_tokens: row.get(4)?,
+                total_tokens: row.get(5)?,
+                estimated_cost_usd: row.get(6)?,
+            });
+        }
+        Ok(items)
+    }
+
+    pub fn summarize_cost_usage_by_model_between(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> Result<Vec<CostSummaryModelRow>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT
+                model,
+                IFNULL(COUNT(*), 0),
+                IFNULL(SUM(IFNULL(input_tokens, 0)), 0),
+                IFNULL(SUM(IFNULL(cached_input_tokens, 0)), 0),
+                IFNULL(SUM(IFNULL(output_tokens, 0)), 0),
+                {NON_NEGATIVE_TOTAL_TOKENS_SQL},
+                IFNULL(SUM(IFNULL(estimated_cost_usd, 0.0)), 0.0)
+             FROM request_token_stats
+             WHERE created_at >= ?1 AND created_at < ?2
+               AND model IS NOT NULL AND TRIM(model) <> ''
+             GROUP BY model
+             ORDER BY estimated_cost_usd DESC, model ASC"
+        ))?;
+        let mut rows = stmt.query((start_ts, end_ts))?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next()? {
+            items.push(CostSummaryModelRow {
+                model: row.get(0)?,
+                request_count: row.get(1)?,
+                input_tokens: row.get(2)?,
+                cached_input_tokens: row.get(3)?,
+                output_tokens: row.get(4)?,
+                total_tokens: row.get(5)?,
+                estimated_cost_usd: row.get(6)?,
+            });
+        }
+        Ok(items)
+    }
+
+    pub fn summarize_cost_usage_by_day_between(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> Result<Vec<CostSummaryDayRow>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT
+                strftime('%Y-%m-%d', datetime(created_at, 'unixepoch', 'localtime')) AS bucket_day,
+                IFNULL(COUNT(*), 0),
+                IFNULL(SUM(IFNULL(input_tokens, 0)), 0),
+                IFNULL(SUM(IFNULL(cached_input_tokens, 0)), 0),
+                IFNULL(SUM(IFNULL(output_tokens, 0)), 0),
+                {NON_NEGATIVE_TOTAL_TOKENS_SQL},
+                IFNULL(SUM(IFNULL(estimated_cost_usd, 0.0)), 0.0)
+             FROM request_token_stats
+             WHERE created_at >= ?1 AND created_at < ?2
+             GROUP BY bucket_day
+             ORDER BY bucket_day ASC"
+        ))?;
+        let mut rows = stmt.query((start_ts, end_ts))?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next()? {
+            items.push(CostSummaryDayRow {
+                day: row.get(0)?,
+                request_count: row.get(1)?,
+                input_tokens: row.get(2)?,
+                cached_input_tokens: row.get(3)?,
+                output_tokens: row.get(4)?,
+                total_tokens: row.get(5)?,
+                estimated_cost_usd: row.get(6)?,
             });
         }
         Ok(items)

@@ -10,7 +10,9 @@ use super::{
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
-    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
+    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
+    APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY, SERVICE_BIND_MODE_SETTING_KEY,
 };
@@ -62,6 +64,27 @@ pub fn sync_runtime_settings_from_storage() {
     }
     if let Some(raw) = settings.get(APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY) {
         gateway::set_request_compression_enabled(parse_bool_with_default(raw, true));
+    }
+    if let Some(raw) = settings.get(APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY) {
+        gateway::set_response_cache_enabled(parse_bool_with_default(raw, false));
+    }
+    if let Some(raw) = settings.get(APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY) {
+        if let Ok(ttl_secs) = raw.trim().parse::<u64>() {
+            if let Err(err) = gateway::set_response_cache_ttl_secs(ttl_secs) {
+                log::warn!("sync persisted response cache ttl failed: {err}");
+            }
+        } else {
+            log::warn!("parse persisted response cache ttl failed: {raw}");
+        }
+    }
+    if let Some(raw) = settings.get(APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY) {
+        if let Ok(max_entries) = raw.trim().parse::<usize>() {
+            if let Err(err) = gateway::set_response_cache_max_entries(max_entries) {
+                log::warn!("sync persisted response cache max entries failed: {err}");
+            }
+        } else {
+            log::warn!("parse persisted response cache max entries failed: {raw}");
+        }
     }
     if let Some(originator) = settings.get(APP_SETTING_GATEWAY_ORIGINATOR_KEY) {
         if let Some(originator) = normalize_optional_text(Some(originator)) {

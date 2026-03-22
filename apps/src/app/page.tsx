@@ -68,6 +68,14 @@ interface AccountHighlightCardProps {
   onOpenLogs?: () => void;
 }
 
+interface MiniTrendChartProps {
+  points: Array<{
+    bucketTs: number;
+    requestCount: number;
+    errorRate: number;
+  }>;
+}
+
 function openFailureDrilldown(
   router: ReturnType<typeof useRouter>,
   code: string,
@@ -211,6 +219,107 @@ function formatPredictionDuration(value: number | null | undefined): string {
 function formatPredictionBucket(value: string | null | undefined): string {
   if (!value) return "未知窗口";
   return value === "secondary" ? "7天窗口" : "5小时窗口";
+}
+
+function formatLatency(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "N/A";
+  return `${Math.max(0, Math.round(value))} ms`;
+}
+
+function formatQps(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "0.00";
+  return value.toFixed(value >= 10 ? 1 : 2);
+}
+
+function formatRate(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "0%";
+  return `${value.toFixed(value >= 10 ? 0 : 1).replace(/\.0$/, "")}%`;
+}
+
+function buildSparklinePoints(values: number[], width: number, height: number): string {
+  if (!values.length) return "";
+  const max = Math.max(...values, 1);
+  if (values.length === 1) {
+    return `0,${height / 2} ${width},${height / 2}`;
+  }
+  return values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * width;
+      const y = height - (Math.max(0, value) / max) * height;
+      return `${x},${y}`;
+    })
+    .join(" ");
+}
+
+function MiniTrendChart({ points }: MiniTrendChartProps) {
+  const width = 640;
+  const height = 180;
+  const requestValues = points.map((item) => item.requestCount);
+  const errorValues = points.map((item) => item.errorRate);
+  const requestLine = buildSparklinePoints(requestValues, width, height);
+  const errorLine = buildSparklinePoints(errorValues, width, height);
+  const totalRequests = requestValues.reduce((sum, value) => sum + value, 0);
+  const latest = points.at(-1);
+
+  if (!points.length || totalRequests <= 0) {
+    return (
+      <div className="flex h-[180px] items-center justify-center rounded-2xl border border-dashed border-border/50 bg-muted/20 text-sm text-muted-foreground">
+        最近 1 小时暂无请求趋势
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-2xl border border-border/40 bg-background/40 px-3 py-4">
+        <svg viewBox={`0 0 ${width} ${height}`} className="h-[180px] w-full">
+          {[0.25, 0.5, 0.75].map((ratio) => (
+            <line
+              key={ratio}
+              x1="0"
+              x2={width}
+              y1={height * ratio}
+              y2={height * ratio}
+              stroke="currentColor"
+              strokeOpacity="0.08"
+              strokeWidth="1"
+            />
+          ))}
+          <polyline
+            fill="none"
+            stroke="rgb(59 130 246)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={requestLine}
+          />
+          <polyline
+            fill="none"
+            stroke="rgb(244 63 94)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={errorLine}
+          />
+        </svg>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+          请求量
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+          错误率
+        </span>
+        {latest ? (
+          <span className="rounded-full bg-muted/50 px-2 py-1">
+            最近 1 分钟 {latest.requestCount} 次请求 / 错误率 {formatRate(latest.errorRate)}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function PercentBar({ label, value, tone = "default" }: PercentBarProps) {
@@ -371,8 +480,11 @@ export default function DashboardPage() {
     failureReasonSummary,
     governanceSummary,
     operationAudits,
+    dashboardHealth,
+    dashboardTrend,
     requestLogs,
     isLoading,
+    isDashboardLoading,
     isServiceReady,
   } = useDashboardStats();
   const poolPrimary = stats.poolRemain?.primary ?? 0;
@@ -381,6 +493,10 @@ export default function DashboardPage() {
   const recoverableRegisterFailures = countRecoverableRegisterFailures(
     failureReasonSummary,
   );
+  const healthBuckets = dashboardHealth?.accountStatusBuckets || [];
+  const gatewayMetrics = dashboardHealth?.gatewayMetrics;
+  const trendPoints = dashboardTrend?.points || [];
+  const dashboardSectionLoading = isLoading || isDashboardLoading;
 
   const invalidateOperationalViews = async () => {
     await Promise.all([
@@ -391,6 +507,8 @@ export default function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: ["register-stats"] }),
       queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
       queryClient.invalidateQueries({ queryKey: ["logs"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard-health"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard-trend"] }),
     ]);
   };
 
@@ -633,6 +751,139 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
+          </>
+        )}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.15fr,0.85fr]">
+        {dashboardSectionLoading ? (
+          <>
+            <Skeleton className="h-[320px] w-full rounded-2xl" />
+            <div className="grid gap-4">
+              <Skeleton className="h-[148px] w-full rounded-2xl" />
+              <Skeleton className="h-[148px] w-full rounded-2xl" />
+            </div>
+          </>
+        ) : (
+          <>
+            <Card className="glass-card border-none shadow-md">
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="text-base font-semibold">实时健康仪表盘</CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    汇总账号池状态、最近 5 分钟网关健康指标，以及最近 1 小时请求趋势。
+                  </p>
+                </div>
+                <Badge variant="secondary" className="bg-primary/10 text-primary">
+                  <Activity className="mr-1 h-3.5 w-3.5" />
+                  30 秒刷新
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  {healthBuckets.map((bucket) => (
+                    <div
+                      key={bucket.key}
+                      className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-medium text-muted-foreground">
+                            {bucket.label}
+                          </p>
+                          <p className="mt-1 text-2xl font-bold">{bucket.count}</p>
+                        </div>
+                        <Badge variant="secondary" className="shrink-0">
+                          {bucket.percent}%
+                        </Badge>
+                      </div>
+                      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted/60">
+                        <div
+                          className="h-full rounded-full bg-primary transition-all"
+                          style={{ width: `${Math.max(0, Math.min(100, bucket.percent))}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <MiniTrendChart points={trendPoints} />
+              </CardContent>
+            </Card>
+
+            <div className="grid gap-4">
+              <Card className="glass-card border-none shadow-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium">最近 5 分钟网关指标</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
+                    <p className="text-[11px] font-medium text-muted-foreground">当前 QPS</p>
+                    <p className="mt-2 text-2xl font-bold">{formatQps(gatewayMetrics?.qps)}</p>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      {gatewayMetrics?.totalRequests ?? 0} 次请求 / 5 分钟
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
+                    <p className="text-[11px] font-medium text-muted-foreground">成功率</p>
+                    <p className="mt-2 text-2xl font-bold">
+                      {formatRate(gatewayMetrics?.successRate)}
+                    </p>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      成功 {gatewayMetrics?.successRequests ?? 0} / 错误{" "}
+                      {gatewayMetrics?.errorRequests ?? 0}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
+                    <p className="text-[11px] font-medium text-muted-foreground">P95 延迟</p>
+                    <p className="mt-2 text-2xl font-bold">
+                      {formatLatency(gatewayMetrics?.p95LatencyMs)}
+                    </p>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      P50 {formatLatency(gatewayMetrics?.p50LatencyMs)} / P99{" "}
+                      {formatLatency(gatewayMetrics?.p99LatencyMs)}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="glass-card border-none shadow-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium">观测摘要</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      当前主要风险
+                    </p>
+                    <p className="mt-2 font-medium">
+                      {healthBuckets.find((item) => item.key === "quota_exhausted")?.count
+                        ? "存在额度耗尽账号，建议补池或切换策略。"
+                        : healthBuckets.find((item) => item.key === "unavailable")?.count
+                          ? "存在不可用账号，建议查看授权与网络链路。"
+                          : "主链路暂无明显异常，适合继续观察自动治理结果。"}
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        冷却中账号
+                      </p>
+                      <p className="mt-2 text-xl font-bold">
+                        {healthBuckets.find((item) => item.key === "cooldown")?.count ?? 0}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        最新刷新时间
+                      </p>
+                      <p className="mt-2 text-sm font-medium">
+                        {formatTsFromSeconds(dashboardHealth?.generatedAt, "刚启动")}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </>
         )}
       </div>

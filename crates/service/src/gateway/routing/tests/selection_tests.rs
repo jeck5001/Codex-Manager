@@ -165,10 +165,9 @@ fn usage_snapshot_write_invalidates_cached_candidates() {
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
     let previous_enabled =
         std::env::var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED).ok();
-    let previous_threshold = std::env::var(
-        crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
-    )
-    .ok();
+    let previous_threshold =
+        std::env::var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT)
+            .ok();
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "2000");
     std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-3");
     std::env::set_var(
@@ -282,10 +281,9 @@ fn quota_protection_setting_change_invalidates_cached_candidates() {
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
     let previous_enabled =
         std::env::var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED).ok();
-    let previous_threshold = std::env::var(
-        crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
-    )
-    .ok();
+    let previous_threshold =
+        std::env::var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT)
+            .ok();
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "2000");
     std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-4");
     std::env::set_var(

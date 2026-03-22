@@ -14,7 +14,12 @@ import {
   applyAppearancePreset,
   normalizeAppearancePreset,
 } from "@/lib/appearance";
-import { AppSettings, BackgroundTaskSettings, FreeProxySyncResult } from "@/types";
+import {
+  AppSettings,
+  BackgroundTaskSettings,
+  FreeProxySyncResult,
+  GatewayResponseCacheStats,
+} from "@/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -40,6 +45,7 @@ import {
   AppWindow,
   Check,
   Cpu,
+  Database,
   Download,
   ExternalLink,
   Globe,
@@ -85,6 +91,9 @@ const THEMES = [
 const ROUTE_STRATEGY_LABELS: Record<string, string> = {
   ordered: "顺序优先 (Ordered)",
   balanced: "均衡轮询 (Balanced)",
+  weighted: "加权轮询 (Weighted)",
+  "least-latency": "最低延迟优先 (Least Latency)",
+  "cost-first": "成本优先 (Cost First)",
 };
 
 const RESIDENCY_REQUIREMENT_LABELS: Record<string, string> = {
@@ -150,6 +159,13 @@ function parseIntegerInput(value: string, minimum = 0): number | null {
   const rounded = Math.trunc(numeric);
   if (rounded < minimum) return null;
   return rounded;
+}
+
+function formatStorageBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function countProxyPoolEntries(value: string | null | undefined): number {
@@ -260,6 +276,8 @@ export default function SettingsPage() {
   const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
   const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
   const [quotaProtectionThresholdDraft, setQuotaProtectionThresholdDraft] = useState<string | null>(null);
+  const [responseCacheTtlDraft, setResponseCacheTtlDraft] = useState<string | null>(null);
+  const [responseCacheMaxEntriesDraft, setResponseCacheMaxEntriesDraft] = useState<string | null>(null);
   const [freeProxyProtocol, setFreeProxyProtocol] = useState("socks5");
   const [freeProxyAnonymity, setFreeProxyAnonymity] = useState("elite");
   const [freeProxyCountry, setFreeProxyCountry] = useState("");
@@ -282,6 +300,11 @@ export default function SettingsPage() {
     queryKey: ["app-settings-snapshot"],
     queryFn: () => appClient.getSettings(),
   });
+  const { data: responseCacheStats } = useQuery({
+    queryKey: ["gateway-cache-stats"],
+    queryFn: () => serviceClient.getGatewayCacheStats(),
+    refetchInterval: 30_000,
+  });
 
   const updateSettings = useMutation({
     mutationFn: (patch: Partial<AppSettings> & { _silent?: boolean }) => {
@@ -298,6 +321,13 @@ export default function SettingsPage() {
         document.body.classList.remove("low-transparency");
       }
       applyAppearancePreset(nextSnapshot.appearancePreset);
+      if (
+        "responseCacheEnabled" in variables ||
+        "responseCacheTtlSecs" in variables ||
+        "responseCacheMaxEntries" in variables
+      ) {
+        void queryClient.invalidateQueries({ queryKey: ["gateway-cache-stats"] });
+      }
       if (!variables._silent) {
         toast.success("设置已更新");
       }
@@ -350,6 +380,16 @@ export default function SettingsPage() {
     },
     onError: (error: unknown) => {
       toast.error(`同步 freeproxy 失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+  const clearGatewayCache = useMutation({
+    mutationFn: () => serviceClient.clearGatewayCache(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["gateway-cache-stats"] });
+      toast.success("响应缓存已清空");
+    },
+    onError: (error: unknown) => {
+      toast.error(`清空缓存失败: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -486,6 +526,10 @@ export default function SettingsPage() {
   const quotaProtectionThresholdInput =
     quotaProtectionThresholdDraft ??
     stringifyNumber(snapshot?.quotaProtectionThresholdPercent);
+  const responseCacheTtlInput =
+    responseCacheTtlDraft ?? stringifyNumber(snapshot?.responseCacheTtlSecs);
+  const responseCacheMaxEntriesInput =
+    responseCacheMaxEntriesDraft ?? stringifyNumber(snapshot?.responseCacheMaxEntries);
   const transportInputValues = {
     sseKeepaliveIntervalMs:
       transportDraft.sseKeepaliveIntervalMs ??
@@ -503,6 +547,16 @@ export default function SettingsPage() {
   const proxyPoolValue = snapshot?.envOverrides.CODEXMANAGER_PROXY_LIST || "";
   const proxyPoolCount = countProxyPoolEntries(proxyPoolValue);
   const teamManagerApiUrlInput = teamManagerApiUrlDraft ?? snapshot?.teamManagerApiUrl ?? "";
+  const cacheStats: GatewayResponseCacheStats = responseCacheStats ?? {
+    enabled: snapshot?.responseCacheEnabled ?? false,
+    ttlSecs: snapshot?.responseCacheTtlSecs ?? 3600,
+    maxEntries: snapshot?.responseCacheMaxEntries ?? 256,
+    entryCount: 0,
+    estimatedBytes: 0,
+    hitCount: 0,
+    missCount: 0,
+    hitRatePercent: 0,
+  };
 
   const lastIntentThemeRef = useRef<string | null>(null);
   const lastIntentAppearancePresetRef = useRef<string | null>(null);
@@ -680,6 +734,42 @@ export default function SettingsPage() {
     void updateSettings
       .mutateAsync({ quotaProtectionThresholdPercent: nextValue })
       .then(() => setQuotaProtectionThresholdDraft(null))
+      .catch(() => undefined);
+  };
+
+  const saveResponseCacheTtl = () => {
+    if (!snapshot) return;
+    const nextValue = parseIntegerInput(responseCacheTtlInput, 1);
+    if (nextValue == null) {
+      toast.error("缓存 TTL 请输入大于等于 1 的秒数");
+      setResponseCacheTtlDraft(null);
+      return;
+    }
+    if (nextValue === snapshot.responseCacheTtlSecs) {
+      setResponseCacheTtlDraft(null);
+      return;
+    }
+    void updateSettings
+      .mutateAsync({ responseCacheTtlSecs: nextValue })
+      .then(() => setResponseCacheTtlDraft(null))
+      .catch(() => undefined);
+  };
+
+  const saveResponseCacheMaxEntries = () => {
+    if (!snapshot) return;
+    const nextValue = parseIntegerInput(responseCacheMaxEntriesInput, 1);
+    if (nextValue == null) {
+      toast.error("最大缓存条目数请输入大于等于 1 的整数");
+      setResponseCacheMaxEntriesDraft(null);
+      return;
+    }
+    if (nextValue === snapshot.responseCacheMaxEntries) {
+      setResponseCacheMaxEntriesDraft(null);
+      return;
+    }
+    void updateSettings
+      .mutateAsync({ responseCacheMaxEntries: nextValue })
+      .then(() => setResponseCacheMaxEntriesDraft(null))
       .catch(() => undefined);
   };
 
@@ -1084,11 +1174,18 @@ export default function SettingsPage() {
                   <SelectContent>
                     <SelectItem value="ordered">顺序优先 (Ordered)</SelectItem>
                     <SelectItem value="balanced">均衡轮询 (Balanced)</SelectItem>
+                    <SelectItem value="weighted">加权轮询 (Weighted)</SelectItem>
+                    <SelectItem value="least-latency">
+                      最低延迟优先 (Least Latency)
+                    </SelectItem>
+                    <SelectItem value="cost-first">成本优先 (Cost First)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-[10px] text-muted-foreground">
                   顺序优先：按账号候选顺序优先尝试，默认只会在头部小窗口内按健康度做轻微换头；
-                  均衡轮询：按“平台密钥 + 模型”维度严格轮询可用账号，默认不做健康度换头。
+                  均衡轮询：按“平台密钥 + 模型”维度严格轮询可用账号，默认不做健康度换头；
+                  加权轮询：剩余额度越高，命中概率越高；最低延迟优先：优先最近响应更快的账号；
+                  成本优先：优先 free，再到 plus / team。
                 </p>
               </div>
 
@@ -1169,6 +1266,95 @@ export default function SettingsPage() {
                     updateSettings.mutate({ requestCompressionEnabled: value })
                   }
                 />
+              </div>
+
+              <div className="grid gap-4 rounded-2xl border border-border/50 bg-background/35 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <Database className="h-4 w-4 text-primary" />
+                      <Label>响应缓存</Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      对非流式重复请求复用最近一次响应，命中时会返回
+                      <code> X-CodexManager-Cache: HIT</code>。
+                    </p>
+                  </div>
+                  <Switch
+                    checked={snapshot.responseCacheEnabled}
+                    onCheckedChange={(value) =>
+                      updateSettings.mutate({ responseCacheEnabled: value })
+                    }
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label>缓存 TTL（秒）</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={responseCacheTtlInput}
+                      onChange={(event) => setResponseCacheTtlDraft(event.target.value)}
+                      onBlur={saveResponseCacheTtl}
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      相同请求在 TTL 过期前可直接复用缓存结果。
+                    </p>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>最大缓存条目数</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={responseCacheMaxEntriesInput}
+                      onChange={(event) => setResponseCacheMaxEntriesDraft(event.target.value)}
+                      onBlur={saveResponseCacheMaxEntries}
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      达到上限后会优先淘汰最旧的缓存条目。
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div className="rounded-2xl border border-border/50 bg-background/40 px-4 py-3">
+                    <p className="text-[10px] text-muted-foreground">当前条目</p>
+                    <p className="mt-1 text-lg font-semibold">{cacheStats.entryCount}</p>
+                  </div>
+                  <div className="rounded-2xl border border-border/50 bg-background/40 px-4 py-3">
+                    <p className="text-[10px] text-muted-foreground">命中率</p>
+                    <p className="mt-1 text-lg font-semibold">
+                      {cacheStats.hitRatePercent.toFixed(cacheStats.hitRatePercent >= 10 ? 1 : 2)}%
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/50 bg-background/40 px-4 py-3">
+                    <p className="text-[10px] text-muted-foreground">Hit / Miss</p>
+                    <p className="mt-1 text-lg font-semibold">
+                      {cacheStats.hitCount} / {cacheStats.missCount}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/50 bg-background/40 px-4 py-3">
+                    <p className="text-[10px] text-muted-foreground">估算占用</p>
+                    <p className="mt-1 text-lg font-semibold">
+                      {formatStorageBytes(cacheStats.estimatedBytes)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-4">
+                  <p className="text-[10px] text-muted-foreground">
+                    当前配置：TTL {cacheStats.ttlSecs}s，容量 {cacheStats.maxEntries} 条。
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => clearGatewayCache.mutate()}
+                    disabled={clearGatewayCache.isPending || cacheStats.entryCount <= 0}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    清空缓存
+                  </Button>
+                </div>
               </div>
 
               <div className="grid gap-2 border-t pt-6">

@@ -63,6 +63,20 @@ pub async fn service_gateway_background_tasks_get(
     rpc_call_in_background("gateway/backgroundTasks/get", addr, None).await
 }
 
+#[tauri::command]
+pub async fn service_gateway_cache_stats(
+    addr: Option<String>,
+) -> Result<serde_json::Value, String> {
+    rpc_call_in_background("gateway/cache/stats", addr, None).await
+}
+
+#[tauri::command]
+pub async fn service_gateway_cache_clear(
+    addr: Option<String>,
+) -> Result<serde_json::Value, String> {
+    rpc_call_in_background("gateway/cache/clear", addr, None).await
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn service_gateway_background_tasks_set(

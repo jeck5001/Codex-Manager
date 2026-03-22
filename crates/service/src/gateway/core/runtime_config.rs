@@ -130,6 +130,11 @@ fn build_upstream_client_with_proxy(proxy_url: Option<&str>) -> Client {
         .pool_max_idle_per_host(32)
         .pool_idle_timeout(Some(Duration::from_secs(90)))
         .tcp_keepalive(Some(Duration::from_secs(30)));
+    if proxy_url.is_none() && upstream_base_uses_loopback_host() {
+        // 中文注释：本地 mock upstream / 本地旁路部署不应吃系统代理，否则 127.0.0.1
+        // 也可能被送进企业代理/VPN，导致测试与本地联调出现假性 5xx/超时。
+        builder = builder.no_proxy();
+    }
     if let Some(proxy_url) = proxy_url {
         let proxy = match Proxy::all(proxy_url) {
             Ok(proxy) => proxy,
@@ -148,6 +153,14 @@ fn build_upstream_client_with_proxy(proxy_url: Option<&str>) -> Client {
         log::warn!("event=gateway_upstream_client_build_failed err={}", err);
         Client::new()
     })
+}
+
+fn upstream_base_uses_loopback_host() -> bool {
+    let base = crate::gateway::resolve_upstream_base_url();
+    reqwest::Url::parse(base.as_str())
+        .ok()
+        .and_then(|url: reqwest::Url| url.host_str().map(|host: &str| host.to_ascii_lowercase()))
+        .is_some_and(|host: String| matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1"))
 }
 
 pub(crate) fn upstream_total_timeout() -> Option<Duration> {
@@ -458,13 +471,18 @@ pub(super) fn reload_from_env() {
         crate::lock_utils::write_recover(residency_requirement_cell(), "residency_requirement");
     *cached_residency = residency_requirement;
     drop(cached_residency);
+}
 
+pub(super) fn reload_from_env_and_refresh_clients() {
+    reload_from_env();
     refresh_upstream_clients_from_runtime_config();
 }
 
 const ENV_UPSTREAM_COOKIE: &str = "CODEXMANAGER_UPSTREAM_COOKIE";
 
 fn ensure_runtime_config_loaded() {
+    // 中文注释：懒加载默认只刷新标量/字符串配置，避免在异步上下文里因为首次读取
+    // front_proxy_max_body_bytes 等轻量配置而触发 reqwest::blocking::Client 初始化。
     let _ = RUNTIME_CONFIG_LOADED.get_or_init(|| reload_from_env());
 }
 

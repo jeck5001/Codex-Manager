@@ -69,6 +69,7 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -283,6 +284,7 @@ fn gateway_claude_failover_cross_workspace_strips_session_affinity_headers() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -451,6 +453,7 @@ fn gateway_claude_failover_same_workspace_preserves_session_affinity_headers() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 

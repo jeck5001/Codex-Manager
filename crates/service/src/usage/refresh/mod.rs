@@ -25,14 +25,14 @@ use crate::usage_scheduler::{
 use crate::usage_snapshot_store::store_usage_snapshot;
 use crate::usage_token_refresh::refresh_and_persist_access_token;
 
+mod autofill;
 mod batch;
 mod errors;
+mod governance;
+mod probe;
 mod queue;
 mod runner;
 mod settings;
-mod autofill;
-mod governance;
-mod probe;
 
 static USAGE_POLLING_STARTED: OnceLock<()> = OnceLock::new();
 static GATEWAY_KEEPALIVE_STARTED: OnceLock<()> = OnceLock::new();
@@ -50,10 +50,8 @@ static TOKEN_REFRESH_POLLING_ENABLED: AtomicBool = AtomicBool::new(true);
 static TOKEN_REFRESH_POLL_INTERVAL_SECS_ATOMIC: AtomicU64 =
     AtomicU64::new(DEFAULT_TOKEN_REFRESH_POLL_INTERVAL_SECS);
 static SESSION_PROBE_POLLING_ENABLED: AtomicBool = AtomicBool::new(false);
-static SESSION_PROBE_INTERVAL_SECS: AtomicU64 =
-    AtomicU64::new(DEFAULT_SESSION_PROBE_INTERVAL_SECS);
-static SESSION_PROBE_SAMPLE_SIZE: AtomicUsize =
-    AtomicUsize::new(DEFAULT_SESSION_PROBE_SAMPLE_SIZE);
+static SESSION_PROBE_INTERVAL_SECS: AtomicU64 = AtomicU64::new(DEFAULT_SESSION_PROBE_INTERVAL_SECS);
+static SESSION_PROBE_SAMPLE_SIZE: AtomicUsize = AtomicUsize::new(DEFAULT_SESSION_PROBE_SAMPLE_SIZE);
 static USAGE_REFRESH_WORKERS: AtomicUsize = AtomicUsize::new(DEFAULT_USAGE_REFRESH_WORKERS);
 static HTTP_WORKER_FACTOR: AtomicUsize = AtomicUsize::new(DEFAULT_HTTP_WORKER_FACTOR);
 static HTTP_WORKER_MIN: AtomicUsize = AtomicUsize::new(DEFAULT_HTTP_WORKER_MIN);
@@ -162,6 +160,7 @@ struct UsageRefreshResult {
     _status: UsageAvailabilityStatus,
 }
 
+pub(crate) use self::autofill::maybe_trigger_auto_register_pool_fill;
 pub(crate) use self::batch::refresh_usage_for_all_accounts;
 use self::batch::refresh_usage_for_polling_batch;
 #[cfg(test)]
@@ -169,12 +168,13 @@ use self::batch::{next_usage_poll_cursor, usage_poll_batch_indices};
 use self::errors::{
     mark_usage_unreachable_if_needed, record_usage_refresh_failure, should_retry_with_refresh,
 };
+pub(crate) use self::governance::maybe_trigger_auto_account_governance;
 pub(crate) use self::probe::run_session_probe_batch;
+pub(crate) use self::queue::enqueue_usage_refresh_with_worker;
 #[cfg(test)]
 pub(crate) use self::queue::{
     clear_pending_usage_refresh_tasks_for_tests, is_usage_refresh_task_pending_for_tests,
 };
-pub(crate) use self::queue::enqueue_usage_refresh_with_worker;
 use self::runner::{
     gateway_keepalive_loop, session_probe_polling_loop, token_refresh_polling_loop,
     usage_polling_loop,
@@ -184,8 +184,6 @@ pub(crate) use self::settings::{
     background_tasks_settings, reload_background_tasks_runtime_from_env,
     set_background_tasks_settings, BackgroundTasksSettingsPatch,
 };
-pub(crate) use self::autofill::maybe_trigger_auto_register_pool_fill;
-pub(crate) use self::governance::maybe_trigger_auto_account_governance;
 
 pub(crate) fn ensure_usage_polling() {
     ensure_background_tasks_config_loaded();

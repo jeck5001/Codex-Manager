@@ -2,8 +2,8 @@ use codexmanager_core::rpc::types::{AccountListParams, JsonRpcRequest, JsonRpcRe
 
 use crate::{
     account_cleanup, account_delete, account_delete_many, account_export, account_import,
-    account_list, account_payment, account_register, account_update, account_update_many, auth_account,
-    auth_login, auth_tokens,
+    account_list, account_payment, account_register, account_update, account_update_many,
+    auth_account, auth_login, auth_tokens,
 };
 
 pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
@@ -63,7 +63,11 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let account_ids = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|params| {
+                    params
+                        .get("accountIds")
+                        .or_else(|| params.get("account_ids"))
+                })
                 .and_then(|value| value.as_array())
                 .map(|items| {
                     items
@@ -74,13 +78,20 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 })
                 .unwrap_or_default();
             let status = super::str_param(req, "status").unwrap_or("");
-            super::value_or_error(account_update_many::update_accounts_status(account_ids, status))
+            super::value_or_error(account_update_many::update_accounts_status(
+                account_ids,
+                status,
+            ))
         }
         "account/updateManyTags" => {
             let account_ids = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|params| {
+                    params
+                        .get("accountIds")
+                        .or_else(|| params.get("account_ids"))
+                })
                 .and_then(|value| value.as_array())
                 .map(|items| {
                     items
@@ -91,7 +102,10 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 })
                 .unwrap_or_default();
             let tags = super::string_param(req, "tags");
-            super::value_or_error(account_update_many::update_accounts_tags(account_ids, tags.as_deref()))
+            super::value_or_error(account_update_many::update_accounts_tags(
+                account_ids,
+                tags.as_deref(),
+            ))
         }
         "account/import" => {
             let mut contents = req
@@ -117,14 +131,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "account/payment/generateLink" => {
             let account_id = first_str_param(req, &["accountId", "account_id"]).unwrap_or("");
             let plan_type = first_str_param(req, &["planType", "plan_type"]).unwrap_or("");
-            let workspace_name =
-                first_str_param(req, &["workspaceName", "workspace_name"]);
-            let price_interval =
-                first_str_param(req, &["priceInterval", "price_interval"]);
+            let workspace_name = first_str_param(req, &["workspaceName", "workspace_name"]);
+            let price_interval = first_str_param(req, &["priceInterval", "price_interval"]);
             let seat_quantity = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("seatQuantity").or_else(|| params.get("seat_quantity")))
+                .and_then(|params| {
+                    params
+                        .get("seatQuantity")
+                        .or_else(|| params.get("seat_quantity"))
+                })
                 .and_then(|value| value.as_i64());
             let country = first_str_param(req, &["country"]);
             let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
@@ -150,7 +166,11 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let account_ids = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|params| {
+                    params
+                        .get("accountIds")
+                        .or_else(|| params.get("account_ids"))
+                })
                 .and_then(|value| value.as_array())
                 .map(|items| {
                     items
@@ -170,13 +190,13 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let account_id = first_str_param(req, &["accountId", "account_id"]).unwrap_or("");
             let plan_type = first_str_param(req, &["planType", "plan_type"]).unwrap_or("");
             super::value_or_error(account_payment::mark_account_subscription(
-                account_id,
-                plan_type,
+                account_id, plan_type,
             ))
         }
         "account/payment/officialPromoLink/set" => {
             let account_id = first_str_param(req, &["accountId", "account_id"]).unwrap_or("");
-            let link = first_string_param(req, &["link", "officialPromoLink", "official_promo_link"]);
+            let link =
+                first_string_param(req, &["link", "officialPromoLink", "official_promo_link"]);
             super::value_or_error(account_payment::set_account_official_promo_link(
                 account_id,
                 link.as_deref(),
@@ -184,15 +204,17 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         }
         "account/teamManager/upload" => {
             let account_id = first_str_param(req, &["accountId", "account_id"]).unwrap_or("");
-            super::value_or_error(account_payment::upload_account_to_team_manager(
-                account_id,
-            ))
+            super::value_or_error(account_payment::upload_account_to_team_manager(account_id))
         }
         "account/teamManager/uploadMany" => {
             let account_ids = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|params| {
+                    params
+                        .get("accountIds")
+                        .or_else(|| params.get("account_ids"))
+                })
                 .and_then(|value| value.as_array())
                 .map(|items| {
                     items
@@ -206,20 +228,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 account_ids,
             ))
         }
-        "account/teamManager/test" => {
-            super::value_or_error(account_payment::test_team_manager_connection(
-                req.params.as_ref(),
-            ))
-        }
+        "account/teamManager/test" => super::value_or_error(
+            account_payment::test_team_manager_connection(req.params.as_ref()),
+        ),
         "account/register/availableServices" => {
             super::value_or_error(account_register::available_register_services())
         }
         "account/register/start" => {
-            let email_service_type = first_str_param(
-                req,
-                &["emailServiceType", "email_service_type", "type"],
-            )
-            .unwrap_or("");
+            let email_service_type =
+                first_str_param(req, &["emailServiceType", "email_service_type", "type"])
+                    .unwrap_or("");
             let email_service_id = req
                 .params
                 .as_ref()
@@ -237,11 +255,9 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             ))
         }
         "account/register/batch/start" => {
-            let email_service_type = first_str_param(
-                req,
-                &["emailServiceType", "email_service_type", "type"],
-            )
-            .unwrap_or("");
+            let email_service_type =
+                first_str_param(req, &["emailServiceType", "email_service_type", "type"])
+                    .unwrap_or("");
             let email_service_id = req
                 .params
                 .as_ref()
@@ -261,13 +277,21 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let interval_min = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("intervalMin").or_else(|| params.get("interval_min")))
+                .and_then(|params| {
+                    params
+                        .get("intervalMin")
+                        .or_else(|| params.get("interval_min"))
+                })
                 .and_then(|value| value.as_i64())
                 .unwrap_or(5);
             let interval_max = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("intervalMax").or_else(|| params.get("interval_max")))
+                .and_then(|params| {
+                    params
+                        .get("intervalMax")
+                        .or_else(|| params.get("interval_max"))
+                })
                 .and_then(|value| value.as_i64())
                 .unwrap_or(30);
             let concurrency = req
@@ -311,14 +335,10 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 .unwrap_or(20);
             let status = first_str_param(req, &["status"]);
             super::value_or_error(account_register::list_register_tasks(
-                page,
-                page_size,
-                status,
+                page, page_size, status,
             ))
         }
-        "account/register/stats" => {
-            super::value_or_error(account_register::register_stats())
-        }
+        "account/register/stats" => super::value_or_error(account_register::register_stats()),
         "account/register/task/cancel" => {
             let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
             super::value_or_error(account_register::cancel_register_task(task_uuid))
@@ -339,9 +359,18 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let service_ids = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("serviceIds").or_else(|| params.get("service_ids")))
+                .and_then(|params| {
+                    params
+                        .get("serviceIds")
+                        .or_else(|| params.get("service_ids"))
+                })
                 .and_then(|value| value.as_array())
-                .map(|items| items.iter().filter_map(|item| item.as_i64()).collect::<Vec<_>>())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_i64())
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default();
             let skip_registered =
                 first_bool_param(req, &["skipRegistered", "skip_registered"]).unwrap_or(true);
@@ -349,13 +378,21 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let interval_min = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("intervalMin").or_else(|| params.get("interval_min")))
+                .and_then(|params| {
+                    params
+                        .get("intervalMin")
+                        .or_else(|| params.get("interval_min"))
+                })
                 .and_then(|value| value.as_i64())
                 .unwrap_or(5);
             let interval_max = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("intervalMax").or_else(|| params.get("interval_max")))
+                .and_then(|params| {
+                    params
+                        .get("intervalMax")
+                        .or_else(|| params.get("interval_max"))
+                })
                 .and_then(|value| value.as_i64())
                 .unwrap_or(30);
             let concurrency = req
@@ -405,14 +442,13 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 .and_then(|params| params.get("serviceId").or_else(|| params.get("service_id")))
                 .and_then(|value| value.as_i64())
                 .unwrap_or_default();
-            super::value_or_error(account_register::read_register_email_service_full(service_id))
+            super::value_or_error(account_register::read_register_email_service_full(
+                service_id,
+            ))
         }
         "account/register/emailServices/create" => {
-            let service_type = first_str_param(
-                req,
-                &["serviceType", "service_type", "type"],
-            )
-            .unwrap_or("");
+            let service_type =
+                first_str_param(req, &["serviceType", "service_type", "type"]).unwrap_or("");
             let name = first_str_param(req, &["name"]).unwrap_or("");
             let enabled = first_bool_param(req, &["enabled"]).unwrap_or(true);
             let priority = req
@@ -508,9 +544,18 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let service_ids = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("serviceIds").or_else(|| params.get("service_ids")))
+                .and_then(|params| {
+                    params
+                        .get("serviceIds")
+                        .or_else(|| params.get("service_ids"))
+                })
                 .and_then(|value| value.as_array())
-                .map(|items| items.iter().filter_map(|item| item.as_i64()).collect::<Vec<_>>())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_i64())
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default();
             super::value_or_error(account_register::batch_delete_register_outlook(service_ids))
         }
@@ -518,11 +563,22 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let service_ids = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("serviceIds").or_else(|| params.get("service_ids")))
+                .and_then(|params| {
+                    params
+                        .get("serviceIds")
+                        .or_else(|| params.get("service_ids"))
+                })
                 .and_then(|value| value.as_array())
-                .map(|items| items.iter().filter_map(|item| item.as_i64()).collect::<Vec<_>>())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_i64())
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default();
-            super::value_or_error(account_register::reorder_register_email_services(service_ids))
+            super::value_or_error(account_register::reorder_register_email_services(
+                service_ids,
+            ))
         }
         "account/register/emailServices/testTempmail" => {
             let api_url = first_str_param(req, &["apiUrl", "api_url"]);
@@ -545,7 +601,11 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let account_ids = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|params| {
+                    params
+                        .get("accountIds")
+                        .or_else(|| params.get("account_ids"))
+                })
                 .and_then(|value| value.as_array())
                 .map(|items| {
                     items
@@ -564,7 +624,11 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let account_ids = req
                 .params
                 .as_ref()
-                .and_then(|params| params.get("accountIds").or_else(|| params.get("account_ids")))
+                .and_then(|params| {
+                    params
+                        .get("accountIds")
+                        .or_else(|| params.get("account_ids"))
+                })
                 .and_then(|value| value.as_array())
                 .map(|items| {
                     items

@@ -49,6 +49,39 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "gateway/backgroundTasks/get" => {
             super::as_json(crate::usage_refresh::background_tasks_settings())
         }
+        "gateway/cache/config/get" => {
+            super::as_json(crate::gateway::current_response_cache_config())
+        }
+        "gateway/cache/config/set" => {
+            let requested_enabled = super::bool_param(req, "enabled");
+            let requested_ttl_secs = u64_param(req, "ttlSecs");
+            let requested_max_entries = usize_param(req, "maxEntries");
+            super::value_or_error((|| {
+                let enabled = if let Some(value) = requested_enabled {
+                    crate::gateway::set_response_cache_enabled(value)
+                } else {
+                    crate::gateway::current_response_cache_config().enabled
+                };
+                let ttl_secs = if let Some(value) = requested_ttl_secs {
+                    crate::gateway::set_response_cache_ttl_secs(value)?
+                } else {
+                    crate::gateway::current_response_cache_ttl_secs()
+                };
+                let max_entries = if let Some(value) = requested_max_entries {
+                    crate::gateway::set_response_cache_max_entries(value)?
+                } else {
+                    crate::gateway::current_response_cache_max_entries()
+                };
+                Ok(serde_json::json!({
+                    "enabled": enabled,
+                    "ttlSecs": ttl_secs,
+                    "maxEntries": max_entries,
+                    "requiresRestart": false,
+                }))
+            })())
+        }
+        "gateway/cache/stats" => super::as_json(crate::gateway::current_response_cache_stats()),
+        "gateway/cache/clear" => super::as_json(crate::gateway::clear_response_cache()),
         "gateway/upstreamProxy/get" => super::as_json(serde_json::json!({
             "proxyUrl": crate::gateway::current_upstream_proxy_url(),
             "envKey": "CODEXMANAGER_UPSTREAM_PROXY_URL",
@@ -179,10 +212,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 ),
                 account_cooldown_network_secs: u64_param(req, "accountCooldownNetworkSecs"),
                 account_cooldown_low_quota_secs: u64_param(req, "accountCooldownLowQuotaSecs"),
-                account_cooldown_deactivated_secs: u64_param(
-                    req,
-                    "accountCooldownDeactivatedSecs",
-                ),
+                account_cooldown_deactivated_secs: u64_param(req, "accountCooldownDeactivatedSecs"),
             };
             let input = crate::BackgroundTasksInput {
                 usage_polling_enabled: patch.usage_polling_enabled,

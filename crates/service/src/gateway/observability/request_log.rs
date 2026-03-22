@@ -131,7 +131,7 @@ pub(super) fn write_request_log(
     error: Option<&str>,
     duration_ms: Option<u128>,
 ) {
-    write_request_log_with_attempts(
+    write_request_log_with_attempts_and_model_fallback(
         storage,
         trace_context,
         key_id,
@@ -146,11 +146,13 @@ pub(super) fn write_request_log(
         error,
         duration_ms,
         None,
+        None,
+        None,
     );
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn write_request_log_with_attempts(
+pub(super) fn write_request_log_with_attempts_and_model_fallback(
     storage: &Storage,
     trace_context: RequestLogTraceContext<'_>,
     key_id: Option<&str>,
@@ -165,6 +167,8 @@ pub(super) fn write_request_log_with_attempts(
     error: Option<&str>,
     duration_ms: Option<u128>,
     attempted_account_ids: Option<&[String]>,
+    requested_model: Option<&str>,
+    model_fallback_path: Option<&[String]>,
 ) {
     let original_path = trace_context.original_path.unwrap_or(request_path);
     let adapted_path = trace_context.adapted_path.unwrap_or(request_path);
@@ -173,6 +177,9 @@ pub(super) fn write_request_log_with_attempts(
         .map(String::as_str);
     let attempted_account_ids_json = attempted_account_ids
         .filter(|items| !items.is_empty())
+        .and_then(|items| serde_json::to_string(items).ok());
+    let model_fallback_path_json = model_fallback_path
+        .filter(|items| items.len() > 1)
         .and_then(|items| serde_json::to_string(items).ok());
     let input_tokens = normalize_token(usage.input_tokens);
     let cached_input_tokens = normalize_token(usage.cached_input_tokens);
@@ -232,6 +239,9 @@ pub(super) fn write_request_log_with_attempts(
             account_id: account_id.map(|v| v.to_string()),
             initial_account_id: initial_account_id.map(str::to_string),
             attempted_account_ids_json,
+            route_strategy: Some(super::current_route_strategy().to_string()),
+            requested_model: requested_model.map(|value| value.to_string()),
+            model_fallback_path_json,
             request_path: request_path.to_string(),
             original_path: Some(original_path.to_string()),
             adapted_path: Some(adapted_path.to_string()),

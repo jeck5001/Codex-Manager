@@ -11,7 +11,9 @@ pub(in super::super) struct GatewayUpstreamExecutionContext<'a> {
     response_adapter: super::super::super::ResponseAdapter,
     protocol_type: &'a str,
     model_for_log: Option<&'a str>,
+    requested_model: Option<&'a str>,
     reasoning_for_log: Option<&'a str>,
+    model_fallback_path: Option<&'a [String]>,
     candidate_count: usize,
     account_max_inflight: usize,
 }
@@ -28,7 +30,9 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         response_adapter: super::super::super::ResponseAdapter,
         protocol_type: &'a str,
         model_for_log: Option<&'a str>,
+        requested_model: Option<&'a str>,
         reasoning_for_log: Option<&'a str>,
+        model_fallback_path: Option<&'a [String]>,
         candidate_count: usize,
         account_max_inflight: usize,
     ) -> Self {
@@ -42,7 +46,9 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
             response_adapter,
             protocol_type,
             model_for_log,
+            requested_model,
             reasoning_for_log,
+            model_fallback_path,
             candidate_count,
             account_max_inflight,
         }
@@ -149,7 +155,7 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         elapsed_ms: u128,
         attempted_account_ids: Option<&[String]>,
     ) {
-        super::super::super::request_log::write_request_log_with_attempts(
+        super::super::super::request_log::write_request_log_with_attempts_and_model_fallback(
             self.storage,
             super::super::super::request_log::RequestLogTraceContext {
                 trace_id: Some(self.trace_id),
@@ -169,6 +175,8 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
             error,
             Some(elapsed_ms),
             attempted_account_ids,
+            self.requested_model,
+            self.model_fallback_path,
         );
         super::super::super::trace_log::log_request_final(
             self.trace_id,
@@ -183,5 +191,8 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
             status_code,
             Some(self.protocol_type),
         );
+        if let Some(account_id) = final_account_id {
+            super::super::super::record_route_latency(account_id, elapsed_ms);
+        }
     }
 }

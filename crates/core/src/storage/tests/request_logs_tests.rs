@@ -59,6 +59,9 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
         account_id: Some("acc_1".to_string()),
         initial_account_id: Some("acc_1".to_string()),
         attempted_account_ids_json: Some(r#"["acc_1"]"#.to_string()),
+        route_strategy: Some("weighted".to_string()),
+        requested_model: None,
+        model_fallback_path_json: None,
         request_path: "/v1/responses".to_string(),
         original_path: Some("/v1/chat/completions".to_string()),
         adapted_path: Some("/v1/responses".to_string()),
@@ -109,6 +112,7 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
         row.attempted_account_ids_json.as_deref(),
         Some(r#"["acc_1"]"#)
     );
+    assert_eq!(row.route_strategy.as_deref(), Some("weighted"));
     assert_eq!(row.request_path, log.request_path);
     assert_eq!(row.original_path.as_deref(), Some("/v1/chat/completions"));
     assert_eq!(row.adapted_path.as_deref(), Some("/v1/responses"));
@@ -139,6 +143,9 @@ fn token_stat_failure_still_commits_request_log() {
         account_id: Some("acc_1".to_string()),
         initial_account_id: Some("acc_1".to_string()),
         attempted_account_ids_json: Some(r#"["acc_1"]"#.to_string()),
+        route_strategy: Some("ordered".to_string()),
+        requested_model: None,
+        model_fallback_path_json: None,
         request_path: "/v1/responses".to_string(),
         original_path: Some("/v1/responses".to_string()),
         adapted_path: Some("/v1/responses".to_string()),
@@ -209,6 +216,9 @@ fn request_logs_support_backend_pagination_and_status_filters() {
                 account_id: Some("acc-log".to_string()),
                 initial_account_id: Some("acc-log".to_string()),
                 attempted_account_ids_json: Some(r#"["acc-log"]"#.to_string()),
+                route_strategy: Some("balanced".to_string()),
+                requested_model: None,
+                model_fallback_path_json: None,
                 request_path: format!("/v1/responses/{index}"),
                 original_path: Some("/v1/responses".to_string()),
                 adapted_path: Some("/v1/responses".to_string()),
@@ -276,6 +286,9 @@ fn request_logs_filtered_summary_aggregates_counts_and_tokens() {
                 account_id: Some("acc-sum".to_string()),
                 initial_account_id: Some("acc-sum".to_string()),
                 attempted_account_ids_json: Some(r#"["acc-sum"]"#.to_string()),
+                route_strategy: Some("cost-first".to_string()),
+                requested_model: None,
+                model_fallback_path_json: None,
                 request_path: "/v1/responses".to_string(),
                 original_path: Some("/v1/responses".to_string()),
                 adapted_path: Some("/v1/responses".to_string()),

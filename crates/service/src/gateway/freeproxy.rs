@@ -213,7 +213,9 @@ fn sync_register_proxy_pool(proxies: &[String]) -> Result<RegisterProxySyncSumma
     let existing = crate::account_register::list_register_proxies(None)?;
     let mut existing_by_key = HashMap::new();
     for item in existing {
-        existing_by_key.entry(register_proxy_key_from_item(&item)).or_insert(item);
+        existing_by_key
+            .entry(register_proxy_key_from_item(&item))
+            .or_insert(item);
     }
 
     let mut created_count = 0;
@@ -255,7 +257,9 @@ fn sync_register_proxy_pool(proxies: &[String]) -> Result<RegisterProxySyncSumma
     })
 }
 
-fn build_register_proxy_candidates(proxies: &[String]) -> Result<Vec<RegisterProxyCandidate>, String> {
+fn build_register_proxy_candidates(
+    proxies: &[String],
+) -> Result<Vec<RegisterProxyCandidate>, String> {
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
     let total = proxies.len();
@@ -273,8 +277,8 @@ fn parse_register_proxy_candidate(
     index: usize,
     total: usize,
 ) -> Result<RegisterProxyCandidate, String> {
-    let parsed =
-        Url::parse(proxy_url).map_err(|err| format!("解析 freeproxy 代理 URL 失败: {proxy_url}: {err}"))?;
+    let parsed = Url::parse(proxy_url)
+        .map_err(|err| format!("解析 freeproxy 代理 URL 失败: {proxy_url}: {err}"))?;
     let host = parsed
         .host_str()
         .map(str::trim)

@@ -33,10 +33,7 @@ fn usage_refresh_error_class_catches_timeout_and_connection() {
 fn usage_refresh_error_class_catches_deactivated_account() {
     let message = "HTTP 401: Your OpenAI account has been deactivated, please check your email for more information. If you feel this is an error, contact us through our help center at help.openai.com";
     assert!(usage_error_indicates_deactivated_account(message));
-    assert_eq!(
-        classify_usage_refresh_error(message),
-        "account_deactivated"
-    );
+    assert_eq!(classify_usage_refresh_error(message), "account_deactivated");
 }
 
 #[test]

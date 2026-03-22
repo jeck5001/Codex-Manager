@@ -161,8 +161,36 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_apikey_list: { rpcMethod: "apikey/list" },
   service_apikey_create: { rpcMethod: "apikey/create" },
   service_apikey_usage_stats: { rpcMethod: "apikey/usageStats" },
+  service_apikey_rate_limit_get: {
+    rpcMethod: "apikey/rateLimit/get",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_rate_limit_set: {
+    rpcMethod: "apikey/rateLimit/set",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_model_fallback_get: {
+    rpcMethod: "apikey/modelFallback/get",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_model_fallback_set: {
+    rpcMethod: "apikey/modelFallback/set",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_response_cache_get: {
+    rpcMethod: "apikey/responseCache/get",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_response_cache_set: {
+    rpcMethod: "apikey/responseCache/set",
+    mapParams: mapKeyIdToId,
+  },
   service_apikey_delete: {
     rpcMethod: "apikey/delete",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_renew: {
+    rpcMethod: "apikey/renew",
     mapParams: mapKeyIdToId,
   },
   service_apikey_update_model: {
@@ -201,11 +229,24 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_gateway_background_tasks_set: {
     rpcMethod: "gateway/backgroundTasks/set",
   },
+  service_gateway_cache_stats: { rpcMethod: "gateway/cache/stats" },
+  service_gateway_cache_clear: { rpcMethod: "gateway/cache/clear" },
   service_gateway_freeproxy_sync: { rpcMethod: "gateway/freeProxy/sync" },
   service_requestlog_list: { rpcMethod: "requestlog/list" },
   service_requestlog_summary: { rpcMethod: "requestlog/summary" },
+  service_requestlog_export: { rpcMethod: "requestlog/export" },
   service_requestlog_clear: { rpcMethod: "requestlog/clear" },
   service_requestlog_today_summary: { rpcMethod: "requestlog/today_summary" },
+  service_dashboard_health: { rpcMethod: "dashboard/health" },
+  service_dashboard_trend: { rpcMethod: "dashboard/trend" },
+  service_stats_cost_summary: { rpcMethod: "stats/cost/summary" },
+  service_stats_cost_export: { rpcMethod: "stats/cost/export" },
+  service_stats_cost_model_pricing_get: {
+    rpcMethod: "stats/cost/modelPricing/get",
+  },
+  service_stats_cost_model_pricing_set: {
+    rpcMethod: "stats/cost/modelPricing/set",
+  },
   service_listen_config_get: { rpcMethod: "service/listenConfig/get" },
   service_listen_config_set: { rpcMethod: "service/listenConfig/set" },
   open_in_browser: {

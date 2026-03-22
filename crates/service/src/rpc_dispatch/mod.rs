@@ -8,10 +8,12 @@ use crate::storage_helpers;
 mod account;
 mod apikey;
 mod app_settings;
+mod dashboard;
 mod gateway;
 mod requestlog;
 mod service_config;
 mod startup;
+mod stats;
 mod usage;
 
 pub(super) fn response(req: &JsonRpcRequest, result: Value) -> JsonRpcResponse {
@@ -100,6 +102,12 @@ pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
         return resp;
     }
     if let Some(resp) = startup::try_handle(&req) {
+        return resp;
+    }
+    if let Some(resp) = stats::try_handle(&req) {
+        return resp;
+    }
+    if let Some(resp) = dashboard::try_handle(&req) {
         return resp;
     }
     if let Some(resp) = gateway::try_handle(&req) {

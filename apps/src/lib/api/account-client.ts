@@ -2,7 +2,10 @@ import { invoke, withAddr } from "./transport";
 import {
   normalizeAccountList,
   normalizeApiKeyCreateResult,
+  normalizeApiKeyModelFallback,
+  normalizeApiKeyResponseCache,
   normalizeApiKeyList,
+  normalizeApiKeyRateLimit,
   normalizeApiKeyUsageStats,
   normalizeLoginStartResult,
   normalizeModelOptions,
@@ -22,6 +25,9 @@ import {
   AccountUsage,
   ApiKey,
   ApiKeyCreateResult,
+  ApiKeyModelFallback,
+  ApiKeyResponseCacheConfig,
+  ApiKeyRateLimit,
   ApiKeyUsageStat,
   ChatgptAuthTokensRefreshResult,
   CurrentAccessTokenAccountReadResult,
@@ -103,6 +109,7 @@ interface ApiKeyPayload {
   protocolType?: string | null;
   upstreamBaseUrl?: string | null;
   staticHeadersJson?: string | null;
+  expiresAt?: number | null;
 }
 
 interface RegisterStartPayload {
@@ -1136,6 +1143,7 @@ export const accountClient = {
         protocolType: params.protocolType || null,
         upstreamBaseUrl: params.upstreamBaseUrl || null,
         staticHeadersJson: params.staticHeadersJson || null,
+        expiresAt: params.expiresAt || null,
       })
     );
     return normalizeApiKeyCreateResult(result);
@@ -1144,8 +1152,60 @@ export const accountClient = {
     const result = await invoke<unknown>("service_apikey_usage_stats", withAddr());
     return normalizeApiKeyUsageStats(result);
   },
+  async getApiKeyRateLimit(keyId: string): Promise<ApiKeyRateLimit> {
+    const result = await invoke<unknown>(
+      "service_apikey_rate_limit_get",
+      withAddr({ keyId })
+    );
+    return normalizeApiKeyRateLimit(result);
+  },
+  async getApiKeyModelFallback(keyId: string): Promise<ApiKeyModelFallback> {
+    const result = await invoke<unknown>(
+      "service_apikey_model_fallback_get",
+      withAddr({ keyId })
+    );
+    return normalizeApiKeyModelFallback(result);
+  },
+  async getApiKeyResponseCache(keyId: string): Promise<ApiKeyResponseCacheConfig> {
+    const result = await invoke<unknown>(
+      "service_apikey_response_cache_get",
+      withAddr({ keyId })
+    );
+    return normalizeApiKeyResponseCache(result);
+  },
+  setApiKeyRateLimit: (
+    keyId: string,
+    params: { rpm?: number | null; tpm?: number | null; dailyLimit?: number | null }
+  ) =>
+    invoke(
+      "service_apikey_rate_limit_set",
+      withAddr({
+        keyId,
+        rpm: params.rpm ?? null,
+        tpm: params.tpm ?? null,
+        dailyLimit: params.dailyLimit ?? null,
+      })
+    ),
+  setApiKeyModelFallback: (keyId: string, params: { modelChain?: string[] | null }) =>
+    invoke(
+      "service_apikey_model_fallback_set",
+      withAddr({
+        keyId,
+        modelChain: params.modelChain ?? [],
+      })
+    ),
+  setApiKeyResponseCache: (keyId: string, params: { enabled: boolean }) =>
+    invoke(
+      "service_apikey_response_cache_set",
+      withAddr({
+        keyId,
+        enabled: params.enabled,
+      })
+    ),
   deleteApiKey: (keyId: string) =>
     invoke("service_apikey_delete", withAddr({ keyId })),
+  renewApiKey: (keyId: string, expiresAt: number | null) =>
+    invoke("service_apikey_renew", withAddr({ keyId, expiresAt })),
   updateApiKey: (keyId: string, params: ApiKeyPayload) =>
     invoke(
       "service_apikey_update_model",

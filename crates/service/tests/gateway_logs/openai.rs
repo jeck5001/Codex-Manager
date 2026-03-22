@@ -7,6 +7,8 @@ fn gateway_openai_stream_logs_cached_and_reasoning_tokens() {
     let db_path: PathBuf = dir.join("codexmanager.db");
 
     let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let _no_proxy_guard = EnvGuard::set("NO_PROXY", "127.0.0.1,localhost");
+    let _no_proxy_lower_guard = EnvGuard::set("no_proxy", "127.0.0.1,localhost");
 
     let upstream_sse = concat!(
         "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n",
@@ -63,6 +65,7 @@ fn gateway_openai_stream_logs_cached_and_reasoning_tokens() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -121,6 +124,8 @@ fn gateway_openai_api_base_suppresses_cookie_and_account_headers() {
     let db_path: PathBuf = dir.join("codexmanager.db");
 
     let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let _no_proxy_guard = EnvGuard::set("NO_PROXY", "127.0.0.1,localhost");
+    let _no_proxy_lower_guard = EnvGuard::set("no_proxy", "127.0.0.1,localhost");
     let _cookie_guard = EnvGuard::set(
         "CODEXMANAGER_UPSTREAM_COOKIE",
         "cf_clearance=should_not_forward",
@@ -187,6 +192,7 @@ fn gateway_openai_api_base_suppresses_cookie_and_account_headers() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -286,6 +292,7 @@ fn gateway_openai_stream_usage_with_plain_content_type() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -400,6 +407,7 @@ fn gateway_openai_non_stream_sse_with_plain_content_type_is_collapsed_to_json() 
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -501,6 +509,7 @@ fn gateway_openai_non_stream_without_usage_keeps_tokens_null() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -627,6 +636,7 @@ fn gateway_openai_compact_route_aligns_with_codex_remote_compact_request() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -789,6 +799,7 @@ fn gateway_openai_compact_invalid_success_body_is_mapped_to_502() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -935,6 +946,7 @@ fn gateway_openai_compact_uses_conversation_id_as_session_anchor() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -1050,6 +1062,7 @@ fn gateway_openai_compact_html_non_success_is_mapped_to_structured_403() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -1060,20 +1073,16 @@ fn gateway_openai_compact_html_non_success_is_mapped_to_structured_403() {
         "stream": false
     });
     let request_body = serde_json::to_string(&request_body).expect("serialize request");
-    let gateway_url = format!("http://{}/v1/responses/compact", server.addr);
-    let response = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .expect("build client")
-        .post(&gateway_url)
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {platform_key}"))
-        .header("session_id", "sess_compact_html_non_success")
-        .body(request_body)
-        .send()
-        .expect("send compact request");
-    let status = response.status().as_u16();
-    let gateway_body = response.text().expect("read gateway body");
+    let (status, gateway_body) = post_http_raw(
+        &server.addr,
+        "/v1/responses/compact",
+        &request_body,
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", &format!("Bearer {platform_key}")),
+            ("session_id", "sess_compact_html_non_success"),
+        ],
+    );
     server.join();
     assert_eq!(status, 403, "gateway response: {gateway_body}");
     assert!(
@@ -1210,6 +1219,7 @@ fn gateway_openai_html_non_success_logs_debug_ids_for_responses() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -1220,19 +1230,15 @@ fn gateway_openai_html_non_success_logs_debug_ids_for_responses() {
         "stream": false
     });
     let request_body = serde_json::to_string(&request_body).expect("serialize request");
-    let gateway_url = format!("http://{}/v1/responses", server.addr);
-    let response = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .expect("build client")
-        .post(&gateway_url)
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {platform_key}"))
-        .body(request_body)
-        .send()
-        .expect("send responses request");
-    let status = response.status().as_u16();
-    let gateway_body = response.text().expect("read gateway body");
+    let (status, gateway_body) = post_http_raw(
+        &server.addr,
+        "/v1/responses",
+        &request_body,
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", &format!("Bearer {platform_key}")),
+        ],
+    );
     server.join();
     assert_eq!(status, 403, "gateway response: {gateway_body}");
 
@@ -1302,6 +1308,7 @@ fn gateway_models_returns_cached_without_upstream() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -1500,6 +1507,7 @@ fn gateway_chatgpt_primary_preserves_turn_state_headers_without_openai_fallback(
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -1618,6 +1626,7 @@ fn gateway_chatgpt_primary_drops_turn_state_without_thread_anchor() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -1718,6 +1727,7 @@ fn gateway_chatgpt_primary_uses_prompt_cache_anchor_for_session_without_inventin
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -1843,6 +1853,7 @@ fn gateway_unauthorized_refreshes_access_token_and_retries_once() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 
@@ -2003,6 +2014,7 @@ fn gateway_invalid_refresh_token_marks_first_account_unavailable_and_fails_over(
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
+            expires_at: None,
         })
         .expect("insert api key");
 

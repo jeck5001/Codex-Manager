@@ -30,8 +30,7 @@ pub(crate) fn read_governance_summary() -> Result<Vec<GovernanceSummaryItem>, St
 
     let mut aggregates = BTreeMap::<String, GovernanceAggregate>::new();
     for event in events {
-        let Some((code, label, target_status)) =
-            classify_governance_reason(event.message.as_str())
+        let Some((code, label, target_status)) = classify_governance_reason(event.message.as_str())
         else {
             continue;
         };
@@ -97,7 +96,15 @@ fn classify_governance_reason(message: &str) -> Option<(&'static str, &'static s
         _ => return None,
     };
     let target_status = parsed.status.as_deref().unwrap_or("disabled");
-    Some((code, label, if target_status == "deactivated" { "deactivated" } else { "disabled" }))
+    Some((
+        code,
+        label,
+        if target_status == "deactivated" {
+            "deactivated"
+        } else {
+            "disabled"
+        },
+    ))
 }
 
 #[cfg(test)]
@@ -107,35 +114,28 @@ mod tests {
     #[test]
     fn classify_governance_reason_recognizes_expected_markers() {
         assert_eq!(
-            classify_governance_reason(
-                "status=deactivated reason=auto_governance_deactivated"
-            ),
+            classify_governance_reason("status=deactivated reason=auto_governance_deactivated"),
             Some(("auto_deactivated", "检测到账号已停用", "deactivated"))
         );
         assert_eq!(
-            classify_governance_reason(
-                "status=disabled reason=auto_governance_refresh_token"
-            ),
+            classify_governance_reason("status=disabled reason=auto_governance_refresh_token"),
             Some(("refresh_token_disabled", "Refresh 连续失效", "disabled"))
         );
         assert_eq!(
-            classify_governance_reason(
-                "status=disabled reason=auto_governance_auth_failures"
-            ),
+            classify_governance_reason("status=disabled reason=auto_governance_auth_failures"),
             Some(("auth_failures_disabled", "401/403 连续失败", "disabled"))
         );
         assert_eq!(
-            classify_governance_reason(
-                "status=disabled reason=auto_governance_suspected"
-            ),
+            classify_governance_reason("status=disabled reason=auto_governance_suspected"),
             Some(("suspected_disabled", "疑似风控/授权异常", "disabled"))
         );
         assert_eq!(
-            classify_governance_reason(
-                "status=disabled reason=auto_governance_proxy_failures"
-            ),
+            classify_governance_reason("status=disabled reason=auto_governance_proxy_failures"),
             Some(("proxy_failures_disabled", "代理异常", "disabled"))
         );
-        assert_eq!(classify_governance_reason("status=disabled reason=manual"), None);
+        assert_eq!(
+            classify_governance_reason("status=disabled reason=manual"),
+            None
+        );
     }
 }
