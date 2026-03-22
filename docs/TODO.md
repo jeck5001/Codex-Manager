@@ -45,6 +45,7 @@
   - `cargo test -p codexmanager-service response_cache_entry_expires_after_ttl -- --nocapture` 通过
   - `cargo test -p codexmanager-service response_cache_evicts_oldest_entry_when_capacity_is_exceeded -- --nocapture` 通过
   - `cargo test -p codexmanager-service requestlog_export_rpc_returns_filtered_csv_content -- --nocapture` 通过
+  - `cargo test -p codexmanager-service requestlog_export_rpc_supports_key_model_and_time_filters -- --nocapture` 通过
   - `cargo test -p codexmanager-service export_response_sets_download_headers -- --nocapture` 通过
   - `cargo check --manifest-path apps/src-tauri/Cargo.toml` 通过（API Key 缓存与日志导出）
   - `pnpm run build:desktop` 通过（API Key 缓存与日志导出）
@@ -349,7 +350,7 @@
   - [x] 新增 HTTP 端点 `GET /export/requestlogs`
   - [x] 先补 RPC 导出链路，支持 `format` 参数（csv / json）
   - [x] 支持当前日志页筛选参数（query / statusFilter）
-  - [ ] 扩展为时间范围、模型、Key 等更完整筛选
+  - [x] 导出接口额外支持 `timeFrom / timeTo / model / keyId` 筛选
   - [ ] 流式响应，避免大数据量 OOM
 
 - [-] **前端**
