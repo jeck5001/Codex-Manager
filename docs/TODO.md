@@ -46,6 +46,7 @@
   - `cargo test -p codexmanager-service response_cache_evicts_oldest_entry_when_capacity_is_exceeded -- --nocapture` 通过
   - `cargo test -p codexmanager-service requestlog_export_rpc_returns_filtered_csv_content -- --nocapture` 通过
   - `cargo test -p codexmanager-service requestlog_export_rpc_supports_key_model_and_time_filters -- --nocapture` 通过
+  - `cargo test -p codexmanager-service requestlog_list_and_summary_support_extended_filters -- --nocapture` 通过
   - `cargo test -p codexmanager-service export_response_sets_download_headers -- --nocapture` 通过
   - `cargo check --manifest-path apps/src-tauri/Cargo.toml` 通过（API Key 缓存与日志导出）
   - `pnpm run build:desktop` 通过（API Key 缓存与日志导出）
@@ -56,6 +57,7 @@
   - `pnpm run build` 通过（Web / Docker 静态产物）
   - `curl -I http://localhost:48861/` => `200 OK`
   - `curl -i http://localhost:48861/api/export/requestlogs?format=csv&statusFilter=all` => `200 OK`，返回 `content-disposition: attachment`
+  - `curl -i http://localhost:48861/api/export/requestlogs?format=json&statusFilter=all` => `200 OK`，返回 `transfer-encoding: chunked`
   - `docker compose -f docker/docker-compose.yml up -d --build` 本轮失败：容器内 `static.crates.io` DNS 解析失败，非代码问题，待网络恢复后复跑
   - `cargo test -p codexmanager-service rate_limit_check_enforces_rpm_limit -- --nocapture` 通过
   - `cargo test -p codexmanager-service rate_limit_check_enforces_tpm_limit -- --nocapture` 通过
@@ -351,13 +353,14 @@
   - [x] 先补 RPC 导出链路，支持 `format` 参数（csv / json）
   - [x] 支持当前日志页筛选参数（query / statusFilter）
   - [x] 导出接口额外支持 `timeFrom / timeTo / model / keyId` 筛选
-  - [ ] 流式响应，避免大数据量 OOM
+  - [x] HTTP 导出改为分批流式响应，避免大数据量整块占用内存
 
 - [-] **前端**
   - [x] 请求日志页增加「导出」按钮
   - [x] 格式选择下拉（CSV / JSON）
   - [x] 导出使用当前页面的筛选条件
   - [x] Web / Docker 版优先走 `/api/export/requestlogs` 直接下载
+  - [x] 日志页补充 `keyId / model / timeFrom / timeTo` 筛选并与列表、摘要、导出联动
 
 ---
 

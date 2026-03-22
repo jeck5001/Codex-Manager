@@ -457,13 +457,24 @@ pub struct RequestLogSummary {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RequestLogFilterParams {
+    pub query: Option<String>,
+    pub status_filter: Option<String>,
+    pub key_id: Option<String>,
+    pub model: Option<String>,
+    pub time_from: Option<i64>,
+    pub time_to: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RequestLogListParams {
     pub page: i64,
     pub page_size: i64,
-    pub query: Option<String>,
-    pub status_filter: Option<String>,
+    #[serde(flatten)]
+    pub filters: RequestLogFilterParams,
 }
 
 impl Default for RequestLogListParams {
@@ -471,8 +482,7 @@ impl Default for RequestLogListParams {
         Self {
             page: 1,
             page_size: 20,
-            query: None,
-            status_filter: None,
+            filters: RequestLogFilterParams::default(),
         }
     }
 }
@@ -486,8 +496,7 @@ impl RequestLogListParams {
             } else {
                 self.page_size
             },
-            query: self.query,
-            status_filter: self.status_filter,
+            filters: self.filters,
         }
     }
 }
@@ -506,18 +515,8 @@ pub struct RequestLogListResult {
 pub struct RequestLogExportParams {
     #[serde(default)]
     pub format: Option<String>,
-    #[serde(default)]
-    pub query: Option<String>,
-    #[serde(default)]
-    pub status_filter: Option<String>,
-    #[serde(default)]
-    pub key_id: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub time_from: Option<i64>,
-    #[serde(default)]
-    pub time_to: Option<i64>,
+    #[serde(flatten)]
+    pub filters: RequestLogFilterParams,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

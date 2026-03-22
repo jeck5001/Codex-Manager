@@ -1,10 +1,22 @@
+use bytes::Bytes;
 use codexmanager_core::rpc::types::{
-    RequestLogExportParams, RequestLogExportResult, RequestLogSummary,
+    RequestLogExportParams, RequestLogExportResult, RequestLogFilterParams, RequestLogSummary,
 };
+use std::convert::Infallible;
 
 use crate::storage_helpers::open_storage;
 
-use super::list::{normalize_optional_text, normalize_status_filter, to_request_log_summary};
+use super::list::{normalize_filter_params, to_request_log_summary, to_storage_filters};
+
+const REQUEST_LOG_EXPORT_CSV_HEADER: &str =
+    "traceId,keyId,accountId,initialAccountId,attemptedAccountIds,routeStrategy,requestedModel,modelFallbackPath,requestPath,originalPath,adaptedPath,method,model,reasoningEffort,responseAdapter,upstreamUrl,statusCode,durationMs,inputTokens,cachedInputTokens,outputTokens,totalTokens,reasoningOutputTokens,estimatedCostUsd,error,createdAt";
+const REQUEST_LOG_EXPORT_BATCH_SIZE: i64 = 500;
+
+pub(crate) struct RequestLogExportPlan {
+    pub(crate) format: &'static str,
+    pub(crate) file_name: String,
+    pub(crate) filters: RequestLogFilterParams,
+}
 
 fn normalize_export_format(value: Option<String>) -> Result<&'static str, String> {
     match value
@@ -53,10 +65,47 @@ fn json_string<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "[]".to_string())
 }
 
+fn append_csv_row(output: &mut String, item: &RequestLogSummary) {
+    let mut columns = Vec::with_capacity(26);
+    columns.push(optional_string(item.trace_id.as_deref()));
+    columns.push(optional_string(item.key_id.as_deref()));
+    columns.push(optional_string(item.account_id.as_deref()));
+    columns.push(optional_string(item.initial_account_id.as_deref()));
+    columns.push(json_string(&item.attempted_account_ids));
+    columns.push(optional_string(item.route_strategy.as_deref()));
+    columns.push(optional_string(item.requested_model.as_deref()));
+    columns.push(json_string(&item.model_fallback_path));
+    columns.push(item.request_path.clone());
+    columns.push(optional_string(item.original_path.as_deref()));
+    columns.push(optional_string(item.adapted_path.as_deref()));
+    columns.push(item.method.clone());
+    columns.push(optional_string(item.model.as_deref()));
+    columns.push(optional_string(item.reasoning_effort.as_deref()));
+    columns.push(optional_string(item.response_adapter.as_deref()));
+    columns.push(optional_string(item.upstream_url.as_deref()));
+    columns.push(optional_i64(item.status_code));
+    columns.push(optional_i64(item.duration_ms));
+    columns.push(optional_i64(item.input_tokens));
+    columns.push(optional_i64(item.cached_input_tokens));
+    columns.push(optional_i64(item.output_tokens));
+    columns.push(optional_i64(item.total_tokens));
+    columns.push(optional_i64(item.reasoning_output_tokens));
+    columns.push(optional_f64(item.estimated_cost_usd));
+    columns.push(optional_string(item.error.as_deref()));
+    columns.push(item.created_at.to_string());
+
+    output.push_str(
+        &columns
+            .iter()
+            .map(|value| csv_escape(value))
+            .collect::<Vec<_>>()
+            .join(","),
+    );
+    output.push('\n');
+}
+
 fn build_request_log_export_csv(items: &[RequestLogSummary]) -> String {
-    let mut lines = vec![
-        "traceId,keyId,accountId,initialAccountId,attemptedAccountIds,routeStrategy,requestedModel,modelFallbackPath,requestPath,originalPath,adaptedPath,method,model,reasoningEffort,responseAdapter,upstreamUrl,statusCode,durationMs,inputTokens,cachedInputTokens,outputTokens,totalTokens,reasoningOutputTokens,estimatedCostUsd,error,createdAt".to_string(),
-    ];
+    let mut lines = vec![REQUEST_LOG_EXPORT_CSV_HEADER.to_string()];
 
     for item in items {
         push_csv_row(
@@ -103,81 +152,113 @@ fn build_request_log_export_file_name(format: &str, status_filter: Option<&str>)
     format!("codexmanager-requestlogs-{scope}.{format}")
 }
 
-fn normalize_optional_timestamp(value: Option<i64>) -> Option<i64> {
-    value.filter(|item| *item > 0)
+pub(crate) fn prepare_request_log_export(
+    params: RequestLogExportParams,
+) -> Result<RequestLogExportPlan, String> {
+    let filters = normalize_filter_params(params.filters);
+    let format = normalize_export_format(params.format)?;
+    let file_name = build_request_log_export_file_name(format, filters.status_filter.as_deref());
+    Ok(RequestLogExportPlan {
+        format,
+        file_name,
+        filters,
+    })
 }
 
-fn request_log_matches_extra_filters(
-    item: &RequestLogSummary,
-    key_id: Option<&str>,
-    model: Option<&str>,
-    time_from: Option<i64>,
-    time_to: Option<i64>,
-) -> bool {
-    if let Some(expected_key_id) = key_id {
-        if item.key_id.as_deref() != Some(expected_key_id) {
-            return false;
-        }
+pub(crate) fn stream_request_log_export_chunks(
+    plan: RequestLogExportPlan,
+    sender: tokio::sync::mpsc::Sender<Result<Bytes, Infallible>>,
+) -> Result<(), String> {
+    let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
+    let mut offset = 0_i64;
+    let mut streamed_any = false;
+
+    if plan.format == "csv" {
+        sender
+            .blocking_send(Ok(Bytes::from(format!("{REQUEST_LOG_EXPORT_CSV_HEADER}\n"))))
+            .map_err(|_| "request log export stream closed".to_string())?;
     }
 
-    if let Some(expected_model) = model {
-        let actual_model = item.model.as_deref().unwrap_or_default();
-        let requested_model = item.requested_model.as_deref().unwrap_or_default();
-        if actual_model != expected_model && requested_model != expected_model {
-            return false;
+    loop {
+        let rows = storage
+            .list_request_logs_paginated_filtered(
+                to_storage_filters(&plan.filters, None, None),
+                offset,
+                REQUEST_LOG_EXPORT_BATCH_SIZE,
+            )
+            .map_err(|err| format!("list request logs failed: {err}"))?;
+        if rows.is_empty() {
+            break;
         }
+
+        let items = rows
+            .into_iter()
+            .map(to_request_log_summary)
+            .collect::<Vec<_>>();
+        let mut chunk = String::new();
+
+        match plan.format {
+            "csv" => {
+                for item in &items {
+                    append_csv_row(&mut chunk, item);
+                }
+            }
+            "json" => {
+                for item in &items {
+                    if streamed_any {
+                        chunk.push(',');
+                    } else {
+                        chunk.push('[');
+                        streamed_any = true;
+                    }
+                    chunk.push('\n');
+                    chunk.push_str(
+                        &serde_json::to_string(item)
+                            .map_err(|err| format!("serialize request logs failed: {err}"))?,
+                    );
+                }
+            }
+            _ => unreachable!(),
+        }
+
+        if !chunk.is_empty() {
+            sender
+                .blocking_send(Ok(Bytes::from(chunk)))
+                .map_err(|_| "request log export stream closed".to_string())?;
+        }
+        offset += items.len() as i64;
     }
 
-    if let Some(start_ts) = time_from {
-        if item.created_at < start_ts {
-            return false;
-        }
+    if plan.format == "json" {
+        let tail = if streamed_any { "\n]" } else { "[]" };
+        sender
+            .blocking_send(Ok(Bytes::from(tail.to_string())))
+            .map_err(|_| "request log export stream closed".to_string())?;
     }
 
-    if let Some(end_ts) = time_to {
-        if item.created_at > end_ts {
-            return false;
-        }
-    }
-
-    true
+    Ok(())
 }
 
 pub(crate) fn export_request_logs(
     params: RequestLogExportParams,
 ) -> Result<RequestLogExportResult, String> {
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
-    let query = normalize_optional_text(params.query);
-    let status_filter = normalize_status_filter(params.status_filter);
-    let key_id = normalize_optional_text(params.key_id);
-    let model = normalize_optional_text(params.model);
-    let time_from = normalize_optional_timestamp(params.time_from);
-    let time_to = normalize_optional_timestamp(params.time_to);
-    let format = normalize_export_format(params.format)?;
+    let plan = prepare_request_log_export(params)?;
     let total = storage
-        .count_request_logs(query.as_deref(), status_filter.as_deref())
+        .count_request_logs_filtered(to_storage_filters(&plan.filters, None, None))
         .map_err(|err| format!("count request logs failed: {err}"))?;
     let items = if total > 0 {
         storage
-            .list_request_logs_paginated(query.as_deref(), status_filter.as_deref(), 0, total)
+            .list_request_logs_paginated_filtered(to_storage_filters(&plan.filters, None, None), 0, total)
             .map_err(|err| format!("list request logs failed: {err}"))?
             .into_iter()
             .map(to_request_log_summary)
-            .filter(|item| {
-                request_log_matches_extra_filters(
-                    item,
-                    key_id.as_deref(),
-                    model.as_deref(),
-                    time_from,
-                    time_to,
-                )
-            })
             .collect::<Vec<_>>()
     } else {
         Vec::new()
     };
 
-    let content = match format {
+    let content = match plan.format {
         "csv" => build_request_log_export_csv(&items),
         "json" => serde_json::to_string_pretty(&items)
             .map_err(|err| format!("serialize request logs failed: {err}"))?,
@@ -185,8 +266,8 @@ pub(crate) fn export_request_logs(
     };
 
     Ok(RequestLogExportResult {
-        format: format.to_string(),
-        file_name: build_request_log_export_file_name(format, status_filter.as_deref()),
+        format: plan.format.to_string(),
+        file_name: plan.file_name,
         content,
         record_count: items.len() as i64,
     })

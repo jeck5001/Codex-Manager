@@ -151,9 +151,29 @@ impl Storage {
         offset: i64,
         limit: i64,
     ) -> Result<Vec<RequestLog>> {
+        self.list_request_logs_paginated_filtered(
+            RequestLogFilterInput {
+                query,
+                status_filter,
+                key_id: None,
+                model: None,
+                time_from: None,
+                time_to: None,
+            },
+            offset,
+            limit,
+        )
+    }
+
+    pub fn list_request_logs_paginated_filtered(
+        &self,
+        filters: RequestLogFilterInput<'_>,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<RequestLog>> {
         let normalized_limit = normalize_request_log_limit(limit);
         let normalized_offset = offset.max(0);
-        let filters = build_request_log_filters(query, status_filter);
+        let filters = build_request_log_filters(filters);
         let sql = format!(
             "SELECT
                 r.trace_id, r.key_id, r.account_id, r.initial_account_id, r.attempted_account_ids_json, r.route_strategy,
@@ -187,7 +207,21 @@ impl Storage {
         query: Option<&str>,
         status_filter: Option<&str>,
     ) -> Result<i64> {
-        let filters = build_request_log_filters(query, status_filter);
+        self.count_request_logs_filtered(RequestLogFilterInput {
+            query,
+            status_filter,
+            key_id: None,
+            model: None,
+            time_from: None,
+            time_to: None,
+        })
+    }
+
+    pub fn count_request_logs_filtered(
+        &self,
+        filters: RequestLogFilterInput<'_>,
+    ) -> Result<i64> {
+        let filters = build_request_log_filters(filters);
         let sql = format!(
             "SELECT COUNT(1)
              FROM request_logs r
@@ -206,7 +240,21 @@ impl Storage {
         query: Option<&str>,
         status_filter: Option<&str>,
     ) -> Result<RequestLogQuerySummary> {
-        let filters = build_request_log_filters(query, status_filter);
+        self.summarize_request_logs_filtered_with_filters(RequestLogFilterInput {
+            query,
+            status_filter,
+            key_id: None,
+            model: None,
+            time_from: None,
+            time_to: None,
+        })
+    }
+
+    pub fn summarize_request_logs_filtered_with_filters(
+        &self,
+        filters: RequestLogFilterInput<'_>,
+    ) -> Result<RequestLogQuerySummary> {
+        let filters = build_request_log_filters(filters);
         let sql = format!(
             "SELECT
                 COUNT(1),
@@ -448,6 +496,15 @@ struct RequestLogSqlFilters {
     params: Vec<Value>,
 }
 
+pub struct RequestLogFilterInput<'a> {
+    pub query: Option<&'a str>,
+    pub status_filter: Option<&'a str>,
+    pub key_id: Option<&'a str>,
+    pub model: Option<&'a str>,
+    pub time_from: Option<i64>,
+    pub time_to: Option<i64>,
+}
+
 fn normalize_request_log_limit(value: i64) -> i64 {
     if value <= 0 {
         200
@@ -457,18 +514,21 @@ fn normalize_request_log_limit(value: i64) -> i64 {
 }
 
 fn build_request_log_filters(
-    query: Option<&str>,
-    status_filter: Option<&str>,
+    filters: RequestLogFilterInput<'_>,
 ) -> RequestLogSqlFilters {
     let mut clauses = Vec::new();
     let mut params = Vec::new();
 
     append_request_log_query_clause(
-        request_log_query::parse_request_log_query(query),
+        request_log_query::parse_request_log_query(filters.query),
         &mut clauses,
         &mut params,
     );
-    append_status_filter_clause(status_filter, &mut clauses, &mut params);
+    append_status_filter_clause(filters.status_filter, &mut clauses, &mut params);
+    append_optional_exact_clause("r.key_id", filters.key_id, &mut clauses, &mut params);
+    append_optional_model_clause(filters.model, &mut clauses, &mut params);
+    append_optional_time_clause(">=", filters.time_from, &mut clauses, &mut params);
+    append_optional_time_clause("<=", filters.time_to, &mut clauses, &mut params);
 
     RequestLogSqlFilters {
         where_clause: if clauses.is_empty() {
@@ -478,6 +538,45 @@ fn build_request_log_filters(
         },
         params,
     }
+}
+
+fn append_optional_exact_clause(
+    column: &str,
+    value: Option<&str>,
+    clauses: &mut Vec<String>,
+    params: &mut Vec<Value>,
+) {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    clauses.push(format!("{column} = ?"));
+    params.push(Value::Text(value.to_string()));
+}
+
+fn append_optional_model_clause(
+    value: Option<&str>,
+    clauses: &mut Vec<String>,
+    params: &mut Vec<Value>,
+) {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    clauses.push("(IFNULL(r.model, '') = ? OR IFNULL(r.requested_model, '') = ?)".to_string());
+    params.push(Value::Text(value.to_string()));
+    params.push(Value::Text(value.to_string()));
+}
+
+fn append_optional_time_clause(
+    operator: &str,
+    value: Option<i64>,
+    clauses: &mut Vec<String>,
+    params: &mut Vec<Value>,
+) {
+    let Some(value) = value.filter(|value| *value > 0) else {
+        return;
+    };
+    clauses.push(format!("r.created_at {operator} ?"));
+    params.push(Value::Integer(value));
 }
 
 fn append_request_log_query_clause(

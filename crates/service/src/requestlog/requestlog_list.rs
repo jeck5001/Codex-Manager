@@ -1,7 +1,7 @@
 use codexmanager_core::rpc::types::{
-    RequestLogListParams, RequestLogListResult, RequestLogSummary,
+    RequestLogFilterParams, RequestLogListParams, RequestLogListResult, RequestLogSummary,
 };
-use codexmanager_core::storage::RequestLog;
+use codexmanager_core::storage::{RequestLog, RequestLogFilterInput};
 
 use crate::storage_helpers::open_storage;
 
@@ -30,21 +30,15 @@ pub(crate) fn read_request_log_page(
 ) -> Result<RequestLogListResult, String> {
     let params = params.normalized();
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
-    let query = normalize_optional_text(params.query);
-    let status_filter = normalize_status_filter(params.status_filter);
+    let filters = normalize_filter_params(params.filters);
     let page_size = normalize_page_size(params.page_size);
     let total = storage
-        .count_request_logs(query.as_deref(), status_filter.as_deref())
+        .count_request_logs_filtered(to_storage_filters(&filters, None, None))
         .map_err(|err| format!("count request logs failed: {err}"))?;
     let page = clamp_page(params.page, total, page_size);
     let offset = (page - 1) * page_size;
     let logs = storage
-        .list_request_logs_paginated(
-            query.as_deref(),
-            status_filter.as_deref(),
-            offset,
-            page_size,
-        )
+        .list_request_logs_paginated_filtered(to_storage_filters(&filters, None, None), offset, page_size)
         .map_err(|err| format!("list request logs failed: {err}"))?;
 
     Ok(RequestLogListResult {
@@ -69,6 +63,36 @@ pub(crate) fn normalize_status_filter(value: Option<String>) -> Option<String> {
         "" | "all" => None,
         "2xx" | "4xx" | "5xx" => Some(normalized),
         _ => None,
+    }
+}
+
+pub(crate) fn normalize_optional_timestamp(value: Option<i64>) -> Option<i64> {
+    value.filter(|item| *item > 0)
+}
+
+pub(crate) fn normalize_filter_params(params: RequestLogFilterParams) -> RequestLogFilterParams {
+    RequestLogFilterParams {
+        query: normalize_optional_text(params.query),
+        status_filter: normalize_status_filter(params.status_filter),
+        key_id: normalize_optional_text(params.key_id),
+        model: normalize_optional_text(params.model),
+        time_from: normalize_optional_timestamp(params.time_from),
+        time_to: normalize_optional_timestamp(params.time_to),
+    }
+}
+
+pub(crate) fn to_storage_filters<'a>(
+    params: &'a RequestLogFilterParams,
+    query: Option<&'a str>,
+    status_filter: Option<&'a str>,
+) -> RequestLogFilterInput<'a> {
+    RequestLogFilterInput {
+        query: query.or(params.query.as_deref()),
+        status_filter: status_filter.or(params.status_filter.as_deref()),
+        key_id: params.key_id.as_deref(),
+        model: params.model.as_deref(),
+        time_from: params.time_from,
+        time_to: params.time_to,
     }
 }
 
@@ -134,9 +158,11 @@ pub(crate) fn to_request_log_summary(item: RequestLog) -> RequestLogSummary {
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_optional_text, normalize_status_filter, normalize_upstream_url,
-        RequestLogListParams, DEFAULT_REQUEST_LOG_PAGE_SIZE,
+        normalize_filter_params, normalize_optional_text, normalize_optional_timestamp,
+        normalize_status_filter, normalize_upstream_url, RequestLogListParams,
+        DEFAULT_REQUEST_LOG_PAGE_SIZE,
     };
+    use codexmanager_core::rpc::types::RequestLogFilterParams;
 
     #[test]
     fn normalize_upstream_url_keeps_official_domains() {
@@ -189,6 +215,26 @@ mod tests {
 
         assert_eq!(normalized.page, 1);
         assert_eq!(normalized.page_size, DEFAULT_REQUEST_LOG_PAGE_SIZE);
+    }
+
+    #[test]
+    fn normalize_filter_params_trims_known_values() {
+        let normalized = normalize_filter_params(RequestLogFilterParams {
+            query: Some(" trace:=abc ".to_string()),
+            status_filter: Some("ALL".to_string()),
+            key_id: Some(" gk-1 ".to_string()),
+            model: Some(" gpt-4o ".to_string()),
+            time_from: Some(100),
+            time_to: Some(0),
+        });
+
+        assert_eq!(normalized.query.as_deref(), Some("trace:=abc"));
+        assert_eq!(normalized.status_filter, None);
+        assert_eq!(normalized.key_id.as_deref(), Some("gk-1"));
+        assert_eq!(normalized.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(normalized.time_from, Some(100));
+        assert_eq!(normalized.time_to, None);
+        assert_eq!(normalize_optional_timestamp(Some(-1)), None);
     }
 
     #[test]
