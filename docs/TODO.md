@@ -21,6 +21,12 @@
   - 文档差异：`docs/ACCEPTANCE.md` 覆盖范围大于原 TODO，后续继续按验收项补齐
 
 - [-] **本轮验证结果**
+  - `cargo test -p codexmanager-service healthcheck_config_rpc_supports_get_and_set -- --nocapture` 通过
+  - `cargo test -p codexmanager-service healthcheck_run_rpc_returns_empty_summary_without_probe_candidates -- --nocapture` 通过
+  - `cargo check --manifest-path apps/src-tauri/Cargo.toml` 通过（F11 巡检 RPC / Tauri 接入）
+  - `pnpm exec tsc --noEmit` 通过（F11 设置页 / 仪表盘展示）
+  - `pnpm run build:desktop` 通过（F11 设置页 / 仪表盘展示）
+  - `pnpm run build` 通过（F11 Web 静态产物）
   - `cargo check --manifest-path apps/src-tauri/Cargo.toml` 通过（F06 设置页缓存入口）
   - `pnpm run build:desktop` 通过（F06 设置页缓存入口）
   - `pnpm exec tsc --noEmit` 通过（先执行 build 生成 `.next/types` 后复跑）
@@ -366,20 +372,22 @@
 
 ### F11 账号自动巡检
 
-- [ ] **后端：巡检调度**
-  - [ ] 新增定时任务，可配置间隔（默认 30 分钟）
-  - [ ] 复用 session_probe 逻辑对启用账号执行探测
-  - [ ] 并发控制（最多 N 个并发探测）
-  - [ ] 失败账号自动标记 unavailable + 写入 event
-  - [ ] 恢复账号自动标记 enabled
+- [-] **后端：巡检调度**
+  - [x] 复用 `session_probe` 逻辑对启用账号执行探测，并保留轮询线程配置
+  - [x] 失败账号自动标记 `unavailable` + 写入现有失败 event
+  - [x] 巡检成功后自动恢复账号为 `active` 并清理 cooldown
+  - [x] 内存维护最近一次巡检摘要（开始 / 结束时间、采样数、成功数、失败数、失败账号）
+  - [ ] 新增独立并发控制（最多 N 个并发探测）
+  - [ ] 评估默认巡检间隔是否调整到 PRD 约定的 30 分钟
 
-- [ ] **后端：RPC 接口**
-  - [ ] `healthcheck/config/get`、`healthcheck/config/set`
-  - [ ] `healthcheck/run`（手动触发）
+- [x] **后端：RPC 接口**
+  - [x] `healthcheck/config/get`、`healthcheck/config/set`
+  - [x] `healthcheck/run`（手动触发）
 
-- [ ] **前端**
-  - [ ] 设置页增加巡检开关 + 间隔配置
-  - [ ] 仪表盘展示最近巡检时间和结果概要
+- [-] **前端**
+  - [x] 设置页复用现有巡检配置区，支持开关 / 间隔 / 抽样数配置
+  - [x] 设置页增加「立即巡检」按钮与最近巡检结果摘要
+  - [x] 仪表盘展示最近巡检时间、抽检通过率与采样结果概览
 
 - [ ] **集成**
   - [ ] 巡检异常结果接入告警通知系统（F02）

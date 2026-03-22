@@ -49,6 +49,25 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "gateway/backgroundTasks/get" => {
             super::as_json(crate::usage_refresh::background_tasks_settings())
         }
+        "healthcheck/config/get" => {
+            super::as_json(crate::usage_refresh::current_healthcheck_config())
+        }
+        "healthcheck/config/set" => {
+            let input = crate::BackgroundTasksInput {
+                session_probe_polling_enabled: super::bool_param(req, "enabled")
+                    .or_else(|| super::bool_param(req, "sessionProbePollingEnabled")),
+                session_probe_interval_secs: u64_param(req, "intervalSecs")
+                    .or_else(|| u64_param(req, "sessionProbeIntervalSecs")),
+                session_probe_sample_size: usize_param(req, "sampleSize")
+                    .or_else(|| usize_param(req, "sessionProbeSampleSize")),
+                ..Default::default()
+            };
+            super::value_or_error(
+                crate::set_gateway_background_tasks(input)
+                    .map(|_| crate::usage_refresh::current_healthcheck_config()),
+            )
+        }
+        "healthcheck/run" => super::value_or_error(crate::usage_refresh::run_session_probe_batch()),
         "gateway/cache/config/get" => {
             super::as_json(crate::gateway::current_response_cache_config())
         }

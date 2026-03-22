@@ -98,7 +98,7 @@ pub(super) fn session_probe_polling_loop() {
         || SESSION_PROBE_INTERVAL_SECS.load(Ordering::Relaxed),
         || 0,
         |interval_secs| TOKEN_REFRESH_FAILURE_BACKOFF_MAX_SECS.max(interval_secs),
-        run_session_probe_batch,
+        || run_session_probe_batch().map(|_| ()),
         |_| true,
     );
 }

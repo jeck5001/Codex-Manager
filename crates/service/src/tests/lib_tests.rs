@@ -83,6 +83,130 @@ fn login_complete_requires_params() {
 }
 
 #[test]
+fn healthcheck_config_rpc_supports_get_and_set() {
+    crate::usage_refresh::clear_session_probe_state_for_tests();
+    let db_path = new_test_db_path("healthcheck-config-rpc");
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init schema");
+
+    let initial_resp = handle_request(JsonRpcRequest {
+        id: 4,
+        method: "healthcheck/config/get".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        initial_resp
+            .result
+            .get("enabled")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+
+    let set_resp = handle_request(JsonRpcRequest {
+        id: 5,
+        method: "healthcheck/config/set".to_string(),
+        params: Some(serde_json::json!({
+            "enabled": true,
+            "intervalSecs": 1800,
+            "sampleSize": 4,
+        })),
+    });
+    assert_eq!(
+        set_resp
+            .result
+            .get("enabled")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        set_resp
+            .result
+            .get("intervalSecs")
+            .and_then(|value| value.as_u64()),
+        Some(1800)
+    );
+    assert_eq!(
+        set_resp
+            .result
+            .get("sampleSize")
+            .and_then(|value| value.as_u64()),
+        Some(4)
+    );
+
+    let restore_resp = handle_request(JsonRpcRequest {
+        id: 6,
+        method: "healthcheck/config/set".to_string(),
+        params: Some(serde_json::json!({
+            "enabled": false,
+            "intervalSecs": 300,
+            "sampleSize": 2,
+        })),
+    });
+    assert_eq!(
+        restore_resp
+            .result
+            .get("enabled")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+
+    let _ = fs::remove_file(db_path);
+    crate::usage_refresh::clear_session_probe_state_for_tests();
+}
+
+#[test]
+fn healthcheck_run_rpc_returns_empty_summary_without_probe_candidates() {
+    crate::usage_refresh::clear_session_probe_state_for_tests();
+    let db_path = new_test_db_path("healthcheck-run-rpc");
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init schema");
+
+    let run_resp = handle_request(JsonRpcRequest {
+        id: 7,
+        method: "healthcheck/run".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        run_resp
+            .result
+            .get("sampledAccounts")
+            .and_then(|value| value.as_i64()),
+        Some(0)
+    );
+    assert_eq!(
+        run_resp
+            .result
+            .get("failureCount")
+            .and_then(|value| value.as_i64()),
+        Some(0)
+    );
+    assert!(run_resp
+        .result
+        .get("startedAt")
+        .and_then(|value| value.as_i64())
+        .is_some());
+
+    let config_resp = handle_request(JsonRpcRequest {
+        id: 8,
+        method: "healthcheck/config/get".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        config_resp
+            .result
+            .get("recentRun")
+            .and_then(|value| value.get("sampledAccounts"))
+            .and_then(|value| value.as_i64()),
+        Some(0)
+    );
+
+    let _ = fs::remove_file(db_path);
+    crate::usage_refresh::clear_session_probe_state_for_tests();
+}
+
+#[test]
 fn apikey_rpc_supports_expires_at_and_renew() {
     let db_path = new_test_db_path("apikey-rpc-expires-at");
     let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());

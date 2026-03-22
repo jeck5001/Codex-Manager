@@ -580,6 +580,8 @@ pub struct DashboardHealthResult {
     pub account_status_buckets: Vec<DashboardAccountStatusBucket>,
     #[serde(default)]
     pub gateway_metrics: DashboardGatewayMetricsResult,
+    #[serde(default)]
+    pub recent_healthcheck: Option<HealthcheckRunResult>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -598,6 +600,37 @@ pub struct DashboardTrendResult {
     pub bucket_minutes: i64,
     #[serde(default)]
     pub points: Vec<DashboardTrendPoint>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthcheckFailureAccountResult {
+    pub account_id: String,
+    pub label: Option<String>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthcheckRunResult {
+    pub started_at: Option<i64>,
+    pub finished_at: Option<i64>,
+    pub total_accounts: i64,
+    pub sampled_accounts: i64,
+    pub success_count: i64,
+    pub failure_count: i64,
+    #[serde(default)]
+    pub failed_accounts: Vec<HealthcheckFailureAccountResult>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthcheckConfigResult {
+    pub enabled: bool,
+    pub interval_secs: u64,
+    pub sample_size: usize,
+    #[serde(default)]
+    pub recent_run: Option<HealthcheckRunResult>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

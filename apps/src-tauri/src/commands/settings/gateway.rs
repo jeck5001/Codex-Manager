@@ -64,6 +64,35 @@ pub async fn service_gateway_background_tasks_get(
 }
 
 #[tauri::command]
+pub async fn service_healthcheck_config_get(
+    addr: Option<String>,
+) -> Result<serde_json::Value, String> {
+    rpc_call_in_background("healthcheck/config/get", addr, None).await
+}
+
+#[tauri::command]
+pub async fn service_healthcheck_config_set(
+    addr: Option<String>,
+    enabled: Option<bool>,
+    interval_secs: Option<u64>,
+    sample_size: Option<u64>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+      "enabled": enabled,
+      "intervalSecs": interval_secs,
+      "sampleSize": sample_size,
+    });
+    rpc_call_in_background("healthcheck/config/set", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_healthcheck_run(
+    addr: Option<String>,
+) -> Result<serde_json::Value, String> {
+    rpc_call_in_background("healthcheck/run", addr, None).await
+}
+
+#[tauri::command]
 pub async fn service_gateway_cache_stats(
     addr: Option<String>,
 ) -> Result<serde_json::Value, String> {

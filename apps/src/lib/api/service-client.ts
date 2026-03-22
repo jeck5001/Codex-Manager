@@ -5,6 +5,8 @@ import {
   normalizeDashboardTrend,
   normalizeFreeProxySyncResult,
   normalizeGatewayResponseCacheStats,
+  normalizeHealthcheckConfig,
+  normalizeHealthcheckRun,
   normalizeCostExportResult,
   normalizeCostSummary,
   normalizeModelPricingList,
@@ -22,6 +24,8 @@ import {
   DashboardTrend,
   FreeProxySyncResult,
   GatewayResponseCacheStats,
+  HealthcheckConfig,
+  HealthcheckRunResult,
   ModelPricingItem,
   RequestLogExportResult,
   RequestLogFilterSummary,
@@ -109,6 +113,35 @@ export const serviceClient = {
       "service_gateway_background_tasks_set",
       withAddr({ ...(settings as unknown as Record<string, unknown>) })
     ),
+  async getHealthcheckConfig(): Promise<HealthcheckConfig> {
+    const result = await invoke<unknown>("service_healthcheck_config_get", withAddr());
+    return normalizeHealthcheckConfig(result);
+  },
+  async setHealthcheckConfig(params: {
+    enabled?: boolean;
+    intervalSecs?: number;
+    sampleSize?: number;
+  }): Promise<HealthcheckConfig> {
+    const result = await invoke<unknown>(
+      "service_healthcheck_config_set",
+      withAddr(params)
+    );
+    return normalizeHealthcheckConfig(result);
+  },
+  async runHealthcheck(): Promise<HealthcheckRunResult> {
+    const result = await invoke<unknown>("service_healthcheck_run", withAddr());
+    return (
+      normalizeHealthcheckRun(result) ?? {
+        startedAt: null,
+        finishedAt: null,
+        totalAccounts: 0,
+        sampledAccounts: 0,
+        successCount: 0,
+        failureCount: 0,
+        failedAccounts: [],
+      }
+    );
+  },
   async getGatewayCacheStats(): Promise<GatewayResponseCacheStats> {
     const result = await invoke<unknown>("service_gateway_cache_stats", withAddr());
     return normalizeGatewayResponseCacheStats(result);

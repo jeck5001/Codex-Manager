@@ -29,6 +29,8 @@ import {
   GovernanceSummaryItem,
   FreeProxySyncResult,
   GatewayResponseCacheStats,
+  HealthcheckConfig,
+  HealthcheckRunResult,
   LoginStartResult,
   ModelPricingItem,
   ModelOption,
@@ -332,6 +334,73 @@ export function normalizeDashboardHealth(payload: unknown): DashboardHealth {
         metricsSource.p99LatencyMs ?? metricsSource.p99_latency_ms
       ),
     },
+    recentHealthcheck: normalizeHealthcheckRun(
+      source.recentHealthcheck ?? source.recent_healthcheck
+    ),
+  };
+}
+
+export function normalizeHealthcheckRun(payload: unknown): HealthcheckRunResult | null {
+  const source = asObject(payload);
+  const startedAt = toNullableNumber(source.startedAt ?? source.started_at);
+  const finishedAt = toNullableNumber(source.finishedAt ?? source.finished_at);
+  const sampledAccounts = asInteger(
+    source.sampledAccounts ?? source.sampled_accounts,
+    0,
+    0
+  );
+  const successCount = asInteger(source.successCount ?? source.success_count, 0, 0);
+  const failureCount = asInteger(source.failureCount ?? source.failure_count, 0, 0);
+  const failedAccountsSource = source.failedAccounts ?? source.failed_accounts;
+
+  if (
+    startedAt == null &&
+    finishedAt == null &&
+    sampledAccounts === 0 &&
+    successCount === 0 &&
+    failureCount === 0 &&
+    !Array.isArray(failedAccountsSource)
+  ) {
+    return null;
+  }
+
+  return {
+    startedAt,
+    finishedAt,
+    totalAccounts: asInteger(source.totalAccounts ?? source.total_accounts, 0, 0),
+    sampledAccounts,
+    successCount,
+    failureCount,
+    failedAccounts: asArray(failedAccountsSource)
+      .map((item) => {
+        const failed = asObject(item);
+        const accountId = asString(failed.accountId ?? failed.account_id);
+        if (!accountId) return null;
+        return {
+          accountId,
+          label: asString(failed.label) || null,
+          reason: asString(failed.reason),
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is {
+          accountId: string;
+          label: string | null;
+          reason: string;
+        } => Boolean(item)
+      ),
+  };
+}
+
+export function normalizeHealthcheckConfig(payload: unknown): HealthcheckConfig {
+  const source = asObject(payload);
+  return {
+    enabled: asBoolean(source.enabled, false),
+    intervalSecs: asInteger(source.intervalSecs ?? source.interval_secs, 300, 1),
+    sampleSize: asInteger(source.sampleSize ?? source.sample_size, 2, 1),
+    recentRun: normalizeHealthcheckRun(source.recentRun ?? source.recent_run),
   };
 }
 
