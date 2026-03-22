@@ -160,6 +160,28 @@ export const serviceClient = {
     );
     return normalizeRequestLogExportResult(result);
   },
+  async downloadRequestLogsViaHttp(params?: {
+    format?: string;
+    query?: string;
+    statusFilter?: string;
+  }): Promise<void> {
+    if (typeof document === "undefined") {
+      throw new Error("当前环境不支持浏览器导出");
+    }
+
+    const searchParams = new URLSearchParams();
+    searchParams.set("format", params?.format || "csv");
+    searchParams.set("query", params?.query || "");
+    searchParams.set("statusFilter", params?.statusFilter || "all");
+
+    const anchor = document.createElement("a");
+    anchor.href = `/api/export/requestlogs?${searchParams.toString()}`;
+    anchor.rel = "noopener";
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  },
   clearRequestLogs: () => invoke("service_requestlog_clear", withAddr()),
   async getTodaySummary(): Promise<RequestLogTodaySummary> {
     const result = await invoke<unknown>(
