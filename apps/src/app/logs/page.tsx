@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/table";
 import { accountClient } from "@/lib/api/account-client";
 import { serviceClient } from "@/lib/api/service-client";
+import { isTauriRuntime } from "@/lib/api/transport";
 import { useAppStore } from "@/lib/store/useAppStore";
 import { formatCompactNumber, formatTsFromSeconds } from "@/lib/utils/usage";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,9 @@ import { RequestLog } from "@/types";
 
 type StatusFilter = "all" | "2xx" | "4xx" | "5xx";
 type ExportFormat = "csv" | "json";
+type ExportMutationResult =
+  | { mode: "http" }
+  | { mode: "rpc"; result: Awaited<ReturnType<typeof serviceClient.exportRequestLogs>> };
 
 const QUICK_LOG_FILTERS: Array<{
   key: string;
@@ -695,13 +699,30 @@ function LogsPageContent() {
   });
 
   const exportMutation = useMutation({
-    mutationFn: () =>
-      serviceClient.exportRequestLogs({
+    mutationFn: async (): Promise<ExportMutationResult> => {
+      if (!isTauriRuntime()) {
+        await serviceClient.downloadRequestLogsViaHttp({
+          format: exportFormat,
+          query: search,
+          statusFilter: filter,
+        });
+        return { mode: "http" };
+      }
+
+      const result = await serviceClient.exportRequestLogs({
         format: exportFormat,
         query: search,
         statusFilter: filter,
-      }),
-    onSuccess: (result) => {
+      });
+      return { mode: "rpc", result };
+    },
+    onSuccess: (payload) => {
+      if (payload.mode === "http") {
+        toast.success("已开始下载日志文件");
+        return;
+      }
+
+      const { result } = payload;
       const mimeType =
         result.format === "json"
           ? "application/json;charset=utf-8"

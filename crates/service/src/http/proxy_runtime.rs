@@ -2,7 +2,7 @@ use axum::body::{to_bytes, Body};
 use axum::extract::State;
 use axum::http::{header, Request as HttpRequest, Response, StatusCode};
 use axum::middleware::{self, Next};
-use axum::routing::{any, post};
+use axum::routing::{any, get, post};
 use axum::Router;
 use reqwest::Client;
 use std::io;
@@ -138,6 +138,10 @@ async fn access_log(request: HttpRequest<Body>, next: Next) -> Response<Body> {
 fn build_front_proxy_app(state: ProxyState) -> Router {
     Router::new()
         .route("/rpc", post(crate::http::rpc_endpoint::handle_rpc_http))
+        .route(
+            "/export/requestlogs",
+            get(crate::http::requestlog_export_endpoint::handle_requestlog_export_http),
+        )
         .fallback(any(proxy_handler))
         .layer(middleware::from_fn(access_log))
         .with_state(state)
