@@ -707,6 +707,103 @@ fn requestlog_export_rpc_returns_filtered_csv_content() {
 }
 
 #[test]
+fn requestlog_export_rpc_supports_key_model_and_time_filters() {
+    let db_path = new_test_db_path("requestlog-export-extended-filters");
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init schema");
+
+    storage
+        .insert_request_log(&codexmanager_core::storage::RequestLog {
+            trace_id: Some("trc-export-a".to_string()),
+            key_id: Some("gk-export-a".to_string()),
+            account_id: Some("acc-export".to_string()),
+            initial_account_id: Some("acc-export".to_string()),
+            attempted_account_ids_json: Some(r#"["acc-export"]"#.to_string()),
+            route_strategy: Some("balanced".to_string()),
+            requested_model: Some("o3".to_string()),
+            model_fallback_path_json: Some(r#"["o3"]"#.to_string()),
+            request_path: "/v1/responses".to_string(),
+            original_path: Some("/v1/responses".to_string()),
+            adapted_path: Some("/v1/responses".to_string()),
+            method: "POST".to_string(),
+            model: Some("o3".to_string()),
+            reasoning_effort: Some("medium".to_string()),
+            response_adapter: Some("Passthrough".to_string()),
+            upstream_url: Some("https://api.openai.com/v1/responses".to_string()),
+            status_code: Some(200),
+            duration_ms: Some(120),
+            input_tokens: Some(20),
+            cached_input_tokens: Some(2),
+            output_tokens: Some(4),
+            total_tokens: Some(24),
+            reasoning_output_tokens: Some(0),
+            estimated_cost_usd: Some(0.12),
+            error: None,
+            created_at: 1_700_000_000,
+        })
+        .expect("insert request log a");
+    storage
+        .insert_request_log(&codexmanager_core::storage::RequestLog {
+            trace_id: Some("trc-export-b".to_string()),
+            key_id: Some("gk-export-b".to_string()),
+            account_id: Some("acc-export".to_string()),
+            initial_account_id: Some("acc-export".to_string()),
+            attempted_account_ids_json: Some(r#"["acc-export"]"#.to_string()),
+            route_strategy: Some("balanced".to_string()),
+            requested_model: Some("gpt-4o".to_string()),
+            model_fallback_path_json: Some(r#"["gpt-4o"]"#.to_string()),
+            request_path: "/v1/responses".to_string(),
+            original_path: Some("/v1/responses".to_string()),
+            adapted_path: Some("/v1/responses".to_string()),
+            method: "POST".to_string(),
+            model: Some("gpt-4o".to_string()),
+            reasoning_effort: Some("medium".to_string()),
+            response_adapter: Some("Passthrough".to_string()),
+            upstream_url: Some("https://api.openai.com/v1/responses".to_string()),
+            status_code: Some(200),
+            duration_ms: Some(220),
+            input_tokens: Some(10),
+            cached_input_tokens: Some(0),
+            output_tokens: Some(6),
+            total_tokens: Some(16),
+            reasoning_output_tokens: Some(0),
+            estimated_cost_usd: Some(0.08),
+            error: None,
+            created_at: 1_700_000_200,
+        })
+        .expect("insert request log b");
+
+    let resp = handle_request(JsonRpcRequest {
+        id: 43,
+        method: "requestlog/export".to_string(),
+        params: Some(serde_json::json!({
+            "format": "json",
+            "keyId": "gk-export-b",
+            "model": "gpt-4o",
+            "timeFrom": 1_700_000_150_i64,
+            "timeTo": 1_700_000_250_i64,
+        })),
+    });
+
+    assert_eq!(
+        resp.result
+            .get("recordCount")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+    let content = resp
+        .result
+        .get("content")
+        .and_then(|value| value.as_str())
+        .expect("json content");
+    assert!(content.contains("trc-export-b"));
+    assert!(!content.contains("trc-export-a"));
+
+    let _ = fs::remove_file(db_path);
+}
+
+#[test]
 fn apikey_rpc_supports_model_fallback_get_and_set() {
     let db_path = new_test_db_path("apikey-rpc-model-fallback");
     let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());

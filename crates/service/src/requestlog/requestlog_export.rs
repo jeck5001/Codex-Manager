@@ -103,12 +103,56 @@ fn build_request_log_export_file_name(format: &str, status_filter: Option<&str>)
     format!("codexmanager-requestlogs-{scope}.{format}")
 }
 
+fn normalize_optional_timestamp(value: Option<i64>) -> Option<i64> {
+    value.filter(|item| *item > 0)
+}
+
+fn request_log_matches_extra_filters(
+    item: &RequestLogSummary,
+    key_id: Option<&str>,
+    model: Option<&str>,
+    time_from: Option<i64>,
+    time_to: Option<i64>,
+) -> bool {
+    if let Some(expected_key_id) = key_id {
+        if item.key_id.as_deref() != Some(expected_key_id) {
+            return false;
+        }
+    }
+
+    if let Some(expected_model) = model {
+        let actual_model = item.model.as_deref().unwrap_or_default();
+        let requested_model = item.requested_model.as_deref().unwrap_or_default();
+        if actual_model != expected_model && requested_model != expected_model {
+            return false;
+        }
+    }
+
+    if let Some(start_ts) = time_from {
+        if item.created_at < start_ts {
+            return false;
+        }
+    }
+
+    if let Some(end_ts) = time_to {
+        if item.created_at > end_ts {
+            return false;
+        }
+    }
+
+    true
+}
+
 pub(crate) fn export_request_logs(
     params: RequestLogExportParams,
 ) -> Result<RequestLogExportResult, String> {
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
     let query = normalize_optional_text(params.query);
     let status_filter = normalize_status_filter(params.status_filter);
+    let key_id = normalize_optional_text(params.key_id);
+    let model = normalize_optional_text(params.model);
+    let time_from = normalize_optional_timestamp(params.time_from);
+    let time_to = normalize_optional_timestamp(params.time_to);
     let format = normalize_export_format(params.format)?;
     let total = storage
         .count_request_logs(query.as_deref(), status_filter.as_deref())
@@ -119,6 +163,15 @@ pub(crate) fn export_request_logs(
             .map_err(|err| format!("list request logs failed: {err}"))?
             .into_iter()
             .map(to_request_log_summary)
+            .filter(|item| {
+                request_log_matches_extra_filters(
+                    item,
+                    key_id.as_deref(),
+                    model.as_deref(),
+                    time_from,
+                    time_to,
+                )
+            })
             .collect::<Vec<_>>()
     } else {
         Vec::new()

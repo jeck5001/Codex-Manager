@@ -510,6 +510,14 @@ pub struct RequestLogExportParams {
     pub query: Option<String>,
     #[serde(default)]
     pub status_filter: Option<String>,
+    #[serde(default)]
+    pub key_id: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub time_from: Option<i64>,
+    #[serde(default)]
+    pub time_to: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
