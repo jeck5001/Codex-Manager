@@ -236,6 +236,16 @@ function formatRate(value: number | null | undefined): string {
   return `${value.toFixed(value >= 10 ? 0 : 1).replace(/\.0$/, "")}%`;
 }
 
+function formatHealthcheckRate(
+  successCount: number | null | undefined,
+  sampledAccounts: number | null | undefined
+): string {
+  if (!sampledAccounts || sampledAccounts <= 0) {
+    return "--";
+  }
+  return formatRate(((successCount ?? 0) / sampledAccounts) * 100);
+}
+
 function buildSparklinePoints(values: number[], width: number, height: number): string {
   if (!values.length) return "";
   const max = Math.max(...values, 1);
@@ -495,6 +505,7 @@ export default function DashboardPage() {
   );
   const healthBuckets = dashboardHealth?.accountStatusBuckets || [];
   const gatewayMetrics = dashboardHealth?.gatewayMetrics;
+  const recentHealthcheck = dashboardHealth?.recentHealthcheck;
   const trendPoints = dashboardTrend?.points || [];
   const dashboardSectionLoading = isLoading || isDashboardLoading;
 
@@ -863,7 +874,7 @@ export default function DashboardPage() {
                           : "主链路暂无明显异常，适合继续观察自动治理结果。"}
                     </p>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-3">
                     <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
                       <p className="text-[11px] font-medium text-muted-foreground">
                         冷却中账号
@@ -878,6 +889,24 @@ export default function DashboardPage() {
                       </p>
                       <p className="mt-2 text-sm font-medium">
                         {formatTsFromSeconds(dashboardHealth?.generatedAt, "刚启动")}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        最近巡检
+                      </p>
+                      <p className="mt-2 text-sm font-semibold">
+                        {formatHealthcheckRate(
+                          recentHealthcheck?.successCount,
+                          recentHealthcheck?.sampledAccounts
+                        )}
+                      </p>
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        通过 {recentHealthcheck?.successCount ?? 0} / 抽检{" "}
+                        {recentHealthcheck?.sampledAccounts ?? 0}
+                      </p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {formatTsFromSeconds(recentHealthcheck?.finishedAt, "尚未执行")}
                       </p>
                     </div>
                   </div>

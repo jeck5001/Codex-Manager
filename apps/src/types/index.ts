@@ -356,10 +356,34 @@ export interface DashboardGatewayMetrics {
   p99LatencyMs: number | null;
 }
 
+export interface HealthcheckFailedAccount {
+  accountId: string;
+  label: string | null;
+  reason: string;
+}
+
+export interface HealthcheckRunResult {
+  startedAt: number | null;
+  finishedAt: number | null;
+  totalAccounts: number;
+  sampledAccounts: number;
+  successCount: number;
+  failureCount: number;
+  failedAccounts: HealthcheckFailedAccount[];
+}
+
+export interface HealthcheckConfig {
+  enabled: boolean;
+  intervalSecs: number;
+  sampleSize: number;
+  recentRun: HealthcheckRunResult | null;
+}
+
 export interface DashboardHealth {
   generatedAt: number | null;
   accountStatusBuckets: DashboardAccountStatusBucket[];
   gatewayMetrics: DashboardGatewayMetrics;
+  recentHealthcheck: HealthcheckRunResult | null;
 }
 
 export interface DashboardTrendPoint {

@@ -169,7 +169,11 @@ use self::errors::{
     mark_usage_unreachable_if_needed, record_usage_refresh_failure, should_retry_with_refresh,
 };
 pub(crate) use self::governance::maybe_trigger_auto_account_governance;
-pub(crate) use self::probe::run_session_probe_batch;
+#[cfg(test)]
+pub(crate) use self::probe::clear_session_probe_state_for_tests;
+pub(crate) use self::probe::{
+    current_healthcheck_config, last_session_probe_result, run_session_probe_batch,
+};
 pub(crate) use self::queue::enqueue_usage_refresh_with_worker;
 #[cfg(test)]
 pub(crate) use self::queue::{

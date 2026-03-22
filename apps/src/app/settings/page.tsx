@@ -19,6 +19,8 @@ import {
   BackgroundTaskSettings,
   FreeProxySyncResult,
   GatewayResponseCacheStats,
+  HealthcheckConfig,
+  HealthcheckRunResult,
 } from "@/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -59,6 +61,7 @@ import {
   Variable,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatTsFromSeconds } from "@/lib/utils/usage";
 
 const ENV_DESCRIPTION_MAP: Record<string, string> = {
   CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS:
@@ -175,6 +178,13 @@ function countProxyPoolEntries(value: string | null | undefined): number {
     .split(/[\n\r,;]+/)
     .map((item) => item.trim())
     .filter(Boolean).length;
+}
+
+function formatHealthcheckSuccessRate(result: HealthcheckRunResult | null | undefined): string {
+  if (!result || result.sampledAccounts <= 0) {
+    return "--";
+  }
+  return `${Math.round((result.successCount / result.sampledAccounts) * 100)}%`;
 }
 
 type UpdateCheckSummary = {
@@ -305,6 +315,12 @@ export default function SettingsPage() {
     queryFn: () => serviceClient.getGatewayCacheStats(),
     refetchInterval: 30_000,
   });
+  const { data: healthcheckConfig } = useQuery({
+    queryKey: ["healthcheck-config"],
+    queryFn: () => serviceClient.getHealthcheckConfig(),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
+  });
 
   const updateSettings = useMutation({
     mutationFn: (patch: Partial<AppSettings> & { _silent?: boolean }) => {
@@ -327,6 +343,9 @@ export default function SettingsPage() {
         "responseCacheMaxEntries" in variables
       ) {
         void queryClient.invalidateQueries({ queryKey: ["gateway-cache-stats"] });
+      }
+      if ("backgroundTasks" in variables) {
+        void queryClient.invalidateQueries({ queryKey: ["healthcheck-config"] });
       }
       if (!variables._silent) {
         toast.success("设置已更新");
@@ -390,6 +409,32 @@ export default function SettingsPage() {
     },
     onError: (error: unknown) => {
       toast.error(`清空缓存失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+  const runHealthcheck = useMutation({
+    mutationFn: () => serviceClient.runHealthcheck(),
+    onSuccess: (result) => {
+      queryClient.setQueryData(
+        ["healthcheck-config"],
+        (current: HealthcheckConfig | undefined) => ({
+          enabled:
+            current?.enabled ?? snapshot?.backgroundTasks.sessionProbePollingEnabled ?? false,
+          intervalSecs:
+            current?.intervalSecs ?? snapshot?.backgroundTasks.sessionProbeIntervalSecs ?? 300,
+          sampleSize:
+            current?.sampleSize ?? snapshot?.backgroundTasks.sessionProbeSampleSize ?? 2,
+          recentRun: result,
+        })
+      );
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-health"] });
+      toast.success(
+        result.failureCount > 0
+          ? `巡检完成：成功 ${result.successCount}，失败 ${result.failureCount}`
+          : `巡检完成：抽检 ${result.sampledAccounts} 个账号，全部通过`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`执行巡检失败: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -557,6 +602,7 @@ export default function SettingsPage() {
     missCount: 0,
     hitRatePercent: 0,
   };
+  const latestHealthcheck = healthcheckConfig?.recentRun ?? null;
 
   const lastIntentThemeRef = useRef<string | null>(null);
   const lastIntentAppearancePresetRef = useRef<string | null>(null);
@@ -1712,11 +1758,24 @@ export default function SettingsPage() {
           </Card>
 
           <Card className="glass-card border-none shadow-md">
-            <CardHeader>
-              <CardTitle className="text-base">登录态有效性巡检</CardTitle>
-              <CardDescription>
-                周期性抽检少量账号，提前发现 401/403、停用或代理异常，不等真实请求打过去才暴露
-              </CardDescription>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="text-base">登录态有效性巡检</CardTitle>
+                <CardDescription>
+                  周期性抽检少量账号，提前发现 401/403、停用或代理异常，不等真实请求打过去才暴露
+                </CardDescription>
+              </div>
+              <Button
+                className="sm:self-start"
+                variant="outline"
+                onClick={() => runHealthcheck.mutate()}
+                disabled={runHealthcheck.isPending}
+              >
+                <RefreshCw
+                  className={cn("mr-2 h-4 w-4", runHealthcheck.isPending && "animate-spin")}
+                />
+                {runHealthcheck.isPending ? "巡检中..." : "立即巡检"}
+              </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
@@ -1746,6 +1805,58 @@ export default function SettingsPage() {
                   巡检会复用模型列表探针判断登录态是否还能走核心鉴权链路。
                   失败结果会进入首页失败看板，也会参与现有自动治理判断。
                 </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-2xl border border-border/50 bg-background/30 p-4">
+                  <p className="text-[11px] font-medium text-muted-foreground">最近巡检时间</p>
+                  <p className="mt-2 text-sm font-semibold">
+                    {formatTsFromSeconds(latestHealthcheck?.finishedAt, "尚未执行")}
+                  </p>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    开始于 {formatTsFromSeconds(latestHealthcheck?.startedAt, "--")}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-border/50 bg-background/30 p-4">
+                  <p className="text-[11px] font-medium text-muted-foreground">最近成功率</p>
+                  <p className="mt-2 text-2xl font-bold">
+                    {formatHealthcheckSuccessRate(latestHealthcheck)}
+                  </p>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    成功 {latestHealthcheck?.successCount ?? 0} / 抽检{" "}
+                    {latestHealthcheck?.sampledAccounts ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-border/50 bg-background/30 p-4">
+                  <p className="text-[11px] font-medium text-muted-foreground">最近失败账号</p>
+                  <p className="mt-2 text-2xl font-bold">
+                    {latestHealthcheck?.failureCount ?? 0}
+                  </p>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    总候选 {latestHealthcheck?.totalAccounts ?? 0} 个
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border/50 bg-background/25 p-4">
+                <p className="text-[11px] font-medium text-muted-foreground">失败账号摘要</p>
+                {latestHealthcheck?.failedAccounts?.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {latestHealthcheck.failedAccounts.slice(0, 6).map((item) => (
+                      <span
+                        key={`${item.accountId}-${item.reason}`}
+                        className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300"
+                        title={item.reason}
+                      >
+                        {(item.label || item.accountId).trim()}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    最近一次巡检没有发现失败账号。
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
