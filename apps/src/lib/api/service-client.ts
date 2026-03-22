@@ -118,6 +118,10 @@ export const serviceClient = {
   async listRequestLogs(params?: {
     query?: string;
     statusFilter?: string;
+    keyId?: string;
+    model?: string;
+    timeFrom?: number | null;
+    timeTo?: number | null;
     page?: number;
     pageSize?: number;
   }): Promise<RequestLogListResult> {
@@ -126,6 +130,10 @@ export const serviceClient = {
       withAddr({
         query: params?.query || "",
         statusFilter: params?.statusFilter || "all",
+        keyId: params?.keyId || "",
+        model: params?.model || "",
+        timeFrom: params?.timeFrom ?? null,
+        timeTo: params?.timeTo ?? null,
         page: params?.page ?? 1,
         pageSize: params?.pageSize ?? 20,
       })
@@ -135,12 +143,20 @@ export const serviceClient = {
   async getRequestLogSummary(params?: {
     query?: string;
     statusFilter?: string;
+    keyId?: string;
+    model?: string;
+    timeFrom?: number | null;
+    timeTo?: number | null;
   }): Promise<RequestLogFilterSummary> {
     const result = await invoke<unknown>(
       "service_requestlog_summary",
       withAddr({
         query: params?.query || "",
         statusFilter: params?.statusFilter || "all",
+        keyId: params?.keyId || "",
+        model: params?.model || "",
+        timeFrom: params?.timeFrom ?? null,
+        timeTo: params?.timeTo ?? null,
       })
     );
     return normalizeRequestLogFilterSummary(result);
@@ -149,6 +165,10 @@ export const serviceClient = {
     format?: string;
     query?: string;
     statusFilter?: string;
+    keyId?: string;
+    model?: string;
+    timeFrom?: number | null;
+    timeTo?: number | null;
   }): Promise<RequestLogExportResult> {
     const result = await invoke<unknown>(
       "service_requestlog_export",
@@ -156,6 +176,10 @@ export const serviceClient = {
         format: params?.format || "csv",
         query: params?.query || "",
         statusFilter: params?.statusFilter || "all",
+        keyId: params?.keyId || "",
+        model: params?.model || "",
+        timeFrom: params?.timeFrom ?? null,
+        timeTo: params?.timeTo ?? null,
       })
     );
     return normalizeRequestLogExportResult(result);
@@ -164,6 +188,10 @@ export const serviceClient = {
     format?: string;
     query?: string;
     statusFilter?: string;
+    keyId?: string;
+    model?: string;
+    timeFrom?: number | null;
+    timeTo?: number | null;
   }): Promise<void> {
     if (typeof document === "undefined") {
       throw new Error("当前环境不支持浏览器导出");
@@ -173,6 +201,14 @@ export const serviceClient = {
     searchParams.set("format", params?.format || "csv");
     searchParams.set("query", params?.query || "");
     searchParams.set("statusFilter", params?.statusFilter || "all");
+    searchParams.set("keyId", params?.keyId || "");
+    searchParams.set("model", params?.model || "");
+    if (params?.timeFrom != null) {
+      searchParams.set("timeFrom", String(params.timeFrom));
+    }
+    if (params?.timeTo != null) {
+      searchParams.set("timeTo", String(params.timeTo));
+    }
 
     const anchor = document.createElement("a");
     anchor.href = `/api/export/requestlogs?${searchParams.toString()}`;

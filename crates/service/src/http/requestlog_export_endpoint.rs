@@ -1,7 +1,10 @@
+use axum::body::Body;
 use axum::extract::Query;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response as AxumResponse};
-use codexmanager_core::rpc::types::{RequestLogExportParams, RequestLogExportResult};
+use codexmanager_core::rpc::types::RequestLogExportParams;
+use std::convert::Infallible;
+use tokio_stream::wrappers::ReceiverStream;
 
 fn validate_export_headers(headers: &HeaderMap) -> Option<AxumResponse> {
     match headers
@@ -21,14 +24,14 @@ fn validate_export_headers(headers: &HeaderMap) -> Option<AxumResponse> {
     None
 }
 
-fn build_export_response(result: RequestLogExportResult) -> AxumResponse {
-    let content_type = match result.format.trim().to_ascii_lowercase().as_str() {
+fn build_export_response(format: &str, file_name: &str, body: Body) -> AxumResponse {
+    let content_type = match format.trim().to_ascii_lowercase().as_str() {
         "json" => "application/json; charset=utf-8",
         _ => "text/csv; charset=utf-8",
     };
-    let disposition = format!("attachment; filename=\"{}\"", result.file_name);
+    let disposition = format!("attachment; filename=\"{file_name}\"");
 
-    let mut response = result.content.into_response();
+    let mut response = body.into_response();
     *response.status_mut() = StatusCode::OK;
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -54,37 +57,36 @@ pub(crate) async fn handle_requestlog_export_http(
         return response;
     }
 
-    match tokio::task::spawn_blocking(move || crate::requestlog_export::export_request_logs(params))
-        .await
-    {
-        Ok(Ok(result)) => build_export_response(result),
-        Ok(Err(err)) => (StatusCode::BAD_REQUEST, err).into_response(),
-        Err(err) => {
-            log::error!("requestlog export blocking task failed: {}", err);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal_error: request log export failed",
-            )
-                .into_response()
+    let plan = match crate::requestlog_export::prepare_request_log_export(params) {
+        Ok(plan) => plan,
+        Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
+    };
+
+    let format = plan.format.to_string();
+    let file_name = plan.file_name.clone();
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<bytes::Bytes, Infallible>>(8);
+    tokio::task::spawn_blocking(move || {
+        if let Err(err) = crate::requestlog_export::stream_request_log_export_chunks(plan, tx) {
+            log::error!("requestlog export streaming task failed: {}", err);
         }
-    }
+    });
+
+    build_export_response(
+        &format,
+        &file_name,
+        Body::from_stream(ReceiverStream::new(rx)),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::build_export_response;
-    use axum::body::to_bytes;
+    use axum::body::{to_bytes, Body};
     use axum::http::header;
-    use codexmanager_core::rpc::types::RequestLogExportResult;
 
     #[tokio::test(flavor = "current_thread")]
     async fn export_response_sets_download_headers() {
-        let response = build_export_response(RequestLogExportResult {
-            format: "csv".to_string(),
-            file_name: "requestlogs.csv".to_string(),
-            content: "traceId\nabc\n".to_string(),
-            record_count: 1,
-        });
+        let response = build_export_response("csv", "requestlogs.csv", Body::from("traceId\nabc\n"));
 
         assert_eq!(
             response

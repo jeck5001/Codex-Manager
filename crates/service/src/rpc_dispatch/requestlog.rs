@@ -1,5 +1,6 @@
 use codexmanager_core::rpc::types::{
-    JsonRpcRequest, JsonRpcResponse, RequestLogExportParams, RequestLogListParams,
+    JsonRpcRequest, JsonRpcResponse, RequestLogExportParams, RequestLogFilterParams,
+    RequestLogListParams,
 };
 
 use crate::{
@@ -21,12 +22,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             super::value_or_error(params.and_then(requestlog_list::read_request_log_page))
         }
         "requestlog/summary" => {
-            let query = super::string_param(req, "query");
-            let status_filter = super::string_param(req, "statusFilter");
-            super::value_or_error(requestlog_summary::read_request_log_filter_summary(
-                query,
-                status_filter,
-            ))
+            let params = req
+                .params
+                .clone()
+                .map(serde_json::from_value::<RequestLogFilterParams>)
+                .transpose()
+                .map(|params| params.unwrap_or_default())
+                .map_err(|err| format!("invalid requestlog/summary params: {err}"));
+            super::value_or_error(
+                params.and_then(requestlog_summary::read_request_log_filter_summary),
+            )
         }
         "requestlog/export" => {
             let params = req

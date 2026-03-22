@@ -15,6 +15,8 @@ mod settings;
 mod tokens;
 mod usage;
 
+pub use request_logs::RequestLogFilterInput;
+
 #[derive(Debug, Clone)]
 pub struct Account {
     pub id: String,

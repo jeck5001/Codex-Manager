@@ -804,6 +804,139 @@ fn requestlog_export_rpc_supports_key_model_and_time_filters() {
 }
 
 #[test]
+fn requestlog_list_and_summary_support_extended_filters() {
+    let db_path = new_test_db_path("requestlog-list-summary-extended-filters");
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init schema");
+
+    storage
+        .insert_request_log(&codexmanager_core::storage::RequestLog {
+            trace_id: Some("trc-list-a".to_string()),
+            key_id: Some("gk-list-a".to_string()),
+            account_id: Some("acc-export".to_string()),
+            initial_account_id: Some("acc-export".to_string()),
+            attempted_account_ids_json: Some(r#"["acc-export"]"#.to_string()),
+            route_strategy: Some("balanced".to_string()),
+            requested_model: Some("o3".to_string()),
+            model_fallback_path_json: Some(r#"["o3"]"#.to_string()),
+            request_path: "/v1/responses".to_string(),
+            original_path: Some("/v1/responses".to_string()),
+            adapted_path: Some("/v1/responses".to_string()),
+            method: "POST".to_string(),
+            model: Some("o3".to_string()),
+            reasoning_effort: Some("medium".to_string()),
+            response_adapter: Some("Passthrough".to_string()),
+            upstream_url: Some("https://api.openai.com/v1/responses".to_string()),
+            status_code: Some(200),
+            duration_ms: Some(120),
+            input_tokens: Some(20),
+            cached_input_tokens: Some(2),
+            output_tokens: Some(4),
+            total_tokens: Some(24),
+            reasoning_output_tokens: Some(0),
+            estimated_cost_usd: Some(0.12),
+            error: None,
+            created_at: 1_700_000_000,
+        })
+        .expect("insert request log a");
+    storage
+        .insert_request_log(&codexmanager_core::storage::RequestLog {
+            trace_id: Some("trc-list-b".to_string()),
+            key_id: Some("gk-list-b".to_string()),
+            account_id: Some("acc-export".to_string()),
+            initial_account_id: Some("acc-export".to_string()),
+            attempted_account_ids_json: Some(r#"["acc-export"]"#.to_string()),
+            route_strategy: Some("balanced".to_string()),
+            requested_model: Some("gpt-4o".to_string()),
+            model_fallback_path_json: Some(r#"["gpt-4o"]"#.to_string()),
+            request_path: "/v1/responses".to_string(),
+            original_path: Some("/v1/responses".to_string()),
+            adapted_path: Some("/v1/responses".to_string()),
+            method: "POST".to_string(),
+            model: Some("gpt-4o".to_string()),
+            reasoning_effort: Some("medium".to_string()),
+            response_adapter: Some("Passthrough".to_string()),
+            upstream_url: Some("https://api.openai.com/v1/responses".to_string()),
+            status_code: Some(502),
+            duration_ms: Some(220),
+            input_tokens: Some(10),
+            cached_input_tokens: Some(0),
+            output_tokens: Some(0),
+            total_tokens: Some(10),
+            reasoning_output_tokens: Some(0),
+            estimated_cost_usd: Some(0.05),
+            error: Some("upstream error".to_string()),
+            created_at: 1_700_000_200,
+        })
+        .expect("insert request log b");
+
+    let list_resp = handle_request(JsonRpcRequest {
+        id: 44,
+        method: "requestlog/list".to_string(),
+        params: Some(serde_json::json!({
+            "page": 1,
+            "pageSize": 20,
+            "statusFilter": "5xx",
+            "keyId": "gk-list-b",
+            "model": "gpt-4o",
+            "timeFrom": 1_700_000_150_i64,
+            "timeTo": 1_700_000_250_i64,
+        })),
+    });
+    assert_eq!(
+        list_resp
+            .result
+            .get("total")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+    assert_eq!(
+        list_resp
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(1)
+    );
+
+    let summary_resp = handle_request(JsonRpcRequest {
+        id: 45,
+        method: "requestlog/summary".to_string(),
+        params: Some(serde_json::json!({
+            "statusFilter": "5xx",
+            "keyId": "gk-list-b",
+            "model": "gpt-4o",
+            "timeFrom": 1_700_000_150_i64,
+            "timeTo": 1_700_000_250_i64,
+        })),
+    });
+    assert_eq!(
+        summary_resp
+            .result
+            .get("totalCount")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+    assert_eq!(
+        summary_resp
+            .result
+            .get("filteredCount")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+    assert_eq!(
+        summary_resp
+            .result
+            .get("errorCount")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+
+    let _ = fs::remove_file(db_path);
+}
+
+#[test]
 fn apikey_rpc_supports_model_fallback_get_and_set() {
     let db_path = new_test_db_path("apikey-rpc-model-fallback");
     let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());

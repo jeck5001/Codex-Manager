@@ -171,6 +171,41 @@ function formatDuration(value: number | null): string {
   return `${Math.round(value)}ms`;
 }
 
+function parseDateTimeLocalValue(value: string): number | null {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return null;
+  const timestamp = Date.parse(trimmed);
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+  return Math.floor(timestamp / 1000);
+}
+
+function toDateTimeLocalValue(timestamp: number | null): string {
+  if (timestamp == null || timestamp <= 0) {
+    return "";
+  }
+  const date = new Date(timestamp * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function readPositiveIntegerParam(value: string | null): number | null {
+  const parsed = Number(value || "");
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.trunc(parsed);
+}
+
+function formatDateTimeFilterLabel(value: string): string {
+  return value.replace("T", " ").trim();
+}
+
 function fallbackAccountNameFromId(accountId: string): string {
   const raw = accountId.trim();
   if (!raw) return "";
@@ -637,12 +672,36 @@ function LogsPageContent() {
   const [page, setPage] = useState(1);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("csv");
+  const [keyIdFilter, setKeyIdFilter] = useState(
+    () => searchParams.get("keyId") || "",
+  );
+  const [modelFilter, setModelFilter] = useState(
+    () => searchParams.get("model") || "",
+  );
+  const [timeFromInput, setTimeFromInput] = useState(() =>
+    toDateTimeLocalValue(readPositiveIntegerParam(searchParams.get("timeFrom"))),
+  );
+  const [timeToInput, setTimeToInput] = useState(() =>
+    toDateTimeLocalValue(readPositiveIntegerParam(searchParams.get("timeTo"))),
+  );
   const pageSizeNumber = Number(pageSize) || 10;
+  const timeFromTs = useMemo(() => parseDateTimeLocalValue(timeFromInput), [timeFromInput]);
+  const timeToTs = useMemo(() => parseDateTimeLocalValue(timeToInput), [timeToInput]);
+  const hasInvalidTimeRange =
+    timeFromTs != null && timeToTs != null && timeToTs < timeFromTs;
 
   useEffect(() => {
     queueMicrotask(() => {
       setSearch(searchParams.get("query") || "");
       setFilter(normalizeStatusFilter(searchParams.get("statusFilter")));
+      setKeyIdFilter(searchParams.get("keyId") || "");
+      setModelFilter(searchParams.get("model") || "");
+      setTimeFromInput(
+        toDateTimeLocalValue(readPositiveIntegerParam(searchParams.get("timeFrom"))),
+      );
+      setTimeToInput(
+        toDateTimeLocalValue(readPositiveIntegerParam(searchParams.get("timeTo"))),
+      );
       setPage(1);
     });
   }, [searchParams]);
@@ -656,28 +715,56 @@ function LogsPageContent() {
   });
 
   const { data: logsResult, isLoading } = useQuery({
-    queryKey: ["logs", "list", search, filter, page, pageSizeNumber],
+    queryKey: [
+      "logs",
+      "list",
+      search,
+      filter,
+      keyIdFilter,
+      modelFilter,
+      timeFromTs,
+      timeToTs,
+      page,
+      pageSizeNumber,
+    ],
     queryFn: () =>
       serviceClient.listRequestLogs({
         query: search,
         statusFilter: filter,
+        keyId: keyIdFilter,
+        model: modelFilter,
+        timeFrom: timeFromTs,
+        timeTo: timeToTs,
         page,
         pageSize: pageSizeNumber,
       }),
-    enabled: serviceStatus.connected,
+    enabled: serviceStatus.connected && !hasInvalidTimeRange,
     refetchInterval: 5000,
     retry: 1,
     placeholderData: (previousData) => previousData,
   });
 
   const { data: summaryResult } = useQuery({
-    queryKey: ["logs", "summary", search, filter],
+    queryKey: [
+      "logs",
+      "summary",
+      search,
+      filter,
+      keyIdFilter,
+      modelFilter,
+      timeFromTs,
+      timeToTs,
+    ],
     queryFn: () =>
       serviceClient.getRequestLogSummary({
         query: search,
         statusFilter: filter,
+        keyId: keyIdFilter,
+        model: modelFilter,
+        timeFrom: timeFromTs,
+        timeTo: timeToTs,
       }),
-    enabled: serviceStatus.connected,
+    enabled: serviceStatus.connected && !hasInvalidTimeRange,
     refetchInterval: 5000,
     retry: 1,
     placeholderData: (previousData) => previousData,
@@ -705,6 +792,10 @@ function LogsPageContent() {
           format: exportFormat,
           query: search,
           statusFilter: filter,
+          keyId: keyIdFilter,
+          model: modelFilter,
+          timeFrom: timeFromTs,
+          timeTo: timeToTs,
         });
         return { mode: "http" };
       }
@@ -713,6 +804,10 @@ function LogsPageContent() {
         format: exportFormat,
         query: search,
         statusFilter: filter,
+        keyId: keyIdFilter,
+        model: modelFilter,
+        timeFrom: timeFromTs,
+        timeTo: timeToTs,
       });
       return { mode: "rpc", result };
     },
@@ -777,8 +872,28 @@ function LogsPageContent() {
     if (filter !== "all") {
       items.push({ key: "status", label: `状态 ${filter.toUpperCase()}` });
     }
+    const nextKeyId = keyIdFilter.trim();
+    if (nextKeyId) {
+      items.push({ key: "keyId", label: `Key ${nextKeyId}` });
+    }
+    const nextModel = modelFilter.trim();
+    if (nextModel) {
+      items.push({ key: "model", label: `模型 ${nextModel}` });
+    }
+    if (timeFromInput) {
+      items.push({
+        key: "timeFrom",
+        label: `开始 ${formatDateTimeFilterLabel(timeFromInput)}`,
+      });
+    }
+    if (timeToInput) {
+      items.push({
+        key: "timeTo",
+        label: `结束 ${formatDateTimeFilterLabel(timeToInput)}`,
+      });
+    }
     return items;
-  }, [filter, search]);
+  }, [filter, keyIdFilter, modelFilter, search, timeFromInput, timeToInput]);
   const activeQuickFilterKey = useMemo(() => {
     const nextSearch = search.trim();
     const matched = QUICK_LOG_FILTERS.find(
@@ -802,6 +917,10 @@ function LogsPageContent() {
   const handleClearFilters = () => {
     setSearch("");
     setFilter("all");
+    setKeyIdFilter("");
+    setModelFilter("");
+    setTimeFromInput("");
+    setTimeToInput("");
     setPage(1);
     router.push("/logs");
   };
@@ -809,12 +928,28 @@ function LogsPageContent() {
   const handleRemoveFilterItem = (key: string) => {
     let nextSearch = search;
     let nextFilter = filter;
+    let nextKeyId = keyIdFilter;
+    let nextModel = modelFilter;
+    let nextTimeFrom = timeFromInput;
+    let nextTimeTo = timeToInput;
     if (key === "query") {
       nextSearch = "";
       setSearch("");
     } else if (key === "status") {
       nextFilter = "all";
       setFilter("all");
+    } else if (key === "keyId") {
+      nextKeyId = "";
+      setKeyIdFilter("");
+    } else if (key === "model") {
+      nextModel = "";
+      setModelFilter("");
+    } else if (key === "timeFrom") {
+      nextTimeFrom = "";
+      setTimeFromInput("");
+    } else if (key === "timeTo") {
+      nextTimeTo = "";
+      setTimeToInput("");
     }
     setPage(1);
     const params = new URLSearchParams();
@@ -823,6 +958,20 @@ function LogsPageContent() {
     }
     if (nextFilter !== "all") {
       params.set("statusFilter", nextFilter);
+    }
+    if (nextKeyId.trim()) {
+      params.set("keyId", nextKeyId.trim());
+    }
+    if (nextModel.trim()) {
+      params.set("model", nextModel.trim());
+    }
+    const nextTimeFromTs = parseDateTimeLocalValue(nextTimeFrom);
+    if (nextTimeFromTs != null) {
+      params.set("timeFrom", String(nextTimeFromTs));
+    }
+    const nextTimeToTs = parseDateTimeLocalValue(nextTimeTo);
+    if (nextTimeToTs != null) {
+      params.set("timeTo", String(nextTimeToTs));
     }
     router.push(params.size > 0 ? `/logs?${params.toString()}` : "/logs");
   };
@@ -835,6 +984,18 @@ function LogsPageContent() {
     params.set("query", query);
     if (statusFilter !== "all") {
       params.set("statusFilter", statusFilter);
+    }
+    if (keyIdFilter.trim()) {
+      params.set("keyId", keyIdFilter.trim());
+    }
+    if (modelFilter.trim()) {
+      params.set("model", modelFilter.trim());
+    }
+    if (timeFromTs != null) {
+      params.set("timeFrom", String(timeFromTs));
+    }
+    if (timeToTs != null) {
+      params.set("timeTo", String(timeToTs));
     }
     router.push(`/logs?${params.toString()}`);
   };
@@ -849,93 +1010,155 @@ function LogsPageContent() {
     if (statusFilter !== "all") {
       params.set("statusFilter", statusFilter);
     }
+    if (keyIdFilter.trim()) {
+      params.set("keyId", keyIdFilter.trim());
+    }
+    if (modelFilter.trim()) {
+      params.set("model", modelFilter.trim());
+    }
+    if (timeFromTs != null) {
+      params.set("timeFrom", String(timeFromTs));
+    }
+    if (timeToTs != null) {
+      params.set("timeTo", String(timeToTs));
+    }
     router.push(params.size > 0 ? `/logs?${params.toString()}` : "/logs");
   };
 
   return (
     <div className="animate-in space-y-5 fade-in duration-500">
       <Card className="glass-card border-none shadow-md backdrop-blur-md">
-        <CardContent className="grid gap-3 pt-0 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-center">
-          <div className="min-w-0">
+        <CardContent className="space-y-3 pt-0">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto] xl:items-center">
+            <div className="min-w-0">
+              <Input
+                placeholder="搜索路径、账号、错误或 trace..."
+                className="glass-card h-10 rounded-xl px-3"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+            <div className="flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-muted/30 p-1">
+              {["all", "2xx", "4xx", "5xx"].map((item) => (
+                <button
+                  key={item}
+                  onClick={() => {
+                    setFilter(item as StatusFilter);
+                    setPage(1);
+                  }}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all",
+                    filter === item
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                  )}
+                >
+                  {item.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Select
+                value={exportFormat}
+                onValueChange={(value) =>
+                  setExportFormat(value === "json" ? "json" : "csv")
+                }
+              >
+                <SelectTrigger className="glass-card h-9 w-[92px] rounded-xl px-3 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="csv">CSV</SelectItem>
+                  <SelectItem value="json">JSON</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="glass-card h-9 rounded-xl px-3.5"
+                onClick={() => exportMutation.mutate()}
+                disabled={
+                  exportMutation.isPending ||
+                  !serviceStatus.connected ||
+                  hasInvalidTimeRange
+                }
+              >
+                <Download className="mr-1.5 h-4 w-4" />
+                {exportMutation.isPending ? "导出中..." : "导出"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="glass-card h-9 rounded-xl px-3.5"
+                onClick={() =>
+                  queryClient.invalidateQueries({ queryKey: ["logs"] })
+                }
+              >
+                <RefreshCw className="mr-1.5 h-4 w-4" /> 刷新
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-9 rounded-xl px-3.5"
+                onClick={() => setClearConfirmOpen(true)}
+                disabled={clearMutation.isPending}
+              >
+                <Trash2 className="mr-1.5 h-4 w-4" /> 清空日志
+              </Button>
+            </div>
+            <div className="text-[11px] text-muted-foreground xl:justify-self-end xl:text-right">
+              <span className="font-medium text-foreground">
+                {compactMetaText}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_180px]">
             <Input
-              placeholder="搜索路径、账号或密钥..."
+              placeholder="精确筛选 API Key ID"
               className="glass-card h-10 rounded-xl px-3"
-              value={search}
+              value={keyIdFilter}
               onChange={(event) => {
-                setSearch(event.target.value);
+                setKeyIdFilter(event.target.value);
+                setPage(1);
+              }}
+            />
+            <Input
+              placeholder="精确筛选模型，如 gpt-4o"
+              className="glass-card h-10 rounded-xl px-3"
+              value={modelFilter}
+              onChange={(event) => {
+                setModelFilter(event.target.value);
+                setPage(1);
+              }}
+            />
+            <Input
+              type="datetime-local"
+              className="glass-card h-10 rounded-xl px-3"
+              value={timeFromInput}
+              onChange={(event) => {
+                setTimeFromInput(event.target.value);
+                setPage(1);
+              }}
+            />
+            <Input
+              type="datetime-local"
+              className="glass-card h-10 rounded-xl px-3"
+              value={timeToInput}
+              onChange={(event) => {
+                setTimeToInput(event.target.value);
                 setPage(1);
               }}
             />
           </div>
-          <div className="flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-muted/30 p-1">
-            {["all", "2xx", "4xx", "5xx"].map((item) => (
-              <button
-                key={item}
-                onClick={() => {
-                  setFilter(item as StatusFilter);
-                  setPage(1);
-                }}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all",
-                  filter === item
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
-                )}
-              >
-                {item.toUpperCase()}
-              </button>
-            ))}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Select
-              value={exportFormat}
-              onValueChange={(value) =>
-                setExportFormat(value === "json" ? "json" : "csv")
-              }
-            >
-              <SelectTrigger className="glass-card h-9 w-[92px] rounded-xl px-3 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="csv">CSV</SelectItem>
-                <SelectItem value="json">JSON</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="sm"
-              className="glass-card h-9 rounded-xl px-3.5"
-              onClick={() => exportMutation.mutate()}
-              disabled={exportMutation.isPending || !serviceStatus.connected}
-            >
-              <Download className="mr-1.5 h-4 w-4" />
-              {exportMutation.isPending ? "导出中..." : "导出"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="glass-card h-9 rounded-xl px-3.5"
-              onClick={() =>
-                queryClient.invalidateQueries({ queryKey: ["logs"] })
-              }
-            >
-              <RefreshCw className="mr-1.5 h-4 w-4" /> 刷新
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-9 rounded-xl px-3.5"
-              onClick={() => setClearConfirmOpen(true)}
-              disabled={clearMutation.isPending}
-            >
-              <Trash2 className="mr-1.5 h-4 w-4" /> 清空日志
-            </Button>
-          </div>
-          <div className="text-[11px] text-muted-foreground lg:justify-self-end lg:text-right">
-            <span className="font-medium text-foreground">
-              {compactMetaText}
-            </span>
-          </div>
+          {hasInvalidTimeRange ? (
+            <div className="text-xs text-amber-500">
+              结束时间不能早于开始时间，当前已暂停日志查询与导出。
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
