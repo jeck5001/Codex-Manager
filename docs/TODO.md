@@ -478,6 +478,7 @@
   - [x] 模型分布饼图
   - [x] 汇总表格
   - [x] CSV 导出按钮
+  - [x] 按 Key 汇总与最高费用 Key 卡片补充平台密钥名称 + ID 展示，避免仅靠短 ID 难以区分
 
 - [x] **阶段验证**
   - [x] `cargo test -p codexmanager-core storage_can_roundtrip_model_pricing_config -- --nocapture`
@@ -565,6 +566,7 @@
   - [x] Web / Docker 版优先走 `/api/export/requestlogs` 直接下载
   - [x] 日志页补充 `keyId / model / timeFrom / timeTo` 筛选并与列表、摘要、导出联动
   - [x] 验收补齐：补充流式 JSON 导出与 HTTP JSON 下载头回归测试，确认 CSV / JSON 两种格式均可下载
+  - [x] 日志页平台密钥列、详情浮层与筛选标签补充平台密钥名称 + ID 展示，便于直接区分不同 Key
 
 ---
 
