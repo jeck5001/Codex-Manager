@@ -35,6 +35,8 @@ pub const APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY: &str =
     "gateway.sse_keepalive_interval_ms";
 pub const APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY: &str = "gateway.background_tasks";
 pub const APP_SETTING_ENV_OVERRIDES_KEY: &str = "app.env_overrides";
+pub const APP_SETTING_MCP_ENABLED_KEY: &str = "mcp.enabled";
+pub const APP_SETTING_MCP_PORT_KEY: &str = "mcp.port";
 pub const APP_SETTING_TEAM_MANAGER_ENABLED_KEY: &str = "team_manager.enabled";
 pub const APP_SETTING_TEAM_MANAGER_API_URL_KEY: &str = "team_manager.api_url";
 pub const APP_SETTING_TEAM_MANAGER_API_KEY_KEY: &str = "team_manager.api_key";

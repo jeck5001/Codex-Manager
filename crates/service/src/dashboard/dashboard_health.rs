@@ -25,7 +25,11 @@ pub(crate) fn read_dashboard_health() -> Result<DashboardHealthResult, String> {
     Ok(DashboardHealthResult {
         generated_at,
         account_status_buckets: build_account_status_buckets(&accounts, &usage_items, generated_at),
-        gateway_metrics: build_gateway_metrics(&request_logs, &recent_latency_samples, generated_at),
+        gateway_metrics: build_gateway_metrics(
+            &request_logs,
+            &recent_latency_samples,
+            generated_at,
+        ),
         recent_healthcheck: crate::usage_refresh::last_session_probe_result(),
     })
 }

@@ -254,7 +254,7 @@ fn gateway_response_cache_skips_requests_when_api_key_cache_disabled() {
     first_server.join();
     assert_eq!(first_response.status, 200, "{}", first_response.body);
     assert!(
-        first_response.headers.get("x-codexmanager-cache").is_none(),
+        !first_response.headers.contains_key("x-codexmanager-cache"),
         "disabled key should not emit cache header on first response"
     );
 
@@ -271,10 +271,7 @@ fn gateway_response_cache_skips_requests_when_api_key_cache_disabled() {
     second_server.join();
     assert_eq!(second_response.status, 200, "{}", second_response.body);
     assert!(
-        second_response
-            .headers
-            .get("x-codexmanager-cache")
-            .is_none(),
+        !second_response.headers.contains_key("x-codexmanager-cache"),
         "disabled key should bypass cache on second response"
     );
 

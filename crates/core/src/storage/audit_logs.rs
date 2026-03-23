@@ -107,12 +107,7 @@ fn build_audit_log_where_clause(
 ) -> String {
     let mut clauses = Vec::new();
     push_optional_text_filter(&mut clauses, params, "action = ?", filters.action);
-    push_optional_text_filter(
-        &mut clauses,
-        params,
-        "object_type = ?",
-        filters.object_type,
-    );
+    push_optional_text_filter(&mut clauses, params, "object_type = ?", filters.object_type);
     push_optional_text_filter(&mut clauses, params, "object_id = ?", filters.object_id);
 
     if let Some(value) = filters.time_from {

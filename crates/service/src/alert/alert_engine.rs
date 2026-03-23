@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::alert_sender::send_alert;
 use crate::storage_helpers::open_storage;
-use crate::usage_scheduler::run_blocking_poll_loop;
+use crate::usage_scheduler::{run_blocking_poll_loop, BlockingPollLoopConfig};
 
 const ALERT_RUNTIME_STATES_KEY: &str = "alert.runtime_states";
 const ALERT_POLL_INTERVAL_SECS: u64 = 60;
@@ -39,10 +39,14 @@ pub(crate) fn ensure_alert_polling() {
             .name("alert-polling".to_string())
             .spawn(move || {
                 run_blocking_poll_loop(
-                    "alert polling",
-                    Duration::from_secs(ALERT_POLL_INTERVAL_SECS),
-                    Duration::from_secs(ALERT_POLL_JITTER_SECS),
-                    Duration::from_secs(ALERT_POLL_FAILURE_BACKOFF_MAX_SECS),
+                    BlockingPollLoopConfig {
+                        loop_name: "alert polling",
+                        interval: Duration::from_secs(ALERT_POLL_INTERVAL_SECS),
+                        jitter: Duration::from_secs(ALERT_POLL_JITTER_SECS),
+                        failure_backoff_cap: Duration::from_secs(
+                            ALERT_POLL_FAILURE_BACKOFF_MAX_SECS,
+                        ),
+                    },
                     run_alert_checks_once,
                     |_| true,
                 );
@@ -295,7 +299,12 @@ fn evaluate_usage_threshold(
                 "共有 {} 个账号额度使用率达到阈值 {:.0}%：{}",
                 offenders.len(),
                 threshold,
-                offenders.iter().take(5).cloned().collect::<Vec<_>>().join(", ")
+                offenders
+                    .iter()
+                    .take(5)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )
         } else {
             format!("所有账号额度使用率已回落到 {:.0}% 以下", threshold)

@@ -8,7 +8,7 @@ use super::super::support::outcome::{decide_upstream_outcome, UpstreamOutcomeDec
 use super::super::support::retry::{retry_with_alternate_path, AltPathRetryResult};
 use super::fallback_branch::{handle_openai_fallback_branch, FallbackBranchResult};
 use super::stateless_retry::{retry_stateless_then_optional_alt, StatelessRetryResult};
-use super::transport::UpstreamRequestContext;
+use super::transport::{SendUpstreamRequestArgs, UpstreamRequestContext};
 
 fn try_refresh_chatgpt_access_token(
     storage: &Storage,
@@ -102,20 +102,20 @@ where
                             account.id
                         );
                     }
-                    match super::transport::send_upstream_request(
+                    match super::transport::send_upstream_request(SendUpstreamRequestArgs {
                         client,
                         method,
-                        url,
+                        target_url: url,
                         request_deadline,
                         request_ctx,
                         incoming_headers,
                         body,
                         is_stream,
                         upstream_cookie,
-                        current_auth_token.as_str(),
+                        auth_token: current_auth_token.as_str(),
                         account,
                         strip_session_affinity,
-                    ) {
+                    }) {
                         Ok(resp) => {
                             upstream = resp;
                             status = upstream.status();

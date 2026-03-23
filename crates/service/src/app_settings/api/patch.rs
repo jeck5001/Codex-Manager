@@ -9,13 +9,12 @@ use super::{
     set_gateway_quota_protection_enabled, set_gateway_quota_protection_threshold_percent,
     set_gateway_request_compression_enabled, set_gateway_residency_requirement,
     set_gateway_response_cache_enabled, set_gateway_response_cache_max_entries,
-    set_gateway_response_cache_ttl_secs, set_gateway_retry_policy,
-    set_gateway_route_strategy,
+    set_gateway_response_cache_ttl_secs, set_gateway_retry_policy, set_gateway_route_strategy,
     set_gateway_sse_keepalive_interval_ms, set_gateway_upstream_proxy_url,
     set_gateway_upstream_stream_timeout_ms, set_lightweight_mode_on_close_to_tray_setting,
-    set_saved_service_addr, set_service_bind_mode, set_ui_appearance_preset,
-    set_ui_low_transparency_enabled, set_ui_theme, set_update_auto_check_enabled,
-    BackgroundTasksInput,
+    set_mcp_enabled, set_mcp_port, set_saved_service_addr, set_service_bind_mode,
+    set_ui_appearance_preset, set_ui_low_transparency_enabled, set_ui_theme,
+    set_update_auto_check_enabled, BackgroundTasksInput,
 };
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -29,6 +28,8 @@ pub(super) struct AppSettingsPatch {
     appearance_preset: Option<String>,
     service_addr: Option<String>,
     service_listen_mode: Option<String>,
+    mcp_enabled: Option<bool>,
+    mcp_port: Option<u16>,
     route_strategy: Option<String>,
     free_account_max_model: Option<String>,
     quota_protection_enabled: Option<bool>,
@@ -87,6 +88,12 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     if let Some(mode) = patch.service_listen_mode {
         let _ = set_service_bind_mode(&mode)?;
     }
+    if let Some(enabled) = patch.mcp_enabled {
+        let _ = set_mcp_enabled(enabled)?;
+    }
+    if let Some(port) = patch.mcp_port {
+        let _ = set_mcp_port(port)?;
+    }
     if let Some(strategy) = patch.route_strategy {
         let _ = set_gateway_route_strategy(&strategy)?;
     }
@@ -108,7 +115,9 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     {
         let current = crate::current_gateway_retry_policy();
         let _ = set_gateway_retry_policy(
-            patch.retry_policy_max_retries.unwrap_or(current.max_retries),
+            patch
+                .retry_policy_max_retries
+                .unwrap_or(current.max_retries),
             patch
                 .retry_policy_backoff_strategy
                 .as_deref()
@@ -152,19 +161,13 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
         let _ = set_env_overrides(env_overrides)?;
     }
     if let Some(enabled) = patch.team_manager_enabled {
-        let _ = save_persisted_bool_setting(crate::APP_SETTING_TEAM_MANAGER_ENABLED_KEY, enabled)?;
+        save_persisted_bool_setting(crate::APP_SETTING_TEAM_MANAGER_ENABLED_KEY, enabled)?;
     }
     if let Some(api_url) = patch.team_manager_api_url {
-        let _ = save_persisted_app_setting(
-            crate::APP_SETTING_TEAM_MANAGER_API_URL_KEY,
-            Some(&api_url),
-        )?;
+        save_persisted_app_setting(crate::APP_SETTING_TEAM_MANAGER_API_URL_KEY, Some(&api_url))?;
     }
     if let Some(api_key) = patch.team_manager_api_key {
-        let _ = save_persisted_app_setting(
-            crate::APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
-            Some(&api_key),
-        )?;
+        save_persisted_app_setting(crate::APP_SETTING_TEAM_MANAGER_API_KEY_KEY, Some(&api_key))?;
     }
     if let Some(password) = patch.web_access_password {
         let _ = crate::set_web_access_password(Some(&password))?;

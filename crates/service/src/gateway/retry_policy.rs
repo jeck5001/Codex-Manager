@@ -88,7 +88,9 @@ fn normalize_max_retries(max_retries: usize) -> Result<usize, String> {
     Ok(max_retries)
 }
 
-fn normalize_retryable_status_codes(mut retryable_status_codes: Vec<u16>) -> Result<Vec<u16>, String> {
+fn normalize_retryable_status_codes(
+    mut retryable_status_codes: Vec<u16>,
+) -> Result<Vec<u16>, String> {
     for status in &retryable_status_codes {
         if !(100..=599).contains(status) {
             return Err(format!(

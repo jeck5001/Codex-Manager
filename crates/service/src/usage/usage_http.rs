@@ -409,7 +409,11 @@ fn rebuild_usage_http_client() {
 }
 
 pub(crate) fn reload_usage_http_client_from_env() {
-    rebuild_usage_http_client();
+    // 中文注释：配置读取路径不需要抢先初始化 reqwest client；
+    // 仅在轮询/刷新链路已经使用过 client 时才执行热重建。
+    if USAGE_HTTP_CLIENT.get().is_some() {
+        rebuild_usage_http_client();
+    }
 }
 
 fn current_upstream_proxy_url() -> Option<String> {

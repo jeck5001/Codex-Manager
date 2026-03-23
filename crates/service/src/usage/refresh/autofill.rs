@@ -108,14 +108,17 @@ fn run_auto_register_pool_fill(
     plan: AutoRegisterServicePlan,
 ) -> Result<usize, String> {
     let started = crate::account_register::start_register_batch(
-        plan.service_type.as_str(),
-        plan.email_service_id,
-        None,
-        i64::try_from(fill_count).map_err(|_| "fill count overflow".to_string())?,
-        0,
-        0,
-        i64::try_from(fill_count.min(3)).map_err(|_| "concurrency overflow".to_string())?,
-        "parallel",
+        crate::account_register::StartRegisterBatchInput {
+            email_service_type: plan.service_type.as_str(),
+            email_service_id: plan.email_service_id,
+            proxy: None,
+            count: i64::try_from(fill_count).map_err(|_| "fill count overflow".to_string())?,
+            interval_min: 0,
+            interval_max: 0,
+            concurrency: i64::try_from(fill_count.min(3))
+                .map_err(|_| "concurrency overflow".to_string())?,
+            mode: "parallel",
+        },
     )?;
 
     let task_uuids = extract_task_uuids(&started);

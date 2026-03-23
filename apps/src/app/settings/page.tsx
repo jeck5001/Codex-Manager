@@ -23,6 +23,7 @@ import {
   GatewayResponseCacheStats,
   HealthcheckConfig,
   HealthcheckRunResult,
+  PluginItem,
 } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -66,6 +67,7 @@ import {
   Globe,
   History,
   Info,
+  PlugZap,
   Palette,
   Play,
   PlusCircle,
@@ -168,6 +170,66 @@ const ALERT_CHANNEL_TYPE_LABELS: Record<string, string> = {
   wecom: "企业微信机器人",
 };
 
+const PLUGIN_RUNTIME_LABELS: Record<string, string> = {
+  lua: "Lua",
+};
+
+const PLUGIN_HOOK_POINT_LABELS: Record<string, string> = {
+  pre_route: "pre_route",
+  post_route: "post_route",
+  post_response: "post_response",
+};
+
+const PLUGIN_TEMPLATES = [
+  {
+    id: "quota_guard",
+    name: "额度守卫",
+    description: "在上游路由前拦截低额度账号请求",
+    runtime: "lua",
+    hookPoints: ["pre_route"],
+    timeoutMs: 100,
+    scriptContent: `function handle(ctx)
+  local account = ctx and ctx.account or nil
+  local remain = account and account.primary_remain_percent or nil
+  if remain ~= nil and remain < 5 then
+    return {
+      action = "reject",
+      status = 429,
+      body = {
+        error = {
+          message = "account quota too low",
+          type = "quota_limit"
+        }
+      }
+    }
+  end
+  return { action = "continue" }
+end`,
+  },
+  {
+    id: "response_audit",
+    name: "响应审计",
+    description: "在响应阶段为高风险结果补充标记",
+    runtime: "lua",
+    hookPoints: ["post_response"],
+    timeoutMs: 100,
+    scriptContent: `function handle(ctx)
+  local response = ctx and ctx.response or nil
+  local status = response and response.status or 0
+  if status >= 500 then
+    return {
+      action = "continue",
+      annotations = {
+        severity = "error",
+        tag = "upstream_5xx"
+      }
+    }
+  end
+  return { action = "continue" }
+end`,
+  },
+] as const;
+
 function formatFreeAccountModelLabel(value: string | null | undefined): string {
   const normalized = String(value || "").trim();
   if (!normalized || normalized === "auto") {
@@ -176,10 +238,19 @@ function formatFreeAccountModelLabel(value: string | null | undefined): string {
   return normalized;
 }
 
-const SETTINGS_TABS = ["general", "appearance", "gateway", "alerts", "tasks", "env"] as const;
+const SETTINGS_TABS = [
+  "general",
+  "appearance",
+  "gateway",
+  "alerts",
+  "plugins",
+  "tasks",
+  "env",
+] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 const SETTINGS_ACTIVE_TAB_KEY = "codexmanager.settings.active-tab";
 const NEW_ALERT_DRAFT_ID = "__new__";
+const NEW_PLUGIN_DRAFT_ID = "__new_plugin__";
 
 type AlertRuleDraft = {
   id: string | null;
@@ -195,6 +266,17 @@ type AlertChannelDraft = {
   type: string;
   enabled: boolean;
   configText: string;
+};
+
+type PluginDraft = {
+  id: string | null;
+  name: string;
+  description: string;
+  runtime: string;
+  hookPoints: string[];
+  scriptContent: string;
+  enabled: boolean;
+  timeoutMs: string;
 };
 
 function readInitialSettingsTab(): SettingsTab {
@@ -314,6 +396,31 @@ function createAlertChannelDraft(channel?: AlertChannel | null): AlertChannelDra
     type: channel.channelType,
     enabled: channel.enabled,
     configText: formatJsonPretty(channel.config),
+  };
+}
+
+function createPluginDraft(plugin?: PluginItem | null): PluginDraft {
+  if (!plugin) {
+    return {
+      id: null,
+      name: "",
+      description: "",
+      runtime: "lua",
+      hookPoints: ["pre_route"],
+      scriptContent: PLUGIN_TEMPLATES[0]?.scriptContent ?? "",
+      enabled: true,
+      timeoutMs: "100",
+    };
+  }
+  return {
+    id: plugin.id,
+    name: plugin.name,
+    description: plugin.description ?? "",
+    runtime: plugin.runtime,
+    hookPoints: plugin.hookPoints.map((item) => String(item)),
+    scriptContent: plugin.scriptContent,
+    enabled: plugin.enabled,
+    timeoutMs: String(plugin.timeoutMs),
   };
 }
 
@@ -445,6 +552,7 @@ export default function SettingsPage() {
   const [selectedEnvKey, setSelectedEnvKey] = useState<string | null>(null);
   const [envDrafts, setEnvDrafts] = useState<Record<string, string>>({});
   const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
+  const [mcpPortDraft, setMcpPortDraft] = useState<string | null>(null);
   const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
   const [quotaProtectionThresholdDraft, setQuotaProtectionThresholdDraft] = useState<string | null>(null);
   const [retryPolicyMaxRetriesDraft, setRetryPolicyMaxRetriesDraft] = useState<string | null>(null);
@@ -470,12 +578,14 @@ export default function SettingsPage() {
   const [teamManagerApiKeyDraft, setTeamManagerApiKeyDraft] = useState("");
   const [selectedAlertRuleId, setSelectedAlertRuleId] = useState<string | null>(null);
   const [selectedAlertChannelId, setSelectedAlertChannelId] = useState<string | null>(null);
+  const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
   const [alertRuleDraft, setAlertRuleDraft] = useState<AlertRuleDraft>(() =>
     createAlertRuleDraft()
   );
   const [alertChannelDraft, setAlertChannelDraft] = useState<AlertChannelDraft>(() =>
     createAlertChannelDraft()
   );
+  const [pluginDraft, setPluginDraft] = useState<PluginDraft>(() => createPluginDraft());
 
   const { data: snapshot, isLoading } = useQuery({
     queryKey: ["app-settings-snapshot"],
@@ -505,6 +615,10 @@ export default function SettingsPage() {
     queryFn: () => serviceClient.listAlertHistory(50),
     refetchInterval: 30_000,
     refetchIntervalInBackground: true,
+  });
+  const { data: plugins = [] } = useQuery({
+    queryKey: ["plugins"],
+    queryFn: () => serviceClient.listPlugins(),
   });
 
   const updateSettings = useMutation({
@@ -771,6 +885,42 @@ export default function SettingsPage() {
     },
   });
 
+  const savePlugin = useMutation({
+    mutationFn: (payload: PluginDraft & { timeoutMsValue: number }) =>
+      serviceClient.upsertPlugin({
+        id: payload.id,
+        name: payload.name.trim(),
+        description: payload.description.trim() || null,
+        runtime: payload.runtime,
+        hookPoints: payload.hookPoints,
+        scriptContent: payload.scriptContent,
+        enabled: payload.enabled,
+        timeoutMs: payload.timeoutMsValue,
+      }),
+    onSuccess: async (item) => {
+      await queryClient.invalidateQueries({ queryKey: ["plugins"] });
+      setSelectedPluginId(item.id);
+      setPluginDraft(createPluginDraft(item));
+      toast.success("插件配置已保存");
+    },
+    onError: (error: unknown) => {
+      toast.error(`保存插件失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const deletePlugin = useMutation({
+    mutationFn: (id: string) => serviceClient.deletePlugin(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["plugins"] });
+      setSelectedPluginId(null);
+      setPluginDraft(createPluginDraft());
+      toast.success("插件已删除");
+    },
+    onError: (error: unknown) => {
+      toast.error(`删除插件失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   useEffect(() => {
     if (!snapshot?.theme) return;
     if (lastSyncedSnapshotThemeRef.current === snapshot.theme) return;
@@ -843,6 +993,7 @@ export default function SettingsPage() {
   const retryableStatusCodesInput =
     retryableStatusCodesDraft ??
     formatStatusCodeListInput(snapshot?.retryPolicyRetryableStatusCodes);
+  const mcpPortInput = mcpPortDraft ?? stringifyNumber(snapshot?.mcpPort);
   const responseCacheTtlInput =
     responseCacheTtlDraft ?? stringifyNumber(snapshot?.responseCacheTtlSecs);
   const responseCacheMaxEntriesInput =
@@ -1130,6 +1281,24 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
+  const saveMcpPort = () => {
+    if (!snapshot) return;
+    const nextValue = parseIntegerInput(mcpPortInput, 1);
+    if (nextValue == null || nextValue > 65535) {
+      toast.error("MCP 端口请输入 1 到 65535 之间的整数");
+      setMcpPortDraft(null);
+      return;
+    }
+    if (nextValue === snapshot.mcpPort) {
+      setMcpPortDraft(null);
+      return;
+    }
+    void updateSettings
+      .mutateAsync({ mcpPort: nextValue })
+      .then(() => setMcpPortDraft(null))
+      .catch(() => undefined);
+  };
+
   const handleSaveEnv = () => {
     if (!selectedEnvKey || !snapshot) return;
     void updateSettings
@@ -1236,6 +1405,25 @@ export default function SettingsPage() {
         : null,
     [alertChannels, resolvedSelectedAlertChannelId]
   );
+  const resolvedSelectedPluginId = useMemo(() => {
+    if (selectedPluginId === NEW_PLUGIN_DRAFT_ID) {
+      return NEW_PLUGIN_DRAFT_ID;
+    }
+    if (!plugins.length) {
+      return null;
+    }
+    if (selectedPluginId && plugins.some((item) => item.id === selectedPluginId)) {
+      return selectedPluginId;
+    }
+    return plugins[0]?.id ?? null;
+  }, [plugins, selectedPluginId]);
+  const selectedPlugin = useMemo(
+    () =>
+      resolvedSelectedPluginId && resolvedSelectedPluginId !== NEW_PLUGIN_DRAFT_ID
+        ? plugins.find((item) => item.id === resolvedSelectedPluginId) ?? null
+        : null,
+    [plugins, resolvedSelectedPluginId]
+  );
 
   const activeAlertRuleDraft = useMemo(() => {
     if (resolvedSelectedAlertRuleId === NEW_ALERT_DRAFT_ID) {
@@ -1258,6 +1446,15 @@ export default function SettingsPage() {
       ? createAlertChannelDraft(selectedAlertChannel)
       : createAlertChannelDraft();
   }, [alertChannelDraft, resolvedSelectedAlertChannelId, selectedAlertChannel]);
+  const activePluginDraft = useMemo(() => {
+    if (resolvedSelectedPluginId === NEW_PLUGIN_DRAFT_ID) {
+      return pluginDraft;
+    }
+    if (selectedPlugin && pluginDraft.id === selectedPlugin.id) {
+      return pluginDraft;
+    }
+    return selectedPlugin ? createPluginDraft(selectedPlugin) : createPluginDraft();
+  }, [pluginDraft, resolvedSelectedPluginId, selectedPlugin]);
 
   const updateAlertRuleDraft = (updater: (current: AlertRuleDraft) => AlertRuleDraft) => {
     setAlertRuleDraft((current) =>
@@ -1271,6 +1468,26 @@ export default function SettingsPage() {
     setAlertChannelDraft((current) =>
       updater(current.id === activeAlertChannelDraft.id ? current : activeAlertChannelDraft)
     );
+  };
+  const updatePluginDraft = (updater: (current: PluginDraft) => PluginDraft) => {
+    setPluginDraft((current) =>
+      updater(current.id === activePluginDraft.id ? current : activePluginDraft)
+    );
+  };
+  const applyPluginTemplate = (templateId: string) => {
+    const template = PLUGIN_TEMPLATES.find((item) => item.id === templateId);
+    if (!template) return;
+    setSelectedPluginId(NEW_PLUGIN_DRAFT_ID);
+    setPluginDraft({
+      id: null,
+      name: template.name,
+      description: template.description,
+      runtime: template.runtime,
+      hookPoints: [...template.hookPoints],
+      scriptContent: template.scriptContent,
+      enabled: true,
+      timeoutMs: String(template.timeoutMs),
+    });
   };
 
   const handleSaveAlertRule = () => {
@@ -1289,6 +1506,31 @@ export default function SettingsPage() {
     } catch (error) {
       toast.error(`渠道配置 JSON 无法解析: ${getAppErrorMessage(error)}`);
     }
+  };
+  const handleSavePlugin = () => {
+    const normalizedName = activePluginDraft.name.trim();
+    if (!normalizedName) {
+      toast.error("请输入插件名称");
+      return;
+    }
+    if (!activePluginDraft.hookPoints.length) {
+      toast.error("至少选择一个 Hook 点");
+      return;
+    }
+    if (!activePluginDraft.scriptContent.trim()) {
+      toast.error("请输入插件脚本");
+      return;
+    }
+    const timeoutMsValue = parseIntegerInput(activePluginDraft.timeoutMs, 1);
+    if (timeoutMsValue == null || timeoutMsValue > 60_000) {
+      toast.error("超时时间请输入 1 到 60000 之间的整数");
+      return;
+    }
+    void savePlugin.mutate({
+      ...activePluginDraft,
+      name: normalizedName,
+      timeoutMsValue,
+    });
   };
 
   if (isLoading || !snapshot) {
@@ -1323,6 +1565,9 @@ export default function SettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="alerts" className="gap-2 px-5 shrink-0">
             <BellRing className="h-4 w-4" /> 告警
+          </TabsTrigger>
+          <TabsTrigger value="plugins" className="gap-2 px-5 shrink-0">
+            <PlugZap className="h-4 w-4" /> 插件
           </TabsTrigger>
           <TabsTrigger value="tasks" className="gap-2 px-5 shrink-0">
             <Cpu className="h-4 w-4" /> 任务
@@ -1645,6 +1890,41 @@ export default function SettingsPage() {
                   加权轮询：剩余额度越高，命中概率越高；最低延迟优先：优先最近响应更快的账号；
                   成本优先：优先 free，再到 plus / team。
                 </p>
+              </div>
+
+              <div className="grid gap-4 rounded-2xl border border-border/50 bg-background/35 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <PlugZap className="h-4 w-4 text-primary" />
+                      <Label>MCP Server</Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      控制实验性 MCP 入口。当前已接通 stdio 与 HTTP SSE，两种传输共用同一开关。
+                    </p>
+                  </div>
+                  <Switch
+                    checked={snapshot.mcpEnabled}
+                    onCheckedChange={(value) =>
+                      updateSettings.mutate({ mcpEnabled: value })
+                    }
+                  />
+                </div>
+
+                <div className="grid gap-2 md:max-w-[240px]">
+                  <Label>HTTP SSE 端口</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={mcpPortInput}
+                    onChange={(event) => setMcpPortDraft(event.target.value)}
+                    onBlur={saveMcpPort}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    `codexmanager-mcp --http-sse` 默认监听此端口，默认 <code>48762</code>。关闭开关后，stdio 与 HTTP SSE 都会拒绝连接。
+                  </p>
+                </div>
               </div>
 
               <div className="grid gap-2">
@@ -2522,6 +2802,277 @@ export default function SettingsPage() {
                   )}
                 </CardContent>
               </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="plugins" className="space-y-4">
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <PlugZap className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">插件 / Hook 管理</CardTitle>
+              </div>
+              <CardDescription>
+                管理插件元数据、Hook 点声明与脚本内容。当前先接通插件配置 CRUD，Lua 执行沙箱仍待后端收口。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                <Card className="border-border/50 bg-background/35 shadow-none">
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-sm">已保存插件</CardTitle>
+                        <CardDescription>可直接切换编辑，状态随保存生效</CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedPluginId(NEW_PLUGIN_DRAFT_ID);
+                          setPluginDraft(createPluginDraft());
+                        }}
+                      >
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        新建
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {plugins.length ? (
+                      plugins.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPluginId(item.id);
+                            setPluginDraft(createPluginDraft(item));
+                          }}
+                          className={cn(
+                            "w-full rounded-2xl border px-4 py-3 text-left transition-colors",
+                            selectedPlugin?.id === item.id
+                              ? "border-primary bg-primary/10"
+                              : "border-border/50 bg-background/40 hover:bg-accent/30"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="font-medium">{item.name}</div>
+                              <p className="text-xs text-muted-foreground">
+                                {item.description || "未填写描述"}
+                              </p>
+                            </div>
+                            <Badge variant={item.enabled ? "default" : "secondary"}>
+                              {item.enabled ? "启用" : "停用"}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                            <span>{PLUGIN_RUNTIME_LABELS[item.runtime] || item.runtime}</span>
+                            <span>·</span>
+                            <span>{item.hookPoints.join(", ") || "--"}</span>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-border/60 bg-background/20 p-4 text-sm text-muted-foreground">
+                        还没有插件配置。可直接使用右侧模板创建一个初始脚本。
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/50 bg-background/35 shadow-none">
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <CardTitle className="text-sm">插件编辑器</CardTitle>
+                        <CardDescription>
+                          选择 Hook 点、脚本超时和 Lua 脚本内容，保存后会持久化到插件注册表。
+                        </CardDescription>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {PLUGIN_TEMPLATES.map((template) => (
+                          <Button
+                            key={template.id}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => applyPluginTemplate(template.id)}
+                          >
+                            {template.name}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label>插件名称</Label>
+                        <Input
+                          value={activePluginDraft.name}
+                          onChange={(event) =>
+                            updatePluginDraft((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                          placeholder="例如：额度守卫 / 审计增强"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>运行时</Label>
+                        <Select
+                          value={activePluginDraft.runtime}
+                          onValueChange={(value) =>
+                            updatePluginDraft((current) => ({
+                              ...current,
+                              runtime: value || "lua",
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="选择运行时" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(PLUGIN_RUNTIME_LABELS).map(([value, label]) => (
+                              <SelectItem key={value} value={value}>
+                                {label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>说明</Label>
+                      <Input
+                        value={activePluginDraft.description}
+                        onChange={(event) =>
+                          updatePluginDraft((current) => ({
+                            ...current,
+                            description: event.target.value,
+                          }))
+                        }
+                        placeholder="描述插件目的、风险边界或适用场景"
+                      />
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
+                      <div className="grid gap-2">
+                        <Label>Hook 点</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(PLUGIN_HOOK_POINT_LABELS).map(([value, label]) => {
+                            const active = activePluginDraft.hookPoints.includes(value);
+                            return (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() =>
+                                  updatePluginDraft((current) => ({
+                                    ...current,
+                                    hookPoints: active
+                                      ? current.hookPoints.filter((item) => item !== value)
+                                      : [...current.hookPoints, value],
+                                  }))
+                                }
+                                className={cn(
+                                  "rounded-xl border px-3 py-2 text-sm transition-colors",
+                                  active
+                                    ? "border-primary bg-primary/10 text-foreground"
+                                    : "border-border/50 bg-background/40 text-muted-foreground hover:text-foreground"
+                                )}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>超时 (ms)</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={60000}
+                          value={activePluginDraft.timeoutMs}
+                          onChange={(event) =>
+                            updatePluginDraft((current) => ({
+                              ...current,
+                              timeoutMs: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/40 px-4 py-3">
+                      <div className="space-y-0.5">
+                        <Label>启用插件</Label>
+                        <p className="text-xs text-muted-foreground">
+                          关闭后仍会保留脚本与 Hook 配置，仅停止在注册表中生效。
+                        </p>
+                      </div>
+                      <Switch
+                        checked={activePluginDraft.enabled}
+                        onCheckedChange={(value) =>
+                          updatePluginDraft((current) => ({
+                            ...current,
+                            enabled: value,
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>Lua 脚本</Label>
+                      <Textarea
+                        className="min-h-80 font-mono text-xs"
+                        value={activePluginDraft.scriptContent}
+                        onChange={(event) =>
+                          updatePluginDraft((current) => ({
+                            ...current,
+                            scriptContent: event.target.value,
+                          }))
+                        }
+                        placeholder="function handle(ctx) ... end"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        模板仅提供脚手架示例；后端 Lua 执行沙箱与超时保护仍在继续实现，本页先负责真实配置持久化。
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      <Button onClick={handleSavePlugin} disabled={savePlugin.isPending}>
+                        <Save className="mr-2 h-4 w-4" />
+                        保存插件
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedPluginId(NEW_PLUGIN_DRAFT_ID);
+                          setPluginDraft(createPluginDraft());
+                        }}
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        重置草稿
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          activePluginDraft.id && deletePlugin.mutate(activePluginDraft.id)
+                        }
+                        disabled={!activePluginDraft.id || deletePlugin.isPending}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        删除
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

@@ -90,10 +90,8 @@ fn serve_disk_path(web_root: &std::path::Path, path: &str) -> Response {
     let mime = guess_disk_mime(&asset_path);
 
     let mut out = Response::new(axum::body::Body::from(bytes));
-    out.headers_mut().insert(
-        "content-type",
-        axum::http::HeaderValue::from_static(mime),
-    );
+    out.headers_mut()
+        .insert("content-type", axum::http::HeaderValue::from_static(mime));
     out
 }
 
@@ -125,7 +123,11 @@ fn resolve_disk_asset_path(web_root: &std::path::Path, path: &str) -> Option<std
 }
 
 fn guess_disk_mime(path: &std::path::Path) -> &'static str {
-    match path.extension().and_then(|value| value.to_str()).unwrap_or("") {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+    {
         "html" => "text/html; charset=utf-8",
         "css" => "text/css; charset=utf-8",
         "js" => "text/javascript; charset=utf-8",

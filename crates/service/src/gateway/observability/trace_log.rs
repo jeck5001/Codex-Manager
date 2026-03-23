@@ -74,7 +74,7 @@ impl TraceAsyncWriter {
             Ok(()) => {}
             Err(TrySendError::Full(_)) => {
                 let dropped = self.dropped.fetch_add(1, Ordering::Relaxed) + 1;
-                if dropped == 1 || dropped % 1024 == 0 {
+                if dropped == 1 || dropped.is_multiple_of(1024) {
                     log::warn!(
                         "gateway trace queue full; dropped_lines={}, capacity={}",
                         dropped,
@@ -300,29 +300,32 @@ pub(crate) fn next_trace_id() -> String {
     format!("trc_{millis}_{seq:x}")
 }
 
-pub(crate) fn log_request_start(
-    trace_id: &str,
-    key_id: &str,
-    method: &str,
-    path: &str,
-    model: Option<&str>,
-    reasoning: Option<&str>,
-    is_stream: bool,
-    protocol_type: &str,
-) {
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RequestStartLog<'a> {
+    pub trace_id: &'a str,
+    pub key_id: &'a str,
+    pub method: &'a str,
+    pub path: &'a str,
+    pub model: Option<&'a str>,
+    pub reasoning: Option<&'a str>,
+    pub is_stream: bool,
+    pub protocol_type: &'a str,
+}
+
+pub(crate) fn log_request_start(entry: RequestStartLog<'_>) {
     let line = format!(
         "ts={} event=REQUEST_START trace_id={} key_id={} method={} path={} model={} reasoning={} stream={} protocol={}",
         current_trace_ts(),
-        sanitize_text(trace_id),
-        sanitize_text(key_id),
-        sanitize_text(method),
-        sanitize_text(path),
-        sanitize_text(model.unwrap_or("-")),
-        sanitize_text(reasoning.unwrap_or("-")),
-        if is_stream { "true" } else { "false" },
-        sanitize_text(protocol_type),
+        sanitize_text(entry.trace_id),
+        sanitize_text(entry.key_id),
+        sanitize_text(entry.method),
+        sanitize_text(entry.path),
+        sanitize_text(entry.model.unwrap_or("-")),
+        sanitize_text(entry.reasoning.unwrap_or("-")),
+        if entry.is_stream { "true" } else { "false" },
+        sanitize_text(entry.protocol_type),
     );
-    buffer_trace_line(trace_id, line);
+    buffer_trace_line(entry.trace_id, line);
 }
 
 pub(crate) fn log_request_body_preview(trace_id: &str, body: &[u8]) {
@@ -563,7 +566,7 @@ pub(crate) fn log_failed_request(
     error: Option<&str>,
     duration_ms: Option<i64>,
 ) {
-    if !status_code.is_some_and(|status| status >= 400) && !has_error_text(error) {
+    if status_code.is_none_or(|status| status < 400) && !has_error_text(error) {
         return;
     }
     if let Some(trace_id) = trace_id {

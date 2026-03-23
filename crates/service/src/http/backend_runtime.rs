@@ -178,13 +178,12 @@ fn run_backend_server(server: Server) {
 }
 
 pub(crate) fn start_backend_server() -> io::Result<BackendServer> {
-    let server =
-        Server::http("127.0.0.1:0").map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+    let server = Server::http("127.0.0.1:0").map_err(io::Error::other)?;
     let addr = server
         .server_addr()
         .to_ip()
         .map(|address| address.to_string())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "backend addr missing"))?;
+        .ok_or_else(|| io::Error::other("backend addr missing"))?;
     let join = thread::spawn(move || run_backend_server(server));
     Ok(BackendServer { addr, join })
 }

@@ -16,7 +16,7 @@ pub(crate) fn clean_value(value: Option<String>) -> Option<String> {
     }
 }
 
-fn normalize_non_empty<'a>(value: Option<&'a str>) -> Option<&'a str> {
+fn normalize_non_empty(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|v| !v.is_empty())
 }
 

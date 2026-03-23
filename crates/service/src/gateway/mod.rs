@@ -21,7 +21,6 @@ mod model_picker;
 #[path = "auth/openai_fallback.rs"]
 mod openai_fallback;
 mod protocol_adapter;
-mod retry_policy;
 #[path = "request/request_entry.rs"]
 mod request_entry;
 #[path = "routing/request_gate.rs"]
@@ -33,6 +32,7 @@ mod request_log;
 #[path = "request/request_rewrite.rs"]
 mod request_rewrite;
 mod response_cache;
+mod retry_policy;
 #[path = "routing/route_hint.rs"]
 mod route_hint;
 #[path = "routing/route_latency.rs"]
@@ -208,7 +208,12 @@ use local_count_tokens::maybe_respond_local_count_tokens;
 use local_models::maybe_respond_local_models;
 pub(crate) use model_picker::fetch_models_for_picker;
 pub(crate) use model_picker::probe_models_for_account;
-use openai_fallback::try_openai_fallback;
+#[cfg(test)]
+pub(crate) use model_picker::{
+    clear_probe_models_override_for_tests, probe_models_test_guard,
+    set_probe_models_override_for_tests,
+};
+use openai_fallback::{try_openai_fallback, TryOpenAiFallbackArgs};
 pub(crate) use request_entry::handle_gateway_request;
 use request_gate::{request_gate_lock, RequestGateAcquireError};
 use request_log::write_request_log;
@@ -219,8 +224,8 @@ pub(crate) use response_cache::{
     set_response_cache_max_entries, set_response_cache_ttl_secs,
 };
 pub(crate) use retry_policy::{
-    current_retry_policy, retry_policy_allows_status, retry_policy_max_retries,
-    set_retry_policy, sleep_before_retry, RetryPolicySnapshot,
+    current_retry_policy, retry_policy_allows_status, retry_policy_max_retries, set_retry_policy,
+    sleep_before_retry, RetryPolicySnapshot,
 };
 #[cfg(test)]
 pub(crate) use retry_policy::{reset_retry_policy_for_tests, retry_policy_test_guard};

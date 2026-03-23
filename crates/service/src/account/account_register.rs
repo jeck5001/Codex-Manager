@@ -42,6 +42,30 @@ pub(crate) struct RegisterProxyItem {
     pub priority: i64,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct StartRegisterBatchInput<'a> {
+    pub email_service_type: &'a str,
+    pub email_service_id: Option<i64>,
+    pub proxy: Option<String>,
+    pub count: i64,
+    pub interval_min: i64,
+    pub interval_max: i64,
+    pub concurrency: i64,
+    pub mode: &'a str,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CreateRegisterProxyInput<'a> {
+    pub name: &'a str,
+    pub proxy_type: &'a str,
+    pub host: &'a str,
+    pub port: u16,
+    pub username: Option<&'a str>,
+    pub password: Option<&'a str>,
+    pub enabled: bool,
+    pub priority: i64,
+}
+
 impl RegisterTaskReadResponse {
     pub(crate) fn status(&self) -> &str {
         self.status.as_str()
@@ -558,16 +582,17 @@ pub(crate) fn start_register_task(
     )
 }
 
-pub(crate) fn start_register_batch(
-    email_service_type: &str,
-    email_service_id: Option<i64>,
-    proxy: Option<String>,
-    count: i64,
-    interval_min: i64,
-    interval_max: i64,
-    concurrency: i64,
-    mode: &str,
-) -> Result<Value, String> {
+pub(crate) fn start_register_batch(input: StartRegisterBatchInput<'_>) -> Result<Value, String> {
+    let StartRegisterBatchInput {
+        email_service_type,
+        email_service_id,
+        proxy,
+        count,
+        interval_min,
+        interval_max,
+        concurrency,
+        mode,
+    } = input;
     let service_type = email_service_type.trim();
     if service_type.is_empty() {
         return Err("emailServiceType is required".to_string());
@@ -800,16 +825,17 @@ pub(crate) fn list_register_proxies(
         .collect::<Result<Vec<_>, _>>()
 }
 
-pub(crate) fn create_register_proxy(
-    name: &str,
-    proxy_type: &str,
-    host: &str,
-    port: u16,
-    username: Option<&str>,
-    password: Option<&str>,
-    enabled: bool,
-    priority: i64,
-) -> Result<Value, String> {
+pub(crate) fn create_register_proxy(input: CreateRegisterProxyInput<'_>) -> Result<Value, String> {
+    let CreateRegisterProxyInput {
+        name,
+        proxy_type,
+        host,
+        port,
+        username,
+        password,
+        enabled,
+        priority,
+    } = input;
     register_post_json(
         "/api/settings/proxies",
         &json!({

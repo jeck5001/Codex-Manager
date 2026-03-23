@@ -62,9 +62,7 @@ where
             let err = "missing chatgpt access token";
             super::super::super::mark_account_cooldown_for_status(&account.id, 401);
             log_gateway_result(Some(primary_url), 401, Some(err));
-            if has_more_candidates
-                && super::super::super::retry_policy_allows_status(401)
-            {
+            if has_more_candidates && super::super::super::retry_policy_allows_status(401) {
                 return PrimaryFlowDecision::Failover;
             }
             return PrimaryFlowDecision::Terminal {

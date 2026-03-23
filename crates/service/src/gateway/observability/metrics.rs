@@ -347,26 +347,6 @@ fn gateway_labeled_metrics_prometheus() -> String {
     text
 }
 
-#[cfg(test)]
-mod tests {
-    use codexmanager_core::storage::now_ts;
-
-    use super::{
-        clear_runtime_state, recent_gateway_latency_samples, record_gateway_latency_sample,
-    };
-
-    #[test]
-    fn gateway_latency_ring_buffer_returns_recent_samples_only() {
-        clear_runtime_state();
-        let now = now_ts();
-        record_gateway_latency_sample(now - 100, Some(80));
-        record_gateway_latency_sample(now, Some(120));
-        record_gateway_latency_sample(now, None);
-
-        assert_eq!(recent_gateway_latency_samples(now - 10), vec![120]);
-    }
-}
-
 fn classify_gateway_route(path: &str) -> &'static str {
     let path = path.split('?').next().unwrap_or(path);
     if path.starts_with("/v1/responses") {
@@ -478,4 +458,24 @@ fn is_db_busy_error(err: &str) -> bool {
     normalized.contains("database is locked")
         || normalized.contains("sqlite_busy")
         || normalized.contains("busy timeout")
+}
+
+#[cfg(test)]
+mod tests {
+    use codexmanager_core::storage::now_ts;
+
+    use super::{
+        clear_runtime_state, recent_gateway_latency_samples, record_gateway_latency_sample,
+    };
+
+    #[test]
+    fn gateway_latency_ring_buffer_returns_recent_samples_only() {
+        clear_runtime_state();
+        let now = now_ts();
+        record_gateway_latency_sample(now - 100, Some(80));
+        record_gateway_latency_sample(now, Some(120));
+        record_gateway_latency_sample(now, None);
+
+        assert_eq!(recent_gateway_latency_samples(now - 10), vec![120]);
+    }
 }

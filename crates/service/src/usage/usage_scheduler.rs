@@ -11,25 +11,26 @@ pub(crate) const DEFAULT_GATEWAY_KEEPALIVE_FAILURE_BACKOFF_MAX_SECS: u64 = 900;
 pub(crate) const MIN_USAGE_POLL_INTERVAL_SECS: u64 = 30;
 pub(crate) const MIN_GATEWAY_KEEPALIVE_INTERVAL_SECS: u64 = 30;
 
+pub(crate) struct BlockingPollLoopConfig<'a> {
+    pub loop_name: &'a str,
+    pub interval: Duration,
+    pub jitter: Duration,
+    pub failure_backoff_cap: Duration,
+}
+
 #[allow(dead_code)]
 pub(crate) fn run_blocking_poll_loop<F, L>(
-    loop_name: &str,
-    interval: Duration,
-    jitter: Duration,
-    failure_backoff_cap: Duration,
+    config: BlockingPollLoopConfig<'_>,
     mut task: F,
     mut should_log_error: L,
 ) where
     F: FnMut() -> Result<(), String>,
     L: FnMut(&str) -> bool,
 {
-    let jitter_cap_secs = jitter.as_secs();
+    let jitter_cap_secs = config.jitter.as_secs();
     let mut rng = rand::thread_rng();
     run_blocking_poll_loop_with_sleep(
-        loop_name,
-        interval,
-        jitter,
-        failure_backoff_cap,
+        config,
         &mut task,
         &mut should_log_error,
         |d| {
@@ -48,10 +49,7 @@ pub(crate) fn run_blocking_poll_loop<F, L>(
 
 #[allow(dead_code)]
 pub(crate) fn run_blocking_poll_loop_with_sleep<F, L, S, J>(
-    loop_name: &str,
-    interval: Duration,
-    jitter: Duration,
-    failure_backoff_cap: Duration,
+    config: BlockingPollLoopConfig<'_>,
     task: &mut F,
     should_log_error: &mut L,
     mut sleep: S,
@@ -68,7 +66,7 @@ pub(crate) fn run_blocking_poll_loop_with_sleep<F, L, S, J>(
             Ok(_) => true,
             Err(err) => {
                 if should_log_error(err.as_str()) {
-                    log::warn!("{loop_name} error: {err}");
+                    log::warn!("{} error: {err}", config.loop_name);
                 }
                 false
             }
@@ -81,9 +79,9 @@ pub(crate) fn run_blocking_poll_loop_with_sleep<F, L, S, J>(
         }
 
         let delay = next_poll_delay(
-            interval,
-            jitter,
-            failure_backoff_cap,
+            config.interval,
+            config.jitter,
+            config.failure_backoff_cap,
             consecutive_failures,
             next_jitter(),
         );

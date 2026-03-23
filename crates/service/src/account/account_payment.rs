@@ -55,6 +55,17 @@ struct TeamManagerTestPayload {
     api_key: Option<String>,
 }
 
+struct CheckoutLinkArgs<'a> {
+    access_token: &'a str,
+    cookies: Option<&'a str>,
+    plan_type: &'a str,
+    workspace_name: &'a str,
+    price_interval: &'a str,
+    seat_quantity: i64,
+    country: &'a str,
+    proxy: Option<&'a str>,
+}
+
 fn payment_http_client(proxy: Option<&str>) -> Result<Client, String> {
     let mut builder = Client::builder().timeout(Duration::from_secs(30));
     if let Some(proxy_url) = proxy.map(str::trim).filter(|value| !value.is_empty()) {
@@ -211,9 +222,7 @@ where
     }
 
     let mut map = read_payment_state_map();
-    let entry = map
-        .entry(normalized_account_id.to_string())
-        .or_insert_with(AccountPaymentState::default);
+    let entry = map.entry(normalized_account_id.to_string()).or_default();
     mutate(entry);
     let next = entry.clone();
     save_payment_state_map(&map)?;
@@ -230,9 +239,7 @@ where
     }
 
     let mut map = read_session_state_map();
-    let entry = map
-        .entry(normalized_account_id.to_string())
-        .or_insert_with(AccountSessionState::default);
+    let entry = map.entry(normalized_account_id.to_string()).or_default();
     mutate(entry);
     let next = entry.clone();
     save_session_state_map(&map)?;
@@ -325,29 +332,20 @@ fn infer_subscription_plan_type(payload: &Value) -> String {
     "free".to_string()
 }
 
-fn generate_checkout_link(
-    access_token: &str,
-    cookies: Option<&str>,
-    plan_type: &str,
-    workspace_name: &str,
-    price_interval: &str,
-    seat_quantity: i64,
-    country: &str,
-    proxy: Option<&str>,
-) -> Result<String, String> {
-    let client = payment_http_client(proxy)?;
-    let currency = country_currency(country);
+fn generate_checkout_link(args: CheckoutLinkArgs<'_>) -> Result<String, String> {
+    let client = payment_http_client(args.proxy)?;
+    let currency = country_currency(args.country);
 
-    let payload = if plan_type.eq_ignore_ascii_case("team") {
+    let payload = if args.plan_type.eq_ignore_ascii_case("team") {
         json!({
             "plan_name": "chatgptteamplan",
             "team_plan_data": {
-                "workspace_name": workspace_name,
-                "price_interval": price_interval,
-                "seat_quantity": seat_quantity.max(1),
+                "workspace_name": args.workspace_name,
+                "price_interval": args.price_interval,
+                "seat_quantity": args.seat_quantity.max(1),
             },
             "billing_details": {
-                "country": country.trim().to_ascii_uppercase(),
+                "country": args.country.trim().to_ascii_uppercase(),
                 "currency": currency,
             },
             "promo_campaign": {
@@ -361,7 +359,7 @@ fn generate_checkout_link(
         json!({
             "plan_name": "chatgptplusplan",
             "billing_details": {
-                "country": country.trim().to_ascii_uppercase(),
+                "country": args.country.trim().to_ascii_uppercase(),
                 "currency": currency,
             },
             "promo_campaign": {
@@ -373,7 +371,7 @@ fn generate_checkout_link(
     };
 
     let mut request = client.post(PAYMENT_CHECKOUT_URL);
-    for (name, value) in payment_headers(access_token, cookies) {
+    for (name, value) in payment_headers(args.access_token, args.cookies) {
         request = request.header(name, value);
     }
     let response = request
@@ -519,25 +517,25 @@ pub(crate) fn generate_payment_link(
         "team" => "team",
         _ => return Err("planType must be plus or team".to_string()),
     };
-    let link = generate_checkout_link(
-        &token.access_token,
-        account_cookies(&account.id).as_deref(),
-        normalized_plan,
-        workspace_name
+    let link = generate_checkout_link(CheckoutLinkArgs {
+        access_token: &token.access_token,
+        cookies: account_cookies(&account.id).as_deref(),
+        plan_type: normalized_plan,
+        workspace_name: workspace_name
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("MyTeam"),
-        price_interval
+        price_interval: price_interval
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("month"),
-        seat_quantity.unwrap_or(5).max(1),
-        country
+        seat_quantity: seat_quantity.unwrap_or(5).max(1),
+        country: country
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("SG"),
         proxy,
-    )?;
+    })?;
 
     Ok(json!({
         "accountId": account.id,

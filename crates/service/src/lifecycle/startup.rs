@@ -19,13 +19,12 @@ pub fn start_one_shot_server() -> std::io::Result<ServerHandle> {
         log::warn!("storage startup init skipped: {}", err);
     }
     crate::sync_runtime_settings_from_storage();
-    let server = tiny_http::Server::http("127.0.0.1:0")
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+    let server = tiny_http::Server::http("127.0.0.1:0").map_err(io::Error::other)?;
     let addr = server
         .server_addr()
         .to_ip()
         .map(|a| a.to_string())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "server addr missing"))?;
+        .ok_or_else(|| io::Error::other("server addr missing"))?;
     let join = thread::spawn(move || {
         if let Some(request) = server.incoming_requests().next() {
             crate::http::backend_router::handle_backend_request(request);

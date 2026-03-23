@@ -156,7 +156,9 @@ fn recover_account_after_success(storage: &Storage, account: &Account) {
     crate::gateway::clear_account_cooldown(&account.id);
 }
 
-fn run_session_probe_tasks(tasks: Vec<SessionProbeTask>) -> Result<SessionProbeBatchOutcome, String> {
+fn run_session_probe_tasks(
+    tasks: Vec<SessionProbeTask>,
+) -> Result<SessionProbeBatchOutcome, String> {
     let total = tasks.len();
     if total == 0 {
         return Ok(SessionProbeBatchOutcome::default());
@@ -230,11 +232,13 @@ fn run_session_probe_task(
             outcome.failure_count = outcome.failure_count.saturating_add(1);
             record_usage_refresh_failure(storage, &task.account.id, &err);
             mark_usage_unreachable_if_needed(storage, &task.account.id, &err);
-            outcome.failed_accounts.push(HealthcheckFailureAccountResult {
-                account_id: task.account.id.clone(),
-                label: Some(task.account.label.clone()),
-                reason: err.clone(),
-            });
+            outcome
+                .failed_accounts
+                .push(HealthcheckFailureAccountResult {
+                    account_id: task.account.id.clone(),
+                    label: Some(task.account.label.clone()),
+                    reason: err.clone(),
+                });
             log::warn!(
                 "session probe failed: account_id={} status={} err={}",
                 task.account.id,
@@ -288,10 +292,41 @@ pub(crate) fn clear_session_probe_state_for_tests() {
 
 #[cfg(test)]
 mod tests {
+    use codexmanager_core::storage::{now_ts, Account, Storage, Token};
+
     use super::{
-        account_status_allows_probe, next_session_probe_cursor, parse_session_probe_worker_count,
+        account_status_allows_probe, build_session_probe_tasks, next_session_probe_cursor,
+        parse_session_probe_worker_count, recover_account_after_success,
         session_probe_batch_indices,
     };
+
+    fn account(id: &str, status: &str) -> Account {
+        let now = now_ts();
+        Account {
+            id: id.to_string(),
+            label: id.to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some(format!("acct-{id}")),
+            workspace_id: Some(format!("org-{id}")),
+            group_name: None,
+            sort: 0,
+            status: status.to_string(),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn token(account_id: &str) -> Token {
+        let now = now_ts();
+        Token {
+            account_id: account_id.to_string(),
+            id_token: "header.payload.sig".to_string(),
+            access_token: format!("access-{account_id}"),
+            refresh_token: format!("refresh-{account_id}"),
+            api_key_access_token: None,
+            last_refresh: now,
+        }
+    }
 
     #[test]
     fn session_probe_indices_wrap_round_robin() {
@@ -320,5 +355,50 @@ mod tests {
             parse_session_probe_worker_count(Some("0".to_string()), 5),
             4
         );
+    }
+
+    #[test]
+    fn build_session_probe_tasks_skips_disabled_accounts() {
+        let tasks = build_session_probe_tasks(
+            vec![token("acc-unavailable"), token("acc-disabled")],
+            vec![
+                account("acc-unavailable", "unavailable"),
+                account("acc-disabled", "disabled"),
+            ],
+        );
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].account.id, "acc-unavailable");
+        assert_eq!(tasks[0].token.account_id, "acc-unavailable");
+    }
+
+    #[test]
+    fn recover_account_after_success_restores_unavailable_but_keeps_disabled() {
+        let storage = Storage::open_in_memory().expect("open");
+        storage.init().expect("init");
+
+        let unavailable = account("acc-recover", "unavailable");
+        let disabled = account("acc-disabled", "disabled");
+        storage
+            .insert_account(&unavailable)
+            .expect("insert unavailable account");
+        storage
+            .insert_account(&disabled)
+            .expect("insert disabled account");
+
+        recover_account_after_success(&storage, &unavailable);
+        recover_account_after_success(&storage, &disabled);
+
+        let recovered = storage
+            .find_account_by_id("acc-recover")
+            .expect("find recovered")
+            .expect("stored recovered");
+        assert_eq!(recovered.status, "active");
+
+        let still_disabled = storage
+            .find_account_by_id("acc-disabled")
+            .expect("find disabled")
+            .expect("stored disabled");
+        assert_eq!(still_disabled.status, "disabled");
     }
 }

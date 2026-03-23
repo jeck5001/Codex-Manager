@@ -23,6 +23,19 @@ use openai::{
     update_openai_stream_meta, OpenAIStreamMeta,
 };
 
+pub(crate) struct RespondWithUpstreamArgs<'a> {
+    pub(crate) request: Request,
+    pub(crate) upstream: reqwest::blocking::Response,
+    pub(crate) inflight_guard: super::AccountInFlightGuard,
+    pub(crate) response_adapter: super::ResponseAdapter,
+    pub(crate) request_path: &'a str,
+    pub(crate) tool_name_restore_map: Option<&'a super::ToolNameRestoreMap>,
+    pub(crate) is_stream: bool,
+    pub(crate) trace_id: Option<&'a str>,
+    pub(crate) actual_model_header: Option<&'a str>,
+    pub(crate) response_cache_key: Option<&'a str>,
+}
+
 pub(super) fn reload_from_env() {
     reload_output_text_from_env();
     stream_readers::reload_from_env();
@@ -67,29 +80,9 @@ pub(super) fn push_optional_static_header(
 mod delivery;
 mod stream_readers;
 pub(super) fn respond_with_upstream(
-    request: Request,
-    upstream: reqwest::blocking::Response,
-    inflight_guard: super::AccountInFlightGuard,
-    response_adapter: super::ResponseAdapter,
-    request_path: &str,
-    tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
-    is_stream: bool,
-    trace_id: Option<&str>,
-    actual_model_header: Option<&str>,
-    response_cache_key: Option<&str>,
+    args: RespondWithUpstreamArgs<'_>,
 ) -> Result<UpstreamResponseBridgeResult, String> {
-    delivery::respond_with_upstream(
-        request,
-        upstream,
-        inflight_guard,
-        response_adapter,
-        request_path,
-        tool_name_restore_map,
-        is_stream,
-        trace_id,
-        actual_model_header,
-        response_cache_key,
-    )
+    delivery::respond_with_upstream(args)
 }
 pub(super) use stream_readers::{
     AnthropicSseReader, OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader,

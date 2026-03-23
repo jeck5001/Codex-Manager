@@ -527,3 +527,87 @@ pub(crate) fn account_cooldown_deactivated_secs() -> u64 {
         DEFAULT_ACCOUNT_COOLDOWN_DEACTIVATED_SECS,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        background_tasks_settings, reload_background_tasks_runtime_from_env,
+        DEFAULT_SESSION_PROBE_INTERVAL_SECS, DEFAULT_SESSION_PROBE_SAMPLE_SIZE,
+        ENV_SESSION_PROBE_INTERVAL_SECS, ENV_SESSION_PROBE_POLLING_ENABLED,
+        ENV_SESSION_PROBE_SAMPLE_SIZE,
+    };
+    use std::ffi::OsString;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_test_lock() -> &'static Mutex<()> {
+        static ENV_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_TEST_LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct EnvRestore(Vec<(&'static str, Option<OsString>)>);
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in self.0.drain(..) {
+                if let Some(value) = value {
+                    std::env::set_var(key, value);
+                } else {
+                    std::env::remove_var(key);
+                }
+            }
+            reload_background_tasks_runtime_from_env();
+        }
+    }
+
+    fn override_env_vars(vars: &[(&'static str, Option<&str>)]) -> EnvRestore {
+        let previous = vars
+            .iter()
+            .map(|(key, _)| (*key, std::env::var_os(key)))
+            .collect::<Vec<_>>();
+        for (key, value) in vars {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+        reload_background_tasks_runtime_from_env();
+        EnvRestore(previous)
+    }
+
+    #[test]
+    fn reload_background_tasks_runtime_from_env_applies_session_probe_settings() {
+        let _guard = env_test_lock().lock().expect("lock env test");
+        let _env = override_env_vars(&[
+            (ENV_SESSION_PROBE_POLLING_ENABLED, Some("1")),
+            (ENV_SESSION_PROBE_INTERVAL_SECS, Some("1800")),
+            (ENV_SESSION_PROBE_SAMPLE_SIZE, Some("5")),
+        ]);
+
+        let snapshot = background_tasks_settings();
+        assert!(snapshot.session_probe_polling_enabled);
+        assert_eq!(snapshot.session_probe_interval_secs, 1800);
+        assert_eq!(snapshot.session_probe_sample_size, 5);
+    }
+
+    #[test]
+    fn reload_background_tasks_runtime_from_env_restores_session_probe_defaults() {
+        let _guard = env_test_lock().lock().expect("lock env test");
+        let _env = override_env_vars(&[
+            (ENV_SESSION_PROBE_POLLING_ENABLED, None),
+            (ENV_SESSION_PROBE_INTERVAL_SECS, None),
+            (ENV_SESSION_PROBE_SAMPLE_SIZE, None),
+        ]);
+
+        let snapshot = background_tasks_settings();
+        assert!(!snapshot.session_probe_polling_enabled);
+        assert_eq!(
+            snapshot.session_probe_interval_secs,
+            DEFAULT_SESSION_PROBE_INTERVAL_SECS
+        );
+        assert_eq!(
+            snapshot.session_probe_sample_size,
+            DEFAULT_SESSION_PROBE_SAMPLE_SIZE
+        );
+    }
+}

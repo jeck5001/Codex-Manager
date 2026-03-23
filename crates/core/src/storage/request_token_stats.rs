@@ -81,17 +81,15 @@ impl Storage {
     }
 
     pub fn summarize_request_token_stats_by_key(&self) -> Result<Vec<ApiKeyTokenUsageSummary>> {
-        let mut stmt = self.conn.prepare(
-            &format!(
-                "SELECT
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT
                     key_id,
                     {NON_NEGATIVE_TOTAL_TOKENS_SQL} AS total_tokens
              FROM request_token_stats
              WHERE key_id IS NOT NULL AND TRIM(key_id) <> ''
              GROUP BY key_id
              ORDER BY total_tokens DESC, key_id ASC"
-            ),
-        )?;
+        ))?;
         let mut rows = stmt.query([])?;
         let mut items = Vec::new();
         while let Some(row) = rows.next()? {
@@ -103,7 +101,11 @@ impl Storage {
         Ok(items)
     }
 
-    pub fn summarize_cost_usage_between(&self, start_ts: i64, end_ts: i64) -> Result<CostUsageSummary> {
+    pub fn summarize_cost_usage_between(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> Result<CostUsageSummary> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT
                 IFNULL(COUNT(*), 0),

@@ -155,11 +155,10 @@ pub(crate) fn run_front_proxy(addr: &str, backend_addr: &str) -> io::Result<()> 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        .map_err(io::Error::other)?;
 
     runtime.block_on(async move {
-        let client = build_local_backend_client()
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        let client = build_local_backend_client().map_err(io::Error::other)?;
         let state = ProxyState {
             backend_base_url: build_backend_base_url(backend_addr),
             client,

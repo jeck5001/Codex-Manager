@@ -133,7 +133,7 @@ pub(super) fn send_models_request(
     let account_header_value = account
         .chatgpt_account_id
         .as_deref()
-        .or_else(|| account.workspace_id.as_deref())
+        .or(account.workspace_id.as_deref())
         .map(str::to_string);
     let include_account_header = !super::super::is_openai_api_base(upstream_base);
     let build_request = |http: &Client| {

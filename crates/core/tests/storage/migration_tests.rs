@@ -192,6 +192,15 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
         )
         .expect("count 034 migration");
     assert_eq!(applied_034, 1);
+    let applied_045: i64 = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '045_plugins'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count 045 migration");
+    assert_eq!(applied_045, 1);
 
     assert!(!storage
         .has_column("accounts", "note")
@@ -235,6 +244,12 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
     assert!(storage
         .has_column("login_sessions", "workspace_id")
         .expect("check login_sessions.workspace_id"));
+    assert!(storage
+        .has_column("plugins", "hook_points_json")
+        .expect("check plugins.hook_points_json"));
+    assert!(storage
+        .has_column("plugins", "script_content")
+        .expect("check plugins.script_content"));
     assert!(!storage
         .has_column("request_logs", "input_tokens")
         .expect("check request_logs.input_tokens"));

@@ -25,18 +25,12 @@ pub(crate) fn upsert_alert_channel(
     config: Option<Value>,
     enabled: Option<bool>,
 ) -> Result<AlertChannelItem, String> {
-    let normalized_name = name
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let normalized_name = name.unwrap_or_default().trim().to_string();
     if normalized_name.is_empty() {
         return Err("alert channel name required".to_string());
     }
 
-    let normalized_type = channel_type
-        .unwrap_or_default()
-        .trim()
-        .to_ascii_lowercase();
+    let normalized_type = channel_type.unwrap_or_default().trim().to_ascii_lowercase();
     if !ALLOWED_CHANNEL_TYPES.contains(&normalized_type.as_str()) {
         return Err(format!("unsupported alert channel type: {normalized_type}"));
     }
@@ -105,7 +99,12 @@ pub(crate) fn test_alert_channel(channel_id: &str) -> Result<AlertChannelTestRes
         Err(err) => format!("Test alert failed via {}: {err}", channel.channel_type),
     };
     storage
-        .insert_alert_history(None, Some(channel.id.as_str()), history_status, &history_message)
+        .insert_alert_history(
+            None,
+            Some(channel.id.as_str()),
+            history_status,
+            &history_message,
+        )
         .map_err(|err| err.to_string())?;
     result?;
 
@@ -121,7 +120,8 @@ pub(crate) fn to_alert_channel_item(channel: AlertChannel) -> Result<AlertChanne
         id: channel.id,
         name: channel.name,
         channel_type: channel.channel_type,
-        config: serde_json::from_str(channel.config_json.as_str()).unwrap_or(Value::Object(Default::default())),
+        config: serde_json::from_str(channel.config_json.as_str())
+            .unwrap_or(Value::Object(Default::default())),
         enabled: channel.enabled,
         created_at: channel.created_at,
         updated_at: channel.updated_at,

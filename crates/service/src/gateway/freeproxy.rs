@@ -238,14 +238,16 @@ fn sync_register_proxy_pool(proxies: &[String]) -> Result<RegisterProxySyncSumma
         }
 
         let _ = crate::account_register::create_register_proxy(
-            candidate.name.as_str(),
-            candidate.proxy_type.as_str(),
-            candidate.host.as_str(),
-            candidate.port,
-            candidate.username.as_deref(),
-            candidate.password.as_deref(),
-            true,
-            candidate.priority,
+            crate::account_register::CreateRegisterProxyInput {
+                name: candidate.name.as_str(),
+                proxy_type: candidate.proxy_type.as_str(),
+                host: candidate.host.as_str(),
+                port: candidate.port,
+                username: candidate.username.as_deref(),
+                password: candidate.password.as_deref(),
+                enabled: true,
+                priority: candidate.priority,
+            },
         )?;
         created_count += 1;
     }
@@ -418,7 +420,7 @@ fn parse_anonymity_policy(raw: Option<&str>) -> Result<FreeProxyAnonymityPolicy,
 
 fn parse_country_filters(raw: Option<&str>) -> Vec<String> {
     raw.unwrap_or_default()
-        .split(|ch: char| matches!(ch, ',' | ';' | '|' | ' ' | '\n' | '\r' | '\t'))
+        .split([',', ';', '|', ' ', '\n', '\r', '\t'])
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_ascii_uppercase())
@@ -434,7 +436,7 @@ fn select_freeproxy_proxies(
         .filter_map(|entry| match_freeproxy_entry(entry, options))
         .collect::<Vec<_>>();
 
-    matched.sort_by(|left, right| compare_entry_rank(left, right));
+    matched.sort_by(compare_entry_rank);
 
     let mut deduped = Vec::new();
     for candidate in matched {

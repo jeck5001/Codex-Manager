@@ -103,11 +103,9 @@ pub(crate) fn build_codex_upstream_headers(
     }
     headers.push(("session_id".to_string(), resolved_session_id));
 
-    if !input.strip_session_affinity {
-        if input.include_turn_state {
-            if let Some(turn_state) = input.incoming_turn_state {
-                headers.push(("x-codex-turn-state".to_string(), turn_state.to_string()));
-            }
+    if !input.strip_session_affinity && input.include_turn_state {
+        if let Some(turn_state) = input.incoming_turn_state {
+            headers.push(("x-codex-turn-state".to_string(), turn_state.to_string()));
         }
     }
 

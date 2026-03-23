@@ -7,9 +7,11 @@ use super::super::local_validation::LocalValidationResult;
 use super::proxy_pipeline::candidate_executor::{
     execute_candidate_sequence, CandidateExecutionResult, CandidateExecutorParams,
 };
-use super::proxy_pipeline::execution_context::GatewayUpstreamExecutionContext;
+use super::proxy_pipeline::execution_context::{
+    FinalResultLogArgs, GatewayUpstreamExecutionContext,
+};
 use super::proxy_pipeline::request_gate::acquire_request_gate;
-use super::proxy_pipeline::request_setup::prepare_request_setup;
+use super::proxy_pipeline::request_setup::{prepare_request_setup, PrepareRequestSetupInput};
 use super::proxy_pipeline::response_finalize::respond_terminal;
 use super::support::precheck::{prepare_candidates_for_proxy, CandidatePrecheckResult};
 
@@ -191,16 +193,16 @@ pub(in super::super) fn proxy_validated_request(
         client_is_stream,
     );
 
-    super::super::trace_log::log_request_start(
-        trace_id.as_str(),
-        key_id.as_str(),
-        request_method.as_str(),
-        path.as_str(),
-        model_for_log.as_deref(),
-        reasoning_for_log.as_deref(),
-        client_is_stream,
-        protocol_type.as_str(),
-    );
+    super::super::trace_log::log_request_start(super::super::trace_log::RequestStartLog {
+        trace_id: trace_id.as_str(),
+        key_id: key_id.as_str(),
+        method: request_method.as_str(),
+        path: path.as_str(),
+        model: model_for_log.as_deref(),
+        reasoning: reasoning_for_log.as_deref(),
+        is_stream: client_is_stream,
+        protocol_type: protocol_type.as_str(),
+    });
     super::super::trace_log::log_request_body_preview(trace_id.as_str(), body.as_ref());
 
     if let Some(cache_key) = response_cache_key.as_deref() {
@@ -221,16 +223,16 @@ pub(in super::super) fn proxy_validated_request(
                 0,
                 super::super::account_max_inflight_limit(),
             );
-            context.log_final_result_with_model(
-                None,
-                Some("cache://response-cache"),
-                cached.actual_model.as_deref().or(model_for_log.as_deref()),
-                cached.status_code,
-                cached.usage,
-                None,
-                started_at.elapsed().as_millis(),
-                None,
-            );
+            context.log_final_result_with_model(FinalResultLogArgs {
+                final_account_id: None,
+                upstream_url: Some("cache://response-cache"),
+                model_for_log: cached.actual_model.as_deref().or(model_for_log.as_deref()),
+                status_code: cached.status_code,
+                usage: cached.usage,
+                error: None,
+                elapsed_ms: started_at.elapsed().as_millis(),
+                attempted_account_ids: None,
+            });
             super::super::response_cache::respond_with_cached_response(
                 request,
                 trace_id.as_str(),
@@ -287,9 +289,8 @@ pub(in super::super) fn proxy_validated_request(
         load_model_attempt_chain(&storage, &key_id, requested_model.as_deref());
     let model_attempt_count = model_attempt_chain.len().max(1);
     let allow_openai_fallback = false;
-    let disable_challenge_stateless_retry = !(protocol_type == PROTOCOL_ANTHROPIC_NATIVE
-        && body.len() <= 2 * 1024)
-        && !path.starts_with("/v1/responses");
+    let disable_challenge_stateless_retry = !(path.starts_with("/v1/responses")
+        || protocol_type == PROTOCOL_ANTHROPIC_NATIVE && body.len() <= 2 * 1024);
     let _request_gate_guard = acquire_request_gate(
         trace_id.as_str(),
         key_id.as_str(),
@@ -313,15 +314,17 @@ pub(in super::super) fn proxy_validated_request(
         .then_some(&model_attempt_chain[..=model_idx]);
         let mut candidates = base_candidates.clone();
         let setup = prepare_request_setup(
-            path.as_str(),
-            protocol_type.as_str(),
-            has_prompt_cache_key,
-            &incoming_headers,
-            &body,
-            &mut candidates,
-            key_id.as_str(),
-            current_model_for_log,
-            trace_id.as_str(),
+            PrepareRequestSetupInput {
+                path: path.as_str(),
+                protocol_type: protocol_type.as_str(),
+                has_prompt_cache_key,
+                incoming_headers: &incoming_headers,
+                body: body.as_ref(),
+                key_id: key_id.as_str(),
+                model_for_log: current_model_for_log,
+                trace_id: trace_id.as_str(),
+            },
+            candidates.as_mut_slice(),
         );
         let context = GatewayUpstreamExecutionContext::new(
             &trace_id,
@@ -382,7 +385,7 @@ pub(in super::super) fn proxy_validated_request(
                 last_attempt_url: current_last_attempt_url,
                 last_attempt_error: current_last_attempt_error,
             } => {
-                request = returned_request;
+                request = *returned_request;
                 append_attempted_account_ids(
                     &mut attempted_account_ids_all,
                     attempted_account_ids.as_slice(),
@@ -435,15 +438,17 @@ pub(in super::super) fn proxy_validated_request(
         crate::gateway::runtime_config::account_max_inflight_limit(),
     );
 
-    final_context.log_final_result(
-        None,
-        last_attempt_url.as_deref().or(Some(base.as_str())),
-        503,
-        RequestLogUsage::default(),
-        Some(final_error.as_str()),
-        started_at.elapsed().as_millis(),
-        (!attempted_account_ids_all.is_empty()).then_some(attempted_account_ids_all.as_slice()),
-    );
+    final_context.log_final_result(FinalResultLogArgs {
+        final_account_id: None,
+        upstream_url: last_attempt_url.as_deref().or(Some(base.as_str())),
+        model_for_log: None,
+        status_code: 503,
+        usage: RequestLogUsage::default(),
+        error: Some(final_error.as_str()),
+        elapsed_ms: started_at.elapsed().as_millis(),
+        attempted_account_ids: (!attempted_account_ids_all.is_empty())
+            .then_some(attempted_account_ids_all.as_slice()),
+    });
     respond_terminal(
         request,
         503,
@@ -500,7 +505,11 @@ mod tests {
     #[test]
     fn filter_model_attempt_chain_by_allowed_models_removes_disallowed_fallbacks() {
         let filtered = filter_model_attempt_chain_by_allowed_models(
-            vec!["o3".to_string(), "o4-mini".to_string(), "gpt-4o".to_string()],
+            vec![
+                "o3".to_string(),
+                "o4-mini".to_string(),
+                "gpt-4o".to_string(),
+            ],
             &["o3".to_string(), "gpt-4o".to_string()],
         );
 

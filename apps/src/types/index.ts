@@ -296,6 +296,22 @@ export interface AlertChannelTestResult {
   sentAt: number | null;
 }
 
+export type PluginRuntime = "lua";
+export type PluginHookPoint = "pre_route" | "post_route" | "post_response";
+
+export interface PluginItem {
+  id: string;
+  name: string;
+  description: string | null;
+  runtime: PluginRuntime | string;
+  hookPoints: PluginHookPoint[] | string[];
+  scriptContent: string;
+  enabled: boolean;
+  timeoutMs: number;
+  createdAt: number | null;
+  updatedAt: number | null;
+}
+
 export interface ModelPricingItem {
   modelSlug: string;
   inputPricePer1k: number;
@@ -810,6 +826,8 @@ export interface AppSettings {
   serviceAddr: string;
   serviceListenMode: string;
   serviceListenModeOptions: string[];
+  mcpEnabled: boolean;
+  mcpPort: number;
   routeStrategy: string;
   routeStrategyOptions: string[];
   freeAccountMaxModel: string;

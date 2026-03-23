@@ -1,8 +1,6 @@
 use super::*;
 use codexmanager_core::storage::{now_ts, Storage};
-use std::io::{Read, Write};
 use std::fs;
-use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::MutexGuard;
@@ -98,6 +96,24 @@ fn current_web_auth_totp(secret: &str) -> String {
     .expect("build totp")
     .generate_current()
     .expect("generate current totp")
+}
+
+struct RegisteredAlertWebhook {
+    url: String,
+}
+
+impl RegisteredAlertWebhook {
+    fn new(url: impl Into<String>, sender: std::sync::mpsc::Sender<String>) -> Self {
+        let url = url.into();
+        crate::alert_sender::register_test_webhook(&url, sender);
+        Self { url }
+    }
+}
+
+impl Drop for RegisteredAlertWebhook {
+    fn drop(&mut self) {
+        crate::alert_sender::unregister_test_webhook(&self.url);
+    }
 }
 
 #[test]
@@ -413,6 +429,57 @@ fn healthcheck_run_rpc_returns_empty_summary_without_probe_candidates() {
 }
 
 #[test]
+fn dashboard_health_rpc_includes_recent_healthcheck_after_run() {
+    crate::usage_refresh::clear_session_probe_state_for_tests();
+    let (_db_scope, _storage) = setup_test_db("dashboard-health-recent-healthcheck");
+
+    let run_resp = handle_request(JsonRpcRequest {
+        id: 81,
+        method: "healthcheck/run".to_string(),
+        params: None,
+    });
+    let recent_run = run_resp.result.clone();
+    assert_eq!(
+        recent_run
+            .get("sampledAccounts")
+            .and_then(|value| value.as_i64()),
+        Some(0)
+    );
+
+    let dashboard_resp = handle_request(JsonRpcRequest {
+        id: 82,
+        method: "dashboard/health".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        dashboard_resp
+            .result
+            .get("recentHealthcheck")
+            .and_then(|value| value.get("startedAt"))
+            .and_then(|value| value.as_i64()),
+        recent_run.get("startedAt").and_then(|value| value.as_i64())
+    );
+    assert_eq!(
+        dashboard_resp
+            .result
+            .get("recentHealthcheck")
+            .and_then(|value| value.get("sampledAccounts"))
+            .and_then(|value| value.as_i64()),
+        Some(0)
+    );
+    assert_eq!(
+        dashboard_resp
+            .result
+            .get("recentHealthcheck")
+            .and_then(|value| value.get("failureCount"))
+            .and_then(|value| value.as_i64()),
+        Some(0)
+    );
+
+    crate::usage_refresh::clear_session_probe_state_for_tests();
+}
+
+#[test]
 fn gateway_retry_policy_rpc_supports_get_set_and_snapshot() {
     let _retry_guard = crate::gateway::retry_policy_test_guard();
     crate::gateway::reset_retry_policy_for_tests();
@@ -495,6 +562,65 @@ fn gateway_retry_policy_rpc_supports_get_set_and_snapshot() {
     );
 
     crate::gateway::reset_retry_policy_for_tests();
+}
+
+#[test]
+fn audit_list_read_operation_does_not_create_audit_log() {
+    let (_db_scope, storage) = setup_test_db("audit-list-read");
+
+    let create_resp = handle_request(JsonRpcRequest {
+        id: 90,
+        method: "apikey/create".to_string(),
+        params: Some(serde_json::json!({
+            "name": "审计只读校验",
+        })),
+    });
+    assert!(
+        create_resp
+            .result
+            .get("id")
+            .and_then(|value| value.as_str())
+            .is_some(),
+        "apikey/create should succeed and create the baseline audit log"
+    );
+
+    let initial_count = storage
+        .count_audit_logs_filtered(codexmanager_core::storage::AuditLogFilterInput {
+            action: None,
+            object_type: None,
+            object_id: None,
+            time_from: None,
+            time_to: None,
+        })
+        .expect("count initial audit logs");
+    assert_eq!(initial_count, 1);
+
+    let list_resp = handle_request(JsonRpcRequest {
+        id: 91,
+        method: "audit/list".to_string(),
+        params: Some(serde_json::json!({
+            "page": 1,
+            "pageSize": 10,
+        })),
+    });
+    assert_eq!(
+        list_resp
+            .result
+            .get("total")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+
+    let count_after_read = storage
+        .count_audit_logs_filtered(codexmanager_core::storage::AuditLogFilterInput {
+            action: None,
+            object_type: None,
+            object_id: None,
+            time_from: None,
+            time_to: None,
+        })
+        .expect("count audit logs after audit/list");
+    assert_eq!(count_after_read, initial_count);
 }
 
 #[test]
@@ -1537,25 +1663,10 @@ fn apikey_rpc_supports_allowed_models_get_and_set() {
 #[test]
 fn alert_rpc_supports_rule_channel_history_and_channel_test() {
     let (_db_scope, _storage) = setup_test_db("alert-rpc");
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind test webhook");
-    let addr = listener.local_addr().expect("webhook addr");
+    let _alert_guard = crate::alert_sender::alert_sender_test_guard();
     let (payload_tx, payload_rx) = std::sync::mpsc::channel::<String>();
-
-    let server_thread = std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept webhook connection");
-        let mut buf = [0_u8; 4096];
-        let size = stream.read(&mut buf).expect("read webhook request");
-        let raw = String::from_utf8_lossy(&buf[..size]).to_string();
-        let body = raw
-            .split("\r\n\r\n")
-            .nth(1)
-            .unwrap_or_default()
-            .to_string();
-        let _ = payload_tx.send(body);
-        let _ = stream.write_all(
-            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}",
-        );
-    });
+    let webhook_url = format!("mock://alert-rpc-{}", now_ts());
+    let _webhook_registration = RegisteredAlertWebhook::new(webhook_url.clone(), payload_tx);
 
     let upsert_channel_resp = handle_request(JsonRpcRequest {
         id: 40,
@@ -1565,7 +1676,7 @@ fn alert_rpc_supports_rule_channel_history_and_channel_test() {
             "type": "webhook",
             "enabled": true,
             "config": {
-                "url": format!("http://{addr}/hook"),
+                "url": webhook_url,
             }
         })),
     });
@@ -1646,7 +1757,6 @@ fn alert_rpc_supports_rule_channel_history_and_channel_test() {
         .expect("receive webhook payload");
     assert!(webhook_payload.contains("CodexManager"));
     assert!(webhook_payload.contains("codexmanager.alert.test"));
-    server_thread.join().expect("join webhook server");
 
     let history_resp = handle_request(JsonRpcRequest {
         id: 45,
@@ -1676,29 +1786,141 @@ fn alert_rpc_supports_rule_channel_history_and_channel_test() {
 }
 
 #[test]
+fn plugin_rpc_supports_upsert_list_and_delete() {
+    let (_db_scope, storage) = setup_test_db("plugin-rpc");
+
+    let upsert_resp = handle_request(JsonRpcRequest {
+        id: 46,
+        method: "plugin/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "额度保护插件",
+            "description": "阻止高风险请求",
+            "runtime": "lua",
+            "hookPoints": ["pre_route", "post_response", "pre_route"],
+            "scriptContent": "return { allow = true }",
+            "enabled": true,
+            "timeoutMs": 250,
+        })),
+    });
+    let plugin_id = upsert_resp
+        .result
+        .get("id")
+        .and_then(|value| value.as_str())
+        .expect("plugin id")
+        .to_string();
+    assert_eq!(
+        upsert_resp
+            .result
+            .get("runtime")
+            .and_then(|value| value.as_str()),
+        Some("lua")
+    );
+    assert_eq!(
+        upsert_resp
+            .result
+            .get("hookPoints")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(2)
+    );
+
+    let stored = storage
+        .find_plugin_by_id(&plugin_id)
+        .expect("find plugin")
+        .expect("plugin exists");
+    assert_eq!(stored.timeout_ms, 250);
+    assert_eq!(stored.hook_points_json, r#"["pre_route","post_response"]"#);
+
+    let list_resp = handle_request(JsonRpcRequest {
+        id: 47,
+        method: "plugin/list".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        list_resp
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(1)
+    );
+
+    let delete_resp = handle_request(JsonRpcRequest {
+        id: 48,
+        method: "plugin/delete".to_string(),
+        params: Some(serde_json::json!({
+            "id": plugin_id,
+        })),
+    });
+    assert_eq!(
+        delete_resp
+            .result
+            .get("ok")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+
+    let list_after_delete = handle_request(JsonRpcRequest {
+        id: 49,
+        method: "plugin/list".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        list_after_delete
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(0)
+    );
+}
+
+#[test]
+fn plugin_rpc_rejects_invalid_runtime_and_hook_point() {
+    let (_db_scope, _storage) = setup_test_db("plugin-rpc-invalid");
+
+    let invalid_runtime_resp = handle_request(JsonRpcRequest {
+        id: 50,
+        method: "plugin/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "非法运行时插件",
+            "runtime": "wasm",
+            "hookPoints": ["pre_route"],
+            "scriptContent": "return {}",
+        })),
+    });
+    let invalid_runtime_error = invalid_runtime_resp
+        .result
+        .get("error")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    assert!(invalid_runtime_error.contains("unsupported plugin runtime"));
+
+    let invalid_hook_point_resp = handle_request(JsonRpcRequest {
+        id: 51,
+        method: "plugin/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "非法钩子插件",
+            "runtime": "lua",
+            "hookPoints": ["before_route"],
+            "scriptContent": "return {}",
+        })),
+    });
+    let invalid_hook_point_error = invalid_hook_point_resp
+        .result
+        .get("error")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    assert!(invalid_hook_point_error.contains("unsupported plugin hook point"));
+}
+
+#[test]
 fn alert_engine_usage_threshold_dedupes_and_recovers() {
     let (_db_scope, storage) = setup_test_db("alert-engine-usage-threshold");
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind alert webhook");
-    let addr = listener.local_addr().expect("alert webhook addr");
+    let _alert_guard = crate::alert_sender::alert_sender_test_guard();
     let (payload_tx, payload_rx) = std::sync::mpsc::channel::<String>();
-
-    let server_thread = std::thread::spawn(move || {
-        for _ in 0..2 {
-            let (mut stream, _) = listener.accept().expect("accept webhook connection");
-            let mut buf = [0_u8; 4096];
-            let size = stream.read(&mut buf).expect("read webhook request");
-            let raw = String::from_utf8_lossy(&buf[..size]).to_string();
-            let body = raw
-                .split("\r\n\r\n")
-                .nth(1)
-                .unwrap_or_default()
-                .to_string();
-            let _ = payload_tx.send(body);
-            let _ = stream.write_all(
-                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}",
-            );
-        }
-    });
+    let webhook_url = format!("mock://alert-usage-threshold-{}", now_ts());
+    let _webhook_registration = RegisteredAlertWebhook::new(webhook_url.clone(), payload_tx);
 
     let account = codexmanager_core::storage::Account {
         id: "acc-alert-1".to_string(),
@@ -1734,7 +1956,7 @@ fn alert_engine_usage_threshold_dedupes_and_recovers() {
             "name": "阈值 Webhook",
             "type": "webhook",
             "enabled": true,
-            "config": { "url": format!("http://{addr}/usage-threshold") },
+            "config": { "url": webhook_url },
         })),
     });
     let channel_id = channel_resp
@@ -1770,7 +1992,11 @@ fn alert_engine_usage_threshold_dedupes_and_recovers() {
 
     crate::alert_engine::run_alert_checks_once().expect("second alert check");
     let deduped_history = storage.list_alert_history(10).expect("deduped history");
-    assert_eq!(deduped_history.len(), 1, "duplicate trigger should be suppressed");
+    assert_eq!(
+        deduped_history.len(),
+        1,
+        "duplicate trigger should be suppressed"
+    );
 
     storage
         .insert_usage_snapshot(&codexmanager_core::storage::UsageSnapshotRecord {
@@ -1794,33 +2020,15 @@ fn alert_engine_usage_threshold_dedupes_and_recovers() {
     let final_history = storage.list_alert_history(10).expect("final history");
     assert_eq!(final_history.len(), 2);
     assert_eq!(final_history[0].status, "recovered");
-    server_thread.join().expect("join usage threshold webhook");
 }
 
 #[test]
 fn alert_engine_all_unavailable_triggers_and_recovers() {
     let (_db_scope, storage) = setup_test_db("alert-engine-all-unavailable");
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind all-unavailable webhook");
-    let addr = listener.local_addr().expect("all-unavailable webhook addr");
+    let _alert_guard = crate::alert_sender::alert_sender_test_guard();
     let (payload_tx, payload_rx) = std::sync::mpsc::channel::<String>();
-
-    let server_thread = std::thread::spawn(move || {
-        for _ in 0..2 {
-            let (mut stream, _) = listener.accept().expect("accept webhook connection");
-            let mut buf = [0_u8; 4096];
-            let size = stream.read(&mut buf).expect("read webhook request");
-            let raw = String::from_utf8_lossy(&buf[..size]).to_string();
-            let body = raw
-                .split("\r\n\r\n")
-                .nth(1)
-                .unwrap_or_default()
-                .to_string();
-            let _ = payload_tx.send(body);
-            let _ = stream.write_all(
-                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}",
-            );
-        }
-    });
+    let webhook_url = format!("mock://alert-all-unavailable-{}", now_ts());
+    let _webhook_registration = RegisteredAlertWebhook::new(webhook_url.clone(), payload_tx);
 
     let account = codexmanager_core::storage::Account {
         id: "acc-alert-2".to_string(),
@@ -1843,7 +2051,7 @@ fn alert_engine_all_unavailable_triggers_and_recovers() {
             "name": "全部不可用 Webhook",
             "type": "webhook",
             "enabled": true,
-            "config": { "url": format!("http://{addr}/all-unavailable") },
+            "config": { "url": webhook_url },
         })),
     });
     let channel_id = channel_resp
@@ -1882,60 +2090,40 @@ fn alert_engine_all_unavailable_triggers_and_recovers() {
         .expect("all unavailable recovery payload")
         .contains("恢复"));
 
-    let history = storage.list_alert_history(10).expect("all unavailable history");
+    let history = storage
+        .list_alert_history(10)
+        .expect("all unavailable history");
     assert!(history.iter().any(|item| item.status == "triggered"));
     assert!(history.iter().any(|item| item.status == "recovered"));
-    server_thread.join().expect("join all unavailable webhook");
 }
 
 #[test]
 fn healthcheck_run_triggers_token_refresh_fail_alerts_when_probe_fails() {
+    struct HealthcheckAlertTestGuard {
+        webhook_url: String,
+    }
+
+    impl Drop for HealthcheckAlertTestGuard {
+        fn drop(&mut self) {
+            crate::alert_sender::unregister_test_webhook(&self.webhook_url);
+            crate::gateway::clear_probe_models_override_for_tests();
+            crate::usage_refresh::clear_session_probe_state_for_tests();
+        }
+    }
+
     crate::usage_refresh::clear_session_probe_state_for_tests();
     let (_db_scope, storage) = setup_test_db("healthcheck-alert-integration");
-    let upstream_listener = TcpListener::bind("127.0.0.1:0").expect("bind probe upstream");
-    let upstream_addr = upstream_listener
-        .local_addr()
-        .expect("probe upstream addr");
-    let alert_listener = TcpListener::bind("127.0.0.1:0").expect("bind probe alert webhook");
-    let alert_addr = alert_listener
-        .local_addr()
-        .expect("probe alert webhook addr");
+    let _gateway_guard = crate::gateway::probe_models_test_guard();
+    let _alert_guard = crate::alert_sender::alert_sender_test_guard();
     let (payload_tx, payload_rx) = std::sync::mpsc::channel::<String>();
-
-    let upstream_thread = std::thread::spawn(move || {
-        let (mut stream, _) = upstream_listener.accept().expect("accept probe request");
-        let mut buf = [0_u8; 4096];
-        let _ = stream.read(&mut buf).expect("read probe request");
-        let body = br#"{"error":{"message":"token expired","code":"invalid_token"}}"#;
-        let response = format!(
-            "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(),
-            String::from_utf8_lossy(body)
-        );
-        let _ = stream.write_all(response.as_bytes());
-    });
-
-    let alert_thread = std::thread::spawn(move || {
-        let (mut stream, _) = alert_listener.accept().expect("accept alert webhook");
-        let mut buf = [0_u8; 4096];
-        let size = stream.read(&mut buf).expect("read alert webhook");
-        let raw = String::from_utf8_lossy(&buf[..size]).to_string();
-        let body = raw
-            .split("\r\n\r\n")
-            .nth(1)
-            .unwrap_or_default()
-            .to_string();
-        let _ = payload_tx.send(body);
-        let _ = stream.write_all(
-            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}",
-        );
-    });
-
-    let upstream_guard = EnvGuard::set(
-        "CODEXMANAGER_UPSTREAM_BASE_URL",
-        &format!("http://{upstream_addr}"),
-    );
-    crate::gateway::reload_runtime_config_from_env();
+    let webhook_url = format!("mock://healthcheck-alert-{}", now_ts());
+    crate::alert_sender::register_test_webhook(&webhook_url, payload_tx);
+    crate::gateway::set_probe_models_override_for_tests(Err(
+        "usage endpoint status 401: token expired".to_string(),
+    ));
+    let _cleanup = HealthcheckAlertTestGuard {
+        webhook_url: webhook_url.clone(),
+    };
 
     let now = now_ts();
     storage
@@ -1970,7 +2158,7 @@ fn healthcheck_run_triggers_token_refresh_fail_alerts_when_probe_fails() {
             "name": "巡检异常 Webhook",
             "type": "webhook",
             "enabled": true,
-            "config": { "url": format!("http://{alert_addr}/healthcheck-alert") },
+            "config": { "url": webhook_url.clone() },
         })),
     });
     let channel_id = channel_resp
@@ -2033,10 +2221,4 @@ fn healthcheck_run_triggers_token_refresh_fail_alerts_when_probe_fails() {
     assert!(history
         .iter()
         .any(|item| item.rule_name.as_deref() == Some("巡检刷新失败")));
-
-    upstream_thread.join().expect("join probe upstream");
-    alert_thread.join().expect("join alert webhook");
-    drop(upstream_guard);
-    crate::gateway::reload_runtime_config_from_env();
-    crate::usage_refresh::clear_session_probe_state_for_tests();
 }

@@ -66,33 +66,34 @@ fn json_string<T: serde::Serialize>(value: &T) -> String {
 }
 
 fn append_csv_row(output: &mut String, item: &RequestLogSummary) {
-    let mut columns = Vec::with_capacity(26);
-    columns.push(optional_string(item.trace_id.as_deref()));
-    columns.push(optional_string(item.key_id.as_deref()));
-    columns.push(optional_string(item.account_id.as_deref()));
-    columns.push(optional_string(item.initial_account_id.as_deref()));
-    columns.push(json_string(&item.attempted_account_ids));
-    columns.push(optional_string(item.route_strategy.as_deref()));
-    columns.push(optional_string(item.requested_model.as_deref()));
-    columns.push(json_string(&item.model_fallback_path));
-    columns.push(item.request_path.clone());
-    columns.push(optional_string(item.original_path.as_deref()));
-    columns.push(optional_string(item.adapted_path.as_deref()));
-    columns.push(item.method.clone());
-    columns.push(optional_string(item.model.as_deref()));
-    columns.push(optional_string(item.reasoning_effort.as_deref()));
-    columns.push(optional_string(item.response_adapter.as_deref()));
-    columns.push(optional_string(item.upstream_url.as_deref()));
-    columns.push(optional_i64(item.status_code));
-    columns.push(optional_i64(item.duration_ms));
-    columns.push(optional_i64(item.input_tokens));
-    columns.push(optional_i64(item.cached_input_tokens));
-    columns.push(optional_i64(item.output_tokens));
-    columns.push(optional_i64(item.total_tokens));
-    columns.push(optional_i64(item.reasoning_output_tokens));
-    columns.push(optional_f64(item.estimated_cost_usd));
-    columns.push(optional_string(item.error.as_deref()));
-    columns.push(item.created_at.to_string());
+    let columns = vec![
+        optional_string(item.trace_id.as_deref()),
+        optional_string(item.key_id.as_deref()),
+        optional_string(item.account_id.as_deref()),
+        optional_string(item.initial_account_id.as_deref()),
+        json_string(&item.attempted_account_ids),
+        optional_string(item.route_strategy.as_deref()),
+        optional_string(item.requested_model.as_deref()),
+        json_string(&item.model_fallback_path),
+        item.request_path.clone(),
+        optional_string(item.original_path.as_deref()),
+        optional_string(item.adapted_path.as_deref()),
+        item.method.clone(),
+        optional_string(item.model.as_deref()),
+        optional_string(item.reasoning_effort.as_deref()),
+        optional_string(item.response_adapter.as_deref()),
+        optional_string(item.upstream_url.as_deref()),
+        optional_i64(item.status_code),
+        optional_i64(item.duration_ms),
+        optional_i64(item.input_tokens),
+        optional_i64(item.cached_input_tokens),
+        optional_i64(item.output_tokens),
+        optional_i64(item.total_tokens),
+        optional_i64(item.reasoning_output_tokens),
+        optional_f64(item.estimated_cost_usd),
+        optional_string(item.error.as_deref()),
+        item.created_at.to_string(),
+    ];
 
     output.push_str(
         &columns
@@ -175,7 +176,9 @@ pub(crate) fn stream_request_log_export_chunks(
 
     if plan.format == "csv" {
         sender
-            .blocking_send(Ok(Bytes::from(format!("{REQUEST_LOG_EXPORT_CSV_HEADER}\n"))))
+            .blocking_send(Ok(Bytes::from(format!(
+                "{REQUEST_LOG_EXPORT_CSV_HEADER}\n"
+            ))))
             .map_err(|_| "request log export stream closed".to_string())?;
     }
 
@@ -249,7 +252,11 @@ pub(crate) fn export_request_logs(
         .map_err(|err| format!("count request logs failed: {err}"))?;
     let items = if total > 0 {
         storage
-            .list_request_logs_paginated_filtered(to_storage_filters(&plan.filters, None, None), 0, total)
+            .list_request_logs_paginated_filtered(
+                to_storage_filters(&plan.filters, None, None),
+                0,
+                total,
+            )
             .map_err(|err| format!("list request logs failed: {err}"))?
             .into_iter()
             .map(to_request_log_summary)
@@ -275,8 +282,123 @@ pub(crate) fn export_request_logs(
 
 #[cfg(test)]
 mod tests {
-    use super::build_request_log_export_csv;
-    use codexmanager_core::rpc::types::RequestLogSummary;
+    use super::{
+        build_request_log_export_csv, prepare_request_log_export, stream_request_log_export_chunks,
+        RequestLogExportPlan,
+    };
+    use codexmanager_core::rpc::types::{
+        RequestLogExportParams, RequestLogFilterParams, RequestLogSummary,
+    };
+    use codexmanager_core::storage::{now_ts, RequestLog, Storage};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::MutexGuard;
+
+    static TEST_DB_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+    struct EnvGuard {
+        key: &'static str,
+        original: Option<std::ffi::OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let original = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.original {
+                std::env::set_var(self.key, value);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    struct TestDbScope {
+        _env_lock: MutexGuard<'static, ()>,
+        _db_guard: EnvGuard,
+        db_path: PathBuf,
+    }
+
+    impl Drop for TestDbScope {
+        fn drop(&mut self) {
+            crate::storage_helpers::clear_storage_cache_for_tests();
+            remove_sqlite_test_artifacts(&self.db_path);
+        }
+    }
+
+    fn new_test_db_path(prefix: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "{prefix}-{}-{}-{}.db",
+            std::process::id(),
+            now_ts(),
+            TEST_DB_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        path
+    }
+
+    fn setup_test_db(prefix: &str) -> (TestDbScope, Storage) {
+        let env_lock = crate::lock_utils::process_env_test_guard();
+        crate::storage_helpers::clear_storage_cache_for_tests();
+        let db_path = new_test_db_path(prefix);
+        let db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+        let storage = Storage::open(&db_path).expect("open db");
+        storage.init().expect("init schema");
+        (
+            TestDbScope {
+                _env_lock: env_lock,
+                _db_guard: db_guard,
+                db_path,
+            },
+            storage,
+        )
+    }
+
+    fn remove_sqlite_test_artifacts(db_path: &PathBuf) {
+        let _ = fs::remove_file(db_path);
+        let shm_path = PathBuf::from(format!("{}-shm", db_path.display()));
+        let wal_path = PathBuf::from(format!("{}-wal", db_path.display()));
+        let _ = fs::remove_file(shm_path);
+        let _ = fs::remove_file(wal_path);
+    }
+
+    fn sample_request_log(index: i64) -> RequestLog {
+        RequestLog {
+            trace_id: Some(format!("trc-stream-{index}")),
+            key_id: Some("gk-stream".to_string()),
+            account_id: Some("acc-stream".to_string()),
+            initial_account_id: Some("acc-stream".to_string()),
+            attempted_account_ids_json: Some(r#"["acc-stream"]"#.to_string()),
+            route_strategy: Some("balanced".to_string()),
+            requested_model: Some("o3".to_string()),
+            model_fallback_path_json: Some(r#"["o3"]"#.to_string()),
+            request_path: "/v1/responses".to_string(),
+            original_path: Some("/v1/responses".to_string()),
+            adapted_path: Some("/v1/responses".to_string()),
+            method: "POST".to_string(),
+            model: Some("o3".to_string()),
+            reasoning_effort: Some("medium".to_string()),
+            response_adapter: Some("Passthrough".to_string()),
+            upstream_url: Some("https://api.openai.com/v1/responses".to_string()),
+            status_code: Some(200),
+            duration_ms: Some(100 + index),
+            input_tokens: Some(20),
+            cached_input_tokens: Some(0),
+            output_tokens: Some(4),
+            total_tokens: Some(24),
+            reasoning_output_tokens: Some(0),
+            estimated_cost_usd: Some(0.12),
+            error: None,
+            created_at: 1_700_000_000 + index,
+        }
+    }
 
     #[test]
     fn request_log_export_csv_contains_header_and_items() {
@@ -312,5 +434,61 @@ mod tests {
         assert!(csv.contains("traceId,keyId,accountId"));
         assert!(csv.contains("trc-export"));
         assert!(csv.contains("\"[\"\"acc-initial\"\",\"\"acc-export\"\"]\""));
+    }
+
+    #[test]
+    fn prepare_request_log_export_uses_json_extension() {
+        let plan = prepare_request_log_export(RequestLogExportParams {
+            format: Some("json".to_string()),
+            filters: RequestLogFilterParams::default(),
+        })
+        .expect("prepare json export");
+
+        assert_eq!(plan.format, "json");
+        assert_eq!(plan.file_name, "codexmanager-requestlogs-all.json");
+    }
+
+    #[test]
+    fn request_log_export_streams_json_in_multiple_chunks() {
+        let (_db_scope, storage) = setup_test_db("requestlog-export-stream-json");
+        for index in 0..501 {
+            storage
+                .insert_request_log(&sample_request_log(index))
+                .expect("insert request log");
+        }
+
+        let plan = RequestLogExportPlan {
+            format: "json",
+            file_name: "codexmanager-requestlogs-all.json".to_string(),
+            filters: RequestLogFilterParams::default(),
+        };
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        stream_request_log_export_chunks(plan, tx).expect("stream request logs");
+
+        let mut chunks = Vec::new();
+        while let Some(chunk) = rx.blocking_recv() {
+            chunks.push(chunk.expect("chunk"));
+        }
+
+        assert!(
+            chunks.len() >= 3,
+            "expected opening batch, follow-up batch, and closing chunk"
+        );
+
+        let payload = chunks
+            .into_iter()
+            .map(|chunk| String::from_utf8(chunk.to_vec()).expect("utf8 chunk"))
+            .collect::<String>();
+        let items: Vec<RequestLogSummary> =
+            serde_json::from_str(&payload).expect("parse streamed json");
+        assert_eq!(items.len(), 501);
+        assert_eq!(
+            items.first().and_then(|item| item.trace_id.as_deref()),
+            Some("trc-stream-500")
+        );
+        assert_eq!(
+            items.last().and_then(|item| item.trace_id.as_deref()),
+            Some("trc-stream-0")
+        );
     }
 }

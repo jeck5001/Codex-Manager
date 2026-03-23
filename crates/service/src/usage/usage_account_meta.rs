@@ -162,22 +162,18 @@ fn apply_account_meta_patch(
 
     if let Some(next) = next_chatgpt_account_id.clone() {
         let current = account.chatgpt_account_id.as_deref().unwrap_or("").trim();
-        if current.is_empty() || is_invalid_upstream_scope_value(current) {
-            if current != next {
-                account.chatgpt_account_id = Some(next);
-                changed = true;
-            }
+        if (current.is_empty() || is_invalid_upstream_scope_value(current)) && current != next {
+            account.chatgpt_account_id = Some(next);
+            changed = true;
         }
     }
 
     let desired_workspace = next_workspace_id.or_else(|| next_chatgpt_account_id.clone());
     if let Some(next) = desired_workspace {
         let current = account.workspace_id.as_deref().unwrap_or("").trim();
-        if current.is_empty() || is_invalid_upstream_scope_value(current) {
-            if current != next {
-                account.workspace_id = Some(next);
-                changed = true;
-            }
+        if (current.is_empty() || is_invalid_upstream_scope_value(current)) && current != next {
+            account.workspace_id = Some(next);
+            changed = true;
         }
     }
     changed

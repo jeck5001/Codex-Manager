@@ -29,18 +29,12 @@ pub(crate) fn upsert_alert_rule(
     config: Option<Value>,
     enabled: Option<bool>,
 ) -> Result<AlertRuleItem, String> {
-    let normalized_name = name
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let normalized_name = name.unwrap_or_default().trim().to_string();
     if normalized_name.is_empty() {
         return Err("alert rule name required".to_string());
     }
 
-    let normalized_type = rule_type
-        .unwrap_or_default()
-        .trim()
-        .to_ascii_lowercase();
+    let normalized_type = rule_type.unwrap_or_default().trim().to_ascii_lowercase();
     if !ALLOWED_RULE_TYPES.contains(&normalized_type.as_str()) {
         return Err(format!("unsupported alert rule type: {normalized_type}"));
     }
@@ -86,7 +80,8 @@ pub(crate) fn to_alert_rule_item(rule: AlertRule) -> Result<AlertRuleItem, Strin
         id: rule.id,
         name: rule.name,
         rule_type: rule.rule_type,
-        config: serde_json::from_str(rule.config_json.as_str()).unwrap_or(Value::Object(Default::default())),
+        config: serde_json::from_str(rule.config_json.as_str())
+            .unwrap_or(Value::Object(Default::default())),
         enabled: rule.enabled,
         created_at: rule.created_at,
         updated_at: rule.updated_at,

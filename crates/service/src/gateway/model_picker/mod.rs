@@ -3,6 +3,8 @@ use codexmanager_core::rpc::types::ModelOption;
 use codexmanager_core::storage::{Account, Storage, Token};
 use reqwest::Method;
 use serde_json::Value;
+#[cfg(test)]
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 mod parse;
 mod request;
@@ -44,8 +46,44 @@ pub(crate) fn probe_models_for_account(
     account: &Account,
     token: &mut Token,
 ) -> Result<(), String> {
+    #[cfg(test)]
+    if let Some(result) = test_probe_models_override() {
+        return result;
+    }
     execute_models_request(storage, account, token).map(|_| ())
 }
+
+#[cfg(test)]
+fn test_probe_models_override() -> Option<Result<(), String>> {
+    let state = TEST_PROBE_MODELS_OVERRIDE.get_or_init(|| Mutex::new(None));
+    crate::lock_utils::lock_recover(state, "probe models override").clone()
+}
+
+#[cfg(test)]
+pub(crate) fn set_probe_models_override_for_tests(result: Result<(), String>) {
+    let state = TEST_PROBE_MODELS_OVERRIDE.get_or_init(|| Mutex::new(None));
+    let mut guard = crate::lock_utils::lock_recover(state, "probe models override");
+    *guard = Some(result);
+}
+
+#[cfg(test)]
+pub(crate) fn clear_probe_models_override_for_tests() {
+    let state = TEST_PROBE_MODELS_OVERRIDE.get_or_init(|| Mutex::new(None));
+    let mut guard = crate::lock_utils::lock_recover(state, "probe models override");
+    *guard = None;
+}
+
+#[cfg(test)]
+pub(crate) fn probe_models_test_guard() -> MutexGuard<'static, ()> {
+    static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+    crate::lock_utils::lock_recover(
+        TEST_MUTEX.get_or_init(|| Mutex::new(())),
+        "probe models test mutex",
+    )
+}
+
+#[cfg(test)]
+static TEST_PROBE_MODELS_OVERRIDE: OnceLock<Mutex<Option<Result<(), String>>>> = OnceLock::new();
 
 fn execute_models_request(
     storage: &Storage,

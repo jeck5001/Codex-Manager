@@ -3,8 +3,9 @@ use codexmanager_core::storage::Account;
 use reqwest::StatusCode;
 use std::time::{Duration, Instant};
 
-use super::super::attempt_flow::transport::send_upstream_request;
-use super::super::attempt_flow::transport::UpstreamRequestContext;
+use super::super::attempt_flow::transport::{
+    send_upstream_request, SendUpstreamRequestArgs, UpstreamRequestContext,
+};
 
 pub(in super::super) enum AltPathRetryResult {
     NotTriggered,
@@ -67,10 +68,10 @@ where
             message: "upstream total timeout exceeded".to_string(),
         };
     }
-    match send_upstream_request(
+    match send_upstream_request(SendUpstreamRequestArgs {
         client,
         method,
-        alt_url,
+        target_url: alt_url,
         request_deadline,
         request_ctx,
         incoming_headers,
@@ -80,7 +81,7 @@ where
         auth_token,
         account,
         strip_session_affinity,
-    ) {
+    }) {
         Ok(response) => AltPathRetryResult::Upstream(response),
         Err(err) => {
             let err_msg = err.to_string();

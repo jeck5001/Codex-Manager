@@ -21,11 +21,7 @@ pub(crate) fn read_request_log_filter_summary(
         })
         .map_err(|err| format!("count request logs failed: {err}"))?;
     let filtered = storage
-        .summarize_request_logs_filtered_with_filters(to_storage_filters(
-            &params,
-            None,
-            None,
-        ))
+        .summarize_request_logs_filtered_with_filters(to_storage_filters(&params, None, None))
         .map_err(|err| format!("summarize request logs failed: {err}"))?;
 
     Ok(RequestLogFilterSummaryResult {

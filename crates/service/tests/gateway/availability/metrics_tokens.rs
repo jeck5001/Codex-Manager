@@ -71,8 +71,8 @@ fn rpc_metrics_track_failures_and_duration() {
     );
 
     assert!(after_total >= before_total + 2);
-    assert!(after_failed >= before_failed + 1);
-    assert!(after_duration >= before_duration + 1);
+    assert!(after_failed > before_failed);
+    assert!(after_duration > before_duration);
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn usage_refresh_metrics_track_success_and_failure() {
     );
 
     assert!(after_attempts >= before_attempts + 2);
-    assert!(after_success >= before_success + 1);
-    assert!(after_failures >= before_failures + 1);
+    assert!(after_success > before_success);
+    assert!(after_failures > before_failures);
     assert!(after_duration >= before_duration + 10);
 }

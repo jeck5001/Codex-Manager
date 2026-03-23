@@ -1,6 +1,5 @@
 use codexmanager_core::rpc::types::{
-    AuditLogExportParams, AuditLogFilterParams, AuditLogListParams, JsonRpcRequest,
-    JsonRpcResponse,
+    AuditLogExportParams, AuditLogFilterParams, AuditLogListParams, JsonRpcRequest, JsonRpcResponse,
 };
 
 use crate::{audit_export, audit_list};
@@ -38,8 +37,8 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 .map_err(|err| format!("invalid audit/summary params: {err}"));
             super::value_or_error(params.and_then(|filters| {
                 let normalized = audit_list::normalize_filter_params(filters);
-                let storage =
-                    crate::storage_helpers::open_storage().ok_or_else(|| "open storage failed".to_string())?;
+                let storage = crate::storage_helpers::open_storage()
+                    .ok_or_else(|| "open storage failed".to_string())?;
                 let total = storage
                     .count_audit_logs_filtered(audit_list::to_storage_filters(&normalized))
                     .map_err(|err| format!("count audit logs failed: {err}"))?;

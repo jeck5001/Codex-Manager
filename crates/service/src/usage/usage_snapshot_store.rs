@@ -31,15 +31,12 @@ pub(crate) fn apply_status_from_snapshot(
                 set_account_status(storage, &record.account_id, "active", "usage_ok");
             }
         }
-        Availability::Unavailable(reason)
-            if matches!(
-                reason,
-                "usage_protected_primary"
-                    | "usage_protected_secondary"
-                    | "usage_exhausted_primary"
-                    | "usage_exhausted_secondary"
-            ) =>
-        {
+        Availability::Unavailable(
+            "usage_protected_primary"
+            | "usage_protected_secondary"
+            | "usage_exhausted_primary"
+            | "usage_exhausted_secondary",
+        ) => {
             crate::gateway::mark_account_cooldown(
                 &record.account_id,
                 crate::gateway::CooldownReason::LowQuota,

@@ -255,6 +255,32 @@ pub(in super::super) fn extract_sse_frame_payload(lines: &[String]) -> Option<St
     }
 }
 
+fn ensure_value_has_sse_event_type(lines: &[String], value: &mut Value) {
+    let Some(event_name) = extract_sse_event_name(lines) else {
+        return;
+    };
+    let Some(event_type) = normalize_sse_event_name_for_type(event_name.as_str()) else {
+        return;
+    };
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    let has_type = object
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|kind| !kind.trim().is_empty());
+    if !has_type {
+        object.insert("type".to_string(), Value::String(event_type.to_string()));
+    }
+}
+
+pub(in super::super) fn parse_sse_frame_json(lines: &[String]) -> Option<Value> {
+    let payload = extract_sse_frame_payload(lines)?;
+    let mut value = serde_json::from_str::<Value>(&payload).ok()?;
+    ensure_value_has_sse_event_type(lines, &mut value);
+    Some(value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::inspect_sse_frame;
@@ -285,30 +311,4 @@ mod tests {
             Some("response.failed")
         );
     }
-}
-
-fn ensure_value_has_sse_event_type(lines: &[String], value: &mut Value) {
-    let Some(event_name) = extract_sse_event_name(lines) else {
-        return;
-    };
-    let Some(event_type) = normalize_sse_event_name_for_type(event_name.as_str()) else {
-        return;
-    };
-    let Some(object) = value.as_object_mut() else {
-        return;
-    };
-    let has_type = object
-        .get("type")
-        .and_then(Value::as_str)
-        .is_some_and(|kind| !kind.trim().is_empty());
-    if !has_type {
-        object.insert("type".to_string(), Value::String(event_type.to_string()));
-    }
-}
-
-pub(in super::super) fn parse_sse_frame_json(lines: &[String]) -> Option<Value> {
-    let payload = extract_sse_frame_payload(lines)?;
-    let mut value = serde_json::from_str::<Value>(&payload).ok()?;
-    ensure_value_has_sse_event_type(lines, &mut value);
-    Some(value)
 }

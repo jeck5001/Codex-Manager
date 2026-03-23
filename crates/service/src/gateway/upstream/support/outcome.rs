@@ -31,9 +31,7 @@ where
     }
     if (500..=599).contains(&status.as_u16()) {
         log_gateway_result(Some(url), status.as_u16(), Some("upstream server error"));
-        if has_more_candidates
-            && super::super::super::retry_policy_allows_status(status.as_u16())
-        {
+        if has_more_candidates && super::super::super::retry_policy_allows_status(status.as_u16()) {
             return UpstreamOutcomeDecision::Failover;
         }
         return UpstreamOutcomeDecision::RespondUpstream;
@@ -54,9 +52,7 @@ where
     }
     if status.as_u16() == 429 {
         log_gateway_result(Some(url), status.as_u16(), Some("upstream rate-limited"));
-        if has_more_candidates
-            && super::super::super::retry_policy_allows_status(status.as_u16())
-        {
+        if has_more_candidates && super::super::super::retry_policy_allows_status(status.as_u16()) {
             return UpstreamOutcomeDecision::Failover;
         }
         return UpstreamOutcomeDecision::RespondUpstream;
@@ -74,9 +70,7 @@ where
             status.as_u16(),
             Some("upstream challenge blocked"),
         );
-        if has_more_candidates
-            && super::super::super::retry_policy_allows_status(status.as_u16())
-        {
+        if has_more_candidates && super::super::super::retry_policy_allows_status(status.as_u16()) {
             return UpstreamOutcomeDecision::Failover;
         }
         return UpstreamOutcomeDecision::RespondUpstream;

@@ -24,16 +24,16 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
         {
             Ok(v) => v,
             Err(err) => {
-                super::trace_log::log_request_start(
-                    trace_id.as_str(),
-                    "-",
-                    request_method_for_log.as_str(),
-                    request_path_for_log.as_str(),
-                    None,
-                    None,
-                    false,
-                    "-",
-                );
+                super::trace_log::log_request_start(super::trace_log::RequestStartLog {
+                    trace_id: trace_id.as_str(),
+                    key_id: "-",
+                    method: request_method_for_log.as_str(),
+                    path: request_path_for_log.as_str(),
+                    model: None,
+                    reasoning: None,
+                    is_stream: false,
+                    protocol_type: "-",
+                });
                 super::trace_log::log_request_final(
                     trace_id.as_str(),
                     err.status_code,
@@ -56,17 +56,19 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
                             adapted_path: Some(request_path_for_log.as_str()),
                             response_adapter: None,
                         },
-                        None,
-                        None,
-                        &request_path_for_log,
-                        &request_method_for_log,
-                        None,
-                        None,
-                        None,
-                        Some(err.status_code),
-                        super::request_log::RequestLogUsage::default(),
-                        Some(err.message.as_str()),
-                        None,
+                        super::request_log::RequestLogEntry {
+                            key_id: None,
+                            account_id: None,
+                            request_path: &request_path_for_log,
+                            method: &request_method_for_log,
+                            model: None,
+                            reasoning_effort: None,
+                            upstream_url: None,
+                            status_code: Some(err.status_code),
+                            usage: super::request_log::RequestLogUsage::default(),
+                            error: Some(err.message.as_str()),
+                            duration_ms: None,
+                        },
                     );
                 }
                 let response = super::error_response::with_retry_after_header(
@@ -84,41 +86,38 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
 
     let request = match super::maybe_respond_local_models(
         request,
-        validated.trace_id.as_str(),
-        validated.key_id.as_str(),
-        validated.protocol_type.as_str(),
-        validated.original_path.as_str(),
-        validated.path.as_str(),
-        validated.response_adapter,
-        validated.request_method.as_str(),
-        validated.model_for_log.as_deref(),
-        validated.reasoning_for_log.as_deref(),
-        &validated.storage,
+        super::local_models::LocalModelsRequestContext {
+            trace_id: validated.trace_id.as_str(),
+            key_id: validated.key_id.as_str(),
+            protocol_type: validated.protocol_type.as_str(),
+            original_path: validated.original_path.as_str(),
+            path: validated.path.as_str(),
+            response_adapter: validated.response_adapter,
+            request_method: validated.request_method.as_str(),
+            model_for_log: validated.model_for_log.as_deref(),
+            reasoning_for_log: validated.reasoning_for_log.as_deref(),
+            storage: &validated.storage,
+        },
     )? {
         Some(request) => request,
         None => return Ok(()),
     };
 
-    let trace_id_for_count_tokens = validated.trace_id.clone();
-    let key_id_for_count_tokens = validated.key_id.clone();
-    let protocol_type_for_count_tokens = validated.protocol_type.clone();
-    let path_for_count_tokens = validated.path.clone();
-    let request_method_for_count_tokens = validated.request_method.clone();
-    let model_for_count_tokens = validated.model_for_log.clone();
-    let reasoning_for_count_tokens = validated.reasoning_for_log.clone();
     let request = match super::maybe_respond_local_count_tokens(
         request,
-        trace_id_for_count_tokens.as_str(),
-        key_id_for_count_tokens.as_str(),
-        protocol_type_for_count_tokens.as_str(),
-        validated.original_path.as_str(),
-        path_for_count_tokens.as_str(),
-        validated.response_adapter,
-        request_method_for_count_tokens.as_str(),
-        validated.body.as_ref(),
-        model_for_count_tokens.as_deref(),
-        reasoning_for_count_tokens.as_deref(),
-        &validated.storage,
+        super::local_count_tokens::LocalCountTokensRequestContext {
+            trace_id: validated.trace_id.as_str(),
+            key_id: validated.key_id.as_str(),
+            protocol_type: validated.protocol_type.as_str(),
+            original_path: validated.original_path.as_str(),
+            path: validated.path.as_str(),
+            response_adapter: validated.response_adapter,
+            request_method: validated.request_method.as_str(),
+            body: validated.body.as_ref(),
+            model_for_log: validated.model_for_log.as_deref(),
+            reasoning_for_log: validated.reasoning_for_log.as_deref(),
+            storage: &validated.storage,
+        },
     )? {
         Some(request) => request,
         None => return Ok(()),

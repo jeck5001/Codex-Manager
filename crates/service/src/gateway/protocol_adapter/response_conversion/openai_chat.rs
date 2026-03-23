@@ -626,12 +626,12 @@ pub(super) fn convert_openai_sse_to_chat_completions_json(
     };
 
     for line in text.lines() {
-        if line.starts_with("event:") {
-            event_name = Some(line[6..].trim_start().to_string());
+        if let Some(stripped) = line.strip_prefix("event:") {
+            event_name = Some(stripped.trim_start().to_string());
             continue;
         }
-        if line.starts_with("data:") {
-            data_lines.push(line[5..].trim_start().to_string());
+        if let Some(stripped) = line.strip_prefix("data:") {
+            data_lines.push(stripped.trim_start().to_string());
             continue;
         }
         if line.trim().is_empty() {

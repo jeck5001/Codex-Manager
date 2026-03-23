@@ -483,7 +483,7 @@ const ENV_UPSTREAM_COOKIE: &str = "CODEXMANAGER_UPSTREAM_COOKIE";
 fn ensure_runtime_config_loaded() {
     // 中文注释：懒加载默认只刷新标量/字符串配置，避免在异步上下文里因为首次读取
     // front_proxy_max_body_bytes 等轻量配置而触发 reqwest::blocking::Client 初始化。
-    let _ = RUNTIME_CONFIG_LOADED.get_or_init(|| reload_from_env());
+    let _ = RUNTIME_CONFIG_LOADED.get_or_init(reload_from_env);
 }
 
 fn upstream_client_lock() -> &'static RwLock<Client> {
@@ -495,16 +495,19 @@ fn upstream_client_pool_lock() -> &'static RwLock<UpstreamClientPool> {
 }
 
 fn refresh_upstream_clients_from_runtime_config() {
-    let client = build_upstream_client();
-    let mut client_lock =
-        crate::lock_utils::write_recover(upstream_client_lock(), "upstream_client");
-    *client_lock = client;
-    drop(client_lock);
+    // 中文注释：纯配置读取路径（例如 app_settings/get）可能只需要刷新标量 runtime 状态，
+    // 不应为了热重载而强制初始化 reqwest client；已初始化的 client 再按最新 env 重建即可。
+    if let Some(lock) = UPSTREAM_CLIENT.get() {
+        let client = build_upstream_client();
+        let mut client_lock = crate::lock_utils::write_recover(lock, "upstream_client");
+        *client_lock = client;
+    }
 
-    let pool = build_upstream_client_pool();
-    let mut pool_lock =
-        crate::lock_utils::write_recover(upstream_client_pool_lock(), "upstream_client_pool");
-    *pool_lock = pool;
+    if let Some(lock) = UPSTREAM_CLIENT_POOL.get() {
+        let pool = build_upstream_client_pool();
+        let mut pool_lock = crate::lock_utils::write_recover(lock, "upstream_client_pool");
+        *pool_lock = pool;
+    }
 }
 
 fn build_upstream_client_pool() -> UpstreamClientPool {
@@ -684,7 +687,7 @@ fn parse_proxy_list_env() -> Vec<String> {
     let Some(raw) = env_non_empty(ENV_PROXY_LIST) else {
         return Vec::new();
     };
-    raw.split(|ch| ch == ',' || ch == ';' || ch == '\n' || ch == '\r')
+    raw.split([',', ';', '\n', '\r'])
         .map(str::trim)
         .filter(|part| !part.is_empty())
         .take(MAX_UPSTREAM_PROXY_POOL_SIZE)

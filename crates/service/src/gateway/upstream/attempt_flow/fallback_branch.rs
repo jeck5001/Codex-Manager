@@ -244,21 +244,21 @@ where
             fallback_base
         );
     }
-    match super::super::super::try_openai_fallback(
+    match super::super::super::try_openai_fallback(super::super::super::TryOpenAiFallbackArgs {
         client,
         storage,
         method,
-        path,
+        request_path: path,
         incoming_headers,
         body,
         is_stream,
-        fallback_base,
+        upstream_base: fallback_base,
         account,
         token,
         upstream_cookie,
         strip_session_affinity,
         debug,
-    ) {
+    }) {
         Ok(Some(resp)) => {
             if resp.status().is_success() {
                 super::super::super::clear_account_cooldown(&account.id);

@@ -519,7 +519,7 @@ pub(crate) fn complete_login_with_redirect(
         std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
     let redirect_uri = redirect_uri
         .map(|value| value.to_string())
-        .or_else(|| resolve_redirect_uri())
+        .or_else(resolve_redirect_uri)
         .unwrap_or_else(|| "http://localhost:1455/auth/callback".to_string());
 
     // 交换授权码获取 token
@@ -530,16 +530,14 @@ pub(crate) fn complete_login_with_redirect(
         &session.code_verifier,
         code,
     )
-    .map_err(|e| {
-        let _ = storage.update_login_session_status(state, "failed", Some(&e));
-        e
+    .inspect_err(|e| {
+        let _ = storage.update_login_session_status(state, "failed", Some(e));
     })?;
 
     // 可选兑换平台 key
     let api_key_access_token = obtain_api_key(&issuer, &client_id, &tokens.id_token).ok();
-    let claims = parse_id_token_claims(&tokens.id_token).map_err(|e| {
-        let _ = storage.update_login_session_status(state, "failed", Some(&e));
-        e
+    let claims = parse_id_token_claims(&tokens.id_token).inspect_err(|e| {
+        let _ = storage.update_login_session_status(state, "failed", Some(e));
     })?;
     if let Err(e) = ensure_workspace_allowed(
         session.workspace_id.as_deref(),

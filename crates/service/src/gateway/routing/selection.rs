@@ -175,7 +175,7 @@ pub(super) fn reload_from_env() {
 }
 
 fn ensure_selection_config_loaded() {
-    let _ = SELECTION_CONFIG_LOADED.get_or_init(|| reload_from_env());
+    let _ = SELECTION_CONFIG_LOADED.get_or_init(reload_from_env);
 }
 
 fn current_db_path_cell() -> &'static RwLock<String> {

@@ -10,28 +10,31 @@ pub(super) enum OpenAiAttemptResult {
     Terminal { status_code: u16, message: String },
 }
 
+pub(super) struct OpenAiBaseAttemptArgs<'a> {
+    pub(super) client: &'a reqwest::blocking::Client,
+    pub(super) storage: &'a Storage,
+    pub(super) method: &'a reqwest::Method,
+    pub(super) path: &'a str,
+    pub(super) incoming_headers: &'a super::super::super::IncomingHeaderSnapshot,
+    pub(super) body: &'a Bytes,
+    pub(super) is_stream: bool,
+    pub(super) base: &'a str,
+    pub(super) account: &'a Account,
+    pub(super) token: &'a mut Token,
+    pub(super) upstream_cookie: Option<&'a str>,
+    pub(super) strip_session_affinity: bool,
+    pub(super) debug: bool,
+    pub(super) has_more_candidates: bool,
+}
+
 pub(super) fn handle_openai_base_attempt<F>(
-    client: &reqwest::blocking::Client,
-    storage: &Storage,
-    method: &reqwest::Method,
-    path: &str,
-    incoming_headers: &super::super::super::IncomingHeaderSnapshot,
-    body: &Bytes,
-    is_stream: bool,
-    base: &str,
-    account: &Account,
-    token: &mut Token,
-    upstream_cookie: Option<&str>,
-    strip_session_affinity: bool,
-    debug: bool,
-    has_more_candidates: bool,
+    args: OpenAiBaseAttemptArgs<'_>,
     mut log_gateway_result: F,
 ) -> OpenAiAttemptResult
 where
     F: FnMut(Option<&str>, u16, Option<&str>),
 {
-    let (upstream_url, _url_alt) = super::super::super::compute_upstream_url(base, path);
-    match super::super::super::try_openai_fallback(
+    let OpenAiBaseAttemptArgs {
         client,
         storage,
         method,
@@ -45,7 +48,24 @@ where
         upstream_cookie,
         strip_session_affinity,
         debug,
-    ) {
+        has_more_candidates,
+    } = args;
+    let (upstream_url, _url_alt) = super::super::super::compute_upstream_url(base, path);
+    match super::super::super::try_openai_fallback(super::super::super::TryOpenAiFallbackArgs {
+        client,
+        storage,
+        method,
+        request_path: path,
+        incoming_headers,
+        body,
+        is_stream,
+        upstream_base: base,
+        account,
+        token,
+        upstream_cookie,
+        strip_session_affinity,
+        debug,
+    }) {
         Ok(Some(resp)) => {
             let status = resp.status();
             let content_type = resp.headers().get(CONTENT_TYPE);

@@ -38,7 +38,11 @@ pub(crate) fn read_request_log_page(
     let page = clamp_page(params.page, total, page_size);
     let offset = (page - 1) * page_size;
     let logs = storage
-        .list_request_logs_paginated_filtered(to_storage_filters(&filters, None, None), offset, page_size)
+        .list_request_logs_paginated_filtered(
+            to_storage_filters(&filters, None, None),
+            offset,
+            page_size,
+        )
         .map_err(|err| format!("list request logs failed: {err}"))?;
 
     Ok(RequestLogListResult {
