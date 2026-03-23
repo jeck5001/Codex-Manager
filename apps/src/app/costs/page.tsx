@@ -35,8 +35,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { accountClient } from "@/lib/api/account-client";
 import { serviceClient } from "@/lib/api/service-client";
 import { useAppStore } from "@/lib/store/useAppStore";
+import {
+  buildApiKeyNameMap,
+  formatApiKeyDetailLabel,
+} from "@/lib/utils/api-key-display";
 import type { CostSummaryDayItem, CostSummaryModelItem, ModelPricingItem } from "@/types";
 
 type DraftPricingRow = {
@@ -245,6 +250,14 @@ export default function CostsPage() {
     staleTime: 30_000,
   });
 
+  const { data: apiKeys = [] } = useQuery({
+    queryKey: ["apikeys"],
+    queryFn: () => accountClient.listApiKeys(),
+    enabled: serviceStatus.connected,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
   const serverRows = useMemo(
     () =>
       pricingQuery.data && pricingQuery.data.length > 0
@@ -346,6 +359,7 @@ export default function CostsPage() {
 
   const isLoading = serviceStatus.connected && pricingQuery.isLoading;
   const summary = summaryQuery.data;
+  const apiKeyNameMap = useMemo(() => buildApiKeyNameMap(apiKeys), [apiKeys]);
   const topKey = summary?.byKey[0];
   const topModel = summary?.byModel[0];
 
@@ -534,7 +548,9 @@ export default function CostsPage() {
                     <span className="text-sm font-semibold">最高费用 Key</span>
                   </div>
                   <div className="truncate text-lg font-semibold">
-                    {topKey?.keyId || "-"}
+                    {topKey
+                      ? formatApiKeyDetailLabel(topKey.keyId, apiKeyNameMap)
+                      : "-"}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {topKey ? formatUsd(topKey.estimatedCostUsd) : "暂无数据"}
@@ -596,7 +612,9 @@ export default function CostsPage() {
                       <TableBody>
                         {summary.byKey.slice(0, 6).map((item) => (
                           <TableRow key={item.keyId}>
-                            <TableCell className="font-mono text-xs">{item.keyId}</TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {formatApiKeyDetailLabel(item.keyId, apiKeyNameMap)}
+                            </TableCell>
                             <TableCell>{formatUsd(item.estimatedCostUsd)}</TableCell>
                           </TableRow>
                         ))}

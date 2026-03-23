@@ -46,6 +46,12 @@ import { accountClient } from "@/lib/api/account-client";
 import { serviceClient } from "@/lib/api/service-client";
 import { isTauriRuntime } from "@/lib/api/transport";
 import { useAppStore } from "@/lib/store/useAppStore";
+import {
+  buildApiKeyNameMap,
+  formatApiKeyDetailLabel,
+  formatApiKeyInlineLabel,
+  resolveApiKeyName,
+} from "@/lib/utils/api-key-display";
 import { formatCompactNumber, formatTsFromSeconds } from "@/lib/utils/usage";
 import { cn } from "@/lib/utils";
 import { RequestLog } from "@/types";
@@ -220,12 +226,6 @@ function fallbackAccountDisplayFromKey(keyId: string): string {
   return `Key ${raw.slice(0, 10)}`;
 }
 
-function formatCompactKeyLabel(keyId: string): string {
-  if (!keyId) return "-";
-  if (keyId.length <= 12) return keyId;
-  return `${keyId.slice(0, 8)}...`;
-}
-
 function resolveDisplayRequestPath(log: RequestLog): string {
   const originalPath = String(log.originalPath || "").trim();
   if (originalPath) {
@@ -252,6 +252,7 @@ function resolveUpstreamDisplay(upstreamUrl: string): string {
 function resolveAccountDisplayName(
   log: RequestLog,
   accountNameMap: Map<string, string>,
+  apiKeyNameMap: Map<string, string>,
 ): string {
   if (log.accountId) {
     const label = accountNameMap.get(log.accountId);
@@ -262,6 +263,10 @@ function resolveAccountDisplayName(
     if (fallbackName) {
       return fallbackName;
     }
+  }
+  const keyName = resolveApiKeyName(log.keyId, apiKeyNameMap);
+  if (keyName) {
+    return keyName;
   }
   return fallbackAccountDisplayFromKey(log.keyId);
 }
@@ -331,12 +336,14 @@ function AccountKeyInfoCell({
   log,
   accountLabel,
   accountNameMap,
+  apiKeyNameMap,
   onFilterAccount,
   onFilterKey,
 }: {
   log: RequestLog;
   accountLabel: string;
   accountNameMap: Map<string, string>;
+  apiKeyNameMap: Map<string, string>;
   onFilterAccount?: (accountId: string) => void;
   onFilterKey?: (keyId: string) => void;
 }) {
@@ -354,6 +361,7 @@ function AccountKeyInfoCell({
     log.initialAccountId,
     accountNameMap,
   );
+  const apiKeyName = resolveApiKeyName(log.keyId, apiKeyNameMap);
   const showAttemptHint =
     attemptedAccountLabels.length > 1 &&
     initialAccountLabel &&
@@ -370,7 +378,7 @@ function AccountKeyInfoCell({
           <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
             <Shield className="h-2.5 w-2.5" />
             <span className="font-mono">
-              {formatCompactKeyLabel(log.keyId)}
+              {formatApiKeyInlineLabel(log.keyId, apiKeyNameMap)}
             </span>
           </div>
           {showAttemptHint ? (
@@ -412,8 +420,14 @@ function AccountKeyInfoCell({
               {log.accountId || "-"}
             </div>
           </div>
+          {apiKeyName ? (
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-background/70">密钥名称</div>
+              <div className="break-all font-mono text-[11px]">{apiKeyName}</div>
+            </div>
+          ) : null}
           <div className="space-y-0.5">
-            <div className="text-[10px] text-background/70">密钥</div>
+            <div className="text-[10px] text-background/70">密钥 ID</div>
             <div className="break-all font-mono text-[11px]">
               {log.keyId || "-"}
             </div>
@@ -714,6 +728,14 @@ function LogsPageContent() {
     retry: 1,
   });
 
+  const { data: apiKeys = [] } = useQuery({
+    queryKey: ["apikeys"],
+    queryFn: () => accountClient.listApiKeys(),
+    enabled: serviceStatus.connected,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
   const { data: logsResult, isLoading } = useQuery({
     queryKey: [
       "logs",
@@ -850,6 +872,8 @@ function LogsPageContent() {
     );
   }, [accountsResult?.items]);
 
+  const apiKeyNameMap = useMemo(() => buildApiKeyNameMap(apiKeys), [apiKeys]);
+
   const logs = logsResult?.items || [];
   const currentPage = logsResult?.page || page;
   const summary = summaryResult || {
@@ -874,7 +898,10 @@ function LogsPageContent() {
     }
     const nextKeyId = keyIdFilter.trim();
     if (nextKeyId) {
-      items.push({ key: "keyId", label: `Key ${nextKeyId}` });
+      items.push({
+        key: "keyId",
+        label: `密钥 ${formatApiKeyDetailLabel(nextKeyId, apiKeyNameMap)}`,
+      });
     }
     const nextModel = modelFilter.trim();
     if (nextModel) {
@@ -893,7 +920,7 @@ function LogsPageContent() {
       });
     }
     return items;
-  }, [filter, keyIdFilter, modelFilter, search, timeFromInput, timeToInput]);
+  }, [apiKeyNameMap, filter, keyIdFilter, modelFilter, search, timeFromInput, timeToInput]);
   const activeQuickFilterKey = useMemo(() => {
     const nextSearch = search.trim();
     const matched = QUICK_LOG_FILTERS.find(
@@ -1352,8 +1379,10 @@ function LogsPageContent() {
                         accountLabel={resolveAccountDisplayName(
                           log,
                           accountNameMap,
+                          apiKeyNameMap,
                         )}
                         accountNameMap={accountNameMap}
+                        apiKeyNameMap={apiKeyNameMap}
                         onFilterAccount={(accountId) =>
                           handleApplySearchFilter(`account:=${accountId}`)
                         }
