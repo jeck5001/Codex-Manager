@@ -19,6 +19,7 @@
   - 已完成：账号管理、平台 Key、日志、设置、请求链路、用量聚合、启动快照等基础能力
   - 已发现缺口：PRD 增强项大多未落地，其中 F01 是最适合先打通的 P0 首页主链路
   - 文档差异：`docs/ACCEPTANCE.md` 覆盖范围大于原 TODO，后续继续按验收项补齐
+  - 文档导航：根 `README.md` 已收口为项目首页，深度说明继续以 `docs/README.md` 与 `CHANGELOG.md` 为准
 
 - [x] **通用验收缺口**
   - G7 `cargo clippy`（`codexmanager-service`）已收口：`cargo clippy -p codexmanager-service --tests -- -D warnings` 当前通过，本轮继续清空 `account/account_register.rs`、`app_settings/api/current.rs` 与测试层历史 warning

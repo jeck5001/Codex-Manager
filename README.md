@@ -4,238 +4,125 @@
 
 <h1 align="center">CodexManager</h1>
 
-<p align="center">本地桌面端 + 服务进程的 Codex 账号管理器+网关转发</p>
+<p align="center">面向 Codex 账号池、网关转发与运维管理的一体化桌面端 / Web 控制台</p>
 
 <p align="center">
   <a href="README.en.md">English</a>
 </p>
 
-本地桌面端 + 服务进程的 Codex 账号池管理器，用于统一管理账号、用量与平台 Key，并提供本地网关能力。
+CodexManager 用来统一管理账号、平台 Key、请求转发、用量统计和运维设置。它既可以作为本地桌面端使用，也可以以 service + web 或 Docker 的方式部署，适合个人、本地实验环境和轻量团队共用场景。
 
-## 源码说明：
-> 本产品完全由本人指挥+AI打造 Codex（98%） Gemini (2%) 如果在使用过程中产生问题请友好交流，因为开源只是觉得有人能用的上，基本功能也没什么问题，不喜勿喷。
-> 其次是本人没有足够的环境来验证每个包都有没有问题，本人也要上班(我只是个穷逼买不起mac之类的)，本人只保证win的桌面端的可用性，如果其他端有问题，请在交流群反馈或者在充分测试后提交Issues，有时间我自会处理
-> 最后感谢各位使用者在交流群反馈的各个平台的问题和参与的部分测试。
+## 核心能力
 
+- 账号池管理：导入、导出、标签、分组、优先级、状态切换、批量刷新
+- 注册中心协同：注册任务追踪、到号状态标识、手动加入账号池
+- 网关转发：提供 OpenAI 兼容入口，支持多账号路由、失败回退、请求日志追踪
+- 平台 Key 管理：创建、禁用、删除、模型绑定、访问控制扩展
+- 运维与观测：请求日志、用量快照、费用统计、健康巡检、告警能力持续增强
+- 扩展能力：MCP Server 模式、插件管理 / Hook 系统正在持续收口
 
-## 免责声明
+## 运行模式
 
-- 本项目仅用于学习与开发目的。
+| 模式 | 适合场景 | 说明 |
+| --- | --- | --- |
+| 桌面端 | 本机使用、最省心 | Tauri 应用内直接管理账号、服务与设置 |
+| Service + Web | 服务器 / NAS / 远程主机 | 后端进程提供 RPC 与网关，浏览器访问 Web UI |
+| Docker Compose | 本地联调、容器化部署 | 一次拉起 register、service、web 三个组件 |
 
-- 使用者必须遵守相关平台的服务条款（例如 OpenAI、Anthropic）。
+## 快速开始
 
-- 作者不提供或分发任何账号、API Key 或代理服务，也不对本软件的具体使用方式负责。
+### 桌面端
 
-- 请勿使用本项目绕过速率限制或服务限制。
+1. 启动应用后点击“启动服务”。
+2. 进入“账号管理”导入账号，或在“注册中心”完成注册任务。
+3. 刷新账号状态与用量，确认账号已可用。
+4. 在客户端中把 OpenAI Base URL 指向 CodexManager 网关地址。
 
-## 首页导览
-| 你要做什么 | 直接进入 |
+### 本地源码运行
+
+```bash
+pnpm install
+pnpm run build:desktop
+```
+
+如果你只需要前端类型检查或桌面前端静态构建，可参考：
+
+```bash
+pnpm exec tsc --noEmit
+pnpm exec next build --webpack
+```
+
+### Docker 本地构建
+
+仓库内已经提供本地构建版 compose：
+
+```bash
+docker compose -f docker/docker-compose.localbuild.yml up -d --build
+```
+
+默认端口：
+
+- `48761`：Web 控制台
+- `48760`：service / RPC / 网关
+- `9000`：register 服务
+
+更多环境变量、目录挂载和部署建议请看 [运行与部署指南](docs/report/20260310122606850_运行与部署指南.md)。
+
+## 常见使用路径
+
+| 你现在要做什么 | 直接看这里 |
 | --- | --- |
-| 首次启动、部署、Docker、macOS 放行 | [运行与部署指南](docs/report/20260310122606850_运行与部署指南.md) |
-| 配置端口、代理、数据库、Web 密码、环境变量 | [环境变量与运行配置](docs/report/20260309195355187_环境变量与运行配置说明.md) |
-| 对照 RPC / Web 登录 / 导出接口做联调 | [API 接口说明](docs/API.md) |
+| 首次启动、桌面端 / Web / Docker 部署 | [运行与部署指南](docs/report/20260310122606850_运行与部署指南.md) |
+| 配置端口、数据库、代理、Web 密码、环境变量 | [环境变量与运行配置说明](docs/report/20260309195355187_环境变量与运行配置说明.md) |
+| 联调 RPC / HTTP / Web 登录接口 | [API 说明](docs/API.md) |
+| 把 CodexManager 接到 Claude Code / Cursor | [MCP 接入指南](docs/report/20260323161000000_MCP接入指南.md) |
+| 使用插件管理、Lua 模板和 Hook 能力 | [插件管理与 Lua 开发指南](docs/report/20260323193000000_插件管理与Lua开发指南.md) |
 | 排查账号不命中、导入失败、挑战拦截、请求异常 | [FAQ 与账号命中规则](docs/report/20260310122606852_FAQ与账号命中规则.md) |
-| 本地构建、打包、发版、脚本调用 | [构建发布与脚本说明](docs/release/20260310122606851_构建发布与脚本说明.md) |
+| 本地构建、打包、发版、脚本使用 | [构建发布与脚本说明](docs/release/20260310122606851_构建发布与脚本说明.md) |
 
-## 最近变更
-- 当前最新版本：`v0.1.10`（2026-03-18）
-- `v0.1.10` 是基于 `v0.1.9` 的补发修复版，重点修复 Web / Docker 误提示桌面专属能力、账号启用 / 禁用参数错误、禁用账号仍被轮询、`refresh token 401` 状态不统一，以及 Windows 本地 Web 启动器关闭后子进程残留后台的问题。
-- 上一个大版本更新仍然是把桌面端和 Web 管理界面整体重做并收口到新的 `apps` 前端：旧前端已移除，账号管理、平台密钥、请求日志、设置页、顶部状态栏和侧边导航都换成统一的桌面优先布局，列表密度、弹窗交互、筛选区和卡片区也做了整轮重构。
-- 请求链路继续按 Codex 实际行为收口，但只保留真正影响请求命中的部分：登录 / callback / workspace 校验、refresh 语义、`/v1/responses` 与 `/v1/responses/compact` 的请求体重写、线程锚点、`session_id` / `x-client-request-id` / `x-codex-turn-state`、请求压缩、错误摘要和 fallback 诊断都已补齐。
-- 账号策略与可用性也做了实用收口：free / 7 天单窗口账号现在会统一按设置里的模型发起请求；优先账号、失败回退、并发上限和 refresh token 误摘号问题都做了修正，请求日志也能看到首尝试账号与尝试链路。
-- 可观测性明显增强：请求日志改为后端分页与后端统计，compact 假成功体、HTML/challenge 页、`401 refresh` 原因、`503 no available account` 等失败场景都会写出更明确的诊断信息，网关磁盘日志也收敛成失败摘要导向。
-- 桌面稳定性和启动体验继续修过一轮：服务启动误判、`/rpc` 空响应、刷新用量弹窗不更新、首次切页卡顿、Hydration 不一致、开发态渲染指示误导等问题都已处理，Web 密码和桌面/Web 设置同步也已收口。
-- 发布链路也做了统一治理：版本已提升到 `0.1.10`，Tauri Rust 侧和 workflow 里的 Tauri CLI / pnpm 版本已重新对齐，`release-all.yml` 继续作为 Windows / macOS / Linux 的单一发布入口。完整历史请看 [CHANGELOG.md](CHANGELOG.md)。
-
-### 近期提交摘要
-- `9435be2`：新增外观版本切换。设置页现在支持“默认 / 渐变版本”两套视觉预设，支持即时切换、持久化保存，并同步收口了默认值、卡片尺寸和切换行为。
-- `cf351e4`：修复发布缓存并优化 Docker 配置。发布 workflow 避免在不执行 `pnpm install` 的构建 job 中错误开启 pnpm 缓存，同时补充了 Docker 运行用户、健康检查、构建上下文裁剪和 compose 依赖顺序。
-- `7f6aa6b`：统一主题样式并修复发布细节。主题变量、玻璃卡片层次、背景渐层和设置页外观整体做了统一收口，并顺带修正发布流程里的若干细节问题。
-- `70c1ee7`：修复发布工作流 Node 与 Tauri CLI 版本。重新对齐 workflow 里 Node、pnpm 与 Tauri CLI 版本，降低跨平台打包时的版本漂移风险。
-- `1fafcf9`：调整免责声明与搜索框样式。补强顶部免责声明展示，同时微调搜索框与界面细节，减少桌面端视觉噪音。
-- `43530c1`：补充 README 交流圈二维码。文档里已增加交流圈入口，便于集中反馈、交流和跟进问题。
-
-
-
-## 功能概览
-- 账号池管理：分组、标签、排序、备注
-- 批量导入 / 导出：支持多文件导入、桌面端文件夹递归导入 JSON、按账号导出单文件
-- 用量展示：兼容 5 小时 + 7 日双窗口，以及仅返回 7 日单窗口的账号
-- 授权登录：浏览器授权 + 手动回调解析
-- 平台 Key：生成、禁用、删除、模型绑定
-- 本地服务：自动拉起、可自定义端口
-- 本地网关：为 CLI 和第三方工具提供统一 OpenAI 兼容入口
+更完整的文档索引见 [docs/README.md](docs/README.md)。
 
 ## 截图
+
 ![仪表盘](assets/images/dashboard.png)
 ![账号管理](assets/images/accounts.png)
 ![平台 Key](assets/images/platform-key.png)
-![日志视图](assets/images/log.png)
+![请求日志](assets/images/log.png)
 ![设置页](assets/images/themes.png)
 
-## 快速开始
-1. 启动桌面端，点击“启动服务”。
-2. 进入“账号管理”，添加账号并完成授权。
-3. 如回调失败，粘贴回调链接手动完成解析。
-4. 刷新用量并确认账号状态。
+## 项目结构
 
-## NAS / Docker Compose 免传码部署
-如果你是部署到飞牛 NAS、群晖或其他 `x86_64` Linux，推荐直接使用 GHCR 镜像，不要每次把整仓代码传到 NAS。
-
-### 1. 推送代码，自动构建镜像
-- 仓库已提供工作流：[.github/workflows/docker-images.yml](.github/workflows/docker-images.yml)
-- 触发方式：
-  - push 任意分支时，自动构建 `linux/amd64` 镜像
-  - push `v*` tag 时，自动构建 tag 镜像
-  - 也可以手动在 GitHub Actions 里执行
-- 默认会推送 3 个镜像到 GHCR：
-  - `ghcr.io/<你的 GitHub 用户名>/codexmanager-register`
-  - `ghcr.io/<你的 GitHub 用户名>/codexmanager-service`
-  - `ghcr.io/<你的 GitHub 用户名>/codexmanager-web`
-
-### 2. NAS 上只保留 compose 和数据目录
-把下面两个文件放到 NAS 某个目录即可：
-- [docker/docker-compose.ghcr.yml](docker/docker-compose.ghcr.yml)
-- [docker/.env.ghcr.example](docker/.env.ghcr.example)
-
-建议在 NAS 上目录结构保持为：
-
-```text
-codexmanager-nas/
-├─ docker-compose.yml
-├─ .env
-├─ codexmanager-data/
-├─ codexregister-data/
-└─ codexregister-logs/
-```
-
-可以这样准备：
-
-```bash
-mkdir -p codexmanager-nas/codexmanager-data
-mkdir -p codexmanager-nas/codexregister-data
-mkdir -p codexmanager-nas/codexregister-logs
-cp docker/docker-compose.ghcr.yml codexmanager-nas/docker-compose.yml
-cp docker/.env.ghcr.example codexmanager-nas/.env
-```
-
-### 3. 按需修改 `.env`
-默认会拉取：
-
-```env
-GHCR_NAMESPACE=ghcr.io/jeck5001
-IMAGE_TAG=latest
-```
-
-如果你想在 NAS 上跟某个开发分支，而不是主分支：
-- push 分支后，GHCR 会自动产生同名 branch tag
-- 例如分支 `feat/integrate-codex-register`
-- 对应可把 `IMAGE_TAG` 改成 `feat-integrate-codex-register`
-
-### 4. 首次启动
-如果镜像是公开的，通常不需要登录 GHCR；如果你后面改成私有仓库，再先执行：
-
-```bash
-docker login ghcr.io
-```
-
-然后启动：
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-### 5. 以后更新
-以后你的更新流程就只剩两步：
-
-1. 本地提交并 push 到 GitHub
-2. NAS 上执行：
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-查看状态：
-
-```bash
-docker compose ps
-docker compose logs -f codexmanager-service
-docker compose logs -f codexmanager-web
-```
-
-## 页面展示
-### 桌面端
-- 账号管理：集中导入、导出、刷新账号与用量
-- 平台 Key：按模型绑定平台 Key，并查看调用日志
-- 设置页：统一管理端口、代理、主题、自动更新、后台行为
-
-### Service 版
-- `codexmanager-service`：提供本地 OpenAI 兼容网关
-- `codexmanager-web`：提供浏览器管理页面
-- `codexmanager-start`：一键拉起 service + web
-
-## 常用文档
-- 版本历史：[CHANGELOG.md](CHANGELOG.md)
-- 协作约定：[CONTRIBUTING.md](CONTRIBUTING.md)
-- 架构说明：[ARCHITECTURE.md](ARCHITECTURE.md)
-- 测试基线：[TESTING.md](TESTING.md)
-- 安全说明：[SECURITY.md](SECURITY.md)
-- API 说明：[docs/API.md](docs/API.md)
-- 文档索引：[docs/README.md](docs/README.md)
-
-## 专题页面
-| 页面 | 内容 |
-| --- | --- |
-| [运行与部署指南](docs/report/20260310122606850_运行与部署指南.md) | 首次启动、Docker、Service 版、macOS 放行 |
-| [环境变量与运行配置](docs/report/20260309195355187_环境变量与运行配置说明.md) | 应用配置、代理、监听地址、数据库、Web 安全 |
-| [FAQ 与账号命中规则](docs/report/20260310122606852_FAQ与账号命中规则.md) | 账号命中、挑战拦截、导入导出、常见异常 |
-| [最小排障手册](docs/report/20260307234235414_最小排障手册.md) | 快速定位服务启动、请求转发、模型刷新异常 |
-| [构建发布与脚本说明](docs/release/20260310122606851_构建发布与脚本说明.md) | 本地构建、Tauri 打包、Release workflow、脚本参数 |
-| [发布与产物说明](docs/release/20260309195355216_发布与产物说明.md) | 各平台发版产物、命名、是否 pre-release |
-| [脚本与发布职责对照](docs/report/20260309195735631_脚本与发布职责对照.md) | 各脚本负责什么、什么场景该用哪个 |
-| [协议兼容回归清单](docs/report/20260309195735632_协议兼容回归清单.md) | `/v1/chat/completions`、`/v1/responses`、tools 回归项 |
-| [CHANGELOG.md](CHANGELOG.md) | 最新发版内容、未发版更新与完整版本历史 |
-
-## 目录结构
 ```text
 .
-├─ apps/                # 前端与 Tauri 桌面端
-│  ├─ src/
-│  ├─ src-tauri/
-│  └─ dist/
-├─ crates/              # Rust core/service
-│  ├─ core
-│  ├─ service
-│  ├─ start              # Service 版本一键启动器（拉起 service + web）
-│  └─ web                # Service 版本 Web UI（可内嵌静态资源 + /api/rpc 代理）
-├─ docs/                # 正式文档目录
-├─ scripts/             # 构建与发布脚本
-└─ README.md
+├─ apps/                # Next.js 前端与 Tauri 桌面端
+├─ crates/core/         # 类型、存储、migration、共享核心能力
+├─ crates/service/      # 账号管理、网关、RPC、调度与业务服务
+├─ crates/web/          # Web UI 静态资源与服务端桥接
+├─ crates/start/        # Service 版一键启动器
+├─ docker/              # Dockerfile 与 compose 配置
+├─ docs/                # 正式文档、运行手册、发布说明、治理文档
+└─ assets/              # Logo、截图、平台补充资源
 ```
 
-## 鸣谢与参考项目
+## 开发与验证
 
-- Codex（OpenAI）：本项目在请求链路、登录语义与上游兼容行为上参考了该项目的实现与源码结构 <https://github.com/openai/codex>
-- CPA（CLIProxyAPI）：本项目在协议适配、请求转发与兼容行为上参考了该项目的实现思路 <https://github.com/router-for-me/CLIProxyAPI>
+- 前端变更默认至少验证 `pnpm run build:desktop`
+- service 相关变更优先运行最小 `cargo test` / `cargo check`
+- 版本历史和对外可见变更统一维护在 [CHANGELOG.md](CHANGELOG.md)
+- 协作、架构、安全与测试基线分别见 [CONTRIBUTING.md](CONTRIBUTING.md)、[ARCHITECTURE.md](ARCHITECTURE.md)、[SECURITY.md](SECURITY.md)、[TESTING.md](TESTING.md)
 
-## 认可社区
+## 免责声明
+
+- 本项目仅用于学习、开发与合法合规的内部工具场景。
+- 使用者需要自行遵守 OpenAI、Anthropic 等上游平台的服务条款与相关法律法规。
+- 仓库不提供账号、API Key、代理服务或任何绕过平台限制的能力。
+
+## 社区与反馈
+
+- 社区讨论：[Linux.do 话题](https://linux.do/t/topic/1688401)
+- 问题反馈：优先使用 GitHub Issues / Discussions
+- 交流群入口：答案是项目名 `CodexManager`
+
 <p align="center">
-  <a href="https://linux.do/t/topic/1688401" title="LINUX DO">
-    <img
-      src="https://cdn3.linux.do/original/4X/d/1/4/d146c68151340881c884d95e0da4acdf369258c6.png?style=for-the-badge&logo=discourse&logoColor=white"
-      alt="LINUX DO"
-      width="100"
-      hight="100"
-    />
-  </a>
-</p>
-
-## 联系方式
-- 公众号：七线牛马
-- 微信： ProsperGao
-
-- 交流群：答案是项目名：CodexManager
-
   <img src="assets/images/qq_group.jpg" alt="交流群二维码" width="280" />
+</p>
