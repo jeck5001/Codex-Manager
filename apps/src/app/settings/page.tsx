@@ -37,7 +37,13 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AppWindow,
   Check,
@@ -124,7 +130,13 @@ function formatFreeAccountModelLabel(value: string | null | undefined): string {
   return normalized;
 }
 
-const SETTINGS_TABS = ["general", "appearance", "gateway", "tasks", "env"] as const;
+const SETTINGS_TABS = [
+  "general",
+  "appearance",
+  "gateway",
+  "tasks",
+  "env",
+] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 const SETTINGS_ACTIVE_TAB_KEY = "codexmanager.settings.active-tab";
 
@@ -199,7 +211,10 @@ function readStringField(source: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
-function readBooleanField(source: Record<string, unknown>, key: string): boolean {
+function readBooleanField(
+  source: Record<string, unknown>,
+  key: string,
+): boolean {
   return source[key] === true;
 }
 
@@ -233,7 +248,9 @@ function normalizeUpdatePrepareSummary(payload: unknown): UpdatePrepareSummary {
   };
 }
 
-function normalizePendingUpdateSummary(payload: unknown): UpdatePrepareSummary | null {
+function normalizePendingUpdateSummary(
+  payload: unknown,
+): UpdatePrepareSummary | null {
   const source = asRecord(payload);
   if (!source) {
     return null;
@@ -254,7 +271,9 @@ function normalizeUpdateStatusSummary(payload: unknown): UpdateStatusSummary {
   const source = asRecord(payload) ?? {};
   return {
     pending: normalizePendingUpdateSummary(source.pending),
-    lastCheck: source.lastCheck ? normalizeUpdateCheckSummary(source.lastCheck) : null,
+    lastCheck: source.lastCheck
+      ? normalizeUpdateCheckSummary(source.lastCheck)
+      : null,
   };
 }
 
@@ -262,7 +281,9 @@ function buildReleaseUrl(summary: UpdateCheckSummary | null): string {
   if (!summary?.repo) {
     return "https://github.com/qxcnm/Codex-Manager/releases";
   }
-  const normalizedTag = summary.releaseTag || (summary.latestVersion ? `v${summary.latestVersion}` : "");
+  const normalizedTag =
+    summary.releaseTag ||
+    (summary.latestVersion ? `v${summary.latestVersion}` : "");
   if (!normalizedTag) {
     return `https://github.com/${summary.repo}/releases`;
   }
@@ -280,30 +301,46 @@ export default function SettingsPage() {
     canSelfUpdate,
     canOpenLocalDir,
     canCloseToTray,
-  } =
-    useRuntimeCapabilities();
+  } = useRuntimeCapabilities();
   const isPageActive = useDesktopPageActive("/settings/");
-  const isSnapshotQueryEnabled = useDeferredDesktopActivation(canAccessManagementRpc);
+  const isSnapshotQueryEnabled = useDeferredDesktopActivation(
+    canAccessManagementRpc,
+  );
   const lastSyncedSnapshotThemeRef = useRef<string | null>(null);
   const lastSyncedAppearancePresetRef = useRef<string | null>(null);
   const autoUpdateCheckedRef = useRef(false);
   const manualUpdateCheckPendingRef = useRef(false);
-  const [activeTab, setActiveTab] = useState<SettingsTab>(readInitialSettingsTab);
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    readInitialSettingsTab,
+  );
   const [envSearch, setEnvSearch] = useState("");
   const [selectedEnvKey, setSelectedEnvKey] = useState<string | null>(null);
   const [envDrafts, setEnvDrafts] = useState<Record<string, string>>({});
-  const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
-  const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
-  const [gatewayUserAgentVersionDraft, setGatewayUserAgentVersionDraft] = useState<string | null>(null);
-  const [lastUpdateCheck, setLastUpdateCheck] = useState<UpdateCheckSummary | null>(null);
-  const [updateDialogCheck, setUpdateDialogCheck] = useState<UpdateCheckSummary | null>(null);
-  const [preparedUpdate, setPreparedUpdate] = useState<UpdatePrepareSummary | null>(null);
+  const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(
+    null,
+  );
+  const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<
+    string | null
+  >(null);
+  const [gatewayUserAgentVersionDraft, setGatewayUserAgentVersionDraft] =
+    useState<string | null>(null);
+  const [lastUpdateCheck, setLastUpdateCheck] =
+    useState<UpdateCheckSummary | null>(null);
+  const [updateDialogCheck, setUpdateDialogCheck] =
+    useState<UpdateCheckSummary | null>(null);
+  const [preparedUpdate, setPreparedUpdate] =
+    useState<UpdatePrepareSummary | null>(null);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
-  const [manualUpdateCheckPending, setManualUpdateCheckPending] = useState(false);
+  const [manualUpdateCheckPending, setManualUpdateCheckPending] =
+    useState(false);
   const [transportDraft, setTransportDraft] = useState<
-    Partial<Record<"sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs", string>>
+    Partial<
+      Record<"sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs", string>
+    >
   >({});
-  const [backgroundTaskDraft, setBackgroundTaskDraft] = useState<Record<string, string>>({});
+  const [backgroundTaskDraft, setBackgroundTaskDraft] = useState<
+    Record<string, string>
+  >({});
 
   const { data: fetchedSnapshot, isError: isSnapshotError } = useQuery({
     queryKey: ["app-settings-snapshot"],
@@ -351,10 +388,14 @@ export default function SettingsPage() {
       setUpdateDialogCheck(summary);
       if (summary.hasUpdate) {
         setPreparedUpdate((current) =>
-          current && current.latestVersion === summary.latestVersion ? current : null
+          current && current.latestVersion === summary.latestVersion
+            ? current
+            : null,
         );
         if (!request?.silent) {
-          toast.success(`发现新版本 ${summary.latestVersion || summary.releaseTag || "可用"}，可立即下载更新`);
+          toast.success(
+            `发现新版本 ${summary.latestVersion || summary.releaseTag || "可用"}，可立即下载更新`,
+          );
         }
         return;
       }
@@ -364,7 +405,7 @@ export default function SettingsPage() {
         toast.success(
           summary.reason
             ? `已检查更新：${summary.reason}`
-            : `当前已是最新版本 ${summary.currentVersion || ""}`.trim()
+            : `当前已是最新版本 ${summary.currentVersion || ""}`.trim(),
         );
       }
     },
@@ -388,7 +429,7 @@ export default function SettingsPage() {
       toast.success(
         summary.isPortable
           ? `更新已下载完成，确认后即可替换到 ${summary.latestVersion || "新版本"}`
-          : `更新包已下载完成，确认后开始替换到 ${summary.latestVersion || "新版本"}`
+          : `更新包已下载完成，确认后开始替换到 ${summary.latestVersion || "新版本"}`,
       );
     },
     onError: (error: unknown) => {
@@ -398,18 +439,23 @@ export default function SettingsPage() {
 
   const applyPreparedUpdate = useMutation({
     mutationFn: (payload: { isPortable: boolean }) =>
-      payload.isPortable ? appClient.applyUpdatePortable() : appClient.launchInstaller(),
+      payload.isPortable
+        ? appClient.applyUpdatePortable()
+        : appClient.launchInstaller(),
     onSuccess: (result, payload) => {
       setPreparedUpdate(null);
       setLastUpdateCheck(null);
       setUpdateDialogCheck(null);
       setUpdateDialogOpen(false);
       const message = readStringField(asRecord(result) ?? {}, "message");
-      toast.success(message || (payload.isPortable ? "即将重启并替换更新" : "已开始替换更新流程"));
+      toast.success(
+        message ||
+          (payload.isPortable ? "即将重启并替换更新" : "已开始替换更新流程"),
+      );
     },
     onError: (error: unknown, payload) => {
       toast.error(
-        `${payload.isPortable ? "替换更新" : "启动安装程序"}失败: ${getAppErrorMessage(error)}`
+        `${payload.isPortable ? "替换更新" : "启动安装程序"}失败: ${getAppErrorMessage(error)}`,
       );
     },
   });
@@ -487,7 +533,11 @@ export default function SettingsPage() {
   }, [isPageActive]);
 
   useEffect(() => {
-    if (!isDesktopRuntime || !snapshot?.updateAutoCheck || autoUpdateCheckedRef.current) {
+    if (
+      !isDesktopRuntime ||
+      !snapshot?.updateAutoCheck ||
+      autoUpdateCheckedRef.current
+    ) {
       return;
     }
     autoUpdateCheckedRef.current = true;
@@ -510,10 +560,10 @@ export default function SettingsPage() {
 
   const hasPreparedUpdate = Boolean(preparedUpdate);
   const canDownloadUpdate = Boolean(
-    !preparedUpdate && lastUpdateCheck?.hasUpdate && lastUpdateCheck.canPrepare
+    !preparedUpdate && lastUpdateCheck?.hasUpdate && lastUpdateCheck.canPrepare,
   );
   const shouldShowUpdateLogsEntry = Boolean(
-    canOpenLocalDir && (preparedUpdate || lastUpdateCheck)
+    canOpenLocalDir && (preparedUpdate || lastUpdateCheck),
   );
   const updateActionLabel = hasPreparedUpdate
     ? "替换更新"
@@ -528,7 +578,9 @@ export default function SettingsPage() {
         ? "已发现新版本，点击后开始下载更新包"
         : "立即检查 GitHub Releases 是否有新版本可用";
   const updateActionBusy = Boolean(
-    manualUpdateCheckPending || prepareUpdate.isPending || applyPreparedUpdate.isPending
+    manualUpdateCheckPending ||
+    prepareUpdate.isPending ||
+    applyPreparedUpdate.isPending,
   );
   const updateActionBusyLabel = manualUpdateCheckPending
     ? "正在检查..."
@@ -555,9 +607,11 @@ export default function SettingsPage() {
   };
 
   const handleOpenUpdateLogsDir = () => {
-    void appClient.openUpdateLogsDir(preparedUpdate?.assetPath).catch((error) => {
-      toast.error(`打开日志目录失败: ${getAppErrorMessage(error)}`);
-    });
+    void appClient
+      .openUpdateLogsDir(preparedUpdate?.assetPath)
+      .catch((error) => {
+        toast.error(`打开日志目录失败: ${getAppErrorMessage(error)}`);
+      });
   };
 
   const filteredEnvCatalog = useMemo(() => {
@@ -567,20 +621,23 @@ export default function SettingsPage() {
     return catalog.filter(
       (item) =>
         item.key.toLowerCase().includes(keyword) ||
-        item.label.toLowerCase().includes(keyword)
+        item.label.toLowerCase().includes(keyword),
     );
   }, [envSearch, snapshot?.envOverrideCatalog]);
 
   const selectedEnvItem = useMemo(
-    () => snapshot?.envOverrideCatalog.find((item) => item.key === selectedEnvKey),
-    [selectedEnvKey, snapshot?.envOverrideCatalog]
+    () =>
+      snapshot?.envOverrideCatalog.find((item) => item.key === selectedEnvKey),
+    [selectedEnvKey, snapshot?.envOverrideCatalog],
   );
 
-  const upstreamProxyInput = upstreamProxyDraft ?? (snapshot?.upstreamProxyUrl || "");
+  const upstreamProxyInput =
+    upstreamProxyDraft ?? (snapshot?.upstreamProxyUrl || "");
   const gatewayOriginatorInput =
     gatewayOriginatorDraft ?? (snapshot?.gatewayOriginator || "codex_cli_rs");
   const gatewayUserAgentVersionInput =
-    gatewayUserAgentVersionDraft ?? (snapshot?.gatewayUserAgentVersion || "0.101.0");
+    gatewayUserAgentVersionDraft ??
+    (snapshot?.gatewayUserAgentVersion || "0.101.0");
   const transportInputValues = {
     sseKeepaliveIntervalMs:
       transportDraft.sseKeepaliveIntervalMs ??
@@ -590,10 +647,10 @@ export default function SettingsPage() {
       stringifyNumber(snapshot?.upstreamStreamTimeoutMs),
   };
   const selectedEnvValue = selectedEnvKey
-    ? envDrafts[selectedEnvKey] ??
+    ? (envDrafts[selectedEnvKey] ??
       snapshot?.envOverrides[selectedEnvKey] ??
       selectedEnvItem?.defaultValue ??
-      ""
+      "")
     : "";
 
   const lastIntentThemeRef = useRef<string | null>(null);
@@ -607,12 +664,12 @@ export default function SettingsPage() {
     // 1. Immediately update local UI and intent lock
     lastIntentThemeRef.current = nextTheme;
     lastSyncedSnapshotThemeRef.current = nextTheme;
-    
+
     setActiveTab("appearance");
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem(SETTINGS_ACTIVE_TAB_KEY, "appearance");
     }
-    
+
     setTheme(nextTheme);
 
     // 2. Optimistic local update
@@ -629,19 +686,25 @@ export default function SettingsPage() {
         onSuccess: (updatedSnapshot) => {
           // Double check if this is still our intent
           if (lastIntentThemeRef.current === nextTheme) {
-            queryClient.setQueryData(["app-settings-snapshot"], updatedSnapshot);
+            queryClient.setQueryData(
+              ["app-settings-snapshot"],
+              updatedSnapshot,
+            );
             setStoreSettings(updatedSnapshot);
           }
         },
         onError: () => {
           // Only revert if no newer intent has been made
           if (lastIntentThemeRef.current === nextTheme) {
-            queryClient.setQueryData(["app-settings-snapshot"], previousSnapshot);
+            queryClient.setQueryData(
+              ["app-settings-snapshot"],
+              previousSnapshot,
+            );
             setStoreSettings(previousSnapshot);
             setTheme(previousTheme);
           }
         },
-      }
+      },
     );
   };
 
@@ -668,18 +731,24 @@ export default function SettingsPage() {
       {
         onSuccess: (updatedSnapshot) => {
           if (lastIntentAppearancePresetRef.current === normalizedPreset) {
-            queryClient.setQueryData(["app-settings-snapshot"], updatedSnapshot);
+            queryClient.setQueryData(
+              ["app-settings-snapshot"],
+              updatedSnapshot,
+            );
             setStoreSettings(updatedSnapshot);
           }
         },
         onError: () => {
           if (lastIntentAppearancePresetRef.current === normalizedPreset) {
-            queryClient.setQueryData(["app-settings-snapshot"], previousSnapshot);
+            queryClient.setQueryData(
+              ["app-settings-snapshot"],
+              previousSnapshot,
+            );
             setStoreSettings(previousSnapshot);
             applyAppearancePreset(previousPreset);
           }
         },
-      }
+      },
     );
   };
 
@@ -695,7 +764,7 @@ export default function SettingsPage() {
 
   const saveTransportField = (
     key: "sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs",
-    minimum: number
+    minimum: number,
   ) => {
     const nextValue = parseIntegerInput(transportInputValues[key], minimum);
     if (nextValue == null) {
@@ -719,11 +788,15 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
-  const saveBackgroundTaskField = (key: keyof BackgroundTaskSettings, minimum = 1) => {
+  const saveBackgroundTaskField = (
+    key: keyof BackgroundTaskSettings,
+    minimum = 1,
+  ) => {
     if (!snapshot) return;
     const draftKey = String(key);
     const sourceValue =
-      backgroundTaskDraft[draftKey] ?? stringifyNumber(snapshot.backgroundTasks[key] as number);
+      backgroundTaskDraft[draftKey] ??
+      stringifyNumber(snapshot.backgroundTasks[key] as number);
     const nextValue = parseIntegerInput(sourceValue, minimum);
     if (nextValue == null) {
       toast.error("请输入合法的数值");
@@ -787,14 +860,20 @@ export default function SettingsPage() {
   };
 
   if ((canAccessManagementRpc && !isSnapshotQueryEnabled) || !snapshot) {
-    return <div className="flex h-64 items-center justify-center text-muted-foreground">加载配置中...</div>;
+    return (
+      <div className="flex h-64 items-center justify-center text-muted-foreground">
+        加载配置中...
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold tracking-tight">系统设置</h2>
-        <p className="mt-1 text-sm text-muted-foreground">管理应用行为、网关策略及后台任务</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          管理应用行为、网关策略及后台任务
+        </p>
       </div>
 
       <Tabs
@@ -837,17 +916,23 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>自动检查更新</Label>
-                  <p className="text-xs text-muted-foreground">启动时自动检测新版本</p>
+                  <p className="text-xs text-muted-foreground">
+                    启动时自动检测新版本
+                  </p>
                 </div>
                 <Switch
                   checked={snapshot.updateAutoCheck}
-                  onCheckedChange={(value) => updateSettings.mutate({ updateAutoCheck: value })}
+                  onCheckedChange={(value) =>
+                    updateSettings.mutate({ updateAutoCheck: value })
+                  }
                 />
               </div>
               <div className="flex flex-col gap-3 rounded-2xl border border-border/50 bg-background/45 p-4 md:flex-row md:items-center md:justify-between">
                 <div className="space-y-1">
                   <Label>{updateActionLabel}</Label>
-                  <p className="text-xs text-muted-foreground">{updateActionDescription}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {updateActionDescription}
+                  </p>
                   {lastUpdateCheck ? (
                     <p className="text-xs text-muted-foreground">
                       {preparedUpdate
@@ -875,10 +960,7 @@ export default function SettingsPage() {
                 <Button
                   variant="outline"
                   className="gap-2 self-start md:self-auto"
-                  disabled={
-                    !canSelfUpdate ||
-                    updateActionBusy
-                  }
+                  disabled={!canSelfUpdate || updateActionBusy}
                   onClick={handleUpdateAction}
                 >
                   {manualUpdateCheckPending ? (
@@ -900,7 +982,9 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>关闭时最小化到托盘</Label>
-                  <p className="text-xs text-muted-foreground">点击关闭按钮不会直接退出程序</p>
+                  <p className="text-xs text-muted-foreground">
+                    点击关闭按钮不会直接退出程序
+                  </p>
                 </div>
                 <Switch
                   checked={snapshot.closeToTrayOnClose}
@@ -913,11 +997,15 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>视觉性能模式</Label>
-                  <p className="text-xs text-muted-foreground">关闭毛玻璃等特效以提升低配电脑性能</p>
+                  <p className="text-xs text-muted-foreground">
+                    关闭毛玻璃等特效以提升低配电脑性能
+                  </p>
                 </div>
                 <Switch
                   checked={snapshot.lowTransparency}
-                  onCheckedChange={(value) => updateSettings.mutate({ lowTransparency: value })}
+                  onCheckedChange={(value) =>
+                    updateSettings.mutate({ lowTransparency: value })
+                  }
                 />
               </div>
             </CardContent>
@@ -929,7 +1017,10 @@ export default function SettingsPage() {
                 <Globe className="h-4 w-4 text-primary" />
                 <CardTitle className="text-base">服务监听</CardTitle>
               </div>
-              <CardDescription>统一控制 Service 与 Web 的监听模式，决定仅本机访问还是开放给局域网</CardDescription>
+              <CardDescription>
+                统一控制 Service 与 Web
+                的监听模式，决定仅本机访问还是开放给局域网
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="grid gap-2">
@@ -947,7 +1038,9 @@ export default function SettingsPage() {
                   <SelectTrigger className="w-full md:w-[320px]">
                     <SelectValue placeholder="选择监听地址模式">
                       {(value) =>
-                        SERVICE_LISTEN_MODE_LABELS[String(value || "").trim()] ||
+                        SERVICE_LISTEN_MODE_LABELS[
+                          String(value || "").trim()
+                        ] ||
                         String(value || "").trim() ||
                         "仅本机 (localhost)"
                       }
@@ -969,7 +1062,9 @@ export default function SettingsPage() {
               <div className="rounded-2xl border border-border/50 bg-background/45 p-4 text-sm">
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground">当前访问地址</span>
-                  <code className="text-xs text-primary">{snapshot.serviceAddr}</code>
+                  <code className="text-xs text-primary">
+                    {snapshot.serviceAddr}
+                  </code>
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-4">
                   <span className="text-muted-foreground">实际监听地址</span>
@@ -983,8 +1078,9 @@ export default function SettingsPage() {
               </div>
 
               <p className="text-[10px] text-muted-foreground">
-                切换到 <code>0.0.0.0</code> 后，局域网设备可通过当前机器 IP 访问；
-                设置保存后需要重启相关进程才会生效，Web 监听地址会默认跟随这里的模式。
+                切换到 <code>0.0.0.0</code> 后，局域网设备可通过当前机器 IP
+                访问； 设置保存后需要重启相关进程才会生效，Web
+                监听地址会默认跟随这里的模式。
               </p>
             </CardContent>
           </Card>
@@ -1002,7 +1098,9 @@ export default function SettingsPage() {
             <CardContent>
               <div className="grid gap-3 md:grid-cols-2">
                 {APPEARANCE_PRESETS.map((item) => {
-                  const currentPreset = normalizeAppearancePreset(snapshot.appearancePreset);
+                  const currentPreset = normalizeAppearancePreset(
+                    snapshot.appearancePreset,
+                  );
                   const isActive = currentPreset === item.id;
                   return (
                     <button
@@ -1012,12 +1110,14 @@ export default function SettingsPage() {
                         "group relative rounded-2xl border p-4 text-left transition-all duration-300 hover:-translate-y-0.5",
                         isActive
                           ? "border-primary bg-primary/10 shadow-lg ring-1 ring-primary"
-                          : "border-border/60 bg-background/50 hover:bg-accent/30"
+                          : "border-border/60 bg-background/50 hover:bg-accent/30",
                       )}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1.5">
-                          <div className="text-sm font-semibold">{item.name}</div>
+                          <div className="text-sm font-semibold">
+                            {item.name}
+                          </div>
                           <p className="text-xs leading-5 text-muted-foreground">
                             {item.description}
                           </p>
@@ -1034,7 +1134,7 @@ export default function SettingsPage() {
                             "h-14 flex-1 rounded-xl border",
                             item.id === "modern"
                               ? "border-primary/20 bg-[linear-gradient(160deg,rgba(255,255,255,0.88),rgba(37,99,235,0.1)),linear-gradient(180deg,rgba(191,219,254,0.6),rgba(255,255,255,0.85))]"
-                              : "border-slate-300/70 bg-[radial-gradient(at_0%_0%,#bfdbfe_0px,transparent_50%),radial-gradient(at_100%_0%,#cffafe_0px,transparent_50%),radial-gradient(at_50%_100%,#ffffff_0px,transparent_50%),rgba(255,255,255,0.86)]"
+                              : "border-slate-300/70 bg-[radial-gradient(at_0%_0%,#bfdbfe_0px,transparent_50%),radial-gradient(at_100%_0%,#cffafe_0px,transparent_50%),radial-gradient(at_50%_100%,#ffffff_0px,transparent_50%),rgba(255,255,255,0.86)]",
                           )}
                         />
                         <div className="flex w-16 flex-col gap-1.5">
@@ -1043,7 +1143,7 @@ export default function SettingsPage() {
                               "h-4 rounded-lg border",
                               item.id === "modern"
                                 ? "border-primary/15 bg-white/80 shadow-sm"
-                                : "border-slate-300/70 bg-white/70"
+                                : "border-slate-300/70 bg-white/70",
                             )}
                           />
                           <div
@@ -1051,7 +1151,7 @@ export default function SettingsPage() {
                               "h-4 rounded-lg border",
                               item.id === "modern"
                                 ? "border-primary/15 bg-white/70 shadow-sm"
-                                : "border-slate-300/70 bg-white/60"
+                                : "border-slate-300/70 bg-white/60",
                             )}
                           />
                         </div>
@@ -1069,7 +1169,9 @@ export default function SettingsPage() {
                 <Palette className="h-4 w-4 text-primary" />
                 <CardTitle className="text-base">界面主题</CardTitle>
               </div>
-              <CardDescription>选择您喜爱的配色方案，适配不同工作心情</CardDescription>
+              <CardDescription>
+                选择您喜爱的配色方案，适配不同工作心情
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12">
@@ -1081,7 +1183,7 @@ export default function SettingsPage() {
                       "group relative flex flex-col items-center gap-2.5 rounded-2xl border p-4 transition-all duration-300 hover:scale-105",
                       theme === item.id
                         ? "border-primary bg-primary/10 shadow-lg ring-1 ring-primary"
-                        : "border-transparent bg-muted/20 hover:bg-accent/40"
+                        : "border-transparent bg-muted/20 hover:bg-accent/40",
                     )}
                   >
                     <div
@@ -1093,7 +1195,7 @@ export default function SettingsPage() {
                         "whitespace-nowrap text-[10px] font-semibold transition-colors",
                         theme === item.id
                           ? "text-primary"
-                          : "text-muted-foreground group-hover:text-foreground"
+                          : "text-muted-foreground group-hover:text-foreground",
                       )}
                     >
                       {item.name}
@@ -1136,12 +1238,15 @@ export default function SettingsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ordered">顺序优先 (Ordered)</SelectItem>
-                    <SelectItem value="balanced">均衡轮询 (Balanced)</SelectItem>
+                    <SelectItem value="balanced">
+                      均衡轮询 (Balanced)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-[10px] text-muted-foreground">
                   顺序优先：按账号候选顺序优先尝试，默认只会在头部小窗口内按健康度做轻微换头；
-                  均衡轮询：按“平台密钥 + 模型”维度严格轮询可用账号，默认不做健康度换头。
+                  均衡轮询：按“平台密钥 +
+                  模型”维度严格轮询可用账号，默认不做健康度换头。
                 </p>
               </div>
 
@@ -1150,12 +1255,16 @@ export default function SettingsPage() {
                 <Select
                   value={snapshot.freeAccountMaxModel || "auto"}
                   onValueChange={(value) =>
-                    updateSettings.mutate({ freeAccountMaxModel: value || "auto" })
+                    updateSettings.mutate({
+                      freeAccountMaxModel: value || "auto",
+                    })
                   }
                 >
                   <SelectTrigger className="w-full md:w-[300px]">
                     <SelectValue placeholder="选择 free 账号使用模型">
-                      {(value) => formatFreeAccountModelLabel(String(value || ""))}
+                      {(value) =>
+                        formatFreeAccountModelLabel(String(value || ""))
+                      }
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
@@ -1179,7 +1288,8 @@ export default function SettingsPage() {
                 <div className="space-y-0.5">
                   <Label>请求体压缩</Label>
                   <p className="text-xs text-muted-foreground">
-                    对齐官方 Codex：流式 <code>/responses</code> 请求发往 ChatGPT Codex backend 时，默认使用
+                    对齐官方 Codex：流式 <code>/responses</code> 请求发往
+                    ChatGPT Codex backend 时，默认使用
                     <code>zstd</code> 压缩请求体。
                   </p>
                 </div>
@@ -1196,21 +1306,29 @@ export default function SettingsPage() {
                 <Input
                   className="h-10 max-w-md font-mono"
                   value={gatewayOriginatorInput}
-                  onChange={(event) => setGatewayOriginatorDraft(event.target.value)}
+                  onChange={(event) =>
+                    setGatewayOriginatorDraft(event.target.value)
+                  }
                   onBlur={() => {
                     if (gatewayOriginatorDraft == null) return;
-                    if (gatewayOriginatorInput === (snapshot.gatewayOriginator || "codex_cli_rs")) {
+                    if (
+                      gatewayOriginatorInput ===
+                      (snapshot.gatewayOriginator || "codex_cli_rs")
+                    ) {
                       setGatewayOriginatorDraft(null);
                       return;
                     }
                     void updateSettings
-                      .mutateAsync({ gatewayOriginator: gatewayOriginatorInput })
+                      .mutateAsync({
+                        gatewayOriginator: gatewayOriginatorInput,
+                      })
                       .then(() => setGatewayOriginatorDraft(null))
                       .catch(() => undefined);
                   }}
                 />
                 <p className="text-[10px] text-muted-foreground">
-                  对齐官方 Codex 的上游 Originator。默认值为 <code>codex_cli_rs</code>，会同步影响登录和网关上游请求头。
+                  对齐官方 Codex 的上游 Originator。默认值为{" "}
+                  <code>codex_cli_rs</code>，会同步影响登录和网关上游请求头。
                 </p>
               </div>
 
@@ -1219,22 +1337,29 @@ export default function SettingsPage() {
                 <Input
                   className="h-10 max-w-md font-mono"
                   value={gatewayUserAgentVersionInput}
-                  onChange={(event) => setGatewayUserAgentVersionDraft(event.target.value)}
+                  onChange={(event) =>
+                    setGatewayUserAgentVersionDraft(event.target.value)
+                  }
                   onBlur={() => {
                     if (gatewayUserAgentVersionDraft == null) return;
-                    if (gatewayUserAgentVersionInput === (snapshot.gatewayUserAgentVersion || "0.101.0")) {
+                    if (
+                      gatewayUserAgentVersionInput ===
+                      (snapshot.gatewayUserAgentVersion || "0.101.0")
+                    ) {
                       setGatewayUserAgentVersionDraft(null);
                       return;
                     }
                     void updateSettings
-                      .mutateAsync({ gatewayUserAgentVersion: gatewayUserAgentVersionInput })
+                      .mutateAsync({
+                        gatewayUserAgentVersion: gatewayUserAgentVersionInput,
+                      })
                       .then(() => setGatewayUserAgentVersionDraft(null))
                       .catch(() => undefined);
                   }}
                 />
                 <p className="text-[10px] text-muted-foreground">
-                  控制真实出站 <code>User-Agent</code> 里的版本号，默认值为 <code>0.101.0</code>。
-                  官方 Codex 升级后，可以在这里手动同步。
+                  控制真实出站 <code>User-Agent</code> 里的版本号，默认值为{" "}
+                  <code>0.101.0</code>。 官方 Codex 升级后，可以在这里手动同步。
                 </p>
               </div>
 
@@ -1242,7 +1367,8 @@ export default function SettingsPage() {
                 <Label>Residency Requirement</Label>
                 <Select
                   value={
-                    (snapshot.gatewayResidencyRequirement ?? "") || EMPTY_RESIDENCY_OPTION
+                    (snapshot.gatewayResidencyRequirement ?? "") ||
+                    EMPTY_RESIDENCY_OPTION
                   }
                   onValueChange={(value) =>
                     updateSettings.mutate({
@@ -1258,7 +1384,9 @@ export default function SettingsPage() {
                           String(value || "") === EMPTY_RESIDENCY_OPTION
                             ? ""
                             : String(value || "");
-                        return RESIDENCY_REQUIREMENT_LABELS[nextValue] || nextValue;
+                        return (
+                          RESIDENCY_REQUIREMENT_LABELS[nextValue] || nextValue
+                        );
                       }}
                     </SelectValue>
                   </SelectTrigger>
@@ -1277,7 +1405,8 @@ export default function SettingsPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-[10px] text-muted-foreground">
-                  对齐官方 Codex 的 <code>x-openai-internal-codex-residency</code> 头。
+                  对齐官方 Codex 的{" "}
+                  <code>x-openai-internal-codex-residency</code> 头。
                   当前只支持留空或 <code>us</code>。
                 </p>
               </div>
@@ -1288,10 +1417,14 @@ export default function SettingsPage() {
                   placeholder="http://127.0.0.1:7890"
                   className="h-10 max-w-md font-mono"
                   value={upstreamProxyInput}
-                  onChange={(event) => setUpstreamProxyDraft(event.target.value)}
+                  onChange={(event) =>
+                    setUpstreamProxyDraft(event.target.value)
+                  }
                   onBlur={() => {
                     if (upstreamProxyDraft == null) return;
-                    if (upstreamProxyInput === (snapshot.upstreamProxyUrl || "")) {
+                    if (
+                      upstreamProxyInput === (snapshot.upstreamProxyUrl || "")
+                    ) {
                       setUpstreamProxyDraft(null);
                       return;
                     }
@@ -1301,7 +1434,9 @@ export default function SettingsPage() {
                       .catch(() => undefined);
                   }}
                 />
-                <p className="text-[10px] text-muted-foreground">支持 http/https/socks5，留空表示直连。</p>
+                <p className="text-[10px] text-muted-foreground">
+                  支持 http/https/socks5，留空表示直连。
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 border-t pt-6">
@@ -1316,7 +1451,9 @@ export default function SettingsPage() {
                         sseKeepaliveIntervalMs: event.target.value,
                       }))
                     }
-                    onBlur={() => saveTransportField("sseKeepaliveIntervalMs", 1)}
+                    onBlur={() =>
+                      saveTransportField("sseKeepaliveIntervalMs", 1)
+                    }
                   />
                 </div>
                 <div className="grid gap-2">
@@ -1330,7 +1467,9 @@ export default function SettingsPage() {
                         upstreamStreamTimeoutMs: event.target.value,
                       }))
                     }
-                    onBlur={() => saveTransportField("upstreamStreamTimeoutMs", 0)}
+                    onBlur={() =>
+                      saveTransportField("upstreamStreamTimeoutMs", 0)
+                    }
                   />
                 </div>
               </div>
@@ -1342,7 +1481,7 @@ export default function SettingsPage() {
           <Card className="glass-card border-none shadow-md">
             <CardHeader>
               <CardTitle className="text-base">后台任务线程</CardTitle>
-              <CardDescription>管理自动轮询和保活任务；用量轮询会跳过手动禁用账号</CardDescription>
+              <CardDescription>管理自动轮询和保活任务；</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {[
@@ -1368,7 +1507,11 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-3">
                     <Switch
-                      checked={snapshot.backgroundTasks[task.enabledKey as keyof BackgroundTaskSettings] as boolean}
+                      checked={
+                        snapshot.backgroundTasks[
+                          task.enabledKey as keyof BackgroundTaskSettings
+                        ] as boolean
+                      }
                       onCheckedChange={(value) =>
                         updateBackgroundTasks({
                           [task.enabledKey]: value,
@@ -1378,7 +1521,9 @@ export default function SettingsPage() {
                     <Label>{task.label}</Label>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">间隔(秒)</span>
+                    <span className="text-xs text-muted-foreground">
+                      间隔(秒)
+                    </span>
                     <Input
                       className="h-8 w-20"
                       type="number"
@@ -1387,7 +1532,7 @@ export default function SettingsPage() {
                         stringifyNumber(
                           snapshot.backgroundTasks[
                             task.intervalKey as keyof BackgroundTaskSettings
-                          ] as number
+                          ] as number,
                         )
                       }
                       onChange={(event) =>
@@ -1399,7 +1544,7 @@ export default function SettingsPage() {
                       onBlur={() =>
                         saveBackgroundTaskField(
                           task.intervalKey as keyof BackgroundTaskSettings,
-                          1
+                          1,
                         )
                       }
                     />
@@ -1412,7 +1557,9 @@ export default function SettingsPage() {
           <Card className="glass-card border-none shadow-md">
             <CardHeader>
               <CardTitle className="text-base">Worker 并发参数</CardTitle>
-              <CardDescription>调整执行单元并发规模；用量刷新并发会直接影响手动刷新和后台轮询</CardDescription>
+              <CardDescription>
+                调整执行单元并发规模；用量刷新并发会直接影响手动刷新和后台轮询
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {[
@@ -1432,7 +1579,7 @@ export default function SettingsPage() {
                       stringifyNumber(
                         snapshot.backgroundTasks[
                           worker.key as keyof BackgroundTaskSettings
-                        ] as number
+                        ] as number,
                       )
                     }
                     onChange={(event) =>
@@ -1442,7 +1589,10 @@ export default function SettingsPage() {
                       }))
                     }
                     onBlur={() =>
-                      saveBackgroundTaskField(worker.key as keyof BackgroundTaskSettings, 1)
+                      saveBackgroundTaskField(
+                        worker.key as keyof BackgroundTaskSettings,
+                        1,
+                      )
                     }
                   />
                 </div>
@@ -1475,11 +1625,13 @@ export default function SettingsPage() {
                         "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
                         selectedEnvKey === item.key
                           ? "bg-primary text-primary-foreground"
-                          : "hover:bg-accent"
+                          : "hover:bg-accent",
                       )}
                     >
                       <div className="truncate font-medium">{item.label}</div>
-                      <code className="block truncate text-[10px] opacity-70">{item.key}</code>
+                      <code className="block truncate text-[10px] opacity-70">
+                        {item.key}
+                      </code>
                     </button>
                   ))}
                 </div>
@@ -1491,7 +1643,9 @@ export default function SettingsPage() {
                 <>
                   <CardHeader>
                     <div className="flex flex-col gap-1">
-                      <CardTitle className="text-lg">{selectedEnvItem?.label}</CardTitle>
+                      <CardTitle className="text-lg">
+                        {selectedEnvItem?.label}
+                      </CardTitle>
                       <code className="w-fit rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">
                         {selectedEnvKey}
                       </code>
@@ -1530,7 +1684,11 @@ export default function SettingsPage() {
                       <Button onClick={handleSaveEnv} className="gap-2">
                         <Save className="h-4 w-4" /> 保存修改
                       </Button>
-                      <Button variant="outline" onClick={handleResetEnv} className="gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={handleResetEnv}
+                        className="gap-2"
+                      >
                         <RotateCcw className="h-4 w-4" /> 恢复默认
                       </Button>
                     </div>
@@ -1563,7 +1721,9 @@ export default function SettingsPage() {
           className="glass-card border-none p-6 sm:max-w-[480px]"
         >
           <DialogHeader>
-            <DialogTitle>{preparedUpdate ? "替换更新" : "发现新版本"}</DialogTitle>
+            <DialogTitle>
+              {preparedUpdate ? "替换更新" : "发现新版本"}
+            </DialogTitle>
             <DialogDescription>
               {preparedUpdate
                 ? preparedUpdate.isPortable
@@ -1626,7 +1786,9 @@ export default function SettingsPage() {
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
               variant="outline"
-              disabled={prepareUpdate.isPending || applyPreparedUpdate.isPending}
+              disabled={
+                prepareUpdate.isPending || applyPreparedUpdate.isPending
+              }
               onClick={() => setUpdateDialogOpen(false)}
             >
               稍后
@@ -1636,7 +1798,9 @@ export default function SettingsPage() {
                 className="gap-2"
                 disabled={applyPreparedUpdate.isPending}
                 onClick={() =>
-                  applyPreparedUpdate.mutate({ isPortable: preparedUpdate.isPortable })
+                  applyPreparedUpdate.mutate({
+                    isPortable: preparedUpdate.isPortable,
+                  })
                 }
               >
                 <Download className="h-4 w-4" />
