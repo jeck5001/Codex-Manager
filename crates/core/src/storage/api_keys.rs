@@ -130,6 +130,32 @@ impl Storage {
         Ok(())
     }
 
+    pub fn find_api_key_allowed_models_by_id(&self, key_id: &str) -> Result<Option<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT allowed_models_json
+             FROM api_keys
+             WHERE id = ?1
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query([key_id])?;
+        if let Some(row) = rows.next()? {
+            return row.get(0);
+        }
+        Ok(None)
+    }
+
+    pub fn update_api_key_allowed_models(
+        &self,
+        key_id: &str,
+        allowed_models_json: Option<&str>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE api_keys SET allowed_models_json = ?1 WHERE id = ?2",
+            (allowed_models_json, key_id),
+        )?;
+        Ok(())
+    }
+
     pub fn update_api_key_model_slug(&self, key_id: &str, model_slug: Option<&str>) -> Result<()> {
         self.conn.execute(
             "UPDATE api_keys SET model_slug = ?1 WHERE id = ?2",
@@ -430,6 +456,11 @@ impl Storage {
 
     pub(super) fn ensure_api_key_expires_at_column(&self) -> Result<()> {
         self.ensure_column("api_keys", "expires_at", "INTEGER")?;
+        Ok(())
+    }
+
+    pub(super) fn ensure_api_key_allowed_models_column(&self) -> Result<()> {
+        self.ensure_column("api_keys", "allowed_models_json", "TEXT")?;
         Ok(())
     }
 

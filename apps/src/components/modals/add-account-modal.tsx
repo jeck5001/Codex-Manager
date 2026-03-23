@@ -283,13 +283,13 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setRegisterOutlookBatch(null);
   }, []);
 
-  const invalidateLoginQueries = async () => {
+  const invalidateLoginQueries = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["accounts"] }),
       queryClient.invalidateQueries({ queryKey: ["usage"] }),
       queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
     ]);
-  };
+  }, [queryClient]);
 
   const handleDialogOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -298,12 +298,15 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     onOpenChange(nextOpen);
   };
 
-  const completeLoginSuccess = async (message: string) => {
-    await invalidateLoginQueries();
-    toast.success(message);
-    resetModalState();
-    onOpenChange(false);
-  };
+  const completeLoginSuccess = useCallback(
+    async (message: string) => {
+      await invalidateLoginQueries();
+      toast.success(message);
+      resetModalState();
+      onOpenChange(false);
+    },
+    [invalidateLoginQueries, onOpenChange, resetModalState],
+  );
 
   const waitForLogin = async (loginId: string) => {
     const pollToken = loginPollTokenRef.current + 1;
@@ -497,7 +500,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         toast.error(summary);
       }
     },
-    [completeLoginSuccess],
+    [completeLoginSuccess, invalidateLoginQueries],
   );
 
   const importRegisterAccountsByEmail = useCallback(

@@ -6,6 +6,8 @@ use serde_json::Value;
 use crate::storage_helpers;
 
 mod account;
+mod audit;
+mod alert;
 mod apikey;
 mod app_settings;
 mod dashboard;
@@ -68,6 +70,7 @@ pub(super) fn value_or_error<T: Serialize>(result: Result<T, String>) -> Value {
 }
 
 pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
+    let mut pending_audit = crate::audit_record::prepare_rpc_audit(&req);
     if req.method == "initialize" {
         let _ = storage_helpers::initialize_storage();
         if let Some(storage) = storage_helpers::open_storage() {
@@ -83,42 +86,64 @@ pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
             version: codexmanager_core::core_version().to_string(),
             user_agent: crate::gateway::current_codex_user_agent(),
         };
-        return response(&req, as_json(result));
+        let resp = response(&req, as_json(result));
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
+        return resp;
     }
 
     if let Some(resp) = account::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
+        return resp;
+    }
+    if let Some(resp) = audit::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
+        return resp;
+    }
+    if let Some(resp) = alert::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }
     if let Some(resp) = apikey::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }
     if let Some(resp) = app_settings::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }
     if let Some(resp) = usage::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }
     if let Some(resp) = service_config::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }
     if let Some(resp) = startup::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }
     if let Some(resp) = stats::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }
     if let Some(resp) = dashboard::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }
     if let Some(resp) = gateway::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }
     if let Some(resp) = requestlog::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }
 
-    response(
+    let resp = response(
         &req,
         crate::error_codes::rpc_error_payload("unknown_method".to_string()),
-    )
+    );
+    crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
+    resp
 }

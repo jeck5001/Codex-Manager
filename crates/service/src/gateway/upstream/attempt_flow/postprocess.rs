@@ -143,7 +143,10 @@ where
                         account.id,
                         err
                     );
-                    if refresh_token_invalid && has_more_candidates {
+                    if refresh_token_invalid
+                        && has_more_candidates
+                        && super::super::super::retry_policy_allows_status(401)
+                    {
                         log_gateway_result(Some(url), 401, Some("refresh token invalid failover"));
                         return PostRetryFlowDecision::Failover;
                     }

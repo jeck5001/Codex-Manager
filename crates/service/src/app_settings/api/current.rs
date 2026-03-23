@@ -9,6 +9,7 @@ use super::{
     current_env_overrides, current_gateway_free_account_max_model, current_gateway_originator,
     current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
+    current_gateway_retry_policy,
     current_gateway_response_cache_enabled, current_gateway_response_cache_max_entries,
     current_gateway_response_cache_ttl_secs, current_gateway_sse_keepalive_interval_ms,
     current_gateway_upstream_stream_timeout_ms, current_lightweight_mode_on_close_to_tray_setting,
@@ -23,6 +24,9 @@ use super::{
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
     APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
@@ -72,6 +76,7 @@ pub(super) fn current_app_settings_value(
     let quota_protection_enabled = current_gateway_quota_protection_enabled();
     let quota_protection_threshold_percent = current_gateway_quota_protection_threshold_percent();
     let request_compression_enabled = current_gateway_request_compression_enabled();
+    let retry_policy = current_gateway_retry_policy();
     let response_cache_enabled = current_gateway_response_cache_enabled();
     let response_cache_ttl_secs = current_gateway_response_cache_ttl_secs();
     let response_cache_max_entries = current_gateway_response_cache_max_entries();
@@ -108,6 +113,9 @@ pub(super) fn current_app_settings_value(
         quota_protection_enabled,
         quota_protection_threshold_percent,
         request_compression_enabled,
+        retry_policy.max_retries,
+        &retry_policy.backoff_strategy,
+        &retry_policy.retryable_status_codes,
         response_cache_enabled,
         response_cache_ttl_secs,
         response_cache_max_entries,
@@ -142,6 +150,9 @@ pub(super) fn current_app_settings_value(
         "quotaProtectionEnabled": quota_protection_enabled,
         "quotaProtectionThresholdPercent": quota_protection_threshold_percent,
         "requestCompressionEnabled": request_compression_enabled,
+        "retryPolicyMaxRetries": retry_policy.max_retries,
+        "retryPolicyBackoffStrategy": retry_policy.backoff_strategy,
+        "retryPolicyRetryableStatusCodes": retry_policy.retryable_status_codes,
         "responseCacheEnabled": response_cache_enabled,
         "responseCacheTtlSecs": response_cache_ttl_secs,
         "responseCacheMaxEntries": response_cache_max_entries,
@@ -161,6 +172,8 @@ pub(super) fn current_app_settings_value(
         "envOverrideReservedKeys": env_override_reserved_keys(),
         "envOverrideUnsupportedKeys": env_override_unsupported_keys(),
         "webAccessPasswordConfigured": web_access_password_configured(),
+        "webAccessTwoFactorEnabled": crate::web_auth_two_factor_enabled(),
+        "webAccessRecoveryCodesRemaining": crate::auth::web_access_2fa::web_auth_two_factor_recovery_codes_remaining(),
     }))
 }
 
@@ -219,6 +232,9 @@ fn persist_current_snapshot(
     quota_protection_enabled: bool,
     quota_protection_threshold_percent: u64,
     request_compression_enabled: bool,
+    retry_policy_max_retries: usize,
+    retry_policy_backoff_strategy: &str,
+    retry_policy_retryable_status_codes: &[u16],
     response_cache_enabled: bool,
     response_cache_ttl_secs: u64,
     response_cache_max_entries: usize,
@@ -265,6 +281,18 @@ fn persist_current_snapshot(
     let _ = save_persisted_bool_setting(
         APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
         request_compression_enabled,
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
+        Some(&retry_policy_max_retries.to_string()),
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
+        Some(retry_policy_backoff_strategy),
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
+        serde_json::to_string(retry_policy_retryable_status_codes).ok().as_deref(),
     );
     let _ = save_persisted_bool_setting(
         APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,

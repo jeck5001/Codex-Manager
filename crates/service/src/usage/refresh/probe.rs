@@ -2,8 +2,10 @@ use codexmanager_core::rpc::types::{
     HealthcheckConfigResult, HealthcheckFailureAccountResult, HealthcheckRunResult,
 };
 use codexmanager_core::storage::{now_ts, Account, Storage, Token};
+use crossbeam_channel::unbounded;
 use std::sync::atomic::Ordering;
 use std::sync::{Mutex, OnceLock};
+use std::thread;
 
 use super::{
     mark_usage_unreachable_if_needed, open_storage, record_usage_refresh_failure,
@@ -12,11 +14,20 @@ use super::{
 };
 
 static LAST_SESSION_PROBE_RESULT: OnceLock<Mutex<Option<HealthcheckRunResult>>> = OnceLock::new();
+const ENV_SESSION_PROBE_WORKERS: &str = "CODEXMANAGER_SESSION_PROBE_WORKERS";
+const DEFAULT_SESSION_PROBE_WORKERS: usize = 4;
 
 #[derive(Clone)]
 struct SessionProbeTask {
     account: Account,
     token: Token,
+}
+
+#[derive(Default)]
+struct SessionProbeBatchOutcome {
+    success_count: usize,
+    failure_count: usize,
+    failed_accounts: Vec<HealthcheckFailureAccountResult>,
 }
 
 pub(crate) fn current_healthcheck_config() -> HealthcheckConfigResult {
@@ -56,6 +67,9 @@ pub(crate) fn run_session_probe_batch() -> Result<HealthcheckRunResult, String> 
             failed_accounts: Vec::new(),
         };
         store_last_session_probe_result(&summary);
+        if let Err(err) = crate::alert_engine::run_alert_checks_once() {
+            log::warn!("session probe follow-up alert evaluation failed: {}", err);
+        }
         return Ok(summary);
     }
 
@@ -67,47 +81,24 @@ pub(crate) fn run_session_probe_batch() -> Result<HealthcheckRunResult, String> 
     let start_cursor = SESSION_PROBE_CURSOR.load(Ordering::Relaxed) % total;
     let indices = session_probe_batch_indices(total, start_cursor, sample_size);
 
-    let mut failures = 0usize;
-    let mut successes = 0usize;
-    let mut failed_accounts = Vec::new();
-    for index in indices {
-        let mut task = tasks[index].clone();
-        match crate::gateway::probe_models_for_account(&storage, &task.account, &mut task.token) {
-            Ok(_) => {
-                successes = successes.saturating_add(1);
-                recover_account_after_success(&storage, &task.account);
-            }
-            Err(err) => {
-                failures = failures.saturating_add(1);
-                record_usage_refresh_failure(&storage, &task.account.id, &err);
-                mark_usage_unreachable_if_needed(&storage, &task.account.id, &err);
-                failed_accounts.push(HealthcheckFailureAccountResult {
-                    account_id: task.account.id.clone(),
-                    label: Some(task.account.label.clone()),
-                    reason: err.clone(),
-                });
-                log::warn!(
-                    "session probe failed: account_id={} status={} err={}",
-                    task.account.id,
-                    task.account.status,
-                    err
-                );
-            }
-        }
-    }
+    let sampled_tasks = indices
+        .into_iter()
+        .map(|index| tasks[index].clone())
+        .collect::<Vec<_>>();
+    let outcome = run_session_probe_tasks(sampled_tasks)?;
 
     SESSION_PROBE_CURSOR.store(
         next_session_probe_cursor(total, start_cursor, sample_size),
         Ordering::Relaxed,
     );
 
-    if failures > 0 {
+    if outcome.failure_count > 0 {
         log::warn!(
             "session probe batch completed with failures: sampled={} total={} successes={} failures={}",
             sample_size,
             total,
-            successes,
-            failures
+            outcome.success_count,
+            outcome.failure_count
         );
     }
 
@@ -116,11 +107,14 @@ pub(crate) fn run_session_probe_batch() -> Result<HealthcheckRunResult, String> 
         finished_at: Some(now_ts()),
         total_accounts: total as i64,
         sampled_accounts: sample_size as i64,
-        success_count: successes as i64,
-        failure_count: failures as i64,
-        failed_accounts,
+        success_count: outcome.success_count as i64,
+        failure_count: outcome.failure_count as i64,
+        failed_accounts: outcome.failed_accounts,
     };
     store_last_session_probe_result(&summary);
+    if let Err(err) = crate::alert_engine::run_alert_checks_once() {
+        log::warn!("session probe follow-up alert evaluation failed: {}", err);
+    }
 
     Ok(summary)
 }
@@ -162,6 +156,112 @@ fn recover_account_after_success(storage: &Storage, account: &Account) {
     crate::gateway::clear_account_cooldown(&account.id);
 }
 
+fn run_session_probe_tasks(tasks: Vec<SessionProbeTask>) -> Result<SessionProbeBatchOutcome, String> {
+    let total = tasks.len();
+    if total == 0 {
+        return Ok(SessionProbeBatchOutcome::default());
+    }
+
+    let worker_count = session_probe_worker_count(total);
+    if worker_count <= 1 {
+        let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+        let mut outcome = SessionProbeBatchOutcome::default();
+        for task in tasks {
+            run_session_probe_task(&storage, task, &mut outcome);
+        }
+        return Ok(outcome);
+    }
+
+    let (sender, receiver) = unbounded::<SessionProbeTask>();
+    for task in tasks {
+        sender
+            .send(task)
+            .map_err(|_| "enqueue session probe task failed".to_string())?;
+    }
+    drop(sender);
+
+    thread::scope(|scope| -> Result<SessionProbeBatchOutcome, String> {
+        let mut handles = Vec::with_capacity(worker_count);
+        for worker_index in 0..worker_count {
+            let receiver = receiver.clone();
+            handles.push(scope.spawn(move || {
+                let storage = open_storage().ok_or_else(|| {
+                    format!("session probe worker {worker_index} storage unavailable")
+                })?;
+                let mut outcome = SessionProbeBatchOutcome::default();
+                while let Ok(task) = receiver.recv() {
+                    run_session_probe_task(&storage, task, &mut outcome);
+                }
+                Ok::<SessionProbeBatchOutcome, String>(outcome)
+            }));
+        }
+
+        let mut aggregated = SessionProbeBatchOutcome::default();
+        for handle in handles {
+            match handle.join() {
+                Ok(Ok(outcome)) => {
+                    aggregated.success_count = aggregated
+                        .success_count
+                        .saturating_add(outcome.success_count);
+                    aggregated.failure_count = aggregated
+                        .failure_count
+                        .saturating_add(outcome.failure_count);
+                    aggregated.failed_accounts.extend(outcome.failed_accounts);
+                }
+                Ok(Err(err)) => return Err(err),
+                Err(_) => return Err("session probe worker panicked".to_string()),
+            }
+        }
+        Ok(aggregated)
+    })
+}
+
+fn run_session_probe_task(
+    storage: &Storage,
+    mut task: SessionProbeTask,
+    outcome: &mut SessionProbeBatchOutcome,
+) {
+    match crate::gateway::probe_models_for_account(storage, &task.account, &mut task.token) {
+        Ok(_) => {
+            outcome.success_count = outcome.success_count.saturating_add(1);
+            recover_account_after_success(storage, &task.account);
+        }
+        Err(err) => {
+            outcome.failure_count = outcome.failure_count.saturating_add(1);
+            record_usage_refresh_failure(storage, &task.account.id, &err);
+            mark_usage_unreachable_if_needed(storage, &task.account.id, &err);
+            outcome.failed_accounts.push(HealthcheckFailureAccountResult {
+                account_id: task.account.id.clone(),
+                label: Some(task.account.label.clone()),
+                reason: err.clone(),
+            });
+            log::warn!(
+                "session probe failed: account_id={} status={} err={}",
+                task.account.id,
+                task.account.status,
+                err
+            );
+        }
+    }
+}
+
+fn session_probe_worker_count(total_tasks: usize) -> usize {
+    parse_session_probe_worker_count(std::env::var(ENV_SESSION_PROBE_WORKERS).ok(), total_tasks)
+}
+
+fn parse_session_probe_worker_count(raw: Option<String>, total_tasks: usize) -> usize {
+    if total_tasks == 0 {
+        return 0;
+    }
+
+    raw.as_deref()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_SESSION_PROBE_WORKERS)
+        .min(total_tasks)
+        .max(1)
+}
+
 fn session_probe_batch_indices(total: usize, cursor: usize, sample_size: usize) -> Vec<usize> {
     if total == 0 || sample_size == 0 {
         return Vec::new();
@@ -189,7 +289,8 @@ pub(crate) fn clear_session_probe_state_for_tests() {
 #[cfg(test)]
 mod tests {
     use super::{
-        account_status_allows_probe, next_session_probe_cursor, session_probe_batch_indices,
+        account_status_allows_probe, next_session_probe_cursor, parse_session_probe_worker_count,
+        session_probe_batch_indices,
     };
 
     #[test]
@@ -206,5 +307,18 @@ mod tests {
         assert!(account_status_allows_probe("unavailable"));
         assert!(!account_status_allows_probe("disabled"));
         assert!(!account_status_allows_probe("deactivated"));
+    }
+
+    #[test]
+    fn session_probe_worker_count_uses_default_and_caps_at_batch_size() {
+        assert_eq!(parse_session_probe_worker_count(None, 2), 2);
+        assert_eq!(
+            parse_session_probe_worker_count(Some("16".to_string()), 3),
+            3
+        );
+        assert_eq!(
+            parse_session_probe_worker_count(Some("0".to_string()), 5),
+            4
+        );
     }
 }

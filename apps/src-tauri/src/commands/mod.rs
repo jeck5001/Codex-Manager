@@ -1,4 +1,6 @@
 pub mod account;
+pub mod audit;
+pub mod alert;
 pub mod apikey;
 pub mod login;
 mod registry;

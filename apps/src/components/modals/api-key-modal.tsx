@@ -10,6 +10,7 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -59,6 +60,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
   const [rpmInput, setRpmInput] = useState("");
   const [tpmInput, setTpmInput] = useState("");
   const [dailyLimitInput, setDailyLimitInput] = useState("");
+  const [allowedModelsSelection, setAllowedModelsSelection] = useState<string[]>([]);
   const [fallbackModelsText, setFallbackModelsText] = useState("");
   const [responseCacheEnabled, setResponseCacheEnabled] = useState(false);
   const [generatedKey, setGeneratedKey] = useState("");
@@ -83,6 +85,12 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
     enabled: open && Boolean(apiKey?.id),
     retry: 1,
   });
+  const { data: allowedModelsConfig } = useQuery({
+    queryKey: ["apikey-allowed-models", apiKey?.id],
+    queryFn: () => accountClient.getApiKeyAllowedModels(String(apiKey?.id || "")),
+    enabled: open && Boolean(apiKey?.id),
+    retry: 1,
+  });
   const { data: responseCacheConfig } = useQuery({
     queryKey: ["apikey-response-cache", apiKey?.id],
     queryFn: () => accountClient.getApiKeyResponseCache(String(apiKey?.id || "")),
@@ -92,6 +100,11 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
 
   const modelLabelMap = Object.fromEntries(
     (models || []).map((model) => [model.slug, model.displayName])
+  );
+  const allowedModelOptions = mergeAllowedModelOptions(models || [], allowedModelsSelection);
+  const effectiveAllowedModels = normalizeAllowedModelsSelection(
+    allowedModelsSelection,
+    modelSlug
   );
 
   useEffect(() => {
@@ -109,6 +122,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
       setRpmInput("");
       setTpmInput("");
       setDailyLimitInput("");
+      setAllowedModelsSelection([]);
       setFallbackModelsText("");
       setResponseCacheEnabled(false);
       setGeneratedKey("");
@@ -138,11 +152,18 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
       setAzureApiKey("");
     }
     setExpiresAtInput(apiKey.expiresAt ? toDateTimeLocalValue(apiKey.expiresAt) : "");
+    setAllowedModelsSelection(allowedModelsConfig?.allowedModels || []);
     setFallbackModelsText(
       formatModelChainInput(modelFallbackConfig?.modelChain || [])
     );
     setResponseCacheEnabled(responseCacheConfig?.enabled === true);
-  }, [apiKey, modelFallbackConfig?.modelChain, open, responseCacheConfig?.enabled]);
+  }, [
+    allowedModelsConfig?.allowedModels,
+    apiKey,
+    modelFallbackConfig?.modelChain,
+    open,
+    responseCacheConfig?.enabled,
+  ]);
 
   useEffect(() => {
     if (!open || !apiKey?.id) return;
@@ -177,11 +198,15 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
       const modelFallbackParams = {
         modelChain: parseModelChainInput(fallbackModelsText),
       };
+      const allowedModelsParams = {
+        allowedModels: effectiveAllowedModels,
+      };
 
       if (apiKey?.id) {
         await accountClient.updateApiKey(apiKey.id, params);
         await accountClient.setApiKeyRateLimit(apiKey.id, rateLimitParams);
         await accountClient.setApiKeyModelFallback(apiKey.id, modelFallbackParams);
+        await accountClient.setApiKeyAllowedModels(apiKey.id, allowedModelsParams);
         await accountClient.setApiKeyResponseCache(apiKey.id, {
           enabled: responseCacheEnabled,
         });
@@ -191,6 +216,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
         setGeneratedKey(result.key);
         await accountClient.setApiKeyRateLimit(result.id, rateLimitParams);
         await accountClient.setApiKeyModelFallback(result.id, modelFallbackParams);
+        await accountClient.setApiKeyAllowedModels(result.id, allowedModelsParams);
         await accountClient.setApiKeyResponseCache(result.id, {
           enabled: responseCacheEnabled,
         });
@@ -201,6 +227,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
         queryClient.invalidateQueries({ queryKey: ["apikeys"] }),
         queryClient.invalidateQueries({ queryKey: ["apikey-rate-limit"] }),
         queryClient.invalidateQueries({ queryKey: ["apikey-model-fallback"] }),
+        queryClient.invalidateQueries({ queryKey: ["apikey-allowed-models"] }),
         queryClient.invalidateQueries({ queryKey: ["apikey-response-cache"] }),
         queryClient.invalidateQueries({ queryKey: ["apikey-models"] }),
         queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
@@ -375,6 +402,60 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
 
           <div className="grid gap-4 rounded-xl border border-primary/10 bg-accent/20 p-4">
             <div className="space-y-1">
+              <Label>模型白名单 (可选)</Label>
+              <p className="text-[11px] text-muted-foreground">
+                不选择表示允许所有模型；启用后，仅允许选中的模型，降级链中的未授权模型会被自动跳过。
+              </p>
+            </div>
+            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-primary/10 bg-background/60 p-3">
+              {allowedModelOptions.length > 0 ? (
+                allowedModelOptions.map((model) => {
+                  const checked = effectiveAllowedModels.includes(model.slug);
+                  return (
+                    <label
+                      key={model.slug}
+                      className="flex cursor-pointer items-start gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-primary/10 hover:bg-accent/40"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(nextChecked) =>
+                          setAllowedModelsSelection((current) =>
+                            updateAllowedModelsSelection(
+                              current,
+                              model.slug,
+                              nextChecked === true
+                            )
+                          )
+                        }
+                        aria-label={`切换模型白名单 ${model.displayName}`}
+                      />
+                      <div className="min-w-0 space-y-1">
+                        <div className="text-sm font-medium leading-none">
+                          {model.displayName}
+                        </div>
+                        <div className="font-mono text-[11px] text-muted-foreground">
+                          {model.slug}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  当前没有可选模型；请先在列表页刷新模型元数据后再配置白名单。
+                </p>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              当前白名单共 {effectiveAllowedModels.length} 个模型。
+              {modelSlug && modelSlug !== "auto"
+                ? " 已绑定的默认模型会在保存时自动加入白名单。"
+                : ""}
+            </p>
+          </div>
+
+          <div className="grid gap-4 rounded-xl border border-primary/10 bg-accent/20 p-4">
+            <div className="space-y-1">
               <Label htmlFor="model-fallback-chain">模型降级链 (可选)</Label>
               <p className="text-[11px] text-muted-foreground">
                 按顺序逐行填写备选模型；当当前模型在所有账号上都失败后，会自动尝试下一项。
@@ -516,4 +597,53 @@ function parseModelChainInput(value: string): string[] {
 
 function formatModelChainInput(value: string[]): string {
   return value.filter((item) => item.trim().length > 0).join("\n");
+}
+
+function updateAllowedModelsSelection(
+  current: string[],
+  modelSlug: string,
+  checked: boolean
+): string[] {
+  if (checked) {
+    return normalizeAllowedModelsSelection([...current, modelSlug]);
+  }
+  return current.filter((item) => item !== modelSlug);
+}
+
+function normalizeAllowedModelsSelection(
+  value: string[],
+  boundModelSlug?: string
+): string[] {
+  const seen = new Set<string>();
+  const models: string[] = [];
+  const candidates = [...value];
+  const normalizedBoundModel = (boundModelSlug || "").trim();
+  if (normalizedBoundModel && normalizedBoundModel !== "auto") {
+    candidates.unshift(normalizedBoundModel);
+  }
+  for (const item of candidates) {
+    const normalized = item.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    models.push(normalized);
+  }
+  return models;
+}
+
+function mergeAllowedModelOptions(
+  models: { slug: string; displayName: string }[],
+  selected: string[]
+): { slug: string; displayName: string }[] {
+  const merged = [...models];
+  const existing = new Set(models.map((item) => item.slug));
+  for (const slug of selected) {
+    const normalized = slug.trim();
+    if (!normalized || existing.has(normalized)) continue;
+    existing.add(normalized);
+    merged.push({
+      slug: normalized,
+      displayName: normalized,
+    });
+  }
+  return merged;
 }

@@ -3,8 +3,12 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use codexmanager_core::storage::now_ts;
+
 static ACCOUNT_INFLIGHT: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
 static GATEWAY_REQUEST_LABELS: OnceLock<Mutex<HashMap<GatewayRequestLabelKey, usize>>> =
+    OnceLock::new();
+static GATEWAY_LATENCY_SAMPLES: OnceLock<Mutex<std::collections::VecDeque<GatewayLatencySample>>> =
     OnceLock::new();
 static GATEWAY_TOTAL_REQUESTS: AtomicUsize = AtomicUsize::new(0);
 static GATEWAY_ACTIVE_REQUESTS: AtomicUsize = AtomicUsize::new(0);
@@ -27,12 +31,20 @@ static HTTP_QUEUE_ENQUEUE_FAILURES: AtomicUsize = AtomicUsize::new(0);
 static GATEWAY_UPSTREAM_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
 static GATEWAY_UPSTREAM_ATTEMPT_ERRORS: AtomicUsize = AtomicUsize::new(0);
 static GATEWAY_UPSTREAM_ATTEMPT_DURATION_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
+const GATEWAY_LATENCY_RING_BUFFER_MAX: usize = 4096;
+const GATEWAY_LATENCY_RING_BUFFER_TTL_SECS: i64 = 3600;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct GatewayRequestLabelKey {
     route: &'static str,
     status_class: &'static str,
     protocol: &'static str,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct GatewayLatencySample {
+    created_at: i64,
+    duration_ms: i64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -161,6 +173,34 @@ pub(crate) fn record_gateway_upstream_attempt(duration_ms: u64, failed: bool) {
     }
 }
 
+pub(crate) fn record_gateway_latency_sample(created_at: i64, duration_ms: Option<i64>) {
+    let Some(duration_ms) = duration_ms.filter(|value| *value >= 0) else {
+        return;
+    };
+    let lock = GATEWAY_LATENCY_SAMPLES.get_or_init(|| Mutex::new(Default::default()));
+    let mut samples = crate::lock_utils::lock_recover(lock, "gateway_latency_samples");
+    prune_gateway_latency_samples(&mut samples, created_at);
+    samples.push_back(GatewayLatencySample {
+        created_at,
+        duration_ms,
+    });
+    while samples.len() > GATEWAY_LATENCY_RING_BUFFER_MAX {
+        samples.pop_front();
+    }
+}
+
+pub(crate) fn recent_gateway_latency_samples(window_start: i64) -> Vec<i64> {
+    let now = now_ts();
+    let lock = GATEWAY_LATENCY_SAMPLES.get_or_init(|| Mutex::new(Default::default()));
+    let mut samples = crate::lock_utils::lock_recover(lock, "gateway_latency_samples");
+    prune_gateway_latency_samples(&mut samples, now);
+    samples
+        .iter()
+        .filter(|sample| sample.created_at >= window_start)
+        .map(|sample| sample.duration_ms)
+        .collect()
+}
+
 pub(crate) fn record_gateway_request_outcome(
     path: &str,
     status_code: u16,
@@ -185,6 +225,25 @@ fn account_inflight_total() -> usize {
     let lock = ACCOUNT_INFLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
     let map = crate::lock_utils::lock_recover(lock, "account_inflight");
     map.values().copied().sum()
+}
+
+pub(super) fn clear_runtime_state() {
+    if let Some(lock) = GATEWAY_LATENCY_SAMPLES.get() {
+        crate::lock_utils::lock_recover(lock, "gateway_latency_samples").clear();
+    }
+}
+
+fn prune_gateway_latency_samples(
+    samples: &mut std::collections::VecDeque<GatewayLatencySample>,
+    now: i64,
+) {
+    let ttl_cutoff = now - GATEWAY_LATENCY_RING_BUFFER_TTL_SECS;
+    while samples
+        .front()
+        .is_some_and(|sample| sample.created_at < ttl_cutoff)
+    {
+        samples.pop_front();
+    }
 }
 
 pub(crate) fn gateway_metrics_snapshot() -> GatewayMetricsSnapshot {
@@ -286,6 +345,26 @@ fn gateway_labeled_metrics_prometheus() -> String {
         text.push_str(&line);
     }
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use codexmanager_core::storage::now_ts;
+
+    use super::{
+        clear_runtime_state, recent_gateway_latency_samples, record_gateway_latency_sample,
+    };
+
+    #[test]
+    fn gateway_latency_ring_buffer_returns_recent_samples_only() {
+        clear_runtime_state();
+        let now = now_ts();
+        record_gateway_latency_sample(now - 100, Some(80));
+        record_gateway_latency_sample(now, Some(120));
+        record_gateway_latency_sample(now, None);
+
+        assert_eq!(recent_gateway_latency_samples(now - 10), vec![120]);
+    }
 }
 
 fn classify_gateway_route(path: &str) -> &'static str {

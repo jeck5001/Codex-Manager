@@ -16,6 +16,7 @@ pub use gateway::{
     current_gateway_free_account_max_model, current_gateway_originator,
     current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
+    current_gateway_retry_policy,
     current_gateway_response_cache_enabled, current_gateway_response_cache_max_entries,
     current_gateway_response_cache_ttl_secs, current_gateway_sse_keepalive_interval_ms,
     current_gateway_upstream_stream_timeout_ms, residency_requirement_options,
@@ -24,7 +25,8 @@ pub use gateway::{
     set_gateway_quota_protection_enabled, set_gateway_quota_protection_threshold_percent,
     set_gateway_request_compression_enabled, set_gateway_residency_requirement,
     set_gateway_response_cache_enabled, set_gateway_response_cache_max_entries,
-    set_gateway_response_cache_ttl_secs, set_gateway_route_strategy,
+    set_gateway_response_cache_ttl_secs, set_gateway_retry_policy,
+    set_gateway_route_strategy,
     set_gateway_sse_keepalive_interval_ms, set_gateway_upstream_proxy_url,
     set_gateway_upstream_stream_timeout_ms, BackgroundTasksInput,
 };
@@ -44,6 +46,9 @@ pub use shared::{
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
     APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
@@ -53,7 +58,8 @@ pub use shared::{
     APP_SETTING_TEAM_MANAGER_API_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_URL_KEY,
     APP_SETTING_TEAM_MANAGER_ENABLED_KEY, APP_SETTING_UI_APPEARANCE_PRESET_KEY,
     APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY,
-    APP_SETTING_UPDATE_AUTO_CHECK_KEY, APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY,
+    APP_SETTING_UPDATE_AUTO_CHECK_KEY, APP_SETTING_WEB_ACCESS_2FA_RECOVERY_CODES_KEY,
+    APP_SETTING_WEB_ACCESS_2FA_SECRET_ENCRYPTED_KEY, APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY,
     WEB_ACCESS_SESSION_COOKIE_NAME,
 };
 pub(crate) use store::{

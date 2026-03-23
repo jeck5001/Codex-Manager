@@ -21,5 +21,8 @@ tower-http = { version = "0.6", features = ["fs"] }
 webbrowser = "0.8"
 log = "0.4"
 
+[dev-dependencies]
+totp-rs = "5.7"
+
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"

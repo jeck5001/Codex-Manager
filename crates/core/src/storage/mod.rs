@@ -4,6 +4,8 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod accounts;
+mod audit_logs;
+mod alerts;
 mod api_keys;
 mod events;
 mod model_pricing;
@@ -75,6 +77,26 @@ pub struct Event {
     pub event_type: String,
     pub message: String,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditLog {
+    pub id: i64,
+    pub action: String,
+    pub object_type: String,
+    pub object_id: Option<String>,
+    pub operator: String,
+    pub changes_json: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AuditLogFilterInput<'a> {
+    pub action: Option<&'a str>,
+    pub object_type: Option<&'a str>,
+    pub object_id: Option<&'a str>,
+    pub time_from: Option<i64>,
+    pub time_to: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -190,6 +212,40 @@ pub struct ApiKeyResponseCacheConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct AlertRule {
+    pub id: String,
+    pub name: String,
+    pub rule_type: String,
+    pub config_json: String,
+    pub enabled: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlertChannel {
+    pub id: String,
+    pub name: String,
+    pub channel_type: String,
+    pub config_json: String,
+    pub enabled: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlertHistoryEntry {
+    pub id: i64,
+    pub rule_id: Option<String>,
+    pub rule_name: Option<String>,
+    pub channel_id: Option<String>,
+    pub channel_name: Option<String>,
+    pub status: String,
+    pub message: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct ModelPricing {
     pub model_slug: String,
     pub input_price_per_1k: f64,
@@ -241,6 +297,28 @@ pub struct CostSummaryDayRow {
 }
 
 #[derive(Debug, Clone)]
+pub struct RequestTrendRow {
+    pub bucket: String,
+    pub request_count: i64,
+    pub success_count: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct RequestModelTrendRow {
+    pub model: String,
+    pub request_count: i64,
+    pub success_count: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct RequestHeatmapRow {
+    pub weekday: i64,
+    pub hour: i64,
+    pub request_count: i64,
+    pub success_count: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct ModelOptionsCacheRecord {
     pub scope: String,
     pub items_json: String,
@@ -257,12 +335,11 @@ impl Storage {
         let conn = Connection::open(path)?;
         // 中文注释：并发写入时给 SQLite 一点等待时间，避免瞬时 lock 导致请求直接失败。
         conn.busy_timeout(Duration::from_millis(3000))?;
-        // 中文注释：文件库启用 WAL + NORMAL，可明显降低并发读写互斥开销；
-        // 仅在 open(path) 上设置，避免影响 open_in_memory 的行为预期。
-        conn.execute_batch(
-            "PRAGMA journal_mode=WAL;
-             PRAGMA synchronous=NORMAL;",
-        )?;
+        // 中文注释：文件库优先启用 WAL + NORMAL，可明显降低并发读写互斥开销。
+        // 某些容器 bind mount / 网络盘环境在重复设置 journal_mode=WAL 时会偶发 disk I/O error，
+        // 这里降级为“尽量开启 WAL，至少保证连接可继续使用”，避免读接口整体失败。
+        let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
+        conn.execute_batch("PRAGMA synchronous=NORMAL;")?;
         Ok(Self { conn })
     }
 
@@ -464,6 +541,21 @@ impl Storage {
             "041_api_key_response_cache",
             include_str!("../../migrations/041_api_key_response_cache.sql"),
         )?;
+        self.apply_sql_or_compat_migration(
+            "042_api_keys_allowed_models",
+            include_str!("../../migrations/042_api_keys_allowed_models.sql"),
+            |s| s.ensure_api_key_allowed_models_column(),
+        )?;
+        self.apply_sql_migration(
+            "043_alerting",
+            include_str!("../../migrations/043_alerting.sql"),
+        )?;
+        self.apply_sql_migration(
+            "044_audit_logs",
+            include_str!("../../migrations/044_audit_logs.sql"),
+        )?;
+        self.ensure_alerting_tables()?;
+        self.ensure_audit_logs_table()?;
         self.ensure_model_pricing_table()?;
         self.ensure_request_token_stats_table()?;
         Ok(())

@@ -305,9 +305,79 @@ pub struct ApiKeyModelFallbackConfig {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ApiKeyAllowedModelsConfig {
+    pub key_id: String,
+    #[serde(default)]
+    pub allowed_models: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiKeyResponseCacheConfig {
     pub key_id: String,
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertRuleItem {
+    pub id: String,
+    pub name: String,
+    pub rule_type: String,
+    #[serde(default)]
+    pub config: serde_json::Value,
+    pub enabled: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AlertRuleListResult {
+    pub items: Vec<AlertRuleItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertChannelItem {
+    pub id: String,
+    pub name: String,
+    pub channel_type: String,
+    #[serde(default)]
+    pub config: serde_json::Value,
+    pub enabled: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AlertChannelListResult {
+    pub items: Vec<AlertChannelItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertHistoryItem {
+    pub id: i64,
+    pub rule_id: Option<String>,
+    pub rule_name: Option<String>,
+    pub channel_id: Option<String>,
+    pub channel_name: Option<String>,
+    pub status: String,
+    pub message: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AlertHistoryListResult {
+    pub items: Vec<AlertHistoryItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertChannelTestResult {
+    pub channel_id: String,
+    pub status: String,
+    pub sent_at: i64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -403,6 +473,78 @@ pub struct CostSummaryResult {
 pub struct CostExportResult {
     pub file_name: String,
     pub content: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrendQueryParams {
+    #[serde(default)]
+    pub preset: Option<String>,
+    #[serde(default)]
+    pub start_ts: Option<i64>,
+    #[serde(default)]
+    pub end_ts: Option<i64>,
+    #[serde(default)]
+    pub granularity: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestTrendItem {
+    pub bucket: String,
+    pub request_count: i64,
+    pub success_count: i64,
+    pub success_rate: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestTrendResult {
+    pub preset: String,
+    pub granularity: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    #[serde(default)]
+    pub items: Vec<RequestTrendItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelTrendItem {
+    pub model: String,
+    pub request_count: i64,
+    pub success_count: i64,
+    pub success_rate: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelTrendResult {
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    #[serde(default)]
+    pub items: Vec<ModelTrendItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeatmapCellItem {
+    pub weekday: i64,
+    pub hour: i64,
+    pub request_count: i64,
+    pub success_count: i64,
+    pub success_rate: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeatmapTrendResult {
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    #[serde(default)]
+    pub items: Vec<HeatmapCellItem>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -522,6 +664,88 @@ pub struct RequestLogExportParams {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequestLogExportResult {
+    pub format: String,
+    pub file_name: String,
+    pub content: String,
+    pub record_count: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditLogItem {
+    pub id: i64,
+    pub action: String,
+    pub object_type: String,
+    pub object_id: Option<String>,
+    pub operator: String,
+    pub changes: serde_json::Value,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AuditLogFilterParams {
+    pub action: Option<String>,
+    pub object_type: Option<String>,
+    pub object_id: Option<String>,
+    pub time_from: Option<i64>,
+    pub time_to: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AuditLogListParams {
+    pub page: i64,
+    pub page_size: i64,
+    #[serde(flatten)]
+    pub filters: AuditLogFilterParams,
+}
+
+impl Default for AuditLogListParams {
+    fn default() -> Self {
+        Self {
+            page: 1,
+            page_size: 20,
+            filters: AuditLogFilterParams::default(),
+        }
+    }
+}
+
+impl AuditLogListParams {
+    pub fn normalized(self) -> Self {
+        Self {
+            page: if self.page < 1 { 1 } else { self.page },
+            page_size: if self.page_size < 1 {
+                20
+            } else {
+                self.page_size
+            },
+            filters: self.filters,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditLogListResult {
+    pub items: Vec<AuditLogItem>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditLogExportParams {
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(flatten)]
+    pub filters: AuditLogFilterParams,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditLogExportResult {
     pub format: String,
     pub file_name: String,
     pub content: String,

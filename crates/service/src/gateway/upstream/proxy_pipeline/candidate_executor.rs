@@ -105,6 +105,8 @@ pub(in super::super) fn execute_candidate_sequence(
     let mut skipped_inflight = 0usize;
     let mut last_attempt_url = None;
     let mut last_attempt_error = None;
+    let retry_limit = super::super::super::retry_policy_max_retries();
+    let mut failover_attempts = 0usize;
     for (idx, (account, mut token)) in candidates.into_iter().enumerate() {
         if deadline::is_expired(request_deadline) {
             let request = request
@@ -174,7 +176,9 @@ pub(in super::super) fn execute_candidate_sequence(
 
         let mut inflight_guard = Some(super::super::super::acquire_account_inflight(&account.id));
         let mut attempt_trace = CandidateAttemptTrace::default();
-        let has_more_candidates = context.has_more_candidates(idx) || has_more_models;
+        let has_retry_budget = failover_attempts < retry_limit;
+        let has_more_candidates =
+            has_retry_budget && (context.has_more_candidates(idx) || has_more_models);
         let decision = run_candidate_attempt(CandidateAttemptParams {
             storage,
             method,
@@ -201,6 +205,24 @@ pub(in super::super) fn execute_candidate_sequence(
                 super::super::super::record_gateway_failover_attempt();
                 last_attempt_url = attempt_trace.last_attempt_url.take();
                 last_attempt_error = attempt_trace.last_attempt_error.take();
+                failover_attempts = failover_attempts.saturating_add(1);
+                if !super::super::super::sleep_before_retry(
+                    failover_attempts.saturating_sub(1),
+                    request_deadline,
+                ) {
+                    let request = request
+                        .take()
+                        .expect("request should be available before timeout response");
+                    respond_total_timeout(
+                        request,
+                        context,
+                        trace_id,
+                        started_at,
+                        model_for_log,
+                        Some(attempted_account_ids.as_slice()),
+                    )?;
+                    return Ok(CandidateExecutionResult::Handled);
+                }
                 continue;
             }
             CandidateUpstreamDecision::Terminal {
@@ -259,6 +281,24 @@ pub(in super::super) fn execute_candidate_sequence(
                             super::super::super::record_gateway_failover_attempt();
                             last_attempt_url = attempt_trace.last_attempt_url.take();
                             last_attempt_error = attempt_trace.last_attempt_error.take();
+                            failover_attempts = failover_attempts.saturating_add(1);
+                            if !super::super::super::sleep_before_retry(
+                                failover_attempts.saturating_sub(1),
+                                request_deadline,
+                            ) {
+                                let request = request.take().expect(
+                                    "request should be available before timeout response",
+                                );
+                                respond_total_timeout(
+                                    request,
+                                    context,
+                                    trace_id,
+                                    started_at,
+                                    model_for_log,
+                                    Some(attempted_account_ids.as_slice()),
+                                )?;
+                                return Ok(CandidateExecutionResult::Handled);
+                            }
                             continue;
                         }
                         CandidateUpstreamDecision::Terminal {

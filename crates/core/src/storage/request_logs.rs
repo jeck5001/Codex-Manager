@@ -1,8 +1,8 @@
 use rusqlite::{params, params_from_iter, types::Value, Result, Row};
 
 use super::{
-    request_log_query, RequestLog, RequestLogQuerySummary, RequestLogTodaySummary,
-    RequestTokenStat, Storage,
+    request_log_query, RequestHeatmapRow, RequestLog, RequestLogQuerySummary,
+    RequestLogTodaySummary, RequestModelTrendRow, RequestTokenStat, RequestTrendRow, Storage,
 };
 
 impl Storage {
@@ -300,6 +300,97 @@ impl Storage {
         end_ts: i64,
     ) -> Result<RequestLogTodaySummary> {
         self.summarize_request_token_stats_between(start_ts, end_ts)
+    }
+
+    pub fn summarize_request_trends_between(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+        granularity: &str,
+    ) -> Result<Vec<RequestTrendRow>> {
+        let bucket_expr = match granularity.trim().to_ascii_lowercase().as_str() {
+            "week" => "strftime('%Y-W%W', datetime(r.created_at, 'unixepoch', 'localtime'))",
+            "month" => "strftime('%Y-%m', datetime(r.created_at, 'unixepoch', 'localtime'))",
+            _ => "strftime('%Y-%m-%d', datetime(r.created_at, 'unixepoch', 'localtime'))",
+        };
+        let sql = format!(
+            "SELECT
+                {bucket_expr} AS bucket,
+                COUNT(1),
+                IFNULL(SUM(CASE WHEN r.status_code >= 200 AND r.status_code <= 299 THEN 1 ELSE 0 END), 0)
+             FROM request_logs r
+             WHERE r.created_at >= ?1 AND r.created_at < ?2
+             GROUP BY bucket
+             ORDER BY bucket ASC"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut rows = stmt.query((start_ts, end_ts))?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next()? {
+            items.push(RequestTrendRow {
+                bucket: row.get(0)?,
+                request_count: row.get(1)?,
+                success_count: row.get(2)?,
+            });
+        }
+        Ok(items)
+    }
+
+    pub fn summarize_request_model_trends_between(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> Result<Vec<RequestModelTrendRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                r.model,
+                COUNT(1),
+                IFNULL(SUM(CASE WHEN r.status_code >= 200 AND r.status_code <= 299 THEN 1 ELSE 0 END), 0)
+             FROM request_logs r
+             WHERE r.created_at >= ?1 AND r.created_at < ?2
+               AND r.model IS NOT NULL AND TRIM(r.model) <> ''
+             GROUP BY r.model
+             ORDER BY COUNT(1) DESC, r.model ASC",
+        )?;
+        let mut rows = stmt.query((start_ts, end_ts))?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next()? {
+            items.push(RequestModelTrendRow {
+                model: row.get(0)?,
+                request_count: row.get(1)?,
+                success_count: row.get(2)?,
+            });
+        }
+        Ok(items)
+    }
+
+    pub fn summarize_request_heatmap_between(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> Result<Vec<RequestHeatmapRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                CAST(strftime('%w', datetime(r.created_at, 'unixepoch', 'localtime')) AS INTEGER) AS weekday,
+                CAST(strftime('%H', datetime(r.created_at, 'unixepoch', 'localtime')) AS INTEGER) AS hour,
+                COUNT(1),
+                IFNULL(SUM(CASE WHEN r.status_code >= 200 AND r.status_code <= 299 THEN 1 ELSE 0 END), 0)
+             FROM request_logs r
+             WHERE r.created_at >= ?1 AND r.created_at < ?2
+             GROUP BY weekday, hour
+             ORDER BY weekday ASC, hour ASC",
+        )?;
+        let mut rows = stmt.query((start_ts, end_ts))?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next()? {
+            items.push(RequestHeatmapRow {
+                weekday: row.get(0)?,
+                hour: row.get(1)?,
+                request_count: row.get(2)?,
+                success_count: row.get(3)?,
+            });
+        }
+        Ok(items)
     }
 
     pub(super) fn ensure_request_logs_table(&self) -> Result<()> {

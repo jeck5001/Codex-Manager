@@ -2,11 +2,15 @@ use super::{
     build_usage_request_headers, summarize_usage_error_response, usage_http_client,
     CHATGPT_ACCOUNT_ID_HEADER_NAME,
 };
+use codexmanager_core::storage::{now_ts, Storage};
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::StatusCode;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
+static USAGE_HTTP_TEST_DB_SEQ: AtomicUsize = AtomicUsize::new(0);
 
 fn lock_env() -> MutexGuard<'static, ()> {
     // 中文注释：单进程并行跑测试时，环境变量是全局共享的；这里串行化避免用例互相污染导致偶发失败。
@@ -17,6 +21,48 @@ fn lock_env() -> MutexGuard<'static, ()> {
 
 fn usage_header_runtime_guard() -> MutexGuard<'static, ()> {
     crate::gateway::gateway_runtime_test_guard()
+}
+
+fn new_usage_http_test_db_path(prefix: &str) -> PathBuf {
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "{prefix}-{}-{}-{}.db",
+        std::process::id(),
+        now_ts(),
+        USAGE_HTTP_TEST_DB_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    path
+}
+
+struct UsageHttpTestDbScope {
+    previous_db_path: Option<String>,
+    db_path: PathBuf,
+}
+
+impl Drop for UsageHttpTestDbScope {
+    fn drop(&mut self) {
+        match &self.previous_db_path {
+            Some(value) => std::env::set_var("CODEXMANAGER_DB_PATH", value),
+            None => std::env::remove_var("CODEXMANAGER_DB_PATH"),
+        }
+        crate::storage_helpers::clear_storage_cache_for_tests();
+        let _ = std::fs::remove_file(&self.db_path);
+        let _ = std::fs::remove_file(format!("{}-shm", self.db_path.display()));
+        let _ = std::fs::remove_file(format!("{}-wal", self.db_path.display()));
+    }
+}
+
+fn setup_usage_http_test_db(prefix: &str) -> UsageHttpTestDbScope {
+    let db_path = new_usage_http_test_db_path(prefix);
+    let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
+    std::env::set_var("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    crate::storage_helpers::clear_storage_cache_for_tests();
+    let storage = Storage::open(&db_path).expect("open usage http test db");
+    storage.init().expect("init usage http test db");
+    UsageHttpTestDbScope {
+        previous_db_path,
+        db_path,
+    }
 }
 
 fn usage_header_runtime_scope() -> (MutexGuard<'static, ()>, UsageHeaderRuntimeRestore) {
@@ -218,6 +264,8 @@ fn refresh_token_auth_error_reason_from_message_tracks_canonical_messages() {
 
 #[test]
 fn usage_http_default_headers_follow_gateway_runtime_profile() {
+    let _env_lock = crate::lock_utils::process_env_test_guard();
+    let _db_scope = setup_usage_http_test_db("usage-http-default-headers");
     let (_guard, _restore) = usage_header_runtime_scope();
     crate::set_gateway_originator("codex_cli_rs_usage").expect("set gateway originator");
     crate::set_gateway_residency_requirement(Some("us"))

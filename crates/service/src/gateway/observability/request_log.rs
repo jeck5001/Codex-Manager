@@ -188,6 +188,7 @@ pub(super) fn write_request_log_with_attempts_and_model_fallback(
     let reasoning_output_tokens = normalize_token(usage.reasoning_output_tokens);
     let duration_ms = normalize_duration_ms(duration_ms);
     let created_at = now_ts();
+    super::metrics::record_gateway_latency_sample(created_at, duration_ms);
     let estimated_cost_usd =
         estimate_cost_usd(model, input_tokens, cached_input_tokens, output_tokens);
     super::trace_log::log_failed_request(

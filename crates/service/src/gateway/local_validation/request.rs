@@ -28,6 +28,32 @@ fn allow_openai_responses_path_rewrite(protocol_type: &str, normalized_path: &st
             || normalized_path.starts_with("/v1/completions"))
 }
 
+fn model_is_allowed(allowed_models: &[String], model: &str) -> bool {
+    let trimmed = model.trim();
+    !trimmed.is_empty() && allowed_models.iter().any(|item| item == trimmed)
+}
+
+fn validate_api_key_allowed_model(
+    allowed_models: &[String],
+    effective_model: Option<&str>,
+) -> Result<(), LocalValidationError> {
+    if allowed_models.is_empty() {
+        return Ok(());
+    }
+
+    let Some(model) = effective_model.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    if model_is_allowed(allowed_models, model) {
+        return Ok(());
+    }
+
+    Err(LocalValidationError::new(
+        403,
+        format!("api key is not allowed to access model {model}"),
+    ))
+}
+
 pub(super) fn build_local_validation_result(
     request: &Request,
     trace_id: String,
@@ -71,6 +97,17 @@ pub(super) fn build_local_validation_result(
     // 否则上游兼容改写（例如 /responses 强制 stream=true）会污染下游响应模式判断。
     let client_request_meta = super::super::parse_request_metadata(&body);
     let (effective_model, effective_reasoning) = resolve_effective_request_overrides(&api_key);
+    let allowed_models = storage
+        .find_api_key_allowed_models_by_id(&api_key.id)
+        .map_err(|err| LocalValidationError::new(500, format!("storage read failed: {err}")))?
+        .map(|raw| crate::apikey_allowed_models::parse_allowed_models(raw.as_str()))
+        .unwrap_or_default();
+    validate_api_key_allowed_model(
+        allowed_models.as_slice(),
+        effective_model
+            .as_deref()
+            .or(client_request_meta.model.as_deref()),
+    )?;
     body = super::super::apply_request_overrides_with_prompt_cache_key(
         &path,
         body,

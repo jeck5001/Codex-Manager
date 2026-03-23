@@ -91,7 +91,7 @@ where
             log_gateway_result(Some(alt_url), 502, Some(err_msg.as_str()));
             // 中文注释：alt 路径失败时若还有候选账号必须优先切换，
             // 不这样做会把单账号路径差异放大成整次请求失败。
-            if has_more_candidates {
+            if has_more_candidates && super::super::super::retry_policy_allows_status(502) {
                 AltPathRetryResult::Failover
             } else {
                 AltPathRetryResult::Terminal {

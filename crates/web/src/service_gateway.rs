@@ -99,6 +99,13 @@ pub(super) async fn rpc_proxy(
         .post(&state.service_rpc_url)
         .header("content-type", "application/json")
         .header("x-codexmanager-rpc-token", &state.rpc_token)
+        .header(
+            "x-codexmanager-operator",
+            headers
+                .get("x-codexmanager-operator")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("web-ui"),
+        )
         .body(body)
         .send()
         .await;
@@ -137,6 +144,52 @@ pub(super) async fn requestlog_export_proxy(
         .map(|value| format!("?{value}"))
         .unwrap_or_default();
     let target_url = format!("http://{}/export/requestlogs{}", state.service_addr, query);
+    let resp = state
+        .client
+        .get(target_url)
+        .header("x-codexmanager-rpc-token", &state.rpc_token)
+        .send()
+        .await;
+    let resp = match resp {
+        Ok(value) => value,
+        Err(err) => {
+            let msg = format!("upstream error: {err}");
+            return (StatusCode::BAD_GATEWAY, msg).into_response();
+        }
+    };
+
+    let status = resp.status();
+    let forwarded_headers = [
+        axum::http::header::CONTENT_TYPE,
+        axum::http::header::CONTENT_DISPOSITION,
+        axum::http::header::CACHE_CONTROL,
+    ]
+    .into_iter()
+    .filter_map(|header_name| {
+        resp.headers()
+            .get(&header_name)
+            .cloned()
+            .map(|value| (header_name, value))
+    })
+    .collect::<Vec<_>>();
+    let mut out = Response::new(axum::body::Body::from_stream(resp.bytes_stream()));
+    *out.status_mut() = status;
+    for (header_name, value) in forwarded_headers {
+        out.headers_mut().insert(header_name, value);
+    }
+    out
+}
+
+pub(super) async fn auditlog_export_proxy(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+) -> Response {
+    let query = request
+        .uri()
+        .query()
+        .map(|value| format!("?{value}"))
+        .unwrap_or_default();
+    let target_url = format!("http://{}/export/auditlogs{}", state.service_addr, query);
     let resp = state
         .client
         .get(target_url)

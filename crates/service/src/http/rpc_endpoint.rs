@@ -84,15 +84,16 @@ where
     }
 }
 
-fn handle_rpc_body(body: &str) -> (u16, String, bool) {
+fn handle_rpc_body(body: &str, operator: Option<&str>) -> (u16, String, bool) {
     if body.trim().is_empty() {
         return (400, "{}".to_string(), false);
     }
 
-    let req: JsonRpcRequest = match serde_json::from_str(body) {
+    let mut req: JsonRpcRequest = match serde_json::from_str(body) {
         Ok(v) => v,
         Err(_) => return (400, "{}".to_string(), false),
     };
+    crate::audit_record::attach_operator_to_request(&mut req, operator);
     let (json, success) = handle_parsed_rpc_request(req, crate::handle_request);
     (200, json, success)
 }
@@ -153,8 +154,14 @@ pub(crate) async fn handle_rpc_http(headers: HeaderMap, body: String) -> AxumRes
         return response;
     }
     let body_for_task = body;
+    let operator = headers
+        .get("X-CodexManager-Operator")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
     let (status, response_body, success) =
-        match tokio::task::spawn_blocking(move || handle_rpc_body(&body_for_task)).await {
+        match tokio::task::spawn_blocking(move || handle_rpc_body(&body_for_task, operator.as_deref())).await {
             Ok(result) => result,
             Err(err) => {
                 log::error!("rpc http blocking task failed: {}", err);
@@ -225,7 +232,8 @@ pub fn handle_rpc(mut request: Request) {
         return;
     }
 
-    let (status, response_body, success) = handle_rpc_body(&body);
+    let operator = get_header_value(&request, "X-CodexManager-Operator");
+    let (status, response_body, success) = handle_rpc_body(&body, operator);
     if success {
         rpc_metrics_guard.mark_success();
     }

@@ -9,7 +9,8 @@ use super::{
     set_gateway_quota_protection_enabled, set_gateway_quota_protection_threshold_percent,
     set_gateway_request_compression_enabled, set_gateway_residency_requirement,
     set_gateway_response_cache_enabled, set_gateway_response_cache_max_entries,
-    set_gateway_response_cache_ttl_secs, set_gateway_route_strategy,
+    set_gateway_response_cache_ttl_secs, set_gateway_retry_policy,
+    set_gateway_route_strategy,
     set_gateway_sse_keepalive_interval_ms, set_gateway_upstream_proxy_url,
     set_gateway_upstream_stream_timeout_ms, set_lightweight_mode_on_close_to_tray_setting,
     set_saved_service_addr, set_service_bind_mode, set_ui_appearance_preset,
@@ -33,6 +34,9 @@ pub(super) struct AppSettingsPatch {
     quota_protection_enabled: Option<bool>,
     quota_protection_threshold_percent: Option<u64>,
     request_compression_enabled: Option<bool>,
+    retry_policy_max_retries: Option<usize>,
+    retry_policy_backoff_strategy: Option<String>,
+    retry_policy_retryable_status_codes: Option<Vec<u16>>,
     response_cache_enabled: Option<bool>,
     response_cache_ttl_secs: Option<u64>,
     response_cache_max_entries: Option<usize>,
@@ -97,6 +101,22 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     }
     if let Some(enabled) = patch.request_compression_enabled {
         let _ = set_gateway_request_compression_enabled(enabled)?;
+    }
+    if patch.retry_policy_max_retries.is_some()
+        || patch.retry_policy_backoff_strategy.is_some()
+        || patch.retry_policy_retryable_status_codes.is_some()
+    {
+        let current = crate::current_gateway_retry_policy();
+        let _ = set_gateway_retry_policy(
+            patch.retry_policy_max_retries.unwrap_or(current.max_retries),
+            patch
+                .retry_policy_backoff_strategy
+                .as_deref()
+                .unwrap_or(current.backoff_strategy.as_str()),
+            patch
+                .retry_policy_retryable_status_codes
+                .unwrap_or(current.retryable_status_codes),
+        )?;
     }
     if let Some(enabled) = patch.response_cache_enabled {
         let _ = set_gateway_response_cache_enabled(enabled)?;

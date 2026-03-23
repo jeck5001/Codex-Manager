@@ -139,6 +139,10 @@ fn build_front_proxy_app(state: ProxyState) -> Router {
     Router::new()
         .route("/rpc", post(crate::http::rpc_endpoint::handle_rpc_http))
         .route(
+            "/export/auditlogs",
+            get(crate::http::auditlog_export_endpoint::handle_auditlog_export_http),
+        )
+        .route(
             "/export/requestlogs",
             get(crate::http::requestlog_export_endpoint::handle_requestlog_export_http),
         )

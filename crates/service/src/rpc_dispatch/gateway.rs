@@ -46,6 +46,21 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 },
             ))
         }
+        "gateway/retryPolicy/get" => super::as_json(crate::current_gateway_retry_policy()),
+        "gateway/retryPolicy/set" => {
+            let current = crate::current_gateway_retry_policy();
+            let max_retries = usize_param(req, "maxRetries").unwrap_or(current.max_retries);
+            let backoff_strategy = super::str_param(req, "backoffStrategy")
+                .map(str::to_string)
+                .unwrap_or(current.backoff_strategy);
+            let retryable_status_codes = u16_array_param(req, "retryableStatusCodes")
+                .unwrap_or(current.retryable_status_codes);
+            super::value_or_error(crate::set_gateway_retry_policy(
+                max_retries,
+                &backoff_strategy,
+                retryable_status_codes,
+            ))
+        }
         "gateway/backgroundTasks/get" => {
             super::as_json(crate::usage_refresh::background_tasks_settings())
         }
@@ -284,4 +299,16 @@ fn u64_param(req: &JsonRpcRequest, key: &str) -> Option<u64> {
 
 fn usize_param(req: &JsonRpcRequest, key: &str) -> Option<usize> {
     u64_param(req, key).and_then(|value| usize::try_from(value).ok())
+}
+
+fn u16_array_param(req: &JsonRpcRequest, key: &str) -> Option<Vec<u16>> {
+    let items = req.params.as_ref()?.get(key)?.as_array()?;
+    items
+        .iter()
+        .map(|item| match item {
+            Value::Number(number) => number.as_u64().and_then(|value| u16::try_from(value).ok()),
+            Value::String(text) => text.trim().parse::<u16>().ok(),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
 }

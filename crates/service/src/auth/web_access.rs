@@ -22,6 +22,7 @@ pub fn set_web_access_password(password: Option<&str>) -> Result<bool, String> {
             Ok(true)
         }
         None => {
+            crate::clear_web_access_two_factor()?;
             save_persisted_app_setting(APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY, Some(""))?;
             Ok(false)
         }
@@ -31,6 +32,8 @@ pub fn set_web_access_password(password: Option<&str>) -> Result<bool, String> {
 pub fn web_auth_status_value() -> Result<Value, String> {
     Ok(serde_json::json!({
         "passwordConfigured": web_access_password_configured(),
+        "twoFactorEnabled": crate::web_auth_two_factor_enabled(),
+        "recoveryCodesRemaining": crate::auth::web_access_2fa::web_auth_two_factor_recovery_codes_remaining(),
     }))
 }
 

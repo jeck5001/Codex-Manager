@@ -29,14 +29,19 @@ where
         log_gateway_result(Some(url), status.as_u16(), None);
         return UpstreamOutcomeDecision::RespondUpstream;
     }
-    if matches!(status.as_u16(), 500..=599) {
+    if (500..=599).contains(&status.as_u16()) {
         log_gateway_result(Some(url), status.as_u16(), Some("upstream server error"));
-        if has_more_candidates {
+        if has_more_candidates
+            && super::super::super::retry_policy_allows_status(status.as_u16())
+        {
             return UpstreamOutcomeDecision::Failover;
         }
         return UpstreamOutcomeDecision::RespondUpstream;
     }
-    if status.as_u16() == 404 && has_more_candidates {
+    if status.as_u16() == 404
+        && has_more_candidates
+        && super::super::super::retry_policy_allows_status(status.as_u16())
+    {
         // 中文注释：模型/路径 404 在多账号场景下通常是“该账号不可用”，
         // 优先切换候选账号，最后一个候选再透传原始 404 给客户端。
         super::super::super::mark_account_cooldown_for_status(account_id, status.as_u16());
@@ -49,7 +54,9 @@ where
     }
     if status.as_u16() == 429 {
         log_gateway_result(Some(url), status.as_u16(), Some("upstream rate-limited"));
-        if has_more_candidates {
+        if has_more_candidates
+            && super::super::super::retry_policy_allows_status(status.as_u16())
+        {
             return UpstreamOutcomeDecision::Failover;
         }
         return UpstreamOutcomeDecision::RespondUpstream;
@@ -67,7 +74,9 @@ where
             status.as_u16(),
             Some("upstream challenge blocked"),
         );
-        if has_more_candidates {
+        if has_more_candidates
+            && super::super::super::retry_policy_allows_status(status.as_u16())
+        {
             return UpstreamOutcomeDecision::Failover;
         }
         return UpstreamOutcomeDecision::RespondUpstream;
@@ -80,7 +89,10 @@ where
         super::super::super::mark_account_cooldown_for_status(account_id, status.as_u16());
     }
     log_gateway_result(Some(url), status.as_u16(), Some("upstream non-success"));
-    if should_failover && has_more_candidates {
+    if should_failover
+        && has_more_candidates
+        && super::super::super::retry_policy_allows_status(status.as_u16())
+    {
         return UpstreamOutcomeDecision::Failover;
     }
 

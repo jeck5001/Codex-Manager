@@ -14,6 +14,12 @@ pub const APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY: &str =
     "gateway.quota_protection_threshold_percent";
 pub const APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY: &str =
     "gateway.request_compression_enabled";
+pub const APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY: &str =
+    "gateway.retry_policy.max_retries";
+pub const APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY: &str =
+    "gateway.retry_policy.backoff_strategy";
+pub const APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY: &str =
+    "gateway.retry_policy.retryable_status_codes";
 pub const APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY: &str = "gateway.response_cache_enabled";
 pub const APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY: &str = "gateway.response_cache_ttl_secs";
 pub const APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY: &str =
@@ -35,6 +41,8 @@ pub const APP_SETTING_TEAM_MANAGER_API_KEY_KEY: &str = "team_manager.api_key";
 pub const APP_SETTING_ACCOUNT_PAYMENT_STATE_KEY: &str = "account.payment_state";
 pub const APP_SETTING_ACCOUNT_SESSION_STATE_KEY: &str = "account.session_state";
 pub const APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY: &str = "web.auth.password_hash";
+pub const APP_SETTING_WEB_ACCESS_2FA_SECRET_ENCRYPTED_KEY: &str = "web.auth.2fa.secret_encrypted";
+pub const APP_SETTING_WEB_ACCESS_2FA_RECOVERY_CODES_KEY: &str = "web.auth.2fa.recovery_codes";
 pub const WEB_ACCESS_SESSION_COOKIE_NAME: &str = "codexmanager_web_auth";
 
 pub(crate) fn parse_bool_with_default(raw: &str, default: bool) -> bool {

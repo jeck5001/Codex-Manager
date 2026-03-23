@@ -1,38 +1,64 @@
 import { invoke, withAddr } from "./transport";
 import {
+  normalizeAuditLogExportResult,
+  normalizeAuditLogListResult,
+  normalizeAlertChannel,
+  normalizeAlertChannelList,
+  normalizeAlertChannelTestResult,
+  normalizeAlertHistoryList,
+  normalizeAlertRule,
+  normalizeAlertRuleList,
   normalizeAppSettings,
   normalizeDashboardHealth,
   normalizeDashboardTrend,
   normalizeFreeProxySyncResult,
+  normalizeGatewayRetryPolicy,
   normalizeGatewayResponseCacheStats,
+  normalizeHeatmapTrends,
   normalizeHealthcheckConfig,
   normalizeHealthcheckRun,
   normalizeCostExportResult,
   normalizeCostSummary,
+  normalizeModelTrends,
   normalizeModelPricingList,
+  normalizeRequestTrends,
   normalizeRequestLogExportResult,
   normalizeRequestLogFilterSummary,
   normalizeRequestLogListResult,
   normalizeStartupSnapshot,
   normalizeTodaySummary,
+  normalizeWebAuthTwoFactorSetupResult,
+  normalizeWebAuthTwoFactorStatusResult,
 } from "./normalize";
 import {
+  AuditLogExportResult,
+  AuditLogListResult,
+  AlertChannel,
+  AlertChannelTestResult,
+  AlertHistoryItem,
+  AlertRule,
   BackgroundTaskSettings,
   CostExportResult,
   CostSummaryResult,
   DashboardHealth,
   DashboardTrend,
   FreeProxySyncResult,
+  GatewayRetryPolicy,
   GatewayResponseCacheStats,
+  HeatmapTrendResult,
   HealthcheckConfig,
   HealthcheckRunResult,
+  ModelTrendResult,
   ModelPricingItem,
+  RequestTrendResult,
   RequestLogExportResult,
   RequestLogFilterSummary,
   RequestLogListResult,
   RequestLogTodaySummary,
   ServiceInitializationResult,
   StartupSnapshot,
+  WebAuthTwoFactorSetupResult,
+  WebAuthTwoFactorStatusResult,
 } from "../../types";
 import { readInitializeResult } from "@/lib/utils/service";
 
@@ -67,6 +93,24 @@ export const serviceClient = {
   getGatewayTransport: () => invoke<unknown>("service_gateway_transport_get", withAddr()),
   setGatewayTransport: (settings: Record<string, unknown>) =>
     invoke("service_gateway_transport_set", withAddr(settings)),
+  async getGatewayRetryPolicy(): Promise<GatewayRetryPolicy> {
+    const result = await invoke<unknown>(
+      "service_gateway_retry_policy_get",
+      withAddr()
+    );
+    return normalizeGatewayRetryPolicy(result);
+  },
+  async setGatewayRetryPolicy(params: {
+    maxRetries?: number;
+    backoffStrategy?: string;
+    retryableStatusCodes?: number[];
+  }): Promise<GatewayRetryPolicy> {
+    const result = await invoke<unknown>(
+      "service_gateway_retry_policy_set",
+      withAddr(params)
+    );
+    return normalizeGatewayRetryPolicy(result);
+  },
   getUpstreamProxy: () =>
     invoke<string>("service_gateway_upstream_proxy_get", withAddr()),
   setUpstreamProxy: (proxyUrl: string) =>
@@ -142,11 +186,159 @@ export const serviceClient = {
       }
     );
   },
+  async setupWebAuthTwoFactor(): Promise<WebAuthTwoFactorSetupResult> {
+    const result = await invoke<unknown>(
+      "service_web_auth_two_factor_setup",
+      withAddr()
+    );
+    return normalizeWebAuthTwoFactorSetupResult(result);
+  },
+  async verifyWebAuthTwoFactor(params: {
+    setupToken?: string;
+    code?: string;
+    recoveryCode?: string;
+  }): Promise<WebAuthTwoFactorStatusResult> {
+    const result = await invoke<unknown>(
+      "service_web_auth_two_factor_verify",
+      withAddr(params)
+    );
+    return normalizeWebAuthTwoFactorStatusResult(result);
+  },
+  async disableWebAuthTwoFactor(params: {
+    code?: string;
+    recoveryCode?: string;
+  }): Promise<WebAuthTwoFactorStatusResult> {
+    const result = await invoke<unknown>(
+      "service_web_auth_two_factor_disable",
+      withAddr(params)
+    );
+    return normalizeWebAuthTwoFactorStatusResult(result);
+  },
   async getGatewayCacheStats(): Promise<GatewayResponseCacheStats> {
     const result = await invoke<unknown>("service_gateway_cache_stats", withAddr());
     return normalizeGatewayResponseCacheStats(result);
   },
   clearGatewayCache: () => invoke("service_gateway_cache_clear", withAddr()),
+  async listAlertRules(): Promise<AlertRule[]> {
+    const result = await invoke<unknown>("service_alert_rules_list", withAddr());
+    return normalizeAlertRuleList(result);
+  },
+  async upsertAlertRule(params: {
+    id?: string | null;
+    name: string;
+    type: string;
+    config: Record<string, unknown>;
+    enabled: boolean;
+  }): Promise<AlertRule> {
+    const result = await invoke<unknown>("service_alert_rules_upsert", withAddr(params));
+    const item = normalizeAlertRule(result);
+    if (!item) throw new Error("告警规则返回数据无效");
+    return item;
+  },
+  deleteAlertRule: (id: string) =>
+    invoke("service_alert_rules_delete", withAddr({ id })),
+  async listAlertChannels(): Promise<AlertChannel[]> {
+    const result = await invoke<unknown>("service_alert_channels_list", withAddr());
+    return normalizeAlertChannelList(result);
+  },
+  async upsertAlertChannel(params: {
+    id?: string | null;
+    name: string;
+    type: string;
+    config: Record<string, unknown>;
+    enabled: boolean;
+  }): Promise<AlertChannel> {
+    const result = await invoke<unknown>("service_alert_channels_upsert", withAddr(params));
+    const item = normalizeAlertChannel(result);
+    if (!item) throw new Error("告警渠道返回数据无效");
+    return item;
+  },
+  deleteAlertChannel: (id: string) =>
+    invoke("service_alert_channels_delete", withAddr({ id })),
+  async testAlertChannel(id: string): Promise<AlertChannelTestResult> {
+    const result = await invoke<unknown>("service_alert_channels_test", withAddr({ id }));
+    return normalizeAlertChannelTestResult(result);
+  },
+  async listAlertHistory(limit = 50): Promise<AlertHistoryItem[]> {
+    const result = await invoke<unknown>("service_alert_history_list", withAddr({ limit }));
+    return normalizeAlertHistoryList(result);
+  },
+  async listAuditLogs(params?: {
+    action?: string;
+    objectType?: string;
+    objectId?: string;
+    timeFrom?: number | null;
+    timeTo?: number | null;
+    page?: number;
+    pageSize?: number;
+  }): Promise<AuditLogListResult> {
+    const result = await invoke<unknown>(
+      "service_audit_list",
+      withAddr({
+        action: params?.action || "",
+        objectType: params?.objectType || "",
+        objectId: params?.objectId || "",
+        timeFrom: params?.timeFrom ?? null,
+        timeTo: params?.timeTo ?? null,
+        page: params?.page ?? 1,
+        pageSize: params?.pageSize ?? 20,
+      })
+    );
+    return normalizeAuditLogListResult(result);
+  },
+  async exportAuditLogs(params?: {
+    format?: string;
+    action?: string;
+    objectType?: string;
+    objectId?: string;
+    timeFrom?: number | null;
+    timeTo?: number | null;
+  }): Promise<AuditLogExportResult> {
+    const result = await invoke<unknown>(
+      "service_audit_export",
+      withAddr({
+        format: params?.format || "csv",
+        action: params?.action || "",
+        objectType: params?.objectType || "",
+        objectId: params?.objectId || "",
+        timeFrom: params?.timeFrom ?? null,
+        timeTo: params?.timeTo ?? null,
+      })
+    );
+    return normalizeAuditLogExportResult(result);
+  },
+  async downloadAuditLogsViaHttp(params?: {
+    format?: string;
+    action?: string;
+    objectType?: string;
+    objectId?: string;
+    timeFrom?: number | null;
+    timeTo?: number | null;
+  }): Promise<void> {
+    if (typeof document === "undefined") {
+      throw new Error("当前环境不支持浏览器导出");
+    }
+
+    const searchParams = new URLSearchParams();
+    searchParams.set("format", params?.format || "csv");
+    searchParams.set("action", params?.action || "");
+    searchParams.set("objectType", params?.objectType || "");
+    searchParams.set("objectId", params?.objectId || "");
+    if (params?.timeFrom != null) {
+      searchParams.set("timeFrom", String(params.timeFrom));
+    }
+    if (params?.timeTo != null) {
+      searchParams.set("timeTo", String(params.timeTo));
+    }
+
+    const anchor = document.createElement("a");
+    anchor.href = `/api/export/auditlogs?${searchParams.toString()}`;
+    anchor.rel = "noopener";
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  },
 
   async listRequestLogs(params?: {
     query?: string;
@@ -306,6 +498,53 @@ export const serviceClient = {
   },
   setCostModelPricing: (items: ModelPricingItem[]) =>
     invoke("service_stats_cost_model_pricing_set", withAddr({ items })),
+  async getRequestTrends(params?: {
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+    granularity?: string;
+  }): Promise<RequestTrendResult> {
+    const result = await invoke<unknown>(
+      "service_stats_trends_requests",
+      withAddr({
+        preset: params?.preset || "30d",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
+        granularity: params?.granularity || "day",
+      })
+    );
+    return normalizeRequestTrends(result);
+  },
+  async getModelTrends(params?: {
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<ModelTrendResult> {
+    const result = await invoke<unknown>(
+      "service_stats_trends_models",
+      withAddr({
+        preset: params?.preset || "30d",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
+      })
+    );
+    return normalizeModelTrends(result);
+  },
+  async getHeatmapTrends(params?: {
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<HeatmapTrendResult> {
+    const result = await invoke<unknown>(
+      "service_stats_trends_heatmap",
+      withAddr({
+        preset: params?.preset || "30d",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
+      })
+    );
+    return normalizeHeatmapTrends(result);
+  },
 
   getListenConfig: () => invoke<unknown>("service_listen_config_get", withAddr()),
   setListenConfig: (mode: string) =>

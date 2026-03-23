@@ -47,6 +47,28 @@ pub async fn service_gateway_header_policy_get(
 }
 
 #[tauri::command]
+pub async fn service_gateway_retry_policy_get(
+    addr: Option<String>,
+) -> Result<serde_json::Value, String> {
+    rpc_call_in_background("gateway/retryPolicy/get", addr, None).await
+}
+
+#[tauri::command]
+pub async fn service_gateway_retry_policy_set(
+    addr: Option<String>,
+    max_retries: Option<u64>,
+    backoff_strategy: Option<String>,
+    retryable_status_codes: Option<Vec<u16>>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+      "maxRetries": max_retries,
+      "backoffStrategy": backoff_strategy,
+      "retryableStatusCodes": retryable_status_codes,
+    });
+    rpc_call_in_background("gateway/retryPolicy/set", addr, Some(params)).await
+}
+
+#[tauri::command]
 pub async fn service_gateway_header_policy_set(
     addr: Option<String>,
     cpa_no_cookie_header_mode_enabled: bool,

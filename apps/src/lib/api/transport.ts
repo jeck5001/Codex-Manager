@@ -177,6 +177,14 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
     rpcMethod: "apikey/modelFallback/set",
     mapParams: mapKeyIdToId,
   },
+  service_apikey_allowed_models_get: {
+    rpcMethod: "apikey/allowedModels/get",
+    mapParams: mapKeyIdToId,
+  },
+  service_apikey_allowed_models_set: {
+    rpcMethod: "apikey/allowedModels/set",
+    mapParams: mapKeyIdToId,
+  },
   service_apikey_response_cache_get: {
     rpcMethod: "apikey/responseCache/get",
     mapParams: mapKeyIdToId,
@@ -210,6 +218,18 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
     rpcMethod: "apikey/readSecret",
     mapParams: mapKeyIdToId,
   },
+  service_alert_rules_list: { rpcMethod: "alert/rules/list" },
+  service_alert_rules_upsert: { rpcMethod: "alert/rules/upsert" },
+  service_alert_rules_delete: { rpcMethod: "alert/rules/delete" },
+  service_alert_channels_list: { rpcMethod: "alert/channels/list" },
+  service_alert_channels_upsert: { rpcMethod: "alert/channels/upsert" },
+  service_alert_channels_delete: { rpcMethod: "alert/channels/delete" },
+  service_alert_channels_test: { rpcMethod: "alert/channels/test" },
+  service_alert_history_list: { rpcMethod: "alert/history/list" },
+  service_audit_list: { rpcMethod: "audit/list" },
+  service_audit_export: { rpcMethod: "audit/export" },
+  service_gateway_retry_policy_get: { rpcMethod: "gateway/retryPolicy/get" },
+  service_gateway_retry_policy_set: { rpcMethod: "gateway/retryPolicy/set" },
   service_gateway_transport_get: { rpcMethod: "gateway/transport/get" },
   service_gateway_transport_set: { rpcMethod: "gateway/transport/set" },
   service_gateway_upstream_proxy_get: { rpcMethod: "gateway/upstreamProxy/get" },
@@ -247,6 +267,9 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_stats_cost_model_pricing_set: {
     rpcMethod: "stats/cost/modelPricing/set",
   },
+  service_stats_trends_requests: { rpcMethod: "stats/trends/requests" },
+  service_stats_trends_models: { rpcMethod: "stats/trends/models" },
+  service_stats_trends_heatmap: { rpcMethod: "stats/trends/heatmap" },
   service_listen_config_get: { rpcMethod: "service/listenConfig/get" },
   service_listen_config_set: { rpcMethod: "service/listenConfig/set" },
   open_in_browser: {
@@ -347,7 +370,10 @@ async function postWebRpc<T>(
     "/api/rpc",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-CodexManager-Operator": "web-ui",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: Date.now(),

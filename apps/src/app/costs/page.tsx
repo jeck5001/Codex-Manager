@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
@@ -205,7 +205,7 @@ function ModelDistributionChart({ items }: { items: CostSummaryModelItem[] }) {
 export default function CostsPage() {
   const { serviceStatus } = useAppStore();
   const queryClient = useQueryClient();
-  const [rows, setRows] = useState<DraftPricingRow[]>([]);
+  const [draftRows, setDraftRows] = useState<DraftPricingRow[] | null>(null);
   const [preset, setPreset] = useState("month");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -245,14 +245,14 @@ export default function CostsPage() {
     staleTime: 30_000,
   });
 
-  useEffect(() => {
-    if (!pricingQuery.data) return;
-    setRows(
-      pricingQuery.data.length > 0
+  const serverRows = useMemo(
+    () =>
+      pricingQuery.data && pricingQuery.data.length > 0
         ? pricingQuery.data.map((item) => createDraftRow(item))
-        : [createDraftRow()]
-    );
-  }, [pricingQuery.data]);
+        : [createDraftRow()],
+    [pricingQuery.data]
+  );
+  const rows = draftRows ?? serverRows;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -280,8 +280,16 @@ export default function CostsPage() {
       }
 
       await serviceClient.setCostModelPricing(items);
+      return items;
     },
-    onSuccess: async () => {
+    onSuccess: async (items) => {
+      queryClient.setQueryData<ModelPricingItem[]>(["costs", "model-pricing"], () =>
+        items.map((item) => ({
+          ...item,
+          updatedAt: null,
+        }))
+      );
+      setDraftRows(null);
       await queryClient.invalidateQueries({ queryKey: ["costs", "model-pricing"] });
       toast.success("模型单价已保存");
     },
@@ -317,14 +325,18 @@ export default function CostsPage() {
     },
   });
 
+  const updateRows = (updater: (current: DraftPricingRow[]) => DraftPricingRow[]) => {
+    setDraftRows((current) => updater(current ?? serverRows));
+  };
+
   const updateRow = (id: string, patch: Partial<DraftPricingRow>) => {
-    setRows((current) =>
+    updateRows((current) =>
       current.map((row) => (row.id === id ? { ...row, ...patch } : row))
     );
   };
 
   const removeRow = (id: string) => {
-    setRows((current) => {
+    updateRows((current) => {
       if (current.length <= 1) {
         return [createDraftRow()];
       }
@@ -662,7 +674,7 @@ export default function CostsPage() {
             <Button
               variant="outline"
               className="rounded-xl"
-              onClick={() => setRows((current) => [...current, createDraftRow()])}
+              onClick={() => updateRows((current) => [...current, createDraftRow()])}
             >
               <Plus className="mr-2 h-4 w-4" />
               添加模型

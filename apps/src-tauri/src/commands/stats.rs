@@ -47,3 +47,50 @@ pub async fn service_stats_cost_model_pricing_set(
     });
     rpc_call_in_background("stats/cost/modelPricing/set", addr, Some(params)).await
 }
+
+#[tauri::command]
+pub async fn service_stats_trends_requests(
+    addr: Option<String>,
+    preset: Option<String>,
+    start_ts: Option<i64>,
+    end_ts: Option<i64>,
+    granularity: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "preset": preset,
+        "startTs": start_ts,
+        "endTs": end_ts,
+        "granularity": granularity,
+    });
+    rpc_call_in_background("stats/trends/requests", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_stats_trends_models(
+    addr: Option<String>,
+    preset: Option<String>,
+    start_ts: Option<i64>,
+    end_ts: Option<i64>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "preset": preset,
+        "startTs": start_ts,
+        "endTs": end_ts,
+    });
+    rpc_call_in_background("stats/trends/models", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_stats_trends_heatmap(
+    addr: Option<String>,
+    preset: Option<String>,
+    start_ts: Option<i64>,
+    end_ts: Option<i64>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "preset": preset,
+        "startTs": start_ts,
+        "endTs": end_ts,
+    });
+    rpc_call_in_background("stats/trends/heatmap", addr, Some(params)).await
+}

@@ -2,7 +2,6 @@
 **/node_modules
 **/.next
 apps/dist
-apps/out
 apps/.vite
 apps/.turbo
 *.tsbuildinfo
@@ -15,3 +14,11 @@ specs
 *.db
 *.sqlite
 *.log
+!target/
+!target/release/
+!target/release/codexmanager-service
+!target/release/codexmanager-web
+!.cargo/
+!.cargo/config.toml
+!vendor-rust/
+!vendor-rust/**

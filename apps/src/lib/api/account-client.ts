@@ -2,6 +2,7 @@ import { invoke, withAddr } from "./transport";
 import {
   normalizeAccountList,
   normalizeApiKeyCreateResult,
+  normalizeApiKeyAllowedModels,
   normalizeApiKeyModelFallback,
   normalizeApiKeyResponseCache,
   normalizeApiKeyList,
@@ -24,6 +25,7 @@ import {
   AccountTeamManagerUploadResult,
   AccountUsage,
   ApiKey,
+  ApiKeyAllowedModelsConfig,
   ApiKeyCreateResult,
   ApiKeyModelFallback,
   ApiKeyResponseCacheConfig,
@@ -1166,6 +1168,13 @@ export const accountClient = {
     );
     return normalizeApiKeyModelFallback(result);
   },
+  async getApiKeyAllowedModels(keyId: string): Promise<ApiKeyAllowedModelsConfig> {
+    const result = await invoke<unknown>(
+      "service_apikey_allowed_models_get",
+      withAddr({ keyId })
+    );
+    return normalizeApiKeyAllowedModels(result);
+  },
   async getApiKeyResponseCache(keyId: string): Promise<ApiKeyResponseCacheConfig> {
     const result = await invoke<unknown>(
       "service_apikey_response_cache_get",
@@ -1192,6 +1201,14 @@ export const accountClient = {
       withAddr({
         keyId,
         modelChain: params.modelChain ?? [],
+      })
+    ),
+  setApiKeyAllowedModels: (keyId: string, params: { allowedModels?: string[] | null }) =>
+    invoke(
+      "service_apikey_allowed_models_set",
+      withAddr({
+        keyId,
+        allowedModels: params.allowedModels ?? [],
       })
     ),
   setApiKeyResponseCache: (keyId: string, params: { enabled: boolean }) =>

@@ -1,19 +1,44 @@
 use super::{clear_candidate_cache_for_tests, collect_gateway_candidates, CANDIDATE_CACHE_TTL_ENV};
 use codexmanager_core::storage::{now_ts, Account, Storage, Token, UsageSnapshotRecord};
 use serde_json::json;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 static CANDIDATE_CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
+static SELECTION_TEST_DB_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+fn new_selection_test_db_path(prefix: &str) -> PathBuf {
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "{prefix}-{}-{}-{}.db",
+        std::process::id(),
+        now_ts(),
+        SELECTION_TEST_DB_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    path
+}
+
+fn remove_selection_test_db_files(path: &PathBuf) {
+    let _ = std::fs::remove_file(path);
+    let _ = std::fs::remove_file(format!("{}-shm", path.display()));
+    let _ = std::fs::remove_file(format!("{}-wal", path.display()));
+}
 
 #[test]
 fn candidate_snapshot_cache_reuses_recent_snapshot() {
+    let _env_guard = crate::lock_utils::process_env_test_guard();
     let _guard = CANDIDATE_CACHE_TEST_LOCK.lock().expect("lock");
     let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
+    let db_path = new_selection_test_db_path("selection-cache-test-1");
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "2000");
-    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-1");
+    std::env::set_var("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
     clear_candidate_cache_for_tests();
+    let file_storage = Storage::open(&db_path).expect("open file db");
+    file_storage.init().expect("init file db");
 
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
@@ -75,18 +100,25 @@ fn candidate_snapshot_cache_reuses_recent_snapshot() {
     } else {
         std::env::remove_var("CODEXMANAGER_DB_PATH");
     }
+    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
+    remove_selection_test_db_files(&db_path);
 }
 
 #[test]
 fn candidates_follow_account_sort_order() {
+    let _env_guard = crate::lock_utils::process_env_test_guard();
     let _guard = CANDIDATE_CACHE_TEST_LOCK.lock().expect("lock");
     let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
+    let db_path = new_selection_test_db_path("selection-cache-test-2");
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "0");
-    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-2");
+    std::env::set_var("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
     clear_candidate_cache_for_tests();
+    let file_storage = Storage::open(&db_path).expect("open file db");
+    file_storage.init().expect("init file db");
 
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
@@ -155,11 +187,14 @@ fn candidates_follow_account_sort_order() {
     } else {
         std::env::remove_var("CODEXMANAGER_DB_PATH");
     }
+    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
+    remove_selection_test_db_files(&db_path);
 }
 
 #[test]
 fn usage_snapshot_write_invalidates_cached_candidates() {
+    let _env_guard = crate::lock_utils::process_env_test_guard();
     let _guard = CANDIDATE_CACHE_TEST_LOCK.lock().expect("lock");
     let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
@@ -168,8 +203,9 @@ fn usage_snapshot_write_invalidates_cached_candidates() {
     let previous_threshold =
         std::env::var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT)
             .ok();
+    let db_path = new_selection_test_db_path("selection-cache-test-3");
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "2000");
-    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-3");
+    std::env::set_var("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
     std::env::set_var(
         crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED,
         "1",
@@ -178,8 +214,11 @@ fn usage_snapshot_write_invalidates_cached_candidates() {
         crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
         "20",
     );
+    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
     clear_candidate_cache_for_tests();
+    let file_storage = Storage::open(&db_path).expect("open file db");
+    file_storage.init().expect("init file db");
 
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
@@ -271,11 +310,14 @@ fn usage_snapshot_write_invalidates_cached_candidates() {
             crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
         );
     }
+    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
+    remove_selection_test_db_files(&db_path);
 }
 
 #[test]
 fn quota_protection_setting_change_invalidates_cached_candidates() {
+    let _env_guard = crate::lock_utils::process_env_test_guard();
     let _guard = CANDIDATE_CACHE_TEST_LOCK.lock().expect("lock");
     let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
@@ -284,8 +326,9 @@ fn quota_protection_setting_change_invalidates_cached_candidates() {
     let previous_threshold =
         std::env::var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT)
             .ok();
+    let db_path = new_selection_test_db_path("selection-cache-test-4");
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "2000");
-    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-4");
+    std::env::set_var("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
     std::env::set_var(
         crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED,
         "0",
@@ -294,8 +337,11 @@ fn quota_protection_setting_change_invalidates_cached_candidates() {
         crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
         "20",
     );
+    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
     clear_candidate_cache_for_tests();
+    let file_storage = Storage::open(&db_path).expect("open file db");
+    file_storage.init().expect("init file db");
 
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
@@ -375,5 +421,7 @@ fn quota_protection_setting_change_invalidates_cached_candidates() {
             crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
         );
     }
+    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
+    remove_selection_test_db_files(&db_path);
 }
