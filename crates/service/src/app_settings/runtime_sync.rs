@@ -10,6 +10,9 @@ use super::{
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
     APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
@@ -85,6 +88,26 @@ pub fn sync_runtime_settings_from_storage() {
         } else {
             log::warn!("parse persisted response cache max entries failed: {raw}");
         }
+    }
+    let retry_policy_max_retries = settings
+        .get(APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY)
+        .and_then(|raw| raw.trim().parse::<usize>().ok())
+        .unwrap_or_else(gateway::retry_policy_max_retries);
+    let retry_policy_backoff_strategy = settings
+        .get(APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| gateway::current_retry_policy().backoff_strategy);
+    let retry_policy_retryable_status_codes = settings
+        .get(APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY)
+        .and_then(|raw| serde_json::from_str::<Vec<u16>>(raw).ok())
+        .unwrap_or_else(|| gateway::current_retry_policy().retryable_status_codes);
+    if let Err(err) = gateway::set_retry_policy(
+        retry_policy_max_retries,
+        &retry_policy_backoff_strategy,
+        retry_policy_retryable_status_codes,
+    ) {
+        log::warn!("sync persisted retry policy failed: {err}");
     }
     if let Some(originator) = settings.get(APP_SETTING_GATEWAY_ORIGINATOR_KEY) {
         if let Some(originator) = normalize_optional_text(Some(originator)) {

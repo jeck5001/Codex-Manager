@@ -9,6 +9,9 @@ use super::{
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
     APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
@@ -182,6 +185,33 @@ pub fn set_gateway_response_cache_max_entries(max_entries: usize) -> Result<usiz
 
 pub fn current_gateway_response_cache_max_entries() -> usize {
     gateway::current_response_cache_max_entries()
+}
+
+pub fn set_gateway_retry_policy(
+    max_retries: usize,
+    backoff_strategy: &str,
+    retryable_status_codes: Vec<u16>,
+) -> Result<gateway::RetryPolicySnapshot, String> {
+    let applied = gateway::set_retry_policy(max_retries, backoff_strategy, retryable_status_codes)?;
+    save_persisted_app_setting(
+        APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
+        Some(&applied.max_retries.to_string()),
+    )?;
+    save_persisted_app_setting(
+        APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
+        Some(applied.backoff_strategy.as_str()),
+    )?;
+    let retryable_status_codes_json = serde_json::to_string(&applied.retryable_status_codes)
+        .map_err(|err| format!("serialize retry policy status codes failed: {err}"))?;
+    save_persisted_app_setting(
+        APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
+        Some(&retryable_status_codes_json),
+    )?;
+    Ok(applied)
+}
+
+pub fn current_gateway_retry_policy() -> gateway::RetryPolicySnapshot {
+    gateway::current_retry_policy()
 }
 
 pub fn set_gateway_originator(originator: &str) -> Result<String, String> {

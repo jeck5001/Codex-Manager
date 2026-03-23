@@ -5,6 +5,8 @@ use std::sync::Once;
 mod account;
 mod account_identity;
 mod account_status_reason;
+mod audit;
+mod alert;
 mod apikey;
 pub(crate) mod app_settings;
 mod auth;
@@ -38,6 +40,12 @@ pub(crate) use account::register as account_register;
 pub(crate) use account::status as account_status;
 pub(crate) use account::update as account_update;
 pub(crate) use account::update_many as account_update_many;
+pub(crate) use alert::channels as alert_channels;
+pub(crate) use alert::engine as alert_engine;
+pub(crate) use alert::history as alert_history;
+pub(crate) use alert::rules as alert_rules;
+pub(crate) use alert::sender as alert_sender;
+pub(crate) use apikey::allowed_models as apikey_allowed_models;
 pub(crate) use apikey::create as apikey_create;
 pub(crate) use apikey::delete as apikey_delete;
 pub(crate) use apikey::disable as apikey_disable;
@@ -56,6 +64,9 @@ pub(crate) use auth::account as auth_account;
 pub(crate) use auth::callback as auth_callback;
 pub(crate) use auth::login as auth_login;
 pub(crate) use auth::tokens as auth_tokens;
+pub(crate) use audit::export as audit_export;
+pub(crate) use audit::list as audit_list;
+pub(crate) use audit::record as audit_record;
 pub(crate) use dashboard::health as dashboard_health;
 pub(crate) use dashboard::trend as dashboard_trend;
 pub(crate) use errors as error_codes;
@@ -70,6 +81,7 @@ pub(crate) use runtime::reasoning_effort;
 pub(crate) use stats::cost_export as stats_cost_export;
 pub(crate) use stats::cost_summary as stats_cost_summary;
 pub(crate) use stats::model_pricing as stats_model_pricing;
+pub(crate) use stats::trends as stats_trends;
 pub(crate) use storage::helpers as storage_helpers;
 pub(crate) use usage::account_meta as usage_account_meta;
 pub(crate) use usage::aggregate as usage_aggregate;
@@ -89,6 +101,7 @@ pub use app_settings::{
     current_gateway_free_account_max_model, current_gateway_originator,
     current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
+    current_gateway_retry_policy,
     current_gateway_response_cache_enabled, current_gateway_response_cache_max_entries,
     current_gateway_response_cache_ttl_secs, current_gateway_sse_keepalive_interval_ms,
     current_gateway_upstream_stream_timeout_ms, current_lightweight_mode_on_close_to_tray_setting,
@@ -101,7 +114,7 @@ pub use app_settings::{
     set_gateway_quota_protection_threshold_percent, set_gateway_request_compression_enabled,
     set_gateway_residency_requirement, set_gateway_response_cache_enabled,
     set_gateway_response_cache_max_entries, set_gateway_response_cache_ttl_secs,
-    set_gateway_route_strategy, set_gateway_sse_keepalive_interval_ms,
+    set_gateway_retry_policy, set_gateway_route_strategy, set_gateway_sse_keepalive_interval_ms,
     set_gateway_upstream_proxy_url, set_gateway_upstream_stream_timeout_ms,
     set_lightweight_mode_on_close_to_tray_setting, set_saved_service_addr, set_service_bind_mode,
     set_ui_appearance_preset, set_ui_low_transparency_enabled, set_ui_theme,
@@ -113,6 +126,9 @@ pub use app_settings::{
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
+    APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
     APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
@@ -121,14 +137,19 @@ pub use app_settings::{
     APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_SERVICE_ADDR_KEY,
     APP_SETTING_TEAM_MANAGER_API_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_URL_KEY,
     APP_SETTING_TEAM_MANAGER_ENABLED_KEY, APP_SETTING_UI_APPEARANCE_PRESET_KEY,
+    APP_SETTING_WEB_ACCESS_2FA_RECOVERY_CODES_KEY, APP_SETTING_WEB_ACCESS_2FA_SECRET_ENCRYPTED_KEY,
     APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY,
     APP_SETTING_UPDATE_AUTO_CHECK_KEY, APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY, DEFAULT_ADDR,
     DEFAULT_BIND_ADDR, SERVICE_BIND_MODE_ALL_INTERFACES, SERVICE_BIND_MODE_LOOPBACK,
     SERVICE_BIND_MODE_SETTING_KEY, WEB_ACCESS_SESSION_COOKIE_NAME,
 };
 pub use auth::{
-    build_web_access_session_token, current_web_access_password_hash, set_web_access_password,
-    verify_web_access_password, web_access_password_configured, web_auth_status_value,
+    build_web_access_session_token, clear_web_access_two_factor,
+    current_web_access_password_hash, set_web_access_password, verify_web_access_password,
+    verify_web_access_second_factor,
+    web_access_password_configured, web_auth_status_value, web_auth_two_factor_disable,
+    web_auth_two_factor_enabled, web_auth_two_factor_setup, web_auth_two_factor_verify,
+    web_auth_two_factor_verify_current,
 };
 pub use auth::{rpc_auth_token, rpc_auth_token_matches};
 pub use lifecycle::bootstrap::{initialize_storage_if_needed, portable};

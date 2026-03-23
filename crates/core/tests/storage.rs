@@ -1,6 +1,6 @@
 use codexmanager_core::storage::{
-    now_ts, Account, ApiKey, ModelPricing, RequestLog, RequestTokenStat, Storage, Token,
-    UsageSnapshotRecord,
+    now_ts, Account, AlertChannel, AlertRule, ApiKey, ModelPricing, RequestLog, RequestTokenStat,
+    Storage, Token, UsageSnapshotRecord,
 };
 use std::ffi::OsString;
 
@@ -1288,6 +1288,125 @@ fn storage_can_roundtrip_api_key_model_fallback_config() {
 }
 
 #[test]
+fn storage_can_roundtrip_api_key_allowed_models_config() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    storage
+        .insert_api_key(&ApiKey {
+            id: "key-allowed-1".to_string(),
+            name: Some("allowed".to_string()),
+            model_slug: None,
+            reasoning_effort: None,
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: "hash-allowed-1".to_string(),
+            status: "active".to_string(),
+            created_at: now_ts(),
+            last_used_at: None,
+            expires_at: None,
+        })
+        .expect("insert key");
+
+    storage
+        .update_api_key_allowed_models(
+            "key-allowed-1",
+            Some("[\"gpt-5\",\"o3\",\"gpt-5\"]"),
+        )
+        .expect("save allowed models");
+    let config = storage
+        .find_api_key_allowed_models_by_id("key-allowed-1")
+        .expect("load allowed models");
+    assert_eq!(
+        config.as_deref(),
+        Some("[\"gpt-5\",\"o3\",\"gpt-5\"]")
+    );
+
+    storage
+        .update_api_key_allowed_models("key-allowed-1", None)
+        .expect("clear allowed models");
+    let cleared = storage
+        .find_api_key_allowed_models_by_id("key-allowed-1")
+        .expect("reload allowed models");
+    assert!(cleared.is_none(), "allowed models should be cleared");
+}
+
+#[test]
+fn storage_can_roundtrip_alert_rules_channels_and_history() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    let created_at = now_ts();
+    storage
+        .upsert_alert_rule(&AlertRule {
+            id: "ar_usage_1".to_string(),
+            name: "额度超限".to_string(),
+            rule_type: "usage_threshold".to_string(),
+            config_json: r#"{"thresholdPercent":90,"channelIds":["ac_webhook_1"]}"#.to_string(),
+            enabled: true,
+            created_at,
+            updated_at: created_at,
+        })
+        .expect("upsert alert rule");
+    storage
+        .upsert_alert_channel(&AlertChannel {
+            id: "ac_webhook_1".to_string(),
+            name: "Webhook 通知".to_string(),
+            channel_type: "webhook".to_string(),
+            config_json: r#"{"url":"http://127.0.0.1:18081/hook"}"#.to_string(),
+            enabled: true,
+            created_at,
+            updated_at: created_at,
+        })
+        .expect("upsert alert channel");
+
+    let rule = storage
+        .find_alert_rule_by_id("ar_usage_1")
+        .expect("find alert rule")
+        .expect("rule exists");
+    assert_eq!(rule.rule_type, "usage_threshold");
+
+    let channel = storage
+        .find_alert_channel_by_id("ac_webhook_1")
+        .expect("find alert channel")
+        .expect("channel exists");
+    assert_eq!(channel.channel_type, "webhook");
+
+    let history_id = storage
+        .insert_alert_history(
+            Some("ar_usage_1"),
+            Some("ac_webhook_1"),
+            "test_success",
+            "test delivered",
+        )
+        .expect("insert alert history");
+    assert!(history_id > 0);
+
+    let history = storage.list_alert_history(10).expect("list alert history");
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].rule_name.as_deref(), Some("额度超限"));
+    assert_eq!(history[0].channel_name.as_deref(), Some("Webhook 通知"));
+
+    storage
+        .delete_alert_rule("ar_usage_1")
+        .expect("delete alert rule");
+    storage
+        .delete_alert_channel("ac_webhook_1")
+        .expect("delete alert channel");
+    assert!(storage
+        .find_alert_rule_by_id("ar_usage_1")
+        .expect("reload rule")
+        .is_none());
+    assert!(storage
+        .find_alert_channel_by_id("ac_webhook_1")
+        .expect("reload channel")
+        .is_none());
+}
+
+#[test]
 fn storage_can_roundtrip_model_pricing_config() {
     let storage = Storage::open_in_memory().expect("open in memory");
     storage.init().expect("init schema");
@@ -1383,4 +1502,77 @@ fn storage_can_summarize_cost_usage_by_key_model_and_day() {
         .expect("summarize by day");
     assert!(!by_day.is_empty());
     assert_eq!(by_day.iter().map(|item| item.request_count).sum::<i64>(), 2);
+}
+
+#[test]
+fn storage_can_summarize_request_trends_models_and_heatmap() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    for (id, model, status_code, created_at) in [
+        (1, "o3", 200, 1_700_000_000),
+        (2, "o3", 500, 1_700_000_600),
+        (3, "gpt-4o", 200, 1_700_086_400),
+    ] {
+        storage
+            .insert_request_log(&RequestLog {
+                trace_id: Some(format!("trend-{id}")),
+                key_id: Some("gk-trend".to_string()),
+                account_id: Some("acc-trend".to_string()),
+                initial_account_id: Some("acc-trend".to_string()),
+                attempted_account_ids_json: Some(r#"["acc-trend"]"#.to_string()),
+                route_strategy: Some("balanced".to_string()),
+                requested_model: Some(model.to_string()),
+                model_fallback_path_json: Some(format!(r#"["{model}"]"#)),
+                request_path: "/v1/responses".to_string(),
+                original_path: Some("/v1/responses".to_string()),
+                adapted_path: Some("/v1/responses".to_string()),
+                method: "POST".to_string(),
+                model: Some(model.to_string()),
+                reasoning_effort: Some("medium".to_string()),
+                response_adapter: Some("Passthrough".to_string()),
+                upstream_url: Some("https://api.openai.com/v1/responses".to_string()),
+                status_code: Some(status_code),
+                duration_ms: Some(120),
+                input_tokens: None,
+                cached_input_tokens: None,
+                output_tokens: None,
+                total_tokens: None,
+                reasoning_output_tokens: None,
+                estimated_cost_usd: None,
+                error: if status_code >= 400 {
+                    Some("upstream error".to_string())
+                } else {
+                    None
+                },
+                created_at,
+            })
+            .expect("insert request log");
+    }
+
+    let request_trends = storage
+        .summarize_request_trends_between(1_699_999_000, 1_700_172_800, "day")
+        .expect("request trends");
+    assert!(!request_trends.is_empty());
+    assert_eq!(
+        request_trends.iter().map(|item| item.request_count).sum::<i64>(),
+        3
+    );
+    assert_eq!(
+        request_trends.iter().map(|item| item.success_count).sum::<i64>(),
+        2
+    );
+
+    let model_trends = storage
+        .summarize_request_model_trends_between(1_699_999_000, 1_700_172_800)
+        .expect("model trends");
+    assert_eq!(model_trends.len(), 2);
+    assert_eq!(model_trends[0].model, "o3");
+    assert_eq!(model_trends[0].request_count, 2);
+
+    let heatmap = storage
+        .summarize_request_heatmap_between(1_699_999_000, 1_700_172_800)
+        .expect("heatmap");
+    assert!(!heatmap.is_empty());
+    assert_eq!(heatmap.iter().map(|item| item.request_count).sum::<i64>(), 3);
 }

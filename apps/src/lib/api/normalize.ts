@@ -4,6 +4,13 @@ import {
   Account,
   AccountListResult,
   AccountUsage,
+  AuditLogExportResult,
+  AuditLogItem,
+  AuditLogListResult,
+  AlertChannel,
+  AlertChannelTestResult,
+  AlertHistoryItem,
+  AlertRule,
   CostExportResult,
   CostSummaryDayItem,
   CostSummaryKeyItem,
@@ -11,6 +18,7 @@ import {
   CostSummaryResult,
   CostUsageSummary,
   ApiKey,
+  ApiKeyAllowedModelsConfig,
   ApiKeyCreateResult,
   ApiKeyModelFallback,
   ApiKeyResponseCacheConfig,
@@ -29,11 +37,17 @@ import {
   GovernanceSummaryItem,
   FreeProxySyncResult,
   GatewayResponseCacheStats,
+  HeatmapCellItem,
+  HeatmapTrendResult,
   HealthcheckConfig,
   HealthcheckRunResult,
   LoginStartResult,
+  ModelTrendItem,
+  ModelTrendResult,
   ModelPricingItem,
   ModelOption,
+  RequestTrendItem,
+  RequestTrendResult,
   OperationAuditItem,
   RequestLog,
   RequestLogExportResult,
@@ -43,6 +57,8 @@ import {
   StartupSnapshot,
   UsageAggregateSummary,
   UsagePredictionSummary,
+  WebAuthTwoFactorSetupResult,
+  WebAuthTwoFactorStatusResult,
 } from "@/types";
 import {
   calcAvailability,
@@ -59,7 +75,7 @@ const DEFAULT_BACKGROUND_TASKS: BackgroundTaskSettings = {
   tokenRefreshPollingEnabled: true,
   tokenRefreshPollIntervalSecs: 60,
   sessionProbePollingEnabled: false,
-  sessionProbeIntervalSecs: 300,
+  sessionProbeIntervalSecs: 1800,
   sessionProbeSampleSize: 2,
   usageRefreshWorkers: 4,
   httpWorkerFactor: 4,
@@ -270,6 +286,53 @@ export function normalizeOperationAudits(payload: unknown): OperationAuditItem[]
     .filter((item): item is OperationAuditItem => Boolean(item));
 }
 
+export function normalizeAuditLogItem(item: unknown): AuditLogItem | null {
+  const source = asObject(item);
+  const id = asInteger(source.id, -1, -1);
+  const action = asString(source.action);
+  const objectType = asString(source.objectType ?? source.object_type);
+  const createdAt = asInteger(source.createdAt ?? source.created_at, 0, 0);
+  if (id < 0 || !action || !objectType || createdAt <= 0) {
+    return null;
+  }
+  const changesValue = source.changes;
+  return {
+    id,
+    action,
+    objectType,
+    objectId: asString(source.objectId ?? source.object_id) || null,
+    operator: asString(source.operator) || "unknown",
+    changes:
+      changesValue && typeof changesValue === "object" && !Array.isArray(changesValue)
+        ? (changesValue as Record<string, unknown>)
+        : null,
+    createdAt,
+  };
+}
+
+export function normalizeAuditLogListResult(payload: unknown): AuditLogListResult {
+  const source = asObject(payload);
+  const items = asArray(source.items ?? payload)
+    .map((item) => normalizeAuditLogItem(item))
+    .filter((item): item is AuditLogItem => Boolean(item));
+  return {
+    items,
+    total: asInteger(source.total, items.length, 0),
+    page: asInteger(source.page, 1, 1),
+    pageSize: asInteger(source.pageSize, items.length || 20, 1),
+  };
+}
+
+export function normalizeAuditLogExportResult(payload: unknown): AuditLogExportResult {
+  const source = asObject(payload);
+  return {
+    format: asString(source.format) || "csv",
+    fileName: asString(source.fileName ?? source.file_name) || "codexmanager-auditlogs.csv",
+    content: asString(source.content),
+    recordCount: asInteger(source.recordCount ?? source.record_count, 0, 0),
+  };
+}
+
 export function normalizeTodaySummary(payload: unknown): RequestLogTodaySummary {
   const source = asObject(payload);
   const inputTokens = asInteger(source.inputTokens, 0, 0);
@@ -398,7 +461,7 @@ export function normalizeHealthcheckConfig(payload: unknown): HealthcheckConfig 
   const source = asObject(payload);
   return {
     enabled: asBoolean(source.enabled, false),
-    intervalSecs: asInteger(source.intervalSecs ?? source.interval_secs, 300, 1),
+    intervalSecs: asInteger(source.intervalSecs ?? source.interval_secs, 1800, 1),
     sampleSize: asInteger(source.sampleSize ?? source.sample_size, 2, 1),
     recentRun: normalizeHealthcheckRun(source.recentRun ?? source.recent_run),
   };
@@ -425,6 +488,84 @@ export function normalizeDashboardTrend(payload: unknown): DashboardTrend {
     generatedAt: toNullableNumber(source.generatedAt ?? source.generated_at),
     bucketMinutes: asInteger(source.bucketMinutes ?? source.bucket_minutes, 1, 1),
     points: points.filter((item): item is DashboardTrendPoint => Boolean(item)),
+  };
+}
+
+export function normalizeAlertRule(item: unknown): AlertRule | null {
+  const source = asObject(item);
+  const id = asString(source.id);
+  if (!id) return null;
+  return {
+    id,
+    name: asString(source.name),
+    ruleType: asString(source.ruleType ?? source.rule_type),
+    config: asObject(source.config ?? source.config_json),
+    enabled: asBoolean(source.enabled, true),
+    createdAt: toNullableNumber(source.createdAt ?? source.created_at),
+    updatedAt: toNullableNumber(source.updatedAt ?? source.updated_at),
+  };
+}
+
+export function normalizeAlertRuleList(payload: unknown): AlertRule[] {
+  const source = asObject(payload);
+  return asArray(source.items ?? payload)
+    .map((item) => normalizeAlertRule(item))
+    .filter((item): item is AlertRule => Boolean(item));
+}
+
+export function normalizeAlertChannel(item: unknown): AlertChannel | null {
+  const source = asObject(item);
+  const id = asString(source.id);
+  if (!id) return null;
+  return {
+    id,
+    name: asString(source.name),
+    channelType: asString(source.channelType ?? source.channel_type),
+    config: asObject(source.config ?? source.config_json),
+    enabled: asBoolean(source.enabled, true),
+    createdAt: toNullableNumber(source.createdAt ?? source.created_at),
+    updatedAt: toNullableNumber(source.updatedAt ?? source.updated_at),
+  };
+}
+
+export function normalizeAlertChannelList(payload: unknown): AlertChannel[] {
+  const source = asObject(payload);
+  return asArray(source.items ?? payload)
+    .map((item) => normalizeAlertChannel(item))
+    .filter((item): item is AlertChannel => Boolean(item));
+}
+
+export function normalizeAlertHistoryItem(item: unknown): AlertHistoryItem | null {
+  const source = asObject(item);
+  const id = asInteger(source.id, -1, -1);
+  if (id < 0) return null;
+  return {
+    id,
+    ruleId: asString(source.ruleId ?? source.rule_id) || null,
+    ruleName: asString(source.ruleName ?? source.rule_name) || null,
+    channelId: asString(source.channelId ?? source.channel_id) || null,
+    channelName: asString(source.channelName ?? source.channel_name) || null,
+    status: asString(source.status),
+    message: asString(source.message),
+    createdAt: toNullableNumber(source.createdAt ?? source.created_at),
+  };
+}
+
+export function normalizeAlertHistoryList(payload: unknown): AlertHistoryItem[] {
+  const source = asObject(payload);
+  return asArray(source.items ?? payload)
+    .map((item) => normalizeAlertHistoryItem(item))
+    .filter((item): item is AlertHistoryItem => Boolean(item));
+}
+
+export function normalizeAlertChannelTestResult(
+  payload: unknown
+): AlertChannelTestResult {
+  const source = asObject(payload);
+  return {
+    channelId: asString(source.channelId ?? source.channel_id),
+    status: asString(source.status),
+    sentAt: toNullableNumber(source.sentAt ?? source.sent_at),
   };
 }
 
@@ -671,6 +812,18 @@ export function normalizeApiKeyModelFallback(payload: unknown): ApiKeyModelFallb
   };
 }
 
+export function normalizeApiKeyAllowedModels(
+  payload: unknown
+): ApiKeyAllowedModelsConfig {
+  const source = asObject(payload);
+  return {
+    keyId: asString(source.keyId ?? source.key_id),
+    allowedModels: asArray(source.allowedModels ?? source.allowed_models)
+      .map((value) => asString(value))
+      .filter((value) => value.length > 0),
+  };
+}
+
 export function normalizeApiKeyResponseCache(payload: unknown): ApiKeyResponseCacheConfig {
   const source = asObject(payload);
   return {
@@ -861,6 +1014,81 @@ export function normalizeCostExportResult(payload: unknown): CostExportResult {
     fileName:
       asString(source.fileName ?? source.file_name) || "codexmanager-costs.csv",
     content: asString(source.content),
+  };
+}
+
+export function normalizeRequestTrends(payload: unknown): RequestTrendResult {
+  const source = asObject(payload);
+  const items = asArray(source.items)
+    .map((item) => {
+      const entry = asObject(item);
+      const bucket = asString(entry.bucket);
+      if (!bucket) return null;
+      return {
+        bucket,
+        requestCount: asInteger(entry.requestCount ?? entry.request_count, 0, 0),
+        successCount: asInteger(entry.successCount ?? entry.success_count, 0, 0),
+        successRate:
+          toNullableNumber(entry.successRate ?? entry.success_rate) ?? 0,
+      };
+    })
+    .filter((item): item is RequestTrendItem => Boolean(item));
+
+  return {
+    preset: asString(source.preset) || "30d",
+    granularity: asString(source.granularity) || "day",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    items,
+  };
+}
+
+export function normalizeModelTrends(payload: unknown): ModelTrendResult {
+  const source = asObject(payload);
+  const items = asArray(source.items)
+    .map((item) => {
+      const entry = asObject(item);
+      const model = asString(entry.model);
+      if (!model) return null;
+      return {
+        model,
+        requestCount: asInteger(entry.requestCount ?? entry.request_count, 0, 0),
+        successCount: asInteger(entry.successCount ?? entry.success_count, 0, 0),
+        successRate:
+          toNullableNumber(entry.successRate ?? entry.success_rate) ?? 0,
+      };
+    })
+    .filter((item): item is ModelTrendItem => Boolean(item));
+
+  return {
+    preset: asString(source.preset) || "30d",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    items,
+  };
+}
+
+export function normalizeHeatmapTrends(payload: unknown): HeatmapTrendResult {
+  const source = asObject(payload);
+  const items = asArray(source.items)
+    .map((item) => {
+      const entry = asObject(item);
+      return {
+        weekday: asInteger(entry.weekday, 0, 0),
+        hour: asInteger(entry.hour, 0, 0),
+        requestCount: asInteger(entry.requestCount ?? entry.request_count, 0, 0),
+        successCount: asInteger(entry.successCount ?? entry.success_count, 0, 0),
+        successRate:
+          toNullableNumber(entry.successRate ?? entry.success_rate) ?? 0,
+      };
+    })
+    .filter((item): item is HeatmapCellItem => item.hour >= 0 && item.hour <= 23);
+
+  return {
+    preset: asString(source.preset) || "30d",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    items,
   };
 }
 
@@ -1072,6 +1300,15 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
       source.webAccessPasswordConfigured,
       false
     ),
+    webAccessTwoFactorEnabled: asBoolean(
+      source.webAccessTwoFactorEnabled,
+      false
+    ),
+    webAccessRecoveryCodesRemaining: asInteger(
+      source.webAccessRecoveryCodesRemaining,
+      0,
+      0
+    ),
     serviceAddr: asString(source.serviceAddr) || "localhost:48760",
     serviceListenMode: asString(source.serviceListenMode) || "loopback",
     serviceListenModeOptions: asArray(source.serviceListenModeOptions).map((item) =>
@@ -1092,6 +1329,14 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
       0
     ),
     requestCompressionEnabled: asBoolean(source.requestCompressionEnabled, true),
+    retryPolicyMaxRetries: asInteger(source.retryPolicyMaxRetries, 3, 0),
+    retryPolicyBackoffStrategy:
+      asString(source.retryPolicyBackoffStrategy) || "exponential",
+    retryPolicyRetryableStatusCodes: asArray(
+      source.retryPolicyRetryableStatusCodes
+    )
+      .map((item) => asInteger(item, -1, -1))
+      .filter((item) => item >= 100 && item <= 599),
     responseCacheEnabled: asBoolean(source.responseCacheEnabled, false),
     responseCacheTtlSecs: asInteger(source.responseCacheTtlSecs, 3600, 1),
     responseCacheMaxEntries: asInteger(source.responseCacheMaxEntries, 256, 1),
@@ -1121,6 +1366,44 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     ),
     theme: asString(source.theme) || "tech",
     appearancePreset: asString(source.appearancePreset) || "classic",
+  };
+}
+
+export function normalizeWebAuthTwoFactorSetupResult(
+  payload: unknown
+): WebAuthTwoFactorSetupResult {
+  const source = asObject(payload);
+  return {
+    enabled: asBoolean(source.enabled, false),
+    secret: asString(source.secret),
+    otpAuthUrl: asString(source.otpAuthUrl ?? source.otp_auth_url),
+    qrCodeDataUrl: asString(source.qrCodeDataUrl ?? source.qr_code_data_url),
+    recoveryCodes: asArray(source.recoveryCodes ?? source.recovery_codes).map((item) =>
+      asString(item)
+    ),
+    setupToken: asString(source.setupToken ?? source.setup_token),
+  };
+}
+
+export function normalizeWebAuthTwoFactorStatusResult(
+  payload: unknown
+): WebAuthTwoFactorStatusResult {
+  const source = asObject(payload);
+  return {
+    enabled: asBoolean(source.enabled, false),
+    recoveryCodesRemaining: asInteger(source.recoveryCodesRemaining, 0, 0),
+    method: asString(source.method),
+  };
+}
+
+export function normalizeGatewayRetryPolicy(payload: unknown) {
+  const source = asObject(payload);
+  return {
+    maxRetries: asInteger(source.maxRetries, 3, 0),
+    backoffStrategy: asString(source.backoffStrategy) || "exponential",
+    retryableStatusCodes: asArray(source.retryableStatusCodes)
+      .map((item) => asInteger(item, -1, -1))
+      .filter((item) => item >= 100 && item <= 599),
   };
 }
 

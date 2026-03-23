@@ -50,3 +50,25 @@ fn openai_key_keeps_empty_overrides() {
     assert_eq!(model, None);
     assert_eq!(reasoning, None);
 }
+
+#[test]
+fn validate_api_key_allowed_model_accepts_allowed_model() {
+    let result = validate_api_key_allowed_model(
+        &["o3".to_string(), "o4-mini".to_string()],
+        Some("o4-mini"),
+    );
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn validate_api_key_allowed_model_rejects_disallowed_model() {
+    let error = validate_api_key_allowed_model(
+        &["o3".to_string(), "o4-mini".to_string()],
+        Some("gpt-4o"),
+    )
+    .expect_err("disallowed model should be rejected");
+
+    assert_eq!(error.status_code, 403);
+    assert!(error.message.contains("gpt-4o"));
+}

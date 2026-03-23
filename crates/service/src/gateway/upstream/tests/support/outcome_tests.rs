@@ -68,6 +68,28 @@ fn status_429_on_last_candidate_keeps_upstream_response() {
 }
 
 #[test]
+fn status_429_respects_retry_policy_status_list() {
+    let _retry_guard = crate::gateway::retry_policy_test_guard();
+    crate::gateway::reset_retry_policy_for_tests();
+    crate::gateway::set_retry_policy(3, "immediate", vec![502]).expect("set retry policy");
+
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let decision = decide_upstream_outcome(
+        &storage,
+        "acc-429-disabled",
+        reqwest::StatusCode::TOO_MANY_REQUESTS,
+        None,
+        "https://api.openai.com/v1/responses",
+        true,
+        |_, _, _| {},
+    );
+
+    assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
+    crate::gateway::reset_retry_policy_for_tests();
+}
+
+#[test]
 fn status_500_with_more_candidates_triggers_failover() {
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");

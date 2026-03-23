@@ -226,10 +226,22 @@ export default function RegisterPage() {
   const runningCount = countByStatuses(byStatus, ["pending", "running"]);
   const completedCount = byStatus.completed || 0;
   const failedCount = countByStatuses(byStatus, ["failed", "cancelled"]);
-  const latestTasks = latestTasksQuery.data?.tasks || [];
-  const activeTasks = latestTasks.filter((task) => isTaskActive(task.status));
-  const recentAccounts = recentAccountsQuery.data?.items || [];
-  const recentAccountPreview = recentAccounts.slice(0, 4);
+  const latestTasks = useMemo(
+    () => latestTasksQuery.data?.tasks || [],
+    [latestTasksQuery.data?.tasks],
+  );
+  const activeTasks = useMemo(
+    () => latestTasks.filter((task) => isTaskActive(task.status)),
+    [latestTasks],
+  );
+  const recentAccounts = useMemo(
+    () => recentAccountsQuery.data?.items || [],
+    [recentAccountsQuery.data?.items],
+  );
+  const recentAccountPreview = useMemo(
+    () => recentAccounts.slice(0, 4),
+    [recentAccounts],
+  );
   const filteredTasks = useMemo(
     () =>
       failureCodeFilter

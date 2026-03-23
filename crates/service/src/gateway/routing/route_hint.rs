@@ -41,6 +41,23 @@ static ROUTE_STATE_TTL_SECS: AtomicU64 = AtomicU64::new(DEFAULT_ROUTE_STATE_TTL_
 static ROUTE_STATE_CAPACITY: AtomicUsize = AtomicUsize::new(DEFAULT_ROUTE_STATE_CAPACITY);
 static ROUTE_STATE: OnceLock<Mutex<RouteRoundRobinState>> = OnceLock::new();
 static ROUTE_CONFIG_LOADED: OnceLock<()> = OnceLock::new();
+static ORDERED_ROUTE_STRATEGY: OrderedRouteStrategy = OrderedRouteStrategy;
+static BALANCED_ROUTE_STRATEGY: BalancedRouteStrategy = BalancedRouteStrategy;
+static WEIGHTED_ROUTE_STRATEGY: WeightedRouteStrategy = WeightedRouteStrategy;
+static LEAST_LATENCY_ROUTE_STRATEGY: LeastLatencyRouteStrategy = LeastLatencyRouteStrategy;
+static COST_FIRST_ROUTE_STRATEGY: CostFirstRouteStrategy = CostFirstRouteStrategy;
+
+trait RouteStrategy: Sync {
+    fn mode(&self) -> u8;
+    fn label(&self) -> &'static str;
+    fn apply(&self, candidates: &mut [(Account, Token)], key_id: &str, model: Option<&str>);
+}
+
+struct OrderedRouteStrategy;
+struct BalancedRouteStrategy;
+struct WeightedRouteStrategy;
+struct LeastLatencyRouteStrategy;
+struct CostFirstRouteStrategy;
 
 #[derive(Clone, Copy)]
 struct RouteStateEntry<T: Copy> {
@@ -62,6 +79,77 @@ struct RouteRoundRobinState {
     maintenance_tick: u64,
 }
 
+impl RouteStrategy for OrderedRouteStrategy {
+    fn mode(&self) -> u8 {
+        ROUTE_MODE_ORDERED
+    }
+
+    fn label(&self) -> &'static str {
+        ROUTE_STRATEGY_ORDERED
+    }
+
+    fn apply(&self, _candidates: &mut [(Account, Token)], _key_id: &str, _model: Option<&str>) {}
+}
+
+impl RouteStrategy for BalancedRouteStrategy {
+    fn mode(&self) -> u8 {
+        ROUTE_MODE_BALANCED_ROUND_ROBIN
+    }
+
+    fn label(&self) -> &'static str {
+        ROUTE_STRATEGY_BALANCED
+    }
+
+    fn apply(&self, candidates: &mut [(Account, Token)], key_id: &str, model: Option<&str>) {
+        let start = next_start_index(key_id, model, candidates.len());
+        if start > 0 {
+            candidates.rotate_left(start);
+        }
+    }
+}
+
+impl RouteStrategy for WeightedRouteStrategy {
+    fn mode(&self) -> u8 {
+        ROUTE_MODE_WEIGHTED
+    }
+
+    fn label(&self) -> &'static str {
+        ROUTE_STRATEGY_WEIGHTED
+    }
+
+    fn apply(&self, candidates: &mut [(Account, Token)], key_id: &str, model: Option<&str>) {
+        apply_weighted_rotation(candidates, key_id, model);
+    }
+}
+
+impl RouteStrategy for LeastLatencyRouteStrategy {
+    fn mode(&self) -> u8 {
+        ROUTE_MODE_LEAST_LATENCY
+    }
+
+    fn label(&self) -> &'static str {
+        ROUTE_STRATEGY_LEAST_LATENCY
+    }
+
+    fn apply(&self, candidates: &mut [(Account, Token)], _key_id: &str, _model: Option<&str>) {
+        apply_least_latency_order(candidates);
+    }
+}
+
+impl RouteStrategy for CostFirstRouteStrategy {
+    fn mode(&self) -> u8 {
+        ROUTE_MODE_COST_FIRST
+    }
+
+    fn label(&self) -> &'static str {
+        ROUTE_STRATEGY_COST_FIRST
+    }
+
+    fn apply(&self, candidates: &mut [(Account, Token)], _key_id: &str, _model: Option<&str>) {
+        apply_cost_first_order(candidates);
+    }
+}
+
 pub(crate) fn apply_route_strategy(
     candidates: &mut [(Account, Token)],
     key_id: &str,
@@ -76,21 +164,9 @@ pub(crate) fn apply_route_strategy(
         return;
     }
 
-    let mode = route_mode();
-    match mode {
-        ROUTE_MODE_BALANCED_ROUND_ROBIN => {
-            let start = next_start_index(key_id, model, candidates.len());
-            if start > 0 {
-                candidates.rotate_left(start);
-            }
-        }
-        ROUTE_MODE_WEIGHTED => apply_weighted_rotation(candidates, key_id, model),
-        ROUTE_MODE_LEAST_LATENCY => apply_least_latency_order(candidates),
-        ROUTE_MODE_COST_FIRST => apply_cost_first_order(candidates),
-        _ => {}
-    }
-
-    apply_health_p2c(candidates, key_id, model, mode);
+    let strategy = current_route_strategy_impl();
+    strategy.apply(candidates, key_id, model);
+    apply_health_p2c(candidates, key_id, model, strategy.mode());
 }
 
 fn rotate_to_manual_preferred_account(candidates: &mut [(Account, Token)]) -> bool {
@@ -117,14 +193,18 @@ fn route_mode() -> u8 {
     ROUTE_MODE.load(Ordering::Relaxed)
 }
 
-fn route_mode_label(mode: u8) -> &'static str {
+fn route_strategy_impl(mode: u8) -> &'static dyn RouteStrategy {
     match mode {
-        ROUTE_MODE_BALANCED_ROUND_ROBIN => ROUTE_STRATEGY_BALANCED,
-        ROUTE_MODE_WEIGHTED => ROUTE_STRATEGY_WEIGHTED,
-        ROUTE_MODE_LEAST_LATENCY => ROUTE_STRATEGY_LEAST_LATENCY,
-        ROUTE_MODE_COST_FIRST => ROUTE_STRATEGY_COST_FIRST,
-        _ => ROUTE_STRATEGY_ORDERED,
+        ROUTE_MODE_BALANCED_ROUND_ROBIN => &BALANCED_ROUTE_STRATEGY,
+        ROUTE_MODE_WEIGHTED => &WEIGHTED_ROUTE_STRATEGY,
+        ROUTE_MODE_LEAST_LATENCY => &LEAST_LATENCY_ROUTE_STRATEGY,
+        ROUTE_MODE_COST_FIRST => &COST_FIRST_ROUTE_STRATEGY,
+        _ => &ORDERED_ROUTE_STRATEGY,
     }
+}
+
+fn current_route_strategy_impl() -> &'static dyn RouteStrategy {
+    route_strategy_impl(route_mode())
 }
 
 fn parse_route_mode(raw: &str) -> Option<u8> {
@@ -146,7 +226,7 @@ fn parse_route_mode(raw: &str) -> Option<u8> {
 
 pub(crate) fn current_route_strategy() -> &'static str {
     ensure_route_config_loaded();
-    route_mode_label(route_mode())
+    current_route_strategy_impl().label()
 }
 
 pub(crate) fn set_route_strategy(strategy: &str) -> Result<&'static str, String> {
@@ -163,7 +243,7 @@ pub(crate) fn set_route_strategy(strategy: &str) -> Result<&'static str, String>
         state.p2c_nonce_by_key_model.clear();
         state.maintenance_tick = 0;
     }
-    Ok(route_mode_label(mode))
+    Ok(route_strategy_impl(mode).label())
 }
 
 fn apply_weighted_rotation(candidates: &mut [(Account, Token)], key_id: &str, model: Option<&str>) {

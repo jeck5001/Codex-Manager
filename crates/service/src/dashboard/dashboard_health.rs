@@ -19,11 +19,13 @@ pub(crate) fn read_dashboard_health() -> Result<DashboardHealthResult, String> {
     let accounts = account_list::read_accounts(AccountListParams::default(), false)?.items;
     let usage_items = usage_list::read_usage_snapshots()?;
     let request_logs = requestlog_list::read_request_logs(None, Some(DASHBOARD_REQUEST_LOG_LIMIT))?;
+    let recent_latency_samples =
+        crate::gateway::recent_gateway_latency_samples(generated_at - HEALTH_WINDOW_SECS);
 
     Ok(DashboardHealthResult {
         generated_at,
         account_status_buckets: build_account_status_buckets(&accounts, &usage_items, generated_at),
-        gateway_metrics: build_gateway_metrics(&request_logs, generated_at),
+        gateway_metrics: build_gateway_metrics(&request_logs, &recent_latency_samples, generated_at),
         recent_healthcheck: crate::usage_refresh::last_session_probe_result(),
     })
 }
@@ -131,6 +133,7 @@ fn usage_exhausted(usage: Option<&UsageSnapshotResult>) -> bool {
 
 fn build_gateway_metrics(
     request_logs: &[RequestLogSummary],
+    latency_samples: &[i64],
     now_ts: i64,
 ) -> DashboardGatewayMetricsResult {
     let window_start = now_ts - HEALTH_WINDOW_SECS;
@@ -142,11 +145,19 @@ fn build_gateway_metrics(
     let total_requests = recent_logs.len() as i64;
     let success_requests = recent_logs.iter().filter(|item| is_success(item)).count() as i64;
     let error_requests = recent_logs.iter().filter(|item| is_error(item)).count() as i64;
-    let mut durations = recent_logs
-        .iter()
-        .filter_map(|item| item.duration_ms)
-        .filter(|value| *value >= 0)
-        .collect::<Vec<_>>();
+    let mut durations = if latency_samples.is_empty() {
+        recent_logs
+            .iter()
+            .filter_map(|item| item.duration_ms)
+            .filter(|value| *value >= 0)
+            .collect::<Vec<_>>()
+    } else {
+        latency_samples
+            .iter()
+            .copied()
+            .filter(|value| *value >= 0)
+            .collect::<Vec<_>>()
+    };
     durations.sort_unstable();
 
     DashboardGatewayMetricsResult {
@@ -302,13 +313,22 @@ mod tests {
             },
         ];
 
-        let metrics = build_gateway_metrics(&logs, 300);
+        let metrics = build_gateway_metrics(&logs, &[], 300);
         assert_eq!(metrics.total_requests, 2);
         assert_eq!(metrics.success_requests, 1);
         assert_eq!(metrics.error_requests, 1);
         assert_eq!(metrics.success_rate, 50.0);
         assert_eq!(metrics.p50_latency_ms, Some(400));
         assert_eq!(metrics.p95_latency_ms, Some(400));
+    }
+
+    #[test]
+    fn gateway_metrics_prefers_ring_buffer_latency_samples() {
+        let metrics = build_gateway_metrics(&[], &[90, 120, 300], 300);
+
+        assert_eq!(metrics.total_requests, 0);
+        assert_eq!(metrics.p50_latency_ms, Some(120));
+        assert_eq!(metrics.p95_latency_ms, Some(300));
     }
 
     #[test]

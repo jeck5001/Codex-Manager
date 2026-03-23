@@ -63,6 +63,28 @@ pub async fn service_apikey_model_fallback_set(
 }
 
 #[tauri::command]
+pub async fn service_apikey_allowed_models_get(
+    addr: Option<String>,
+    key_id: String,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({ "id": key_id });
+    rpc_call_in_background("apikey/allowedModels/get", addr, Some(params)).await
+}
+
+#[tauri::command]
+pub async fn service_apikey_allowed_models_set(
+    addr: Option<String>,
+    key_id: String,
+    allowed_models: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+      "id": key_id,
+      "allowedModels": allowed_models.unwrap_or_default(),
+    });
+    rpc_call_in_background("apikey/allowedModels/set", addr, Some(params)).await
+}
+
+#[tauri::command]
 pub async fn service_apikey_response_cache_get(
     addr: Option<String>,
     key_id: String,

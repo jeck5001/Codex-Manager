@@ -229,6 +229,10 @@ async fn async_main() {
     let mut protected_app = Router::new()
         .route("/api/rpc", post(service_gateway::rpc_proxy))
         .route(
+            "/api/export/auditlogs",
+            get(service_gateway::auditlog_export_proxy),
+        )
+        .route(
             "/api/export/requestlogs",
             get(service_gateway::requestlog_export_proxy),
         )

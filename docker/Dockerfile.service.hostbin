@@ -1,0 +1,3 @@
+FROM docker-codexmanager-service:latest
+
+COPY target/release/codexmanager-service /usr/local/bin/codexmanager-service

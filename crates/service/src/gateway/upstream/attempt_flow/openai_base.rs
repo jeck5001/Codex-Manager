@@ -74,7 +74,7 @@ where
             );
             // 中文注释：OpenAI 上游不可用时如果还有候选账号就继续 failover，
             // 不这样做会把单账号瞬时抖动放大成整次请求失败。
-            if has_more_candidates {
+            if has_more_candidates && super::super::super::retry_policy_allows_status(502) {
                 OpenAiAttemptResult::Failover
             } else {
                 OpenAiAttemptResult::Terminal {
@@ -91,7 +91,7 @@ where
             log_gateway_result(Some(upstream_url.as_str()), 502, Some(err.as_str()));
             // 中文注释：异常分支同样优先切换候选账号，
             // 只有最后一个候选才直接向客户端返回错误，避免过早失败。
-            if has_more_candidates {
+            if has_more_candidates && super::super::super::retry_policy_allows_status(502) {
                 OpenAiAttemptResult::Failover
             } else {
                 OpenAiAttemptResult::Terminal {

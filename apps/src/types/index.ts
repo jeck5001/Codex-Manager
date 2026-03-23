@@ -168,6 +168,30 @@ export interface OperationAuditItem {
   createdAt: number | null;
 }
 
+export interface AuditLogItem {
+  id: number;
+  action: string;
+  objectType: string;
+  objectId: string | null;
+  operator: string;
+  changes: Record<string, unknown> | null;
+  createdAt: number;
+}
+
+export interface AuditLogListResult {
+  items: AuditLogItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AuditLogExportResult {
+  format: string;
+  fileName: string;
+  content: string;
+  recordCount: number;
+}
+
 export interface UsagePredictionSummary {
   quotaProtectionEnabled: boolean;
   quotaProtectionThresholdPercent: number;
@@ -217,9 +241,59 @@ export interface ApiKeyModelFallback {
   modelChain: string[];
 }
 
+export interface ApiKeyAllowedModelsConfig {
+  keyId: string;
+  allowedModels: string[];
+}
+
 export interface ApiKeyResponseCacheConfig {
   keyId: string;
   enabled: boolean;
+}
+
+export type AlertRuleType =
+  | "token_refresh_fail"
+  | "usage_threshold"
+  | "error_rate"
+  | "all_unavailable";
+
+export type AlertChannelType = "webhook" | "bark" | "telegram" | "wecom";
+
+export interface AlertRule {
+  id: string;
+  name: string;
+  ruleType: AlertRuleType | string;
+  config: Record<string, unknown>;
+  enabled: boolean;
+  createdAt: number | null;
+  updatedAt: number | null;
+}
+
+export interface AlertChannel {
+  id: string;
+  name: string;
+  channelType: AlertChannelType | string;
+  config: Record<string, unknown>;
+  enabled: boolean;
+  createdAt: number | null;
+  updatedAt: number | null;
+}
+
+export interface AlertHistoryItem {
+  id: number;
+  ruleId: string | null;
+  ruleName: string | null;
+  channelId: string | null;
+  channelName: string | null;
+  status: string;
+  message: string;
+  createdAt: number | null;
+}
+
+export interface AlertChannelTestResult {
+  channelId: string;
+  status: string;
+  sentAt: number | null;
 }
 
 export interface ModelPricingItem {
@@ -263,6 +337,50 @@ export interface CostSummaryResult {
 export interface CostExportResult {
   fileName: string;
   content: string;
+}
+
+export interface RequestTrendItem {
+  bucket: string;
+  requestCount: number;
+  successCount: number;
+  successRate: number;
+}
+
+export interface RequestTrendResult {
+  preset: string;
+  granularity: "day" | "week" | "month" | string;
+  rangeStart: number;
+  rangeEnd: number;
+  items: RequestTrendItem[];
+}
+
+export interface ModelTrendItem {
+  model: string;
+  requestCount: number;
+  successCount: number;
+  successRate: number;
+}
+
+export interface ModelTrendResult {
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  items: ModelTrendItem[];
+}
+
+export interface HeatmapCellItem {
+  weekday: number;
+  hour: number;
+  requestCount: number;
+  successCount: number;
+  successRate: number;
+}
+
+export interface HeatmapTrendResult {
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  items: HeatmapCellItem[];
 }
 
 export interface ModelOption {
@@ -687,6 +805,8 @@ export interface AppSettings {
   lowTransparency: boolean;
   lightweightModeOnCloseToTray: boolean;
   webAccessPasswordConfigured: boolean;
+  webAccessTwoFactorEnabled: boolean;
+  webAccessRecoveryCodesRemaining: number;
   serviceAddr: string;
   serviceListenMode: string;
   serviceListenModeOptions: string[];
@@ -697,6 +817,9 @@ export interface AppSettings {
   quotaProtectionEnabled: boolean;
   quotaProtectionThresholdPercent: number;
   requestCompressionEnabled: boolean;
+  retryPolicyMaxRetries: number;
+  retryPolicyBackoffStrategy: string;
+  retryPolicyRetryableStatusCodes: number[];
   responseCacheEnabled: boolean;
   responseCacheTtlSecs: number;
   responseCacheMaxEntries: number;
@@ -719,6 +842,27 @@ export interface AppSettings {
   theme: string;
   appearancePreset: string;
   [key: string]: unknown;
+}
+
+export interface GatewayRetryPolicy {
+  maxRetries: number;
+  backoffStrategy: string;
+  retryableStatusCodes: number[];
+}
+
+export interface WebAuthTwoFactorSetupResult {
+  enabled: boolean;
+  secret: string;
+  otpAuthUrl: string;
+  qrCodeDataUrl: string;
+  recoveryCodes: string[];
+  setupToken: string;
+}
+
+export interface WebAuthTwoFactorStatusResult {
+  enabled: boolean;
+  recoveryCodesRemaining: number;
+  method: string;
 }
 
 export interface GatewayResponseCacheStats {

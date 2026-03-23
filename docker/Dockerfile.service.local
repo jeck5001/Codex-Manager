@@ -1,0 +1,14 @@
+FROM rust:1-bookworm AS builder
+
+WORKDIR /src
+
+COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
+COPY vendor-rust ./vendor-rust
+COPY crates ./crates
+
+RUN cargo build --locked --offline -p codexmanager-service --release
+
+FROM docker-codexmanager-service:latest
+
+COPY --from=builder /src/target/release/codexmanager-service /usr/local/bin/codexmanager-service

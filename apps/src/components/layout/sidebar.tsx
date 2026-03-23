@@ -4,6 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { 
   LayoutDashboard, 
   BarChart3,
+  Activity,
+  ShieldCheck,
   Mail,
   Users, 
   Sparkles,
@@ -36,7 +38,9 @@ const NAV_ITEMS = [
   { name: "邮箱服务", href: "/email-services/", icon: Mail },
   { name: "平台密钥", href: "/apikeys/", icon: Key },
   { name: "请求日志", href: "/logs/", icon: FileText },
+  { name: "审计日志", href: "/audit/", icon: ShieldCheck },
   { name: "费用统计", href: "/costs/", icon: BarChart3 },
+  { name: "用量分析", href: "/analytics/", icon: Activity },
   { name: "设置", href: "/settings/", icon: Settings },
 ];
 const DESKTOP_NAVIGATION_FALLBACK_MS = 500;

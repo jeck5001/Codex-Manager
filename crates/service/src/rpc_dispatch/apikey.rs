@@ -3,9 +3,9 @@ use codexmanager_core::rpc::types::{
 };
 
 use crate::{
-    apikey_create, apikey_delete, apikey_disable, apikey_enable, apikey_list,
-    apikey_model_fallback, apikey_models, apikey_rate_limit, apikey_read_secret, apikey_renew,
-    apikey_response_cache, apikey_update_model, apikey_usage_stats,
+    apikey_allowed_models, apikey_create, apikey_delete, apikey_disable, apikey_enable,
+    apikey_list, apikey_model_fallback, apikey_models, apikey_rate_limit, apikey_read_secret,
+    apikey_renew, apikey_response_cache, apikey_update_model, apikey_usage_stats,
 };
 
 pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
@@ -66,6 +66,23 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             super::ok_or_error(apikey_model_fallback::update_api_key_model_fallback(
                 key_id,
                 model_chain,
+            ))
+        }
+        "apikey/allowedModels/get" => {
+            let key_id = super::str_param(req, "id").unwrap_or("");
+            super::value_or_error(apikey_allowed_models::read_api_key_allowed_models(key_id))
+        }
+        "apikey/allowedModels/set" => {
+            let key_id = super::str_param(req, "id").unwrap_or("");
+            let allowed_models = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("allowedModels"))
+                .and_then(|value| serde_json::from_value::<Vec<String>>(value.clone()).ok())
+                .unwrap_or_default();
+            super::ok_or_error(apikey_allowed_models::update_api_key_allowed_models(
+                key_id,
+                allowed_models,
             ))
         }
         "apikey/responseCache/get" => {

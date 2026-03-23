@@ -15,6 +15,8 @@ import {
   normalizeAppearancePreset,
 } from "@/lib/appearance";
 import {
+  AlertChannel,
+  AlertRule,
   AppSettings,
   BackgroundTaskSettings,
   FreeProxySyncResult,
@@ -22,6 +24,7 @@ import {
   HealthcheckConfig,
   HealthcheckRunResult,
 } from "@/types";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -44,20 +47,34 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import {
   AppWindow,
+  BellRing,
   Check,
   Cpu,
   Database,
   Download,
   ExternalLink,
   Globe,
+  History,
   Info,
   Palette,
+  Play,
+  PlusCircle,
   RefreshCw,
   RotateCcw,
   Save,
   Search,
   Settings as SettingsIcon,
+  Trash2,
   Variable,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -99,6 +116,12 @@ const ROUTE_STRATEGY_LABELS: Record<string, string> = {
   "cost-first": "成本优先 (Cost First)",
 };
 
+const RETRY_BACKOFF_LABELS: Record<string, string> = {
+  immediate: "立即重试",
+  fixed: "固定间隔",
+  exponential: "指数退避",
+};
+
 const RESIDENCY_REQUIREMENT_LABELS: Record<string, string> = {
   "": "不限制",
   us: "仅美国 (us)",
@@ -131,6 +154,20 @@ const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS = [
   "gpt-5.4",
 ] as const;
 
+const ALERT_RULE_TYPE_LABELS: Record<string, string> = {
+  token_refresh_fail: "Token 刷新连续失败",
+  usage_threshold: "额度使用率阈值",
+  error_rate: "网关错误率阈值",
+  all_unavailable: "所有账号不可用",
+};
+
+const ALERT_CHANNEL_TYPE_LABELS: Record<string, string> = {
+  webhook: "Webhook",
+  bark: "Bark",
+  telegram: "Telegram Bot",
+  wecom: "企业微信机器人",
+};
+
 function formatFreeAccountModelLabel(value: string | null | undefined): string {
   const normalized = String(value || "").trim();
   if (!normalized || normalized === "auto") {
@@ -139,9 +176,26 @@ function formatFreeAccountModelLabel(value: string | null | undefined): string {
   return normalized;
 }
 
-const SETTINGS_TABS = ["general", "appearance", "gateway", "tasks", "env"] as const;
+const SETTINGS_TABS = ["general", "appearance", "gateway", "alerts", "tasks", "env"] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 const SETTINGS_ACTIVE_TAB_KEY = "codexmanager.settings.active-tab";
+const NEW_ALERT_DRAFT_ID = "__new__";
+
+type AlertRuleDraft = {
+  id: string | null;
+  name: string;
+  type: string;
+  enabled: boolean;
+  configText: string;
+};
+
+type AlertChannelDraft = {
+  id: string | null;
+  name: string;
+  type: string;
+  enabled: boolean;
+  configText: string;
+};
 
 function readInitialSettingsTab(): SettingsTab {
   if (typeof window === "undefined") return "general";
@@ -162,6 +216,113 @@ function parseIntegerInput(value: string, minimum = 0): number | null {
   const rounded = Math.trunc(numeric);
   if (rounded < minimum) return null;
   return rounded;
+}
+
+function parseStatusCodeListInput(value: string): number[] | null {
+  const normalized = value.trim();
+  if (!normalized) return [];
+  const parts = normalized
+    .split(/[\s,，]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!parts.length) return [];
+  const values = parts.map((item) => Number(item));
+  if (
+    values.some(
+      (item) => !Number.isInteger(item) || item < 100 || item > 599
+    )
+  ) {
+    return null;
+  }
+  return Array.from(new Set(values)).sort((a, b) => a - b);
+}
+
+function formatStatusCodeListInput(value: number[] | null | undefined): string {
+  return Array.isArray(value) ? value.join(", ") : "";
+}
+
+function formatJsonPretty(value: Record<string, unknown>): string {
+  return JSON.stringify(value, null, 2);
+}
+
+function buildAlertRuleConfigPreset(type: string): Record<string, unknown> {
+  switch (type) {
+    case "token_refresh_fail":
+      return { threshold: 3, channelIds: [], cooldownSecs: 1800 };
+    case "error_rate":
+      return {
+        thresholdPercent: 20,
+        windowMinutes: 5,
+        minRequests: 20,
+        channelIds: [],
+        cooldownSecs: 1800,
+      };
+    case "all_unavailable":
+      return { channelIds: [], cooldownSecs: 600 };
+    case "usage_threshold":
+    default:
+      return { thresholdPercent: 90, channelIds: [], cooldownSecs: 1800 };
+  }
+}
+
+function buildAlertChannelConfigPreset(type: string): Record<string, unknown> {
+  switch (type) {
+    case "bark":
+      return { url: "https://api.day.app/your-device-key" };
+    case "telegram":
+      return { botToken: "", chatId: "" };
+    case "wecom":
+      return { webhookUrl: "" };
+    case "webhook":
+    default:
+      return { url: "http://127.0.0.1:8080/alerts" };
+  }
+}
+
+function createAlertRuleDraft(rule?: AlertRule | null): AlertRuleDraft {
+  if (!rule) {
+    return {
+      id: null,
+      name: "",
+      type: "usage_threshold",
+      enabled: true,
+      configText: formatJsonPretty(buildAlertRuleConfigPreset("usage_threshold")),
+    };
+  }
+  return {
+    id: rule.id,
+    name: rule.name,
+    type: rule.ruleType,
+    enabled: rule.enabled,
+    configText: formatJsonPretty(rule.config),
+  };
+}
+
+function createAlertChannelDraft(channel?: AlertChannel | null): AlertChannelDraft {
+  if (!channel) {
+    return {
+      id: null,
+      name: "",
+      type: "webhook",
+      enabled: true,
+      configText: formatJsonPretty(buildAlertChannelConfigPreset("webhook")),
+    };
+  }
+  return {
+    id: channel.id,
+    name: channel.name,
+    type: channel.channelType,
+    enabled: channel.enabled,
+    configText: formatJsonPretty(channel.config),
+  };
+}
+
+function statusBadgeVariant(
+  status: string
+): "default" | "secondary" | "destructive" | "outline" {
+  if (status.includes("success") || status.includes("sent")) return "default";
+  if (status.includes("failure") || status.includes("failed")) return "destructive";
+  return "secondary";
 }
 
 function formatStorageBytes(value: number): string {
@@ -286,6 +447,8 @@ export default function SettingsPage() {
   const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
   const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
   const [quotaProtectionThresholdDraft, setQuotaProtectionThresholdDraft] = useState<string | null>(null);
+  const [retryPolicyMaxRetriesDraft, setRetryPolicyMaxRetriesDraft] = useState<string | null>(null);
+  const [retryableStatusCodesDraft, setRetryableStatusCodesDraft] = useState<string | null>(null);
   const [responseCacheTtlDraft, setResponseCacheTtlDraft] = useState<string | null>(null);
   const [responseCacheMaxEntriesDraft, setResponseCacheMaxEntriesDraft] = useState<string | null>(null);
   const [freeProxyProtocol, setFreeProxyProtocol] = useState("socks5");
@@ -305,6 +468,14 @@ export default function SettingsPage() {
   const [backgroundTaskDraft, setBackgroundTaskDraft] = useState<Record<string, string>>({});
   const [teamManagerApiUrlDraft, setTeamManagerApiUrlDraft] = useState<string | null>(null);
   const [teamManagerApiKeyDraft, setTeamManagerApiKeyDraft] = useState("");
+  const [selectedAlertRuleId, setSelectedAlertRuleId] = useState<string | null>(null);
+  const [selectedAlertChannelId, setSelectedAlertChannelId] = useState<string | null>(null);
+  const [alertRuleDraft, setAlertRuleDraft] = useState<AlertRuleDraft>(() =>
+    createAlertRuleDraft()
+  );
+  const [alertChannelDraft, setAlertChannelDraft] = useState<AlertChannelDraft>(() =>
+    createAlertChannelDraft()
+  );
 
   const { data: snapshot, isLoading } = useQuery({
     queryKey: ["app-settings-snapshot"],
@@ -318,6 +489,20 @@ export default function SettingsPage() {
   const { data: healthcheckConfig } = useQuery({
     queryKey: ["healthcheck-config"],
     queryFn: () => serviceClient.getHealthcheckConfig(),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
+  });
+  const { data: alertRules = [] } = useQuery({
+    queryKey: ["alert-rules"],
+    queryFn: () => serviceClient.listAlertRules(),
+  });
+  const { data: alertChannels = [] } = useQuery({
+    queryKey: ["alert-channels"],
+    queryFn: () => serviceClient.listAlertChannels(),
+  });
+  const { data: alertHistory = [] } = useQuery({
+    queryKey: ["alert-history"],
+    queryFn: () => serviceClient.listAlertHistory(50),
     refetchInterval: 30_000,
     refetchIntervalInBackground: true,
   });
@@ -420,7 +605,7 @@ export default function SettingsPage() {
           enabled:
             current?.enabled ?? snapshot?.backgroundTasks.sessionProbePollingEnabled ?? false,
           intervalSecs:
-            current?.intervalSecs ?? snapshot?.backgroundTasks.sessionProbeIntervalSecs ?? 300,
+            current?.intervalSecs ?? snapshot?.backgroundTasks.sessionProbeIntervalSecs ?? 1800,
           sampleSize:
             current?.sampleSize ?? snapshot?.backgroundTasks.sessionProbeSampleSize ?? 2,
           recentRun: result,
@@ -504,6 +689,88 @@ export default function SettingsPage() {
     },
   });
 
+  const saveAlertRule = useMutation({
+    mutationFn: (payload: AlertRuleDraft & { config: Record<string, unknown> }) =>
+      serviceClient.upsertAlertRule({
+        id: payload.id,
+        name: payload.name,
+        type: payload.type,
+        config: payload.config,
+        enabled: payload.enabled,
+      }),
+    onSuccess: async (item) => {
+      await queryClient.invalidateQueries({ queryKey: ["alert-rules"] });
+      setSelectedAlertRuleId(item.id);
+      setAlertRuleDraft(createAlertRuleDraft(item));
+      toast.success("告警规则已保存");
+    },
+    onError: (error: unknown) => {
+      toast.error(`保存告警规则失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const deleteAlertRule = useMutation({
+    mutationFn: (id: string) => serviceClient.deleteAlertRule(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["alert-rules"] });
+      setSelectedAlertRuleId(null);
+      setAlertRuleDraft(createAlertRuleDraft());
+      toast.success("告警规则已删除");
+    },
+    onError: (error: unknown) => {
+      toast.error(`删除告警规则失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const saveAlertChannel = useMutation({
+    mutationFn: (payload: AlertChannelDraft & { config: Record<string, unknown> }) =>
+      serviceClient.upsertAlertChannel({
+        id: payload.id,
+        name: payload.name,
+        type: payload.type,
+        config: payload.config,
+        enabled: payload.enabled,
+      }),
+    onSuccess: async (item) => {
+      await queryClient.invalidateQueries({ queryKey: ["alert-channels"] });
+      setSelectedAlertChannelId(item.id);
+      setAlertChannelDraft(createAlertChannelDraft(item));
+      toast.success("告警渠道已保存");
+    },
+    onError: (error: unknown) => {
+      toast.error(`保存告警渠道失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const deleteAlertChannel = useMutation({
+    mutationFn: (id: string) => serviceClient.deleteAlertChannel(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["alert-channels"] });
+      await queryClient.invalidateQueries({ queryKey: ["alert-history"] });
+      setSelectedAlertChannelId(null);
+      setAlertChannelDraft(createAlertChannelDraft());
+      toast.success("告警渠道已删除");
+    },
+    onError: (error: unknown) => {
+      toast.error(`删除告警渠道失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const testAlertChannel = useMutation({
+    mutationFn: (id: string) => serviceClient.testAlertChannel(id),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["alert-history"] });
+      toast.success(
+        result.sentAt
+          ? `测试通知已发送（${formatTsFromSeconds(result.sentAt, "刚刚")}）`
+          : "测试通知已发送"
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`测试告警渠道失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   useEffect(() => {
     if (!snapshot?.theme) return;
     if (lastSyncedSnapshotThemeRef.current === snapshot.theme) return;
@@ -571,6 +838,11 @@ export default function SettingsPage() {
   const quotaProtectionThresholdInput =
     quotaProtectionThresholdDraft ??
     stringifyNumber(snapshot?.quotaProtectionThresholdPercent);
+  const retryPolicyMaxRetriesInput =
+    retryPolicyMaxRetriesDraft ?? stringifyNumber(snapshot?.retryPolicyMaxRetries);
+  const retryableStatusCodesInput =
+    retryableStatusCodesDraft ??
+    formatStatusCodeListInput(snapshot?.retryPolicyRetryableStatusCodes);
   const responseCacheTtlInput =
     responseCacheTtlDraft ?? stringifyNumber(snapshot?.responseCacheTtlSecs);
   const responseCacheMaxEntriesInput =
@@ -783,6 +1055,45 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
+  const saveRetryPolicyMaxRetries = () => {
+    if (!snapshot) return;
+    const nextValue = parseIntegerInput(retryPolicyMaxRetriesInput, 0);
+    if (nextValue == null || nextValue > 10) {
+      toast.error("最大重试次数请输入 0 到 10 之间的整数");
+      setRetryPolicyMaxRetriesDraft(null);
+      return;
+    }
+    if (nextValue === snapshot.retryPolicyMaxRetries) {
+      setRetryPolicyMaxRetriesDraft(null);
+      return;
+    }
+    void updateSettings
+      .mutateAsync({ retryPolicyMaxRetries: nextValue })
+      .then(() => setRetryPolicyMaxRetriesDraft(null))
+      .catch(() => undefined);
+  };
+
+  const saveRetryableStatusCodes = () => {
+    if (!snapshot) return;
+    const nextValue = parseStatusCodeListInput(retryableStatusCodesInput);
+    if (nextValue == null) {
+      toast.error("请输入合法的 HTTP 状态码列表，例如 429, 502, 503");
+      setRetryableStatusCodesDraft(null);
+      return;
+    }
+    if (
+      JSON.stringify(nextValue) ===
+      JSON.stringify(snapshot.retryPolicyRetryableStatusCodes)
+    ) {
+      setRetryableStatusCodesDraft(null);
+      return;
+    }
+    void updateSettings
+      .mutateAsync({ retryPolicyRetryableStatusCodes: nextValue })
+      .then(() => setRetryableStatusCodesDraft(null))
+      .catch(() => undefined);
+  };
+
   const saveResponseCacheTtl = () => {
     if (!snapshot) return;
     const nextValue = parseIntegerInput(responseCacheTtlInput, 1);
@@ -879,7 +1190,105 @@ export default function SettingsPage() {
       apiKey:
         teamManagerApiKeyDraft.trim() ||
         (snapshot.teamManagerHasApiKey ? "use_saved_key" : null),
-    });
+      });
+  };
+
+  const resolvedSelectedAlertRuleId = useMemo(() => {
+    if (selectedAlertRuleId === NEW_ALERT_DRAFT_ID) {
+      return NEW_ALERT_DRAFT_ID;
+    }
+    if (!alertRules.length) {
+      return null;
+    }
+    if (selectedAlertRuleId && alertRules.some((item) => item.id === selectedAlertRuleId)) {
+      return selectedAlertRuleId;
+    }
+    return alertRules[0]?.id ?? null;
+  }, [alertRules, selectedAlertRuleId]);
+
+  const resolvedSelectedAlertChannelId = useMemo(() => {
+    if (selectedAlertChannelId === NEW_ALERT_DRAFT_ID) {
+      return NEW_ALERT_DRAFT_ID;
+    }
+    if (!alertChannels.length) {
+      return null;
+    }
+    if (
+      selectedAlertChannelId &&
+      alertChannels.some((item) => item.id === selectedAlertChannelId)
+    ) {
+      return selectedAlertChannelId;
+    }
+    return alertChannels[0]?.id ?? null;
+  }, [alertChannels, selectedAlertChannelId]);
+
+  const selectedAlertRule = useMemo(
+    () =>
+      resolvedSelectedAlertRuleId && resolvedSelectedAlertRuleId !== NEW_ALERT_DRAFT_ID
+        ? alertRules.find((item) => item.id === resolvedSelectedAlertRuleId) ?? null
+        : null,
+    [alertRules, resolvedSelectedAlertRuleId]
+  );
+  const selectedAlertChannel = useMemo(
+    () =>
+      resolvedSelectedAlertChannelId && resolvedSelectedAlertChannelId !== NEW_ALERT_DRAFT_ID
+        ? alertChannels.find((item) => item.id === resolvedSelectedAlertChannelId) ?? null
+        : null,
+    [alertChannels, resolvedSelectedAlertChannelId]
+  );
+
+  const activeAlertRuleDraft = useMemo(() => {
+    if (resolvedSelectedAlertRuleId === NEW_ALERT_DRAFT_ID) {
+      return alertRuleDraft;
+    }
+    if (selectedAlertRule && alertRuleDraft.id === selectedAlertRule.id) {
+      return alertRuleDraft;
+    }
+    return selectedAlertRule ? createAlertRuleDraft(selectedAlertRule) : createAlertRuleDraft();
+  }, [alertRuleDraft, resolvedSelectedAlertRuleId, selectedAlertRule]);
+
+  const activeAlertChannelDraft = useMemo(() => {
+    if (resolvedSelectedAlertChannelId === NEW_ALERT_DRAFT_ID) {
+      return alertChannelDraft;
+    }
+    if (selectedAlertChannel && alertChannelDraft.id === selectedAlertChannel.id) {
+      return alertChannelDraft;
+    }
+    return selectedAlertChannel
+      ? createAlertChannelDraft(selectedAlertChannel)
+      : createAlertChannelDraft();
+  }, [alertChannelDraft, resolvedSelectedAlertChannelId, selectedAlertChannel]);
+
+  const updateAlertRuleDraft = (updater: (current: AlertRuleDraft) => AlertRuleDraft) => {
+    setAlertRuleDraft((current) =>
+      updater(current.id === activeAlertRuleDraft.id ? current : activeAlertRuleDraft)
+    );
+  };
+
+  const updateAlertChannelDraft = (
+    updater: (current: AlertChannelDraft) => AlertChannelDraft
+  ) => {
+    setAlertChannelDraft((current) =>
+      updater(current.id === activeAlertChannelDraft.id ? current : activeAlertChannelDraft)
+    );
+  };
+
+  const handleSaveAlertRule = () => {
+    try {
+      const parsed = JSON.parse(activeAlertRuleDraft.configText || "{}") as Record<string, unknown>;
+      void saveAlertRule.mutate({ ...activeAlertRuleDraft, config: parsed });
+    } catch (error) {
+      toast.error(`规则配置 JSON 无法解析: ${getAppErrorMessage(error)}`);
+    }
+  };
+
+  const handleSaveAlertChannel = () => {
+    try {
+      const parsed = JSON.parse(activeAlertChannelDraft.configText || "{}") as Record<string, unknown>;
+      void saveAlertChannel.mutate({ ...activeAlertChannelDraft, config: parsed });
+    } catch (error) {
+      toast.error(`渠道配置 JSON 无法解析: ${getAppErrorMessage(error)}`);
+    }
   };
 
   if (isLoading || !snapshot) {
@@ -911,6 +1320,9 @@ export default function SettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="gateway" className="gap-2 px-5 shrink-0">
             <Globe className="h-4 w-4" /> 网关
+          </TabsTrigger>
+          <TabsTrigger value="alerts" className="gap-2 px-5 shrink-0">
+            <BellRing className="h-4 w-4" /> 告警
           </TabsTrigger>
           <TabsTrigger value="tasks" className="gap-2 px-5 shrink-0">
             <Cpu className="h-4 w-4" /> 任务
@@ -1403,6 +1815,78 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              <div className="grid gap-4 rounded-2xl border border-border/50 bg-background/35 p-4">
+                <div className="space-y-1">
+                  <Label>失败重试策略</Label>
+                  <p className="text-xs text-muted-foreground">
+                    控制主链路在上游失败时最多切换多少次候选账号，以及每次切换前的等待策略。
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="grid gap-2">
+                    <Label>最大重试次数</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={10}
+                      value={retryPolicyMaxRetriesInput}
+                      onChange={(event) =>
+                        setRetryPolicyMaxRetriesDraft(event.target.value)
+                      }
+                      onBlur={saveRetryPolicyMaxRetries}
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      填 <code>0</code> 表示失败后不再切换候选账号。
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label>退避策略</Label>
+                    <Select
+                      value={snapshot.retryPolicyBackoffStrategy || "exponential"}
+                      onValueChange={(value) =>
+                        updateSettings.mutate({
+                          retryPolicyBackoffStrategy: value || "exponential",
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择退避策略">
+                          {(value) =>
+                            RETRY_BACKOFF_LABELS[String(value || "")] ||
+                            String(value || "")
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="immediate">立即重试</SelectItem>
+                        <SelectItem value="fixed">固定间隔</SelectItem>
+                        <SelectItem value="exponential">指数退避</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground">
+                      指数退避会随着失败次数增加逐步拉长等待时间。
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label>可重试状态码</Label>
+                    <Input
+                      value={retryableStatusCodesInput}
+                      onChange={(event) =>
+                        setRetryableStatusCodesDraft(event.target.value)
+                      }
+                      onBlur={saveRetryableStatusCodes}
+                      placeholder="429, 500, 502, 503"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      仅这些状态码会触发候选账号切换，多个值用逗号分隔。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid gap-2 border-t pt-6">
                 <Label>Originator</Label>
                 <Input
@@ -1677,6 +2161,367 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="alerts" className="space-y-4">
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <BellRing className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">告警通知</CardTitle>
+              </div>
+              <CardDescription>
+                先配置通知渠道，再保存规则。当前支持 Webhook、Bark、Telegram Bot、企业微信机器人。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-6 xl:grid-cols-2">
+                <Card className="border-border/50 bg-background/35 shadow-none">
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-sm">通知渠道</CardTitle>
+                        <CardDescription>保存后可直接发送测试通知</CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedAlertChannelId(NEW_ALERT_DRAFT_ID);
+                          setAlertChannelDraft(createAlertChannelDraft());
+                        }}
+                      >
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        新建
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                      {alertChannels.length ? (
+                        alertChannels.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedAlertChannelId(item.id);
+                              setAlertChannelDraft(createAlertChannelDraft(item));
+                            }}
+                            className={cn(
+                              "rounded-xl border px-3 py-2 text-left text-sm transition-colors",
+                              selectedAlertChannel?.id === item.id
+                                ? "border-primary bg-primary/10 text-foreground"
+                                : "border-border/50 bg-background/40 text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            <div className="font-medium">{item.name}</div>
+                            <div className="text-[11px]">
+                              {ALERT_CHANNEL_TYPE_LABELS[item.channelType] || item.channelType}
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">还没有保存任何告警渠道。</p>
+                      )}
+                    </div>
+
+                    <div className="grid gap-4">
+                      <div className="grid gap-2">
+                        <Label>渠道名称</Label>
+                        <Input
+                          value={activeAlertChannelDraft.name}
+                          onChange={(event) =>
+                            updateAlertChannelDraft((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                          placeholder="例如：本地 Webhook / 运维 Telegram"
+                        />
+                      </div>
+
+                      <div className="grid gap-2 md:grid-cols-[minmax(0,220px)_auto] md:items-end">
+                        <div className="grid gap-2">
+                          <Label>渠道类型</Label>
+                          <Select
+                            value={activeAlertChannelDraft.type}
+                            onValueChange={(value) =>
+                              updateAlertChannelDraft((current) => ({
+                                ...current,
+                                type: value || "webhook",
+                                configText: formatJsonPretty(
+                                  buildAlertChannelConfigPreset(value || "webhook")
+                                ),
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="选择渠道类型" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(ALERT_CHANNEL_TYPE_LABELS).map(([value, label]) => (
+                                <SelectItem key={value} value={value}>
+                                  {label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/40 px-3 py-2">
+                          <Label>启用</Label>
+                          <Switch
+                            checked={activeAlertChannelDraft.enabled}
+                            onCheckedChange={(value) =>
+                              updateAlertChannelDraft((current) => ({
+                                ...current,
+                                enabled: value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label>配置 JSON</Label>
+                        <Textarea
+                          className="min-h-40 font-mono text-xs"
+                          value={activeAlertChannelDraft.configText}
+                          onChange={(event) =>
+                            updateAlertChannelDraft((current) => ({
+                              ...current,
+                              configText: event.target.value,
+                            }))
+                          }
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Webhook / Bark 使用 <code>{`{"url":"..."}`}</code>；
+                          Telegram 使用 <code>{`{"botToken":"","chatId":""}`}</code>；
+                          企业微信使用 <code>{`{"webhookUrl":"..."}`}</code>。
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <Button onClick={handleSaveAlertChannel} disabled={saveAlertChannel.isPending}>
+                          <Save className="mr-2 h-4 w-4" />
+                          保存渠道
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            activeAlertChannelDraft.id &&
+                            testAlertChannel.mutate(activeAlertChannelDraft.id)
+                          }
+                          disabled={!activeAlertChannelDraft.id || testAlertChannel.isPending}
+                        >
+                          <Play className="mr-2 h-4 w-4" />
+                          测试发送
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            activeAlertChannelDraft.id &&
+                            deleteAlertChannel.mutate(activeAlertChannelDraft.id)
+                          }
+                          disabled={!activeAlertChannelDraft.id || deleteAlertChannel.isPending}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          删除
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/50 bg-background/35 shadow-none">
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-sm">告警规则</CardTitle>
+                        <CardDescription>配置触发条件、渠道绑定和静默期</CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedAlertRuleId(NEW_ALERT_DRAFT_ID);
+                          setAlertRuleDraft(createAlertRuleDraft());
+                        }}
+                      >
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        新建
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                      {alertRules.length ? (
+                        alertRules.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedAlertRuleId(item.id);
+                              setAlertRuleDraft(createAlertRuleDraft(item));
+                            }}
+                            className={cn(
+                              "rounded-xl border px-3 py-2 text-left text-sm transition-colors",
+                              selectedAlertRule?.id === item.id
+                                ? "border-primary bg-primary/10 text-foreground"
+                                : "border-border/50 bg-background/40 text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            <div className="font-medium">{item.name}</div>
+                            <div className="text-[11px]">
+                              {ALERT_RULE_TYPE_LABELS[item.ruleType] || item.ruleType}
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">还没有保存任何告警规则。</p>
+                      )}
+                    </div>
+
+                    <div className="grid gap-4">
+                      <div className="grid gap-2">
+                        <Label>规则名称</Label>
+                        <Input
+                          value={activeAlertRuleDraft.name}
+                          onChange={(event) =>
+                            updateAlertRuleDraft((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                          placeholder="例如：额度超过 90% / 全部账号不可用"
+                        />
+                      </div>
+
+                      <div className="grid gap-2 md:grid-cols-[minmax(0,240px)_auto] md:items-end">
+                        <div className="grid gap-2">
+                          <Label>规则类型</Label>
+                          <Select
+                            value={activeAlertRuleDraft.type}
+                            onValueChange={(value) =>
+                              updateAlertRuleDraft((current) => ({
+                                ...current,
+                                type: value || "usage_threshold",
+                                configText: formatJsonPretty(
+                                  buildAlertRuleConfigPreset(value || "usage_threshold")
+                                ),
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="选择规则类型" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(ALERT_RULE_TYPE_LABELS).map(([value, label]) => (
+                                <SelectItem key={value} value={value}>
+                                  {label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/40 px-3 py-2">
+                          <Label>启用</Label>
+                          <Switch
+                            checked={activeAlertRuleDraft.enabled}
+                            onCheckedChange={(value) =>
+                              updateAlertRuleDraft((current) => ({
+                                ...current,
+                                enabled: value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label>配置 JSON</Label>
+                        <Textarea
+                          className="min-h-40 font-mono text-xs"
+                          value={activeAlertRuleDraft.configText}
+                          onChange={(event) =>
+                            updateAlertRuleDraft((current) => ({
+                              ...current,
+                              configText: event.target.value,
+                            }))
+                          }
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          常见字段建议：<code>thresholdPercent</code>、<code>windowMinutes</code>、
+                          <code>threshold</code>、<code>channelIds</code>、<code>cooldownSecs</code>。
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <Button onClick={handleSaveAlertRule} disabled={saveAlertRule.isPending}>
+                          <Save className="mr-2 h-4 w-4" />
+                          保存规则
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            activeAlertRuleDraft.id &&
+                            deleteAlertRule.mutate(activeAlertRuleDraft.id)
+                          }
+                          disabled={!activeAlertRuleDraft.id || deleteAlertRule.isPending}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          删除
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card className="border-border/50 bg-background/35 shadow-none">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <History className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-sm">最近告警历史</CardTitle>
+                  </div>
+                  <CardDescription>展示最近 50 条测试与触发记录</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {alertHistory.length ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border/50">
+                          <TableHead>时间</TableHead>
+                          <TableHead>状态</TableHead>
+                          <TableHead>规则</TableHead>
+                          <TableHead>渠道</TableHead>
+                          <TableHead className="w-full">说明</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {alertHistory.map((item) => (
+                          <TableRow key={item.id} className="border-border/30">
+                            <TableCell>
+                              {item.createdAt ? formatTsFromSeconds(item.createdAt, "--") : "--"}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={statusBadgeVariant(item.status)}>{item.status}</Badge>
+                            </TableCell>
+                            <TableCell>{item.ruleName || "--"}</TableCell>
+                            <TableCell>{item.channelName || "--"}</TableCell>
+                            <TableCell className="whitespace-normal">{item.message}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      暂无告警历史，保存渠道后可先发送一条测试通知验证链路。
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
             </CardContent>
           </Card>
         </TabsContent>

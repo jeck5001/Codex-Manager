@@ -1,9 +1,10 @@
 use super::{
-    AccountListParams, AccountListResult, AccountSummary, CostExportResult, CostSummaryParams,
-    DashboardAccountStatusBucket, DashboardGatewayMetricsResult, DashboardHealthResult,
-    DashboardTrendPoint, DashboardTrendResult, GovernanceSummaryItem, ModelPricingItem,
-    OperationAuditItem, RequestLogFilterSummaryResult, RequestLogListParams, RequestLogListResult,
-    RequestLogSummary,
+    AccountListParams, AccountListResult, AccountSummary, AuditLogItem, CostExportResult,
+    CostSummaryParams, DashboardAccountStatusBucket, DashboardGatewayMetricsResult,
+    DashboardHealthResult, DashboardTrendPoint, DashboardTrendResult, GovernanceSummaryItem,
+    HeatmapTrendResult, ModelPricingItem, ModelTrendResult, OperationAuditItem,
+    RequestLogFilterSummaryResult, RequestLogListParams, RequestLogListResult, RequestLogSummary,
+    RequestTrendResult, TrendQueryParams,
 };
 
 #[test]
@@ -158,6 +159,33 @@ fn operation_audit_item_serialization_uses_camel_case() {
 }
 
 #[test]
+fn audit_log_item_serialization_uses_camel_case() {
+    let result = AuditLogItem {
+        id: 1,
+        action: "update".to_string(),
+        object_type: "account".to_string(),
+        object_id: Some("acc-1".to_string()),
+        operator: "desktop-app".to_string(),
+        changes: serde_json::json!({ "before": { "status": "disabled" }, "after": { "status": "active" } }),
+        created_at: 2,
+    };
+
+    let value = serde_json::to_value(result).expect("serialize audit log item");
+    let obj = value.as_object().expect("audit log object");
+    for key in [
+        "id",
+        "action",
+        "objectType",
+        "objectId",
+        "operator",
+        "changes",
+        "createdAt",
+    ] {
+        assert!(obj.contains_key(key), "missing key: {key}");
+    }
+}
+
+#[test]
 fn request_log_summary_serialization_includes_trace_route_fields() {
     let summary = RequestLogSummary {
         trace_id: Some("trc_1".to_string()),
@@ -257,6 +285,37 @@ fn cost_export_result_serialization_uses_camel_case() {
 }
 
 #[test]
+fn trend_query_params_serialization_uses_camel_case() {
+    let params = TrendQueryParams {
+        preset: Some("30d".to_string()),
+        start_ts: Some(1),
+        end_ts: Some(2),
+        granularity: Some("week".to_string()),
+    };
+
+    let value = serde_json::to_value(params).expect("serialize trend query params");
+    let obj = value.as_object().expect("trend query params object");
+    for key in ["preset", "startTs", "endTs", "granularity"] {
+        assert!(obj.contains_key(key), "missing key: {key}");
+    }
+}
+
+#[test]
+fn trend_results_serialization_uses_camel_case() {
+    for value in [
+        serde_json::to_value(RequestTrendResult::default()).expect("serialize request trend"),
+        serde_json::to_value(ModelTrendResult::default()).expect("serialize model trend"),
+        serde_json::to_value(HeatmapTrendResult::default()).expect("serialize heatmap trend"),
+    ] {
+        let obj = value.as_object().expect("trend result object");
+        assert!(obj.contains_key("preset"));
+        assert!(obj.contains_key("rangeStart"));
+        assert!(obj.contains_key("rangeEnd"));
+        assert!(obj.contains_key("items"));
+    }
+}
+
+#[test]
 fn request_log_list_params_default_to_first_page_with_twenty_items() {
     let params: RequestLogListParams =
         serde_json::from_value(serde_json::json!({})).expect("deserialize params");
@@ -330,6 +389,7 @@ fn dashboard_health_result_serialization_uses_camel_case() {
             p95_latency_ms: Some(280),
             p99_latency_ms: Some(500),
         },
+        recent_healthcheck: None,
     };
 
     let value = serde_json::to_value(result).expect("serialize dashboard health");

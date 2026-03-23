@@ -9,6 +9,7 @@ use super::http::parse_http_body;
 const RPC_CONNECT_TIMEOUT: Duration = Duration::from_millis(400);
 const RPC_DEFAULT_IO_TIMEOUT: Duration = Duration::from_secs(10);
 const RPC_BULK_USAGE_REFRESH_IO_TIMEOUT: Duration = Duration::from_secs(600);
+const RPC_OPERATOR: &str = "desktop-app";
 
 fn rpc_io_timeout(method: &str, params: Option<&serde_json::Value>) -> Duration {
     if method == "account/usage/refresh"
@@ -54,7 +55,7 @@ fn rpc_call_on_socket(
     let json = serde_json::to_string(&req).map_err(|e| e.to_string())?;
     let rpc_token = codexmanager_service::rpc_auth_token();
     let http = format!(
-        "POST /rpc HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\nX-CodexManager-Rpc-Token: {rpc_token}\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+        "POST /rpc HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\nX-CodexManager-Rpc-Token: {rpc_token}\r\nX-CodexManager-Operator: {RPC_OPERATOR}\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
         json.len(),
         json
     );

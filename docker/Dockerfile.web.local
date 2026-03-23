@@ -1,0 +1,15 @@
+FROM rust:1-bookworm AS builder
+
+WORKDIR /src
+
+COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
+COPY vendor-rust ./vendor-rust
+COPY crates ./crates
+COPY apps/out ./apps/out
+
+RUN cargo build --locked --offline -p codexmanager-web --release --features embedded-ui
+
+FROM docker-codexmanager-web:latest
+
+COPY --from=builder /src/target/release/codexmanager-web /usr/local/bin/codexmanager-web

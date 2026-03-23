@@ -311,6 +311,6 @@ mod tests {
 
         assert!(csv.contains("traceId,keyId,accountId"));
         assert!(csv.contains("trc-export"));
-        assert!(csv.contains("[\"acc-initial\",\"acc-export\"]"));
+        assert!(csv.contains("\"[\"\"acc-initial\"\",\"\"acc-export\"\"]\""));
     }
 }

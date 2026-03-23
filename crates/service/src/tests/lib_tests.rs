@@ -1,8 +1,12 @@
 use super::*;
 use codexmanager_core::storage::{now_ts, Storage};
+use std::io::{Read, Write};
 use std::fs;
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::MutexGuard;
+use totp_rs::{Algorithm, Secret, TOTP};
 
 static TEST_DB_SEQ: AtomicUsize = AtomicUsize::new(0);
 
@@ -38,6 +42,62 @@ fn new_test_db_path(prefix: &str) -> PathBuf {
         TEST_DB_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
     path
+}
+
+struct TestDbScope {
+    _env_lock: MutexGuard<'static, ()>,
+    _db_guard: EnvGuard,
+    db_path: PathBuf,
+}
+
+impl Drop for TestDbScope {
+    fn drop(&mut self) {
+        crate::storage_helpers::clear_storage_cache_for_tests();
+        remove_sqlite_test_artifacts(&self.db_path);
+    }
+}
+
+fn setup_test_db(prefix: &str) -> (TestDbScope, Storage) {
+    let env_lock = crate::lock_utils::process_env_test_guard();
+    crate::storage_helpers::clear_storage_cache_for_tests();
+    let db_path = new_test_db_path(prefix);
+    let db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init schema");
+    (
+        TestDbScope {
+            _env_lock: env_lock,
+            _db_guard: db_guard,
+            db_path,
+        },
+        storage,
+    )
+}
+
+fn remove_sqlite_test_artifacts(db_path: &PathBuf) {
+    let _ = fs::remove_file(db_path);
+    let shm_path = PathBuf::from(format!("{}-shm", db_path.display()));
+    let wal_path = PathBuf::from(format!("{}-wal", db_path.display()));
+    let _ = fs::remove_file(shm_path);
+    let _ = fs::remove_file(wal_path);
+}
+
+fn current_web_auth_totp(secret: &str) -> String {
+    let secret_bytes = Secret::Encoded(secret.to_string())
+        .to_bytes()
+        .expect("decode 2fa secret");
+    TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1,
+        30,
+        secret_bytes,
+        Some("CodexManager".to_string()),
+        "Web Access".to_string(),
+    )
+    .expect("build totp")
+    .generate_current()
+    .expect("generate current totp")
 }
 
 #[test]
@@ -83,12 +143,165 @@ fn login_complete_requires_params() {
 }
 
 #[test]
+fn web_auth_two_factor_rpc_supports_setup_verify_recovery_and_disable() {
+    let (_db_scope, _storage) = setup_test_db("web-auth-2fa-rpc");
+
+    assert!(crate::set_web_access_password(Some("P@ssw0rd!")).expect("set password"));
+
+    let setup_resp = handle_request(JsonRpcRequest {
+        id: 101,
+        method: "webAuth/2fa/setup".to_string(),
+        params: None,
+    });
+    let secret = setup_resp
+        .result
+        .get("secret")
+        .and_then(|value| value.as_str())
+        .expect("2fa secret");
+    let setup_token = setup_resp
+        .result
+        .get("setupToken")
+        .and_then(|value| value.as_str())
+        .expect("setup token");
+    let recovery_code = setup_resp
+        .result
+        .get("recoveryCodes")
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .and_then(|value| value.as_str())
+        .expect("recovery code")
+        .to_string();
+
+    let verify_resp = handle_request(JsonRpcRequest {
+        id: 102,
+        method: "webAuth/2fa/verify".to_string(),
+        params: Some(serde_json::json!({
+            "setupToken": setup_token,
+            "code": current_web_auth_totp(secret),
+        })),
+    });
+    assert_eq!(
+        verify_resp
+            .result
+            .get("enabled")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        verify_resp
+            .result
+            .get("recoveryCodesRemaining")
+            .and_then(|value| value.as_u64()),
+        Some(8)
+    );
+
+    let status_resp = handle_request(JsonRpcRequest {
+        id: 103,
+        method: "webAuth/status".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        status_resp
+            .result
+            .get("twoFactorEnabled")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+
+    let recovery_resp = handle_request(JsonRpcRequest {
+        id: 104,
+        method: "webAuth/2fa/verify".to_string(),
+        params: Some(serde_json::json!({
+            "recoveryCode": recovery_code,
+        })),
+    });
+    assert_eq!(
+        recovery_resp
+            .result
+            .get("method")
+            .and_then(|value| value.as_str()),
+        Some("recovery_code")
+    );
+    assert_eq!(
+        recovery_resp
+            .result
+            .get("recoveryCodesRemaining")
+            .and_then(|value| value.as_u64()),
+        Some(7)
+    );
+
+    let disable_resp = handle_request(JsonRpcRequest {
+        id: 105,
+        method: "webAuth/2fa/disable".to_string(),
+        params: Some(serde_json::json!({
+            "code": current_web_auth_totp(secret),
+        })),
+    });
+    assert_eq!(
+        disable_resp
+            .result
+            .get("enabled")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        disable_resp
+            .result
+            .get("recoveryCodesRemaining")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+}
+
+#[test]
+fn clearing_web_access_password_also_clears_two_factor_state() {
+    let (_db_scope, _storage) = setup_test_db("web-auth-2fa-clear");
+
+    assert!(crate::set_web_access_password(Some("P@ssw0rd!")).expect("set password"));
+
+    let setup = crate::web_auth_two_factor_setup().expect("setup 2fa");
+    let secret = setup
+        .get("secret")
+        .and_then(|value| value.as_str())
+        .expect("setup secret");
+    let setup_token = setup
+        .get("setupToken")
+        .and_then(|value| value.as_str())
+        .expect("setup token");
+
+    crate::web_auth_two_factor_verify(setup_token, &current_web_auth_totp(secret))
+        .expect("verify 2fa");
+    assert!(crate::web_auth_two_factor_enabled());
+
+    assert!(!crate::set_web_access_password(None).expect("clear password"));
+    assert!(!crate::web_access_password_configured());
+    assert!(!crate::web_auth_two_factor_enabled());
+
+    let status = crate::web_auth_status_value().expect("status");
+    assert_eq!(
+        status
+            .get("passwordConfigured")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        status
+            .get("twoFactorEnabled")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        status
+            .get("recoveryCodesRemaining")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+}
+
+#[test]
 fn healthcheck_config_rpc_supports_get_and_set() {
     crate::usage_refresh::clear_session_probe_state_for_tests();
-    let db_path = new_test_db_path("healthcheck-config-rpc");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, _storage) = setup_test_db("healthcheck-config-rpc");
 
     let initial_resp = handle_request(JsonRpcRequest {
         id: 4,
@@ -150,18 +363,13 @@ fn healthcheck_config_rpc_supports_get_and_set() {
             .and_then(|value| value.as_bool()),
         Some(false)
     );
-
-    let _ = fs::remove_file(db_path);
     crate::usage_refresh::clear_session_probe_state_for_tests();
 }
 
 #[test]
 fn healthcheck_run_rpc_returns_empty_summary_without_probe_candidates() {
     crate::usage_refresh::clear_session_probe_state_for_tests();
-    let db_path = new_test_db_path("healthcheck-run-rpc");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, _storage) = setup_test_db("healthcheck-run-rpc");
 
     let run_resp = handle_request(JsonRpcRequest {
         id: 7,
@@ -201,17 +409,97 @@ fn healthcheck_run_rpc_returns_empty_summary_without_probe_candidates() {
             .and_then(|value| value.as_i64()),
         Some(0)
     );
-
-    let _ = fs::remove_file(db_path);
     crate::usage_refresh::clear_session_probe_state_for_tests();
 }
 
 #[test]
+fn gateway_retry_policy_rpc_supports_get_set_and_snapshot() {
+    let _retry_guard = crate::gateway::retry_policy_test_guard();
+    crate::gateway::reset_retry_policy_for_tests();
+    let (_db_scope, _storage) = setup_test_db("gateway-retry-policy-rpc");
+
+    let initial_resp = handle_request(JsonRpcRequest {
+        id: 9,
+        method: "gateway/retryPolicy/get".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        initial_resp
+            .result
+            .get("maxRetries")
+            .and_then(|value| value.as_u64()),
+        Some(3)
+    );
+
+    let set_resp = handle_request(JsonRpcRequest {
+        id: 10,
+        method: "gateway/retryPolicy/set".to_string(),
+        params: Some(serde_json::json!({
+            "maxRetries": 5,
+            "backoffStrategy": "fixed",
+            "retryableStatusCodes": [429, 502]
+        })),
+    });
+    assert_eq!(
+        set_resp
+            .result
+            .get("maxRetries")
+            .and_then(|value| value.as_u64()),
+        Some(5)
+    );
+    assert_eq!(
+        set_resp
+            .result
+            .get("backoffStrategy")
+            .and_then(|value| value.as_str()),
+        Some("fixed")
+    );
+    assert_eq!(
+        set_resp
+            .result
+            .get("retryableStatusCodes")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_u64())
+                    .collect::<Vec<_>>()
+            }),
+        Some(vec![429, 502])
+    );
+
+    let snapshot = crate::app_settings_get().expect("app settings snapshot");
+    assert_eq!(
+        snapshot
+            .get("retryPolicyMaxRetries")
+            .and_then(|value| value.as_u64()),
+        Some(5)
+    );
+    assert_eq!(
+        snapshot
+            .get("retryPolicyBackoffStrategy")
+            .and_then(|value| value.as_str()),
+        Some("fixed")
+    );
+    assert_eq!(
+        snapshot
+            .get("retryPolicyRetryableStatusCodes")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_u64())
+                    .collect::<Vec<_>>()
+            }),
+        Some(vec![429, 502])
+    );
+
+    crate::gateway::reset_retry_policy_for_tests();
+}
+
+#[test]
 fn apikey_rpc_supports_expires_at_and_renew() {
-    let db_path = new_test_db_path("apikey-rpc-expires-at");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, storage) = setup_test_db("apikey-rpc-expires-at");
 
     let expires_at = now_ts() + 3600;
     let create_resp = handle_request(JsonRpcRequest {
@@ -297,16 +585,11 @@ fn apikey_rpc_supports_expires_at_and_renew() {
         renewed.get("status").and_then(|value| value.as_str()),
         Some("active")
     );
-
-    let _ = fs::remove_file(db_path);
 }
 
 #[test]
 fn apikey_rpc_supports_rate_limit_get_and_set() {
-    let db_path = new_test_db_path("apikey-rpc-rate-limit");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, _storage) = setup_test_db("apikey-rpc-rate-limit");
 
     let create_resp = handle_request(JsonRpcRequest {
         id: 20,
@@ -359,16 +642,11 @@ fn apikey_rpc_supports_rate_limit_get_and_set() {
             .and_then(|value| value.as_i64()),
         Some(50)
     );
-
-    let _ = fs::remove_file(db_path);
 }
 
 #[test]
 fn apikey_response_cache_rpc_supports_get_and_set() {
-    let db_path = new_test_db_path("apikey-rpc-response-cache");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, _storage) = setup_test_db("apikey-rpc-response-cache");
 
     let create_resp = handle_request(JsonRpcRequest {
         id: 23,
@@ -426,16 +704,11 @@ fn apikey_response_cache_rpc_supports_get_and_set() {
             .and_then(|value| value.as_bool()),
         Some(true)
     );
-
-    let _ = fs::remove_file(db_path);
 }
 
 #[test]
 fn gateway_cache_rpc_supports_get_set_stats_and_clear() {
-    let db_path = new_test_db_path("gateway-cache-rpc");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, _storage) = setup_test_db("gateway-cache-rpc");
 
     crate::gateway::clear_response_cache();
     crate::gateway::set_response_cache_enabled(false);
@@ -519,15 +792,11 @@ fn gateway_cache_rpc_supports_get_set_stats_and_clear() {
 
     crate::gateway::set_response_cache_enabled(false);
     crate::gateway::clear_response_cache();
-    let _ = fs::remove_file(db_path);
 }
 
 #[test]
 fn stats_cost_model_pricing_rpc_supports_get_and_set() {
-    let db_path = new_test_db_path("stats-cost-model-pricing");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, _storage) = setup_test_db("stats-cost-model-pricing");
 
     let set_resp = handle_request(JsonRpcRequest {
         id: 30,
@@ -599,16 +868,11 @@ fn stats_cost_model_pricing_rpc_supports_get_and_set() {
             .map(|items| items.len()),
         Some(0)
     );
-
-    let _ = fs::remove_file(db_path);
 }
 
 #[test]
 fn stats_cost_summary_rpc_aggregates_custom_range() {
-    let db_path = new_test_db_path("stats-cost-summary");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, storage) = setup_test_db("stats-cost-summary");
 
     storage
         .insert_request_token_stat(&codexmanager_core::storage::RequestTokenStat {
@@ -678,16 +942,11 @@ fn stats_cost_summary_rpc_aggregates_custom_range() {
         resp.result.get("preset").and_then(|value| value.as_str()),
         Some("custom")
     );
-
-    let _ = fs::remove_file(db_path);
 }
 
 #[test]
 fn stats_cost_export_rpc_returns_csv_content() {
-    let db_path = new_test_db_path("stats-cost-export");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, storage) = setup_test_db("stats-cost-export");
 
     storage
         .insert_request_token_stat(&codexmanager_core::storage::RequestTokenStat {
@@ -726,16 +985,131 @@ fn stats_cost_export_rpc_returns_csv_content() {
         .expect("csv content");
     assert!(content.contains("section,dimension,dimensionValue"));
     assert!(content.contains("byKey,keyId,key-export"));
+}
 
-    let _ = fs::remove_file(db_path);
+#[test]
+fn stats_trends_rpc_returns_requests_models_and_heatmap() {
+    let (_db_scope, storage) = setup_test_db("stats-trends");
+
+    for (id, model, status_code, created_at) in [
+        (1, "o3", 200, 1_700_000_000),
+        (2, "o3", 500, 1_700_000_600),
+        (3, "gpt-4o", 200, 1_700_086_400),
+    ] {
+        storage
+            .insert_request_log(&codexmanager_core::storage::RequestLog {
+                trace_id: Some(format!("trend-{id}")),
+                key_id: Some("gk-trend".to_string()),
+                account_id: Some("acc-trend".to_string()),
+                initial_account_id: Some("acc-trend".to_string()),
+                attempted_account_ids_json: Some(r#"["acc-trend"]"#.to_string()),
+                route_strategy: Some("balanced".to_string()),
+                requested_model: Some(model.to_string()),
+                model_fallback_path_json: Some(format!(r#"["{model}"]"#)),
+                request_path: "/v1/responses".to_string(),
+                original_path: Some("/v1/responses".to_string()),
+                adapted_path: Some("/v1/responses".to_string()),
+                method: "POST".to_string(),
+                model: Some(model.to_string()),
+                reasoning_effort: Some("medium".to_string()),
+                response_adapter: Some("Passthrough".to_string()),
+                upstream_url: Some("https://api.openai.com/v1/responses".to_string()),
+                status_code: Some(status_code),
+                duration_ms: Some(120),
+                input_tokens: None,
+                cached_input_tokens: None,
+                output_tokens: None,
+                total_tokens: None,
+                reasoning_output_tokens: None,
+                estimated_cost_usd: None,
+                error: if status_code >= 400 {
+                    Some("upstream error".to_string())
+                } else {
+                    None
+                },
+                created_at,
+            })
+            .expect("insert request log");
+    }
+
+    let requests_resp = handle_request(JsonRpcRequest {
+        id: 42,
+        method: "stats/trends/requests".to_string(),
+        params: Some(serde_json::json!({
+            "preset": "custom",
+            "startTs": 1_699_999_000_i64,
+            "endTs": 1_700_172_800_i64,
+            "granularity": "day",
+        })),
+    });
+    assert_eq!(
+        requests_resp
+            .result
+            .get("granularity")
+            .and_then(|value| value.as_str()),
+        Some("day")
+    );
+    assert_eq!(
+        requests_resp
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(2)
+    );
+    assert_eq!(
+        requests_resp
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .and_then(|items| items.first())
+            .and_then(|value| value.get("successRate"))
+            .and_then(|value| value.as_f64()),
+        Some(50.0)
+    );
+
+    let models_resp = handle_request(JsonRpcRequest {
+        id: 43,
+        method: "stats/trends/models".to_string(),
+        params: Some(serde_json::json!({
+            "preset": "custom",
+            "startTs": 1_699_999_000_i64,
+            "endTs": 1_700_172_800_i64,
+        })),
+    });
+    assert_eq!(
+        models_resp
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .and_then(|items| items.first())
+            .and_then(|value| value.get("model"))
+            .and_then(|value| value.as_str()),
+        Some("o3")
+    );
+
+    let heatmap_resp = handle_request(JsonRpcRequest {
+        id: 44,
+        method: "stats/trends/heatmap".to_string(),
+        params: Some(serde_json::json!({
+            "preset": "custom",
+            "startTs": 1_699_999_000_i64,
+            "endTs": 1_700_172_800_i64,
+        })),
+    });
+    assert_eq!(
+        heatmap_resp
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(2)
+    );
 }
 
 #[test]
 fn requestlog_export_rpc_returns_filtered_csv_content() {
-    let db_path = new_test_db_path("requestlog-export");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, storage) = setup_test_db("requestlog-export");
 
     storage
         .insert_request_log(&codexmanager_core::storage::RequestLog {
@@ -826,16 +1200,11 @@ fn requestlog_export_rpc_returns_filtered_csv_content() {
     assert!(content.contains("traceId,keyId,accountId"));
     assert!(content.contains("trc-export-2"));
     assert!(!content.contains("trc-export-1"));
-
-    let _ = fs::remove_file(db_path);
 }
 
 #[test]
 fn requestlog_export_rpc_supports_key_model_and_time_filters() {
-    let db_path = new_test_db_path("requestlog-export-extended-filters");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, storage) = setup_test_db("requestlog-export-extended-filters");
 
     storage
         .insert_request_log(&codexmanager_core::storage::RequestLog {
@@ -923,16 +1292,11 @@ fn requestlog_export_rpc_supports_key_model_and_time_filters() {
         .expect("json content");
     assert!(content.contains("trc-export-b"));
     assert!(!content.contains("trc-export-a"));
-
-    let _ = fs::remove_file(db_path);
 }
 
 #[test]
 fn requestlog_list_and_summary_support_extended_filters() {
-    let db_path = new_test_db_path("requestlog-list-summary-extended-filters");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, storage) = setup_test_db("requestlog-list-summary-extended-filters");
 
     storage
         .insert_request_log(&codexmanager_core::storage::RequestLog {
@@ -1056,16 +1420,11 @@ fn requestlog_list_and_summary_support_extended_filters() {
             .and_then(|value| value.as_i64()),
         Some(1)
     );
-
-    let _ = fs::remove_file(db_path);
 }
 
 #[test]
 fn apikey_rpc_supports_model_fallback_get_and_set() {
-    let db_path = new_test_db_path("apikey-rpc-model-fallback");
-    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    let storage = Storage::open(&db_path).expect("open db");
-    storage.init().expect("init schema");
+    let (_db_scope, _storage) = setup_test_db("apikey-rpc-model-fallback");
 
     let create_resp = handle_request(JsonRpcRequest {
         id: 30,
@@ -1119,6 +1478,565 @@ fn apikey_rpc_supports_model_fallback_get_and_set() {
             "gpt-4o".to_string()
         ])
     );
+}
 
-    let _ = fs::remove_file(db_path);
+#[test]
+fn apikey_rpc_supports_allowed_models_get_and_set() {
+    let (_db_scope, _storage) = setup_test_db("apikey-rpc-allowed-models");
+
+    let create_resp = handle_request(JsonRpcRequest {
+        id: 33,
+        method: "apikey/create".to_string(),
+        params: Some(serde_json::json!({
+            "name": "白名单测试",
+            "modelSlug": "o3",
+        })),
+    });
+    let key_id = create_resp
+        .result
+        .get("id")
+        .and_then(|value| value.as_str())
+        .expect("created key id")
+        .to_string();
+
+    let set_resp = handle_request(JsonRpcRequest {
+        id: 34,
+        method: "apikey/allowedModels/set".to_string(),
+        params: Some(serde_json::json!({
+            "id": key_id,
+            "allowedModels": ["o3", "o4-mini", "o3"],
+        })),
+    });
+    assert_eq!(
+        set_resp.result.get("ok").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+
+    let get_resp = handle_request(JsonRpcRequest {
+        id: 35,
+        method: "apikey/allowedModels/get".to_string(),
+        params: Some(serde_json::json!({
+            "id": key_id,
+        })),
+    });
+    assert_eq!(
+        get_resp
+            .result
+            .get("allowedModels")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            }),
+        Some(vec!["o3".to_string(), "o4-mini".to_string()])
+    );
+}
+
+#[test]
+fn alert_rpc_supports_rule_channel_history_and_channel_test() {
+    let (_db_scope, _storage) = setup_test_db("alert-rpc");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind test webhook");
+    let addr = listener.local_addr().expect("webhook addr");
+    let (payload_tx, payload_rx) = std::sync::mpsc::channel::<String>();
+
+    let server_thread = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept webhook connection");
+        let mut buf = [0_u8; 4096];
+        let size = stream.read(&mut buf).expect("read webhook request");
+        let raw = String::from_utf8_lossy(&buf[..size]).to_string();
+        let body = raw
+            .split("\r\n\r\n")
+            .nth(1)
+            .unwrap_or_default()
+            .to_string();
+        let _ = payload_tx.send(body);
+        let _ = stream.write_all(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}",
+        );
+    });
+
+    let upsert_channel_resp = handle_request(JsonRpcRequest {
+        id: 40,
+        method: "alert/channels/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "本地 Webhook",
+            "type": "webhook",
+            "enabled": true,
+            "config": {
+                "url": format!("http://{addr}/hook"),
+            }
+        })),
+    });
+    let channel_id = upsert_channel_resp
+        .result
+        .get("id")
+        .and_then(|value| value.as_str())
+        .expect("channel id")
+        .to_string();
+
+    let upsert_rule_resp = handle_request(JsonRpcRequest {
+        id: 41,
+        method: "alert/rules/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "额度超过 90%",
+            "type": "usage_threshold",
+            "enabled": true,
+            "config": {
+                "thresholdPercent": 90,
+                "channelIds": [channel_id.clone()],
+                "cooldownSecs": 1800,
+            }
+        })),
+    });
+    assert_eq!(
+        upsert_rule_resp
+            .result
+            .get("ruleType")
+            .and_then(|value| value.as_str()),
+        Some("usage_threshold")
+    );
+
+    let list_channels_resp = handle_request(JsonRpcRequest {
+        id: 42,
+        method: "alert/channels/list".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        list_channels_resp
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(1)
+    );
+
+    let list_rules_resp = handle_request(JsonRpcRequest {
+        id: 43,
+        method: "alert/rules/list".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        list_rules_resp
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(1)
+    );
+
+    let test_resp = handle_request(JsonRpcRequest {
+        id: 44,
+        method: "alert/channels/test".to_string(),
+        params: Some(serde_json::json!({
+            "id": channel_id,
+        })),
+    });
+    assert_eq!(
+        test_resp
+            .result
+            .get("status")
+            .and_then(|value| value.as_str()),
+        Some("sent")
+    );
+
+    let webhook_payload = payload_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .expect("receive webhook payload");
+    assert!(webhook_payload.contains("CodexManager"));
+    assert!(webhook_payload.contains("codexmanager.alert.test"));
+    server_thread.join().expect("join webhook server");
+
+    let history_resp = handle_request(JsonRpcRequest {
+        id: 45,
+        method: "alert/history/list".to_string(),
+        params: Some(serde_json::json!({
+            "limit": 10,
+        })),
+    });
+    assert_eq!(
+        history_resp
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(1)
+    );
+    assert_eq!(
+        history_resp
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .and_then(|items| items.first())
+            .and_then(|value| value.get("status"))
+            .and_then(|value| value.as_str()),
+        Some("test_success")
+    );
+}
+
+#[test]
+fn alert_engine_usage_threshold_dedupes_and_recovers() {
+    let (_db_scope, storage) = setup_test_db("alert-engine-usage-threshold");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind alert webhook");
+    let addr = listener.local_addr().expect("alert webhook addr");
+    let (payload_tx, payload_rx) = std::sync::mpsc::channel::<String>();
+
+    let server_thread = std::thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("accept webhook connection");
+            let mut buf = [0_u8; 4096];
+            let size = stream.read(&mut buf).expect("read webhook request");
+            let raw = String::from_utf8_lossy(&buf[..size]).to_string();
+            let body = raw
+                .split("\r\n\r\n")
+                .nth(1)
+                .unwrap_or_default()
+                .to_string();
+            let _ = payload_tx.send(body);
+            let _ = stream.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}",
+            );
+        }
+    });
+
+    let account = codexmanager_core::storage::Account {
+        id: "acc-alert-1".to_string(),
+        label: "主账号".to_string(),
+        issuer: "https://auth.openai.com".to_string(),
+        chatgpt_account_id: Some("acct-alert".to_string()),
+        workspace_id: Some("org-alert".to_string()),
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    storage.insert_account(&account).expect("insert account");
+    storage
+        .insert_usage_snapshot(&codexmanager_core::storage::UsageSnapshotRecord {
+            account_id: account.id.clone(),
+            used_percent: Some(95.0),
+            window_minutes: Some(60),
+            resets_at: None,
+            secondary_used_percent: None,
+            secondary_window_minutes: None,
+            secondary_resets_at: None,
+            credits_json: None,
+            captured_at: now_ts(),
+        })
+        .expect("insert usage snapshot");
+
+    let channel_resp = handle_request(JsonRpcRequest {
+        id: 60,
+        method: "alert/channels/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "阈值 Webhook",
+            "type": "webhook",
+            "enabled": true,
+            "config": { "url": format!("http://{addr}/usage-threshold") },
+        })),
+    });
+    let channel_id = channel_resp
+        .result
+        .get("id")
+        .and_then(|value| value.as_str())
+        .expect("channel id")
+        .to_string();
+
+    let _rule_resp = handle_request(JsonRpcRequest {
+        id: 61,
+        method: "alert/rules/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "额度超过 90%",
+            "type": "usage_threshold",
+            "enabled": true,
+            "config": {
+                "thresholdPercent": 90,
+                "channelIds": [channel_id],
+                "cooldownSecs": 1800,
+            }
+        })),
+    });
+
+    crate::alert_engine::run_alert_checks_once().expect("first alert check");
+    assert!(payload_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .expect("first webhook payload")
+        .contains("thresholdPercent"));
+    let first_history = storage.list_alert_history(10).expect("first history");
+    assert_eq!(first_history.len(), 1);
+    assert_eq!(first_history[0].status, "triggered");
+
+    crate::alert_engine::run_alert_checks_once().expect("second alert check");
+    let deduped_history = storage.list_alert_history(10).expect("deduped history");
+    assert_eq!(deduped_history.len(), 1, "duplicate trigger should be suppressed");
+
+    storage
+        .insert_usage_snapshot(&codexmanager_core::storage::UsageSnapshotRecord {
+            account_id: account.id.clone(),
+            used_percent: Some(40.0),
+            window_minutes: Some(60),
+            resets_at: None,
+            secondary_used_percent: None,
+            secondary_window_minutes: None,
+            secondary_resets_at: None,
+            credits_json: None,
+            captured_at: now_ts(),
+        })
+        .expect("insert recovered usage snapshot");
+    crate::alert_engine::run_alert_checks_once().expect("recovery alert check");
+    assert!(payload_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .expect("recovery webhook payload")
+        .contains("回落"));
+
+    let final_history = storage.list_alert_history(10).expect("final history");
+    assert_eq!(final_history.len(), 2);
+    assert_eq!(final_history[0].status, "recovered");
+    server_thread.join().expect("join usage threshold webhook");
+}
+
+#[test]
+fn alert_engine_all_unavailable_triggers_and_recovers() {
+    let (_db_scope, storage) = setup_test_db("alert-engine-all-unavailable");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind all-unavailable webhook");
+    let addr = listener.local_addr().expect("all-unavailable webhook addr");
+    let (payload_tx, payload_rx) = std::sync::mpsc::channel::<String>();
+
+    let server_thread = std::thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("accept webhook connection");
+            let mut buf = [0_u8; 4096];
+            let size = stream.read(&mut buf).expect("read webhook request");
+            let raw = String::from_utf8_lossy(&buf[..size]).to_string();
+            let body = raw
+                .split("\r\n\r\n")
+                .nth(1)
+                .unwrap_or_default()
+                .to_string();
+            let _ = payload_tx.send(body);
+            let _ = stream.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}",
+            );
+        }
+    });
+
+    let account = codexmanager_core::storage::Account {
+        id: "acc-alert-2".to_string(),
+        label: "备用账号".to_string(),
+        issuer: "https://auth.openai.com".to_string(),
+        chatgpt_account_id: Some("acct-alert-2".to_string()),
+        workspace_id: Some("org-alert-2".to_string()),
+        group_name: None,
+        sort: 0,
+        status: "unavailable".to_string(),
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    storage.insert_account(&account).expect("insert account");
+
+    let channel_resp = handle_request(JsonRpcRequest {
+        id: 62,
+        method: "alert/channels/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "全部不可用 Webhook",
+            "type": "webhook",
+            "enabled": true,
+            "config": { "url": format!("http://{addr}/all-unavailable") },
+        })),
+    });
+    let channel_id = channel_resp
+        .result
+        .get("id")
+        .and_then(|value| value.as_str())
+        .expect("channel id")
+        .to_string();
+
+    let _rule_resp = handle_request(JsonRpcRequest {
+        id: 63,
+        method: "alert/rules/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "全部账号不可用",
+            "type": "all_unavailable",
+            "enabled": true,
+            "config": {
+                "channelIds": [channel_id],
+                "cooldownSecs": 600,
+            }
+        })),
+    });
+
+    crate::alert_engine::run_alert_checks_once().expect("all unavailable alert check");
+    assert!(payload_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .expect("all unavailable webhook payload")
+        .contains("availableAccounts"));
+
+    storage
+        .update_account_status("acc-alert-2", "active")
+        .expect("recover account");
+    crate::alert_engine::run_alert_checks_once().expect("all unavailable recovery check");
+    assert!(payload_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .expect("all unavailable recovery payload")
+        .contains("恢复"));
+
+    let history = storage.list_alert_history(10).expect("all unavailable history");
+    assert!(history.iter().any(|item| item.status == "triggered"));
+    assert!(history.iter().any(|item| item.status == "recovered"));
+    server_thread.join().expect("join all unavailable webhook");
+}
+
+#[test]
+fn healthcheck_run_triggers_token_refresh_fail_alerts_when_probe_fails() {
+    crate::usage_refresh::clear_session_probe_state_for_tests();
+    let (_db_scope, storage) = setup_test_db("healthcheck-alert-integration");
+    let upstream_listener = TcpListener::bind("127.0.0.1:0").expect("bind probe upstream");
+    let upstream_addr = upstream_listener
+        .local_addr()
+        .expect("probe upstream addr");
+    let alert_listener = TcpListener::bind("127.0.0.1:0").expect("bind probe alert webhook");
+    let alert_addr = alert_listener
+        .local_addr()
+        .expect("probe alert webhook addr");
+    let (payload_tx, payload_rx) = std::sync::mpsc::channel::<String>();
+
+    let upstream_thread = std::thread::spawn(move || {
+        let (mut stream, _) = upstream_listener.accept().expect("accept probe request");
+        let mut buf = [0_u8; 4096];
+        let _ = stream.read(&mut buf).expect("read probe request");
+        let body = br#"{"error":{"message":"token expired","code":"invalid_token"}}"#;
+        let response = format!(
+            "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            String::from_utf8_lossy(body)
+        );
+        let _ = stream.write_all(response.as_bytes());
+    });
+
+    let alert_thread = std::thread::spawn(move || {
+        let (mut stream, _) = alert_listener.accept().expect("accept alert webhook");
+        let mut buf = [0_u8; 4096];
+        let size = stream.read(&mut buf).expect("read alert webhook");
+        let raw = String::from_utf8_lossy(&buf[..size]).to_string();
+        let body = raw
+            .split("\r\n\r\n")
+            .nth(1)
+            .unwrap_or_default()
+            .to_string();
+        let _ = payload_tx.send(body);
+        let _ = stream.write_all(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}",
+        );
+    });
+
+    let upstream_guard = EnvGuard::set(
+        "CODEXMANAGER_UPSTREAM_BASE_URL",
+        &format!("http://{upstream_addr}"),
+    );
+    crate::gateway::reload_runtime_config_from_env();
+
+    let now = now_ts();
+    storage
+        .insert_account(&codexmanager_core::storage::Account {
+            id: "acc-healthcheck-alert".to_string(),
+            label: "巡检告警账号".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("acct-healthcheck-alert".to_string()),
+            workspace_id: Some("org-healthcheck-alert".to_string()),
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&codexmanager_core::storage::Token {
+            account_id: "acc-healthcheck-alert".to_string(),
+            id_token: "header.payload.sig".to_string(),
+            access_token: "healthcheck-token".to_string(),
+            refresh_token: "healthcheck-refresh".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let channel_resp = handle_request(JsonRpcRequest {
+        id: 64,
+        method: "alert/channels/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "巡检异常 Webhook",
+            "type": "webhook",
+            "enabled": true,
+            "config": { "url": format!("http://{alert_addr}/healthcheck-alert") },
+        })),
+    });
+    let channel_id = channel_resp
+        .result
+        .get("id")
+        .and_then(|value| value.as_str())
+        .expect("channel id")
+        .to_string();
+
+    let _rule_resp = handle_request(JsonRpcRequest {
+        id: 65,
+        method: "alert/rules/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "巡检刷新失败",
+            "type": "token_refresh_fail",
+            "enabled": true,
+            "config": {
+                "threshold": 1,
+                "windowMinutes": 60,
+                "channelIds": [channel_id],
+                "cooldownSecs": 600,
+            }
+        })),
+    });
+
+    let run_resp = handle_request(JsonRpcRequest {
+        id: 66,
+        method: "healthcheck/run".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        run_resp
+            .result
+            .get("sampledAccounts")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+    assert_eq!(
+        run_resp
+            .result
+            .get("failureCount")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+
+    let alert_payload = payload_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .expect("healthcheck alert webhook payload");
+    assert!(alert_payload.contains("token_refresh_fail"));
+    assert!(alert_payload.contains("巡检刷新失败"));
+
+    let account = storage
+        .find_account_by_id("acc-healthcheck-alert")
+        .expect("find account")
+        .expect("stored account");
+    assert_eq!(account.status, "unavailable");
+
+    let history = storage.list_alert_history(10).expect("alert history");
+    assert!(history.iter().any(|item| item.status == "triggered"));
+    assert!(history
+        .iter()
+        .any(|item| item.rule_name.as_deref() == Some("巡检刷新失败")));
+
+    upstream_thread.join().expect("join probe upstream");
+    alert_thread.join().expect("join alert webhook");
+    drop(upstream_guard);
+    crate::gateway::reload_runtime_config_from_env();
+    crate::usage_refresh::clear_session_probe_state_for_tests();
 }

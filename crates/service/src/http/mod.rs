@@ -1,3 +1,4 @@
+pub mod auditlog_export_endpoint;
 pub mod callback_endpoint;
 pub mod gateway_endpoint;
 pub mod requestlog_export_endpoint;

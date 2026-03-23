@@ -21,6 +21,7 @@ mod model_picker;
 #[path = "auth/openai_fallback.rs"]
 mod openai_fallback;
 mod protocol_adapter;
+mod retry_policy;
 #[path = "request/request_entry.rs"]
 mod request_entry;
 #[path = "routing/request_gate.rs"]
@@ -54,7 +55,8 @@ use metrics::{
     AccountInFlightGuard,
 };
 pub(crate) use metrics::{
-    begin_rpc_request, duration_to_millis, gateway_metrics_prometheus, record_usage_refresh_outcome,
+    begin_rpc_request, duration_to_millis, gateway_metrics_prometheus,
+    recent_gateway_latency_samples, record_usage_refresh_outcome,
 };
 use protocol_adapter::{
     adapt_request_for_protocol, adapt_upstream_response,
@@ -216,6 +218,12 @@ pub(crate) use response_cache::{
     current_response_cache_stats, current_response_cache_ttl_secs, set_response_cache_enabled,
     set_response_cache_max_entries, set_response_cache_ttl_secs,
 };
+pub(crate) use retry_policy::{
+    current_retry_policy, retry_policy_allows_status, retry_policy_max_retries,
+    set_retry_policy, sleep_before_retry, RetryPolicySnapshot,
+};
+#[cfg(test)]
+pub(crate) use retry_policy::{reset_retry_policy_for_tests, retry_policy_test_guard};
 use route_hint::apply_route_strategy;
 pub(crate) use route_latency::record_route_latency;
 use route_quality::record_route_quality;
@@ -241,6 +249,7 @@ pub(crate) fn reload_runtime_config_from_env() {
     cooldown::clear_runtime_state();
     route_quality::clear_runtime_state();
     route_latency::clear_runtime_state();
+    metrics::clear_runtime_state();
     route_hint::reload_from_env();
     upstream::config::reload_from_env();
     trace_log::reload_from_env();

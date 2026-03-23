@@ -2,6 +2,7 @@ pub(crate) mod gateway;
 pub(crate) mod service_listen;
 pub(crate) mod tray_state;
 pub(crate) mod ui;
+pub(crate) mod web_auth;
 
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn effective_lightweight_mode_on_close_to_tray(

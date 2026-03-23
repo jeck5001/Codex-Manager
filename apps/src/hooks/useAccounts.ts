@@ -243,7 +243,6 @@ export function useAccounts() {
     mutationFn: ({
       accountIds,
       enabled,
-      scopeLabel,
     }: {
       accountIds: string[];
       enabled: boolean;

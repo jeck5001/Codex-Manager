@@ -1,0 +1,3 @@
+FROM docker-codexmanager-web:latest
+
+COPY target/release/codexmanager-web /usr/local/bin/codexmanager-web

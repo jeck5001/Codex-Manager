@@ -33,6 +33,7 @@
 | --- | --- |
 | 首次启动、部署、Docker、macOS 放行 | [运行与部署指南](docs/report/20260310122606850_运行与部署指南.md) |
 | 配置端口、代理、数据库、Web 密码、环境变量 | [环境变量与运行配置](docs/report/20260309195355187_环境变量与运行配置说明.md) |
+| 对照 RPC / Web 登录 / 导出接口做联调 | [API 接口说明](docs/API.md) |
 | 排查账号不命中、导入失败、挑战拦截、请求异常 | [FAQ 与账号命中规则](docs/report/20260310122606852_FAQ与账号命中规则.md) |
 | 本地构建、打包、发版、脚本调用 | [构建发布与脚本说明](docs/release/20260310122606851_构建发布与脚本说明.md) |
 
@@ -181,6 +182,7 @@ docker compose logs -f codexmanager-web
 - 架构说明：[ARCHITECTURE.md](ARCHITECTURE.md)
 - 测试基线：[TESTING.md](TESTING.md)
 - 安全说明：[SECURITY.md](SECURITY.md)
+- API 说明：[docs/API.md](docs/API.md)
 - 文档索引：[docs/README.md](docs/README.md)
 
 ## 专题页面

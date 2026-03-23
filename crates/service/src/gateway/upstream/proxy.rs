@@ -38,18 +38,41 @@ fn build_model_attempt_chain(
     chain
 }
 
+fn filter_model_attempt_chain_by_allowed_models(
+    model_attempt_chain: Vec<String>,
+    allowed_models: &[String],
+) -> Vec<String> {
+    if allowed_models.is_empty() {
+        return model_attempt_chain;
+    }
+
+    model_attempt_chain
+        .into_iter()
+        .filter(|model| allowed_models.iter().any(|allowed| allowed == model))
+        .collect()
+}
+
 fn load_model_attempt_chain(
     storage: &codexmanager_core::storage::Storage,
     key_id: &str,
     requested_model: Option<&str>,
 ) -> Vec<String> {
+    let allowed_models = storage
+        .find_api_key_allowed_models_by_id(key_id)
+        .ok()
+        .flatten()
+        .map(|raw| crate::apikey_allowed_models::parse_allowed_models(raw.as_str()))
+        .unwrap_or_default();
     let configured_chain = storage
         .find_api_key_model_fallback_by_id(key_id)
         .ok()
         .flatten()
         .map(|config| crate::apikey_model_fallback::parse_model_chain(&config.model_chain_json))
         .unwrap_or_default();
-    build_model_attempt_chain(requested_model, configured_chain.as_slice())
+    filter_model_attempt_chain_by_allowed_models(
+        build_model_attempt_chain(requested_model, configured_chain.as_slice()),
+        allowed_models.as_slice(),
+    )
 }
 
 fn build_api_key_response_cache_key(
@@ -431,7 +454,10 @@ pub(in super::super) fn proxy_validated_request(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_model_attempt_chain, exhausted_gateway_error_for_log};
+    use super::{
+        build_model_attempt_chain, exhausted_gateway_error_for_log,
+        filter_model_attempt_chain_by_allowed_models,
+    };
 
     #[test]
     fn exhausted_gateway_error_includes_attempts_skips_and_last_error() {
@@ -469,5 +495,15 @@ mod tests {
         );
 
         assert_eq!(chain, vec!["o3", "o4-mini", "gpt-4o"]);
+    }
+
+    #[test]
+    fn filter_model_attempt_chain_by_allowed_models_removes_disallowed_fallbacks() {
+        let filtered = filter_model_attempt_chain_by_allowed_models(
+            vec!["o3".to_string(), "o4-mini".to_string(), "gpt-4o".to_string()],
+            &["o3".to_string(), "gpt-4o".to_string()],
+        );
+
+        assert_eq!(filtered, vec!["o3", "gpt-4o"]);
     }
 }

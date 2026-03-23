@@ -204,7 +204,7 @@ fn take_cached_storage(path: &str) -> Option<Storage> {
 }
 
 #[cfg(test)]
-fn clear_storage_cache_for_tests() {
+pub(crate) fn clear_storage_cache_for_tests() {
     STORAGE_CACHE.with(|cell| {
         *cell.borrow_mut() = None;
     });

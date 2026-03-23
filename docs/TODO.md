@@ -21,6 +21,34 @@
   - 文档差异：`docs/ACCEPTANCE.md` 覆盖范围大于原 TODO，后续继续按验收项补齐
 
 - [-] **本轮验证结果**
+  - `cargo check -p codexmanager-service` 通过（F15 重试策略配置）
+  - `cargo test -p codexmanager-service gateway_retry_policy_rpc_supports_get_set_and_snapshot -- --nocapture` 通过
+  - `cargo test -p codexmanager-service status_429_respects_retry_policy_status_list -- --nocapture` 通过
+  - `cargo test -p codexmanager-core storage -- --nocapture` 通过（SQLite WAL 降级兼容 bind mount）
+  - `cargo check -p codexmanager-service` 通过（F14 Web 2FA 服务端）
+  - `cargo check -p codexmanager-web` 通过（F14 Web 登录两段式验证）
+  - `cargo test -p codexmanager-service web_auth_two_factor_rpc_supports_setup_verify_recovery_and_disable -- --nocapture` 通过
+  - `cargo test -p codexmanager-service clearing_web_access_password_also_clears_two_factor_state -- --nocapture` 通过
+  - `cargo test -p codexmanager-web -- --nocapture` 通过（5 passed）
+  - `cargo test -p codexmanager-web login_submit_ -- --nocapture` 通过（覆盖密码后进入 2FA 页面、pending cookie 换正式 cookie）
+  - `cargo test -p codexmanager-web login_submit_ -- --nocapture` 通过（新增 recovery code 登录并扣减剩余次数校验）
+  - `cargo check --manifest-path apps/src-tauri/Cargo.toml` 通过（F15 Tauri 命令接入）
+  - `cargo check --manifest-path apps/src-tauri/Cargo.toml` 通过（F14 桌面端 2FA 入口；并补齐 `apps/src-tauri` 的 `vendor-rust/` 离线依赖）
+  - `pnpm exec tsc --noEmit` 通过（F15 设置页重试策略配置）
+  - `pnpm exec tsc --noEmit` 通过（F14 桌面端 2FA 类型与 modal）
+  - `pnpm run build:desktop` 通过（F15 设置页静态构建）
+  - `pnpm run build:desktop` 通过（F14 桌面端 2FA 入口）
+  - `docker compose -f docker/docker-compose.localbuild.yml up -d --build` 通过（基于本地源码 + `vendor-rust/` 离线构建 `codexmanager-*-local` 镜像）
+  - `docker compose -f docker/docker-compose.localbuild.yml ps` 通过（`codexmanager-service` / `codexmanager-web` healthy）
+  - `curl -i --max-time 10 http://127.0.0.1:48760/health` => `200 OK`
+  - `curl -i --max-time 10 http://127.0.0.1:48761/__auth_status` => `200 OK`
+  - `curl -s -X POST http://127.0.0.1:48761/api/rpc ... method=audit/list` => 返回分页结果
+  - `curl -s -X POST http://127.0.0.1:48761/api/rpc ... method=gateway/retryPolicy/get` => 返回默认策略
+  - `curl -s -X POST http://127.0.0.1:48761/api/rpc ... method=gateway/retryPolicy/set` => 成功写入 `maxRetries=5 / backoffStrategy=fixed / retryableStatusCodes=[429,502]`
+  - `curl -s -X POST http://127.0.0.1:48761/api/rpc ... method=appSettings/get` => 返回 `retryPolicyMaxRetries / retryPolicyBackoffStrategy / retryPolicyRetryableStatusCodes`
+  - `curl -s -X POST http://127.0.0.1:48761/api/rpc ... method=audit/list params={page:1,pageSize:10}` => 可查询到 `gateway/retryPolicy/set` 审计记录
+  - `curl -s -X POST http://127.0.0.1:48761/api/rpc ... method=healthcheck/config/set` 后再次查询 `audit/list` => 成功写入 `operator=web-ui` 审计记录
+  - 本轮尝试重新执行 Docker 本地源码复验时，`docker info` / `docker compose` 在本机 `orbstack` context 下无输出卡住；属于本地 Docker daemon/CLI 环境阻塞，待守护恢复后复跑
   - `cargo test -p codexmanager-service healthcheck_config_rpc_supports_get_and_set -- --nocapture` 通过
   - `cargo test -p codexmanager-service healthcheck_run_rpc_returns_empty_summary_without_probe_candidates -- --nocapture` 通过
   - `cargo check --manifest-path apps/src-tauri/Cargo.toml` 通过（F11 巡检 RPC / Tauri 接入）
@@ -36,7 +64,13 @@
   - `pnpm exec tsc --noEmit` 通过（费用统计页图表）
   - `pnpm run build:desktop` 通过（费用统计页图表）
   - `pnpm run build:desktop` 通过
-  - `pnpm lint` 无 error，剩余 4 条 warning（历史问题，未阻塞构建）
+  - `pnpm lint` 通过（前端 warning 已清零）
+  - `pnpm exec tsc --noEmit` 通过（费用统计页草稿态 / 告警设置草稿同步改造）
+  - `pnpm run build:desktop` 通过（费用统计页草稿态 / 告警设置草稿同步改造）
+  - `pnpm exec tsc --noEmit` 通过（register / add-account / web-password lint 收口）
+  - `pnpm run build:desktop` 通过（register / add-account / web-password lint 收口）
+  - `cargo test -p codexmanager-web login_submit_ -- --nocapture` 通过（新增错误 2FA 验证码失败路径）
+  - `cargo test -p codexmanager-web -- --nocapture` 通过（9 passed）
   - `pnpm exec tsc --noEmit` 通过
   - `cargo test -p codexmanager-core storage_api_keys_include_profile_fields -- --nocapture` 通过
   - `cargo test -p codexmanager-core storage_can_roundtrip_api_key_rate_limit_config -- --nocapture` 通过
@@ -88,6 +122,15 @@
   - `cargo test -p codexmanager-service --lib -- --nocapture` 通过（488 passed）
   - `cargo test -p codexmanager-service --test gateway_logs -- --nocapture` 通过（29 passed）
   - `cargo test -p codexmanager-service -- --nocapture` 整包通过
+  - `cargo test -p codexmanager-service healthcheck_run_triggers_token_refresh_fail_alerts_when_probe_fails -- --nocapture` 通过
+  - `cargo test -p codexmanager-service -- --nocapture` 再次整包通过（528 passed）
+  - `cargo test -p codexmanager-core storage_can_summarize_request_trends_models_and_heatmap -- --nocapture` 通过
+  - `cargo test -p codexmanager-service stats_trends_rpc_returns_requests_models_and_heatmap -- --nocapture` 通过
+  - `cargo check -p codexmanager-service` 通过（F09 趋势聚合 / RPC）
+  - `cargo check --manifest-path apps/src-tauri/Cargo.toml` 通过（F09 Tauri 命令接入）
+  - `pnpm exec tsc --noEmit` 通过（F09 用量分析页）
+  - `pnpm run build:desktop` 通过（新增 `/analytics` 静态页面）
+  - `cargo test -p codexmanager-service -- --nocapture` 再次整包通过（529 passed）
 
 ---
 
@@ -99,7 +142,7 @@
   - [x] 新增 RPC 方法 `dashboard/health`
   - [x] 按状态（online / cooldown / unavailable / disabled / quota_exhausted）聚合账号数量
   - [x] 计算滚动窗口（5 分钟）的 QPS、成功率、延迟 P50/P95/P99
-  - [ ] 内存中维护 ring buffer 存储最近请求的延迟采样
+  - [x] 内存中维护 ring buffer 存储最近请求的延迟采样
   - 完成标准：首页可稳定消费，空数据不报错
 
 - [x] **后端：趋势数据接口**
@@ -116,67 +159,87 @@
 - [x] **前端：mini 趋势图**
   - [x] 使用轻量 SVG 趋势图渲染请求量 + 错误率折线图
   - [x] 自动刷新（30 秒间隔）
-  - [ ] 评估是否替换为独立图表库（uPlot）以复用到 F08/F09
+  - [x] 已评估：暂不替换为 `uPlot`，继续复用现有轻量 SVG 图表以降低桌面静态导出与样式维护成本
   - 完成标准：最近 1 小时趋势可见，无数据空态正常
 
-- [-] **验证与环境收口**
+- [x] **验证与环境收口**
   - [x] 前端构建通过
   - [x] 前端 lint 无 error
-  - [!] Rust 编译与测试待工具链恢复后补跑
+  - [x] `cargo test -p codexmanager-service -- --nocapture` 整包通过
+
+- [x] **前端 lint warning 收口**
+  - [x] `apps/src/app/register/page.tsx`：稳定 `latestTasks` 依赖，消除 `react-hooks/exhaustive-deps`
+  - [x] `apps/src/components/modals/add-account-modal.tsx`：收口 `completeLoginSuccess` / `invalidateLoginQueries` 的 hook 依赖 warning
+  - [x] `apps/src/components/modals/web-password-modal.tsx`：2FA 二维码切换为 `next/image`
+  - [x] `apps/src/hooks/useAccounts.ts`：清理未使用的 `scopeLabel`
 
 ---
 
 ### F02 告警通知系统
 
-- [ ] **数据库**
-  - [ ] 新增 migration：`alert_rules` 表（id, name, type, config_json, enabled, created_at）
-  - [ ] 新增 migration：`alert_channels` 表（id, name, type, config_json, enabled, created_at）
-  - [ ] 新增 migration：`alert_history` 表（id, rule_id, channel_id, status, message, created_at）
+- [x] **数据库**
+  - [x] 新增 migration：`alert_rules` 表（id, name, type, config_json, enabled, created_at）
+  - [x] 新增 migration：`alert_channels` 表（id, name, type, config_json, enabled, created_at）
+  - [x] 新增 migration：`alert_history` 表（id, rule_id, channel_id, status, message, created_at）
+  - [x] 新增 storage CRUD：规则 / 渠道 / 历史记录
+  - 完成标准：数据库初始化后可持久化规则、渠道、历史记录
 
-- [ ] **后端：规则引擎**
-  - [ ] 新增 `alert/` 模块目录结构
-  - [ ] 实现规则类型枚举：token_refresh_fail / usage_threshold / error_rate / all_unavailable
-  - [ ] 实现定时轮询检查器（复用 tokio interval）
-  - [ ] 实现告警去重 + 静默期逻辑
+- [x] **后端：规则引擎**
+  - [x] 新增 `alert/` 模块目录结构
+  - [x] 实现规则类型枚举：token_refresh_fail / usage_threshold / error_rate / all_unavailable
+  - [x] 实现定时轮询检查器（后台线程轮询）
+  - [x] 实现告警去重 + 静默期逻辑
+  - [x] 实现恢复通知与运行态持久化
 
-- [ ] **后端：通知渠道**
-  - [ ] 定义 `AlertSender` trait
-  - [ ] 实现 Webhook 渠道（POST JSON）
-  - [ ] 实现 Bark 渠道
-  - [ ] 实现 Telegram Bot 渠道
-  - [ ] 实现企业微信机器人渠道
+- [x] **后端：通知渠道**
+  - [x] 定义 `AlertSender` trait
+  - [x] 实现 Webhook 渠道（POST JSON）
+  - [x] 实现 Bark 渠道
+  - [x] 实现 Telegram Bot 渠道
+  - [x] 实现企业微信机器人渠道
+  - [x] 将通知渠道接入实际规则触发链路
+  - [x] `cargo test -p codexmanager-service alert_engine_usage_threshold_dedupes_and_recovers -- --nocapture`
+  - [x] `cargo test -p codexmanager-service alert_engine_all_unavailable_triggers_and_recovers -- --nocapture`
 
-- [ ] **后端：RPC 接口**
-  - [ ] `alert/rules/list`、`alert/rules/upsert`、`alert/rules/delete`
-  - [ ] `alert/channels/list`、`alert/channels/upsert`、`alert/channels/delete`、`alert/channels/test`
-  - [ ] `alert/history/list`
+- [x] **后端：RPC 接口**
+  - [x] `alert/rules/list`、`alert/rules/upsert`、`alert/rules/delete`
+  - [x] `alert/channels/list`、`alert/channels/upsert`、`alert/channels/delete`、`alert/channels/test`
+  - [x] `alert/history/list`
+  - [x] `cargo test -p codexmanager-service alert_rpc_supports_rule_channel_history_and_channel_test -- --nocapture`
 
-- [ ] **前端：告警设置页**
-  - [ ] 设置页新增「告警通知」Tab
-  - [ ] 规则管理 CRUD 界面
-  - [ ] 渠道管理 CRUD 界面 + 测试发送按钮
-  - [ ] 告警历史列表
+- [x] **前端：告警设置页**
+  - [x] 设置页新增「告警通知」Tab
+  - [x] 规则管理 CRUD 界面
+  - [x] 渠道管理 CRUD 界面 + 测试发送按钮
+  - [x] 告警历史列表
+  - [x] `cd apps && pnpm exec tsc --noEmit`
+  - [x] `cd apps && pnpm run build:desktop`
+  - [x] `source "$HOME/.cargo/env" && cargo check --manifest-path apps/src-tauri/Cargo.toml`
+
+- [x] **联调与回归**
+  - [x] 设置页真实调用 `alert/*` RPC，桌面命令已注册
+  - [x] `source "$HOME/.cargo/env" && cargo test -p codexmanager-service -- --nocapture`
 
 ---
 
 ### F03 智能路由策略增强
 
-- [-] **后端：策略抽象**
-  - [ ] 将现有路由逻辑重构为 `RouteStrategy` trait
+- [x] **后端：策略抽象**
+  - [x] 将现有路由逻辑重构为 `RouteStrategy` trait
   - [x] 扩展现有策略解析与运行时切换，保留 `ordered` 和 `balanced`
   - 完成标准：设置页可切换并持久化，gateway 可识别新策略
 
-- [-] **后端：加权轮询策略**
+- [x] **后端：加权轮询策略**
   - [x] 基于 `usage_snapshots.used_percent` 计算剩余额度权重
   - [x] 实现按 key/model 维度推进 ticket 的加权轮转
   - [x] 补跑 Rust 测试验证命中分布
 
-- [-] **后端：最低延迟优先策略**
+- [x] **后端：最低延迟优先策略**
   - [x] 在内存中维护每账号 EMA 延迟统计
   - [x] 实现按最近延迟排序选择
   - [x] 补跑 Rust 测试验证排序生效
 
-- [-] **后端：成本优先策略**
+- [x] **后端：成本优先策略**
   - [x] 读取账号 plan 类型，按 free > plus > team/pro 排序
   - [x] 候选池为空或 free 不可路由时自动落到下一优先级
   - [x] 增加更细的 plan 类型兼容测试
@@ -186,7 +249,7 @@
   - [x] 各策略增加简要说明文案
   - 完成标准：设置页可见新策略，前端构建通过
 
-- [ ] **日志增强**
+- [x] **日志增强**
   - [x] `request_logs` 中记录实际使用的路由策略名称
   - [x] 日志列表 / 搜索 / 前端详情展示 `routeStrategy`
 
@@ -278,7 +341,7 @@
   - [x] `stats/cost/export`（返回 CSV 内容）
   - [x] `stats/cost/modelPricing/get`、`stats/cost/modelPricing/set`
 
-- [ ] **前端：费用统计页**
+- [x] **前端：费用统计页**
   - [x] 新增导航入口「费用统计」
   - [x] 页面可访问并支持模型单价配置读写
   - [x] 时间范围选择器（今日 / 本周 / 本月 / 自定义）
@@ -339,16 +402,17 @@
 
 ### F09 用量趋势分析
 
-- [ ] **后端：聚合查询**
-  - [ ] `stats/trends/requests`：按天/周/月的请求量 + 成功率
-  - [ ] `stats/trends/models`：模型使用分布
-  - [ ] `stats/trends/heatmap`：按 hour x weekday 的请求热力图
+- [x] **后端：聚合查询**
+  - [x] `stats/trends/requests`：按天/周/月的请求量 + 成功率
+  - [x] `stats/trends/models`：模型使用分布
+  - [x] `stats/trends/heatmap`：按 hour x weekday 的请求热力图
 
-- [ ] **前端：分析视图**
-  - [ ] 新增「用量分析」页面或仪表盘 Tab
-  - [ ] 请求量趋势折线图
-  - [ ] 模型分布饼图
-  - [ ] 请求热力图（7x24 网格）
+- [x] **前端：分析视图**
+  - [x] 新增「用量分析」页面
+  - [x] 请求量趋势折线图
+  - [x] 模型分布面板
+  - [x] 请求热力图（7x24 网格）
+  - [x] 导航、Header 与桌面静态预热路由已接入 `/analytics`
 
 ---
 
@@ -377,8 +441,8 @@
   - [x] 失败账号自动标记 `unavailable` + 写入现有失败 event
   - [x] 巡检成功后自动恢复账号为 `active` 并清理 cooldown
   - [x] 内存维护最近一次巡检摘要（开始 / 结束时间、采样数、成功数、失败数、失败账号）
-  - [ ] 新增独立并发控制（最多 N 个并发探测）
-  - [ ] 评估默认巡检间隔是否调整到 PRD 约定的 30 分钟
+  - [x] 新增独立并发控制（最多 N 个并发探测）
+  - [x] 评估默认巡检间隔是否调整到 PRD 约定的 30 分钟
 
 - [x] **后端：RPC 接口**
   - [x] `healthcheck/config/get`、`healthcheck/config/set`
@@ -389,8 +453,9 @@
   - [x] 设置页增加「立即巡检」按钮与最近巡检结果摘要
   - [x] 仪表盘展示最近巡检时间、抽检通过率与采样结果概览
 
-- [ ] **集成**
-  - [ ] 巡检异常结果接入告警通知系统（F02）
+- [x] **集成**
+  - [x] 巡检异常结果接入告警通知系统（F02）
+  - [x] 新增回归测试：`healthcheck/run` 失败后触发 `token_refresh_fail` 告警 webhook 与历史记录
 
 ---
 
@@ -398,67 +463,87 @@
 
 ### F12 API Key 模型访问控制
 
-- [ ] **数据库**
-  - [ ] `api_keys` 表新增 `allowed_models_json` 列（nullable TEXT）
+- [x] **数据库**
+  - [x] `api_keys` 表新增 `allowed_models_json` 列（nullable TEXT）
 
-- [ ] **后端**
-  - [ ] gateway model_picker 阶段检查白名单
-  - [ ] 白名单外模型返回 403
-  - [ ] `apikey/allowedModels/get`、`apikey/allowedModels/set`
+- [x] **后端**
+  - [x] gateway model_picker 阶段检查白名单
+  - [x] 白名单外模型返回 403
+  - [x] `apikey/allowedModels/get`、`apikey/allowedModels/set`
 
-- [ ] **前端**
-  - [ ] API Key 编辑页增加模型白名单多选组件
+- [x] **前端**
+  - [x] API Key 编辑页增加模型白名单多选组件
 
 ---
 
 ### F13 操作审计日志增强
 
-- [ ] **数据库**
-  - [ ] 新增 migration：`audit_logs` 表（id, action, object_type, object_id, operator, changes_json, created_at）
+- [x] **数据库**
+  - [x] 新增 migration：`audit_logs` 表（id, action, object_type, object_id, operator, changes_json, created_at）
 
-- [ ] **后端**
-  - [ ] RPC dispatch 层植入审计拦截中间件
-  - [ ] 记录所有写操作的 before / after 变更
-  - [ ] `audit/list`、`audit/export`
+- [x] **后端**
+  - [x] RPC dispatch 层植入审计拦截中间件
+  - [x] 记录所有写操作的 before / after 变更
+  - [x] `audit/list`、`audit/export`
 
-- [ ] **前端**
-  - [ ] 新增「审计日志」页面
-  - [ ] 按操作类型、对象、时间筛选
-  - [ ] 导出功能
+- [x] **前端**
+  - [x] 新增「审计日志」页面
+  - [x] 按操作类型、对象、时间筛选
+  - [x] 导出功能
+
+- [x] **联调与交付**
+  - [x] Web 代理转发 `X-CodexManager-Operator`
+  - [x] 本地源码 Docker 镜像构建成功并通过健康检查
+  - [x] Web RPC 写操作可落审计日志并被 `audit/list` 查询到
 
 ---
 
 ### F14 Web UI 二步验证 (2FA)
 
-- [ ] **后端**
-  - [ ] 引入 `totp-rs` crate
-  - [ ] 实现 TOTP secret 生成、二维码 URL 生成、验证码校验
-  - [ ] `app_settings` 存储加密 TOTP secret
-  - [ ] 生成一次性恢复码
-  - [ ] Web auth 流程扩展：密码 -> 2FA 验证
+- [x] **后端**
+  - [x] 引入 `totp-rs` crate
+  - [x] 实现 TOTP secret 生成、二维码 URL 生成、验证码校验
+  - [x] `app_settings` 存储加密 TOTP secret
+  - [x] 生成一次性恢复码
+  - [x] Web auth 流程扩展：密码 -> 2FA 验证
 
-- [ ] **后端：RPC 接口**
-  - [ ] `webAuth/2fa/setup`（返回 secret + QR URL + 恢复码）
-  - [ ] `webAuth/2fa/verify`（验证码校验）
-  - [ ] `webAuth/2fa/disable`
+- [x] **后端：RPC 接口**
+  - [x] `webAuth/2fa/setup`（返回 secret + QR URL + 恢复码）
+  - [x] `webAuth/2fa/verify`（验证码校验）
+  - [x] `webAuth/2fa/disable`
 
-- [ ] **前端**
-  - [ ] 设置页安全区域增加 2FA 绑定/解绑入口
-  - [ ] 展示 QR 码供扫描
-  - [ ] Web 登录页增加验证码输入步骤
+- [x] **前端**
+  - [x] 设置页安全区域增加 2FA 绑定/解绑入口
+  - [x] 展示 QR 码供扫描
+  - [x] Web 登录页增加验证码输入步骤
+
+- [-] **联调与验证**
+  - [x] 服务端 / Web 登录页 / 桌面端设置入口编译通过
+  - [x] 回归测试覆盖 setup / verify / recovery code / disable / clear password 清空 2FA
+  - [x] Web handler 测试覆盖密码后进入 2FA 页面与 pending cookie -> 正式登录 cookie 交换
+  - [x] Web handler 测试覆盖 recovery code 登录成功并消耗剩余次数
+  - [x] Web handler 测试覆盖错误 2FA 验证码返回失败且保留 pending cookie
+  - [x] `docs/API.md` 已补齐 Web auth/2FA、重试策略、巡检、导出与审计接口说明，并挂到 README / docs 索引
+  - [!] Docker 本地源码镜像复验本轮受本机 `orbstack` daemon 卡住影响，待环境恢复后复跑
 
 ---
 
 ### F15 重试与降级策略配置
 
-- [ ] **后端**
-  - [ ] 将现有 failover 硬编码重构为可配置 retry policy
-  - [ ] 支持参数：max_retries / backoff_strategy / retryable_status_codes
-  - [ ] `gateway/retryPolicy/get`、`gateway/retryPolicy/set`
+- [x] **后端**
+  - [x] 将现有 failover 硬编码重构为可配置 retry policy
+  - [x] 支持参数：max_retries / backoff_strategy / retryable_status_codes
+  - [x] `gateway/retryPolicy/get`、`gateway/retryPolicy/set`
 
-- [ ] **前端**
-  - [ ] 设置页网关区域增加重试策略配置
-  - [ ] 最大重试次数、退避策略下拉、可重试状态码多选
+- [x] **前端**
+  - [x] 设置页网关区域增加重试策略配置
+  - [x] 最大重试次数、退避策略下拉、可重试状态码多选
+
+- [x] **联调与 Docker**
+  - [x] 本地源码 Docker 改为使用 `vendor-rust/` 离线编译，避免容器内 crates DNS 波动阻塞交付
+  - [x] Web RPC `gateway/retryPolicy/get`、`gateway/retryPolicy/set` 联调通过
+  - [x] `appSettings/get` 返回已持久化的 `retryPolicy*` 设置快照
+  - [x] `audit/list` 可读取 `gateway/retryPolicy/set` 审计记录
 
 ---
 

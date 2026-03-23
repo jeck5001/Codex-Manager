@@ -4,3 +4,5 @@ pub(crate) mod cost_export;
 pub(crate) mod cost_summary;
 #[path = "stats_model_pricing.rs"]
 pub(crate) mod model_pricing;
+#[path = "stats_trends.rs"]
+pub(crate) mod trends;
