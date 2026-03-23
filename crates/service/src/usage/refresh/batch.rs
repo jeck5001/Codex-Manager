@@ -1,3 +1,4 @@
+use crate::account_status::is_banned_status_reason;
 use codexmanager_core::storage::{Account, Storage, Token};
 use crossbeam_channel::unbounded;
 use std::collections::HashSet;
@@ -14,9 +15,11 @@ use super::{
 
 pub(crate) fn refresh_usage_for_all_accounts() -> Result<(), String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let accounts = storage.list_accounts().map_err(|e| e.to_string())?;
     let tasks = build_usage_refresh_tasks(
         storage.list_tokens().map_err(|e| e.to_string())?,
-        &storage.list_accounts().map_err(|e| e.to_string())?,
+        &accounts,
+        &load_banned_account_ids(&storage, &accounts)?,
     );
     if tasks.is_empty() {
         return Ok(());
@@ -27,9 +30,11 @@ pub(crate) fn refresh_usage_for_all_accounts() -> Result<(), String> {
 
 pub(crate) fn refresh_usage_for_polling_batch() -> Result<(), String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let accounts = storage.list_accounts().map_err(|e| e.to_string())?;
     let all_tasks = build_usage_refresh_tasks(
         storage.list_tokens().map_err(|e| e.to_string())?,
-        &storage.list_accounts().map_err(|e| e.to_string())?,
+        &accounts,
+        &load_banned_account_ids(&storage, &accounts)?,
     );
     if all_tasks.is_empty() {
         return Ok(());
@@ -86,17 +91,19 @@ struct UsageRefreshBatchTask {
 fn build_usage_refresh_tasks(
     tokens: Vec<Token>,
     accounts: &[Account],
+    banned_ids: &HashSet<String>,
 ) -> Vec<UsageRefreshBatchTask> {
-    let disabled_ids = accounts
+    let mut skipped_ids = accounts
         .iter()
-        .filter(|account| is_account_disabled(account))
+        .filter(|account| is_account_refresh_skipped(account))
         .map(|account| account.id.clone())
         .collect::<HashSet<_>>();
+    skipped_ids.extend(banned_ids.iter().cloned());
     let workspace_map = build_workspace_map_from_accounts(accounts);
 
     tokens
         .into_iter()
-        .filter(|token| !disabled_ids.contains(&token.account_id))
+        .filter(|token| !skipped_ids.contains(&token.account_id))
         .map(|token| {
             let account_id = token.account_id.clone();
             UsageRefreshBatchTask {
@@ -170,11 +177,29 @@ fn run_usage_refresh_task(storage: &Storage, task: UsageRefreshBatchTask) {
     }
 }
 
+fn load_banned_account_ids(
+    storage: &Storage,
+    accounts: &[Account],
+) -> Result<HashSet<String>, String> {
+    let account_ids = accounts
+        .iter()
+        .map(|account| account.id.clone())
+        .collect::<Vec<_>>();
+    let reasons = storage
+        .latest_account_status_reasons(&account_ids)
+        .map_err(|err| err.to_string())?;
+    Ok(reasons
+        .into_iter()
+        .filter(|(_, reason)| is_banned_status_reason(reason))
+        .map(|(account_id, _)| account_id)
+        .collect())
+}
+
 fn usage_refresh_worker_count() -> usize {
     USAGE_REFRESH_WORKERS.load(Ordering::Relaxed).max(1)
 }
 
-fn is_account_disabled(account: &Account) -> bool {
+fn is_account_refresh_skipped(account: &Account) -> bool {
     account.status.trim().eq_ignore_ascii_case("disabled")
 }
 
@@ -251,6 +276,7 @@ fn next_usage_poll_cursor(total: usize, cursor: usize, processed: usize) -> usiz
 mod tests {
     use super::build_usage_refresh_tasks;
     use codexmanager_core::storage::{now_ts, Account, Token};
+    use std::collections::HashSet;
 
     fn account(id: &str, status: &str, workspace_id: Option<&str>) -> Account {
         Account {
@@ -279,11 +305,12 @@ mod tests {
     }
 
     #[test]
-    fn build_usage_refresh_tasks_skips_disabled_accounts() {
+    fn build_usage_refresh_tasks_skips_disabled_and_banned_accounts() {
         let tasks = build_usage_refresh_tasks(
             vec![
                 token("acc-active"),
                 token("acc-disabled"),
+                token("acc-banned"),
                 token("acc-inactive"),
                 token("acc-unavailable"),
                 token("acc-missing"),
@@ -291,9 +318,11 @@ mod tests {
             &[
                 account("acc-active", "active", Some("ws-active")),
                 account("acc-disabled", "disabled", Some("ws-disabled")),
+                account("acc-banned", "unavailable", Some("ws-banned")),
                 account("acc-inactive", "inactive", Some("ws-inactive")),
                 account("acc-unavailable", "unavailable", Some("ws-unavailable")),
             ],
+            &HashSet::from([String::from("acc-banned")]),
         );
 
         let account_ids = tasks

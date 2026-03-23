@@ -3,7 +3,8 @@ use super::{
 };
 use crate::account_availability::Availability;
 use crate::account_status::{
-    deactivation_reason_from_message, mark_account_unavailable_for_deactivation_error,
+    deactivation_reason_from_message, mark_account_unavailable_for_auth_error,
+    mark_account_unavailable_for_deactivation_error,
     mark_account_unavailable_for_refresh_token_error,
 };
 use crate::usage_snapshot_store::apply_status_from_snapshot;
@@ -453,8 +454,46 @@ fn generic_deactivated_error_marks_account_unavailable() {
         .latest_account_status_reasons(&["acc-generic-deactivated".to_string()])
         .expect("load reasons");
     assert_eq!(
+        reasons.get("acc-generic-deactivated").map(String::as_str),
+        Some("account_deactivated")
+    );
+}
+
+#[test]
+fn auth_error_deactivated_marks_account_unavailable() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let account = Account {
+        id: "acc-auth-generic-deactivated".to_string(),
+        label: "main".to_string(),
+        issuer: "issuer".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    storage.insert_account(&account).expect("insert");
+
+    assert!(mark_account_unavailable_for_auth_error(
+        &storage,
+        "acc-auth-generic-deactivated",
+        "refresh token failed with status 403 Forbidden: team_deactivated"
+    ));
+    let unavailable = storage
+        .find_account_by_id("acc-auth-generic-deactivated")
+        .expect("find")
+        .expect("exists");
+    assert_eq!(unavailable.status, "unavailable");
+
+    let reasons = storage
+        .latest_account_status_reasons(&["acc-auth-generic-deactivated".to_string()])
+        .expect("load reasons");
+    assert_eq!(
         reasons
-            .get("acc-generic-deactivated")
+            .get("acc-auth-generic-deactivated")
             .map(String::as_str),
         Some("account_deactivated")
     );

@@ -1,5 +1,6 @@
 use codexmanager_core::storage::{
-    now_ts, Account, ApiKey, RequestLog, RequestTokenStat, Storage, Token, UsageSnapshotRecord,
+    now_ts, Account, ApiKey, Event, RequestLog, RequestTokenStat, Storage, Token,
+    UsageSnapshotRecord,
 };
 
 #[test]
@@ -143,7 +144,7 @@ fn token_upsert_keeps_refresh_schedule_columns() {
 }
 
 #[test]
-fn tokens_due_for_refresh_include_unavailable_accounts() {
+fn tokens_due_for_refresh_include_other_unavailable_accounts_but_skip_deactivated() {
     let storage = Storage::open_in_memory().expect("open in memory");
     storage.init().expect("init schema");
     let now = now_ts();
@@ -151,6 +152,7 @@ fn tokens_due_for_refresh_include_unavailable_accounts() {
     for (id, status) in [
         ("acc-active-refresh", "active"),
         ("acc-unavailable-refresh", "unavailable"),
+        ("acc-deactivated-refresh", "unavailable"),
     ] {
         storage
             .insert_account(&Account {
@@ -180,6 +182,14 @@ fn tokens_due_for_refresh_include_unavailable_accounts() {
             .update_token_refresh_schedule(id, Some(4_102_444_800), Some(4_102_444_200))
             .expect("set schedule");
     }
+    storage
+        .insert_event(&Event {
+            account_id: Some("acc-deactivated-refresh".to_string()),
+            event_type: "account_status_update".to_string(),
+            message: "status=unavailable reason=account_deactivated".to_string(),
+            created_at: now + 1,
+        })
+        .expect("insert deactivated event");
 
     let due = storage
         .list_tokens_due_for_refresh(4_102_444_300, 10)

@@ -1,13 +1,14 @@
 use codexmanager_core::auth::{extract_token_exp, DEFAULT_CLIENT_ID, DEFAULT_ISSUER};
 use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 use codexmanager_core::usage::parse_usage_snapshot;
+use crossbeam_channel::unbounded;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
 use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::account_status::mark_account_unavailable_for_refresh_token_error;
+use crate::account_status::mark_account_unavailable_for_auth_error;
 use crate::storage_helpers::open_storage;
 use crate::usage_account_meta::{
     build_workspace_map_from_accounts, clean_header_value, derive_account_meta, patch_account_meta,
@@ -59,6 +60,7 @@ const ENV_GATEWAY_KEEPALIVE_ENABLED: &str = "CODEXMANAGER_GATEWAY_KEEPALIVE_ENAB
 const ENV_GATEWAY_KEEPALIVE_INTERVAL_SECS: &str = "CODEXMANAGER_GATEWAY_KEEPALIVE_INTERVAL_SECS";
 const ENV_TOKEN_REFRESH_POLLING_ENABLED: &str = "CODEXMANAGER_TOKEN_REFRESH_POLLING_ENABLED";
 const ENV_TOKEN_REFRESH_POLL_INTERVAL_SECS: &str = "CODEXMANAGER_TOKEN_REFRESH_POLL_INTERVAL_SECS";
+const ENV_TOKEN_REFRESH_BATCH_LIMIT: &str = "CODEXMANAGER_TOKEN_REFRESH_BATCH_LIMIT";
 const COMMON_POLL_JITTER_ENV: &str = "CODEXMANAGER_POLL_JITTER_SECS";
 const COMMON_POLL_FAILURE_BACKOFF_MAX_ENV: &str = "CODEXMANAGER_POLL_FAILURE_BACKOFF_MAX_SECS";
 const USAGE_POLL_JITTER_ENV: &str = "CODEXMANAGER_USAGE_POLL_JITTER_SECS";
@@ -83,7 +85,7 @@ const MIN_TOKEN_REFRESH_POLL_INTERVAL_SECS: u64 = 10;
 const TOKEN_REFRESH_FAILURE_BACKOFF_MAX_SECS: u64 = 300;
 const TOKEN_REFRESH_AHEAD_SECS: i64 = 600;
 const TOKEN_REFRESH_FALLBACK_AGE_SECS: i64 = 2700;
-const TOKEN_REFRESH_BATCH_LIMIT: usize = 256;
+const DEFAULT_TOKEN_REFRESH_BATCH_LIMIT: usize = 2048;
 const BACKGROUND_TASK_RESTART_REQUIRED_KEYS: [&str; 5] = [
     "usageRefreshWorkers",
     "httpWorkerFactor",
@@ -194,7 +196,7 @@ pub(crate) fn refresh_tokens_before_expiry_for_all_accounts() -> Result<(), Stri
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let now = now_ts();
     let mut tokens = storage
-        .list_tokens_due_for_refresh(now, TOKEN_REFRESH_BATCH_LIMIT)
+        .list_tokens_due_for_refresh(now, token_refresh_batch_limit())
         .map_err(|e| e.to_string())?;
     if tokens.is_empty() {
         return Ok(());
@@ -207,6 +209,7 @@ pub(crate) fn refresh_tokens_before_expiry_for_all_accounts() -> Result<(), Stri
     let mut refreshed = 0usize;
     let mut skipped = 0usize;
 
+    let mut due_tokens = Vec::with_capacity(tokens.len());
     for token in tokens.iter_mut() {
         let _ = storage.touch_token_refresh_attempt(&token.account_id, now);
         let (exp_opt, scheduled_at) = token_refresh_schedule(
@@ -221,25 +224,10 @@ pub(crate) fn refresh_tokens_before_expiry_for_all_accounts() -> Result<(), Stri
             skipped = skipped.saturating_add(1);
             continue;
         }
-        match refresh_and_persist_access_token(&storage, token, &issuer, &client_id) {
-            Ok(_) => {
-                refreshed = refreshed.saturating_add(1);
-            }
-            Err(err) => {
-                let _ = mark_account_unavailable_for_refresh_token_error(
-                    &storage,
-                    &token.account_id,
-                    &err,
-                );
-                log::warn!(
-                    "token refresh polling failed: account_id={} err={}",
-                    token.account_id,
-                    err
-                );
-            }
-        }
+        due_tokens.push(token.clone());
     }
 
+    refreshed = refreshed.saturating_add(run_token_refresh_tasks(due_tokens, &issuer, &client_id)?);
     let _ = (refreshed, skipped);
     Ok(())
 }
@@ -413,6 +401,106 @@ fn classify_usage_status_from_error(err: &str) -> UsageAvailabilityStatus {
         return UsageAvailabilityStatus::Unavailable;
     }
     UsageAvailabilityStatus::Unknown
+}
+
+fn token_refresh_batch_limit() -> usize {
+    std::env::var(ENV_TOKEN_REFRESH_BATCH_LIMIT)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<usize>().ok())
+        .unwrap_or(DEFAULT_TOKEN_REFRESH_BATCH_LIMIT)
+        .max(1)
+}
+
+fn token_refresh_worker_count(total: usize) -> usize {
+    if total == 0 {
+        return 0;
+    }
+    USAGE_REFRESH_WORKERS
+        .load(std::sync::atomic::Ordering::Relaxed)
+        .max(1)
+        .min(total)
+}
+
+fn run_token_refresh_tasks(
+    tokens: Vec<Token>,
+    issuer: &str,
+    client_id: &str,
+) -> Result<usize, String> {
+    let total = tokens.len();
+    if total == 0 {
+        return Ok(0);
+    }
+
+    let worker_count = token_refresh_worker_count(total);
+    if worker_count <= 1 {
+        let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+        let mut refreshed = 0usize;
+        for mut token in tokens {
+            if run_token_refresh_task(&storage, &mut token, issuer, client_id) {
+                refreshed = refreshed.saturating_add(1);
+            }
+        }
+        return Ok(refreshed);
+    }
+
+    let (sender, receiver) = unbounded::<Token>();
+    for token in tokens {
+        sender
+            .send(token)
+            .map_err(|_| "enqueue token refresh task failed".to_string())?;
+    }
+    drop(sender);
+
+    let refreshed = std::sync::atomic::AtomicUsize::new(0);
+    thread::scope(|scope| -> Result<(), String> {
+        let mut handles = Vec::with_capacity(worker_count);
+        for worker_index in 0..worker_count {
+            let receiver = receiver.clone();
+            let refreshed = &refreshed;
+            handles.push(scope.spawn(move || {
+                let storage = open_storage().ok_or_else(|| {
+                    format!("token refresh worker {worker_index} storage unavailable")
+                })?;
+                while let Ok(mut token) = receiver.recv() {
+                    if run_token_refresh_task(&storage, &mut token, issuer, client_id) {
+                        refreshed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                }
+                Ok::<(), String>(())
+            }));
+        }
+
+        for handle in handles {
+            match handle.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => return Err(err),
+                Err(_) => return Err("token refresh worker panicked".to_string()),
+            }
+        }
+        Ok(())
+    })?;
+
+    Ok(refreshed.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+fn run_token_refresh_task(
+    storage: &Storage,
+    token: &mut Token,
+    issuer: &str,
+    client_id: &str,
+) -> bool {
+    match refresh_and_persist_access_token(storage, token, issuer, client_id) {
+        Ok(_) => true,
+        Err(err) => {
+            let _ = mark_account_unavailable_for_auth_error(storage, &token.account_id, &err);
+            log::warn!(
+                "token refresh polling failed: account_id={} err={}",
+                token.account_id,
+                err
+            );
+            false
+        }
+    }
 }
 
 fn token_refresh_schedule(

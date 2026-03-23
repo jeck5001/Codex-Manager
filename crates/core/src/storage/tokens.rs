@@ -27,11 +27,32 @@ impl Storage {
 
     pub fn list_tokens_due_for_refresh(&self, now_ts: i64, limit: usize) -> Result<Vec<Token>> {
         let mut stmt = self.conn.prepare(
-            "SELECT account_id, id_token, access_token, refresh_token, api_key_access_token, last_refresh
+            "WITH latest_status AS (
+                SELECT
+                    account_id,
+                    message,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY account_id
+                        ORDER BY created_at DESC, id DESC
+                    ) AS rn
+                FROM events
+                WHERE type = 'account_status_update'
+             )
+             SELECT tokens.account_id, tokens.id_token, tokens.access_token, tokens.refresh_token, tokens.api_key_access_token, tokens.last_refresh
              FROM tokens
+             LEFT JOIN latest_status
+               ON latest_status.account_id = tokens.account_id
+              AND latest_status.rn = 1
              WHERE TRIM(COALESCE(refresh_token, '')) <> ''
+               AND (
+                    latest_status.message IS NULL
+                    OR (
+                        latest_status.message NOT LIKE '% reason=account_deactivated'
+                        AND latest_status.message NOT LIKE '% reason=workspace_deactivated'
+                    )
+               )
                AND (next_refresh_at IS NULL OR next_refresh_at <= ?1)
-             ORDER BY COALESCE(next_refresh_at, 0) ASC, account_id ASC
+             ORDER BY COALESCE(tokens.next_refresh_at, 0) ASC, tokens.account_id ASC
              LIMIT ?2",
         )?;
         let mut rows = stmt.query((now_ts, limit as i64))?;

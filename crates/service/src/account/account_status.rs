@@ -58,6 +58,13 @@ pub(crate) fn deactivation_reason_from_message(message: &str) -> Option<&'static
     None
 }
 
+pub(crate) fn is_banned_status_reason(reason: &str) -> bool {
+    matches!(
+        reason.trim().to_ascii_lowercase().as_str(),
+        "account_deactivated" | "workspace_deactivated"
+    )
+}
+
 pub(crate) fn mark_account_unavailable_for_deactivation_error(
     storage: &Storage,
     account_id: &str,
@@ -71,6 +78,17 @@ pub(crate) fn mark_account_unavailable_for_deactivation_error(
     }
     set_account_status(storage, account_id, "unavailable", reason);
     true
+}
+
+pub(crate) fn mark_account_unavailable_for_auth_error(
+    storage: &Storage,
+    account_id: &str,
+    err: &str,
+) -> bool {
+    if mark_account_unavailable_for_refresh_token_error(storage, account_id, err) {
+        return true;
+    }
+    mark_account_unavailable_for_deactivation_error(storage, account_id, err)
 }
 
 pub(crate) fn mark_account_unavailable_for_refresh_token_error(
