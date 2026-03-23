@@ -1057,6 +1057,15 @@ fn stats_cost_summary_rpc_aggregates_custom_range() {
     );
     assert_eq!(
         resp.result
+            .get("byKey")
+            .and_then(|value| value.as_array())
+            .and_then(|items| items.first())
+            .and_then(|value| value.get("keyId"))
+            .and_then(|value| value.as_str()),
+        Some("key-a")
+    );
+    assert_eq!(
+        resp.result
             .get("byModel")
             .and_then(|value| value.as_array())
             .and_then(|items| items.first())

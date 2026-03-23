@@ -1001,7 +1001,12 @@ export function normalizeCostSummary(payload: unknown): CostSummaryResult {
         ...normalizeCostUsageSummary(entry),
       };
     })
-    .filter((item): item is CostSummaryKeyItem => Boolean(item));
+    .filter((item): item is CostSummaryKeyItem => Boolean(item))
+    .sort(
+      (left, right) =>
+        right.estimatedCostUsd - left.estimatedCostUsd ||
+        left.keyId.localeCompare(right.keyId)
+    );
   const byModel = asArray(source.byModel ?? source.by_model)
     .map((item) => {
       const entry = asObject(item);
@@ -1012,7 +1017,12 @@ export function normalizeCostSummary(payload: unknown): CostSummaryResult {
         ...normalizeCostUsageSummary(entry),
       };
     })
-    .filter((item): item is CostSummaryModelItem => Boolean(item));
+    .filter((item): item is CostSummaryModelItem => Boolean(item))
+    .sort(
+      (left, right) =>
+        right.estimatedCostUsd - left.estimatedCostUsd ||
+        left.model.localeCompare(right.model)
+    );
   const byDay = asArray(source.byDay ?? source.by_day)
     .map((item) => {
       const entry = asObject(item);

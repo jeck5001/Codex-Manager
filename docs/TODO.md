@@ -479,6 +479,7 @@
   - [x] 汇总表格
   - [x] CSV 导出按钮
   - [x] 按 Key 汇总与最高费用 Key 卡片补充平台密钥名称 + ID 展示，避免仅靠短 ID 难以区分
+  - [x] 排序稳定性收口：最高费用 Key / 模型卡片、模型分布和汇总表统一基于费用降序数据渲染，避免依赖原始返回顺序
 
 - [x] **阶段验证**
   - [x] `cargo test -p codexmanager-core storage_can_roundtrip_model_pricing_config -- --nocapture`
@@ -487,6 +488,7 @@
   - [x] `cargo test -p codexmanager-core storage_can_summarize_cost_usage_by_key_model_and_day -- --nocapture`
   - [x] `cargo test -p codexmanager-core cost_summary_params_serialization_uses_camel_case -- --nocapture`
   - [x] `cargo test -p codexmanager-service stats_cost_summary_rpc_aggregates_custom_range -- --nocapture`
+  - [x] 本轮补强 `stats_cost_summary_rpc_aggregates_custom_range`，显式校验按费用降序返回 `byKey` / `byModel`
   - [x] `cargo test -p codexmanager-core cost_export_result_serialization_uses_camel_case -- --nocapture`
   - [x] `cargo test -p codexmanager-service stats_cost_export_rpc_returns_csv_content -- --nocapture`
   - [x] `pnpm exec tsc --noEmit`
