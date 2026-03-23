@@ -73,15 +73,28 @@ pub(crate) fn read_cost_summary(params: CostSummaryParams) -> Result<CostSummary
     let total = storage
         .summarize_cost_usage_between(range_start, range_end)
         .map_err(|err| err.to_string())?;
-    let by_key = storage
+    let mut by_key = storage
         .summarize_cost_usage_by_key_between(range_start, range_end)
         .map_err(|err| err.to_string())?;
-    let by_model = storage
+    let mut by_model = storage
         .summarize_cost_usage_by_model_between(range_start, range_end)
         .map_err(|err| err.to_string())?;
     let by_day = storage
         .summarize_cost_usage_by_day_between(range_start, range_end)
         .map_err(|err| err.to_string())?;
+
+    by_key.sort_by(|left, right| {
+        right
+            .estimated_cost_usd
+            .total_cmp(&left.estimated_cost_usd)
+            .then_with(|| left.key_id.cmp(&right.key_id))
+    });
+    by_model.sort_by(|left, right| {
+        right
+            .estimated_cost_usd
+            .total_cmp(&left.estimated_cost_usd)
+            .then_with(|| left.model.cmp(&right.model))
+    });
 
     Ok(CostSummaryResult {
         preset,

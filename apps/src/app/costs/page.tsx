@@ -360,8 +360,26 @@ export default function CostsPage() {
   const isLoading = serviceStatus.connected && pricingQuery.isLoading;
   const summary = summaryQuery.data;
   const apiKeyNameMap = useMemo(() => buildApiKeyNameMap(apiKeys), [apiKeys]);
-  const topKey = summary?.byKey[0];
-  const topModel = summary?.byModel[0];
+  const sortedKeyItems = useMemo(
+    () =>
+      [...(summary?.byKey || [])].sort(
+        (left, right) =>
+          right.estimatedCostUsd - left.estimatedCostUsd ||
+          left.keyId.localeCompare(right.keyId)
+      ),
+    [summary?.byKey]
+  );
+  const sortedModelItems = useMemo(
+    () =>
+      [...(summary?.byModel || [])].sort(
+        (left, right) =>
+          right.estimatedCostUsd - left.estimatedCostUsd ||
+          left.model.localeCompare(right.model)
+      ),
+    [summary?.byModel]
+  );
+  const topKey = sortedKeyItems[0];
+  const topModel = sortedModelItems[0];
 
   return (
     <div className="animate-in space-y-6 fade-in duration-500">
@@ -591,7 +609,7 @@ export default function CostsPage() {
                     </p>
                   </CardHeader>
                   <CardContent>
-                    <ModelDistributionChart items={summary.byModel} />
+                    <ModelDistributionChart items={sortedModelItems} />
                   </CardContent>
                 </Card>
               </div>
@@ -610,7 +628,7 @@ export default function CostsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {summary.byKey.slice(0, 6).map((item) => (
+                        {sortedKeyItems.slice(0, 6).map((item) => (
                           <TableRow key={item.keyId}>
                             <TableCell className="font-mono text-xs">
                               {formatApiKeyDetailLabel(item.keyId, apiKeyNameMap)}
@@ -636,7 +654,7 @@ export default function CostsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {summary.byModel.slice(0, 6).map((item) => (
+                        {sortedModelItems.slice(0, 6).map((item) => (
                           <TableRow key={item.model}>
                             <TableCell className="font-mono text-xs">{item.model}</TableCell>
                             <TableCell>{formatUsd(item.estimatedCostUsd)}</TableCell>
