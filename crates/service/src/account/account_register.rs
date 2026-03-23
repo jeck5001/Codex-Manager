@@ -1,7 +1,10 @@
+use codexmanager_core::storage::{Account, Storage};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::thread;
 use std::time::Duration;
+
+use crate::account_identity::pick_existing_account_id_by_identity;
 
 const ENV_REGISTER_SERVICE_URL: &str = "CODEXMANAGER_REGISTER_SERVICE_URL";
 const DEFAULT_REGISTER_SERVICE_URL: &str = "http://127.0.0.1:9000";
@@ -23,6 +26,9 @@ pub(crate) struct RegisterTaskReadResponse {
     failure_label: Option<String>,
     email: Option<String>,
     can_import: bool,
+    imported_account_id: Option<String>,
+    is_imported: bool,
+    requires_manual_import: bool,
     result: Value,
     logs: Vec<String>,
 }
@@ -226,6 +232,63 @@ fn task_logs(logs_payload: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn task_result_string_field(task_result: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        task_result
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    })
+}
+
+fn resolve_existing_imported_account_id_from_accounts(
+    accounts: &[Account],
+    email: Option<&str>,
+    task_result: &Value,
+) -> Option<String> {
+    let chatgpt_account_id = task_result_string_field(
+        task_result,
+        &["account_id", "accountId", "chatgpt_account_id"],
+    );
+    let workspace_id = task_result_string_field(task_result, &["workspace_id", "workspaceId"]);
+    if let Some(account_id) = pick_existing_account_id_by_identity(
+        accounts.iter(),
+        chatgpt_account_id.as_deref(),
+        workspace_id.as_deref(),
+        None,
+        None,
+    ) {
+        return Some(account_id);
+    }
+
+    let normalized_email = email
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())?;
+    let mut matches = accounts.iter().filter(|account| {
+        account
+            .label
+            .trim()
+            .eq_ignore_ascii_case(normalized_email.as_str())
+    });
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(first.id.clone())
+}
+
+fn resolve_existing_imported_account_id(
+    storage: &Storage,
+    email: Option<&str>,
+    task_result: &Value,
+) -> Option<String> {
+    let accounts = storage.list_accounts().ok()?;
+    resolve_existing_imported_account_id_from_accounts(accounts.as_slice(), email, task_result)
+}
+
 fn normalize_failure_text(error_message: Option<&str>, logs: &str) -> String {
     [error_message.unwrap_or_default(), logs]
         .into_iter()
@@ -315,6 +378,38 @@ fn enrich_register_task_value(task: &mut Value) {
         object.insert("failureCode".to_string(), Value::String(code.to_string()));
         object.insert("failureLabel".to_string(), Value::String(label.to_string()));
     }
+}
+
+fn enrich_register_task_import_state(task: &mut Value, accounts: Option<&[Account]>) {
+    let email = task_result_email(task);
+    let task_result = task.get("result").cloned().unwrap_or(Value::Null);
+    let Some(object) = task.as_object_mut() else {
+        return;
+    };
+    let status = object
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let can_import = status == "completed" && email.is_some();
+    let imported_account_id = accounts.and_then(|items| {
+        resolve_existing_imported_account_id_from_accounts(items, email.as_deref(), &task_result)
+    });
+    let is_imported = imported_account_id.is_some();
+
+    object.insert("canImport".to_string(), Value::Bool(can_import));
+    object.insert("isImported".to_string(), Value::Bool(is_imported));
+    object.insert(
+        "requiresManualImport".to_string(),
+        Value::Bool(can_import && !is_imported),
+    );
+    object.insert(
+        "importedAccountId".to_string(),
+        imported_account_id
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
 }
 
 fn task_uuid_array_from_items(items: &[Value]) -> Vec<Value> {
@@ -669,9 +764,12 @@ pub(crate) fn list_register_tasks(
         query.push(("status".to_string(), status.to_string()));
     }
     let mut payload = register_get_json_with_query("/api/registration/tasks", &query)?;
+    let accounts =
+        crate::storage_helpers::open_storage().and_then(|storage| storage.list_accounts().ok());
     if let Some(items) = payload.get_mut("tasks").and_then(Value::as_array_mut) {
         for item in items {
             enrich_register_task_value(item);
+            enrich_register_task_import_state(item, accounts.as_deref());
         }
     }
     Ok(payload)
@@ -1060,6 +1158,12 @@ pub(crate) fn read_register_task(task_uuid: &str) -> Result<RegisterTaskReadResp
     let logs = task_logs(&logs_payload);
     let joined_logs = logs.join("\n");
     let error_message = task_string_field(&task, "error_message");
+    let result = task.get("result").cloned().unwrap_or(Value::Null);
+    let can_import = status.eq_ignore_ascii_case("completed") && email.is_some();
+    let imported_account_id = crate::storage_helpers::open_storage().and_then(|storage| {
+        resolve_existing_imported_account_id(&storage, email.as_deref(), &result)
+    });
+    let is_imported = imported_account_id.is_some();
     let failure_reason = if matches!(
         status.trim().to_ascii_lowercase().as_str(),
         "failed" | "cancelled"
@@ -1080,8 +1184,11 @@ pub(crate) fn read_register_task(task_uuid: &str) -> Result<RegisterTaskReadResp
         failure_code: failure_reason.map(|(code, _)| code.to_string()),
         failure_label: failure_reason.map(|(_, label)| label.to_string()),
         email: email.clone(),
-        can_import: status.eq_ignore_ascii_case("completed") && email.is_some(),
-        result: task.get("result").cloned().unwrap_or(Value::Null),
+        can_import,
+        imported_account_id,
+        is_imported,
+        requires_manual_import: can_import && !is_imported,
+        result,
         logs,
     })
 }
@@ -1128,8 +1235,9 @@ pub(crate) fn import_register_account_by_email(email: &str) -> Result<Value, Str
 mod tests {
     use super::{
         classify_register_failure_reason, normalized_register_service_url,
-        pick_remote_account_by_email,
+        pick_remote_account_by_email, resolve_existing_imported_account_id_from_accounts,
     };
+    use codexmanager_core::storage::{now_ts, Account};
 
     #[test]
     fn normalized_register_service_url_uses_default_and_trims_slash() {
@@ -1179,5 +1287,56 @@ mod tests {
             classify_register_failure_reason(Some("proxy authentication required"), ""),
             Some(("register_proxy_error", "注册代理异常"))
         );
+    }
+
+    #[test]
+    fn resolve_existing_imported_account_id_matches_identity_hints() {
+        let now = now_ts();
+        let accounts = vec![Account {
+            id: "acc-imported-1".to_string(),
+            label: "imported@example.com".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("acct-1".to_string()),
+            workspace_id: Some("org-1".to_string()),
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        }];
+
+        let matched = resolve_existing_imported_account_id_from_accounts(
+            accounts.as_slice(),
+            Some("imported@example.com"),
+            &serde_json::json!({
+                "account_id": "acct-1",
+                "workspace_id": "org-1"
+            }),
+        );
+        assert_eq!(matched.as_deref(), Some("acc-imported-1"));
+    }
+
+    #[test]
+    fn resolve_existing_imported_account_id_falls_back_to_unique_email_label() {
+        let now = now_ts();
+        let accounts = vec![Account {
+            id: "acc-imported-2".to_string(),
+            label: "fallback@example.com".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: None,
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        }];
+
+        let matched = resolve_existing_imported_account_id_from_accounts(
+            accounts.as_slice(),
+            Some("fallback@example.com"),
+            &serde_json::json!({}),
+        );
+        assert_eq!(matched.as_deref(), Some("acc-imported-2"));
     }
 }
