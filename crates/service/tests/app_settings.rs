@@ -184,6 +184,8 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "appearancePreset": "classic",
             "serviceAddr": "127.0.0.1:4999",
             "serviceListenMode": "all_interfaces",
+            "mcpEnabled": false,
+            "mcpPort": 48888,
             "routeStrategy": "rr",
             "freeAccountMaxModel": "gpt-5.3-codex",
             "quotaProtectionEnabled": true,
@@ -245,6 +247,14 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
                 .get("serviceListenMode")
                 .and_then(|value| value.as_str()),
             Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES)
+        );
+        assert_eq!(
+            snapshot.get("mcpEnabled").and_then(|value| value.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            snapshot.get("mcpPort").and_then(|value| value.as_u64()),
+            Some(48888)
         );
         assert_eq!(
             snapshot
@@ -324,6 +334,18 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
                 .get_app_setting(codexmanager_service::APP_SETTING_UI_APPEARANCE_PRESET_KEY)
                 .expect("read appearance preset"),
             Some("classic".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(codexmanager_service::APP_SETTING_MCP_ENABLED_KEY)
+                .expect("read mcp enabled"),
+            Some("0".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(codexmanager_service::APP_SETTING_MCP_PORT_KEY)
+                .expect("read mcp port"),
+            Some("48888".to_string())
         );
         assert_eq!(
             storage
@@ -619,6 +641,8 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
         for key in [
             codexmanager_service::APP_SETTING_SERVICE_ADDR_KEY,
             codexmanager_service::SERVICE_BIND_MODE_SETTING_KEY,
+            codexmanager_service::APP_SETTING_MCP_ENABLED_KEY,
+            codexmanager_service::APP_SETTING_MCP_PORT_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
@@ -638,10 +662,15 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
 
         let _env = override_env_vars(&[
             ("CODEXMANAGER_SERVICE_ADDR", Some("0.0.0.0:4999")),
+            ("CODEXMANAGER_MCP_ENABLED", Some("0")),
+            ("CODEXMANAGER_MCP_PORT", Some("49962")),
             ("CODEXMANAGER_ROUTE_STRATEGY", Some("balanced")),
             ("CODEXMANAGER_FREE_ACCOUNT_MAX_MODEL", Some("gpt-5.2-codex")),
             ("CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_ENABLED", Some("1")),
-            ("CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT", Some("7")),
+            (
+                "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT",
+                Some("7"),
+            ),
             ("CODEXMANAGER_ENABLE_REQUEST_COMPRESSION", Some("0")),
             ("CODEXMANAGER_ORIGINATOR", Some("codex_cli_rs_env")),
             ("CODEXMANAGER_RESIDENCY_REQUIREMENT", Some("us")),
@@ -676,6 +705,14 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .get("serviceListenMode")
                 .and_then(|value| value.as_str()),
             Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES)
+        );
+        assert_eq!(
+            snapshot.get("mcpEnabled").and_then(|value| value.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            snapshot.get("mcpPort").and_then(|value| value.as_u64()),
+            Some(49962)
         );
         assert_eq!(
             snapshot
@@ -784,6 +821,18 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .get_app_setting(codexmanager_service::SERVICE_BIND_MODE_SETTING_KEY)
                 .expect("read service bind mode"),
             Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES.to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(codexmanager_service::APP_SETTING_MCP_ENABLED_KEY)
+                .expect("read mcp enabled"),
+            Some("0".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(codexmanager_service::APP_SETTING_MCP_PORT_KEY)
+                .expect("read mcp port"),
+            Some("49962".to_string())
         );
         assert_eq!(
             storage

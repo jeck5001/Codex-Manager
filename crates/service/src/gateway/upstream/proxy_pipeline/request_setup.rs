@@ -17,36 +17,42 @@ pub(in super::super) struct UpstreamRequestSetup {
     pub(in super::super) has_body_encrypted_content: bool,
 }
 
+pub(in super::super) struct PrepareRequestSetupInput<'a> {
+    pub(in super::super) path: &'a str,
+    pub(in super::super) protocol_type: &'a str,
+    pub(in super::super) has_prompt_cache_key: bool,
+    pub(in super::super) incoming_headers: &'a IncomingHeaderSnapshot,
+    pub(in super::super) body: &'a [u8],
+    pub(in super::super) key_id: &'a str,
+    pub(in super::super) model_for_log: Option<&'a str>,
+    pub(in super::super) trace_id: &'a str,
+}
+
 pub(in super::super) fn prepare_request_setup(
-    path: &str,
-    protocol_type: &str,
-    has_prompt_cache_key: bool,
-    incoming_headers: &IncomingHeaderSnapshot,
-    body: &bytes::Bytes,
-    candidates: &mut Vec<(Account, Token)>,
-    key_id: &str,
-    model_for_log: Option<&str>,
-    trace_id: &str,
+    input: PrepareRequestSetupInput<'_>,
+    candidates: &mut [(Account, Token)],
 ) -> UpstreamRequestSetup {
     let upstream_base = super::super::super::resolve_upstream_base_url();
     let upstream_fallback_base =
         super::super::super::resolve_upstream_fallback_base_url(upstream_base.as_str());
-    let (url, url_alt) =
-        super::super::super::request_rewrite::compute_upstream_url(upstream_base.as_str(), path);
+    let (url, url_alt) = super::super::super::request_rewrite::compute_upstream_url(
+        upstream_base.as_str(),
+        input.path,
+    );
     let upstream_cookie = super::super::super::upstream_cookie();
 
     let candidate_count = candidates.len();
     let account_max_inflight = super::super::super::account_max_inflight_limit();
     let anthropic_has_prompt_cache_key =
-        protocol_type == PROTOCOL_ANTHROPIC_NATIVE && has_prompt_cache_key;
-    super::super::super::apply_route_strategy(candidates, key_id, model_for_log);
+        input.protocol_type == PROTOCOL_ANTHROPIC_NATIVE && input.has_prompt_cache_key;
+    super::super::super::apply_route_strategy(candidates, input.key_id, input.model_for_log);
     let candidate_order = candidates
         .iter()
         .map(|(account, _)| format!("{}#sort={}", account.id, account.sort))
         .collect::<Vec<_>>();
     super::super::super::trace_log::log_candidate_pool(
-        trace_id,
-        key_id,
+        input.trace_id,
+        input.key_id,
         super::super::super::current_route_strategy(),
         candidate_order.as_slice(),
     );
@@ -61,14 +67,16 @@ pub(in super::super) fn prepare_request_setup(
         account_max_inflight,
         anthropic_has_prompt_cache_key,
         has_sticky_fallback_session:
-            super::super::header_profile::derive_sticky_session_id_from_headers(incoming_headers)
-                .is_some(),
+            super::super::header_profile::derive_sticky_session_id_from_headers(
+                input.incoming_headers,
+            )
+            .is_some(),
         has_sticky_fallback_conversation:
             super::super::header_profile::derive_sticky_conversation_id_from_headers(
-                incoming_headers,
+                input.incoming_headers,
             )
             .is_some(),
         has_body_encrypted_content:
-            super::super::support::payload_rewrite::body_has_encrypted_content_hint(body.as_ref()),
+            super::super::support::payload_rewrite::body_has_encrypted_content_hint(input.body),
     }
 }

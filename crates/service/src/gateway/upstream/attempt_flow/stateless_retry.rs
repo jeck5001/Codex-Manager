@@ -4,7 +4,7 @@ use reqwest::StatusCode;
 use std::time::{Duration, Instant};
 
 use super::super::support::{backoff, deadline};
-use super::transport::{send_upstream_request, UpstreamRequestContext};
+use super::transport::{send_upstream_request, SendUpstreamRequestArgs, UpstreamRequestContext};
 
 pub(super) enum StatelessRetryResult {
     NotTriggered,
@@ -66,23 +66,23 @@ pub(super) fn retry_stateless_then_optional_alt(
             account.id
         );
     }
-    if matches!(status.as_u16(), 403 | 429) {
-        if !backoff::sleep_with_exponential_jitter(
+    if matches!(status.as_u16(), 403 | 429)
+        && !backoff::sleep_with_exponential_jitter(
             Duration::from_millis(120),
             Duration::from_millis(900),
             1,
             request_deadline,
-        ) {
-            return StatelessRetryResult::Terminal {
-                status_code: 504,
-                message: "upstream total timeout exceeded".to_string(),
-            };
-        }
+        )
+    {
+        return StatelessRetryResult::Terminal {
+            status_code: 504,
+            message: "upstream total timeout exceeded".to_string(),
+        };
     }
-    let mut response = match send_upstream_request(
+    let mut response = match send_upstream_request(SendUpstreamRequestArgs {
         client,
         method,
-        primary_url,
+        target_url: primary_url,
         request_deadline,
         request_ctx,
         incoming_headers,
@@ -91,8 +91,8 @@ pub(super) fn retry_stateless_then_optional_alt(
         upstream_cookie,
         auth_token,
         account,
-        true,
-    ) {
+        strip_session_affinity: true,
+    }) {
         Ok(resp) => resp,
         Err(err) => {
             log::warn!(
@@ -118,10 +118,10 @@ pub(super) fn retry_stateless_then_optional_alt(
                     message: "upstream total timeout exceeded".to_string(),
                 };
             }
-            match send_upstream_request(
+            match send_upstream_request(SendUpstreamRequestArgs {
                 client,
                 method,
-                alt_url,
+                target_url: alt_url,
                 request_deadline,
                 request_ctx,
                 incoming_headers,
@@ -130,8 +130,8 @@ pub(super) fn retry_stateless_then_optional_alt(
                 upstream_cookie,
                 auth_token,
                 account,
-                true,
-            ) {
+                strip_session_affinity: true,
+            }) {
                 Ok(resp) => {
                     response = resp;
                 }

@@ -15,6 +15,7 @@ use super::execution_context::GatewayUpstreamExecutionContext;
 use super::request_setup::UpstreamRequestSetup;
 use super::response_finalize::{
     finalize_terminal_candidate, finalize_upstream_response, respond_total_timeout,
+    FinalizeUpstreamResponseArgs, TerminalCandidateArgs,
 };
 
 fn extract_prompt_cache_key_for_trace(body: &[u8]) -> Option<String> {
@@ -33,7 +34,7 @@ fn extract_prompt_cache_key_for_trace(body: &[u8]) -> Option<String> {
 pub(in super::super) enum CandidateExecutionResult {
     Handled,
     Exhausted {
-        request: Request,
+        request: Box<Request>,
         attempted_account_ids: Vec<String>,
         skipped_cooldown: usize,
         skipped_inflight: usize,
@@ -232,18 +233,18 @@ pub(in super::super) fn execute_candidate_sequence(
                 let request = request
                     .take()
                     .expect("request should be available before terminal response");
-                finalize_terminal_candidate(
+                finalize_terminal_candidate(TerminalCandidateArgs {
                     request,
                     context,
-                    &account.id,
-                    attempt_trace.last_attempt_url.as_deref(),
+                    account_id: &account.id,
+                    last_attempt_url: attempt_trace.last_attempt_url.as_deref(),
                     status_code,
                     message,
                     trace_id,
                     started_at,
-                    attempt_model_for_log,
-                    Some(attempted_account_ids.as_slice()),
-                )?;
+                    model_for_log: attempt_model_for_log,
+                    attempted_account_ids: Some(attempted_account_ids.as_slice()),
+                })?;
                 return Ok(CandidateExecutionResult::Handled);
             }
             CandidateUpstreamDecision::RespondUpstream(mut resp) => {
@@ -286,9 +287,9 @@ pub(in super::super) fn execute_candidate_sequence(
                                 failover_attempts.saturating_sub(1),
                                 request_deadline,
                             ) {
-                                let request = request.take().expect(
-                                    "request should be available before timeout response",
-                                );
+                                let request = request
+                                    .take()
+                                    .expect("request should be available before timeout response");
                                 respond_total_timeout(
                                     request,
                                     context,
@@ -308,18 +309,18 @@ pub(in super::super) fn execute_candidate_sequence(
                             let request = request
                                 .take()
                                 .expect("request should be available before terminal response");
-                            finalize_terminal_candidate(
+                            finalize_terminal_candidate(TerminalCandidateArgs {
                                 request,
                                 context,
-                                &account.id,
-                                attempt_trace.last_attempt_url.as_deref(),
+                                account_id: &account.id,
+                                last_attempt_url: attempt_trace.last_attempt_url.as_deref(),
                                 status_code,
                                 message,
                                 trace_id,
                                 started_at,
-                                attempt_model_for_log,
-                                Some(attempted_account_ids.as_slice()),
-                            )?;
+                                model_for_log: attempt_model_for_log,
+                                attempted_account_ids: Some(attempted_account_ids.as_slice()),
+                            })?;
                             return Ok(CandidateExecutionResult::Handled);
                         }
                     }
@@ -330,14 +331,14 @@ pub(in super::super) fn execute_candidate_sequence(
                 let guard = inflight_guard
                     .take()
                     .expect("inflight guard should be available before terminal response");
-                finalize_upstream_response(
+                finalize_upstream_response(FinalizeUpstreamResponseArgs {
                     request,
-                    resp,
-                    guard,
+                    response: resp,
+                    inflight_guard: guard,
                     context,
-                    &account.id,
-                    attempt_trace.last_attempt_url.as_deref(),
-                    attempt_trace.last_attempt_error.as_deref(),
+                    account_id: &account.id,
+                    last_attempt_url: attempt_trace.last_attempt_url.as_deref(),
+                    last_attempt_error: attempt_trace.last_attempt_error.as_deref(),
                     response_adapter,
                     tool_name_restore_map,
                     client_is_stream,
@@ -345,18 +346,19 @@ pub(in super::super) fn execute_candidate_sequence(
                     trace_id,
                     started_at,
                     actual_model_header,
-                    attempt_model_for_log,
+                    model_for_log: attempt_model_for_log,
                     response_cache_key,
-                    Some(attempted_account_ids.as_slice()),
-                )?;
+                    attempted_account_ids: Some(attempted_account_ids.as_slice()),
+                })?;
                 return Ok(CandidateExecutionResult::Handled);
             }
         }
     }
 
     Ok(CandidateExecutionResult::Exhausted {
-        request: request
-            .expect("request should still exist when no candidate handled the response"),
+        request: Box::new(
+            request.expect("request should still exist when no candidate handled the response"),
+        ),
         attempted_account_ids,
         skipped_cooldown,
         skipped_inflight,

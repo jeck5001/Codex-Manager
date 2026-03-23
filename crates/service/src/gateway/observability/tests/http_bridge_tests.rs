@@ -56,7 +56,7 @@ fn open_mock_http_response(content_type: &str, body: &str) -> reqwest::blocking:
         let _ = stream.read(&mut request_buf);
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.as_bytes().len()
+            body.len()
         );
         stream
             .write_all(response.as_bytes())

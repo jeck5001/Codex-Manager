@@ -53,22 +53,34 @@ fn openai_key_keeps_empty_overrides() {
 
 #[test]
 fn validate_api_key_allowed_model_accepts_allowed_model() {
-    let result = validate_api_key_allowed_model(
-        &["o3".to_string(), "o4-mini".to_string()],
-        Some("o4-mini"),
-    );
+    let result =
+        validate_api_key_allowed_model(&["o3".to_string(), "o4-mini".to_string()], Some("o4-mini"));
 
     assert!(result.is_ok());
 }
 
 #[test]
 fn validate_api_key_allowed_model_rejects_disallowed_model() {
-    let error = validate_api_key_allowed_model(
-        &["o3".to_string(), "o4-mini".to_string()],
-        Some("gpt-4o"),
-    )
-    .expect_err("disallowed model should be rejected");
+    let error =
+        validate_api_key_allowed_model(&["o3".to_string(), "o4-mini".to_string()], Some("gpt-4o"))
+            .expect_err("disallowed model should be rejected");
 
     assert_eq!(error.status_code, 403);
     assert!(error.message.contains("gpt-4o"));
+}
+
+#[test]
+fn validate_api_key_allowed_models_rejects_disallowed_requested_model_before_override() {
+    let error = validate_api_key_allowed_models(&["o3".to_string()], Some("gpt-4o"), Some("o3"))
+        .expect_err("disallowed requested model should be rejected before rewrite");
+
+    assert_eq!(error.status_code, 403);
+    assert!(error.message.contains("gpt-4o"));
+}
+
+#[test]
+fn validate_api_key_allowed_models_allows_all_models_when_allowlist_is_empty() {
+    let result = validate_api_key_allowed_models(&[], Some("gpt-4o"), Some("o3"));
+
+    assert!(result.is_ok());
 }

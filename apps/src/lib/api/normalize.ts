@@ -49,6 +49,7 @@ import {
   RequestTrendItem,
   RequestTrendResult,
   OperationAuditItem,
+  PluginItem,
   RequestLog,
   RequestLogExportResult,
   RequestLogFilterSummary,
@@ -567,6 +568,33 @@ export function normalizeAlertChannelTestResult(
     status: asString(source.status),
     sentAt: toNullableNumber(source.sentAt ?? source.sent_at),
   };
+}
+
+export function normalizePlugin(item: unknown): PluginItem | null {
+  const source = asObject(item);
+  const id = asString(source.id);
+  if (!id) return null;
+  return {
+    id,
+    name: asString(source.name),
+    description: asString(source.description) || null,
+    runtime: asString(source.runtime),
+    hookPoints: asArray(source.hookPoints ?? source.hook_points)
+      .map((value) => asString(value))
+      .filter((value) => value.length > 0),
+    scriptContent: asString(source.scriptContent ?? source.script_content),
+    enabled: asBoolean(source.enabled, true),
+    timeoutMs: asInteger(source.timeoutMs ?? source.timeout_ms, 100, 1),
+    createdAt: toNullableNumber(source.createdAt ?? source.created_at),
+    updatedAt: toNullableNumber(source.updatedAt ?? source.updated_at),
+  };
+}
+
+export function normalizePluginList(payload: unknown): PluginItem[] {
+  const source = asObject(payload);
+  return asArray(source.items ?? payload)
+    .map((item) => normalizePlugin(item))
+    .filter((item): item is PluginItem => Boolean(item));
 }
 
 export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Account | null {
@@ -1314,6 +1342,8 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     serviceListenModeOptions: asArray(source.serviceListenModeOptions).map((item) =>
       asString(item)
     ),
+    mcpEnabled: asBoolean(source.mcpEnabled, true),
+    mcpPort: asInteger(source.mcpPort, 48762, 1),
     routeStrategy: asString(source.routeStrategy) || "ordered",
     routeStrategyOptions: asArray(source.routeStrategyOptions).map((item) =>
       asString(item)

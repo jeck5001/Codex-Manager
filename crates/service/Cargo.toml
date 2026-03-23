@@ -3,6 +3,19 @@ name = "codexmanager-service"
 version.workspace = true
 edition = "2021"
 
+[features]
+default = []
+mcp = []
+
+[[bin]]
+name = "codexmanager-service"
+path = "src/main.rs"
+
+[[bin]]
+name = "codexmanager-mcp"
+path = "src/bin/codexmanager-mcp.rs"
+required-features = ["mcp"]
+
 [dependencies]
 codexmanager-core = { path = "../core" }
 serde = { version = "1", features = ["derive"] }

@@ -4,15 +4,15 @@ use tiny_http::{Header, Request, Response, StatusCode};
 
 use super::super::{
     adapt_upstream_response, adapt_upstream_response_with_tool_name_restore_map,
-    build_anthropic_error_body, request_log::RequestLogUsage, ResponseAdapter, ToolNameRestoreMap,
+    build_anthropic_error_body, request_log::RequestLogUsage, ResponseAdapter,
 };
 use super::{
     collect_non_stream_json_from_sse_bytes, extract_error_hint_from_body,
     extract_error_message_from_json, looks_like_sse_payload, merge_usage, parse_usage_from_json,
     push_optional_static_header, push_trace_id_header, usage_has_signal, AnthropicSseReader,
     OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader, PassthroughSseCollector,
-    PassthroughSseUsageReader, SseKeepAliveFrame, UpstreamResponseBridgeResult,
-    UpstreamResponseUsage,
+    PassthroughSseUsageReader, RespondWithUpstreamArgs, SseKeepAliveFrame,
+    UpstreamResponseBridgeResult, UpstreamResponseUsage,
 };
 
 const REQUEST_ID_HEADER_CANDIDATES: &[&str] = &["x-request-id", "x-oai-request-id"];
@@ -394,15 +394,19 @@ fn with_bridge_debug_meta(
     result
 }
 
+struct CompactDebugMeta<'a> {
+    request_id: Option<&'a str>,
+    cf_ray: Option<&'a str>,
+    auth_error: Option<&'a str>,
+    identity_error_code: Option<&'a str>,
+    trace_id: Option<&'a str>,
+}
+
 fn respond_invalid_compact_success_body(
     request: Request,
     usage: UpstreamResponseUsage,
     body: &[u8],
-    request_id: Option<&str>,
-    cf_ray: Option<&str>,
-    auth_error: Option<&str>,
-    identity_error_code: Option<&str>,
-    trace_id: Option<&str>,
+    debug_meta: CompactDebugMeta<'_>,
 ) -> UpstreamResponseBridgeResult {
     with_bridge_debug_meta(
         respond_synthesized_compact_error_body(
@@ -411,19 +415,19 @@ fn respond_invalid_compact_success_body(
             usage,
             build_invalid_compact_success_message(
                 body,
-                request_id,
-                cf_ray,
-                auth_error,
-                identity_error_code,
+                debug_meta.request_id,
+                debug_meta.cf_ray,
+                debug_meta.auth_error,
+                debug_meta.identity_error_code,
             ),
-            request_id,
-            cf_ray,
-            trace_id,
+            debug_meta.request_id,
+            debug_meta.cf_ray,
+            debug_meta.trace_id,
         ),
-        &request_id.map(str::to_string),
-        &cf_ray.map(str::to_string),
-        &auth_error.map(str::to_string),
-        &identity_error_code.map(str::to_string),
+        &debug_meta.request_id.map(str::to_string),
+        &debug_meta.cf_ray.map(str::to_string),
+        &debug_meta.auth_error.map(str::to_string),
+        &debug_meta.identity_error_code.map(str::to_string),
         &Some("application/json".to_string()),
         None,
     )
@@ -435,11 +439,7 @@ fn respond_invalid_compact_non_success_body(
     usage: UpstreamResponseUsage,
     body: &[u8],
     content_type: Option<&str>,
-    request_id: Option<&str>,
-    cf_ray: Option<&str>,
-    auth_error: Option<&str>,
-    identity_error_code: Option<&str>,
-    trace_id: Option<&str>,
+    debug_meta: CompactDebugMeta<'_>,
 ) -> UpstreamResponseBridgeResult {
     with_bridge_debug_meta(
         respond_synthesized_compact_error_body(
@@ -450,36 +450,39 @@ fn respond_invalid_compact_non_success_body(
                 status_code,
                 content_type,
                 body,
-                request_id,
-                cf_ray,
-                auth_error,
-                identity_error_code,
+                debug_meta.request_id,
+                debug_meta.cf_ray,
+                debug_meta.auth_error,
+                debug_meta.identity_error_code,
             ),
-            request_id,
-            cf_ray,
-            trace_id,
+            debug_meta.request_id,
+            debug_meta.cf_ray,
+            debug_meta.trace_id,
         ),
-        &request_id.map(str::to_string),
-        &cf_ray.map(str::to_string),
-        &auth_error.map(str::to_string),
-        &identity_error_code.map(str::to_string),
+        &debug_meta.request_id.map(str::to_string),
+        &debug_meta.cf_ray.map(str::to_string),
+        &debug_meta.auth_error.map(str::to_string),
+        &debug_meta.identity_error_code.map(str::to_string),
         &Some("application/json".to_string()),
         None,
     )
 }
 
 pub(crate) fn respond_with_upstream(
-    request: Request,
-    upstream: reqwest::blocking::Response,
-    _inflight_guard: super::super::AccountInFlightGuard,
-    response_adapter: ResponseAdapter,
-    request_path: &str,
-    tool_name_restore_map: Option<&ToolNameRestoreMap>,
-    is_stream: bool,
-    trace_id: Option<&str>,
-    actual_model_header: Option<&str>,
-    response_cache_key: Option<&str>,
+    args: RespondWithUpstreamArgs<'_>,
 ) -> Result<UpstreamResponseBridgeResult, String> {
+    let RespondWithUpstreamArgs {
+        request,
+        upstream,
+        inflight_guard: _inflight_guard,
+        response_adapter,
+        request_path,
+        tool_name_restore_map,
+        is_stream,
+        trace_id,
+        actual_model_header,
+        response_cache_key,
+    } = args;
     let keepalive_frame = resolve_stream_keepalive_frame(response_adapter, request_path);
     let upstream_request_id =
         first_upstream_header(upstream.headers(), REQUEST_ID_HEADER_CANDIDATES);
@@ -570,11 +573,13 @@ pub(crate) fn respond_with_upstream(
                             request,
                             usage,
                             body.as_ref(),
-                            upstream_request_id.as_deref(),
-                            upstream_cf_ray.as_deref(),
-                            upstream_auth_error.as_deref(),
-                            upstream_identity_error_code.as_deref(),
-                            trace_id,
+                            CompactDebugMeta {
+                                request_id: upstream_request_id.as_deref(),
+                                cf_ray: upstream_cf_ray.as_deref(),
+                                auth_error: upstream_auth_error.as_deref(),
+                                identity_error_code: upstream_identity_error_code.as_deref(),
+                                trace_id,
+                            },
                         ));
                     }
                     if is_compact_request
@@ -592,11 +597,13 @@ pub(crate) fn respond_with_upstream(
                             usage,
                             body.as_ref(),
                             upstream_content_type.as_deref(),
-                            upstream_request_id.as_deref(),
-                            upstream_cf_ray.as_deref(),
-                            upstream_auth_error.as_deref(),
-                            upstream_identity_error_code.as_deref(),
-                            trace_id,
+                            CompactDebugMeta {
+                                request_id: upstream_request_id.as_deref(),
+                                cf_ray: upstream_cf_ray.as_deref(),
+                                auth_error: upstream_auth_error.as_deref(),
+                                identity_error_code: upstream_identity_error_code.as_deref(),
+                                trace_id,
+                            },
                         ));
                     }
                     maybe_append_cache_miss_header(&mut headers, response_cache_key);
@@ -665,11 +672,13 @@ pub(crate) fn respond_with_upstream(
                         request,
                         usage,
                         upstream_body.as_ref(),
-                        upstream_request_id.as_deref(),
-                        upstream_cf_ray.as_deref(),
-                        upstream_auth_error.as_deref(),
-                        upstream_identity_error_code.as_deref(),
-                        trace_id,
+                        CompactDebugMeta {
+                            request_id: upstream_request_id.as_deref(),
+                            cf_ray: upstream_cf_ray.as_deref(),
+                            auth_error: upstream_auth_error.as_deref(),
+                            identity_error_code: upstream_identity_error_code.as_deref(),
+                            trace_id,
+                        },
                     ));
                 }
                 if is_compact_request
@@ -687,11 +696,13 @@ pub(crate) fn respond_with_upstream(
                         usage,
                         upstream_body.as_ref(),
                         upstream_content_type.as_deref(),
-                        upstream_request_id.as_deref(),
-                        upstream_cf_ray.as_deref(),
-                        upstream_auth_error.as_deref(),
-                        upstream_identity_error_code.as_deref(),
-                        trace_id,
+                        CompactDebugMeta {
+                            request_id: upstream_request_id.as_deref(),
+                            cf_ray: upstream_cf_ray.as_deref(),
+                            auth_error: upstream_auth_error.as_deref(),
+                            identity_error_code: upstream_identity_error_code.as_deref(),
+                            trace_id,
+                        },
                     ));
                 }
                 let upstream_error_hint = with_upstream_debug_suffix(
@@ -919,7 +930,7 @@ pub(crate) fn respond_with_upstream(
                 );
             }
 
-            if use_openai_sse_adapter && (is_stream || is_sse) && is_sse {
+            if use_openai_sse_adapter && is_sse {
                 if let Ok(content_type_header) =
                     Header::from_bytes(b"Content-Type".as_slice(), b"text/event-stream".as_slice())
                 {

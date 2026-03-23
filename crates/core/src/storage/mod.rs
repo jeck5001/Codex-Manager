@@ -4,12 +4,13 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod accounts;
-mod audit_logs;
 mod alerts;
 mod api_keys;
+mod audit_logs;
 mod events;
-mod model_pricing;
 mod model_options;
+mod model_pricing;
+mod plugins;
 mod request_log_query;
 mod request_logs;
 mod request_token_stats;
@@ -250,6 +251,20 @@ pub struct ModelPricing {
     pub model_slug: String,
     pub input_price_per_1k: f64,
     pub output_price_per_1k: f64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct PluginRecord {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub runtime: String,
+    pub hook_points_json: String,
+    pub script_content: String,
+    pub enabled: bool,
+    pub timeout_ms: i64,
+    pub created_at: i64,
     pub updated_at: i64,
 }
 
@@ -554,9 +569,14 @@ impl Storage {
             "044_audit_logs",
             include_str!("../../migrations/044_audit_logs.sql"),
         )?;
+        self.apply_sql_migration(
+            "045_plugins",
+            include_str!("../../migrations/045_plugins.sql"),
+        )?;
         self.ensure_alerting_tables()?;
         self.ensure_audit_logs_table()?;
         self.ensure_model_pricing_table()?;
+        self.ensure_plugins_table()?;
         self.ensure_request_token_stats_table()?;
         Ok(())
     }

@@ -146,6 +146,9 @@
 - `webAccessPasswordConfigured: boolean`
 - `webAccessTwoFactorEnabled: boolean`
 - `webAccessRecoveryCodesRemaining: number`
+- `responseCacheEnabled: boolean`
+- `responseCacheTtlSecs: number`
+- `responseCacheMaxEntries: number`
 - `retryPolicyMaxRetries: number`
 - `retryPolicyBackoffStrategy: string`
 - `retryPolicyRetryableStatusCodes: number[]`
@@ -157,11 +160,134 @@
 
 当前前端已消费的近期字段：
 - `webAccessPassword`
+- `responseCacheEnabled`
+- `responseCacheTtlSecs`
+- `responseCacheMaxEntries`
 - `retryPolicyMaxRetries`
 - `retryPolicyBackoffStrategy`
 - `retryPolicyRetryableStatusCodes`
 
-## 5. 重试策略
+### 插件管理（实验）
+
+当前已落地的后端 RPC。
+
+补充说明：
+- 更完整的插件脚本约定、模板和后续 Hook 契约见 [插件管理与 Lua 开发指南](report/20260323193000000_插件管理与Lua开发指南.md)。
+- 当前插件系统仍处于“管理面 + 注册表”阶段，尚未把 Lua 执行器接入 gateway 请求链路。
+- `enabled` 和 `timeoutMs` 已持久化，但目前主要作为后续执行器的预留配置。
+
+### `plugin/list`
+
+用途：列出当前插件注册表中的全部插件。
+
+返回字段：
+- `items: PluginItem[]`
+
+`PluginItem` 关键字段：
+- `id: string`
+- `name: string`
+- `description?: string`
+- `runtime: "lua"`
+- `hookPoints: ("pre_route" | "post_route" | "post_response")[]`
+- `scriptContent: string`
+- `enabled: boolean`
+- `timeoutMs: number`
+
+### `plugin/upsert`
+
+用途：创建或更新插件元数据与脚本内容。
+
+参数：
+- `id?: string`
+- `name: string`
+- `description?: string`
+- `runtime?: "lua"`
+- `hookPoints: string[]`
+- `scriptContent: string`
+- `enabled?: boolean`
+- `timeoutMs?: number`
+
+说明：
+- 当前仅接受 `lua` runtime。
+- `hookPoints` 当前仅接受 `pre_route`、`post_route`、`post_response`。
+- `scriptContent` 不能为空；`hookPoints` 会在写入前去重并保持输入顺序。
+- 现阶段不会执行脚本内容；该接口只负责管理插件注册表。
+
+### `plugin/delete`
+
+用途：按 `id` 删除插件。
+
+参数：
+- `id: string`
+
+审计说明：
+- `plugin/upsert`、`plugin/delete` 都会写入审计日志。
+
+## 5. 响应缓存
+
+### `gateway/cache/config/get`
+
+用途：读取全局响应缓存配置。
+
+返回字段：
+- `enabled: boolean`
+- `ttlSecs: number`
+- `maxEntries: number`
+
+### `gateway/cache/config/set`
+
+用途：更新全局响应缓存配置。
+
+参数：
+- `enabled?: boolean`
+- `ttlSecs?: number`
+- `maxEntries?: number`
+
+返回字段同 `gateway/cache/config/get`。
+
+说明：
+- 写入后会同步更新 `appSettings/get` 的 `responseCache*` 快照字段。
+- 环境变量 `CODEXMANAGER_RESPONSE_CACHE_ENABLED`、`CODEXMANAGER_RESPONSE_CACHE_TTL_SECS`、`CODEXMANAGER_RESPONSE_CACHE_MAX_ENTRIES` 可覆盖默认运行时配置，对齐通用验收 G4。
+
+### `gateway/cache/stats`
+
+用途：读取响应缓存运行时统计。
+
+返回字段：
+- `enabled: boolean`
+- `ttlSecs: number`
+- `maxEntries: number`
+- `entryCount: number`
+- `estimatedBytes: number`
+- `hitCount: number`
+- `missCount: number`
+- `hitRatePercent: number`
+
+### `gateway/cache/clear`
+
+用途：清空响应缓存并返回清空后的统计快照。
+
+### `apikey/responseCache/get`
+
+用途：读取单个 API Key 是否允许命中 / 写入响应缓存。
+
+参数：
+- `id: string`
+
+返回字段：
+- `enabled: boolean`
+
+### `apikey/responseCache/set`
+
+用途：设置单个 API Key 的响应缓存开关。
+
+参数：
+- `id: string`
+- `enabled: boolean`
+
+返回字段同 `apikey/responseCache/get`。
+
+## 6. 重试策略
 
 ### `gateway/retryPolicy/get`
 
@@ -183,11 +309,31 @@
 - 当前 `appSettings/get` 会同步返回持久化后的 `retryPolicy*` 快照
 - 写操作会进入 `audit/list`
 
-## 6. 巡检与健康检查
+## 7. 仪表盘与巡检
+
+### `dashboard/health`
+
+用途：读取首页健康仪表盘的聚合数据。
+
+返回字段：
+- `generatedAt: number`
+- `accountStatusBuckets: array`
+- `gatewayMetrics: object`
+- `recentHealthcheck: object | null`
+
+说明：
+- `recentHealthcheck` 与 `healthcheck/run` 的结果结构一致，首页「最近巡检」卡片直接消费这一字段。
+- 当服务尚未执行过巡检时，`recentHealthcheck` 返回 `null`。
 
 ### `healthcheck/config/get`
 
 用途：读取自动巡检配置。
+
+返回字段：
+- `enabled: boolean`
+- `intervalSecs: number`
+- `sampleSize: number`
+- `recentRun: object | null`
 
 ### `healthcheck/config/set`
 
@@ -208,7 +354,7 @@
 - `failureCount`
 - `failedAccounts`
 
-## 7. 审计日志
+## 8. 审计日志
 
 ### `audit/list`
 
@@ -236,7 +382,7 @@
 转发目标：
 - `GET http://<service_addr>/export/auditlogs?...`
 
-## 8. 请求日志导出
+## 9. 请求日志导出
 
 ### `GET /api/export/requestlogs`
 
@@ -279,3 +425,30 @@
 - Web 登录从密码页进入验证码页
 - pending cookie 成功交换为正式登录 cookie
 - 桌面端设置弹窗可生成二维码、展示恢复码并调用真实 RPC
+
+## 11. 实验性 MCP Server
+
+当前仓库已落地一个 feature-gated 的实验二进制：
+- 启动方式：`cargo run -p codexmanager-service --features mcp --bin codexmanager-mcp`
+- 传输方式：
+  - `stdio`：默认模式，使用 `Content-Length` framed JSON-RPC
+  - `http-sse`：`cargo run -p codexmanager-service --features mcp --bin codexmanager-mcp -- http-sse`
+- 当前已处理的方法：`initialize`、`ping`、`tools/list`、`tools/call`
+- `tools/list` 当前会暴露规划中的 4 个工具定义：`chat_completion`、`list_models`、`list_accounts`、`get_usage`
+- `tools/call` 已接通 4 个工具：
+  - `chat_completion`：通过进程内一次性 backend server 复用真实网关 `/v1/chat/completions` 链路；需在参数中传 `apiKey`，或预先设置环境变量 `CODEXMANAGER_MCP_API_KEY`
+    - 当前仅支持 `stream=false`，返回 `response`（网关 JSON）和 `gateway` 元数据（status / actualModel / cache / traceId）
+  - `list_models`：读取当前模型缓存
+  - `list_accounts`：返回账号状态概览（不含敏感 token）
+  - `get_usage`：返回聚合后的用量汇总
+
+说明：
+- 首轮实现先手写最小协议层，避免在仅需 stdio 骨架阶段就引入新的 MCP 依赖并扩大二进制影响面
+- 设置页与 `appSettings/get|set` 已新增 `mcpEnabled` / `mcpPort`；当 `mcpEnabled=false` 时，`initialize`、`tools/list`、`tools/call` 会直接返回禁用错误
+- 新增环境变量覆盖：`CODEXMANAGER_MCP_ENABLED`、`CODEXMANAGER_MCP_PORT`
+- HTTP SSE 传输已接通：
+  - `GET /sse` 建立会话并返回一次性 `messageUrl`
+  - `POST /message?sessionId=...` 复用同一套 `initialize` / `tools/*` 会话处理
+  - 监听端口默认取 `mcpPort`（默认 `48762`）
+- 当前仓库内已覆盖 `stdio` 主链路与 `http_sse_*` 单测；受 automation 沙箱限制，本轮未额外执行真实端口监听验收
+- Claude Code / Cursor 的接入示例见 [MCP 接入指南](report/20260323161000000_MCP接入指南.md)

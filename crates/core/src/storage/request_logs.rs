@@ -217,10 +217,7 @@ impl Storage {
         })
     }
 
-    pub fn count_request_logs_filtered(
-        &self,
-        filters: RequestLogFilterInput<'_>,
-    ) -> Result<i64> {
+    pub fn count_request_logs_filtered(&self, filters: RequestLogFilterInput<'_>) -> Result<i64> {
         let filters = build_request_log_filters(filters);
         let sql = format!(
             "SELECT COUNT(1)
@@ -604,9 +601,7 @@ fn normalize_request_log_limit(value: i64) -> i64 {
     }
 }
 
-fn build_request_log_filters(
-    filters: RequestLogFilterInput<'_>,
-) -> RequestLogSqlFilters {
+fn build_request_log_filters(filters: RequestLogFilterInput<'_>) -> RequestLogSqlFilters {
     let mut clauses = Vec::new();
     let mut params = Vec::new();
 

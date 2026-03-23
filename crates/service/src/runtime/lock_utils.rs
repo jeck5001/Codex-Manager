@@ -1,6 +1,6 @@
-use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 #[cfg(test)]
 use std::sync::OnceLock;
+use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Consistent lock-poison strategy for this crate:
 /// - Recover via `into_inner()` (best-effort keep service running)
@@ -38,5 +38,8 @@ pub(crate) fn write_recover<'a, T>(lock: &'a RwLock<T>, name: &str) -> RwLockWri
 #[cfg(test)]
 pub(crate) fn process_env_test_guard() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    lock_recover(LOCK.get_or_init(|| Mutex::new(())), "process_env_test_guard")
+    lock_recover(
+        LOCK.get_or_init(|| Mutex::new(())),
+        "process_env_test_guard",
+    )
 }

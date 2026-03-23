@@ -299,7 +299,7 @@ fn import_single_item(
     item: &Value,
     sequence: usize,
 ) -> Result<bool, String> {
-    let payload = extract_token_payload(&item)?;
+    let payload = extract_token_payload(item)?;
     let meta = extract_account_meta(item);
     let claims = parse_id_token_claims(&payload.id_token).ok();
     let subject_account_id = claims

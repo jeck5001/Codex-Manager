@@ -655,8 +655,7 @@ mod tests {
     #[tokio::test]
     async fn login_submit_requires_second_factor_after_password_verification() {
         let _db = setup_test_db("web-auth-login-step1");
-        codexmanager_service::set_web_access_password(Some("P@ssw0rd!"))
-            .expect("set password");
+        codexmanager_service::set_web_access_password(Some("P@ssw0rd!")).expect("set password");
         let setup = codexmanager_service::web_auth_two_factor_setup().expect("2fa setup");
         let secret = setup
             .get("secret")
@@ -698,8 +697,7 @@ mod tests {
     #[tokio::test]
     async fn login_submit_exchanges_pending_cookie_for_authenticated_cookie() {
         let _db = setup_test_db("web-auth-login-step2");
-        codexmanager_service::set_web_access_password(Some("P@ssw0rd!"))
-            .expect("set password");
+        codexmanager_service::set_web_access_password(Some("P@ssw0rd!")).expect("set password");
         let setup = codexmanager_service::web_auth_two_factor_setup().expect("2fa setup");
         let secret = setup
             .get("secret")
@@ -723,10 +721,8 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::COOKIE,
-            HeaderValue::from_str(&format!(
-                "{WEB_AUTH_PENDING_COOKIE_NAME}={pending_cookie}"
-            ))
-            .expect("pending cookie header"),
+            HeaderValue::from_str(&format!("{WEB_AUTH_PENDING_COOKIE_NAME}={pending_cookie}"))
+                .expect("pending cookie header"),
         );
 
         let response = login_submit(
@@ -764,8 +760,7 @@ mod tests {
     #[tokio::test]
     async fn login_submit_accepts_recovery_code_and_decrements_remaining_count() {
         let _db = setup_test_db("web-auth-login-recovery");
-        codexmanager_service::set_web_access_password(Some("P@ssw0rd!"))
-            .expect("set password");
+        codexmanager_service::set_web_access_password(Some("P@ssw0rd!")).expect("set password");
         let setup = codexmanager_service::web_auth_two_factor_setup().expect("2fa setup");
         let secret = setup
             .get("secret")
@@ -796,10 +791,8 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::COOKIE,
-            HeaderValue::from_str(&format!(
-                "{WEB_AUTH_PENDING_COOKIE_NAME}={pending_cookie}"
-            ))
-            .expect("pending cookie header"),
+            HeaderValue::from_str(&format!("{WEB_AUTH_PENDING_COOKIE_NAME}={pending_cookie}"))
+                .expect("pending cookie header"),
         );
 
         let response = login_submit(
@@ -833,8 +826,7 @@ mod tests {
     #[tokio::test]
     async fn login_submit_rejects_invalid_second_factor_code_and_keeps_pending_cookie() {
         let _db = setup_test_db("web-auth-login-invalid-2fa");
-        codexmanager_service::set_web_access_password(Some("P@ssw0rd!"))
-            .expect("set password");
+        codexmanager_service::set_web_access_password(Some("P@ssw0rd!")).expect("set password");
         let setup = codexmanager_service::web_auth_two_factor_setup().expect("2fa setup");
         let secret = setup
             .get("secret")
@@ -858,10 +850,8 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::COOKIE,
-            HeaderValue::from_str(&format!(
-                "{WEB_AUTH_PENDING_COOKIE_NAME}={pending_cookie}"
-            ))
-            .expect("pending cookie header"),
+            HeaderValue::from_str(&format!("{WEB_AUTH_PENDING_COOKIE_NAME}={pending_cookie}"))
+                .expect("pending cookie header"),
         );
 
         let response = login_submit(

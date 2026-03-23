@@ -130,7 +130,7 @@ pub(super) fn resolve_openai_bearer_token(
     };
 
     match exchange_and_persist_api_key_access_token(storage, token, &issuer, &client_id) {
-        Ok(token) => return Ok(token),
+        Ok(token) => Ok(token),
         Err(exchange_err) => {
             if !token.refresh_token.trim().is_empty() {
                 match refresh_access_token(&issuer, &client_id, &token.refresh_token) {

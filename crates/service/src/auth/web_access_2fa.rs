@@ -1,7 +1,6 @@
 use crate::app_settings::{
     get_persisted_app_setting, save_persisted_app_setting,
-    APP_SETTING_WEB_ACCESS_2FA_RECOVERY_CODES_KEY,
-    APP_SETTING_WEB_ACCESS_2FA_SECRET_ENCRYPTED_KEY,
+    APP_SETTING_WEB_ACCESS_2FA_RECOVERY_CODES_KEY, APP_SETTING_WEB_ACCESS_2FA_SECRET_ENCRYPTED_KEY,
 };
 use codexmanager_core::storage::now_ts;
 use rand::RngCore;
@@ -183,11 +182,15 @@ fn verify_totp_code(secret: &str, code: &str) -> Result<bool, String> {
 
 fn encode_setup_token(payload: &SetupPayload) -> Result<String, String> {
     let encoded = hex_encode(
-        &serde_json::to_vec(payload).map_err(|err| format!("serialize 2fa setup token failed: {err}"))?,
+        &serde_json::to_vec(payload)
+            .map_err(|err| format!("serialize 2fa setup token failed: {err}"))?,
     );
     let signature = hex_sha256(
-        format!("codexmanager:web-auth-2fa-setup:{encoded}:{}", crate::rpc_auth_token())
-            .as_bytes(),
+        format!(
+            "codexmanager:web-auth-2fa-setup:{encoded}:{}",
+            crate::rpc_auth_token()
+        )
+        .as_bytes(),
     );
     Ok(format!("{encoded}.{signature}"))
 }
@@ -198,8 +201,11 @@ fn decode_setup_token(token: &str) -> Result<SetupPayload, String> {
         .split_once('.')
         .ok_or_else(|| "setup token 格式无效".to_string())?;
     let expected = hex_sha256(
-        format!("codexmanager:web-auth-2fa-setup:{encoded}:{}", crate::rpc_auth_token())
-            .as_bytes(),
+        format!(
+            "codexmanager:web-auth-2fa-setup:{encoded}:{}",
+            crate::rpc_auth_token()
+        )
+        .as_bytes(),
     );
     if !crate::auth::rpc::constant_time_eq(expected.as_bytes(), signature.as_bytes()) {
         return Err("setup token 校验失败".to_string());
@@ -339,7 +345,7 @@ fn hex_decode(value: &str) -> Result<Vec<u8>, String> {
     if normalized.is_empty() {
         return Ok(Vec::new());
     }
-    if normalized.len() % 2 != 0 {
+    if !normalized.len().is_multiple_of(2) {
         return Err("hex value 长度无效".to_string());
     }
     let mut out = Vec::with_capacity(normalized.len() / 2);
@@ -348,8 +354,8 @@ fn hex_decode(value: &str) -> Result<Vec<u8>, String> {
     while index < bytes.len() {
         let chunk = std::str::from_utf8(&bytes[index..index + 2])
             .map_err(|err| format!("hex decode failed: {err}"))?;
-        let value = u8::from_str_radix(chunk, 16)
-            .map_err(|err| format!("hex decode failed: {err}"))?;
+        let value =
+            u8::from_str_radix(chunk, 16).map_err(|err| format!("hex decode failed: {err}"))?;
         out.push(value);
         index += 2;
     }

@@ -374,6 +374,27 @@ pub struct AlertHistoryListResult {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PluginItem {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub runtime: String,
+    #[serde(default)]
+    pub hook_points: Vec<String>,
+    pub script_content: String,
+    pub enabled: bool,
+    pub timeout_ms: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PluginListResult {
+    pub items: Vec<PluginItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AlertChannelTestResult {
     pub channel_id: String,
     pub status: String,

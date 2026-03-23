@@ -3,7 +3,7 @@ use codexmanager_core::storage::{Account, Storage, Token};
 use std::time::Instant;
 
 use super::super::support::deadline;
-use super::openai_base::{handle_openai_base_attempt, OpenAiAttemptResult};
+use super::openai_base::{handle_openai_base_attempt, OpenAiAttemptResult, OpenAiBaseAttemptArgs};
 use super::postprocess::{process_upstream_post_retry_flow, PostRetryFlowDecision};
 use super::primary_flow::{run_primary_upstream_flow, PrimaryFlowDecision};
 use super::transport::UpstreamRequestContext;
@@ -51,20 +51,22 @@ where
     }
     if super::super::super::is_openai_api_base(base) {
         match handle_openai_base_attempt(
-            &client,
-            storage,
-            method,
-            path,
-            incoming_headers,
-            body,
-            is_stream,
-            base,
-            account,
-            token,
-            upstream_cookie,
-            strip_session_affinity,
-            debug,
-            has_more_candidates,
+            OpenAiBaseAttemptArgs {
+                client: &client,
+                storage,
+                method,
+                path,
+                incoming_headers,
+                body,
+                is_stream,
+                base,
+                account,
+                token,
+                upstream_cookie,
+                strip_session_affinity,
+                debug,
+                has_more_candidates,
+            },
             &mut log_gateway_result,
         ) {
             OpenAiAttemptResult::Upstream(resp) => {

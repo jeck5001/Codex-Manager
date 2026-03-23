@@ -369,9 +369,8 @@ impl Storage {
         }
 
         let now = now_ts();
-        let model_chain_json = serde_json::to_string(model_chain).map_err(|err| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(err))
-        })?;
+        let model_chain_json = serde_json::to_string(model_chain)
+            .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
         self.conn.execute(
             "INSERT INTO api_key_model_fallbacks (key_id, model_chain_json, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?3)

@@ -1,6 +1,6 @@
 use codexmanager_core::storage::{
-    now_ts, Account, AlertChannel, AlertRule, ApiKey, ModelPricing, RequestLog, RequestTokenStat,
-    Storage, Token, UsageSnapshotRecord,
+    now_ts, Account, AlertChannel, AlertRule, ApiKey, ModelPricing, PluginRecord, RequestLog,
+    RequestTokenStat, Storage, Token, UsageSnapshotRecord,
 };
 use std::ffi::OsString;
 
@@ -1312,18 +1312,12 @@ fn storage_can_roundtrip_api_key_allowed_models_config() {
         .expect("insert key");
 
     storage
-        .update_api_key_allowed_models(
-            "key-allowed-1",
-            Some("[\"gpt-5\",\"o3\",\"gpt-5\"]"),
-        )
+        .update_api_key_allowed_models("key-allowed-1", Some("[\"gpt-5\",\"o3\",\"gpt-5\"]"))
         .expect("save allowed models");
     let config = storage
         .find_api_key_allowed_models_by_id("key-allowed-1")
         .expect("load allowed models");
-    assert_eq!(
-        config.as_deref(),
-        Some("[\"gpt-5\",\"o3\",\"gpt-5\"]")
-    );
+    assert_eq!(config.as_deref(), Some("[\"gpt-5\",\"o3\",\"gpt-5\"]"));
 
     storage
         .update_api_key_allowed_models("key-allowed-1", None)
@@ -1443,6 +1437,78 @@ fn storage_can_roundtrip_model_pricing_config() {
 }
 
 #[test]
+fn storage_can_roundtrip_plugin_registry_entries() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    let created_at = now_ts();
+    let plugin = PluginRecord {
+        id: "plugin-lua-quota-guard".to_string(),
+        name: "额度保护".to_string(),
+        description: Some("请求前拦截高风险模型".to_string()),
+        runtime: "lua".to_string(),
+        hook_points_json: r#"["pre_route"]"#.to_string(),
+        script_content: "return { allow = true }".to_string(),
+        enabled: true,
+        timeout_ms: 80,
+        created_at,
+        updated_at: created_at,
+    };
+    storage.upsert_plugin(&plugin).expect("insert plugin");
+
+    let inserted = storage
+        .find_plugin_by_id("plugin-lua-quota-guard")
+        .expect("find inserted plugin")
+        .expect("plugin exists");
+    assert_eq!(inserted.name, "额度保护");
+    assert_eq!(
+        inserted.description.as_deref(),
+        Some("请求前拦截高风险模型")
+    );
+    assert_eq!(inserted.hook_points_json, r#"["pre_route"]"#);
+    assert_eq!(inserted.timeout_ms, 80);
+    assert!(inserted.enabled);
+
+    let updated = PluginRecord {
+        id: plugin.id.clone(),
+        name: "额度保护 v2".to_string(),
+        description: Some("补充响应后审计".to_string()),
+        runtime: "lua".to_string(),
+        hook_points_json: r#"["pre_route","post_response"]"#.to_string(),
+        script_content: "return { allow = false, reason = 'quota' }".to_string(),
+        enabled: false,
+        timeout_ms: 95,
+        created_at,
+        updated_at: created_at + 60,
+    };
+    storage.upsert_plugin(&updated).expect("update plugin");
+
+    let items = storage.list_plugins().expect("list plugins");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name, "额度保护 v2");
+    assert_eq!(items[0].description.as_deref(), Some("补充响应后审计"));
+    assert_eq!(
+        items[0].hook_points_json,
+        r#"["pre_route","post_response"]"#
+    );
+    assert_eq!(
+        items[0].script_content,
+        "return { allow = false, reason = 'quota' }"
+    );
+    assert!(!items[0].enabled);
+    assert_eq!(items[0].timeout_ms, 95);
+    assert_eq!(items[0].created_at, created_at);
+
+    storage
+        .delete_plugin("plugin-lua-quota-guard")
+        .expect("delete plugin");
+    assert!(storage
+        .find_plugin_by_id("plugin-lua-quota-guard")
+        .expect("find deleted plugin")
+        .is_none());
+}
+
+#[test]
 fn storage_can_summarize_cost_usage_by_key_model_and_day() {
     let storage = Storage::open_in_memory().expect("open in memory");
     storage.init().expect("init schema");
@@ -1555,11 +1621,17 @@ fn storage_can_summarize_request_trends_models_and_heatmap() {
         .expect("request trends");
     assert!(!request_trends.is_empty());
     assert_eq!(
-        request_trends.iter().map(|item| item.request_count).sum::<i64>(),
+        request_trends
+            .iter()
+            .map(|item| item.request_count)
+            .sum::<i64>(),
         3
     );
     assert_eq!(
-        request_trends.iter().map(|item| item.success_count).sum::<i64>(),
+        request_trends
+            .iter()
+            .map(|item| item.success_count)
+            .sum::<i64>(),
         2
     );
 
@@ -1574,5 +1646,8 @@ fn storage_can_summarize_request_trends_models_and_heatmap() {
         .summarize_request_heatmap_between(1_699_999_000, 1_700_172_800)
         .expect("heatmap");
     assert!(!heatmap.is_empty());
-    assert_eq!(heatmap.iter().map(|item| item.request_count).sum::<i64>(), 3);
+    assert_eq!(
+        heatmap.iter().map(|item| item.request_count).sum::<i64>(),
+        3
+    );
 }

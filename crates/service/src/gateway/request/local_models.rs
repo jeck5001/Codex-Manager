@@ -39,65 +39,80 @@ fn fallback_model_options(model_for_log: Option<&str>) -> Vec<ModelOption> {
     }]
 }
 
+pub(super) struct LocalModelsRequestContext<'a> {
+    pub(super) trace_id: &'a str,
+    pub(super) key_id: &'a str,
+    pub(super) protocol_type: &'a str,
+    pub(super) original_path: &'a str,
+    pub(super) path: &'a str,
+    pub(super) response_adapter: super::ResponseAdapter,
+    pub(super) request_method: &'a str,
+    pub(super) model_for_log: Option<&'a str>,
+    pub(super) reasoning_for_log: Option<&'a str>,
+    pub(super) storage: &'a codexmanager_core::storage::Storage,
+}
+
 pub(super) fn maybe_respond_local_models(
     request: tiny_http::Request,
-    trace_id: &str,
-    key_id: &str,
-    protocol_type: &str,
-    original_path: &str,
-    path: &str,
-    response_adapter: super::ResponseAdapter,
-    request_method: &str,
-    model_for_log: Option<&str>,
-    reasoning_for_log: Option<&str>,
-    storage: &codexmanager_core::storage::Storage,
+    context: LocalModelsRequestContext<'_>,
 ) -> Result<Option<tiny_http::Request>, String> {
-    let is_models_list = request_method.eq_ignore_ascii_case("GET")
-        && (path == "/v1/models" || path.starts_with("/v1/models?"));
+    let is_models_list = context.request_method.eq_ignore_ascii_case("GET")
+        && (context.path == "/v1/models" || context.path.starts_with("/v1/models?"));
     if !is_models_list {
         return Ok(Some(request));
     }
 
     let mut fallback_reason: Option<String> = None;
-    let cached_items = match storage.get_model_options_cache(MODEL_CACHE_SCOPE_DEFAULT) {
+    let cached_items = match context
+        .storage
+        .get_model_options_cache(MODEL_CACHE_SCOPE_DEFAULT)
+    {
         Ok(Some(record)) => {
             serde_json::from_str::<Vec<ModelOption>>(&record.items_json).unwrap_or_default()
         }
         Ok(None) => Vec::new(),
         Err(err) => {
             let message = format!("model options cache read failed: {err}");
-            super::trace_log::log_attempt_result(trace_id, "-", None, 503, Some(message.as_str()));
+            super::trace_log::log_attempt_result(
+                context.trace_id,
+                "-",
+                None,
+                503,
+                Some(message.as_str()),
+            );
             super::trace_log::log_request_final(
-                trace_id,
+                context.trace_id,
                 503,
                 None,
                 None,
                 Some(message.as_str()),
                 0,
             );
-            super::record_gateway_request_outcome(path, 503, Some(protocol_type));
+            super::record_gateway_request_outcome(context.path, 503, Some(context.protocol_type));
             super::write_request_log(
-                storage,
+                context.storage,
                 super::request_log::RequestLogTraceContext {
-                    trace_id: Some(trace_id),
-                    original_path: Some(original_path),
-                    adapted_path: Some(path),
-                    response_adapter: Some(response_adapter),
+                    trace_id: Some(context.trace_id),
+                    original_path: Some(context.original_path),
+                    adapted_path: Some(context.path),
+                    response_adapter: Some(context.response_adapter),
                 },
-                Some(key_id),
-                None,
-                path,
-                request_method,
-                model_for_log,
-                reasoning_for_log,
-                None,
-                Some(503),
-                super::request_log::RequestLogUsage::default(),
-                Some(message.as_str()),
-                None,
+                super::request_log::RequestLogEntry {
+                    key_id: Some(context.key_id),
+                    account_id: None,
+                    request_path: context.path,
+                    method: context.request_method,
+                    model: context.model_for_log,
+                    reasoning_effort: context.reasoning_for_log,
+                    upstream_url: None,
+                    status_code: Some(503),
+                    usage: super::request_log::RequestLogUsage::default(),
+                    error: Some(message.as_str()),
+                    duration_ms: None,
+                },
             );
             let response =
-                super::error_response::terminal_text_response(503, message, Some(trace_id));
+                super::error_response::terminal_text_response(503, message, Some(context.trace_id));
             let _ = request.respond(response);
             return Ok(None);
         }
@@ -109,7 +124,7 @@ pub(super) fn maybe_respond_local_models(
         match super::fetch_models_for_picker() {
             Ok(fetched) if !fetched.is_empty() => {
                 if let Ok(items_json) = serde_json::to_string(&fetched) {
-                    if let Err(err) = storage.upsert_model_options_cache(
+                    if let Err(err) = context.storage.upsert_model_options_cache(
                         MODEL_CACHE_SCOPE_DEFAULT,
                         items_json.as_str(),
                         now_ts(),
@@ -126,39 +141,41 @@ pub(super) fn maybe_respond_local_models(
             Ok(_) => {
                 let message = "models refresh returned empty list".to_string();
                 fallback_reason = Some(message);
-                fallback_model_options(model_for_log)
+                fallback_model_options(context.model_for_log)
             }
             Err(err) => {
                 let message = format!("models refresh failed: {err}");
                 fallback_reason = Some(message);
-                fallback_model_options(model_for_log)
+                fallback_model_options(context.model_for_log)
             }
         }
     };
 
     let output = build_openai_models_list(&items);
-    super::trace_log::log_attempt_result(trace_id, "-", None, 200, None);
-    super::trace_log::log_request_final(trace_id, 200, None, None, None, 0);
-    super::record_gateway_request_outcome(path, 200, Some(protocol_type));
+    super::trace_log::log_attempt_result(context.trace_id, "-", None, 200, None);
+    super::trace_log::log_request_final(context.trace_id, 200, None, None, None, 0);
+    super::record_gateway_request_outcome(context.path, 200, Some(context.protocol_type));
     super::write_request_log(
-        storage,
+        context.storage,
         super::request_log::RequestLogTraceContext {
-            trace_id: Some(trace_id),
-            original_path: Some(original_path),
-            adapted_path: Some(path),
-            response_adapter: Some(response_adapter),
+            trace_id: Some(context.trace_id),
+            original_path: Some(context.original_path),
+            adapted_path: Some(context.path),
+            response_adapter: Some(context.response_adapter),
         },
-        Some(key_id),
-        None,
-        path,
-        request_method,
-        model_for_log,
-        reasoning_for_log,
-        None,
-        Some(200),
-        super::request_log::RequestLogUsage::default(),
-        fallback_reason.as_deref(),
-        None,
+        super::request_log::RequestLogEntry {
+            key_id: Some(context.key_id),
+            account_id: None,
+            request_path: context.path,
+            method: context.request_method,
+            model: context.model_for_log,
+            reasoning_effort: context.reasoning_for_log,
+            upstream_url: None,
+            status_code: Some(200),
+            usage: super::request_log::RequestLogUsage::default(),
+            error: fallback_reason.as_deref(),
+            duration_ms: None,
+        },
     );
     let response = super::error_response::with_trace_id_header(
         Response::from_string(output)
@@ -170,7 +187,7 @@ pub(super) fn maybe_respond_local_models(
                 )
                 .map_err(|_| "build content-type header failed".to_string())?,
             ),
-        Some(trace_id),
+        Some(context.trace_id),
     );
     let _ = request.respond(response);
     Ok(None)

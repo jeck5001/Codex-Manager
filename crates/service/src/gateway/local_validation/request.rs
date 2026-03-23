@@ -41,7 +41,10 @@ fn validate_api_key_allowed_model(
         return Ok(());
     }
 
-    let Some(model) = effective_model.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(model) = effective_model
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return Ok(());
     };
     if model_is_allowed(allowed_models, model) {
@@ -52,6 +55,22 @@ fn validate_api_key_allowed_model(
         403,
         format!("api key is not allowed to access model {model}"),
     ))
+}
+
+fn validate_api_key_allowed_models(
+    allowed_models: &[String],
+    requested_model: Option<&str>,
+    effective_model: Option<&str>,
+) -> Result<(), LocalValidationError> {
+    if let Some(requested_model) = requested_model {
+        validate_api_key_allowed_model(allowed_models, Some(requested_model))?;
+    }
+
+    if let Some(effective_model) = effective_model {
+        validate_api_key_allowed_model(allowed_models, Some(effective_model))?;
+    }
+
+    Ok(())
 }
 
 pub(super) fn build_local_validation_result(
@@ -102,11 +121,10 @@ pub(super) fn build_local_validation_result(
         .map_err(|err| LocalValidationError::new(500, format!("storage read failed: {err}")))?
         .map(|raw| crate::apikey_allowed_models::parse_allowed_models(raw.as_str()))
         .unwrap_or_default();
-    validate_api_key_allowed_model(
+    validate_api_key_allowed_models(
         allowed_models.as_slice(),
-        effective_model
-            .as_deref()
-            .or(client_request_meta.model.as_deref()),
+        client_request_meta.model.as_deref(),
+        effective_model.as_deref(),
     )?;
     body = super::super::apply_request_overrides_with_prompt_cache_key(
         &path,

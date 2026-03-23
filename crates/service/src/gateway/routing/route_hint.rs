@@ -618,7 +618,7 @@ pub(super) fn reload_from_env() {
 }
 
 fn ensure_route_config_loaded() {
-    let _ = ROUTE_CONFIG_LOADED.get_or_init(|| reload_from_env());
+    let _ = ROUTE_CONFIG_LOADED.get_or_init(reload_from_env);
 }
 
 fn env_bool_or(name: &str, default: bool) -> bool {
@@ -649,7 +649,10 @@ fn env_u64_or(name: &str, default: u64) -> u64 {
 impl RouteRoundRobinState {
     fn maybe_maintain(&mut self, now: Instant) {
         self.maintenance_tick = self.maintenance_tick.wrapping_add(1);
-        if self.maintenance_tick % ROUTE_STATE_MAINTENANCE_EVERY != 0 {
+        if !self
+            .maintenance_tick
+            .is_multiple_of(ROUTE_STATE_MAINTENANCE_EVERY)
+        {
             return;
         }
         let ttl = route_state_ttl();

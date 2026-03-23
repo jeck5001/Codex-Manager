@@ -160,21 +160,24 @@ pub(crate) async fn handle_rpc_http(headers: HeaderMap, body: String) -> AxumRes
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
-    let (status, response_body, success) =
-        match tokio::task::spawn_blocking(move || handle_rpc_body(&body_for_task, operator.as_deref())).await {
-            Ok(result) => result,
-            Err(err) => {
-                log::error!("rpc http blocking task failed: {}", err);
-                let fallback = JsonRpcResponse {
-                    id: 0,
-                    result: crate::error_codes::rpc_error_payload(
-                        "internal_error: rpc task failed".to_string(),
-                    ),
-                };
-                let body = serde_json::to_string(&fallback).unwrap_or_else(|_| "{}".to_string());
-                (200, body, false)
-            }
-        };
+    let (status, response_body, success) = match tokio::task::spawn_blocking(move || {
+        handle_rpc_body(&body_for_task, operator.as_deref())
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            log::error!("rpc http blocking task failed: {}", err);
+            let fallback = JsonRpcResponse {
+                id: 0,
+                result: crate::error_codes::rpc_error_payload(
+                    "internal_error: rpc task failed".to_string(),
+                ),
+            };
+            let body = serde_json::to_string(&fallback).unwrap_or_else(|_| "{}".to_string());
+            (200, body, false)
+        }
+    };
     if success {
         rpc_metrics_guard.mark_success();
     }

@@ -31,6 +31,8 @@ export const useAppStore = create<AppState>((set) => ({
     serviceAddr: "localhost:48760",
     serviceListenMode: "loopback",
     serviceListenModeOptions: ["loopback", "all_interfaces"],
+    mcpEnabled: true,
+    mcpPort: 48762,
     routeStrategy: "ordered",
     routeStrategyOptions: ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
     freeAccountMaxModel: "auto",

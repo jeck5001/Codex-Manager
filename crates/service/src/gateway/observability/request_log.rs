@@ -17,6 +17,28 @@ pub(super) struct RequestLogTraceContext<'a> {
     pub response_adapter: Option<super::ResponseAdapter>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct RequestLogEntry<'a> {
+    pub key_id: Option<&'a str>,
+    pub account_id: Option<&'a str>,
+    pub request_path: &'a str,
+    pub method: &'a str,
+    pub model: Option<&'a str>,
+    pub reasoning_effort: Option<&'a str>,
+    pub upstream_url: Option<&'a str>,
+    pub status_code: Option<u16>,
+    pub usage: RequestLogUsage,
+    pub error: Option<&'a str>,
+    pub duration_ms: Option<u128>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct RequestLogRouteMeta<'a> {
+    pub attempted_account_ids: Option<&'a [String]>,
+    pub requested_model: Option<&'a str>,
+    pub model_fallback_path: Option<&'a [String]>,
+}
+
 const MODEL_PRICE_PER_1K_TOKENS: &[(&str, f64, f64, f64)] = &[
     // OpenAI 官方价格（单位：USD / 1K tokens）。按模型前缀匹配，越具体越靠前。
     // gpt-5.3-codex 暂未公开价格，临时按 gpt-5.2-codex 计费。
@@ -119,95 +141,68 @@ fn response_adapter_label(value: super::ResponseAdapter) -> &'static str {
 pub(super) fn write_request_log(
     storage: &Storage,
     trace_context: RequestLogTraceContext<'_>,
-    key_id: Option<&str>,
-    account_id: Option<&str>,
-    request_path: &str,
-    method: &str,
-    model: Option<&str>,
-    reasoning_effort: Option<&str>,
-    upstream_url: Option<&str>,
-    status_code: Option<u16>,
-    usage: RequestLogUsage,
-    error: Option<&str>,
-    duration_ms: Option<u128>,
+    entry: RequestLogEntry<'_>,
 ) {
     write_request_log_with_attempts_and_model_fallback(
         storage,
         trace_context,
-        key_id,
-        account_id,
-        request_path,
-        method,
-        model,
-        reasoning_effort,
-        upstream_url,
-        status_code,
-        usage,
-        error,
-        duration_ms,
-        None,
-        None,
-        None,
+        entry,
+        RequestLogRouteMeta::default(),
     );
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn write_request_log_with_attempts_and_model_fallback(
     storage: &Storage,
     trace_context: RequestLogTraceContext<'_>,
-    key_id: Option<&str>,
-    account_id: Option<&str>,
-    request_path: &str,
-    method: &str,
-    model: Option<&str>,
-    reasoning_effort: Option<&str>,
-    upstream_url: Option<&str>,
-    status_code: Option<u16>,
-    usage: RequestLogUsage,
-    error: Option<&str>,
-    duration_ms: Option<u128>,
-    attempted_account_ids: Option<&[String]>,
-    requested_model: Option<&str>,
-    model_fallback_path: Option<&[String]>,
+    entry: RequestLogEntry<'_>,
+    route_meta: RequestLogRouteMeta<'_>,
 ) {
-    let original_path = trace_context.original_path.unwrap_or(request_path);
-    let adapted_path = trace_context.adapted_path.unwrap_or(request_path);
-    let initial_account_id = attempted_account_ids
+    let original_path = trace_context.original_path.unwrap_or(entry.request_path);
+    let adapted_path = trace_context.adapted_path.unwrap_or(entry.request_path);
+    let initial_account_id = route_meta
+        .attempted_account_ids
         .and_then(|items| items.first())
         .map(String::as_str);
-    let attempted_account_ids_json = attempted_account_ids
+    let attempted_account_ids_json = route_meta
+        .attempted_account_ids
         .filter(|items| !items.is_empty())
         .and_then(|items| serde_json::to_string(items).ok());
-    let model_fallback_path_json = model_fallback_path
+    let model_fallback_path_json = route_meta
+        .model_fallback_path
         .filter(|items| items.len() > 1)
         .and_then(|items| serde_json::to_string(items).ok());
-    let input_tokens = normalize_token(usage.input_tokens);
-    let cached_input_tokens = normalize_token(usage.cached_input_tokens);
-    let output_tokens = normalize_token(usage.output_tokens);
-    let total_tokens = normalize_token(usage.total_tokens);
-    let reasoning_output_tokens = normalize_token(usage.reasoning_output_tokens);
-    let duration_ms = normalize_duration_ms(duration_ms);
+    let input_tokens = normalize_token(entry.usage.input_tokens);
+    let cached_input_tokens = normalize_token(entry.usage.cached_input_tokens);
+    let output_tokens = normalize_token(entry.usage.output_tokens);
+    let total_tokens = normalize_token(entry.usage.total_tokens);
+    let reasoning_output_tokens = normalize_token(entry.usage.reasoning_output_tokens);
+    let duration_ms = normalize_duration_ms(entry.duration_ms);
     let created_at = now_ts();
     super::metrics::record_gateway_latency_sample(created_at, duration_ms);
-    let estimated_cost_usd =
-        estimate_cost_usd(model, input_tokens, cached_input_tokens, output_tokens);
+    let estimated_cost_usd = estimate_cost_usd(
+        entry.model,
+        input_tokens,
+        cached_input_tokens,
+        output_tokens,
+    );
     super::trace_log::log_failed_request(
         created_at,
         trace_context.trace_id,
-        key_id,
-        account_id,
-        method,
-        request_path,
+        entry.key_id,
+        entry.account_id,
+        entry.method,
+        entry.request_path,
         Some(original_path),
         Some(adapted_path),
-        model,
-        reasoning_effort,
-        upstream_url,
-        status_code,
-        error,
+        entry.model,
+        entry.reasoning_effort,
+        entry.upstream_url,
+        entry.status_code,
+        entry.error,
         duration_ms,
     );
-    let success = status_code
+    let success = entry
+        .status_code
         .map(|status| (200..300).contains(&status))
         .unwrap_or(false);
     let input_zero_or_missing = input_tokens.unwrap_or(0) == 0;
@@ -216,7 +211,7 @@ pub(super) fn write_request_log_with_attempts_and_model_fallback(
     let total_zero_or_missing = total_tokens.unwrap_or(0) == 0;
     let reasoning_zero_or_missing = reasoning_output_tokens.unwrap_or(0) == 0;
     if success
-        && is_inference_path(request_path)
+        && is_inference_path(entry.request_path)
         && input_zero_or_missing
         && cached_zero_or_missing
         && output_zero_or_missing
@@ -225,36 +220,36 @@ pub(super) fn write_request_log_with_attempts_and_model_fallback(
     {
         log::warn!(
             "event=gateway_token_usage_missing path={} status={} account_id={} key_id={} model={}",
-            request_path,
-            status_code.unwrap_or(0),
-            account_id.unwrap_or("-"),
-            key_id.unwrap_or("-"),
-            model.unwrap_or("-"),
+            entry.request_path,
+            entry.status_code.unwrap_or(0),
+            entry.account_id.unwrap_or("-"),
+            entry.key_id.unwrap_or("-"),
+            entry.model.unwrap_or("-"),
         );
     }
     // 记录请求最终结果（而非内部重试明细），保证 UI 一次请求只展示一条记录。
     let (request_log_id, token_stat_error) = match storage.insert_request_log_with_token_stat(
         &RequestLog {
             trace_id: trace_context.trace_id.map(|v| v.to_string()),
-            key_id: key_id.map(|v| v.to_string()),
-            account_id: account_id.map(|v| v.to_string()),
+            key_id: entry.key_id.map(|v| v.to_string()),
+            account_id: entry.account_id.map(|v| v.to_string()),
             initial_account_id: initial_account_id.map(str::to_string),
             attempted_account_ids_json,
             route_strategy: Some(super::current_route_strategy().to_string()),
-            requested_model: requested_model.map(|value| value.to_string()),
+            requested_model: route_meta.requested_model.map(|value| value.to_string()),
             model_fallback_path_json,
-            request_path: request_path.to_string(),
+            request_path: entry.request_path.to_string(),
             original_path: Some(original_path.to_string()),
             adapted_path: Some(adapted_path.to_string()),
-            method: method.to_string(),
-            model: model.map(|v| v.to_string()),
-            reasoning_effort: reasoning_effort.map(|v| v.to_string()),
+            method: entry.method.to_string(),
+            model: entry.model.map(|v| v.to_string()),
+            reasoning_effort: entry.reasoning_effort.map(|v| v.to_string()),
             response_adapter: trace_context
                 .response_adapter
                 .map(response_adapter_label)
                 .map(str::to_string),
-            upstream_url: upstream_url.map(|v| v.to_string()),
-            status_code: status_code.map(|v| i64::from(v)),
+            upstream_url: entry.upstream_url.map(|v| v.to_string()),
+            status_code: entry.status_code.map(i64::from),
             duration_ms,
             input_tokens: None,
             cached_input_tokens: None,
@@ -262,14 +257,14 @@ pub(super) fn write_request_log_with_attempts_and_model_fallback(
             total_tokens: None,
             reasoning_output_tokens: None,
             estimated_cost_usd: None,
-            error: error.map(|v| v.to_string()),
+            error: entry.error.map(|v| v.to_string()),
             created_at,
         },
         &RequestTokenStat {
             request_log_id: 0,
-            key_id: key_id.map(|v| v.to_string()),
-            account_id: account_id.map(|v| v.to_string()),
-            model: model.map(|v| v.to_string()),
+            key_id: entry.key_id.map(|v| v.to_string()),
+            account_id: entry.account_id.map(|v| v.to_string()),
+            model: entry.model.map(|v| v.to_string()),
             input_tokens,
             cached_input_tokens,
             output_tokens,
@@ -285,10 +280,10 @@ pub(super) fn write_request_log_with_attempts_and_model_fallback(
             super::metrics::record_db_error(err_text.as_str());
             log::error!(
                 "event=gateway_request_log_insert_failed path={} status={} account_id={} key_id={} err={}",
-                request_path,
-                status_code.unwrap_or(0),
-                account_id.unwrap_or("-"),
-                key_id.unwrap_or("-"),
+                entry.request_path,
+                entry.status_code.unwrap_or(0),
+                entry.account_id.unwrap_or("-"),
+                entry.key_id.unwrap_or("-"),
                 err_text
             );
             return;
@@ -300,10 +295,10 @@ pub(super) fn write_request_log_with_attempts_and_model_fallback(
         super::metrics::record_db_error(err_text.as_str());
         log::error!(
             "event=gateway_request_token_stat_insert_failed path={} status={} account_id={} key_id={} request_log_id={} err={}",
-            request_path,
-            status_code.unwrap_or(0),
-            account_id.unwrap_or("-"),
-            key_id.unwrap_or("-"),
+            entry.request_path,
+            entry.status_code.unwrap_or(0),
+            entry.account_id.unwrap_or("-"),
+            entry.key_id.unwrap_or("-"),
             request_log_id,
             err_text
         );

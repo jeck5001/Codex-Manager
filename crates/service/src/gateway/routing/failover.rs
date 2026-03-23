@@ -10,13 +10,7 @@ pub(crate) fn should_failover_after_refresh(
 ) -> bool {
     match refresh_result {
         Ok(_) => should_failover_by_snapshot(storage, account_id, true),
-        Err(err) => {
-            if err.starts_with("usage endpoint status") {
-                true
-            } else {
-                false
-            }
-        }
+        Err(err) => err.starts_with("usage endpoint status"),
     }
 }
 

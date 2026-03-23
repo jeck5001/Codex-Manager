@@ -98,7 +98,7 @@ pub(in super::super) fn reload_from_env() {
 }
 
 fn ensure_config_loaded() {
-    let _ = CONFIG_LOADED.get_or_init(|| reload_from_env());
+    let _ = CONFIG_LOADED.get_or_init(reload_from_env);
 }
 
 fn upstream_base_url_cell() -> &'static RwLock<String> {

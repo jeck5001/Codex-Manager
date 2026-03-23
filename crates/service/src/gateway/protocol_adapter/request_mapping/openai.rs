@@ -117,7 +117,7 @@ fn collect_openai_tool_names(obj: &serde_json::Map<String, Value>) -> Vec<String
     names
 }
 
-fn get_dynamic_tools_array<'a>(obj: &'a serde_json::Map<String, Value>) -> Option<&'a Vec<Value>> {
+fn get_dynamic_tools_array(obj: &serde_json::Map<String, Value>) -> Option<&Vec<Value>> {
     obj.get("dynamic_tools")
         .or_else(|| obj.get("dynamicTools"))
         .and_then(Value::as_array)

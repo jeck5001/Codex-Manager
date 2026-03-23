@@ -13,7 +13,7 @@ async fn serve_proxy_on_listener(listener: tokio::net::TcpListener, app: Router)
     axum::serve(listener, app)
         .with_graceful_shutdown(wait_for_shutdown_signal())
         .await
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
+        .map_err(io::Error::other)
 }
 
 pub(crate) async fn run_proxy_server(addr: &str, app: Router) -> io::Result<()> {

@@ -106,7 +106,7 @@ pub(super) fn convert_openai_sse_to_anthropic(
                     if item_obj
                         .get("type")
                         .and_then(Value::as_str)
-                        .map_or(true, |kind| !is_openai_chat_tool_item_type(kind))
+                        .is_none_or(|kind| !is_openai_chat_tool_item_type(kind))
                     {
                         if let Some(summary) = summarize_special_response_item_text(item_obj) {
                             if !content_text.is_empty() && !content_text.ends_with('\n') {

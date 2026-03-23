@@ -16,7 +16,9 @@ pub(crate) fn normalize_filter_params(params: AuditLogFilterParams) -> AuditLogF
 }
 
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
-    value.map(|text| text.trim().to_string()).filter(|text| !text.is_empty())
+    value
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
 }
 
 pub(crate) fn to_storage_filters<'a>(params: &'a AuditLogFilterParams) -> AuditLogFilterInput<'a> {
@@ -42,7 +44,9 @@ pub(crate) fn to_audit_log_item(item: AuditLog) -> AuditLogItem {
     }
 }
 
-pub(crate) fn read_audit_log_page(params: AuditLogListParams) -> Result<AuditLogListResult, String> {
+pub(crate) fn read_audit_log_page(
+    params: AuditLogListParams,
+) -> Result<AuditLogListResult, String> {
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
     let normalized = params.normalized();
     let offset = (normalized.page - 1) * normalized.page_size;

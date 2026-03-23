@@ -16,6 +16,8 @@ pub(crate) const APP_SETTINGS_ENV_UNSUPPORTED_KEYS: &[&str] = &[
 
 pub(crate) const APP_SETTINGS_ENV_RESERVED_KEYS: &[&str] = &[
     "CODEXMANAGER_SERVICE_ADDR",
+    "CODEXMANAGER_MCP_ENABLED",
+    "CODEXMANAGER_MCP_PORT",
     "CODEXMANAGER_ROUTE_STRATEGY",
     "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_ENABLED",
     "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT",
@@ -164,6 +166,20 @@ pub(crate) const ENV_OVERRIDE_CATALOG: &[EnvOverrideCatalogItem] = &[
         ENV_OVERRIDE_SCOPE_SERVICE,
         ENV_OVERRIDE_APPLY_MODE_RUNTIME,
         "localhost:1455",
+    ),
+    EnvOverrideCatalogItem::new(
+        "CODEXMANAGER_MCP_ENABLED",
+        "启用 MCP Server",
+        ENV_OVERRIDE_SCOPE_SERVICE,
+        ENV_OVERRIDE_APPLY_MODE_RESTART,
+        "1",
+    ),
+    EnvOverrideCatalogItem::new(
+        "CODEXMANAGER_MCP_PORT",
+        "MCP HTTP SSE 端口",
+        ENV_OVERRIDE_SCOPE_SERVICE,
+        ENV_OVERRIDE_APPLY_MODE_RESTART,
+        "48762",
     ),
     EnvOverrideCatalogItem::new(
         "CODEXMANAGER_NO_SERVICE",

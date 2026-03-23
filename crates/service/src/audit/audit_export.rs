@@ -166,7 +166,9 @@ pub(crate) fn stream_audit_log_export_chunks(
     Ok(())
 }
 
-pub(crate) fn export_audit_logs(params: AuditLogExportParams) -> Result<AuditLogExportResult, String> {
+pub(crate) fn export_audit_logs(
+    params: AuditLogExportParams,
+) -> Result<AuditLogExportResult, String> {
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
     let plan = prepare_audit_log_export(params)?;
     let total = storage

@@ -1,7 +1,7 @@
 use tiny_http::Request;
 
 use super::super::super::request_log::RequestLogUsage;
-use super::execution_context::GatewayUpstreamExecutionContext;
+use super::execution_context::{FinalResultLogArgs, GatewayUpstreamExecutionContext};
 
 pub(in super::super) fn respond_terminal(
     request: Request,
@@ -35,78 +35,116 @@ pub(super) fn respond_total_timeout(
     attempted_account_ids: Option<&[String]>,
 ) -> Result<(), String> {
     let message = "upstream total timeout exceeded".to_string();
-    context.log_final_result_with_model(
-        None,
-        None,
+    context.log_final_result_with_model(FinalResultLogArgs {
+        final_account_id: None,
+        upstream_url: None,
         model_for_log,
-        504,
-        RequestLogUsage::default(),
-        Some(message.as_str()),
-        started_at.elapsed().as_millis(),
+        status_code: 504,
+        usage: RequestLogUsage::default(),
+        error: Some(message.as_str()),
+        elapsed_ms: started_at.elapsed().as_millis(),
         attempted_account_ids,
-    );
+    });
     respond_terminal(request, 504, message, Some(trace_id))
 }
 
-pub(super) fn finalize_terminal_candidate(
-    request: Request,
-    context: &GatewayUpstreamExecutionContext<'_>,
-    account_id: &str,
-    last_attempt_url: Option<&str>,
-    status_code: u16,
-    message: String,
-    trace_id: &str,
-    started_at: std::time::Instant,
-    model_for_log: Option<&str>,
-    attempted_account_ids: Option<&[String]>,
-) -> Result<(), String> {
-    context.log_final_result_with_model(
-        Some(account_id),
+pub(super) struct TerminalCandidateArgs<'a> {
+    pub(super) request: Request,
+    pub(super) context: &'a GatewayUpstreamExecutionContext<'a>,
+    pub(super) account_id: &'a str,
+    pub(super) last_attempt_url: Option<&'a str>,
+    pub(super) status_code: u16,
+    pub(super) message: String,
+    pub(super) trace_id: &'a str,
+    pub(super) started_at: std::time::Instant,
+    pub(super) model_for_log: Option<&'a str>,
+    pub(super) attempted_account_ids: Option<&'a [String]>,
+}
+
+pub(super) fn finalize_terminal_candidate(args: TerminalCandidateArgs<'_>) -> Result<(), String> {
+    let TerminalCandidateArgs {
+        request,
+        context,
+        account_id,
         last_attempt_url,
+        status_code,
+        message,
+        trace_id,
+        started_at,
+        model_for_log,
+        attempted_account_ids,
+    } = args;
+    context.log_final_result_with_model(FinalResultLogArgs {
+        final_account_id: Some(account_id),
+        upstream_url: last_attempt_url,
         model_for_log,
         status_code,
-        RequestLogUsage::default(),
-        Some(message.as_str()),
-        started_at.elapsed().as_millis(),
+        usage: RequestLogUsage::default(),
+        error: Some(message.as_str()),
+        elapsed_ms: started_at.elapsed().as_millis(),
         attempted_account_ids,
-    );
+    });
     respond_terminal(request, status_code, message, Some(trace_id))
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct FinalizeUpstreamResponseArgs<'a> {
+    pub(super) request: Request,
+    pub(super) response: reqwest::blocking::Response,
+    pub(super) inflight_guard: super::super::super::AccountInFlightGuard,
+    pub(super) context: &'a GatewayUpstreamExecutionContext<'a>,
+    pub(super) account_id: &'a str,
+    pub(super) last_attempt_url: Option<&'a str>,
+    pub(super) last_attempt_error: Option<&'a str>,
+    pub(super) response_adapter: super::super::super::ResponseAdapter,
+    pub(super) tool_name_restore_map: &'a super::super::super::ToolNameRestoreMap,
+    pub(super) client_is_stream: bool,
+    pub(super) path: &'a str,
+    pub(super) trace_id: &'a str,
+    pub(super) started_at: std::time::Instant,
+    pub(super) actual_model_header: Option<&'a str>,
+    pub(super) model_for_log: Option<&'a str>,
+    pub(super) response_cache_key: Option<&'a str>,
+    pub(super) attempted_account_ids: Option<&'a [String]>,
+}
+
 pub(super) fn finalize_upstream_response(
-    request: Request,
-    response: reqwest::blocking::Response,
-    inflight_guard: super::super::super::AccountInFlightGuard,
-    context: &GatewayUpstreamExecutionContext<'_>,
-    account_id: &str,
-    last_attempt_url: Option<&str>,
-    last_attempt_error: Option<&str>,
-    response_adapter: super::super::super::ResponseAdapter,
-    tool_name_restore_map: &super::super::super::ToolNameRestoreMap,
-    client_is_stream: bool,
-    path: &str,
-    trace_id: &str,
-    started_at: std::time::Instant,
-    actual_model_header: Option<&str>,
-    model_for_log: Option<&str>,
-    response_cache_key: Option<&str>,
-    attempted_account_ids: Option<&[String]>,
+    args: FinalizeUpstreamResponseArgs<'_>,
 ) -> Result<(), String> {
+    let FinalizeUpstreamResponseArgs {
+        request,
+        response,
+        inflight_guard,
+        context,
+        account_id,
+        last_attempt_url,
+        last_attempt_error,
+        response_adapter,
+        tool_name_restore_map,
+        client_is_stream,
+        path,
+        trace_id,
+        started_at,
+        actual_model_header,
+        model_for_log,
+        response_cache_key,
+        attempted_account_ids,
+    } = args;
     let status_code = response.status().as_u16();
     let mut final_error = None;
 
     let bridge = super::super::super::respond_with_upstream(
-        request,
-        response,
-        inflight_guard,
-        response_adapter,
-        path,
-        Some(tool_name_restore_map),
-        client_is_stream,
-        Some(trace_id),
-        actual_model_header,
-        response_cache_key,
+        super::super::super::http_bridge::RespondWithUpstreamArgs {
+            request,
+            upstream: response,
+            inflight_guard,
+            response_adapter,
+            request_path: path,
+            tool_name_restore_map: Some(tool_name_restore_map),
+            is_stream: client_is_stream,
+            trace_id: Some(trace_id),
+            actual_model_header,
+            response_cache_key,
+        },
     )?;
     let bridge_output_text_len = bridge
         .usage
@@ -179,21 +217,21 @@ pub(super) fn finalize_upstream_response(
     }
 
     let usage = bridge.usage;
-    context.log_final_result_with_model(
-        Some(account_id),
-        last_attempt_url,
+    context.log_final_result_with_model(FinalResultLogArgs {
+        final_account_id: Some(account_id),
+        upstream_url: last_attempt_url,
         model_for_log,
-        status_for_log,
-        RequestLogUsage {
+        status_code: status_for_log,
+        usage: RequestLogUsage {
             input_tokens: usage.input_tokens,
             cached_input_tokens: usage.cached_input_tokens,
             output_tokens: usage.output_tokens,
             total_tokens: usage.total_tokens,
             reasoning_output_tokens: usage.reasoning_output_tokens,
         },
-        final_error.as_deref(),
-        started_at.elapsed().as_millis(),
+        error: final_error.as_deref(),
+        elapsed_ms: started_at.elapsed().as_millis(),
         attempted_account_ids,
-    );
+    });
     Ok(())
 }

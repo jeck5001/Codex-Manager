@@ -1,6 +1,6 @@
 use codexmanager_core::rpc::types::{JsonRpcRequest, JsonRpcResponse};
 use codexmanager_core::storage::{
-    now_ts, Account, AlertChannel, AlertRule, AuditLog, Storage,
+    now_ts, Account, AlertChannel, AlertRule, AuditLog, PluginRecord, Storage,
 };
 use serde_json::{json, Map, Value};
 
@@ -20,7 +20,10 @@ pub(crate) fn attach_operator_to_request(req: &mut JsonRpcRequest, operator: Opt
     let Some(operator) = operator.map(str::trim).filter(|value| !value.is_empty()) else {
         return;
     };
-    let mut params = req.params.take().unwrap_or_else(|| Value::Object(Map::new()));
+    let mut params = req
+        .params
+        .take()
+        .unwrap_or_else(|| Value::Object(Map::new()));
     if !params.is_object() {
         params = Value::Object(Map::new());
     }
@@ -38,7 +41,11 @@ pub(crate) fn prepare_rpc_audit(req: &JsonRpcRequest) -> Option<PendingAuditLog>
     let operator = extract_operator(req.params.as_ref());
     let object_id = extract_object_id(req.method.as_str(), req.params.as_ref());
     let params = sanitize_value(req.params.as_ref().cloned().unwrap_or(Value::Null));
-    let before = capture_snapshot(req.method.as_str(), req.params.as_ref(), object_id.as_deref());
+    let before = capture_snapshot(
+        req.method.as_str(),
+        req.params.as_ref(),
+        object_id.as_deref(),
+    );
 
     Some(PendingAuditLog {
         method: req.method.clone(),
@@ -85,7 +92,11 @@ pub(crate) fn finalize_rpc_audit(pending: Option<PendingAuditLog>, resp: &JsonRp
 }
 
 fn response_failed(result: &Value) -> bool {
-    result.get("error").is_some() || matches!(result.get("ok").and_then(|value| value.as_bool()), Some(false))
+    result.get("error").is_some()
+        || matches!(
+            result.get("ok").and_then(|value| value.as_bool()),
+            Some(false)
+        )
 }
 
 fn extract_operator(params: Option<&Value>) -> String {
@@ -119,12 +130,16 @@ fn classify_auditable_method(method: &str) -> Option<(&'static str, &'static str
         | "gateway/cache/config/set"
         | "gateway/upstreamProxy/set"
         | "gateway/transport/set" => Some(("set", "gateway_settings")),
-        "gateway/manualAccount/clear" | "gateway/cache/clear" => Some(("clear", "gateway_settings")),
+        "gateway/manualAccount/clear" | "gateway/cache/clear" => {
+            Some(("clear", "gateway_settings"))
+        }
         "gateway/freeProxy/sync" => Some(("sync", "gateway_settings")),
         "alert/rules/upsert" => Some(("upsert", "alert_rule")),
         "alert/rules/delete" => Some(("delete", "alert_rule")),
         "alert/channels/upsert" => Some(("upsert", "alert_channel")),
         "alert/channels/delete" => Some(("delete", "alert_channel")),
+        "plugin/upsert" => Some(("upsert", "plugin")),
+        "plugin/delete" => Some(("delete", "plugin")),
         "apikey/create" => Some(("create", "api_key")),
         "apikey/delete" => Some(("delete", "api_key")),
         "apikey/disable" | "apikey/enable" | "apikey/renew" | "apikey/updateModel" => {
@@ -148,10 +163,12 @@ fn classify_auditable_method(method: &str) -> Option<(&'static str, &'static str
             Some(("import", "account"))
         }
         "account/register/start" | "account/register/task" => Some(("create", "account")),
-        "account/register/batch/start"
-        | "account/register/outlookBatch/start" => Some(("start", "register_batch")),
-        "account/register/batch/cancel"
-        | "account/register/outlookBatch/cancel" => Some(("cancel", "register_batch")),
+        "account/register/batch/start" | "account/register/outlookBatch/start" => {
+            Some(("start", "register_batch"))
+        }
+        "account/register/batch/cancel" | "account/register/outlookBatch/cancel" => {
+            Some(("cancel", "register_batch"))
+        }
         "account/register/task/cancel" => Some(("cancel", "register_task")),
         "account/register/task/delete" => Some(("delete", "register_task")),
         "account/register/task/retry" => Some(("retry", "register_task")),
@@ -169,9 +186,12 @@ fn classify_auditable_method(method: &str) -> Option<(&'static str, &'static str
 fn extract_object_id(method: &str, params: Option<&Value>) -> Option<String> {
     let source = params?.as_object()?;
     let keys = match method {
-        "alert/rules/upsert" | "alert/rules/delete" | "alert/channels/upsert" | "alert/channels/delete" => {
-            &["id"][..]
-        }
+        "alert/rules/upsert"
+        | "alert/rules/delete"
+        | "alert/channels/upsert"
+        | "alert/channels/delete"
+        | "plugin/upsert"
+        | "plugin/delete" => &["id"][..],
         "apikey/create" => &["id"],
         "apikey/delete"
         | "apikey/disable"
@@ -195,7 +215,14 @@ fn extract_object_id(method: &str, params: Option<&Value>) -> Option<String> {
         | "account/register/emailServices/delete"
         | "account/register/emailServices/setEnabled"
         | "account/register/emailServices/reorder" => &["serviceId", "id"],
-        _ => &["id", "accountId", "keyId", "serviceId", "batchId", "taskUuid"],
+        _ => &[
+            "id",
+            "accountId",
+            "keyId",
+            "serviceId",
+            "batchId",
+            "taskUuid",
+        ],
     };
 
     keys.iter().find_map(|key| {
@@ -210,7 +237,14 @@ fn extract_object_id(method: &str, params: Option<&Value>) -> Option<String> {
 
 fn extract_object_id_from_result(result: &Value) -> Option<String> {
     let source = result.as_object()?;
-    for key in ["id", "accountId", "keyId", "serviceId", "batchId", "taskUuid"] {
+    for key in [
+        "id",
+        "accountId",
+        "keyId",
+        "serviceId",
+        "batchId",
+        "taskUuid",
+    ] {
         if let Some(value) = source
             .get(key)
             .and_then(|value| value.as_str())
@@ -223,7 +257,11 @@ fn extract_object_id_from_result(result: &Value) -> Option<String> {
     None
 }
 
-fn capture_snapshot(method: &str, params: Option<&Value>, object_id: Option<&str>) -> Option<Value> {
+fn capture_snapshot(
+    method: &str,
+    params: Option<&Value>,
+    object_id: Option<&str>,
+) -> Option<Value> {
     if method.starts_with("account/") {
         return capture_account_snapshot(params, object_id);
     }
@@ -236,20 +274,23 @@ fn capture_snapshot(method: &str, params: Option<&Value>, object_id: Option<&str
     if method.starts_with("alert/channels/") {
         return capture_alert_channel_snapshot(object_id);
     }
+    if method.starts_with("plugin/") {
+        return capture_plugin_snapshot(object_id);
+    }
     if method == "stats/cost/modelPricing/set" {
         return crate::stats_model_pricing::read_model_pricing()
             .ok()
             .and_then(|value| serde_json::to_value(value).ok())
             .map(sanitize_value);
     }
-        if method == "healthcheck/config/set" || method == "healthcheck/run" {
-            return serde_json::to_value(crate::usage_refresh::current_healthcheck_config())
-                .ok()
-                .map(sanitize_value);
-        }
-        if matches!(
-            method,
-            "appSettings/set"
+    if method == "healthcheck/config/set" || method == "healthcheck/run" {
+        return serde_json::to_value(crate::usage_refresh::current_healthcheck_config())
+            .ok()
+            .map(sanitize_value);
+    }
+    if matches!(
+        method,
+        "appSettings/set"
             | "service/listenConfig/set"
             | "webAuth/password/set"
             | "webAuth/password/clear"
@@ -346,8 +387,17 @@ fn capture_alert_rule_snapshot(object_id: Option<&str>) -> Option<Value> {
 
 fn capture_alert_channel_snapshot(object_id: Option<&str>) -> Option<Value> {
     let storage = crate::storage_helpers::open_storage()?;
-    let item = storage.find_alert_channel_by_id(object_id?).ok().flatten()?;
+    let item = storage
+        .find_alert_channel_by_id(object_id?)
+        .ok()
+        .flatten()?;
     Some(alert_channel_json(item))
+}
+
+fn capture_plugin_snapshot(object_id: Option<&str>) -> Option<Value> {
+    let storage = crate::storage_helpers::open_storage()?;
+    let item = storage.find_plugin_by_id(object_id?).ok().flatten()?;
+    Some(plugin_json(item))
 }
 
 fn extract_string_array(params: Option<&Value>, key: &str) -> Option<Vec<String>> {
@@ -427,6 +477,22 @@ fn alert_channel_json(item: AlertChannel) -> Value {
     })
 }
 
+fn plugin_json(item: PluginRecord) -> Value {
+    json!({
+        "id": item.id,
+        "name": item.name,
+        "description": item.description,
+        "runtime": item.runtime,
+        "hookPoints": serde_json::from_str::<Value>(&item.hook_points_json)
+            .unwrap_or_else(|_| Value::Array(Vec::new())),
+        "scriptContent": item.script_content,
+        "enabled": item.enabled,
+        "timeoutMs": item.timeout_ms,
+        "createdAt": item.created_at,
+        "updatedAt": item.updated_at,
+    })
+}
+
 fn sanitize_value(value: Value) -> Value {
     match value {
         Value::Object(map) => {
@@ -448,7 +514,13 @@ fn sanitize_field_value(key: &str, value: Value) -> Value {
     let normalized = key.to_ascii_lowercase();
     if matches!(
         normalized.as_str(),
-        "key" | "secret" | "password" | "passwordhash" | "access_token" | "refresh_token" | "api_key"
+        "key"
+            | "secret"
+            | "password"
+            | "passwordhash"
+            | "access_token"
+            | "refresh_token"
+            | "api_key"
     ) {
         return Value::String("[redacted]".to_string());
     }
@@ -500,7 +572,10 @@ mod tests {
             std::process::id(),
             now_ts()
         ));
-        std::env::set_var("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().to_string());
+        std::env::set_var(
+            "CODEXMANAGER_DB_PATH",
+            db_path.to_string_lossy().to_string(),
+        );
         let storage = Storage::open(&db_path).expect("open");
         storage.init().expect("init");
         storage

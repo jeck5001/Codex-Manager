@@ -302,14 +302,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 .unwrap_or(1);
             let mode = first_str_param(req, &["mode"]).unwrap_or("pipeline");
             super::value_or_error(account_register::start_register_batch(
-                email_service_type,
-                email_service_id,
-                proxy,
-                count,
-                interval_min,
-                interval_max,
-                concurrency,
-                mode,
+                account_register::StartRegisterBatchInput {
+                    email_service_type,
+                    email_service_id,
+                    proxy,
+                    count,
+                    interval_min,
+                    interval_max,
+                    concurrency,
+                    mode,
+                },
             ))
         }
         "account/register/batch/read" => {

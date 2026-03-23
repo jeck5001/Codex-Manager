@@ -149,21 +149,40 @@ fn is_compact_request_path(path: &str) -> bool {
     path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?")
 }
 
+pub(super) struct TryOpenAiFallbackArgs<'a> {
+    pub(super) client: &'a Client,
+    pub(super) storage: &'a Storage,
+    pub(super) method: &'a Method,
+    pub(super) request_path: &'a str,
+    pub(super) incoming_headers: &'a super::IncomingHeaderSnapshot,
+    pub(super) body: &'a Bytes,
+    pub(super) is_stream: bool,
+    pub(super) upstream_base: &'a str,
+    pub(super) account: &'a Account,
+    pub(super) token: &'a mut Token,
+    pub(super) upstream_cookie: Option<&'a str>,
+    pub(super) strip_session_affinity: bool,
+    pub(super) debug: bool,
+}
+
 pub(super) fn try_openai_fallback(
-    client: &Client,
-    storage: &Storage,
-    method: &Method,
-    request_path: &str,
-    incoming_headers: &super::IncomingHeaderSnapshot,
-    body: &Bytes,
-    is_stream: bool,
-    upstream_base: &str,
-    account: &Account,
-    token: &mut Token,
-    upstream_cookie: Option<&str>,
-    strip_session_affinity: bool,
-    debug: bool,
+    args: TryOpenAiFallbackArgs<'_>,
 ) -> Result<Option<reqwest::blocking::Response>, String> {
+    let TryOpenAiFallbackArgs {
+        client,
+        storage,
+        method,
+        request_path,
+        incoming_headers,
+        body,
+        is_stream,
+        upstream_base,
+        account,
+        token,
+        upstream_cookie,
+        strip_session_affinity,
+        debug,
+    } = args;
     let (url, _url_alt) = super::compute_upstream_url(upstream_base, request_path);
     let bearer = super::resolve_openai_bearer_token(storage, account, token)?;
     let attempt_started_at = Instant::now();
@@ -205,7 +224,7 @@ pub(super) fn try_openai_fallback(
     let account_id = account
         .chatgpt_account_id
         .as_deref()
-        .or_else(|| account.workspace_id.as_deref());
+        .or(account.workspace_id.as_deref());
     let include_account_id = !is_openai_api_target;
     let mut upstream_headers = if is_compact_request_path(request_path) {
         let header_input = super::upstream::header_profile::CodexCompactUpstreamHeaderInput {

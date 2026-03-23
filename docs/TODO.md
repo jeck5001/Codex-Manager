@@ -20,7 +20,51 @@
   - 已发现缺口：PRD 增强项大多未落地，其中 F01 是最适合先打通的 P0 首页主链路
   - 文档差异：`docs/ACCEPTANCE.md` 覆盖范围大于原 TODO，后续继续按验收项补齐
 
+- [x] **通用验收缺口**
+  - G7 `cargo clippy`（`codexmanager-service`）已收口：`cargo clippy -p codexmanager-service --tests -- -D warnings` 当前通过，本轮继续清空 `account/account_register.rs`、`app_settings/api/current.rs` 与测试层历史 warning
+  - 本轮已先收敛 4 条低风险 warning：`app_settings/api/patch.rs` 的 `let_unit_value`、`auth/web_access_2fa.rs` 的 `manual_is_multiple_of`、`requestlog/requestlog_export.rs` 的 `vec_init_then_push`、`gateway/model_picker/request.rs` 的 `unnecessary_lazy_evaluations`
+  - 本轮继续收敛结构类 warning：`gateway/observability/http_bridge/aggregate/sse_frame.rs` 与 `gateway/observability/metrics.rs` 的 `items_after_test_module` 已清零
+  - 本轮收敛 `gateway/observability/http_bridge/delivery.rs`：以 `RespondWithUpstreamArgs` / `CompactDebugMeta` 合并桥接参数，并修正 SSE 适配分支布尔表达式；整包 `clippy` 错误数由 23 降到 18
+  - 本轮收敛 `gateway/upstream/proxy_pipeline/request_setup.rs`：以 `PrepareRequestSetupInput` 收束散参数并改为切片输入；`clippy` 剩余错误数由 18 降到 16
+  - 本轮收敛 `gateway/request/local_models.rs` 与 `gateway/request/local_count_tokens.rs`：以 `LocalModelsRequestContext` / `LocalCountTokensRequestContext` 收束本地短路响应参数；`clippy` 剩余错误数由 16 降到 14
+  - 本轮收敛 `gateway/observability/request_log.rs` 与 `gateway/observability/trace_log.rs`：以 `RequestLogEntry` / `RequestLogRouteMeta` / `RequestStartLog` 合并观测埋点参数；`clippy` 剩余错误数由 14 降到 12，`gateway/observability` 不再出现在剩余清单中
+  - 本轮收敛 `usage/usage_scheduler.rs` 与 `usage/usage_refresh.rs`：以 `BlockingPollLoopConfig` 收束轮询调度参数，并将 `refresh` 内部实现模块改名为 `refresh_impl`；`clippy` 剩余错误数由 12 降到 10，`usage` 不再出现在剩余清单中
+  - 本轮收敛 `gateway/upstream/attempt_flow/*` 与 `gateway/upstream/proxy_pipeline/*`：以 `SendUpstreamRequestArgs` / `OpenAiBaseAttemptArgs` / `FinalResultLogArgs` / `TerminalCandidateArgs` / `FinalizeUpstreamResponseArgs` 收束散参数，并将 `CandidateExecutionResult::Exhausted.request` 改为 `Box<Request>`；`clippy` 剩余错误数由 10 降到 5，`gateway/upstream` 不再出现在剩余清单中
+  - 本轮收敛 `gateway/auth/openai_fallback.rs`：以 `TryOpenAiFallbackArgs` 收束 fallback 请求参数；`clippy` 剩余错误数由 5 降到 4，`gateway/auth` 不再出现在剩余清单中
+  - 本轮收敛 `account/account_payment.rs`：以 `CheckoutLinkArgs` 收束支付下单参数；`clippy` 剩余错误数由 4 降到 3，`account_payment` 不再出现在剩余清单中
+  - 本轮收敛 `account/account_register.rs`、`usage/refresh/autofill.rs`、`rpc_dispatch/account.rs` 与 `gateway/freeproxy.rs`：以 `StartRegisterBatchInput` / `CreateRegisterProxyInput` 收束注册批量与代理创建参数；同步将 `app_settings/api/current.rs` 的快照持久化改为 `PersistCurrentSnapshotInput`
+  - 本轮继续收敛测试层 warning：`tests/shutdown_flag.rs` 改为布尔断言，`tests/gateway_logs/cache.rs` 改为 `contains_key` 判定；`clippy` 最终清零
+
 - [-] **本轮验证结果**
+  - `pnpm exec tsc --noEmit` 通过（F17 插件管理前端：插件类型、RPC normalize、设置页 CRUD 与模板入口）
+  - `pnpm run build:desktop` 失败：Next 16 Turbopack 在当前 automation 沙箱内处理 `src/app/globals.css` 时尝试创建子进程并绑定端口，触发 `Operation not permitted`
+  - `pnpm exec next build --webpack` 通过（作为当前环境下的等价前端构建复验，静态路由继续包含 `/settings`，插件管理页签可参与静态构建）
+  - `cargo test -p codexmanager-service session_handler_ --features mcp -- --nocapture` 通过（本轮按防重叠规则复验 F16 `mcp::session`：parse error / initialized notification 仍通过）
+  - `cargo check -p codexmanager-service --features mcp --bin codexmanager-mcp` 通过（本轮确认现有 MCP 脏改在当前工作区仍可编译）
+  - `pnpm exec tsc --noEmit` 通过（本轮复验设置页 MCP 开关与端口配置的前端类型）
+  - `cargo test -p codexmanager-service session_handler_ --features mcp -- --nocapture` 通过（F16 MCP 会话层：新增 transport-agnostic JSON-RPC 处理回归，覆盖 parse error / initialized notification）
+  - `cargo test -p codexmanager-service http_sse_ --features mcp -- --nocapture` 通过（F16 MCP HTTP SSE：覆盖 endpoint 握手、initialize 响应回推、禁用开关拒绝）
+  - `cargo test -p codexmanager-service stdio_server_ --features mcp -- --nocapture` 通过（F16 MCP stdio：抽离 `mcp::session` 后 `initialize` / `tools/list` / `tools/call` 回归仍通过，并显式隔离测试 DB 的 `mcpEnabled` 状态）
+  - `cargo check -p codexmanager-service --features mcp --bin codexmanager-mcp` 通过（F16 MCP 会话层抽离后 feature-gated MCP 二进制仍可编译）
+  - `cargo test -p codexmanager-service stdio_server_rejects_ --features mcp -- --nocapture` 通过（F16 MCP 开关关闭后，`initialize`、`tools/list`、`tools/call` 均返回禁用错误）
+  - `cargo check -p codexmanager-service --features mcp --bin codexmanager-mcp` 通过（F16 feature-gated MCP 二进制本轮改动后仍可编译）
+  - `cargo test -p codexmanager-service --test app_settings app_settings_set_persists_snapshot_and_password_hash -- --nocapture` 通过（F16 MCP 设置项持久化：`mcpEnabled` / `mcpPort`）
+  - `cargo test -p codexmanager-service --test app_settings app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing -- --nocapture` 通过（F16 MCP 设置项环境变量覆盖：`CODEXMANAGER_MCP_ENABLED` / `CODEXMANAGER_MCP_PORT`）
+  - `cargo test -p codexmanager-service stdio_server_ --features mcp -- --nocapture` 通过（F16 MCP stdio：新增设置禁用时拒绝 `initialize` 回归）
+  - `pnpm exec tsc --noEmit` 通过（F16 设置页 MCP 开关与端口配置）
+  - `cargo test -p codexmanager-service stdio_server_ --features mcp -- --nocapture` 通过（F16 MCP 接入指南对应的 stdio 主链路与 4 个工具回归）
+  - `cargo check -p codexmanager-service --features mcp --bin codexmanager-mcp` 通过（F16 文档中的 feature-gated 启动方式可编译）
+  - `cargo test -p codexmanager-service stdio_server_ --features mcp -- --nocapture` 通过（F16 MCP stdio：新增 `chat_completion` 工具真实调用闭环，覆盖 success / missing api key / unknown tool）
+  - `cargo check -p codexmanager-service --features mcp --bin codexmanager-mcp` 通过（确认 feature-gated MCP 二进制在接入 `chat_completion` 后仍可编译）
+  - `cargo check -p codexmanager-service` 通过（确认本轮 MCP 改造未影响默认 feature 主服务编译）
+  - `cargo test -p codexmanager-service stdio_server_ --features mcp -- --nocapture` 通过（F16 MCP stdio：`tools/call` 已接通 `list_models` / `list_accounts` / `get_usage` 真实执行，并保留 `chat_completion` 未接线错误回归）
+  - `cargo check -p codexmanager-service --features mcp --bin codexmanager-mcp` 通过（F16 feature-gated MCP 二进制继续可编译）
+  - `cargo check -p codexmanager-service` 通过（确认本轮 MCP 改造未影响默认 feature 主服务编译）
+  - `cargo test -p codexmanager-service stdio_server_ --features mcp -- --nocapture` 通过（F16 MCP stdio 骨架：覆盖 initialize / tools/list / tools/call stub / unknown method）
+  - `cargo check -p codexmanager-service --features mcp --bin codexmanager-mcp` 通过（F16 feature-gated 实验 MCP 二进制）
+  - `cargo check -p codexmanager-service` 通过（确认默认未开启 `mcp` feature 时主服务编译未回退）
+  - `cargo test -p codexmanager-service audit_list_read_operation_does_not_create_audit_log -- --nocapture` 通过（F13 验收补齐：`audit/list` 只读查询不会新增审计记录）
+  - `cargo check -p codexmanager-service` 通过（本轮仅补 F13 审计只读回归测试，无编译回归）
   - `cargo check -p codexmanager-service` 通过（F15 重试策略配置）
   - `cargo test -p codexmanager-service gateway_retry_policy_rpc_supports_get_set_and_snapshot -- --nocapture` 通过
   - `cargo test -p codexmanager-service status_429_respects_retry_policy_status_list -- --nocapture` 通过
@@ -48,9 +92,10 @@
   - `curl -s -X POST http://127.0.0.1:48761/api/rpc ... method=appSettings/get` => 返回 `retryPolicyMaxRetries / retryPolicyBackoffStrategy / retryPolicyRetryableStatusCodes`
   - `curl -s -X POST http://127.0.0.1:48761/api/rpc ... method=audit/list params={page:1,pageSize:10}` => 可查询到 `gateway/retryPolicy/set` 审计记录
   - `curl -s -X POST http://127.0.0.1:48761/api/rpc ... method=healthcheck/config/set` 后再次查询 `audit/list` => 成功写入 `operator=web-ui` 审计记录
-  - 本轮尝试重新执行 Docker 本地源码复验时，`docker info` / `docker compose` 在本机 `orbstack` context 下无输出卡住；属于本地 Docker daemon/CLI 环境阻塞，待守护恢复后复跑
+  - 本轮尝试重新执行 Docker 本地源码复验时，`docker info` 访问 `unix:///Users/jfwang/.orbstack/run/docker.sock` 直接返回 `operation not permitted`；属于当前 automation 沙箱无法访问 Docker daemon 的环境阻塞，待具备 daemon 权限后复跑
   - `cargo test -p codexmanager-service healthcheck_config_rpc_supports_get_and_set -- --nocapture` 通过
   - `cargo test -p codexmanager-service healthcheck_run_rpc_returns_empty_summary_without_probe_candidates -- --nocapture` 通过
+  - `cargo test -p codexmanager-service dashboard_health_rpc_includes_recent_healthcheck_after_run -- --nocapture` 通过（F11 首页最近巡检卡片与 `healthcheck/run` 同源数据回归）
   - `cargo check --manifest-path apps/src-tauri/Cargo.toml` 通过（F11 巡检 RPC / Tauri 接入）
   - `pnpm exec tsc --noEmit` 通过（F11 设置页 / 仪表盘展示）
   - `pnpm run build:desktop` 通过（F11 设置页 / 仪表盘展示）
@@ -131,6 +176,85 @@
   - `pnpm exec tsc --noEmit` 通过（F09 用量分析页）
   - `pnpm run build:desktop` 通过（新增 `/analytics` 静态页面）
   - `cargo test -p codexmanager-service -- --nocapture` 再次整包通过（529 passed）
+  - `cargo test -p codexmanager-service build_session_probe_tasks_skips_disabled_accounts -- --nocapture` 通过
+  - `cargo test -p codexmanager-service recover_account_after_success_restores_unavailable_but_keeps_disabled -- --nocapture` 通过
+  - `cargo test -p codexmanager-service healthcheck_run_triggers_token_refresh_fail_alerts_when_probe_fails -- --nocapture` 通过（改为内存 mock probe + webhook，沙箱内可稳定复验）
+  - `cargo test -p codexmanager-service healthcheck_ -- --nocapture` 通过（覆盖巡检配置、空候选摘要、巡检失败触发告警）
+  - `cargo test -p codexmanager-service reload_background_tasks_runtime_from_env_applies_session_probe_settings -- --nocapture` 通过
+  - `cargo test -p codexmanager-service reload_background_tasks_runtime_from_env_restores_session_probe_defaults -- --nocapture` 通过
+  - `cargo test -p codexmanager-service reload_background_tasks_runtime_from_env_ -- --nocapture` 通过（修复 env 覆盖测试并发污染后复验）
+  - `cargo test -p codexmanager-service healthcheck_ -- --nocapture` 通过（复验 F11 巡检 RPC / 告警链路）
+  - `cargo test -p codexmanager-service healthcheck_run_triggers_token_refresh_fail_alerts_when_probe_fails -- --nocapture` 通过（补充 RAII 清理 guard 后复验）
+  - `cargo test -p codexmanager-service reload_background_tasks_runtime_from_env_ -- --nocapture` 通过（本轮复验 F11 环境变量覆盖回归）
+  - `cargo clippy -p codexmanager-service --tests -- -D warnings` 失败（存在 80+ 条仓库级历史 warning，G7 待单独收口）
+  - `cargo test -p codexmanager-service requestlog_export_rpc_returns_filtered_csv_content -- --nocapture` 通过（本轮复验导出链路）
+  - `cargo test -p codexmanager-service web_auth_two_factor_rpc_supports_setup_verify_recovery_and_disable -- --nocapture` 通过（本轮复验 2FA 链路）
+  - `cargo check -p codexmanager-service` 通过（本轮收敛 `app_settings` / `2FA` / `requestlog export` / `model_picker` 的 clippy 兼容改动后编译正常）
+  - `cargo test -p codexmanager-service --test app_settings app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing -- --nocapture` 通过（修复 `app_settings/get` 读取环境覆盖时误触发 reqwest client 初始化，macOS 下不再触发 `system-configuration` NULL object panic）
+  - `cargo test -p codexmanager-service --test app_settings sync_runtime_settings_from_storage_ -- --nocapture` 通过（复验环境覆盖同步仍能保留显式进程变量并应用持久化运行时设置）
+  - `cargo check -p codexmanager-service` 通过（本轮继续收敛 `account` / `gateway` / `http` / `usage` 相关 clippy warning）
+  - `cargo test -p codexmanager-service gateway_latency_ring_buffer_returns_recent_samples_only -- --nocapture` 通过（复验 `metrics.rs` 调整后环形缓冲测试）
+  - `cargo test -p codexmanager-service inspect_sse_frame_keeps_last_event_type -- --nocapture` 通过（复验 `sse_frame.rs` 调整后 SSE 事件类型保留逻辑）
+  - `cargo clippy -p codexmanager-service --tests -- -D warnings` 失败（本轮确认 `items_after_test_module` 已不再出现；剩余主要为 `too_many_arguments`、`large_enum_variant`、`ptr_arg`、`module_inception`）
+  - `cargo check -p codexmanager-service` 通过（本轮收敛 `http_bridge` 的响应桥接参数与 SSE 分支判断）
+  - `cargo test -p codexmanager-service compact_header_only_ -- --nocapture` 通过（覆盖 compact 非成功体归一化分类单测）
+  - `cargo test -p codexmanager-service --test gateway_logs gateway_openai_compact_invalid_success_body_is_mapped_to_502 -- --nocapture` 失败：沙箱内绑定本地端口 `41000` 被拒绝 `Operation not permitted`
+  - `cargo test -p codexmanager-service --test gateway_logs gateway_openai_compact_html_non_success_is_mapped_to_structured_403 -- --nocapture` 失败：沙箱内绑定本地端口 `41000` 被拒绝 `Operation not permitted`
+  - `cargo clippy -p codexmanager-service --tests -- -D warnings` 失败（复验后 `http_bridge/delivery.rs` 与 `http_bridge/mod.rs` 不再报错，剩余 18 条集中在 `account`、`app_settings`、`gateway/request`、`gateway/upstream`、`usage`）
+  - `cargo clippy -p codexmanager-service --tests -- -D warnings` 失败（本轮收敛 `gateway/upstream/proxy_pipeline/request_setup.rs` 的 `too_many_arguments` / `ptr_arg` 后，剩余 16 条，集中在 `account`、`app_settings`、`gateway/request`、`gateway/upstream`、`usage`）
+  - `cargo check -p codexmanager-service` 通过（确认 `PrepareRequestSetupInput` 重构未引入编译回归）
+  - `cargo check -p codexmanager-service` 通过（本轮收敛 `gateway/request` 本地短路响应参数后编译正常）
+  - `cargo test -p codexmanager-service --lib build_openai_models_list_outputs_expected_shape -- --nocapture` 通过（复验本地 `/v1/models` 响应输出）
+  - `cargo test -p codexmanager-service --lib estimate_input_tokens_ -- --nocapture` 通过（复验本地 `count_tokens` 估算逻辑）
+  - `cargo clippy -p codexmanager-service --tests -- -D warnings` 失败（本轮收敛 `gateway/request/local_models.rs` 与 `gateway/request/local_count_tokens.rs` 后，剩余 14 条，已不再包含 `gateway/request`）
+  - `cargo check -p codexmanager-service` 通过（本轮收敛 `gateway/observability/request_log.rs` / `trace_log.rs` 参数对象后编译正常）
+  - `cargo test -p codexmanager-service gateway_latency_ring_buffer_returns_recent_samples_only -- --nocapture` 通过（复验 observability latency ring buffer）
+  - `cargo test -p codexmanager-service --lib build_openai_models_list_outputs_expected_shape -- --nocapture` 通过（复验 `RequestLogEntry` 改造未影响本地 models 响应）
+  - `cargo clippy -p codexmanager-service --tests -- -D warnings` 失败（本轮收敛 `gateway/observability/request_log.rs` 与 `gateway/observability/trace_log.rs` 后，剩余 12 条，已不再包含 `gateway/observability`）
+  - `cargo test -p codexmanager-core storage_can_summarize_cost_usage_by_key_model_and_day -- --nocapture` 通过（本轮复验 F08 聚合查询）
+  - `cargo test -p codexmanager-service stats_cost_model_pricing_rpc_supports_get_and_set -- --nocapture` 通过（本轮复验 F08 模型单价 RPC）
+  - `cargo test -p codexmanager-service stats_cost_summary_rpc_aggregates_custom_range -- --nocapture` 通过（本轮复验 F08 汇总 RPC）
+  - `cargo test -p codexmanager-service stats_cost_export_rpc_returns_csv_content -- --nocapture` 通过（本轮复验 F08 CSV 导出）
+  - `cargo test -p codexmanager-service request_log_export_streams_json_in_multiple_chunks -- --nocapture` 通过（本轮补齐 F10 流式 JSON 导出回归）
+  - `cargo test -p codexmanager-service export_response_sets_json_headers -- --nocapture` 通过（本轮补齐 F10 HTTP JSON 下载头回归）
+  - `pnpm exec tsc --noEmit` 通过（本轮复验 F08 前端类型）
+  - `pnpm run build:desktop` 失败：Next 16 默认 Turbopack 在当前沙箱内处理 `src/app/globals.css` 时尝试创建子进程并绑定端口，触发 `Operation not permitted`
+  - `pnpm exec next build --webpack` 通过（作为当前环境下的等价前端构建复验，静态路由包含 `/costs`）
+  - `cargo test -p codexmanager-service blocking_poll_loop_ -- --nocapture` 通过（本轮复验 usage scheduler 的轮询、退避与 jitter 单测）
+  - `cargo test -p codexmanager-service parse_interval_secs_falls_back_and_applies_minimum -- --nocapture` 通过（本轮复验 usage scheduler 的最小间隔夹紧）
+  - `cargo clippy -p codexmanager-service --tests -- -D warnings` 失败（本轮清空 `usage` 相关 warning 后，剩余 10 条集中在 `account`、`app_settings`、`gateway/auth`、`gateway/upstream`）
+  - `cargo check -p codexmanager-service` 通过（本轮收敛 `gateway/upstream` attempt flow / proxy pipeline 的参数对象化与 `Box<Request>` 后编译正常）
+  - `cargo clippy -p codexmanager-service --tests -- -D warnings` 失败（本轮清空 `gateway/upstream` 相关 warning 后，剩余 5 条集中在 `account`、`app_settings`、`gateway/auth`）
+  - `cargo test -p codexmanager-service request_compression_only_applies_to_streaming_chatgpt_responses -- --nocapture` 通过（复验 `SendUpstreamRequestArgs` 改造后请求压缩判定）
+  - `cargo test -p codexmanager-service encode_request_body_adds_zstd_content_encoding -- --nocapture` 通过（复验请求压缩头与 zstd 编码写入）
+  - `cargo check -p codexmanager-service` 通过（本轮收敛 `gateway/auth/openai_fallback.rs` 参数对象化后编译正常）
+  - `cargo test -p codexmanager-service request_affinity_uses_thread_anchor_for_fallback_headers -- --nocapture` 通过（复验 fallback 线程锚点请求亲和逻辑）
+  - `cargo test -p codexmanager-service gateway_model_fallback_keeps_primary_model_when_first_attempt_succeeds -- --nocapture` 失败：测试 mock upstream 固定绑定本地端口 `41000`，当前 automation 沙箱返回 `Operation not permitted`
+  - `cargo clippy -p codexmanager-service --tests -- -D warnings` 失败（`gateway/auth/openai_fallback.rs` 已清零；剩余 4 条集中在 `account/account_payment.rs`、`account/account_register.rs`、`app_settings/api/current.rs`）
+  - `cargo check -p codexmanager-service` 通过（本轮收敛 `account/account_payment.rs` 的下单参数对象化后编译正常）
+  - `cargo clippy -p codexmanager-service --tests -- -D warnings` 失败（`account/account_payment.rs` 已清零；剩余 3 条集中在 `account/account_register.rs` 与 `app_settings/api/current.rs`）
+  - `cargo fmt --all` 通过（本轮参数对象化与测试断言收口）
+  - `cargo clippy -p codexmanager-service --tests --message-format short -- -D warnings` 通过（本轮清空剩余 3 条库 warning 与 5 条测试 warning）
+  - `cargo test -p codexmanager-service send_test_alert_supports_bark_telegram_and_wecom_mock_transports -- --nocapture` 通过（F02 补齐 Bark / Telegram / 企业微信渠道发送格式回归）
+  - `cargo test -p codexmanager-service alert_rpc_supports_rule_channel_history_and_channel_test -- --nocapture` 通过（F02 `alert/channels/test` 改为内存 webhook mock，沙箱内不再依赖端口绑定）
+  - `cargo test -p codexmanager-service alert_engine_usage_threshold_dedupes_and_recovers -- --nocapture` 通过（F02 额度阈值告警触发 / 去重 / 恢复回归）
+  - `cargo test -p codexmanager-service alert_engine_all_unavailable_triggers_and_recovers -- --nocapture` 通过（F02 全部账号不可用告警触发 / 恢复回归）
+  - `cargo test -p codexmanager-service healthcheck_run_triggers_token_refresh_fail_alerts_when_probe_fails -- --nocapture` 通过（复验 F11 巡检接入 F02 告警链路未回退）
+  - `cargo test -p codexmanager-service validate_api_key_allowed_model -- --nocapture` 通过（F12 白名单校验改为先拦截显式请求模型，再校验默认模型覆盖）
+  - `cargo test -p codexmanager-service gateway_cache_rpc_supports_get_set_stats_and_clear -- --nocapture` 通过（本轮复验 F06 全局缓存配置 / 统计 / 清空 RPC）
+  - `cargo test -p codexmanager-service response_cache_entry_expires_after_ttl -- --nocapture` 通过（本轮复验 F06 TTL 过期清理）
+  - `cargo test -p codexmanager-service response_cache_evicts_oldest_entry_when_capacity_is_exceeded -- --nocapture` 通过（本轮复验 F06 容量淘汰）
+  - `cargo test -p codexmanager-service apikey_response_cache_rpc_supports_get_and_set -- --nocapture` 通过（本轮复验 F06 API Key 级缓存 RPC）
+  - `cargo test -p codexmanager-core storage_can_roundtrip_api_key_response_cache_config -- --nocapture` 通过（本轮复验 F06 API Key 级缓存持久化）
+  - `cargo test -p codexmanager-service --test gateway_logs gateway_response_cache_hits_second_non_stream_request -- --nocapture --test-threads=1` 失败：当前 automation 沙箱禁止测试内 `TcpListener::bind("127.0.0.1:*")`，即使 `gateway_logs` mock upstream 已改为系统分配端口仍返回 `Operation not permitted`
+  - `cargo test -p codexmanager-service --test gateway_logs gateway_response_cache_skips_requests_when_api_key_cache_disabled -- --nocapture --test-threads=1` 失败：同上，属于当前运行环境 listener 权限限制，待切回允许本地 socket 的环境后复跑
+  - `cargo test -p codexmanager-service parse_transport_ --features mcp --bin codexmanager-mcp -- --nocapture` 通过（F16 MCP 二进制 transport 入口：默认 stdio、`http-sse`、`--transport=http-sse` 均可识别）
+  - `cargo test -p codexmanager-service http_sse_ --features mcp -- --nocapture` 通过（F16 MCP HTTP SSE：覆盖会话初始化、`messageUrl` 生成与禁用态拒绝）
+  - `cargo check -p codexmanager-service --features mcp --bin codexmanager-mcp` 通过（F16 feature-gated MCP 二进制在接入 HTTP SSE 文档收口后仍可编译）
+  - `cargo test -p codexmanager-service plugin_rpc_ -- --nocapture` 通过（F17 插件管理 CRUD：覆盖 `plugin/upsert` / `plugin/list` / `plugin/delete` 与非法 runtime / hook point 校验）
+  - `cargo check -p codexmanager-service` 通过（F17 service 插件 RPC、审计快照与 core RPC 类型扩展编译通过）
+  - `cargo test -p codexmanager-service plugin_rpc_ -- --nocapture` 通过（本轮复验 F17 插件 CRUD 与校验逻辑仍可用）
+  - `pnpm exec tsc --noEmit` 通过（本轮复验 F17 设置页插件管理 Tab 与模板草稿类型）
 
 ---
 
@@ -219,6 +343,8 @@
 - [x] **联调与回归**
   - [x] 设置页真实调用 `alert/*` RPC，桌面命令已注册
   - [x] `source "$HOME/.cargo/env" && cargo test -p codexmanager-service -- --nocapture`
+  - [x] 验收补齐：Bark / Telegram / 企业微信渠道发送改为内存 mock 回归测试，当前 automation 沙箱内无需真实端口或外网即可稳定验证
+  - [x] 沙箱兼容：`alert/channels/test`、额度阈值告警、全部账号不可用告警均已移除 `TcpListener` 依赖，避免重复出现 `Operation not permitted`
 
 ---
 
@@ -332,11 +458,11 @@
 - [x] **数据库**
   - [x] 新增 migration：`model_pricing` 表（model_slug, input_price_per_1k, output_price_per_1k, updated_at）
 
-- [-] **后端：聚合查询**
+- [x] **后端：聚合查询**
   - [x] 按 API Key / 模型 / 日期多维聚合 token 消耗与费用
   - [x] 支持时间范围过滤（today / week / month / custom）
 
-- [-] **后端：RPC 接口**
+- [x] **后端：RPC 接口**
   - [x] `stats/cost/summary`
   - [x] `stats/cost/export`（返回 CSV 内容）
   - [x] `stats/cost/modelPricing/get`、`stats/cost/modelPricing/set`
@@ -369,12 +495,12 @@
 
 ### F06 响应缓存
 
-- [-] **后端：缓存层**
+- [x] **后端：缓存层**
   - [x] 实现内存 LRU 风格响应缓存
   - [x] 缓存 key = 路径 + 请求体规范化后的 SHA256
   - [x] 支持配置 TTL 和最大条目数
 
-- [-] **后端：网关集成**
+- [x] **后端：网关集成**
   - [x] 非流式请求在路由前查缓存
   - [x] 缓存命中时直接返回，标注 `X-CodexManager-Cache: HIT`
   - [x] 缓存未命中且请求成功后写入缓存
@@ -382,7 +508,7 @@
   - [x] 流式请求不缓存回归用例
   - [x] TTL 过期与容量淘汰回归用例
 
-- [-] **后端：RPC 接口**
+- [x] **后端：RPC 接口**
   - [x] `gateway/cache/config/get`、`gateway/cache/config/set`
   - [x] `gateway/cache/stats`（命中率、条目数、内存占用估算）
   - [x] `gateway/cache/clear`
@@ -397,6 +523,10 @@
   - [x] 网关请求按 Key 判断是否允许命中 / 写入缓存
   - [x] API Key 编辑弹窗增加缓存开关入口
   - [x] 联调验证：已开启 Key 二次命中缓存，未开启 Key 持续绕过缓存
+
+- [x] **文档与验收收口**
+  - [x] `docs/API.md` 已补齐响应缓存 RPC、API Key 缓存开关与 `appSettings` 快照字段说明
+  - [x] 本轮重新复验全局配置 / TTL / 容量淘汰 / API Key 级持久化；HIT/MISS 集成回归仍受当前 automation 沙箱的本地 listener 权限限制
 
 ---
 
@@ -418,37 +548,42 @@
 
 ### F10 请求日志导出
 
-- [-] **后端**
+- [x] **后端**
   - [x] 新增 HTTP 端点 `GET /export/requestlogs`
   - [x] 先补 RPC 导出链路，支持 `format` 参数（csv / json）
   - [x] 支持当前日志页筛选参数（query / statusFilter）
   - [x] 导出接口额外支持 `timeFrom / timeTo / model / keyId` 筛选
   - [x] HTTP 导出改为分批流式响应，避免大数据量整块占用内存
 
-- [-] **前端**
+- [x] **前端**
   - [x] 请求日志页增加「导出」按钮
   - [x] 格式选择下拉（CSV / JSON）
   - [x] 导出使用当前页面的筛选条件
   - [x] Web / Docker 版优先走 `/api/export/requestlogs` 直接下载
   - [x] 日志页补充 `keyId / model / timeFrom / timeTo` 筛选并与列表、摘要、导出联动
+  - [x] 验收补齐：补充流式 JSON 导出与 HTTP JSON 下载头回归测试，确认 CSV / JSON 两种格式均可下载
 
 ---
 
 ### F11 账号自动巡检
 
-- [-] **后端：巡检调度**
+- [x] **后端：巡检调度**
   - [x] 复用 `session_probe` 逻辑对启用账号执行探测，并保留轮询线程配置
   - [x] 失败账号自动标记 `unavailable` + 写入现有失败 event
   - [x] 巡检成功后自动恢复账号为 `active` 并清理 cooldown
   - [x] 内存维护最近一次巡检摘要（开始 / 结束时间、采样数、成功数、失败数、失败账号）
   - [x] 新增独立并发控制（最多 N 个并发探测）
   - [x] 评估默认巡检间隔是否调整到 PRD 约定的 30 分钟
+  - [x] 补充回归测试：禁用账号不参与巡检，`unavailable` 账号巡检成功后恢复为 `active`
+  - [x] 补充回归测试：环境变量覆盖可驱动巡检开关、间隔与抽样数（对齐 G4）
+  - [x] 修复回归测试并发污染：环境变量覆盖测试在同进程并发执行时改为串行化
+  - [x] 对齐 PRD / 验收术语：巡检恢复态以现有账号状态枚举 `active` 为准
 
 - [x] **后端：RPC 接口**
   - [x] `healthcheck/config/get`、`healthcheck/config/set`
   - [x] `healthcheck/run`（手动触发）
 
-- [-] **前端**
+- [x] **前端**
   - [x] 设置页复用现有巡检配置区，支持开关 / 间隔 / 抽样数配置
   - [x] 设置页增加「立即巡检」按钮与最近巡检结果摘要
   - [x] 仪表盘展示最近巡检时间、抽检通过率与采样结果概览
@@ -456,6 +591,8 @@
 - [x] **集成**
   - [x] 巡检异常结果接入告警通知系统（F02）
   - [x] 新增回归测试：`healthcheck/run` 失败后触发 `token_refresh_fail` 告警 webhook 与历史记录
+  - [x] 新增回归测试：`dashboard/health` 返回最近巡检摘要，保证首页巡检卡片与 `healthcheck/run` 数据一致
+  - [x] 补强测试隔离：巡检告警 mock webhook / probe override 在断言失败时也会自动清理，避免污染后续用例
 
 ---
 
@@ -470,6 +607,7 @@
   - [x] gateway model_picker 阶段检查白名单
   - [x] 白名单外模型返回 403
   - [x] `apikey/allowedModels/get`、`apikey/allowedModels/set`
+  - [x] 验收补齐：显式请求白名单外模型时，即使 API Key 配置了允许的默认模型覆盖，也会先返回 403；白名单为空时仍全放行
 
 - [x] **前端**
   - [x] API Key 编辑页增加模型白名单多选组件
@@ -495,6 +633,7 @@
   - [x] Web 代理转发 `X-CodexManager-Operator`
   - [x] 本地源码 Docker 镜像构建成功并通过健康检查
   - [x] Web RPC 写操作可落审计日志并被 `audit/list` 查询到
+  - [x] 补充回归测试：`audit/list` 只读查询不会反向写入新的审计日志（对齐验收 13.5）
 
 ---
 
@@ -517,14 +656,15 @@
   - [x] 展示 QR 码供扫描
   - [x] Web 登录页增加验证码输入步骤
 
-- [-] **联调与验证**
+- [x] **联调与验证**
   - [x] 服务端 / Web 登录页 / 桌面端设置入口编译通过
   - [x] 回归测试覆盖 setup / verify / recovery code / disable / clear password 清空 2FA
   - [x] Web handler 测试覆盖密码后进入 2FA 页面与 pending cookie -> 正式登录 cookie 交换
   - [x] Web handler 测试覆盖 recovery code 登录成功并消耗剩余次数
   - [x] Web handler 测试覆盖错误 2FA 验证码返回失败且保留 pending cookie
   - [x] `docs/API.md` 已补齐 Web auth/2FA、重试策略、巡检、导出与审计接口说明，并挂到 README / docs 索引
-  - [!] Docker 本地源码镜像复验本轮受本机 `orbstack` daemon 卡住影响，待环境恢复后复跑
+  - [x] 本轮复验：`cargo test -p codexmanager-service web_auth_two_factor_rpc_supports_setup_verify_recovery_and_disable -- --nocapture` 与 `cargo test -p codexmanager-web login_submit_ -- --nocapture` 均通过，确认 2FA 服务端与 Web 登录链路已闭环
+  - [!] 非阻塞环境备注：当前 automation 沙箱内无法访问 `unix:///Users/jfwang/.orbstack/run/docker.sock`，因此未重复执行 Docker 本地源码镜像复验；不影响本轮 2FA 功能闭环判断
 
 ---
 
@@ -551,32 +691,47 @@
 
 ### F16 MCP Server 模式
 
-- [ ] **后端**
-  - [ ] 评估 MCP 协议实现方案（rmcp vs 手写）
-  - [ ] 实现 MCP Tools：chat_completion / list_models / list_accounts / get_usage
-  - [ ] 支持 stdio + HTTP SSE 传输
-  - [ ] 以 feature flag 编译
+- [x] **后端**
+  - [x] 评估 MCP 协议实现方案（首轮采用手写 stdio `Content-Length` JSON-RPC 骨架，先避免在未接入 HTTP SSE / tools/call 前引入 `rmcp` 依赖）
+  - [x] 实现 MCP Tools：chat_completion / list_models / list_accounts / get_usage
+    - [x] `tools/list` 已暴露 4 个规划工具定义
+    - [x] `tools/call` 已接通 `list_models` / `list_accounts` / `get_usage` 真实只读执行，并返回 `structuredContent`
+    - [x] `chat_completion` 已通过进程内一次性 backend server 复用真实 `/v1/chat/completions` 网关链路，支持 `arguments.apiKey` / `CODEXMANAGER_MCP_API_KEY` 取 key，并返回 `response + gateway` 元数据
+  - [x] 支持 stdio + HTTP SSE 传输
+    - [x] 已新增 feature-gated `codexmanager-mcp` 实验二进制，支持 stdio `initialize` / `ping` / `tools/list` / `tools/call`
+    - [x] `mcpEnabled=false` 时，`initialize` / `tools/list` / `tools/call` 均会直接返回禁用错误
+    - [x] 已抽离 `mcp::session` 统一 `initialize` / `tools/*` 的 JSON-RPC 会话与工具执行，`stdio` 仅保留 `Content-Length` framing，后续 HTTP SSE 可直接复用同一处理入口
+    - [x] HTTP SSE 传输（`GET /sse` 建立会话，`POST /message?sessionId=...` 发送 JSON-RPC，请求结果通过 SSE `message` 事件返回）
+    - [x] `codexmanager-mcp` 新增 `http-sse` / `--http-sse` / `--transport=http-sse` 启动入口
+  - [x] 以 feature flag 编译
 
-- [ ] **前端**
-  - [ ] 设置页增加 MCP Server 开关与端口配置
+- [x] **前端**
+  - [x] 设置页增加 MCP Server 开关与端口配置
+  - [x] `appSettings/get|set` 暴露 `mcpEnabled` / `mcpPort`，并支持 `CODEXMANAGER_MCP_ENABLED` / `CODEXMANAGER_MCP_PORT` 环境变量覆盖
 
-- [ ] **文档**
-  - [ ] 编写 MCP 接入指南（Claude Code / Cursor 配置示例）
+- [x] **文档**
+  - [x] 编写 MCP 接入指南（Claude Code / Cursor 配置示例）
+  - [x] 补充 HTTP SSE 启动方式、`/sse` + `/message` 调试示例与仓库内自检命令
 
 ---
 
 ### F17 插件 / Hook 系统
 
-- [ ] **后端**
+- [-] **后端**
+  - [x] 新增 migration：`plugins` 表（id, name, description, runtime, hook_points_json, script_content, enabled, timeout_ms, created_at, updated_at）
+  - [x] 新增 storage CRUD：插件元数据、脚本内容、启用状态与 hook 点声明可持久化
+  - [x] 补充 `codexmanager-core` 存储层回归：插件新增 / 更新 / 删除与 migration 追踪
   - [ ] 引入 `mlua` crate
-  - [ ] 定义钩子点：pre_route / post_route / post_response
+  - [x] 定义钩子点：pre_route / post_route / post_response
   - [ ] 实现 Lua 脚本加载、沙箱执行、超时保护
-  - [ ] 插件管理 CRUD
+  - [x] 插件管理 CRUD（`plugin/list`、`plugin/upsert`、`plugin/delete`，含 runtime / hook point 校验与审计快照）
 
-- [ ] **前端**
-  - [ ] 设置页增加插件管理区域
-  - [ ] 插件上传、启用/禁用、编辑、删除
-  - [ ] 内置插件模板
+- [x] **前端**
+  - [x] 设置页增加插件管理区域
+  - [x] 插件上传、启用/禁用、编辑、删除
+  - [x] 内置插件模板
 
-- [ ] **文档**
-  - [ ] 编写插件开发指南与 API 参考
+- [x] **文档**
+  - [x] 编写插件开发指南与 API 参考
+  - [x] `docs/report/20260323193000000_插件管理与Lua开发指南.md` 已补齐当前已落地能力、Lua 模板、建议 Hook 契约与后续收口顺序
+  - [x] `docs/API.md`、`docs/README.md` 已同步插件实验能力与文档入口

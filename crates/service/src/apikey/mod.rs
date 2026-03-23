@@ -1,7 +1,7 @@
-#[path = "apikey_create.rs"]
-pub(crate) mod create;
 #[path = "apikey_allowed_models.rs"]
 pub(crate) mod allowed_models;
+#[path = "apikey_create.rs"]
+pub(crate) mod create;
 #[path = "apikey_delete.rs"]
 pub(crate) mod delete;
 #[path = "apikey_disable.rs"]

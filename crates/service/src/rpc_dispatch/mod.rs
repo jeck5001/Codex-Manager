@@ -6,12 +6,13 @@ use serde_json::Value;
 use crate::storage_helpers;
 
 mod account;
-mod audit;
 mod alert;
 mod apikey;
 mod app_settings;
+mod audit;
 mod dashboard;
 mod gateway;
+mod plugin;
 mod requestlog;
 mod service_config;
 mod startup;
@@ -132,6 +133,10 @@ pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
         return resp;
     }
     if let Some(resp) = gateway::try_handle(&req) {
+        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
+        return resp;
+    }
+    if let Some(resp) = plugin::try_handle(&req) {
         crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
         return resp;
     }

@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use codexmanager_core::rpc::types::{JsonRpcRequest, JsonRpcResponse};
 use std::io::Write;
 use std::sync::Once;
@@ -5,10 +7,10 @@ use std::sync::Once;
 mod account;
 mod account_identity;
 mod account_status_reason;
-mod audit;
 mod alert;
 mod apikey;
 pub(crate) mod app_settings;
+mod audit;
 mod auth;
 mod dashboard;
 mod errors;
@@ -17,8 +19,11 @@ mod gateway;
 mod governance_summary;
 mod http;
 mod lifecycle;
+#[cfg(feature = "mcp")]
+pub mod mcp;
 mod operation_audit;
 mod operation_audit_summary;
+mod plugin;
 mod requestlog;
 mod rpc_dispatch;
 mod runtime;
@@ -60,13 +65,13 @@ pub(crate) use apikey::renew as apikey_renew;
 pub(crate) use apikey::response_cache as apikey_response_cache;
 pub(crate) use apikey::update_model as apikey_update_model;
 pub(crate) use apikey::usage_stats as apikey_usage_stats;
+pub(crate) use audit::export as audit_export;
+pub(crate) use audit::list as audit_list;
+pub(crate) use audit::record as audit_record;
 pub(crate) use auth::account as auth_account;
 pub(crate) use auth::callback as auth_callback;
 pub(crate) use auth::login as auth_login;
 pub(crate) use auth::tokens as auth_tokens;
-pub(crate) use audit::export as audit_export;
-pub(crate) use audit::list as audit_list;
-pub(crate) use audit::record as audit_record;
 pub(crate) use dashboard::health as dashboard_health;
 pub(crate) use dashboard::trend as dashboard_trend;
 pub(crate) use errors as error_codes;
@@ -101,10 +106,10 @@ pub use app_settings::{
     current_gateway_free_account_max_model, current_gateway_originator,
     current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
-    current_gateway_retry_policy,
     current_gateway_response_cache_enabled, current_gateway_response_cache_max_entries,
-    current_gateway_response_cache_ttl_secs, current_gateway_sse_keepalive_interval_ms,
-    current_gateway_upstream_stream_timeout_ms, current_lightweight_mode_on_close_to_tray_setting,
+    current_gateway_response_cache_ttl_secs, current_gateway_retry_policy,
+    current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
+    current_lightweight_mode_on_close_to_tray_setting, current_mcp_enabled, current_mcp_port,
     current_saved_service_addr, current_service_bind_mode, current_ui_appearance_preset,
     current_ui_low_transparency_enabled, current_ui_theme, current_update_auto_check_enabled,
     default_listener_bind_addr, listener_bind_addr, residency_requirement_options,
@@ -116,9 +121,10 @@ pub use app_settings::{
     set_gateway_response_cache_max_entries, set_gateway_response_cache_ttl_secs,
     set_gateway_retry_policy, set_gateway_route_strategy, set_gateway_sse_keepalive_interval_ms,
     set_gateway_upstream_proxy_url, set_gateway_upstream_stream_timeout_ms,
-    set_lightweight_mode_on_close_to_tray_setting, set_saved_service_addr, set_service_bind_mode,
-    set_ui_appearance_preset, set_ui_low_transparency_enabled, set_ui_theme,
-    set_update_auto_check_enabled, sync_runtime_settings_from_storage, BackgroundTasksInput,
+    set_lightweight_mode_on_close_to_tray_setting, set_mcp_enabled, set_mcp_port,
+    set_saved_service_addr, set_service_bind_mode, set_ui_appearance_preset,
+    set_ui_low_transparency_enabled, set_ui_theme, set_update_auto_check_enabled,
+    sync_runtime_settings_from_storage, BackgroundTasksInput,
     APP_SETTING_ACCOUNT_PAYMENT_STATE_KEY, APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
     APP_SETTING_ENV_OVERRIDES_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
     APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
@@ -126,27 +132,27 @@ pub use app_settings::{
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
+    APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY,
     APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
     APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
     APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
-    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
-    APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
-    APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
-    APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
-    APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
-    APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_SERVICE_ADDR_KEY,
-    APP_SETTING_TEAM_MANAGER_API_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_URL_KEY,
-    APP_SETTING_TEAM_MANAGER_ENABLED_KEY, APP_SETTING_UI_APPEARANCE_PRESET_KEY,
+    APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
+    APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY, APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+    APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_MCP_ENABLED_KEY,
+    APP_SETTING_MCP_PORT_KEY, APP_SETTING_SERVICE_ADDR_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
+    APP_SETTING_TEAM_MANAGER_API_URL_KEY, APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
+    APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
+    APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY,
     APP_SETTING_WEB_ACCESS_2FA_RECOVERY_CODES_KEY, APP_SETTING_WEB_ACCESS_2FA_SECRET_ENCRYPTED_KEY,
-    APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY,
-    APP_SETTING_UPDATE_AUTO_CHECK_KEY, APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY, DEFAULT_ADDR,
-    DEFAULT_BIND_ADDR, SERVICE_BIND_MODE_ALL_INTERFACES, SERVICE_BIND_MODE_LOOPBACK,
-    SERVICE_BIND_MODE_SETTING_KEY, WEB_ACCESS_SESSION_COOKIE_NAME,
+    APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY, DEFAULT_ADDR, DEFAULT_BIND_ADDR, DEFAULT_MCP_PORT,
+    SERVICE_BIND_MODE_ALL_INTERFACES, SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
+    WEB_ACCESS_SESSION_COOKIE_NAME,
 };
 pub use auth::{
-    build_web_access_session_token, clear_web_access_two_factor,
-    current_web_access_password_hash, set_web_access_password, verify_web_access_password,
-    verify_web_access_second_factor,
+    build_web_access_session_token, clear_web_access_two_factor, current_web_access_password_hash,
+    set_web_access_password, verify_web_access_password, verify_web_access_second_factor,
     web_access_password_configured, web_auth_status_value, web_auth_two_factor_disable,
     web_auth_two_factor_enabled, web_auth_two_factor_setup, web_auth_two_factor_verify,
     web_auth_two_factor_verify_current,

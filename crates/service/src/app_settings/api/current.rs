@@ -9,10 +9,10 @@ use super::{
     current_env_overrides, current_gateway_free_account_max_model, current_gateway_originator,
     current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
-    current_gateway_retry_policy,
     current_gateway_response_cache_enabled, current_gateway_response_cache_max_entries,
-    current_gateway_response_cache_ttl_secs, current_gateway_sse_keepalive_interval_ms,
-    current_gateway_upstream_stream_timeout_ms, current_lightweight_mode_on_close_to_tray_setting,
+    current_gateway_response_cache_ttl_secs, current_gateway_retry_policy,
+    current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
+    current_lightweight_mode_on_close_to_tray_setting, current_mcp_enabled, current_mcp_port,
     current_saved_service_addr, current_service_bind_mode, current_ui_appearance_preset,
     current_ui_low_transparency_enabled, current_ui_theme, current_update_auto_check_enabled,
     env_override_catalog_value, env_override_reserved_keys, env_override_unsupported_keys,
@@ -24,19 +24,19 @@ use super::{
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
+    APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
+    APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY,
     APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
     APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
     APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
-    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
-    APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
-    APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
-    APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
-    APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
-    APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_SERVICE_ADDR_KEY,
-    APP_SETTING_TEAM_MANAGER_API_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_URL_KEY,
-    APP_SETTING_TEAM_MANAGER_ENABLED_KEY, APP_SETTING_UI_APPEARANCE_PRESET_KEY,
-    APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY,
-    APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
+    APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
+    APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY, APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+    APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_MCP_ENABLED_KEY,
+    APP_SETTING_MCP_PORT_KEY, APP_SETTING_SERVICE_ADDR_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
+    APP_SETTING_TEAM_MANAGER_API_URL_KEY, APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
+    APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
+    APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
     SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
 };
 
@@ -55,6 +55,38 @@ const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS: &[&str] = &[
     "gpt-5.4",
 ];
 
+struct PersistCurrentSnapshotInput<'a> {
+    update_auto_check: bool,
+    persisted_close_to_tray: bool,
+    lightweight_mode_on_close_to_tray: bool,
+    low_transparency: bool,
+    theme: &'a str,
+    appearance_preset: &'a str,
+    service_addr: &'a str,
+    service_listen_mode: &'a str,
+    mcp_enabled: bool,
+    mcp_port: u16,
+    route_strategy: &'a str,
+    free_account_max_model: &'a str,
+    quota_protection_enabled: bool,
+    quota_protection_threshold_percent: u64,
+    request_compression_enabled: bool,
+    retry_policy_max_retries: usize,
+    retry_policy_backoff_strategy: &'a str,
+    retry_policy_retryable_status_codes: &'a [u16],
+    response_cache_enabled: bool,
+    response_cache_ttl_secs: u64,
+    response_cache_max_entries: usize,
+    gateway_originator: &'a str,
+    gateway_residency_requirement: &'a str,
+    cpa_no_cookie_header_mode_enabled: bool,
+    upstream_proxy_url: Option<&'a str>,
+    upstream_stream_timeout_ms: u64,
+    sse_keepalive_interval_ms: u64,
+    background_tasks_raw: &'a str,
+    env_overrides: &'a BTreeMap<String, String>,
+}
+
 pub(super) fn current_app_settings_value(
     close_to_tray_on_close: Option<bool>,
     close_to_tray_supported: Option<bool>,
@@ -71,6 +103,8 @@ pub(super) fn current_app_settings_value(
     let appearance_preset = current_ui_appearance_preset();
     let service_addr = current_saved_service_addr();
     let service_listen_mode = current_service_bind_mode();
+    let mcp_enabled = current_mcp_enabled();
+    let mcp_port = current_mcp_port();
     let route_strategy = crate::gateway::current_route_strategy().to_string();
     let free_account_max_model = current_gateway_free_account_max_model();
     let quota_protection_enabled = current_gateway_quota_protection_enabled();
@@ -99,35 +133,37 @@ pub(super) fn current_app_settings_value(
         .map_err(|err| format!("serialize background tasks failed: {err}"))?;
     let env_overrides = current_env_overrides();
 
-    persist_current_snapshot(
+    persist_current_snapshot(PersistCurrentSnapshotInput {
         update_auto_check,
         persisted_close_to_tray,
         lightweight_mode_on_close_to_tray,
         low_transparency,
-        &theme,
-        &appearance_preset,
-        &service_addr,
-        &service_listen_mode,
-        &route_strategy,
-        &free_account_max_model,
+        theme: &theme,
+        appearance_preset: &appearance_preset,
+        service_addr: &service_addr,
+        service_listen_mode: &service_listen_mode,
+        mcp_enabled,
+        mcp_port,
+        route_strategy: &route_strategy,
+        free_account_max_model: &free_account_max_model,
         quota_protection_enabled,
         quota_protection_threshold_percent,
         request_compression_enabled,
-        retry_policy.max_retries,
-        &retry_policy.backoff_strategy,
-        &retry_policy.retryable_status_codes,
+        retry_policy_max_retries: retry_policy.max_retries,
+        retry_policy_backoff_strategy: &retry_policy.backoff_strategy,
+        retry_policy_retryable_status_codes: &retry_policy.retryable_status_codes,
         response_cache_enabled,
         response_cache_ttl_secs,
         response_cache_max_entries,
-        &gateway_originator,
-        &gateway_residency_requirement,
+        gateway_originator: &gateway_originator,
+        gateway_residency_requirement: &gateway_residency_requirement,
         cpa_no_cookie_header_mode_enabled,
-        upstream_proxy_url.as_deref(),
+        upstream_proxy_url: upstream_proxy_url.as_deref(),
         upstream_stream_timeout_ms,
         sse_keepalive_interval_ms,
-        &background_tasks_raw,
-        &env_overrides,
-    );
+        background_tasks_raw: &background_tasks_raw,
+        env_overrides: &env_overrides,
+    });
 
     Ok(serde_json::json!({
         "updateAutoCheck": update_auto_check,
@@ -143,6 +179,8 @@ pub(super) fn current_app_settings_value(
             SERVICE_BIND_MODE_LOOPBACK,
             SERVICE_BIND_MODE_ALL_INTERFACES
         ],
+        "mcpEnabled": mcp_enabled,
+        "mcpPort": mcp_port,
         "routeStrategy": route_strategy,
         "routeStrategyOptions": ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
         "freeAccountMaxModel": free_account_max_model,
@@ -218,35 +256,38 @@ fn is_free_account_max_model_option(slug: &str) -> bool {
     !normalized.is_empty() && normalized.starts_with("gpt-") && normalized != "gpt-5.4-pro"
 }
 
-fn persist_current_snapshot(
-    update_auto_check: bool,
-    persisted_close_to_tray: bool,
-    lightweight_mode_on_close_to_tray: bool,
-    low_transparency: bool,
-    theme: &str,
-    appearance_preset: &str,
-    service_addr: &str,
-    service_listen_mode: &str,
-    route_strategy: &str,
-    free_account_max_model: &str,
-    quota_protection_enabled: bool,
-    quota_protection_threshold_percent: u64,
-    request_compression_enabled: bool,
-    retry_policy_max_retries: usize,
-    retry_policy_backoff_strategy: &str,
-    retry_policy_retryable_status_codes: &[u16],
-    response_cache_enabled: bool,
-    response_cache_ttl_secs: u64,
-    response_cache_max_entries: usize,
-    gateway_originator: &str,
-    gateway_residency_requirement: &str,
-    cpa_no_cookie_header_mode_enabled: bool,
-    upstream_proxy_url: Option<&str>,
-    upstream_stream_timeout_ms: u64,
-    sse_keepalive_interval_ms: u64,
-    background_tasks_raw: &str,
-    env_overrides: &BTreeMap<String, String>,
-) {
+fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
+    let PersistCurrentSnapshotInput {
+        update_auto_check,
+        persisted_close_to_tray,
+        lightweight_mode_on_close_to_tray,
+        low_transparency,
+        theme,
+        appearance_preset,
+        service_addr,
+        service_listen_mode,
+        mcp_enabled,
+        mcp_port,
+        route_strategy,
+        free_account_max_model,
+        quota_protection_enabled,
+        quota_protection_threshold_percent,
+        request_compression_enabled,
+        retry_policy_max_retries,
+        retry_policy_backoff_strategy,
+        retry_policy_retryable_status_codes,
+        response_cache_enabled,
+        response_cache_ttl_secs,
+        response_cache_max_entries,
+        gateway_originator,
+        gateway_residency_requirement,
+        cpa_no_cookie_header_mode_enabled,
+        upstream_proxy_url,
+        upstream_stream_timeout_ms,
+        sse_keepalive_interval_ms,
+        background_tasks_raw,
+        env_overrides,
+    } = input;
     let _ = save_persisted_bool_setting(APP_SETTING_UPDATE_AUTO_CHECK_KEY, update_auto_check);
     let _ = save_persisted_bool_setting(
         APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
@@ -264,6 +305,8 @@ fn persist_current_snapshot(
     );
     let _ = save_persisted_app_setting(APP_SETTING_SERVICE_ADDR_KEY, Some(service_addr));
     let _ = save_persisted_app_setting(SERVICE_BIND_MODE_SETTING_KEY, Some(service_listen_mode));
+    let _ = save_persisted_bool_setting(APP_SETTING_MCP_ENABLED_KEY, mcp_enabled);
+    let _ = save_persisted_app_setting(APP_SETTING_MCP_PORT_KEY, Some(&mcp_port.to_string()));
     let _ =
         save_persisted_app_setting(APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, Some(route_strategy));
     let _ = save_persisted_app_setting(
@@ -292,7 +335,9 @@ fn persist_current_snapshot(
     );
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
-        serde_json::to_string(retry_policy_retryable_status_codes).ok().as_deref(),
+        serde_json::to_string(retry_policy_retryable_status_codes)
+            .ok()
+            .as_deref(),
     );
     let _ = save_persisted_bool_setting(
         APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,

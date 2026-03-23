@@ -32,14 +32,12 @@ fn build_export_response(format: &str, file_name: &str, body: Body) -> AxumRespo
 
     let mut response = body.into_response();
     *response.status_mut() = StatusCode::OK;
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(content_type),
-    );
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store"),
-    );
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     if let Ok(value) = HeaderValue::from_str(&disposition) {
         response
             .headers_mut()
@@ -70,5 +68,9 @@ pub(crate) async fn handle_auditlog_export_http(
         }
     });
 
-    build_export_response(&format, &file_name, Body::from_stream(ReceiverStream::new(rx)))
+    build_export_response(
+        &format,
+        &file_name,
+        Body::from_stream(ReceiverStream::new(rx)),
+    )
 }

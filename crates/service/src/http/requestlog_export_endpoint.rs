@@ -33,14 +33,12 @@ fn build_export_response(format: &str, file_name: &str, body: Body) -> AxumRespo
 
     let mut response = body.into_response();
     *response.status_mut() = StatusCode::OK;
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(content_type),
-    );
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store"),
-    );
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     if let Ok(value) = HeaderValue::from_str(&disposition) {
         response
             .headers_mut()
@@ -86,7 +84,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn export_response_sets_download_headers() {
-        let response = build_export_response("csv", "requestlogs.csv", Body::from("traceId\nabc\n"));
+        let response =
+            build_export_response("csv", "requestlogs.csv", Body::from("traceId\nabc\n"));
 
         assert_eq!(
             response
@@ -107,5 +106,41 @@ mod tests {
             .await
             .expect("read body");
         assert_eq!(body.as_ref(), b"traceId\nabc\n");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn export_response_sets_json_headers() {
+        let response = build_export_response(
+            "json",
+            "requestlogs.json",
+            Body::from("[{\"traceId\":\"abc\"}]"),
+        );
+
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/json; charset=utf-8")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_DISPOSITION)
+                .and_then(|value| value.to_str().ok()),
+            Some("attachment; filename=\"requestlogs.json\"")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        assert_eq!(body.as_ref(), b"[{\"traceId\":\"abc\"}]");
     }
 }

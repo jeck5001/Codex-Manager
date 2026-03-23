@@ -95,7 +95,11 @@ fn gateway_model_fallback_uses_next_models_and_logs_path() {
     storage
         .upsert_api_key_model_fallback(
             "gk_model_fallback",
-            &["o3".to_string(), "o4-mini".to_string(), "gpt-4o".to_string()],
+            &[
+                "o3".to_string(),
+                "o4-mini".to_string(),
+                "gpt-4o".to_string(),
+            ],
         )
         .expect("upsert fallback chain");
 
@@ -145,7 +149,10 @@ fn gateway_model_fallback_uses_next_models_and_logs_path() {
     let third_body: serde_json::Value =
         serde_json::from_slice(&decode_upstream_request_body(&captured_third))
             .expect("parse third upstream body");
-    assert_eq!(first_body.get("model").and_then(|value| value.as_str()), Some("o3"));
+    assert_eq!(
+        first_body.get("model").and_then(|value| value.as_str()),
+        Some("o3")
+    );
     assert_eq!(
         second_body.get("model").and_then(|value| value.as_str()),
         Some("o4-mini")
@@ -258,7 +265,11 @@ fn gateway_model_fallback_keeps_primary_model_when_first_attempt_succeeds() {
     storage
         .upsert_api_key_model_fallback(
             "gk_model_primary",
-            &["o3".to_string(), "o4-mini".to_string(), "gpt-4o".to_string()],
+            &[
+                "o3".to_string(),
+                "o4-mini".to_string(),
+                "gpt-4o".to_string(),
+            ],
         )
         .expect("upsert fallback chain");
 
@@ -281,10 +292,7 @@ fn gateway_model_fallback_keeps_primary_model_when_first_attempt_succeeds() {
     server.join();
 
     assert_eq!(response.status, 200, "gateway response: {}", response.body);
-    assert_eq!(
-        response.headers.get("x-codexmanager-actual-model"),
-        None
-    );
+    assert_eq!(response.headers.get("x-codexmanager-actual-model"), None);
 
     let captured = upstream_rx
         .recv_timeout(Duration::from_secs(2))
@@ -300,7 +308,10 @@ fn gateway_model_fallback_keeps_primary_model_when_first_attempt_succeeds() {
 
     let body: serde_json::Value = serde_json::from_slice(&decode_upstream_request_body(&captured))
         .expect("parse upstream body");
-    assert_eq!(body.get("model").and_then(|value| value.as_str()), Some("o3"));
+    assert_eq!(
+        body.get("model").and_then(|value| value.as_str()),
+        Some("o3")
+    );
 
     let mut matched = None;
     for _ in 0..40 {
@@ -428,10 +439,7 @@ fn gateway_model_fallback_is_disabled_when_key_has_no_chain() {
     server.join();
 
     assert_eq!(response.status, 500, "gateway response: {}", response.body);
-    assert_eq!(
-        response.headers.get("x-codexmanager-actual-model"),
-        None
-    );
+    assert_eq!(response.headers.get("x-codexmanager-actual-model"), None);
 
     let captured = upstream_rx
         .recv_timeout(Duration::from_secs(2))
@@ -447,7 +455,10 @@ fn gateway_model_fallback_is_disabled_when_key_has_no_chain() {
 
     let body: serde_json::Value = serde_json::from_slice(&decode_upstream_request_body(&captured))
         .expect("parse upstream body");
-    assert_eq!(body.get("model").and_then(|value| value.as_str()), Some("o3"));
+    assert_eq!(
+        body.get("model").and_then(|value| value.as_str()),
+        Some("o3")
+    );
 
     let mut matched = None;
     for _ in 0..40 {

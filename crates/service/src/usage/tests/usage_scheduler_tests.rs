@@ -1,4 +1,4 @@
-use super::{parse_interval_secs, run_blocking_poll_loop_with_sleep};
+use super::{parse_interval_secs, run_blocking_poll_loop_with_sleep, BlockingPollLoopConfig};
 use std::cell::{Cell, RefCell};
 use std::time::Duration;
 
@@ -8,10 +8,12 @@ fn blocking_poll_loop_runs_task_and_respects_interval() {
     let sleep_calls = RefCell::new(Vec::new());
 
     run_blocking_poll_loop_with_sleep(
-        "test-loop",
-        Duration::from_secs(3),
-        Duration::ZERO,
-        Duration::from_secs(30),
+        BlockingPollLoopConfig {
+            loop_name: "test-loop",
+            interval: Duration::from_secs(3),
+            jitter: Duration::ZERO,
+            failure_backoff_cap: Duration::from_secs(30),
+        },
         &mut || {
             task_runs.set(task_runs.get() + 1);
             Ok(())
@@ -38,10 +40,12 @@ fn blocking_poll_loop_calls_error_filter_before_sleep() {
     let runs = Cell::new(0usize);
 
     run_blocking_poll_loop_with_sleep(
-        "test-loop",
-        Duration::from_secs(1),
-        Duration::ZERO,
-        Duration::from_secs(30),
+        BlockingPollLoopConfig {
+            loop_name: "test-loop",
+            interval: Duration::from_secs(1),
+            jitter: Duration::ZERO,
+            failure_backoff_cap: Duration::from_secs(30),
+        },
         &mut || {
             runs.set(runs.get() + 1);
             if runs.get() == 1 {
@@ -71,10 +75,12 @@ fn blocking_poll_loop_applies_failure_backoff_with_cap_and_reset() {
     let sleep_calls = RefCell::new(Vec::new());
 
     run_blocking_poll_loop_with_sleep(
-        "test-loop",
-        Duration::from_secs(2),
-        Duration::ZERO,
-        Duration::from_secs(5),
+        BlockingPollLoopConfig {
+            loop_name: "test-loop",
+            interval: Duration::from_secs(2),
+            jitter: Duration::ZERO,
+            failure_backoff_cap: Duration::from_secs(5),
+        },
         &mut || {
             runs.set(runs.get() + 1);
             if runs.get() <= 3 {
@@ -109,10 +115,12 @@ fn blocking_poll_loop_adds_jitter_on_top_of_base_delay() {
     let jitter_seq = RefCell::new(vec![Duration::from_secs(6), Duration::from_secs(2)]);
 
     run_blocking_poll_loop_with_sleep(
-        "test-loop",
-        Duration::from_secs(10),
-        Duration::from_secs(5),
-        Duration::from_secs(30),
+        BlockingPollLoopConfig {
+            loop_name: "test-loop",
+            interval: Duration::from_secs(10),
+            jitter: Duration::from_secs(5),
+            failure_backoff_cap: Duration::from_secs(30),
+        },
         &mut || {
             runs.set(runs.get() + 1);
             Ok(())

@@ -3,7 +3,7 @@ use codexmanager_core::storage::Account;
 use std::time::Instant;
 
 use super::super::support::deadline;
-use super::transport::UpstreamRequestContext;
+use super::transport::{SendUpstreamRequestArgs, UpstreamRequestContext};
 
 pub(super) enum PrimaryAttemptResult {
     Upstream(reqwest::blocking::Response),
@@ -38,10 +38,10 @@ where
             message: "upstream total timeout exceeded".to_string(),
         };
     }
-    match super::transport::send_upstream_request(
+    match super::transport::send_upstream_request(SendUpstreamRequestArgs {
         client,
         method,
-        url,
+        target_url: url,
         request_deadline,
         request_ctx,
         incoming_headers,
@@ -51,7 +51,7 @@ where
         auth_token,
         account,
         strip_session_affinity,
-    ) {
+    }) {
         Ok(resp) => PrimaryAttemptResult::Upstream(resp),
         Err(err) => {
             let err_msg = err.to_string();

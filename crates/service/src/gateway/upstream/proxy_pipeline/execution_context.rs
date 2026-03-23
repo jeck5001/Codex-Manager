@@ -18,6 +18,17 @@ pub(in super::super) struct GatewayUpstreamExecutionContext<'a> {
     account_max_inflight: usize,
 }
 
+pub(in super::super) struct FinalResultLogArgs<'a> {
+    pub(in super::super) final_account_id: Option<&'a str>,
+    pub(in super::super) upstream_url: Option<&'a str>,
+    pub(in super::super) model_for_log: Option<&'a str>,
+    pub(in super::super) status_code: u16,
+    pub(in super::super) usage: super::super::super::request_log::RequestLogUsage,
+    pub(in super::super) error: Option<&'a str>,
+    pub(in super::super) elapsed_ms: u128,
+    pub(in super::super) attempted_account_ids: Option<&'a [String]>,
+}
+
 impl<'a> GatewayUpstreamExecutionContext<'a> {
     #[allow(clippy::too_many_arguments)]
     pub(in super::super) fn new(
@@ -121,40 +132,24 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         );
     }
 
-    pub(in super::super) fn log_final_result(
-        &self,
-        final_account_id: Option<&str>,
-        upstream_url: Option<&str>,
-        status_code: u16,
-        usage: super::super::super::request_log::RequestLogUsage,
-        error: Option<&str>,
-        elapsed_ms: u128,
-        attempted_account_ids: Option<&[String]>,
-    ) {
-        self.log_final_result_with_model(
+    pub(in super::super) fn log_final_result(&self, args: FinalResultLogArgs<'_>) {
+        self.log_final_result_with_model(FinalResultLogArgs {
+            model_for_log: self.model_for_log,
+            ..args
+        });
+    }
+
+    pub(in super::super) fn log_final_result_with_model(&self, args: FinalResultLogArgs<'_>) {
+        let FinalResultLogArgs {
             final_account_id,
             upstream_url,
-            self.model_for_log,
+            model_for_log,
             status_code,
             usage,
             error,
             elapsed_ms,
             attempted_account_ids,
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(in super::super) fn log_final_result_with_model(
-        &self,
-        final_account_id: Option<&str>,
-        upstream_url: Option<&str>,
-        model_for_log: Option<&str>,
-        status_code: u16,
-        usage: super::super::super::request_log::RequestLogUsage,
-        error: Option<&str>,
-        elapsed_ms: u128,
-        attempted_account_ids: Option<&[String]>,
-    ) {
+        } = args;
         super::super::super::request_log::write_request_log_with_attempts_and_model_fallback(
             self.storage,
             super::super::super::request_log::RequestLogTraceContext {
@@ -163,20 +158,24 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
                 adapted_path: Some(self.path),
                 response_adapter: Some(self.response_adapter),
             },
-            Some(self.key_id),
-            final_account_id,
-            self.path,
-            self.request_method,
-            model_for_log,
-            self.reasoning_for_log,
-            upstream_url,
-            Some(status_code),
-            usage,
-            error,
-            Some(elapsed_ms),
-            attempted_account_ids,
-            self.requested_model,
-            self.model_fallback_path,
+            super::super::super::request_log::RequestLogEntry {
+                key_id: Some(self.key_id),
+                account_id: final_account_id,
+                request_path: self.path,
+                method: self.request_method,
+                model: model_for_log,
+                reasoning_effort: self.reasoning_for_log,
+                upstream_url,
+                status_code: Some(status_code),
+                usage,
+                error,
+                duration_ms: Some(elapsed_ms),
+            },
+            super::super::super::request_log::RequestLogRouteMeta {
+                attempted_account_ids,
+                requested_model: self.requested_model,
+                model_fallback_path: self.model_fallback_path,
+            },
         );
         super::super::super::trace_log::log_request_final(
             self.trace_id,

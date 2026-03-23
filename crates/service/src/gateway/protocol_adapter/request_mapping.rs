@@ -531,9 +531,7 @@ fn map_anthropic_tool_definition(
     value: &Value,
     tool_name_map: &BTreeMap<String, String>,
 ) -> Option<Value> {
-    let Some(obj) = value.as_object() else {
-        return None;
-    };
+    let obj = value.as_object()?;
     let name = obj
         .get("name")
         .and_then(Value::as_str)
@@ -569,9 +567,7 @@ fn map_anthropic_tool_choice(
     if let Some(text) = value.as_str() {
         return Some(Value::String(text.to_string()));
     }
-    let Some(obj) = value.as_object() else {
-        return None;
-    };
+    let obj = value.as_object()?;
     let choice_type = obj.get("type").and_then(Value::as_str).unwrap_or("auto");
     match choice_type {
         "auto" => Some(Value::String("auto".to_string())),

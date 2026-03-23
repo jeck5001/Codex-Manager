@@ -14,6 +14,21 @@ pub(in super::super) struct UpstreamRequestContext<'a> {
     pub(in super::super) request_path: &'a str,
 }
 
+pub(in super::super) struct SendUpstreamRequestArgs<'a> {
+    pub(in super::super) client: &'a reqwest::blocking::Client,
+    pub(in super::super) method: &'a reqwest::Method,
+    pub(in super::super) target_url: &'a str,
+    pub(in super::super) request_deadline: Option<Instant>,
+    pub(in super::super) request_ctx: UpstreamRequestContext<'a>,
+    pub(in super::super) incoming_headers: &'a super::super::super::IncomingHeaderSnapshot,
+    pub(in super::super) body: &'a Bytes,
+    pub(in super::super) is_stream: bool,
+    pub(in super::super) upstream_cookie: Option<&'a str>,
+    pub(in super::super) auth_token: &'a str,
+    pub(in super::super) account: &'a Account,
+    pub(in super::super) strip_session_affinity: bool,
+}
+
 impl<'a> UpstreamRequestContext<'a> {
     pub(in super::super) fn from_request(request: &'a Request) -> Self {
         Self {
@@ -148,19 +163,22 @@ fn encode_request_body(
 }
 
 pub(in super::super) fn send_upstream_request(
-    client: &reqwest::blocking::Client,
-    method: &reqwest::Method,
-    target_url: &str,
-    request_deadline: Option<Instant>,
-    request_ctx: UpstreamRequestContext<'_>,
-    incoming_headers: &super::super::super::IncomingHeaderSnapshot,
-    body: &Bytes,
-    is_stream: bool,
-    upstream_cookie: Option<&str>,
-    auth_token: &str,
-    account: &Account,
-    strip_session_affinity: bool,
+    args: SendUpstreamRequestArgs<'_>,
 ) -> Result<reqwest::blocking::Response, reqwest::Error> {
+    let SendUpstreamRequestArgs {
+        client,
+        method,
+        target_url,
+        request_deadline,
+        request_ctx,
+        incoming_headers,
+        body,
+        is_stream,
+        upstream_cookie,
+        auth_token,
+        account,
+        strip_session_affinity,
+    } = args;
     let attempt_started_at = Instant::now();
     let compact_headers_mode = should_compact_upstream_headers();
     let is_openai_api_target = super::super::super::is_openai_api_base(target_url);
@@ -230,7 +248,7 @@ pub(in super::super) fn send_upstream_request(
     let account_id = account
         .chatgpt_account_id
         .as_deref()
-        .or_else(|| account.workspace_id.as_deref());
+        .or(account.workspace_id.as_deref());
     let include_account_id = !is_openai_api_target;
     let forwarded_upstream_cookie = if is_openai_api_target {
         None

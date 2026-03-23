@@ -131,7 +131,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     Value::String(text) => Some(Some(text.as_str())),
                     _ => None,
                 })
-                .or_else(|| super::str_param(req, "url").map(|value| Some(value)));
+                .or_else(|| super::str_param(req, "url").map(Some));
             let proxy_url = requested.unwrap_or(None);
             super::value_or_error(
                 crate::set_gateway_upstream_proxy_url(proxy_url).map(|applied| {

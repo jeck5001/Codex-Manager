@@ -21,6 +21,8 @@ import {
   normalizeCostSummary,
   normalizeModelTrends,
   normalizeModelPricingList,
+  normalizePlugin,
+  normalizePluginList,
   normalizeRequestTrends,
   normalizeRequestLogExportResult,
   normalizeRequestLogFilterSummary,
@@ -50,6 +52,7 @@ import {
   HealthcheckRunResult,
   ModelTrendResult,
   ModelPricingItem,
+  PluginItem,
   RequestTrendResult,
   RequestLogExportResult,
   RequestLogFilterSummary,
@@ -263,6 +266,26 @@ export const serviceClient = {
     const result = await invoke<unknown>("service_alert_history_list", withAddr({ limit }));
     return normalizeAlertHistoryList(result);
   },
+  async listPlugins(): Promise<PluginItem[]> {
+    const result = await invoke<unknown>("service_plugin_list", withAddr());
+    return normalizePluginList(result);
+  },
+  async upsertPlugin(params: {
+    id?: string | null;
+    name: string;
+    description?: string | null;
+    runtime?: string;
+    hookPoints: string[];
+    scriptContent: string;
+    enabled: boolean;
+    timeoutMs?: number;
+  }): Promise<PluginItem> {
+    const result = await invoke<unknown>("service_plugin_upsert", withAddr(params));
+    const item = normalizePlugin(result);
+    if (!item) throw new Error("插件返回数据无效");
+    return item;
+  },
+  deletePlugin: (id: string) => invoke("service_plugin_delete", withAddr({ id })),
   async listAuditLogs(params?: {
     action?: string;
     objectType?: string;

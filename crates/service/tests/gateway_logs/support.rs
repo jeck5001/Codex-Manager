@@ -20,7 +20,6 @@ pub(super) struct EnvGuard {
 
 pub(super) static ENV_LOCK: Mutex<()> = Mutex::new(());
 pub(super) static TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
-pub(super) static TEST_PORT_SEQ: AtomicUsize = AtomicUsize::new(41000);
 
 pub(super) fn lock_env() -> std::sync::MutexGuard<'static, ()> {
     // 中文注释：若某个测试 panic 导致锁被 poison，不应让后续测试直接二次失败。
@@ -39,15 +38,9 @@ pub(super) fn new_test_dir(prefix: &str) -> PathBuf {
 }
 
 pub(super) fn bind_test_listener(label: &str) -> TcpListener {
-    for _ in 0..1024 {
-        let port = TEST_PORT_SEQ.fetch_add(1, Ordering::Relaxed) as u16;
-        match TcpListener::bind(("127.0.0.1", port)) {
-            Ok(listener) => return listener,
-            Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => continue,
-            Err(err) => panic!("bind {label} port {port} failed: {err}"),
-        }
-    }
-    panic!("exhausted test ports for {label}");
+    // 中文注释：当前 automation 沙箱会拒绝固定端口绑定；改为 port 0 让系统分配可用端口，
+    // 既避免 41000+ 范围权限问题，也减少并行测试间的端口碰撞。
+    TcpListener::bind(("127.0.0.1", 0)).unwrap_or_else(|err| panic!("bind {label} failed: {err}"))
 }
 
 impl EnvGuard {
@@ -167,7 +160,11 @@ fn parse_http_response_snapshot(raw: &[u8]) -> Option<HttpResponseSnapshot> {
             return None;
         }
         let body = String::from_utf8_lossy(&body_bytes[..content_length]).to_string();
-        return Some(HttpResponseSnapshot { status, headers, body });
+        return Some(HttpResponseSnapshot {
+            status,
+            headers,
+            body,
+        });
     }
 
     if chunked {

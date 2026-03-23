@@ -185,10 +185,7 @@ pub(super) fn convert_anthropic_sse_to_json(
         }
     }
 
-    let mut blocks = content_blocks
-        .into_iter()
-        .map(|(_, block)| block)
-        .collect::<Vec<_>>();
+    let mut blocks = content_blocks.into_values().collect::<Vec<_>>();
     if blocks.is_empty() {
         blocks.push(json!({
             "type": "text",
