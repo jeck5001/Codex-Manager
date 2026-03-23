@@ -216,6 +216,21 @@ function normalizeRegisterTaskSnapshot(value: unknown): RegisterTaskSnapshot {
   const source = asRecord(value) ?? {};
   const result = asRecord(source.result);
   const emailFromResult = typeof result?.email === "string" ? result.email : "";
+  const canImport =
+    source.canImport === true ||
+    source.can_import === true ||
+    (typeof emailFromResult === "string" &&
+      emailFromResult.trim().length > 0 &&
+      String(source.status || "").trim().toLowerCase() === "completed");
+  const importedAccountId = typeof source.importedAccountId === "string"
+    ? source.importedAccountId
+    : typeof source.imported_account_id === "string"
+      ? source.imported_account_id
+      : null;
+  const isImported =
+    source.isImported === true ||
+    source.is_imported === true ||
+    (typeof importedAccountId === "string" && importedAccountId.trim().length > 0);
   return {
     taskUuid: typeof source.taskUuid === "string"
       ? source.taskUuid
@@ -262,12 +277,13 @@ function normalizeRegisterTaskSnapshot(value: unknown): RegisterTaskSnapshot {
     email: typeof source.email === "string" && source.email
       ? source.email
       : emailFromResult,
-    canImport:
-      source.canImport === true ||
-      source.can_import === true ||
-      (typeof emailFromResult === "string" &&
-        emailFromResult.trim().length > 0 &&
-        String(source.status || "").trim().toLowerCase() === "completed"),
+    canImport,
+    importedAccountId,
+    isImported,
+    requiresManualImport:
+      source.requiresManualImport === true ||
+      source.requires_manual_import === true ||
+      (canImport && !isImported),
     logs: Array.isArray(source.logs)
       ? source.logs.filter((item): item is string => typeof item === "string")
       : [],

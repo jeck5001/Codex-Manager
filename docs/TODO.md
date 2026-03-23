@@ -255,6 +255,8 @@
   - `cargo check -p codexmanager-service` 通过（F17 service 插件 RPC、审计快照与 core RPC 类型扩展编译通过）
   - `cargo test -p codexmanager-service plugin_rpc_ -- --nocapture` 通过（本轮复验 F17 插件 CRUD 与校验逻辑仍可用）
   - `pnpm exec tsc --noEmit` 通过（本轮复验 F17 设置页插件管理 Tab 与模板草稿类型）
+  - `cargo test -p codexmanager-service resolve_existing_imported_account_id_ -- --nocapture` 通过（本轮补齐注册任务“已入池 / 待入池”判断，覆盖 identity hint 与邮箱回退匹配）
+  - `pnpm exec tsc --noEmit` 通过（本轮补齐注册中心“待入池”标识与手动加入号池按钮）
 
 ---
 

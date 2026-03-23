@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   CalendarDays,
+  CheckCircle2,
   Clock3,
   Eye,
   Layers3,
@@ -13,10 +14,12 @@ import {
   RotateCcw,
   Server,
   Trash2,
+  UserPlus,
   Users,
   XCircle,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { AddAccountModal } from "@/components/modals/add-account-modal";
 import { ConfirmDialog } from "@/components/modals/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +52,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useRegisterTasks } from "@/hooks/useRegisterTasks";
 import { accountClient } from "@/lib/api/account-client";
+import { getAppErrorMessage } from "@/lib/api/transport";
 import { formatApiDateTime } from "@/lib/utils/datetime";
 import { cn } from "@/lib/utils";
 import type { Account, RegisterTaskSnapshot } from "@/types";
@@ -96,6 +100,31 @@ function getStatusMeta(status: string) {
     return { label: "排队中", className: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-300" };
   }
   return { label: status || "--", className: "border-border bg-muted/40 text-muted-foreground" };
+}
+
+function getImportStatusMeta(task: RegisterTaskSnapshot) {
+  if (task.isImported) {
+    return {
+      label: "已入池",
+      className: "border-green-500/20 bg-green-500/10 text-green-600 dark:text-green-400",
+      detail: task.importedAccountId || null,
+    };
+  }
+  if (task.requiresManualImport) {
+    return {
+      label: "待入池",
+      className: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-300",
+      detail: "注册已完成，但尚未导入本地账号池",
+    };
+  }
+  if (String(task.status || "").trim().toLowerCase() === "completed") {
+    return {
+      label: "无入池信息",
+      className: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-300",
+      detail: "任务完成，但没有可用于导入的账号信息",
+    };
+  }
+  return null;
 }
 
 function countByStatuses(source: Record<string, number>, keys: string[]) {
@@ -164,6 +193,7 @@ function isRetryableRegisterFailure(code: string) {
 }
 
 export default function RegisterPage() {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -173,6 +203,7 @@ export default function RegisterPage() {
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [monitorTaskUuid, setMonitorTaskUuid] = useState("");
   const [failureCodeFilter, setFailureCodeFilter] = useState("");
+  const [importingTaskUuid, setImportingTaskUuid] = useState("");
 
   const {
     tasks,
@@ -445,6 +476,32 @@ export default function RegisterPage() {
       return;
     }
     await deleteTask(pendingAction.task.taskUuid);
+  };
+
+  const handleImportTask = async (task: RegisterTaskSnapshot) => {
+    if (!task.requiresManualImport || !task.taskUuid) {
+      return;
+    }
+    setImportingTaskUuid(task.taskUuid);
+    try {
+      const imported = await accountClient.importRegisterTask(task.taskUuid);
+      toast.success(`已加入号池：${imported.email || task.email || imported.accountId}`);
+      await Promise.all([
+        refetchTasks(),
+        latestTasksQuery.refetch(),
+        recentAccountsQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["register-task-monitor"] }),
+        queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
+      ]);
+      if (detailTask?.taskUuid === task.taskUuid) {
+        setDetailTask(await accountClient.getRegisterTask(task.taskUuid));
+      }
+    } catch (error) {
+      toast.error(`加入号池失败: ${getAppErrorMessage(error)}`);
+    } finally {
+      setImportingTaskUuid("");
+    }
   };
 
   const handleRetryFailedTasksInView = async () => {
@@ -897,6 +954,7 @@ export default function RegisterPage() {
                 ) : (
                   filteredTasks.map((task) => {
                     const statusMeta = getStatusMeta(task.status);
+                    const importStatusMeta = getImportStatusMeta(task);
                     const normalizedStatus = String(task.status || "").trim().toLowerCase();
                     const canCancel =
                       normalizedStatus === "pending" || normalizedStatus === "running";
@@ -917,6 +975,13 @@ export default function RegisterPage() {
                         </TableCell>
                         <TableCell className="max-w-[180px]">
                           <div className="truncate text-sm">{task.email || "--"}</div>
+                          {importStatusMeta ? (
+                            <div className="mt-1 flex items-center gap-2">
+                              <Badge className={cn("border", importStatusMeta.className)}>
+                                {importStatusMeta.label}
+                              </Badge>
+                            </div>
+                          ) : null}
                           {task.failureLabel ? (
                             <div className="truncate text-[11px] text-amber-600 dark:text-amber-300">
                               {task.failureLabel}
@@ -964,6 +1029,25 @@ export default function RegisterPage() {
                               }
                             >
                               <RotateCcw className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title={
+                                task.requiresManualImport
+                                  ? "手动加入号池"
+                                  : task.isImported
+                                    ? "账号已在号池中"
+                                    : "当前任务没有可导入账号"
+                              }
+                              disabled={!task.requiresManualImport || importingTaskUuid === task.taskUuid}
+                              onClick={() => void handleImportTask(task)}
+                            >
+                              {task.isImported ? (
+                                <CheckCircle2 className="h-4 w-4" />
+                              ) : (
+                                <UserPlus className="h-4 w-4" />
+                              )}
                             </Button>
                             <Button
                               variant="ghost"
@@ -1031,6 +1115,35 @@ export default function RegisterPage() {
             </div>
           ) : (
             <div className="space-y-4">
+              {(() => {
+                const importStatusMeta = getImportStatusMeta(detailTask);
+                return importStatusMeta ? (
+                  <div className="flex flex-col gap-3 rounded-lg border border-border/50 bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">号池状态</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={cn("border", importStatusMeta.className)}>
+                          {importStatusMeta.label}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {importStatusMeta.detail || "--"}
+                        </span>
+                      </div>
+                    </div>
+                    {detailTask.requiresManualImport ? (
+                      <Button
+                        size="sm"
+                        className="gap-2"
+                        disabled={importingTaskUuid === detailTask.taskUuid}
+                        onClick={() => void handleImportTask(detailTask)}
+                      >
+                        <UserPlus className="h-4 w-4" />
+                        手动加入号池
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null;
+              })()}
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
                   <p className="text-xs text-muted-foreground">任务编号</p>
@@ -1049,6 +1162,12 @@ export default function RegisterPage() {
                 <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
                   <p className="text-xs text-muted-foreground">注册邮箱</p>
                   <p className="mt-1 text-sm">{detailTask.email || "--"}</p>
+                </div>
+                <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                  <p className="text-xs text-muted-foreground">号池账号</p>
+                  <p className="mt-1 break-all font-mono text-xs">
+                    {detailTask.importedAccountId || "--"}
+                  </p>
                 </div>
                 <div className="rounded-lg border border-border/50 bg-muted/20 p-3 md:col-span-2">
                   <p className="text-xs text-muted-foreground">失败原因</p>

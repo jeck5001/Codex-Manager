@@ -675,6 +675,9 @@ export interface RegisterTaskSnapshot {
   failureLabel: string;
   email: string;
   canImport: boolean;
+  importedAccountId: string | null;
+  isImported: boolean;
+  requiresManualImport: boolean;
   logs: string[];
 }
 
