@@ -626,6 +626,8 @@ pub struct RequestLogFilterParams {
     pub query: Option<String>,
     pub status_filter: Option<String>,
     pub key_id: Option<String>,
+    #[serde(default)]
+    pub key_ids: Vec<String>,
     pub model: Option<String>,
     pub time_from: Option<i64>,
     pub time_to: Option<i64>,

@@ -332,6 +332,7 @@ fn evaluate_error_rate(
             query: None,
             status_filter: None,
             key_id: None,
+            key_ids: &[],
             model: None,
             time_from: Some(since_ts),
             time_to: None,

@@ -56,3 +56,28 @@ export function formatApiKeyDetailLabel(
   }
   return normalized;
 }
+
+export function resolveMatchingApiKeyIds(
+  input: string,
+  apiKeys?: ApiKey[] | null,
+): string[] {
+  const normalized = String(input || "").trim();
+  if (!normalized) return [];
+  const lowerNeedle = normalized.toLocaleLowerCase();
+  const matchedIds = new Set<string>();
+
+  for (const item of apiKeys || []) {
+    const id = String(item.id || "").trim();
+    const name = String(item.name || "").trim();
+    if (!id) continue;
+    if (
+      id === normalized ||
+      id.toLocaleLowerCase().includes(lowerNeedle) ||
+      name.toLocaleLowerCase().includes(lowerNeedle)
+    ) {
+      matchedIds.add(id);
+    }
+  }
+
+  return Array.from(matchedIds);
+}
