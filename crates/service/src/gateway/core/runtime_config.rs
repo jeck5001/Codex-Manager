@@ -2,6 +2,8 @@ use codexmanager_core::auth::DEFAULT_ORIGINATOR;
 use codexmanager_core::auth::{DEFAULT_CLIENT_ID, DEFAULT_ISSUER};
 use reqwest::blocking::Client;
 use reqwest::Proxy;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{OnceLock, RwLock};
 use std::time::Duration;
@@ -27,6 +29,7 @@ static ENABLE_REQUEST_COMPRESSION: AtomicBool = AtomicBool::new(DEFAULT_ENABLE_R
 static UPSTREAM_COOKIE: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static UPSTREAM_PROXY_URL: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static FREE_ACCOUNT_MAX_MODEL: OnceLock<RwLock<String>> = OnceLock::new();
+static PAYLOAD_REWRITE_RULES: OnceLock<RwLock<Vec<PayloadRewriteRule>>> = OnceLock::new();
 static ORIGINATOR: OnceLock<RwLock<String>> = OnceLock::new();
 static RESIDENCY_REQUIREMENT: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static TOKEN_EXCHANGE_CLIENT_ID: OnceLock<RwLock<String>> = OnceLock::new();
@@ -63,8 +66,30 @@ const ENV_PROXY_LIST: &str = "CODEXMANAGER_PROXY_LIST";
 const ENV_UPSTREAM_PROXY_URL: &str = "CODEXMANAGER_UPSTREAM_PROXY_URL";
 const ENV_FREE_ACCOUNT_MAX_MODEL: &str = "CODEXMANAGER_FREE_ACCOUNT_MAX_MODEL";
 const ENV_ORIGINATOR: &str = "CODEXMANAGER_ORIGINATOR";
+const ENV_PAYLOAD_REWRITE_RULES: &str = "CODEXMANAGER_PAYLOAD_REWRITE_RULES";
 const ENV_RESIDENCY_REQUIREMENT: &str = "CODEXMANAGER_RESIDENCY_REQUIREMENT";
 pub(crate) const RESIDENCY_HEADER_NAME: &str = "x-openai-internal-codex-residency";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PayloadRewriteMode {
+    Set,
+    SetIfMissing,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct PayloadRewriteRule {
+    #[serde(default = "payload_rewrite_rule_enabled_default")]
+    pub enabled: bool,
+    pub path: String,
+    pub field: String,
+    pub mode: PayloadRewriteMode,
+    pub value: Value,
+}
+
+fn payload_rewrite_rule_enabled_default() -> bool {
+    true
+}
 
 #[derive(Default, Clone)]
 struct UpstreamClientPool {
@@ -193,6 +218,16 @@ pub(crate) fn request_compression_enabled() -> bool {
     ENABLE_REQUEST_COMPRESSION.load(Ordering::Relaxed)
 }
 
+pub(crate) fn current_payload_rewrite_rules() -> Vec<PayloadRewriteRule> {
+    ensure_runtime_config_loaded();
+    crate::lock_utils::read_recover(payload_rewrite_rules_cell(), "payload_rewrite_rules").clone()
+}
+
+pub(crate) fn current_payload_rewrite_rules_json() -> String {
+    let rules = current_payload_rewrite_rules();
+    serde_json::to_string(&rules).unwrap_or_else(|_| "[]".to_string())
+}
+
 pub(crate) fn account_max_inflight_limit() -> usize {
     ensure_runtime_config_loaded();
     ACCOUNT_MAX_INFLIGHT.load(Ordering::Relaxed)
@@ -306,6 +341,21 @@ pub(crate) fn set_request_compression_enabled(enabled: bool) -> bool {
         if enabled { "1" } else { "0" },
     );
     enabled
+}
+
+pub(crate) fn set_payload_rewrite_rules_json(raw: Option<&str>) -> Result<String, String> {
+    ensure_runtime_config_loaded();
+    let normalized = normalize_payload_rewrite_rules_json(raw)?;
+    let rules = parse_payload_rewrite_rules_json(Some(normalized.as_str()))?;
+    if rules.is_empty() {
+        std::env::remove_var(ENV_PAYLOAD_REWRITE_RULES);
+    } else {
+        std::env::set_var(ENV_PAYLOAD_REWRITE_RULES, normalized.as_str());
+    }
+    let mut cached =
+        crate::lock_utils::write_recover(payload_rewrite_rules_cell(), "payload_rewrite_rules");
+    *cached = rules;
+    Ok(normalized)
 }
 
 pub(super) fn set_upstream_proxy_url(proxy_url: Option<&str>) -> Result<Option<String>, String> {
@@ -457,6 +507,26 @@ pub(super) fn reload_from_env() {
     *cached_free_account_max_model = free_account_max_model;
     drop(cached_free_account_max_model);
 
+    let payload_rewrite_rules = env_non_empty(ENV_PAYLOAD_REWRITE_RULES)
+        .as_deref()
+        .map_or_else(Vec::new, |raw| {
+            match parse_payload_rewrite_rules_json(Some(raw)) {
+                Ok(rules) => rules,
+                Err(err) => {
+                    log::warn!(
+                        "event=gateway_invalid_payload_rewrite_rules source=env var={} err={}",
+                        ENV_PAYLOAD_REWRITE_RULES,
+                        err
+                    );
+                    Vec::new()
+                }
+            }
+        });
+    let mut cached_payload_rewrite_rules =
+        crate::lock_utils::write_recover(payload_rewrite_rules_cell(), "payload_rewrite_rules");
+    *cached_payload_rewrite_rules = payload_rewrite_rules;
+    drop(cached_payload_rewrite_rules);
+
     let originator = env_non_empty(ENV_ORIGINATOR)
         .and_then(|value| normalize_originator(value.as_str()).ok())
         .unwrap_or_else(|| DEFAULT_ORIGINATOR.to_string());
@@ -556,6 +626,10 @@ fn free_account_max_model_cell() -> &'static RwLock<String> {
     FREE_ACCOUNT_MAX_MODEL.get_or_init(|| RwLock::new(DEFAULT_FREE_ACCOUNT_MAX_MODEL.to_string()))
 }
 
+fn payload_rewrite_rules_cell() -> &'static RwLock<Vec<PayloadRewriteRule>> {
+    PAYLOAD_REWRITE_RULES.get_or_init(|| RwLock::new(Vec::new()))
+}
+
 fn originator_cell() -> &'static RwLock<String> {
     ORIGINATOR.get_or_init(|| RwLock::new(DEFAULT_ORIGINATOR.to_string()))
 }
@@ -613,6 +687,53 @@ fn env_bool_or(name: &str, default: bool) -> bool {
         "0" | "false" | "no" | "off" => false,
         _ => default,
     }
+}
+
+fn normalize_payload_rewrite_rules_json(raw: Option<&str>) -> Result<String, String> {
+    let rules = parse_payload_rewrite_rules_json(raw)?;
+    serde_json::to_string(&rules)
+        .map_err(|err| format!("serialize payload rewrite rules failed: {err}"))
+}
+
+fn parse_payload_rewrite_rules_json(raw: Option<&str>) -> Result<Vec<PayloadRewriteRule>, String> {
+    let Some(raw) = raw.map(str::trim) else {
+        return Ok(Vec::new());
+    };
+    if raw.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rules = serde_json::from_str::<Vec<PayloadRewriteRule>>(raw)
+        .map_err(|err| format!("invalid payload rewrite rules json: {err}"))?;
+    validate_payload_rewrite_rules(&rules)?;
+    Ok(rules)
+}
+
+fn validate_payload_rewrite_rules(rules: &[PayloadRewriteRule]) -> Result<(), String> {
+    for (idx, rule) in rules.iter().enumerate() {
+        let path = rule.path.trim();
+        if path.is_empty() {
+            return Err(format!("rule[{idx}].path is required"));
+        }
+        if path != "*" && !path.starts_with('/') {
+            return Err(format!("rule[{idx}].path must start with '/' or be '*'"));
+        }
+
+        let field = rule.field.trim();
+        if field.is_empty() {
+            return Err(format!("rule[{idx}].field is required"));
+        }
+        if field.contains('.') || field.contains('[') || field.contains(']') {
+            return Err(format!(
+                "rule[{idx}].field only supports top-level json keys"
+            ));
+        }
+        if field.eq_ignore_ascii_case("model") {
+            return Err(format!(
+                "rule[{idx}].field does not support 'model' in the first payload rewrite slice"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn normalize_model_slug(raw: &str) -> Result<String, String> {

@@ -1347,6 +1347,11 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
       0,
       0
     ),
+    remoteManagementEnabled: asBoolean(source.remoteManagementEnabled, false),
+    remoteManagementSecretConfigured: asBoolean(
+      source.remoteManagementSecretConfigured,
+      false
+    ),
     serviceAddr: asString(source.serviceAddr) || "localhost:48760",
     serviceListenMode: asString(source.serviceListenMode) || "loopback",
     serviceListenModeOptions: asArray(source.serviceListenModeOptions).map((item) =>
@@ -1369,6 +1374,7 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
       0
     ),
     requestCompressionEnabled: asBoolean(source.requestCompressionEnabled, true),
+    payloadRewriteRulesJson: asString(source.payloadRewriteRulesJson) || "[]",
     retryPolicyMaxRetries: asInteger(source.retryPolicyMaxRetries, 3, 0),
     retryPolicyBackoffStrategy:
       asString(source.retryPolicyBackoffStrategy) || "exponential",

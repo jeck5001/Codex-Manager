@@ -28,6 +28,7 @@ fn reset_runtime_defaults() {
         "quotaProtectionEnabled": false,
         "quotaProtectionThresholdPercent": 10,
         "requestCompressionEnabled": true,
+        "payloadRewriteRulesJson": "[]",
         "gatewayOriginator": "codex_cli_rs",
         "gatewayResidencyRequirement": "",
         "appearancePreset": "classic",
@@ -186,11 +187,14 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "serviceListenMode": "all_interfaces",
             "mcpEnabled": false,
             "mcpPort": 48888,
+            "remoteManagementEnabled": true,
+            "remoteManagementSecret": "manage-me",
             "routeStrategy": "rr",
             "freeAccountMaxModel": "gpt-5.3-codex",
             "quotaProtectionEnabled": true,
             "quotaProtectionThresholdPercent": 12,
             "requestCompressionEnabled": false,
+            "payloadRewriteRulesJson": "[{\"path\":\"/v1/responses\",\"field\":\"service_tier\",\"mode\":\"set_if_missing\",\"value\":\"flex\"}]",
             "gatewayOriginator": "codex_cli_rs_test",
             "gatewayResidencyRequirement": "us",
             "cpaNoCookieHeaderModeEnabled": true,
@@ -258,6 +262,18 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             snapshot
+                .get("remoteManagementEnabled")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            snapshot
+                .get("remoteManagementSecretConfigured")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            snapshot
                 .get("upstreamStreamTimeoutMs")
                 .and_then(|value| value.as_u64()),
             Some(654321)
@@ -300,6 +316,14 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             snapshot
+                .get("payloadRewriteRulesJson")
+                .and_then(|value| value.as_str()),
+            Some(
+                "[{\"enabled\":true,\"path\":\"/v1/responses\",\"field\":\"service_tier\",\"mode\":\"set_if_missing\",\"value\":\"flex\"}]"
+            )
+        );
+        assert_eq!(
+            snapshot
                 .get("gatewayOriginator")
                 .and_then(|value| value.as_str()),
             Some("codex_cli_rs_test")
@@ -318,6 +342,9 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert!(codexmanager_service::verify_web_access_password(
             "secret-pass"
+        ));
+        assert!(codexmanager_service::verify_remote_management_secret(
+            "manage-me"
         ));
 
         let storage = Storage::open(db_path).expect("open storage");
@@ -346,6 +373,12 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
                 .get_app_setting(codexmanager_service::APP_SETTING_MCP_PORT_KEY)
                 .expect("read mcp port"),
             Some("48888".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY)
+                .expect("read remote management enabled"),
+            Some("1".to_string())
         );
         assert_eq!(
             storage
@@ -381,6 +414,17 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY
+                )
+                .expect("read payload rewrite rules"),
+            Some(
+                "[{\"enabled\":true,\"path\":\"/v1/responses\",\"field\":\"service_tier\",\"mode\":\"set_if_missing\",\"value\":\"flex\"}]"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            storage
                 .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_ORIGINATOR_KEY)
                 .expect("read gateway originator"),
             Some("codex_cli_rs_test".to_string())
@@ -413,6 +457,12 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             .get_app_setting(codexmanager_service::APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY)
             .expect("read password hash");
         assert!(stored_password
+            .as_deref()
+            .is_some_and(|value| value.starts_with("sha256$")));
+        let stored_secret = storage
+            .get_app_setting(codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_SECRET_HASH_KEY)
+            .expect("read remote management secret hash");
+        assert!(stored_secret
             .as_deref()
             .is_some_and(|value| value.starts_with("sha256$")));
     });
@@ -643,11 +693,13 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             codexmanager_service::SERVICE_BIND_MODE_SETTING_KEY,
             codexmanager_service::APP_SETTING_MCP_ENABLED_KEY,
             codexmanager_service::APP_SETTING_MCP_PORT_KEY,
+            codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
+            codexmanager_service::APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_ORIGINATOR_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
@@ -664,6 +716,8 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             ("CODEXMANAGER_SERVICE_ADDR", Some("0.0.0.0:4999")),
             ("CODEXMANAGER_MCP_ENABLED", Some("0")),
             ("CODEXMANAGER_MCP_PORT", Some("49962")),
+            ("CODEXMANAGER_REMOTE_MANAGEMENT_ENABLED", Some("1")),
+            ("CODEXMANAGER_REMOTE_MANAGEMENT_SECRET", Some("env-manage")),
             ("CODEXMANAGER_ROUTE_STRATEGY", Some("balanced")),
             ("CODEXMANAGER_FREE_ACCOUNT_MAX_MODEL", Some("gpt-5.2-codex")),
             ("CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_ENABLED", Some("1")),
@@ -672,6 +726,10 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 Some("7"),
             ),
             ("CODEXMANAGER_ENABLE_REQUEST_COMPRESSION", Some("0")),
+            (
+                "CODEXMANAGER_PAYLOAD_REWRITE_RULES",
+                Some("[{\"path\":\"*\",\"field\":\"service_tier\",\"mode\":\"set\",\"value\":\"priority\"}]"),
+            ),
             ("CODEXMANAGER_ORIGINATOR", Some("codex_cli_rs_env")),
             ("CODEXMANAGER_RESIDENCY_REQUIREMENT", Some("us")),
             ("CODEXMANAGER_CPA_NO_COOKIE_HEADER_MODE", Some("1")),
@@ -713,6 +771,26 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
         assert_eq!(
             snapshot.get("mcpPort").and_then(|value| value.as_u64()),
             Some(49962)
+        );
+        assert_eq!(
+            snapshot
+                .get("payloadRewriteRulesJson")
+                .and_then(|value| value.as_str()),
+            Some(
+                "[{\"enabled\":true,\"path\":\"*\",\"field\":\"service_tier\",\"mode\":\"set\",\"value\":\"priority\"}]"
+            )
+        );
+        assert_eq!(
+            snapshot
+                .get("remoteManagementEnabled")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            snapshot
+                .get("remoteManagementSecretConfigured")
+                .and_then(|value| value.as_bool()),
+            Some(true)
         );
         assert_eq!(
             snapshot
@@ -836,6 +914,12 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
         );
         assert_eq!(
             storage
+                .get_app_setting(codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY)
+                .expect("read remote management enabled"),
+            Some("1".to_string())
+        );
+        assert_eq!(
+            storage
                 .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY)
                 .expect("read route strategy"),
             Some("balanced".to_string())
@@ -902,6 +986,26 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .expect("read sse keepalive interval"),
             Some("14000".to_string())
         );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_SECRET_HASH_KEY
+                )
+                .expect("read remote management secret hash"),
+            None
+        );
+    });
+}
+
+#[test]
+fn app_settings_set_rejects_enabling_remote_management_without_secret() {
+    with_temp_db(|_| {
+        let err = codexmanager_service::app_settings_set(Some(&json!({
+            "remoteManagementEnabled": true
+        })))
+        .expect_err("remote management should require secret");
+
+        assert!(err.contains("访问密钥"), "unexpected error message: {err}");
     });
 }
 

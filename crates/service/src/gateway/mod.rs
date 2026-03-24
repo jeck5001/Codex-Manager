@@ -282,6 +282,14 @@ pub(crate) fn request_compression_enabled() -> bool {
     runtime_config::request_compression_enabled()
 }
 
+pub(crate) fn current_payload_rewrite_rules_json() -> String {
+    runtime_config::current_payload_rewrite_rules_json()
+}
+
+pub(crate) fn set_payload_rewrite_rules_json(raw: Option<&str>) -> Result<String, String> {
+    runtime_config::set_payload_rewrite_rules_json(raw)
+}
+
 pub(crate) fn current_originator() -> String {
     runtime_config::current_originator()
 }

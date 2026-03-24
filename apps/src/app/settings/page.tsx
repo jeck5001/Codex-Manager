@@ -576,6 +576,8 @@ export default function SettingsPage() {
   const [backgroundTaskDraft, setBackgroundTaskDraft] = useState<Record<string, string>>({});
   const [teamManagerApiUrlDraft, setTeamManagerApiUrlDraft] = useState<string | null>(null);
   const [teamManagerApiKeyDraft, setTeamManagerApiKeyDraft] = useState("");
+  const [remoteManagementSecretDraft, setRemoteManagementSecretDraft] = useState("");
+  const [payloadRewriteRulesDraft, setPayloadRewriteRulesDraft] = useState<string | null>(null);
   const [selectedAlertRuleId, setSelectedAlertRuleId] = useState<string | null>(null);
   const [selectedAlertChannelId, setSelectedAlertChannelId] = useState<string | null>(null);
   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
@@ -1015,6 +1017,9 @@ export default function SettingsPage() {
   const proxyPoolValue = snapshot?.envOverrides.CODEXMANAGER_PROXY_LIST || "";
   const proxyPoolCount = countProxyPoolEntries(proxyPoolValue);
   const teamManagerApiUrlInput = teamManagerApiUrlDraft ?? snapshot?.teamManagerApiUrl ?? "";
+  const remoteManagementSecretInput = remoteManagementSecretDraft.trim();
+  const payloadRewriteRulesInput =
+    payloadRewriteRulesDraft ?? snapshot?.payloadRewriteRulesJson ?? "[]";
   const cacheStats: GatewayResponseCacheStats = responseCacheStats ?? {
     enabled: snapshot?.responseCacheEnabled ?? false,
     ttlSecs: snapshot?.responseCacheTtlSecs ?? 3600,
@@ -1348,6 +1353,52 @@ export default function SettingsPage() {
       .then(() => {
         setTeamManagerApiUrlDraft(null);
         setTeamManagerApiKeyDraft("");
+      })
+      .catch(() => undefined);
+  };
+
+  const handleSaveRemoteManagement = () => {
+    if (!snapshot) return;
+    if (
+      snapshot.remoteManagementEnabled &&
+      !snapshot.remoteManagementSecretConfigured &&
+      !remoteManagementSecretInput
+    ) {
+      toast.error("启用远程管理 API 前请先设置访问密钥");
+      return;
+    }
+    void updateSettings
+      .mutateAsync({
+        remoteManagementEnabled: snapshot.remoteManagementEnabled,
+        ...(remoteManagementSecretInput
+          ? { remoteManagementSecret: remoteManagementSecretInput }
+          : {}),
+      })
+      .then(() => {
+        setRemoteManagementSecretDraft("");
+      })
+      .catch(() => undefined);
+  };
+
+  const handleSavePayloadRewriteRules = () => {
+    const raw = payloadRewriteRulesInput.trim();
+    const candidate = raw || "[]";
+    try {
+      const parsed = JSON.parse(candidate);
+      if (!Array.isArray(parsed)) {
+        toast.error("Payload Rewrite 规则必须是 JSON 数组");
+        return;
+      }
+    } catch {
+      toast.error("Payload Rewrite 规则不是合法 JSON");
+      return;
+    }
+    void updateSettings
+      .mutateAsync({
+        payloadRewriteRulesJson: candidate,
+      })
+      .then(() => {
+        setPayloadRewriteRulesDraft(null);
       })
       .catch(() => undefined);
   };
@@ -1724,6 +1775,75 @@ export default function SettingsPage() {
                 >
                   <ExternalLink className="h-4 w-4" />
                   {testTeamManager.isPending ? "测试中..." : "测试连接"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <SettingsIcon className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">远程管理 API</CardTitle>
+              </div>
+              <CardDescription>
+                为外部脚本或运维面板开放一个受密钥保护的管理 RPC 入口。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>启用远程管理</Label>
+                  <p className="text-xs text-muted-foreground">
+                    开启后，可通过 <code>/api/management/rpc</code> + 访问密钥远程调用管理接口。
+                  </p>
+                </div>
+                <Switch
+                  checked={snapshot.remoteManagementEnabled}
+                  onCheckedChange={(value) =>
+                    updateSettings.mutate({
+                      remoteManagementEnabled: value,
+                      _silent: !value,
+                    })
+                  }
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="remote-management-secret">访问密钥</Label>
+                <Input
+                  id="remote-management-secret"
+                  type="password"
+                  placeholder={
+                    snapshot.remoteManagementSecretConfigured
+                      ? "留空则保留当前已保存密钥"
+                      : "输入远程管理访问密钥"
+                  }
+                  value={remoteManagementSecretDraft}
+                  onChange={(event) => setRemoteManagementSecretDraft(event.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {snapshot.remoteManagementSecretConfigured
+                    ? "当前已保存访问密钥，重新输入后会覆盖。调用时请使用请求头 x-codexmanager-management-secret。"
+                    : "当前未保存访问密钥。建议仅在 Web 地址对外暴露时启用。"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-border/50 bg-background/45 p-4 text-xs text-muted-foreground">
+                <p>示例：</p>
+                <code className="mt-2 block break-all">
+                  {`curl -X POST http://127.0.0.1:48761/api/management/rpc -H "content-type: application/json" -H "x-codexmanager-management-secret: <secret>" -d '{"id":1,"method":"appSettings/get","params":null}'`}
+                </code>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  className="gap-2"
+                  disabled={updateSettings.isPending}
+                  onClick={handleSaveRemoteManagement}
+                >
+                  <Save className="h-4 w-4" />
+                  保存远程管理设置
                 </Button>
               </div>
             </CardContent>
@@ -2439,6 +2559,62 @@ export default function SettingsPage() {
                     }
                     onBlur={() => saveTransportField("upstreamStreamTimeoutMs", 0)}
                   />
+                </div>
+              </div>
+
+              <div className="grid gap-3 border-t pt-6">
+                <div className="space-y-1">
+                  <Label htmlFor="payload-rewrite-rules">声明式 Payload Rewrite 规则</Label>
+                  <p className="text-xs text-muted-foreground">
+                    用 JSON 数组定义网关请求体顶层字段改写规则。当前仅支持
+                    <code className="mx-1">set</code>
+                    和
+                    <code className="mx-1">set_if_missing</code>
+                    ，路径支持精确匹配或
+                    <code className="mx-1">*</code>
+                    ，并且禁止改写
+                    <code className="mx-1">model</code>
+                    。
+                  </p>
+                </div>
+                <Textarea
+                  id="payload-rewrite-rules"
+                  rows={8}
+                  className="font-mono text-xs leading-5"
+                  placeholder={`[
+  {
+    "path": "/v1/responses",
+    "field": "service_tier",
+    "mode": "set_if_missing",
+    "value": "flex"
+  }
+]`}
+                  value={payloadRewriteRulesInput}
+                  onChange={(event) => setPayloadRewriteRulesDraft(event.target.value)}
+                />
+                <div className="rounded-xl border border-border/40 bg-background/40 p-3 text-[11px] text-muted-foreground">
+                  保存后会同步写入
+                  <code className="mx-1">appSettings</code>
+                  持久化配置；如需环境变量覆盖，可使用
+                  <code className="mx-1">CODEXMANAGER_PAYLOAD_REWRITE_RULES</code>
+                  。
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    className="gap-2"
+                    disabled={updateSettings.isPending}
+                    onClick={handleSavePayloadRewriteRules}
+                  >
+                    <Save className="h-4 w-4" />
+                    保存 Rewrite 规则
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={updateSettings.isPending}
+                    onClick={() => setPayloadRewriteRulesDraft(snapshot?.payloadRewriteRulesJson ?? "[]")}
+                  >
+                    还原当前配置
+                  </Button>
                 </div>
               </div>
             </CardContent>
