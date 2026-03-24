@@ -15,6 +15,7 @@ pub(crate) fn read_request_log_filter_summary(
             query: params.query.as_deref(),
             status_filter: None,
             key_id: params.key_id.as_deref(),
+            key_ids: params.key_ids.as_slice(),
             model: params.model.as_deref(),
             time_from: params.time_from,
             time_to: params.time_to,

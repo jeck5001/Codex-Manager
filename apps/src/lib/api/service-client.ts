@@ -367,6 +367,7 @@ export const serviceClient = {
     query?: string;
     statusFilter?: string;
     keyId?: string;
+    keyIds?: string[];
     model?: string;
     timeFrom?: number | null;
     timeTo?: number | null;
@@ -379,6 +380,7 @@ export const serviceClient = {
         query: params?.query || "",
         statusFilter: params?.statusFilter || "all",
         keyId: params?.keyId || "",
+        keyIds: params?.keyIds ?? [],
         model: params?.model || "",
         timeFrom: params?.timeFrom ?? null,
         timeTo: params?.timeTo ?? null,
@@ -392,6 +394,7 @@ export const serviceClient = {
     query?: string;
     statusFilter?: string;
     keyId?: string;
+    keyIds?: string[];
     model?: string;
     timeFrom?: number | null;
     timeTo?: number | null;
@@ -402,6 +405,7 @@ export const serviceClient = {
         query: params?.query || "",
         statusFilter: params?.statusFilter || "all",
         keyId: params?.keyId || "",
+        keyIds: params?.keyIds ?? [],
         model: params?.model || "",
         timeFrom: params?.timeFrom ?? null,
         timeTo: params?.timeTo ?? null,
@@ -414,6 +418,7 @@ export const serviceClient = {
     query?: string;
     statusFilter?: string;
     keyId?: string;
+    keyIds?: string[];
     model?: string;
     timeFrom?: number | null;
     timeTo?: number | null;
@@ -425,6 +430,7 @@ export const serviceClient = {
         query: params?.query || "",
         statusFilter: params?.statusFilter || "all",
         keyId: params?.keyId || "",
+        keyIds: params?.keyIds ?? [],
         model: params?.model || "",
         timeFrom: params?.timeFrom ?? null,
         timeTo: params?.timeTo ?? null,
@@ -437,6 +443,7 @@ export const serviceClient = {
     query?: string;
     statusFilter?: string;
     keyId?: string;
+    keyIds?: string[];
     model?: string;
     timeFrom?: number | null;
     timeTo?: number | null;
@@ -450,6 +457,11 @@ export const serviceClient = {
     searchParams.set("query", params?.query || "");
     searchParams.set("statusFilter", params?.statusFilter || "all");
     searchParams.set("keyId", params?.keyId || "");
+    for (const keyId of params?.keyIds ?? []) {
+      const normalized = String(keyId || "").trim();
+      if (!normalized) continue;
+      searchParams.append("keyIds", normalized);
+    }
     searchParams.set("model", params?.model || "");
     if (params?.timeFrom != null) {
       searchParams.set("timeFrom", String(params.timeFrom));

@@ -396,6 +396,7 @@
 - `timeTo`
 - `model`
 - `keyId`
+- `keyIds`（可重复传多个，例如 `...&keyIds=gk-a&keyIds=gk-b`）
 
 转发目标：
 - `GET http://<service_addr>/export/requestlogs?...`
@@ -403,6 +404,7 @@
 说明：
 - Service 端导出为流式响应
 - Web 端会透传 `content-type`、`content-disposition`、`cache-control`
+- 当日志页按平台密钥名称模糊匹配到多个 Key 时，前端会展开成多个 `keyIds` 一并导出
 
 ## 9. Web 登录流程
 

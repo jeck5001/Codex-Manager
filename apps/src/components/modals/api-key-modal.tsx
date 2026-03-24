@@ -23,6 +23,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { accountClient } from "@/lib/api/account-client";
+import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { toast } from "sonner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Key, Globe, Clipboard, ShieldCheck } from "lucide-react";
@@ -241,8 +242,13 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
   };
 
   const copyKey = () => {
-    navigator.clipboard.writeText(generatedKey);
-    toast.success("密钥已复制");
+    copyTextToClipboard(generatedKey)
+      .then(() => {
+        toast.success("密钥已复制");
+      })
+      .catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "复制失败");
+      });
   };
 
   return (

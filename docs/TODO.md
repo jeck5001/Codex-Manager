@@ -258,6 +258,10 @@
   - `pnpm exec tsc --noEmit` 通过（本轮复验 F17 设置页插件管理 Tab 与模板草稿类型）
   - `cargo test -p codexmanager-service resolve_existing_imported_account_id_ -- --nocapture` 通过（本轮补齐注册任务“已入池 / 待入池”判断，覆盖 identity hint 与邮箱回退匹配）
   - `pnpm exec tsc --noEmit` 通过（本轮补齐注册中心“待入池”标识与手动加入号池按钮）
+  - `cargo test -p codexmanager-service requestlog_list_and_summary_support_extended_filters -- --nocapture` 通过（本轮复验请求日志列表 / 摘要扩展筛选，并覆盖 `keyIds` 多密钥过滤）
+  - `cargo test -p codexmanager-service requestlog_export_rpc_supports_key_model_and_time_filters -- --nocapture` 通过（本轮复验请求日志导出扩展筛选，并覆盖 `keyIds` 多密钥过滤）
+  - `pnpm exec tsc --noEmit` 通过（本轮复验平台密钥页完整 ID 展示、复制兜底与请求日志按密钥名称筛选）
+  - `pnpm run build:desktop` 通过（本轮复验平台密钥页与请求日志页桌面静态构建）
 
 ---
 
@@ -567,8 +571,10 @@
   - [x] 导出使用当前页面的筛选条件
   - [x] Web / Docker 版优先走 `/api/export/requestlogs` 直接下载
   - [x] 日志页补充 `keyId / model / timeFrom / timeTo` 筛选并与列表、摘要、导出联动
+  - [x] 验收补齐：平台密钥筛选输入支持密钥名称或 ID 模糊匹配，并在多匹配时联动列表、摘要与导出走 `keyIds`
   - [x] 验收补齐：补充流式 JSON 导出与 HTTP JSON 下载头回归测试，确认 CSV / JSON 两种格式均可下载
   - [x] 日志页平台密钥列、详情浮层与筛选标签补充平台密钥名称 + ID 展示，便于直接区分不同 Key
+  - [x] 平台密钥页显示完整密钥 ID，并为复制操作补齐非 Clipboard API 兜底，避免浏览器环境差异导致复制报错
 
 ---
 

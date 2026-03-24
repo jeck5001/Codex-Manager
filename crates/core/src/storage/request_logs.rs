@@ -156,6 +156,7 @@ impl Storage {
                 query,
                 status_filter,
                 key_id: None,
+                key_ids: &[],
                 model: None,
                 time_from: None,
                 time_to: None,
@@ -211,6 +212,7 @@ impl Storage {
             query,
             status_filter,
             key_id: None,
+            key_ids: &[],
             model: None,
             time_from: None,
             time_to: None,
@@ -241,6 +243,7 @@ impl Storage {
             query,
             status_filter,
             key_id: None,
+            key_ids: &[],
             model: None,
             time_from: None,
             time_to: None,
@@ -588,6 +591,7 @@ pub struct RequestLogFilterInput<'a> {
     pub query: Option<&'a str>,
     pub status_filter: Option<&'a str>,
     pub key_id: Option<&'a str>,
+    pub key_ids: &'a [String],
     pub model: Option<&'a str>,
     pub time_from: Option<i64>,
     pub time_to: Option<i64>,
@@ -612,6 +616,7 @@ fn build_request_log_filters(filters: RequestLogFilterInput<'_>) -> RequestLogSq
     );
     append_status_filter_clause(filters.status_filter, &mut clauses, &mut params);
     append_optional_exact_clause("r.key_id", filters.key_id, &mut clauses, &mut params);
+    append_optional_in_clause("r.key_id", filters.key_ids, &mut clauses, &mut params);
     append_optional_model_clause(filters.model, &mut clauses, &mut params);
     append_optional_time_clause(">=", filters.time_from, &mut clauses, &mut params);
     append_optional_time_clause("<=", filters.time_to, &mut clauses, &mut params);
@@ -637,6 +642,33 @@ fn append_optional_exact_clause(
     };
     clauses.push(format!("{column} = ?"));
     params.push(Value::Text(value.to_string()));
+}
+
+fn append_optional_in_clause(
+    column: &str,
+    values: &[String],
+    clauses: &mut Vec<String>,
+    params: &mut Vec<Value>,
+) {
+    let normalized = values
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    if normalized.is_empty() {
+        return;
+    }
+    if normalized.len() == 1 {
+        clauses.push(format!("{column} = ?"));
+    } else {
+        clauses.push(format!(
+            "{column} IN ({})",
+            std::iter::repeat_n("?", normalized.len()).collect::<Vec<_>>().join(", ")
+        ));
+    }
+    for value in normalized {
+        params.push(Value::Text(value.to_string()));
+    }
 }
 
 fn append_optional_model_clause(

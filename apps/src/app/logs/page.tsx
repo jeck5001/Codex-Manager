@@ -50,6 +50,7 @@ import {
   buildApiKeyNameMap,
   formatApiKeyDetailLabel,
   formatApiKeyInlineLabel,
+  resolveMatchingApiKeyIds,
   resolveApiKeyName,
 } from "@/lib/utils/api-key-display";
 import { formatCompactNumber, formatTsFromSeconds } from "@/lib/utils/usage";
@@ -736,6 +737,27 @@ function LogsPageContent() {
     retry: 1,
   });
 
+  const resolvedKeyIds = useMemo(
+    () => resolveMatchingApiKeyIds(keyIdFilter, apiKeys),
+    [apiKeys, keyIdFilter],
+  );
+  const resolvedSingleKeyId = useMemo(() => {
+    const normalized = keyIdFilter.trim();
+    if (!normalized) return "";
+    if (resolvedKeyIds.length === 1) {
+      return resolvedKeyIds[0] || "";
+    }
+    if (resolvedKeyIds.length > 1) {
+      return "";
+    }
+    return normalized;
+  }, [keyIdFilter, resolvedKeyIds]);
+  const resolvedMultiKeyIds = useMemo(
+    () => (resolvedKeyIds.length > 1 ? resolvedKeyIds : []),
+    [resolvedKeyIds],
+  );
+  const resolvedKeyIdsSignature = resolvedMultiKeyIds.join("|");
+
   const { data: logsResult, isLoading } = useQuery({
     queryKey: [
       "logs",
@@ -743,6 +765,8 @@ function LogsPageContent() {
       search,
       filter,
       keyIdFilter,
+      resolvedSingleKeyId,
+      resolvedKeyIdsSignature,
       modelFilter,
       timeFromTs,
       timeToTs,
@@ -753,7 +777,8 @@ function LogsPageContent() {
       serviceClient.listRequestLogs({
         query: search,
         statusFilter: filter,
-        keyId: keyIdFilter,
+        keyId: resolvedSingleKeyId,
+        keyIds: resolvedMultiKeyIds,
         model: modelFilter,
         timeFrom: timeFromTs,
         timeTo: timeToTs,
@@ -773,6 +798,8 @@ function LogsPageContent() {
       search,
       filter,
       keyIdFilter,
+      resolvedSingleKeyId,
+      resolvedKeyIdsSignature,
       modelFilter,
       timeFromTs,
       timeToTs,
@@ -781,7 +808,8 @@ function LogsPageContent() {
       serviceClient.getRequestLogSummary({
         query: search,
         statusFilter: filter,
-        keyId: keyIdFilter,
+        keyId: resolvedSingleKeyId,
+        keyIds: resolvedMultiKeyIds,
         model: modelFilter,
         timeFrom: timeFromTs,
         timeTo: timeToTs,
@@ -814,7 +842,8 @@ function LogsPageContent() {
           format: exportFormat,
           query: search,
           statusFilter: filter,
-          keyId: keyIdFilter,
+          keyId: resolvedSingleKeyId,
+          keyIds: resolvedMultiKeyIds,
           model: modelFilter,
           timeFrom: timeFromTs,
           timeTo: timeToTs,
@@ -826,7 +855,8 @@ function LogsPageContent() {
         format: exportFormat,
         query: search,
         statusFilter: filter,
-        keyId: keyIdFilter,
+        keyId: resolvedSingleKeyId,
+        keyIds: resolvedMultiKeyIds,
         model: modelFilter,
         timeFrom: timeFromTs,
         timeTo: timeToTs,
@@ -898,9 +928,15 @@ function LogsPageContent() {
     }
     const nextKeyId = keyIdFilter.trim();
     if (nextKeyId) {
+      const matchedLabel =
+        resolvedKeyIds.length === 1
+          ? formatApiKeyDetailLabel(resolvedKeyIds[0] || nextKeyId, apiKeyNameMap)
+          : resolvedKeyIds.length > 1
+            ? `${nextKeyId}（匹配 ${resolvedKeyIds.length} 个密钥）`
+            : nextKeyId;
       items.push({
         key: "keyId",
-        label: `密钥 ${formatApiKeyDetailLabel(nextKeyId, apiKeyNameMap)}`,
+        label: `密钥 ${matchedLabel}`,
       });
     }
     const nextModel = modelFilter.trim();
@@ -920,7 +956,16 @@ function LogsPageContent() {
       });
     }
     return items;
-  }, [apiKeyNameMap, filter, keyIdFilter, modelFilter, search, timeFromInput, timeToInput]);
+  }, [
+    apiKeyNameMap,
+    filter,
+    keyIdFilter,
+    modelFilter,
+    resolvedKeyIds,
+    search,
+    timeFromInput,
+    timeToInput,
+  ]);
   const activeQuickFilterKey = useMemo(() => {
     const nextSearch = search.trim();
     const matched = QUICK_LOG_FILTERS.find(
@@ -1145,7 +1190,7 @@ function LogsPageContent() {
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_180px]">
             <Input
-              placeholder="精确筛选 API Key ID"
+              placeholder="筛选平台密钥名称或 ID，支持模糊匹配"
               className="glass-card h-10 rounded-xl px-3"
               value={keyIdFilter}
               onChange={(event) => {

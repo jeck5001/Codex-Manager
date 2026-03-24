@@ -61,6 +61,18 @@ pub(crate) fn normalize_optional_text(value: Option<String>) -> Option<String> {
     Some(trimmed)
 }
 
+pub(crate) fn normalize_text_list(values: Vec<String>) -> Vec<String> {
+    let mut items = Vec::new();
+    for value in values {
+        let trimmed = value.trim();
+        if trimmed.is_empty() || items.iter().any(|item: &String| item == trimmed) {
+            continue;
+        }
+        items.push(trimmed.to_string());
+    }
+    items
+}
+
 pub(crate) fn normalize_status_filter(value: Option<String>) -> Option<String> {
     let normalized = value.unwrap_or_default().trim().to_ascii_lowercase();
     match normalized.as_str() {
@@ -79,6 +91,7 @@ pub(crate) fn normalize_filter_params(params: RequestLogFilterParams) -> Request
         query: normalize_optional_text(params.query),
         status_filter: normalize_status_filter(params.status_filter),
         key_id: normalize_optional_text(params.key_id),
+        key_ids: normalize_text_list(params.key_ids),
         model: normalize_optional_text(params.model),
         time_from: normalize_optional_timestamp(params.time_from),
         time_to: normalize_optional_timestamp(params.time_to),
@@ -94,6 +107,7 @@ pub(crate) fn to_storage_filters<'a>(
         query: query.or(params.query.as_deref()),
         status_filter: status_filter.or(params.status_filter.as_deref()),
         key_id: params.key_id.as_deref(),
+        key_ids: params.key_ids.as_slice(),
         model: params.model.as_deref(),
         time_from: params.time_from,
         time_to: params.time_to,
@@ -163,6 +177,7 @@ pub(crate) fn to_request_log_summary(item: RequestLog) -> RequestLogSummary {
 mod tests {
     use super::{
         normalize_filter_params, normalize_optional_text, normalize_optional_timestamp,
+        normalize_text_list,
         normalize_status_filter, normalize_upstream_url, RequestLogListParams,
         DEFAULT_REQUEST_LOG_PAGE_SIZE,
     };
@@ -227,6 +242,7 @@ mod tests {
             query: Some(" trace:=abc ".to_string()),
             status_filter: Some("ALL".to_string()),
             key_id: Some(" gk-1 ".to_string()),
+            key_ids: vec![" gk-1 ".to_string(), "gk-2".to_string(), "gk-1".to_string()],
             model: Some(" gpt-4o ".to_string()),
             time_from: Some(100),
             time_to: Some(0),
@@ -235,6 +251,7 @@ mod tests {
         assert_eq!(normalized.query.as_deref(), Some("trace:=abc"));
         assert_eq!(normalized.status_filter, None);
         assert_eq!(normalized.key_id.as_deref(), Some("gk-1"));
+        assert_eq!(normalized.key_ids, vec!["gk-1".to_string(), "gk-2".to_string()]);
         assert_eq!(normalized.model.as_deref(), Some("gpt-4o"));
         assert_eq!(normalized.time_from, Some(100));
         assert_eq!(normalized.time_to, None);
@@ -257,6 +274,19 @@ mod tests {
         assert_eq!(
             normalize_optional_text(Some(" trace:=abc ".to_string())).as_deref(),
             Some("trace:=abc")
+        );
+    }
+
+    #[test]
+    fn normalize_text_list_trims_and_deduplicates() {
+        assert_eq!(
+            normalize_text_list(vec![
+                " gk-1 ".to_string(),
+                "".to_string(),
+                "gk-2".to_string(),
+                "gk-1".to_string(),
+            ]),
+            vec!["gk-1".to_string(), "gk-2".to_string()]
         );
     }
 }

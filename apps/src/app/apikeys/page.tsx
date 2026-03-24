@@ -48,6 +48,7 @@ import {
 import { useApiKeys } from "@/hooks/useApiKeys";
 import { accountClient } from "@/lib/api/account-client";
 import { useAppStore } from "@/lib/store/useAppStore";
+import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { formatCompactNumber, formatTsFromSeconds } from "@/lib/utils/usage";
 
 export default function ApiKeysPage() {
@@ -150,7 +151,7 @@ export default function ApiKeysPage() {
   const copyToClipboard = async (id: string) => {
     try {
       const secret = await ensureSecretLoaded(id);
-      await navigator.clipboard.writeText(secret);
+      await copyTextToClipboard(secret);
       toast.success("已复制到剪贴板");
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : String(error));
@@ -256,34 +257,47 @@ export default function ApiKeysPage() {
                   return (
                     <TableRow key={key.id} className="group">
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <code className="rounded border border-primary/5 bg-muted/50 px-2 py-1 font-mono text-[10px] text-primary">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <code
+                              className="rounded border border-primary/5 bg-muted/50 px-2 py-1 font-mono text-[10px] text-primary"
+                              title={revealed || key.id}
+                            >
                             {revealed
                               ? revealed
                               : loadingSecretId === key.id
                                 ? "读取中..."
                                 : `${key.id.slice(0, 8)}...`}
-                          </code>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-primary"
-                            onClick={() => void toggleSecret(key.id)}
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-primary"
+                              onClick={() => void toggleSecret(key.id)}
+                              title={revealed ? "隐藏密钥明文" : "查看密钥明文"}
+                            >
+                              {revealed ? (
+                                <EyeOff className="h-3.5 w-3.5" />
+                              ) : (
+                                <Eye className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-primary"
+                              onClick={() => void copyToClipboard(key.id)}
+                              title="复制密钥明文"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                          <div
+                            className="max-w-[280px] break-all font-mono text-[10px] text-muted-foreground"
+                            title={key.id}
                           >
-                            {revealed ? (
-                              <EyeOff className="h-3.5 w-3.5" />
-                            ) : (
-                              <Eye className="h-3.5 w-3.5" />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-primary"
-                            onClick={() => void copyToClipboard(key.id)}
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
+                            ID: {key.id}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="text-sm font-semibold">{key.name || "未命名"}</TableCell>

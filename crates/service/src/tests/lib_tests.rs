@@ -1407,7 +1407,7 @@ fn requestlog_export_rpc_supports_key_model_and_time_filters() {
         method: "requestlog/export".to_string(),
         params: Some(serde_json::json!({
             "format": "json",
-            "keyId": "gk-export-b",
+            "keyIds": ["gk-export-a", "gk-export-b"],
             "model": "gpt-4o",
             "timeFrom": 1_700_000_150_i64,
             "timeTo": 1_700_000_250_i64,
@@ -1501,7 +1501,7 @@ fn requestlog_list_and_summary_support_extended_filters() {
             "page": 1,
             "pageSize": 20,
             "statusFilter": "5xx",
-            "keyId": "gk-list-b",
+            "keyIds": ["gk-list-a", "gk-list-b"],
             "model": "gpt-4o",
             "timeFrom": 1_700_000_150_i64,
             "timeTo": 1_700_000_250_i64,
@@ -1528,7 +1528,7 @@ fn requestlog_list_and_summary_support_extended_filters() {
         method: "requestlog/summary".to_string(),
         params: Some(serde_json::json!({
             "statusFilter": "5xx",
-            "keyId": "gk-list-b",
+            "keyIds": ["gk-list-a", "gk-list-b"],
             "model": "gpt-4o",
             "timeFrom": 1_700_000_150_i64,
             "timeTo": 1_700_000_250_i64,
