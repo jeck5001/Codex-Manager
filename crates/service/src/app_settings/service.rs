@@ -67,6 +67,17 @@ fn current_env_service_bind_mode() -> Option<String> {
     Some(mode.to_string())
 }
 
+fn current_persisted_service_bind_mode() -> Option<String> {
+    get_persisted_app_setting(SERVICE_BIND_MODE_SETTING_KEY)
+        .map(|value| normalize_service_bind_mode(Some(&value)).to_string())
+}
+
+fn current_effective_service_bind_mode() -> String {
+    current_persisted_service_bind_mode()
+        .or_else(current_env_service_bind_mode)
+        .unwrap_or_else(|| SERVICE_BIND_MODE_LOOPBACK.to_string())
+}
+
 pub fn current_service_bind_mode() -> String {
     current_env_service_bind_mode()
         .or_else(|| {
@@ -87,7 +98,7 @@ pub fn set_service_bind_mode(mode: &str) -> Result<String, String> {
 }
 
 pub fn bind_all_interfaces_enabled() -> bool {
-    current_service_bind_mode() == SERVICE_BIND_MODE_ALL_INTERFACES
+    current_effective_service_bind_mode() == SERVICE_BIND_MODE_ALL_INTERFACES
 }
 
 pub fn bind_all_interfaces_enabled_for_mode(mode: &str) -> bool {
@@ -134,7 +145,7 @@ pub fn default_web_listener_addr() -> String {
 }
 
 pub fn listener_bind_addr(addr: &str) -> String {
-    listener_bind_addr_for_mode(addr, &current_service_bind_mode())
+    listener_bind_addr_for_mode(addr, &current_effective_service_bind_mode())
 }
 
 pub fn listener_bind_addr_for_mode(addr: &str, bind_mode: &str) -> String {

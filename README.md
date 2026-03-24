@@ -12,9 +12,13 @@
   <a href="#赞助支持">赞助支持</a>
 </p>
 
+<p align="center"><strong>本地桌面端 + 服务进程的 Codex 账号池管理器</strong></p>
+<p align="center">统一管理账号、用量与平台 Key，并提供本地网关能力。</p>
 
-
-本地桌面端 + 服务进程的 Codex 账号池管理器，用于统一管理账号、用量与平台 Key，并提供本地网关能力。
+## Star 曲线
+<p align="center">
+  <img src="assets/images/star-history-2026324.png" alt="Star 曲线" width="900" />
+</p>
 
 ## 源码说明：
 > 本产品完全由本人指挥+AI打造 Codex（98%） Gemini (2%) 如果在使用过程中产生问题请友好交流，因为开源只是觉得有人能用的上，基本功能也没什么问题，不喜勿喷。

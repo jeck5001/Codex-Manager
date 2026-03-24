@@ -106,7 +106,10 @@ fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content
         .expect("receive second upstream request");
     upstream_join.join().expect("join upstream");
 
-    assert!(!first.headers.contains_key("x-codex-turn-state"));
+    assert_eq!(
+        first.headers.get("x-codex-turn-state").map(String::as_str),
+        Some("gAAA_dummy_turn_state_blob")
+    );
     assert!(!first.headers.contains_key("conversation_id"));
     let first_body: serde_json::Value =
         serde_json::from_slice(&first.body).expect("parse first request body");

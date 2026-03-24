@@ -1,5 +1,6 @@
 use crate::initialize_storage_if_needed;
 use crate::web_access_password_configured;
+use crate::app_settings::{list_app_settings_map, listener_bind_addr_for_mode};
 use codexmanager_core::rpc::types::ModelOption;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -70,8 +71,11 @@ pub(super) fn current_app_settings_value(
     let low_transparency = current_ui_low_transparency_enabled();
     let theme = current_ui_theme();
     let appearance_preset = current_ui_appearance_preset();
+    let settings = list_app_settings_map();
     let service_addr = current_saved_service_addr();
     let service_listen_mode = if let Some(mode) = service_listen_mode_override {
+        normalize_service_bind_mode_value(Some(mode)).to_string()
+    } else if let Some(mode) = settings.get(SERVICE_BIND_MODE_SETTING_KEY) {
         normalize_service_bind_mode_value(Some(mode)).to_string()
     } else {
         current_service_bind_mode()
@@ -112,6 +116,13 @@ pub(super) fn current_app_settings_value(
         &background_tasks_raw,
         &env_overrides,
     );
+
+    if service_listen_mode_override.is_none() {
+        if let Some(mode) = settings.get(SERVICE_BIND_MODE_SETTING_KEY) {
+            let synced_addr = listener_bind_addr_for_mode(&service_addr, mode);
+            std::env::set_var("CODEXMANAGER_SERVICE_ADDR", synced_addr);
+        }
+    }
 
     Ok(serde_json::json!({
         "updateAutoCheck": update_auto_check,

@@ -1764,7 +1764,13 @@ fn gateway_chatgpt_primary_uses_prompt_cache_anchor_for_session_without_inventin
             .map(String::as_str),
         Some("conv_anchor_primary")
     );
-    assert!(!captured.headers.contains_key("x-codex-turn-state"));
+    assert_eq!(
+        captured
+            .headers
+            .get("x-codex-turn-state")
+            .map(String::as_str),
+        Some("legacy_turn_state_should_not_win")
+    );
     assert!(!captured.headers.contains_key("conversation_id"));
 
     let upstream_body = decode_upstream_request_body(&captured);
