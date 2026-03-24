@@ -13,6 +13,7 @@ type ImportByDirectoryResult = Awaited<ReturnType<typeof accountClient.importByD
 type ImportByFileResult = Awaited<ReturnType<typeof accountClient.importByFile>>;
 type ExportResult = Awaited<ReturnType<typeof accountClient.export>>;
 type DeleteUnavailableFreeResult = { deleted?: number };
+type DeleteBannedAccountsResult = { deleted?: number };
 type SubscriptionCheckResult = Awaited<
   ReturnType<typeof accountClient.checkSubscription>
 >;
@@ -178,6 +179,22 @@ export function useAccounts() {
         toast.success(`已移除 ${deleted} 个不可用免费账号`);
       } else {
         toast.success("未发现可清理的不可用免费账号");
+      }
+    },
+    onError: (error: unknown) => {
+      toast.error(`清理失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const deleteBannedMutation = useMutation({
+    mutationFn: () => accountClient.deleteBanned(),
+    onSuccess: async (result: DeleteBannedAccountsResult) => {
+      await invalidateAll();
+      const deleted = Number(result?.deleted || 0);
+      if (deleted > 0) {
+        toast.success(`已清理 ${deleted} 个封禁账号`);
+      } else {
+        toast.success("未发现可清理的封禁账号");
       }
     },
     onError: (error: unknown) => {
@@ -524,6 +541,7 @@ export function useAccounts() {
     deleteAccount: (accountId: string) => deleteMutation.mutate(accountId),
     deleteManyAccounts: (accountIds: string[]) => deleteManyMutation.mutate(accountIds),
     deleteUnavailableFree: () => deleteUnavailableFreeMutation.mutate(),
+    deleteBannedAccounts: () => deleteBannedMutation.mutate(),
     importByFile: () => importByFileMutation.mutate(),
     importByDirectory: () => importByDirectoryMutation.mutate(),
     exportAccounts: (accountIds?: string[]) => exportMutation.mutate(accountIds ?? []),
@@ -564,6 +582,8 @@ export function useAccounts() {
     isRefreshingAllAccounts: refreshAllMutation.isPending,
     isExporting: exportMutation.isPending,
     isDeletingMany: deleteManyMutation.isPending,
+    isDeletingBanned: deleteBannedMutation.isPending,
+    isDeletingUnavailableFree: deleteUnavailableFreeMutation.isPending,
     isUpdatingPreferred:
       setManualPreferredMutation.isPending || clearManualPreferredMutation.isPending,
     isUpdatingSortAccountId:

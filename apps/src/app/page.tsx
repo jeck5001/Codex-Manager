@@ -93,8 +93,12 @@ function openFailureDrilldown(
       router.push(`/register?status=failed&failureCode=${encodeURIComponent(normalized)}`);
       return;
     case "account_deactivated":
+    case "workspace_deactivated":
       accountParams.set("status", "deactivated");
-      accountParams.set("statusReason", "检测到账号已停用");
+      accountParams.set(
+        "statusReason",
+        normalized === "workspace_deactivated" ? "检测到工作区已停用" : "检测到账号已停用"
+      );
       router.push(`/accounts?${accountParams.toString()}`);
       return;
     case "refresh_token_expired":
@@ -155,6 +159,7 @@ function openFailureDrilldown(
 function describeFailureDrilldownTarget(code: string): string {
   switch (String(code || "").trim().toLowerCase()) {
     case "account_deactivated":
+    case "workspace_deactivated":
     case "refresh_token_expired":
     case "refresh_token_reused":
     case "refresh_token_invalidated":

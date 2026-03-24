@@ -142,6 +142,7 @@ function formatGroupFilterLabel(value: string) {
 interface QuotaProgressProps {
   label: string;
   remainPercent: number | null;
+  resetsAt?: number | null;
   icon: LucideIcon;
   tone: "green" | "blue";
   emptyText?: string;
@@ -150,6 +151,7 @@ interface QuotaProgressProps {
 function QuotaProgress({
   label,
   remainPercent,
+  resetsAt = null,
   icon: Icon,
   tone,
   emptyText = "--",
@@ -174,8 +176,36 @@ function QuotaProgress({
         trackClassName={trackClassName}
         indicatorClassName={indicatorClassName}
       />
+      {remainPercent != null ? (
+        <span className="text-[10px] text-muted-foreground">
+          重置: {formatTsFromSeconds(resetsAt, "--")}
+        </span>
+      ) : null}
     </div>
   );
+}
+
+function getQuotaResetTs(
+  account: Account,
+  bucket: "primary" | "secondary",
+): number | null {
+  const usage = account.usage;
+  if (!usage) {
+    return null;
+  }
+  const secondaryOnly = isSecondaryWindowOnlyUsage(usage);
+  const primaryOnly = isPrimaryWindowOnlyUsage(usage);
+
+  if (bucket === "primary") {
+    return secondaryOnly ? null : usage.resetsAt;
+  }
+  if (secondaryOnly) {
+    return usage.resetsAt;
+  }
+  if (primaryOnly) {
+    return null;
+  }
+  return usage.secondaryResetsAt;
 }
 
 function getAccountStatusAction(account: Account): {
@@ -237,6 +267,7 @@ export default function AccountsPage() {
     deleteAccount,
     deleteManyAccounts,
     deleteUnavailableFree,
+    deleteBannedAccounts,
     importByFile,
     importByDirectory,
     exportAccounts,
@@ -244,6 +275,8 @@ export default function AccountsPage() {
     isRefreshingAllAccounts,
     isExporting,
     isDeletingMany,
+    isDeletingBanned,
+    isDeletingUnavailableFree,
     manualPreferredAccountId,
     setPreferredAccount,
     clearPreferredAccount,
@@ -462,6 +495,10 @@ export default function AccountsPage() {
         .filter((account) => getAccountStatusAction(account).enable)
         .map((account) => account.id),
     [scopedGovernedAccounts],
+  );
+  const scopedBannedAccounts = useMemo(
+    () => scopedAccounts.filter((account) => account.isDeactivated),
+    [scopedAccounts],
   );
 
   const visibleAccounts = useMemo(() => {
@@ -1165,11 +1202,26 @@ export default function AccountsPage() {
                     </DropdownMenuShortcut>
                   </DropdownMenuItem>
                   <DropdownMenuItem
+                    disabled={!scopedBannedAccounts.length || isDeletingBanned}
                     variant="destructive"
                     className="h-9 rounded-lg px-2"
+                    onClick={() => deleteBannedAccounts()}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" /> 一键清理封禁账号
+                    <DropdownMenuShortcut>
+                      {isDeletingBanned ? "..." : scopedBannedAccounts.length || "-"}
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant="destructive"
+                    className="h-9 rounded-lg px-2"
+                    disabled={isDeletingUnavailableFree}
                     onClick={() => deleteUnavailableFree()}
                   >
                     <Trash2 className="mr-2 h-4 w-4" /> 一键清理不可用免费
+                    {isDeletingUnavailableFree ? (
+                      <DropdownMenuShortcut>...</DropdownMenuShortcut>
+                    ) : null}
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
@@ -1433,6 +1485,7 @@ export default function AccountsPage() {
                         <QuotaProgress
                           label="5小时"
                           remainPercent={account.primaryRemainPercent}
+                          resetsAt={getQuotaResetTs(account, "primary")}
                           icon={RefreshCw}
                           tone="green"
                           emptyText={secondaryWindowOnly ? "未提供" : "--"}
@@ -1442,6 +1495,7 @@ export default function AccountsPage() {
                         <QuotaProgress
                           label="7天"
                           remainPercent={account.secondaryRemainPercent}
+                          resetsAt={getQuotaResetTs(account, "secondary")}
                           icon={RefreshCw}
                           tone="blue"
                           emptyText={primaryWindowOnly ? "未提供" : "--"}

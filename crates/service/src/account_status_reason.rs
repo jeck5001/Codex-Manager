@@ -49,6 +49,7 @@ pub(crate) fn map_account_status_reason_label(reason: &str) -> &'static str {
     match reason.trim().to_ascii_lowercase().as_str() {
         "usage_ok" => "用量恢复正常",
         "usage_http_deactivated" => "检测到账号已停用",
+        "usage_http_workspace_deactivated" => "检测到工作区已停用",
         "usage_http_401" => "授权失效",
         "manual_disable" => "手动禁用",
         "manual_disable_many" => "批量禁用",
@@ -73,6 +74,7 @@ pub(crate) fn map_isolation_reason(reason: &str) -> Option<(&'static str, &'stat
         "usage_http_deactivated" | "auto_governance_deactivated" => {
             Some(("deactivated", "检测到账号已停用"))
         }
+        "usage_http_workspace_deactivated" => Some(("deactivated", "检测到工作区已停用")),
         "usage_http_401" | "auto_governance_auth_failures" => {
             Some(("auth_invalid", "授权失效 / 401-403"))
         }
@@ -164,6 +166,14 @@ mod tests {
         assert_eq!(
             parsed.isolation_reason_label.as_deref(),
             Some("授权失效 / 401-403")
+        );
+    }
+
+    #[test]
+    fn map_account_status_reason_label_covers_workspace_deactivated() {
+        assert_eq!(
+            map_account_status_reason_label("usage_http_workspace_deactivated"),
+            "检测到工作区已停用"
         );
     }
 }

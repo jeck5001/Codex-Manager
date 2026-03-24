@@ -37,6 +37,16 @@ fn usage_refresh_error_class_catches_deactivated_account() {
 }
 
 #[test]
+fn usage_refresh_error_class_catches_deactivated_workspace() {
+    let message = "HTTP 403: This workspace has been deactivated and can no longer be used.";
+    assert!(usage_error_indicates_deactivated_account(message));
+    assert_eq!(
+        classify_usage_refresh_error(message),
+        "workspace_deactivated"
+    );
+}
+
+#[test]
 fn failure_event_throttle_dedupes_within_window() {
     let mut state = HashMap::new();
     let key = FailureThrottleKey {

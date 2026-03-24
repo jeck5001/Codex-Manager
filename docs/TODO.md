@@ -20,6 +20,7 @@
   - 已发现缺口：PRD 增强项大多未落地，其中 F01 是最适合先打通的 P0 首页主链路
   - 文档差异：`docs/ACCEPTANCE.md` 覆盖范围大于原 TODO，后续继续按验收项补齐
   - 文档导航：根 `README.md` 已收口为项目首页，深度说明继续以 `docs/README.md` 与 `CHANGELOG.md` 为准
+  - 本轮补齐账号治理小收口：`workspace_deactivated` 已纳入封禁识别，账号页支持“一键清理封禁账号”，5 小时 / 7 天额度列补充重置时间展示
 
 - [x] **通用验收缺口**
   - G7 `cargo clippy`（`codexmanager-service`）已收口：`cargo clippy -p codexmanager-service --tests -- -D warnings` 当前通过，本轮继续清空 `account/account_register.rs`、`app_settings/api/current.rs` 与测试层历史 warning
@@ -270,6 +271,12 @@
   - `docker build --no-cache -f docker/Dockerfile.service.local .` 通过（本轮复验 service 本地源码离线镜像构建）
   - `docker build --no-cache -f docker/Dockerfile.web.local .` 通过（本轮复验 web 本地源码离线镜像构建）
   - `docker compose -f docker/docker-compose.localbuild.yml build --no-cache codexmanager-service codexmanager-web` 失败：BuildKit/Compose 路径在复制 `vendor-rust/erased-serde/.cargo_vcs_info.json` 时出现校验和不一致；直接 `docker build` 可稳定通过，当前判定为 compose/build-cache 侧异常，待后续单独排查
+  - `cargo test -p codexmanager-service usage_refresh_error_class_catches_ -- --nocapture` 通过（本轮补齐 `workspace_deactivated` 封禁识别，覆盖账号 / 工作区停用错误归类）
+  - `cargo test -p codexmanager-service classify_failure_reason_detects_deactivated_ -- --nocapture` 通过（本轮补齐失败摘要中的工作区停用分类）
+  - `cargo test -p codexmanager-service banned_cleanup_matches_deactivated_accounts_only -- --nocapture` 通过（本轮补齐“一键清理封禁账号”后端判定）
+  - `cargo check -p codexmanager-service` 通过（本轮复验封禁清理 RPC、状态原因映射与账号页额度重置时间所依赖的 service 改动）
+  - `pnpm exec tsc --noEmit` 通过（本轮复验账号页“一键清理封禁账号”入口与 5 小时 / 7 天重置时间展示）
+  - `cargo check --manifest-path apps/src-tauri/Cargo.toml` 失败：当前 `vendor-rust/` 离线源缺少 `rfd`，编译在解析依赖阶段即中断，属于现有 workspace vendor 问题，待补齐依赖后复验桌面端命令桥编译
 
 ---
 
