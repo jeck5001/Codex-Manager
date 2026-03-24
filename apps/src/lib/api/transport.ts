@@ -24,6 +24,9 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_account_delete_unavailable_free: {
     rpcMethod: "account/deleteUnavailableFree",
   },
+  service_account_delete_banned: {
+    rpcMethod: "account/deleteBanned",
+  },
   service_account_update: { rpcMethod: "account/update" },
   service_account_update_many: { rpcMethod: "account/updateMany" },
   service_account_update_many_tags: { rpcMethod: "account/updateManyTags" },

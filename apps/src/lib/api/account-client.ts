@@ -85,6 +85,10 @@ interface DeleteUnavailableFreeResult {
   deleted?: number;
 }
 
+interface DeleteBannedAccountsResult {
+  deleted?: number;
+}
+
 interface LoginStartPayload {
   loginType?: string;
   openBrowser?: boolean;
@@ -675,6 +679,8 @@ export const accountClient = {
     invoke("service_account_delete_many", withAddr({ accountIds })),
   deleteUnavailableFree: () =>
     invoke<DeleteUnavailableFreeResult>("service_account_delete_unavailable_free", withAddr()),
+  deleteBanned: () =>
+    invoke<DeleteBannedAccountsResult>("service_account_delete_banned", withAddr()),
   updateSort: (accountId: string, sort: number) =>
     invoke("service_account_update", withAddr({ accountId, sort })),
   disableAccount: (accountId: string) =>

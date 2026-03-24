@@ -182,8 +182,8 @@ pub(crate) fn read_failure_reason_summary() -> Result<Vec<FailureReasonSummaryIt
 
 fn classify_failure_reason(message: &str) -> (&'static str, &'static str) {
     let normalized = message.trim().to_ascii_lowercase();
-    if looks_like_deactivated_account_error(message) {
-        return ("account_deactivated", "账号已停用");
+    if let Some((code, label)) = classify_deactivated_failure(message) {
+        return (code, label);
     }
     if let Some(reason) = crate::usage_http::refresh_token_auth_error_reason_from_message(message) {
         return match reason.as_code() {
@@ -217,11 +217,21 @@ fn classify_failure_reason(message: &str) -> (&'static str, &'static str) {
     ("other_failure", "其他异常")
 }
 
-fn looks_like_deactivated_account_error(message: &str) -> bool {
+fn classify_deactivated_failure(message: &str) -> Option<(&'static str, &'static str)> {
     let normalized = message.trim().to_ascii_lowercase();
-    normalized.contains("your openai account has been deactivated")
+    if normalized.contains("workspace has been deactivated")
+        || normalized.contains("workspace is deactivated")
+        || normalized.contains("workspace_deactivated")
+    {
+        return Some(("workspace_deactivated", "工作区已停用"));
+    }
+    if normalized.contains("your openai account has been deactivated")
         || (normalized.contains("account has been deactivated")
             && normalized.contains("help.openai.com"))
+    {
+        return Some(("account_deactivated", "账号已停用"));
+    }
+    None
 }
 
 #[cfg(test)]
@@ -235,6 +245,14 @@ mod tests {
         );
         assert_eq!(code, "account_deactivated");
         assert_eq!(label, "账号已停用");
+    }
+
+    #[test]
+    fn classify_failure_reason_detects_deactivated_workspace() {
+        let (code, label) =
+            classify_failure_reason("HTTP 403: This workspace has been deactivated.");
+        assert_eq!(code, "workspace_deactivated");
+        assert_eq!(label, "工作区已停用");
     }
 
     #[test]

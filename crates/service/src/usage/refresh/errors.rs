@@ -37,8 +37,8 @@ pub(super) fn mark_usage_unreachable_if_needed(storage: &Storage, account_id: &s
     if mark_account_unavailable_for_refresh_token_error(storage, account_id, err) {
         return;
     }
-    if usage_error_indicates_deactivated_account(err) {
-        set_account_status(storage, account_id, "deactivated", "usage_http_deactivated");
+    if let Some(reason) = usage_error_deactivation_reason(err) {
+        set_account_status(storage, account_id, "deactivated", reason);
         crate::gateway::mark_account_cooldown(
             account_id,
             crate::gateway::CooldownReason::Deactivated,
@@ -88,8 +88,11 @@ fn classify_usage_refresh_error(message: &str) -> String {
     {
         return format!("usage_status_{status_code}");
     }
-    if usage_error_indicates_deactivated_account(message) {
-        return "account_deactivated".to_string();
+    if let Some(reason) = usage_error_deactivation_reason(message) {
+        return match reason {
+            "usage_http_workspace_deactivated" => "workspace_deactivated".to_string(),
+            _ => "account_deactivated".to_string(),
+        };
     }
     if normalized.contains("timeout") {
         return "timeout".to_string();
@@ -110,10 +113,24 @@ fn classify_usage_refresh_error(message: &str) -> String {
 }
 
 pub(super) fn usage_error_indicates_deactivated_account(message: &str) -> bool {
+    usage_error_deactivation_reason(message).is_some()
+}
+
+fn usage_error_deactivation_reason(message: &str) -> Option<&'static str> {
     let normalized = message.trim().to_ascii_lowercase();
-    normalized.contains("your openai account has been deactivated")
+    if normalized.contains("workspace has been deactivated")
+        || normalized.contains("workspace is deactivated")
+        || normalized.contains("workspace_deactivated")
+    {
+        return Some("usage_http_workspace_deactivated");
+    }
+    if normalized.contains("your openai account has been deactivated")
         || (normalized.contains("account has been deactivated")
             && normalized.contains("help.openai.com"))
+    {
+        return Some("usage_http_deactivated");
+    }
+    None
 }
 
 fn extract_usage_status_code(message: &str) -> Option<u16> {

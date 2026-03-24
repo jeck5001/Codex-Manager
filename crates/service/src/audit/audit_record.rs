@@ -149,9 +149,10 @@ fn classify_auditable_method(method: &str) -> Option<(&'static str, &'static str
         | "apikey/modelFallback/set"
         | "apikey/allowedModels/set"
         | "apikey/responseCache/set" => Some(("set", "api_key")),
-        "account/delete" | "account/deleteMany" | "account/deleteUnavailableFree" => {
-            Some(("delete", "account"))
-        }
+        "account/delete"
+        | "account/deleteMany"
+        | "account/deleteUnavailableFree"
+        | "account/deleteBanned" => Some(("delete", "account")),
         "account/update"
         | "account/updateMany"
         | "account/updateManyTags"

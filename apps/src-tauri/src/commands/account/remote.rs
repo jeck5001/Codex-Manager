@@ -105,6 +105,13 @@ pub async fn service_account_delete_unavailable_free(
 }
 
 #[tauri::command]
+pub async fn service_account_delete_banned(
+    addr: Option<String>,
+) -> Result<serde_json::Value, String> {
+    rpc_call_in_background("account/deleteBanned", addr, None).await
+}
+
+#[tauri::command]
 pub async fn service_account_update(
     addr: Option<String>,
     account_id: String,

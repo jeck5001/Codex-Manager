@@ -49,6 +49,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "account/deleteUnavailableFree" => {
             super::value_or_error(account_cleanup::delete_unavailable_free_accounts())
         }
+        "account/deleteBanned" => super::value_or_error(account_cleanup::delete_banned_accounts()),
         "account/update" => {
             let account_id = super::str_param(req, "accountId").unwrap_or("");
             let sort = super::i64_param(req, "sort");

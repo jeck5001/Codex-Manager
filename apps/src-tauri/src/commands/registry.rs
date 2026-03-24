@@ -31,6 +31,7 @@ macro_rules! invoke_handler {
             crate::commands::account::remote::service_account_delete,
             crate::commands::account::remote::service_account_delete_many,
             crate::commands::account::remote::service_account_delete_unavailable_free,
+            crate::commands::account::remote::service_account_delete_banned,
             crate::commands::account::remote::service_account_update,
             crate::commands::account::remote::service_account_update_many,
             crate::commands::account::remote::service_account_payment_generate_link,
