@@ -195,7 +195,36 @@ function buildConfigPayload(
   return payload;
 }
 
-function summarizeConfig(config: Record<string, unknown>) {
+const SENSITIVE_CONFIG_KEYWORDS = [
+  "password",
+  "secret",
+  "token",
+  "api_key",
+  "apikey",
+  "access_token",
+  "refresh_token",
+  "client_secret",
+];
+
+function normalizeConfigKey(key: string) {
+  return key.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function isSensitiveConfigField(
+  key: string,
+  field: RegisterEmailServiceField | undefined
+) {
+  if (field?.secret) {
+    return true;
+  }
+  const normalized = normalizeConfigKey(key);
+  return SENSITIVE_CONFIG_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
+
+function summarizeConfig(
+  config: Record<string, unknown>,
+  typeMeta: RegisterEmailServiceType | undefined
+) {
   const entries = Object.entries(config || {}).filter(([, value]) => {
     if (typeof value === "boolean") {
       return value;
@@ -205,13 +234,20 @@ function summarizeConfig(config: Record<string, unknown>) {
 
   if (!entries.length) return "无配置";
 
+  const fieldMap = new Map((typeMeta?.configFields || []).map((field) => [field.name, field]));
+
   return entries
     .slice(0, 3)
     .map(([key, value]) => {
+      const field = fieldMap.get(key);
+      const displayKey = field?.label || key;
       if (typeof value === "boolean") {
-        return `${key}: 是`;
+        return `${displayKey}: 是`;
       }
-      return `${key}: ${String(value)}`;
+      if (isSensitiveConfigField(key, field)) {
+        return `${displayKey}: 已隐藏`;
+      }
+      return `${displayKey}: ${String(value)}`;
     })
     .join(" · ");
 }
@@ -763,7 +799,7 @@ export default function EmailServicesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="whitespace-normal text-xs text-muted-foreground">
-                        {summarizeConfig(service.config)}
+                        {summarizeConfig(service.config, typeMeta)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatTimestamp(service.lastUsed)}
