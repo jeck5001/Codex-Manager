@@ -783,5 +783,10 @@
   - [x] 第一版安全边界已收紧：仅支持 JSON body、精确路径或 `*` 匹配、顶层字段，且显式禁止改写 `model`
   - [x] 设置页传输配置区已补最小 JSON 编辑入口，支持直接保存 / 回滚当前规则
 
-- [ ] **模型别名 / 模型池**
-  - [ ] 先明确是做“对外别名 -> 单模型映射”还是“对外别名 -> 多上游池”的第一版最小闭环，避免和现有 fallback / route strategy 语义重叠
+- [x] **模型别名 / 模型池**
+  - [x] 已落地后端第一版：`appSettings/get|set` / `CODEXMANAGER_MODEL_ALIAS_POOLS` 支持全局 JSON 别名池配置，请求进入 gateway 后会先按 `ordered` / `weighted` 选出真实模型，再复用现有 API Key model fallback
+  - [x] 已补 allowlist 兼容：白名单允许别名时不要求重复配置池内真实模型；若别名未放行但本次选中的真实模型在白名单中，也允许通过
+  - [x] 已补日志与响应头收口：`requestedModel` 保留客户端别名，真实上游模型继续写入 `model`，当两者不同会返回 `X-CodexManager-Actual-Model`
+  - [x] 设置页网关传输配置区已补 `modelAliasPoolsJson` JSON 编辑入口、示例模板、保存 / 还原操作，当前无需再通过 RPC / 环境变量裸维护
+  - [x] 本轮验证：`cargo test -p codexmanager-service model_alias -- --nocapture`、`cargo test -p codexmanager-service validate_api_key_allowed_models_ -- --nocapture`、`cargo test -p codexmanager-service actual_model_header_value_only_returns_when_model_changes -- --nocapture`、`cargo test -p codexmanager-service --test app_settings app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing -- --nocapture`、`cargo check -p codexmanager-service`
+  - [x] 前端补充验证：`pnpm exec tsc --noEmit`、`pnpm run build:desktop`

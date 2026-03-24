@@ -43,20 +43,34 @@ fn build_model_attempt_chain(
 fn filter_model_attempt_chain_by_allowed_models(
     model_attempt_chain: Vec<String>,
     allowed_models: &[String],
+    primary_model: Option<&str>,
+    requested_model: Option<&str>,
 ) -> Vec<String> {
     if allowed_models.is_empty() {
         return model_attempt_chain;
     }
 
+    let requested_model_allowed = requested_model
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some_and(|model| allowed_models.iter().any(|allowed| allowed == model));
+    let primary_model = primary_model
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
     model_attempt_chain
         .into_iter()
-        .filter(|model| allowed_models.iter().any(|allowed| allowed == model))
+        .filter(|model| {
+            allowed_models.iter().any(|allowed| allowed == model)
+                || requested_model_allowed && primary_model == Some(model.as_str())
+        })
         .collect()
 }
 
 fn load_model_attempt_chain(
     storage: &codexmanager_core::storage::Storage,
     key_id: &str,
+    primary_model: Option<&str>,
     requested_model: Option<&str>,
 ) -> Vec<String> {
     let allowed_models = storage
@@ -72,9 +86,25 @@ fn load_model_attempt_chain(
         .map(|config| crate::apikey_model_fallback::parse_model_chain(&config.model_chain_json))
         .unwrap_or_default();
     filter_model_attempt_chain_by_allowed_models(
-        build_model_attempt_chain(requested_model, configured_chain.as_slice()),
+        build_model_attempt_chain(primary_model, configured_chain.as_slice()),
         allowed_models.as_slice(),
+        primary_model,
+        requested_model,
     )
+}
+
+fn actual_model_header_value<'a>(
+    requested_model: Option<&str>,
+    actual_model: Option<&'a str>,
+) -> Option<&'a str> {
+    let actual_model = actual_model?;
+    let normalized_actual = normalize_model_name(actual_model)?;
+    let normalized_requested = requested_model.and_then(normalize_model_name)?;
+    if Some(normalized_requested.as_str()) == Some(normalized_actual.as_str()) {
+        None
+    } else {
+        Some(actual_model)
+    }
 }
 
 fn build_api_key_response_cache_key(
@@ -172,13 +202,14 @@ pub(in super::super) fn proxy_validated_request(
         request_method,
         key_id,
         api_key_name,
+        requested_model_for_log,
         model_for_log,
         reasoning_for_log,
         method,
     } = validated;
     let started_at = Instant::now();
     let client_is_stream = is_stream;
-    let requested_model = model_for_log.clone();
+    let requested_model = requested_model_for_log.clone();
     let is_compact_path =
         path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?");
     // 中文注释：对齐 CPA：/v1/responses 上游固定走 SSE。
@@ -261,6 +292,8 @@ pub(in super::super) fn proxy_validated_request(
             reasoning_for_log.as_deref(),
             upstream_base_url.as_deref(),
             static_headers_json.as_deref(),
+            requested_model.as_deref(),
+            actual_model_header_value(requested_model.as_deref(), model_for_log.as_deref()),
             request_deadline,
             started_at,
         );
@@ -286,8 +319,9 @@ pub(in super::super) fn proxy_validated_request(
     };
     let base = super::config::resolve_upstream_base_url();
     let base_candidates = candidates;
+    let primary_model = model_for_log.as_deref();
     let model_attempt_chain =
-        load_model_attempt_chain(&storage, &key_id, requested_model.as_deref());
+        load_model_attempt_chain(&storage, &key_id, primary_model, requested_model.as_deref());
     let model_attempt_count = model_attempt_chain.len().max(1);
     let allow_openai_fallback = false;
     let disable_challenge_stateless_retry = !(path.starts_with("/v1/responses")
@@ -309,6 +343,7 @@ pub(in super::super) fn proxy_validated_request(
         let current_model_for_log = model_attempt_chain
             .get(model_idx)
             .map(String::as_str)
+            .or(primary_model)
             .or(requested_model.as_deref());
         let model_fallback_path = (model_attempt_chain.len() > 1
             && model_idx < model_attempt_chain.len())
@@ -367,11 +402,10 @@ pub(in super::super) fn proxy_validated_request(
                 started_at,
                 client_is_stream,
                 upstream_is_stream,
-                actual_model_header: if model_idx > 0 {
-                    current_model_for_log
-                } else {
-                    None
-                },
+                actual_model_header: actual_model_header_value(
+                    requested_model.as_deref(),
+                    current_model_for_log,
+                ),
                 response_cache_key: response_cache_key.as_deref(),
                 has_more_models,
                 debug,
@@ -423,6 +457,7 @@ pub(in super::super) fn proxy_validated_request(
     let final_model_for_log = model_attempt_chain
         .last()
         .map(String::as_str)
+        .or(primary_model)
         .or(requested_model.as_deref());
     let final_context = GatewayUpstreamExecutionContext::new(
         &trace_id,
@@ -463,7 +498,7 @@ pub(in super::super) fn proxy_validated_request(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_model_attempt_chain, exhausted_gateway_error_for_log,
+        actual_model_header_value, build_model_attempt_chain, exhausted_gateway_error_for_log,
         filter_model_attempt_chain_by_allowed_models,
     };
 
@@ -514,8 +549,32 @@ mod tests {
                 "gpt-4o".to_string(),
             ],
             &["o3".to_string(), "gpt-4o".to_string()],
+            Some("o3"),
+            Some("o3"),
         );
 
         assert_eq!(filtered, vec!["o3", "gpt-4o"]);
+    }
+
+    #[test]
+    fn filter_model_attempt_chain_keeps_alias_selected_primary_model() {
+        let filtered = filter_model_attempt_chain_by_allowed_models(
+            vec!["o3".to_string(), "o4-mini".to_string()],
+            &["o3-auto".to_string()],
+            Some("o3"),
+            Some("o3-auto"),
+        );
+
+        assert_eq!(filtered, vec!["o3"]);
+    }
+
+    #[test]
+    fn actual_model_header_value_only_returns_when_model_changes() {
+        assert_eq!(
+            actual_model_header_value(Some("o3-auto"), Some("o3")),
+            Some("o3")
+        );
+        assert_eq!(actual_model_header_value(Some("o3"), Some("o3")), None);
+        assert_eq!(actual_model_header_value(None, Some("o3")), None);
     }
 }

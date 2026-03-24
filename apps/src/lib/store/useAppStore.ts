@@ -56,6 +56,7 @@ export const useAppStore = create<AppState>((set) => ({
     quotaProtectionThresholdPercent: 10,
     requestCompressionEnabled: true,
     payloadRewriteRulesJson: "[]",
+    modelAliasPoolsJson: "[]",
     retryPolicyMaxRetries: 3,
     retryPolicyBackoffStrategy: "exponential",
     retryPolicyRetryableStatusCodes: [429, 500, 502, 503],

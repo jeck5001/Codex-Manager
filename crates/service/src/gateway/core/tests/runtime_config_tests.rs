@@ -51,6 +51,10 @@ fn reload_from_env_updates_timeout_and_cookie() {
         ENV_PAYLOAD_REWRITE_RULES,
         r#"[{"enabled":true,"path":"/v1/responses","field":"service_tier","mode":"set_if_missing","value":"flex"}]"#,
     );
+    let _model_alias_pools_guard = EnvGuard::set(
+        ENV_MODEL_ALIAS_POOLS,
+        r#"[{"enabled":true,"alias":"o3-auto","strategy":"ordered","targets":[{"enabled":true,"model":"o3","weight":1}]}]"#,
+    );
 
     reload_from_env();
 
@@ -76,6 +80,10 @@ fn reload_from_env_updates_timeout_and_cookie() {
     assert_eq!(rules[0].field, "service_tier");
     assert_eq!(rules[0].mode, PayloadRewriteMode::SetIfMissing);
     assert_eq!(rules[0].value, serde_json::json!("flex"));
+    let pools = current_model_alias_pools();
+    assert_eq!(pools.len(), 1);
+    assert_eq!(pools[0].alias, "o3-auto");
+    assert_eq!(pools[0].targets[0].model, "o3");
 }
 
 #[test]
@@ -217,6 +225,55 @@ fn set_payload_rewrite_rules_json_rejects_model_override() {
     .expect_err("model override should be rejected");
 
     assert!(err.contains("does not support 'model'"));
+}
+
+#[test]
+fn set_model_alias_pools_json_normalizes_env_and_cache() {
+    let _guard = test_guard();
+    let _guard = EnvGuard::clear(ENV_MODEL_ALIAS_POOLS);
+
+    let applied = set_model_alias_pools_json(Some(
+        r#"[{"alias":"o3-auto","strategy":"weighted","targets":[{"model":"o3","weight":8},{"model":"o4-mini","weight":2}]}]"#,
+    ))
+    .expect("set model alias pools");
+
+    assert_eq!(
+        applied,
+        r#"[{"enabled":true,"alias":"o3-auto","strategy":"weighted","targets":[{"enabled":true,"model":"o3","weight":8,"channel":null},{"enabled":true,"model":"o4-mini","weight":2,"channel":null}]}]"#
+    );
+    assert_eq!(
+        std::env::var(ENV_MODEL_ALIAS_POOLS).ok().as_deref(),
+        Some(applied.as_str())
+    );
+    assert_eq!(current_model_alias_pools().len(), 1);
+}
+
+#[test]
+fn set_model_alias_pools_json_rejects_duplicate_alias() {
+    let _guard = test_guard();
+
+    let err = set_model_alias_pools_json(Some(
+        r#"[{"alias":"o3-auto","strategy":"ordered","targets":[{"model":"o3"}]},{"alias":"o3-auto","strategy":"ordered","targets":[{"model":"o4-mini"}]}]"#,
+    ))
+    .expect_err("duplicate alias should be rejected");
+
+    assert!(err.contains("duplicates"));
+}
+
+#[test]
+fn resolve_model_alias_supports_ordered_and_weighted_selection() {
+    let _guard = test_guard();
+
+    set_model_alias_pools_json(Some(
+        r#"[{"alias":"o3-auto","strategy":"ordered","targets":[{"model":"o3"},{"enabled":false,"model":"o4-mini"}]},{"alias":"balanced-auto","strategy":"weighted","targets":[{"model":"o3","weight":1},{"model":"o4-mini","weight":3}]}]"#,
+    ))
+    .expect("set model alias pools");
+
+    let ordered = resolve_model_alias("o3-auto", "trace-a").expect("ordered alias");
+    assert_eq!(ordered.actual_model, "o3");
+
+    let weighted = resolve_model_alias("balanced-auto", "trace-b").expect("weighted alias");
+    assert!(weighted.actual_model == "o3" || weighted.actual_model == "o4-mini");
 }
 
 #[test]

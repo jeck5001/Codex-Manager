@@ -25,6 +25,7 @@ pub(super) struct LocalValidationResult {
     pub(super) request_method: String,
     pub(super) key_id: String,
     pub(super) api_key_name: Option<String>,
+    pub(super) requested_model_for_log: Option<String>,
     pub(super) model_for_log: Option<String>,
     pub(super) reasoning_for_log: Option<String>,
     pub(super) method: Method,

@@ -33,6 +33,7 @@ pub const APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY: &str =
     "gateway.upstream_stream_timeout_ms";
 pub const APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY: &str =
     "gateway.payload_rewrite_rules_json";
+pub const APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY: &str = "gateway.model_alias_pools_json";
 pub const APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY: &str =
     "gateway.sse_keepalive_interval_ms";
 pub const APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY: &str = "gateway.background_tasks";

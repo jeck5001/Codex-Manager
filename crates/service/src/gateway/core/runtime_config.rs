@@ -30,6 +30,7 @@ static UPSTREAM_COOKIE: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static UPSTREAM_PROXY_URL: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static FREE_ACCOUNT_MAX_MODEL: OnceLock<RwLock<String>> = OnceLock::new();
 static PAYLOAD_REWRITE_RULES: OnceLock<RwLock<Vec<PayloadRewriteRule>>> = OnceLock::new();
+static MODEL_ALIAS_POOLS: OnceLock<RwLock<Vec<ModelAliasPool>>> = OnceLock::new();
 static ORIGINATOR: OnceLock<RwLock<String>> = OnceLock::new();
 static RESIDENCY_REQUIREMENT: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static TOKEN_EXCHANGE_CLIENT_ID: OnceLock<RwLock<String>> = OnceLock::new();
@@ -67,6 +68,7 @@ const ENV_UPSTREAM_PROXY_URL: &str = "CODEXMANAGER_UPSTREAM_PROXY_URL";
 const ENV_FREE_ACCOUNT_MAX_MODEL: &str = "CODEXMANAGER_FREE_ACCOUNT_MAX_MODEL";
 const ENV_ORIGINATOR: &str = "CODEXMANAGER_ORIGINATOR";
 const ENV_PAYLOAD_REWRITE_RULES: &str = "CODEXMANAGER_PAYLOAD_REWRITE_RULES";
+const ENV_MODEL_ALIAS_POOLS: &str = "CODEXMANAGER_MODEL_ALIAS_POOLS";
 const ENV_RESIDENCY_REQUIREMENT: &str = "CODEXMANAGER_RESIDENCY_REQUIREMENT";
 pub(crate) const RESIDENCY_HEADER_NAME: &str = "x-openai-internal-codex-residency";
 
@@ -89,6 +91,53 @@ pub(crate) struct PayloadRewriteRule {
 
 fn payload_rewrite_rule_enabled_default() -> bool {
     true
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ModelAliasPoolStrategy {
+    Ordered,
+    Weighted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub(crate) struct ModelAliasPoolTarget {
+    #[serde(default = "model_alias_pool_target_enabled_default")]
+    pub enabled: bool,
+    pub model: String,
+    #[serde(default = "model_alias_pool_target_weight_default")]
+    pub weight: u32,
+    #[serde(default)]
+    pub channel: Option<String>,
+}
+
+fn model_alias_pool_target_enabled_default() -> bool {
+    true
+}
+
+fn model_alias_pool_target_weight_default() -> u32 {
+    1
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub(crate) struct ModelAliasPool {
+    #[serde(default = "model_alias_pool_enabled_default")]
+    pub enabled: bool,
+    pub alias: String,
+    pub strategy: ModelAliasPoolStrategy,
+    #[serde(default)]
+    pub targets: Vec<ModelAliasPoolTarget>,
+}
+
+fn model_alias_pool_enabled_default() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ModelAliasResolution {
+    pub alias: String,
+    pub actual_model: String,
+    pub channel: Option<String>,
 }
 
 #[derive(Default, Clone)]
@@ -228,6 +277,35 @@ pub(crate) fn current_payload_rewrite_rules_json() -> String {
     serde_json::to_string(&rules).unwrap_or_else(|_| "[]".to_string())
 }
 
+pub(crate) fn current_model_alias_pools() -> Vec<ModelAliasPool> {
+    ensure_runtime_config_loaded();
+    crate::lock_utils::read_recover(model_alias_pools_cell(), "model_alias_pools").clone()
+}
+
+pub(crate) fn current_model_alias_pools_json() -> String {
+    let pools = current_model_alias_pools();
+    serde_json::to_string(&pools).unwrap_or_else(|_| "[]".to_string())
+}
+
+pub(crate) fn resolve_model_alias(
+    requested_model: &str,
+    trace_id: &str,
+) -> Option<ModelAliasResolution> {
+    ensure_runtime_config_loaded();
+    let requested_model = normalize_alias_or_model_token(requested_model)?;
+    let pools = crate::lock_utils::read_recover(model_alias_pools_cell(), "model_alias_pools");
+    let pool = pools.iter().find(|pool| {
+        pool.enabled
+            && normalize_alias_or_model_token(pool.alias.as_str()).as_deref()
+                == Some(requested_model.as_str())
+    })?;
+    select_model_alias_target(pool, trace_id).map(|target| ModelAliasResolution {
+        alias: requested_model,
+        actual_model: target.model.clone(),
+        channel: target.channel.clone(),
+    })
+}
+
 pub(crate) fn account_max_inflight_limit() -> usize {
     ensure_runtime_config_loaded();
     ACCOUNT_MAX_INFLIGHT.load(Ordering::Relaxed)
@@ -355,6 +433,21 @@ pub(crate) fn set_payload_rewrite_rules_json(raw: Option<&str>) -> Result<String
     let mut cached =
         crate::lock_utils::write_recover(payload_rewrite_rules_cell(), "payload_rewrite_rules");
     *cached = rules;
+    Ok(normalized)
+}
+
+pub(crate) fn set_model_alias_pools_json(raw: Option<&str>) -> Result<String, String> {
+    ensure_runtime_config_loaded();
+    let normalized = normalize_model_alias_pools_json(raw)?;
+    let pools = parse_model_alias_pools_json(Some(normalized.as_str()))?;
+    if pools.is_empty() {
+        std::env::remove_var(ENV_MODEL_ALIAS_POOLS);
+    } else {
+        std::env::set_var(ENV_MODEL_ALIAS_POOLS, normalized.as_str());
+    }
+    let mut cached =
+        crate::lock_utils::write_recover(model_alias_pools_cell(), "model_alias_pools");
+    *cached = pools;
     Ok(normalized)
 }
 
@@ -527,6 +620,27 @@ pub(super) fn reload_from_env() {
     *cached_payload_rewrite_rules = payload_rewrite_rules;
     drop(cached_payload_rewrite_rules);
 
+    let model_alias_pools =
+        env_non_empty(ENV_MODEL_ALIAS_POOLS)
+            .as_deref()
+            .map_or_else(Vec::new, |raw| {
+                match parse_model_alias_pools_json(Some(raw)) {
+                    Ok(pools) => pools,
+                    Err(err) => {
+                        log::warn!(
+                            "event=gateway_invalid_model_alias_pools source=env var={} err={}",
+                            ENV_MODEL_ALIAS_POOLS,
+                            err
+                        );
+                        Vec::new()
+                    }
+                }
+            });
+    let mut cached_model_alias_pools =
+        crate::lock_utils::write_recover(model_alias_pools_cell(), "model_alias_pools");
+    *cached_model_alias_pools = model_alias_pools;
+    drop(cached_model_alias_pools);
+
     let originator = env_non_empty(ENV_ORIGINATOR)
         .and_then(|value| normalize_originator(value.as_str()).ok())
         .unwrap_or_else(|| DEFAULT_ORIGINATOR.to_string());
@@ -630,6 +744,10 @@ fn payload_rewrite_rules_cell() -> &'static RwLock<Vec<PayloadRewriteRule>> {
     PAYLOAD_REWRITE_RULES.get_or_init(|| RwLock::new(Vec::new()))
 }
 
+fn model_alias_pools_cell() -> &'static RwLock<Vec<ModelAliasPool>> {
+    MODEL_ALIAS_POOLS.get_or_init(|| RwLock::new(Vec::new()))
+}
+
 fn originator_cell() -> &'static RwLock<String> {
     ORIGINATOR.get_or_init(|| RwLock::new(DEFAULT_ORIGINATOR.to_string()))
 }
@@ -695,6 +813,12 @@ fn normalize_payload_rewrite_rules_json(raw: Option<&str>) -> Result<String, Str
         .map_err(|err| format!("serialize payload rewrite rules failed: {err}"))
 }
 
+fn normalize_model_alias_pools_json(raw: Option<&str>) -> Result<String, String> {
+    let pools = parse_model_alias_pools_json(raw)?;
+    serde_json::to_string(&pools)
+        .map_err(|err| format!("serialize model alias pools failed: {err}"))
+}
+
 fn parse_payload_rewrite_rules_json(raw: Option<&str>) -> Result<Vec<PayloadRewriteRule>, String> {
     let Some(raw) = raw.map(str::trim) else {
         return Ok(Vec::new());
@@ -706,6 +830,19 @@ fn parse_payload_rewrite_rules_json(raw: Option<&str>) -> Result<Vec<PayloadRewr
         .map_err(|err| format!("invalid payload rewrite rules json: {err}"))?;
     validate_payload_rewrite_rules(&rules)?;
     Ok(rules)
+}
+
+fn parse_model_alias_pools_json(raw: Option<&str>) -> Result<Vec<ModelAliasPool>, String> {
+    let Some(raw) = raw.map(str::trim) else {
+        return Ok(Vec::new());
+    };
+    if raw.is_empty() {
+        return Ok(Vec::new());
+    }
+    let pools = serde_json::from_str::<Vec<ModelAliasPool>>(raw)
+        .map_err(|err| format!("invalid model alias pools json: {err}"))?;
+    validate_model_alias_pools(&pools)?;
+    Ok(pools)
 }
 
 fn validate_payload_rewrite_rules(rules: &[PayloadRewriteRule]) -> Result<(), String> {
@@ -734,6 +871,93 @@ fn validate_payload_rewrite_rules(rules: &[PayloadRewriteRule]) -> Result<(), St
         }
     }
     Ok(())
+}
+
+fn validate_model_alias_pools(pools: &[ModelAliasPool]) -> Result<(), String> {
+    let mut seen_aliases = std::collections::BTreeSet::new();
+    for (pool_idx, pool) in pools.iter().enumerate() {
+        let Some(alias) = normalize_alias_or_model_token(pool.alias.as_str()) else {
+            return Err(format!("pool[{pool_idx}].alias is required"));
+        };
+        if !seen_aliases.insert(alias.clone()) {
+            return Err(format!("pool[{pool_idx}].alias duplicates '{alias}'"));
+        }
+        if pool.targets.is_empty() {
+            return Err(format!("pool[{pool_idx}].targets must not be empty"));
+        }
+        let enabled_targets = pool.targets.iter().filter(|target| target.enabled).count();
+        if pool.enabled && enabled_targets == 0 {
+            return Err(format!(
+                "pool[{pool_idx}] must include at least one enabled target"
+            ));
+        }
+        let mut total_weight = 0_u64;
+        for (target_idx, target) in pool.targets.iter().enumerate() {
+            if normalize_alias_or_model_token(target.model.as_str()).is_none() {
+                return Err(format!(
+                    "pool[{pool_idx}].targets[{target_idx}].model is required"
+                ));
+            }
+            if target.enabled {
+                total_weight += u64::from(target.weight);
+            }
+        }
+        if pool.enabled
+            && matches!(pool.strategy, ModelAliasPoolStrategy::Weighted)
+            && total_weight == 0
+        {
+            return Err(format!(
+                "pool[{pool_idx}] weighted strategy requires enabled targets with weight > 0"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn normalize_alias_or_model_token(raw: &str) -> Option<String> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+    normalized
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/' | ':'))
+        .then_some(normalized)
+}
+
+fn select_model_alias_target<'a>(
+    pool: &'a ModelAliasPool,
+    trace_id: &str,
+) -> Option<&'a ModelAliasPoolTarget> {
+    let enabled_targets = pool
+        .targets
+        .iter()
+        .filter(|target| target.enabled)
+        .collect::<Vec<_>>();
+    if enabled_targets.is_empty() {
+        return None;
+    }
+    match pool.strategy {
+        ModelAliasPoolStrategy::Ordered => enabled_targets.first().copied(),
+        ModelAliasPoolStrategy::Weighted => {
+            let total_weight = enabled_targets
+                .iter()
+                .map(|target| u64::from(target.weight))
+                .sum::<u64>();
+            if total_weight == 0 {
+                return enabled_targets.first().copied();
+            }
+            let ticket = stable_account_hash(trace_id) % total_weight;
+            let mut cursor = 0_u64;
+            for target in enabled_targets {
+                cursor += u64::from(target.weight);
+                if ticket < cursor {
+                    return Some(target);
+                }
+            }
+            None
+        }
+    }
 }
 
 fn normalize_model_slug(raw: &str) -> Result<String, String> {
