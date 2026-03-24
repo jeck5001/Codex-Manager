@@ -262,6 +262,8 @@
   - `cargo test -p codexmanager-service requestlog_export_rpc_supports_key_model_and_time_filters -- --nocapture` 通过（本轮复验请求日志导出扩展筛选，并覆盖 `keyIds` 多密钥过滤）
   - `pnpm exec tsc --noEmit` 通过（本轮复验平台密钥页完整 ID 展示、复制兜底与请求日志按密钥名称筛选）
   - `pnpm run build:desktop` 通过（本轮复验平台密钥页与请求日志页桌面静态构建）
+  - `pnpm exec tsc --noEmit` 通过（本轮复验请求日志快捷日期筛选：昨天 / 今天 / 本周 / 本月）
+  - `pnpm run build:desktop` 通过（本轮复验请求日志快捷日期筛选桌面静态构建）
 
 ---
 
@@ -571,6 +573,7 @@
   - [x] 导出使用当前页面的筛选条件
   - [x] Web / Docker 版优先走 `/api/export/requestlogs` 直接下载
   - [x] 日志页补充 `keyId / model / timeFrom / timeTo` 筛选并与列表、摘要、导出联动
+  - [x] 日志页时间筛选补充快捷日期按钮：昨天 / 今天 / 本周 / 本月，并同步当前 URL 查询参数
   - [x] 验收补齐：平台密钥筛选输入支持密钥名称或 ID 模糊匹配，并在多匹配时联动列表、摘要与导出走 `keyIds`
   - [x] 验收补齐：补充流式 JSON 导出与 HTTP JSON 下载头回归测试，确认 CSV / JSON 两种格式均可下载
   - [x] 日志页平台密钥列、详情浮层与筛选标签补充平台密钥名称 + ID 展示，便于直接区分不同 Key

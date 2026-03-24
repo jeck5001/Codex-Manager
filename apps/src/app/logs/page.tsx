@@ -59,6 +59,7 @@ import { RequestLog } from "@/types";
 
 type StatusFilter = "all" | "2xx" | "4xx" | "5xx";
 type ExportFormat = "csv" | "json";
+type DateRangePreset = "yesterday" | "today" | "week" | "month";
 type ExportMutationResult =
   | { mode: "http" }
   | { mode: "rpc"; result: Awaited<ReturnType<typeof serviceClient.exportRequestLogs>> };
@@ -76,6 +77,13 @@ const QUICK_LOG_FILTERS: Array<{
   { key: "dns", label: "DNS", query: "error:dns", statusFilter: "all" },
   { key: "connect", label: "连接失败", query: "error:connect", statusFilter: "all" },
   { key: "5xx", label: "5xx 上游", query: "status:5xx", statusFilter: "5xx" },
+];
+
+const DATE_RANGE_PRESETS: Array<{ key: DateRangePreset; label: string }> = [
+  { key: "yesterday", label: "昨天" },
+  { key: "today", label: "今天" },
+  { key: "week", label: "本周" },
+  { key: "month", label: "本月" },
 ];
 
 function normalizeStatusFilter(value: string | null | undefined): StatusFilter {
@@ -199,6 +207,51 @@ function toDateTimeLocalValue(timestamp: number | null): string {
   const offset = date.getTimezoneOffset();
   const localDate = new Date(date.getTime() - offset * 60_000);
   return localDate.toISOString().slice(0, 16);
+}
+
+function startOfLocalDay(date: Date): Date {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function startOfLocalWeek(date: Date): Date {
+  const next = startOfLocalDay(date);
+  const weekDay = next.getDay();
+  const diff = weekDay === 0 ? 6 : weekDay - 1;
+  next.setDate(next.getDate() - diff);
+  return next;
+}
+
+function startOfLocalMonth(date: Date): Date {
+  const next = startOfLocalDay(date);
+  next.setDate(1);
+  return next;
+}
+
+function resolveDateRangePreset(preset: DateRangePreset): {
+  timeFromInput: string;
+  timeToInput: string;
+} {
+  const now = new Date();
+  const todayStart = startOfLocalDay(now);
+  let from = todayStart;
+  let to = now;
+
+  if (preset === "yesterday") {
+    from = new Date(todayStart);
+    from.setDate(from.getDate() - 1);
+    to = new Date(todayStart.getTime() - 1);
+  } else if (preset === "week") {
+    from = startOfLocalWeek(now);
+  } else if (preset === "month") {
+    from = startOfLocalMonth(now);
+  }
+
+  return {
+    timeFromInput: toDateTimeLocalValue(Math.floor(from.getTime() / 1000)),
+    timeToInput: toDateTimeLocalValue(Math.floor(to.getTime() / 1000)),
+  };
 }
 
 function readPositiveIntegerParam(value: string | null): number | null {
@@ -699,6 +752,7 @@ function LogsPageContent() {
   const [timeToInput, setTimeToInput] = useState(() =>
     toDateTimeLocalValue(readPositiveIntegerParam(searchParams.get("timeTo"))),
   );
+  const [activeDatePreset, setActiveDatePreset] = useState<DateRangePreset | null>(null);
   const pageSizeNumber = Number(pageSize) || 10;
   const timeFromTs = useMemo(() => parseDateTimeLocalValue(timeFromInput), [timeFromInput]);
   const timeToTs = useMemo(() => parseDateTimeLocalValue(timeToInput), [timeToInput]);
@@ -717,6 +771,7 @@ function LogsPageContent() {
       setTimeToInput(
         toDateTimeLocalValue(readPositiveIntegerParam(searchParams.get("timeTo"))),
       );
+      setActiveDatePreset(null);
       setPage(1);
     });
   }, [searchParams]);
@@ -993,6 +1048,7 @@ function LogsPageContent() {
     setModelFilter("");
     setTimeFromInput("");
     setTimeToInput("");
+    setActiveDatePreset(null);
     setPage(1);
     router.push("/logs");
   };
@@ -1019,9 +1075,11 @@ function LogsPageContent() {
     } else if (key === "timeFrom") {
       nextTimeFrom = "";
       setTimeFromInput("");
+      setActiveDatePreset(null);
     } else if (key === "timeTo") {
       nextTimeTo = "";
       setTimeToInput("");
+      setActiveDatePreset(null);
     }
     setPage(1);
     const params = new URLSearchParams();
@@ -1095,6 +1153,37 @@ function LogsPageContent() {
       params.set("timeTo", String(timeToTs));
     }
     router.push(params.size > 0 ? `/logs?${params.toString()}` : "/logs");
+  };
+
+  const handleApplyDatePreset = (preset: DateRangePreset) => {
+    const nextRange = resolveDateRangePreset(preset);
+    setTimeFromInput(nextRange.timeFromInput);
+    setTimeToInput(nextRange.timeToInput);
+    setActiveDatePreset(preset);
+    setPage(1);
+
+    const params = new URLSearchParams();
+    if (search.trim()) {
+      params.set("query", search.trim());
+    }
+    if (filter !== "all") {
+      params.set("statusFilter", filter);
+    }
+    if (keyIdFilter.trim()) {
+      params.set("keyId", keyIdFilter.trim());
+    }
+    if (modelFilter.trim()) {
+      params.set("model", modelFilter.trim());
+    }
+    const nextTimeFromTs = parseDateTimeLocalValue(nextRange.timeFromInput);
+    if (nextTimeFromTs != null) {
+      params.set("timeFrom", String(nextTimeFromTs));
+    }
+    const nextTimeToTs = parseDateTimeLocalValue(nextRange.timeToInput);
+    if (nextTimeToTs != null) {
+      params.set("timeTo", String(nextTimeToTs));
+    }
+    router.push(`/logs?${params.toString()}`);
   };
 
   return (
@@ -1213,6 +1302,7 @@ function LogsPageContent() {
               value={timeFromInput}
               onChange={(event) => {
                 setTimeFromInput(event.target.value);
+                setActiveDatePreset(null);
                 setPage(1);
               }}
             />
@@ -1222,9 +1312,30 @@ function LogsPageContent() {
               value={timeToInput}
               onChange={(event) => {
                 setTimeToInput(event.target.value);
+                setActiveDatePreset(null);
                 setPage(1);
               }}
             />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              快捷日期:
+            </span>
+            {DATE_RANGE_PRESETS.map((preset) => (
+              <Button
+                key={preset.key}
+                type="button"
+                variant={activeDatePreset === preset.key ? "default" : "outline"}
+                size="sm"
+                className={cn(
+                  "h-8 rounded-full px-3 text-xs",
+                  activeDatePreset !== preset.key && "glass-card",
+                )}
+                onClick={() => handleApplyDatePreset(preset.key)}
+              >
+                {preset.label}
+              </Button>
+            ))}
           </div>
           {hasInvalidTimeRange ? (
             <div className="text-xs text-amber-500">
