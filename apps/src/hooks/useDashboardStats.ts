@@ -112,6 +112,7 @@ export function useDashboardStats() {
   const isolatedAccounts = accounts.filter((item) => item.isIsolated).length;
 
   return {
+    accounts,
     stats: {
       total: totalAccounts,
       available: availableAccounts,

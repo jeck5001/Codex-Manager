@@ -278,6 +278,7 @@ fn to_account_summary(
     let payment_state = payment_state_map.get(&acc.id);
     let status_meta = status_meta_map.get(&acc.id);
     let cooldown = cooldown_map.get(&acc.id);
+    let protection = crate::account_risk::derive_new_account_protection_state(&acc);
     let label = resolve_account_display_label(storage, &acc);
     let tags = account_tags_map
         .get(&acc.id)
@@ -304,6 +305,8 @@ fn to_account_summary(
         cooldown_until: cooldown.map(|entry| entry.until),
         cooldown_reason_code: cooldown.map(|entry| entry.reason_code.clone()),
         cooldown_reason: cooldown.map(|entry| entry.reason_label.clone()),
+        new_account_protection_until: protection.map(|state| state.until),
+        new_account_protection_reason: protection.map(|state| state.reason.to_string()),
         subscription_plan_type: payment_state
             .and_then(|state| state.subscription_plan_type.clone()),
         subscription_updated_at: payment_state.and_then(|state| state.subscription_updated_at),

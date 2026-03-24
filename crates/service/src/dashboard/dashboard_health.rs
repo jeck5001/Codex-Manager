@@ -238,6 +238,8 @@ mod tests {
             cooldown_until: None,
             cooldown_reason_code: None,
             cooldown_reason: None,
+            new_account_protection_until: None,
+            new_account_protection_reason: None,
             subscription_plan_type: None,
             subscription_updated_at: None,
             team_manager_uploaded_at: None,

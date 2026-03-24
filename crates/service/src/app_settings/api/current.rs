@@ -7,7 +7,8 @@ use std::collections::BTreeMap;
 use super::{
     current_background_tasks_snapshot_value, current_close_to_tray_on_close_setting,
     current_env_overrides, current_gateway_free_account_max_model,
-    current_gateway_model_alias_pools_json, current_gateway_originator,
+    current_gateway_model_alias_pools_json, current_gateway_new_account_protection_days,
+    current_gateway_originator,
     current_gateway_payload_rewrite_rules_json, current_gateway_quota_protection_enabled,
     current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
@@ -24,6 +25,7 @@ use super::{
     APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
     APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+    APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
     APP_SETTING_GATEWAY_ORIGINATOR_KEY, APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
@@ -74,6 +76,7 @@ struct PersistCurrentSnapshotInput<'a> {
     remote_management_enabled: bool,
     route_strategy: &'a str,
     free_account_max_model: &'a str,
+    new_account_protection_days: u64,
     quota_protection_enabled: bool,
     quota_protection_threshold_percent: u64,
     request_compression_enabled: bool,
@@ -116,6 +119,7 @@ pub(super) fn current_app_settings_value(
     let remote_management_enabled = current_remote_management_enabled();
     let route_strategy = crate::gateway::current_route_strategy().to_string();
     let free_account_max_model = current_gateway_free_account_max_model();
+    let new_account_protection_days = current_gateway_new_account_protection_days();
     let quota_protection_enabled = current_gateway_quota_protection_enabled();
     let quota_protection_threshold_percent = current_gateway_quota_protection_threshold_percent();
     let request_compression_enabled = current_gateway_request_compression_enabled();
@@ -158,6 +162,7 @@ pub(super) fn current_app_settings_value(
         remote_management_enabled,
         route_strategy: &route_strategy,
         free_account_max_model: &free_account_max_model,
+        new_account_protection_days,
         quota_protection_enabled,
         quota_protection_threshold_percent,
         request_compression_enabled,
@@ -201,6 +206,7 @@ pub(super) fn current_app_settings_value(
         "routeStrategyOptions": ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
         "freeAccountMaxModel": free_account_max_model,
         "freeAccountMaxModelOptions": free_account_max_model_options,
+        "newAccountProtectionDays": new_account_protection_days,
         "quotaProtectionEnabled": quota_protection_enabled,
         "quotaProtectionThresholdPercent": quota_protection_threshold_percent,
         "requestCompressionEnabled": request_compression_enabled,
@@ -289,6 +295,7 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
         remote_management_enabled,
         route_strategy,
         free_account_max_model,
+        new_account_protection_days,
         quota_protection_enabled,
         quota_protection_threshold_percent,
         request_compression_enabled,
@@ -337,6 +344,10 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
         Some(free_account_max_model),
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
+        Some(&new_account_protection_days.to_string()),
     );
     let _ = save_persisted_bool_setting(
         APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,

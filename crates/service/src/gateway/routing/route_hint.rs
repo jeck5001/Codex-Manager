@@ -1,4 +1,5 @@
 use super::route_quality::route_health_score;
+use codexmanager_core::storage::now_ts;
 use codexmanager_core::storage::{Account, Token};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
@@ -166,7 +167,36 @@ pub(crate) fn apply_route_strategy(
 
     let strategy = current_route_strategy_impl();
     strategy.apply(candidates, key_id, model);
+    apply_new_account_protection_order(candidates);
     apply_health_p2c(candidates, key_id, model, strategy.mode());
+}
+
+fn apply_new_account_protection_order(candidates: &mut [(Account, Token)]) {
+    let window_secs = crate::account_risk::current_new_account_protection_window_secs();
+    if window_secs <= 0 || candidates.len() <= 1 {
+        return;
+    }
+
+    let now = now_ts();
+    let protected_count = candidates
+        .iter()
+        .filter(|(account, _)| {
+            crate::account_risk::derive_new_account_protection_state_with_window(
+                account,
+                now,
+                window_secs,
+            )
+            .is_some()
+        })
+        .count();
+    if protected_count == 0 || protected_count == candidates.len() {
+        return;
+    }
+
+    candidates.sort_by_key(|(account, _)| {
+        crate::account_risk::derive_new_account_protection_state_with_window(account, now, window_secs)
+            .is_some()
+    });
 }
 
 fn rotate_to_manual_preferred_account(candidates: &mut [(Account, Token)]) -> bool {

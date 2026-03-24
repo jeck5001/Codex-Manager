@@ -78,6 +78,15 @@ fn account_ids(candidates: &[(Account, Token)]) -> Vec<String> {
         .collect()
 }
 
+fn set_candidate_created_at(candidates: &mut [(Account, Token)], account_id: &str, created_at: i64) {
+    let entry = candidates
+        .iter_mut()
+        .find(|(account, _)| account.id == account_id)
+        .expect("candidate account");
+    entry.0.created_at = created_at;
+    entry.0.updated_at = created_at;
+}
+
 #[test]
 fn defaults_to_ordered_strategy() {
     let _guard = route_strategy_test_guard();
@@ -255,6 +264,38 @@ fn least_latency_prefers_account_with_lower_recent_latency() {
     let mut candidates = candidate_list();
     apply_least_latency_order(&mut candidates);
     assert_eq!(account_ids(&candidates)[0], "acc-b");
+}
+
+#[test]
+fn new_account_protection_moves_recent_accounts_after_mature_candidates() {
+    let _guard = route_strategy_test_guard();
+    let previous = std::env::var(crate::account_risk::ENV_NEW_ACCOUNT_PROTECTION_DAYS).ok();
+    std::env::set_var(crate::account_risk::ENV_NEW_ACCOUNT_PROTECTION_DAYS, "3");
+    reload_from_env();
+    clear_route_state_for_tests();
+
+    let now = codexmanager_core::storage::now_ts();
+    let mut candidates = candidate_list();
+    set_candidate_created_at(&mut candidates, "acc-a", now - 10 * 24 * 60 * 60);
+    set_candidate_created_at(&mut candidates, "acc-b", now - 2 * 60 * 60);
+    set_candidate_created_at(&mut candidates, "acc-c", now - 12 * 24 * 60 * 60);
+
+    apply_route_strategy(&mut candidates, "gk-protected", Some("gpt-5.3-codex"));
+    assert_eq!(
+        account_ids(&candidates),
+        vec![
+            "acc-a".to_string(),
+            "acc-c".to_string(),
+            "acc-b".to_string()
+        ]
+    );
+
+    if let Some(value) = previous {
+        std::env::set_var(crate::account_risk::ENV_NEW_ACCOUNT_PROTECTION_DAYS, value);
+    } else {
+        std::env::remove_var(crate::account_risk::ENV_NEW_ACCOUNT_PROTECTION_DAYS);
+    }
+    reload_from_env();
 }
 
 #[test]

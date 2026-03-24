@@ -27,6 +27,8 @@ fn account_summary_serialization_matches_compact_contract() {
         cooldown_until: Some(14),
         cooldown_reason_code: Some("rate_limited".to_string()),
         cooldown_reason: Some("速率限制".to_string()),
+        new_account_protection_until: Some(15),
+        new_account_protection_reason: Some("新号保护期内，已自动降优先级".to_string()),
         subscription_plan_type: Some("plus".to_string()),
         subscription_updated_at: Some(1),
         team_manager_uploaded_at: Some(2),
@@ -55,6 +57,8 @@ fn account_summary_serialization_matches_compact_contract() {
         "cooldownUntil",
         "cooldownReasonCode",
         "cooldownReason",
+        "newAccountProtectionUntil",
+        "newAccountProtectionReason",
         "subscriptionPlanType",
         "subscriptionUpdatedAt",
         "teamManagerUploadedAt",
@@ -62,7 +66,7 @@ fn account_summary_serialization_matches_compact_contract() {
         assert!(obj.contains_key(key), "missing key: {key}");
     }
 
-    for key in ["workspaceId", "workspaceName", "note", "tags", "updatedAt"] {
+    for key in ["workspaceId", "workspaceName", "note", "updatedAt"] {
         assert!(!obj.contains_key(key), "unexpected key: {key}");
     }
 }
@@ -98,6 +102,8 @@ fn account_list_result_serialization_includes_pagination_fields() {
             cooldown_until: Some(14),
             cooldown_reason_code: Some("rate_limited".to_string()),
             cooldown_reason: Some("速率限制".to_string()),
+            new_account_protection_until: Some(15),
+            new_account_protection_reason: Some("新号保护期内，已自动降优先级".to_string()),
             subscription_plan_type: Some("team".to_string()),
             subscription_updated_at: Some(1),
             team_manager_uploaded_at: Some(2),

@@ -2279,3 +2279,95 @@ fn healthcheck_run_triggers_token_refresh_fail_alerts_when_probe_fails() {
         .iter()
         .any(|item| item.rule_name.as_deref() == Some("巡检刷新失败")));
 }
+
+#[test]
+fn healthcheck_run_triggers_auto_governance_after_probe_failures() {
+    struct HealthcheckGovernanceTestGuard;
+
+    impl Drop for HealthcheckGovernanceTestGuard {
+        fn drop(&mut self) {
+            crate::gateway::clear_probe_models_override_for_tests();
+            crate::usage_refresh::clear_session_probe_state_for_tests();
+            crate::usage_refresh::reload_background_tasks_runtime_from_env();
+        }
+    }
+
+    crate::usage_refresh::clear_session_probe_state_for_tests();
+    let (_db_scope, storage) = setup_test_db("healthcheck-governance-integration");
+    let _gateway_guard = crate::gateway::probe_models_test_guard();
+    let _cleanup = HealthcheckGovernanceTestGuard;
+
+    let now = now_ts();
+    storage
+        .insert_account(&codexmanager_core::storage::Account {
+            id: "acc-healthcheck-governance".to_string(),
+            label: "巡检治理账号".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("acct-healthcheck-governance".to_string()),
+            workspace_id: Some("org-healthcheck-governance".to_string()),
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert governance account");
+    storage
+        .insert_token(&codexmanager_core::storage::Token {
+            account_id: "acc-healthcheck-governance".to_string(),
+            id_token: "header.payload.sig".to_string(),
+            access_token: "healthcheck-governance-token".to_string(),
+            refresh_token: "healthcheck-governance-refresh".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert governance token");
+
+    let _auto_disable_enabled =
+        EnvGuard::set("CODEXMANAGER_AUTO_DISABLE_RISKY_ACCOUNTS_ENABLED", "1");
+    let _failure_threshold =
+        EnvGuard::set("CODEXMANAGER_AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD", "1");
+    let _health_threshold = EnvGuard::set(
+        "CODEXMANAGER_AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD",
+        "200",
+    );
+    let _lookback = EnvGuard::set("CODEXMANAGER_AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS", "60");
+    crate::usage_refresh::reload_background_tasks_runtime_from_env();
+    crate::gateway::set_probe_models_override_for_tests(Err(
+        "usage endpoint status 401: token expired".to_string(),
+    ));
+
+    let run_resp = handle_request(JsonRpcRequest {
+        id: 67,
+        method: "healthcheck/run".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        run_resp
+            .result
+            .get("sampledAccounts")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+    assert_eq!(
+        run_resp
+            .result
+            .get("failureCount")
+            .and_then(|value| value.as_i64()),
+        Some(1)
+    );
+
+    let account = storage
+        .find_account_by_id("acc-healthcheck-governance")
+        .expect("find governance account")
+        .expect("stored governance account");
+    assert_eq!(account.status, "disabled");
+
+    let status_events = storage
+        .list_recent_events_by_type("account_status_update", now - 60, 10)
+        .expect("list governance status events");
+    assert!(status_events.iter().any(|item| {
+        item.account_id.as_deref() == Some("acc-healthcheck-governance")
+            && item.message.contains("auto_governance_suspected")
+    }));
+}

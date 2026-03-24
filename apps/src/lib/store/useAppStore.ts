@@ -52,6 +52,7 @@ export const useAppStore = create<AppState>((set) => ({
       "gpt-5.3-codex",
       "gpt-5.4",
     ],
+    newAccountProtectionDays: 3,
     quotaProtectionEnabled: false,
     quotaProtectionThresholdPercent: 10,
     requestCompressionEnabled: true,

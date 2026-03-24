@@ -42,6 +42,7 @@ pub(crate) use account::import as account_import;
 pub(crate) use account::list as account_list;
 pub(crate) use account::payment as account_payment;
 pub(crate) use account::plan as account_plan;
+pub(crate) use account::risk as account_risk;
 pub(crate) use account::register as account_register;
 pub(crate) use account::status as account_status;
 pub(crate) use account::update as account_update;
@@ -105,6 +106,7 @@ pub use app_settings::{
     app_settings_get, app_settings_get_with_overrides, app_settings_set,
     bind_all_interfaces_enabled, current_close_to_tray_on_close_setting,
     current_gateway_free_account_max_model, current_gateway_model_alias_pools_json,
+    current_gateway_new_account_protection_days,
     current_gateway_originator, current_gateway_payload_rewrite_rules_json,
     current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
@@ -118,7 +120,8 @@ pub use app_settings::{
     residency_requirement_options, set_close_to_tray_on_close_setting,
     set_gateway_background_tasks, set_gateway_cpa_no_cookie_header_mode,
     set_gateway_free_account_max_model, set_gateway_model_alias_pools_json, set_gateway_originator,
-    set_gateway_payload_rewrite_rules_json, set_gateway_quota_protection_enabled,
+    set_gateway_new_account_protection_days, set_gateway_payload_rewrite_rules_json,
+    set_gateway_quota_protection_enabled,
     set_gateway_quota_protection_threshold_percent, set_gateway_request_compression_enabled,
     set_gateway_residency_requirement, set_gateway_response_cache_enabled,
     set_gateway_response_cache_max_entries, set_gateway_response_cache_ttl_secs,
@@ -132,6 +135,7 @@ pub use app_settings::{
     APP_SETTING_ENV_OVERRIDES_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
     APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+    APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
     APP_SETTING_GATEWAY_ORIGINATOR_KEY, APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,

@@ -10,7 +10,8 @@ pub(super) use super::env_overrides::{
 };
 pub(super) use super::gateway::{
     current_background_tasks_snapshot_value, current_gateway_free_account_max_model,
-    current_gateway_model_alias_pools_json, current_gateway_originator,
+    current_gateway_model_alias_pools_json, current_gateway_new_account_protection_days,
+    current_gateway_originator,
     current_gateway_payload_rewrite_rules_json, current_gateway_quota_protection_enabled,
     current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
@@ -19,7 +20,8 @@ pub(super) use super::gateway::{
     current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
     residency_requirement_options, set_gateway_background_tasks,
     set_gateway_cpa_no_cookie_header_mode, set_gateway_free_account_max_model,
-    set_gateway_model_alias_pools_json, set_gateway_originator,
+    set_gateway_model_alias_pools_json, set_gateway_new_account_protection_days,
+    set_gateway_originator,
     set_gateway_payload_rewrite_rules_json, set_gateway_quota_protection_enabled,
     set_gateway_quota_protection_threshold_percent, set_gateway_request_compression_enabled,
     set_gateway_residency_requirement, set_gateway_response_cache_enabled,
@@ -52,6 +54,7 @@ pub(super) use super::{
     APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
     APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+    APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
     APP_SETTING_GATEWAY_ORIGINATOR_KEY, APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,

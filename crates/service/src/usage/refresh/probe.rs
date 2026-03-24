@@ -8,7 +8,8 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 
 use super::{
-    mark_usage_unreachable_if_needed, open_storage, record_usage_refresh_failure,
+    mark_usage_unreachable_if_needed, maybe_trigger_auto_account_governance, open_storage,
+    record_usage_refresh_failure,
     SESSION_PROBE_CURSOR, SESSION_PROBE_INTERVAL_SECS, SESSION_PROBE_POLLING_ENABLED,
     SESSION_PROBE_SAMPLE_SIZE,
 };
@@ -67,6 +68,9 @@ pub(crate) fn run_session_probe_batch() -> Result<HealthcheckRunResult, String> 
             failed_accounts: Vec::new(),
         };
         store_last_session_probe_result(&summary);
+        if let Err(err) = maybe_trigger_auto_account_governance() {
+            log::warn!("session probe follow-up governance evaluation failed: {}", err);
+        }
         if let Err(err) = crate::alert_engine::run_alert_checks_once() {
             log::warn!("session probe follow-up alert evaluation failed: {}", err);
         }
@@ -112,6 +116,9 @@ pub(crate) fn run_session_probe_batch() -> Result<HealthcheckRunResult, String> 
         failed_accounts: outcome.failed_accounts,
     };
     store_last_session_probe_result(&summary);
+    if let Err(err) = maybe_trigger_auto_account_governance() {
+        log::warn!("session probe follow-up governance evaluation failed: {}", err);
+    }
     if let Err(err) = crate::alert_engine::run_alert_checks_once() {
         log::warn!("session probe follow-up alert evaluation failed: {}", err);
     }

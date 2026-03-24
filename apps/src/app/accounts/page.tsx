@@ -84,6 +84,7 @@ type StatusFilter =
   | "available"
   | "low_quota"
   | "cooldown"
+  | "protected"
   | "deactivated"
   | "isolated"
   | "governed";
@@ -96,6 +97,8 @@ function normalizeStatusFilter(value: string | null | undefined): StatusFilter {
       return "low_quota";
     case "cooldown":
       return "cooldown";
+    case "protected":
+      return "protected";
     case "deactivated":
       return "deactivated";
     case "isolated":
@@ -124,6 +127,14 @@ function normalizeStatusReasonFilter(value: string | null | undefined): string {
 }
 
 function normalizeTagFilter(value: string | null | undefined): string {
+  const nextValue = String(value || "").trim();
+  if (!nextValue || nextValue === "all") {
+    return "all";
+  }
+  return nextValue;
+}
+
+function normalizeCooldownReasonFilter(value: string | null | undefined): string {
   const nextValue = String(value || "").trim();
   if (!nextValue || nextValue === "all") {
     return "all";
@@ -308,6 +319,7 @@ export default function AccountsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [governanceFilter, setGovernanceFilter] = useState<string>("all");
   const [statusReasonFilter, setStatusReasonFilter] = useState<string>("all");
+  const [cooldownReasonFilter, setCooldownReasonFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
@@ -367,6 +379,7 @@ export default function AccountsPage() {
         (statusFilter === "available" && account.isAvailable) ||
         (statusFilter === "low_quota" && account.isLowQuota) ||
         (statusFilter === "cooldown" && account.isInCooldown) ||
+        (statusFilter === "protected" && account.isNewAccountProtected) ||
         (statusFilter === "deactivated" && account.isDeactivated) ||
         (statusFilter === "isolated" && account.isIsolated) ||
         (statusFilter === "governed" && Boolean(account.lastGovernanceReason));
@@ -376,11 +389,28 @@ export default function AccountsPage() {
       const matchStatusReason =
         statusReasonFilter === "all" ||
         account.lastStatusReason === statusReasonFilter;
+      const matchCooldownReason =
+        cooldownReasonFilter === "all" ||
+        (account.isInCooldown &&
+          (account.cooldownReason || "临时冷却") === cooldownReasonFilter);
       const matchTag =
         tagFilter === "all" || account.tags.includes(tagFilter);
-      return matchStatus && matchGovernance && matchStatusReason && matchTag;
+      return (
+        matchStatus &&
+        matchGovernance &&
+        matchStatusReason &&
+        matchCooldownReason &&
+        matchTag
+      );
     });
-  }, [governanceFilter, scopedAccounts, statusFilter, statusReasonFilter, tagFilter]);
+  }, [
+    cooldownReasonFilter,
+    governanceFilter,
+    scopedAccounts,
+    statusFilter,
+    statusReasonFilter,
+    tagFilter,
+  ]);
 
   const pageSizeNumber = Number(pageSize) || 20;
   const totalPages = Math.max(
@@ -424,6 +454,22 @@ export default function AccountsPage() {
         return left.label.localeCompare(right.label, "zh-CN");
       });
   }, [scopedGovernedAccounts]);
+  const cooldownOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const account of scopedAccounts) {
+      if (!account.isInCooldown) continue;
+      const label = String(account.cooldownReason || "临时冷却").trim() || "临时冷却";
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((left, right) => {
+        if (right.count !== left.count) {
+          return right.count - left.count;
+        }
+        return left.label.localeCompare(right.label, "zh-CN");
+      });
+  }, [scopedAccounts]);
   const statusReasonOptions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const account of scopedAccounts) {
@@ -519,6 +565,7 @@ export default function AccountsPage() {
         available: "可用",
         low_quota: "低配额",
         cooldown: "冷却中",
+        protected: "新号保护",
         deactivated: "已停用",
         isolated: "隔离中",
         governed: "最近治理",
@@ -534,11 +581,22 @@ export default function AccountsPage() {
     if (statusReasonFilter !== "all") {
       items.push({ key: "statusReason", label: `状态原因 ${statusReasonFilter}` });
     }
+    if (cooldownReasonFilter !== "all") {
+      items.push({ key: "cooldownReason", label: `冷却原因 ${cooldownReasonFilter}` });
+    }
     if (tagFilter !== "all") {
       items.push({ key: "tag", label: `标签 ${tagFilter}` });
     }
     return items;
-  }, [governanceFilter, groupFilter, search, statusFilter, statusReasonFilter, tagFilter]);
+  }, [
+    cooldownReasonFilter,
+    governanceFilter,
+    groupFilter,
+    search,
+    statusFilter,
+    statusReasonFilter,
+    tagFilter,
+  ]);
 
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.id === selectedAccountId) ?? null,
@@ -560,6 +618,9 @@ export default function AccountsPage() {
       setStatusReasonFilter(
         normalizeStatusReasonFilter(params.get("statusReason")),
       );
+      setCooldownReasonFilter(
+        normalizeCooldownReasonFilter(params.get("cooldownReason")),
+      );
       setTagFilter(normalizeTagFilter(params.get("tag")));
     });
   }, []);
@@ -579,6 +640,9 @@ export default function AccountsPage() {
     if (value !== "governed") {
       setGovernanceFilter("all");
     }
+    if (value !== "cooldown") {
+      setCooldownReasonFilter("all");
+    }
     setPage(1);
   };
 
@@ -593,6 +657,15 @@ export default function AccountsPage() {
 
   const handleStatusReasonFilterChange = (value: string | null) => {
     setStatusReasonFilter(normalizeStatusReasonFilter(value));
+    setPage(1);
+  };
+
+  const handleCooldownReasonFilterChange = (value: string | null) => {
+    const nextValue = normalizeCooldownReasonFilter(value);
+    setCooldownReasonFilter(nextValue);
+    if (nextValue !== "all") {
+      setStatusFilter("cooldown");
+    }
     setPage(1);
   };
 
@@ -612,6 +685,7 @@ export default function AccountsPage() {
     setStatusFilter("all");
     setGovernanceFilter("all");
     setStatusReasonFilter("all");
+    setCooldownReasonFilter("all");
     setTagFilter("all");
     setPage(1);
     router.push("/accounts");
@@ -623,6 +697,7 @@ export default function AccountsPage() {
     let nextStatusFilter = statusFilter;
     let nextGovernanceFilter = governanceFilter;
     let nextStatusReasonFilter = statusReasonFilter;
+    let nextCooldownReasonFilter = cooldownReasonFilter;
     let nextTagFilter = tagFilter;
     if (key === "search") {
       nextSearch = "";
@@ -633,14 +708,19 @@ export default function AccountsPage() {
     } else if (key === "status") {
       nextStatusFilter = "all";
       nextGovernanceFilter = "all";
+      nextCooldownReasonFilter = "all";
       setStatusFilter("all");
       setGovernanceFilter("all");
+      setCooldownReasonFilter("all");
     } else if (key === "governance") {
       nextGovernanceFilter = "all";
       setGovernanceFilter("all");
     } else if (key === "statusReason") {
       nextStatusReasonFilter = "all";
       setStatusReasonFilter("all");
+    } else if (key === "cooldownReason") {
+      nextCooldownReasonFilter = "all";
+      setCooldownReasonFilter("all");
     } else if (key === "tag") {
       nextTagFilter = "all";
       setTagFilter("all");
@@ -655,6 +735,9 @@ export default function AccountsPage() {
     }
     if (nextStatusReasonFilter !== "all") {
       params.set("statusReason", nextStatusReasonFilter);
+    }
+    if (nextCooldownReasonFilter !== "all") {
+      params.set("cooldownReason", nextCooldownReasonFilter);
     }
     if (nextTagFilter !== "all") {
       params.set("tag", nextTagFilter);
@@ -921,6 +1004,7 @@ export default function AccountsPage() {
                 { id: "available", label: "可用" },
                 { id: "low_quota", label: "低配额" },
                 { id: "cooldown", label: "冷却中" },
+                { id: "protected", label: "新号保护" },
                 { id: "deactivated", label: "已停用" },
                 { id: "isolated", label: "隔离中" },
                 { id: "governed", label: "最近治理" },
@@ -962,6 +1046,34 @@ export default function AccountsPage() {
                     全部治理原因 ({scopedGovernedAccounts.length})
                   </SelectItem>
                   {governanceOptions.map((option) => (
+                    <SelectItem key={option.label} value={option.label}>
+                      {option.label} ({option.count})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            {cooldownOptions.length > 0 ? (
+              <Select
+                value={cooldownReasonFilter}
+                onValueChange={handleCooldownReasonFilterChange}
+              >
+                <SelectTrigger className="h-10 w-[220px] shrink-0 rounded-xl bg-card/50">
+                  <SelectValue placeholder="冷却原因">
+                    {(value) => {
+                      const nextValue = String(value || "").trim();
+                      if (!nextValue || nextValue === "all") {
+                        return `全部冷却原因 (${cooldownOptions.length})`;
+                      }
+                      return nextValue;
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    全部冷却原因 ({cooldownOptions.length})
+                  </SelectItem>
+                  {cooldownOptions.map((option) => (
                     <SelectItem key={option.label} value={option.label}>
                       {option.label} ({option.count})
                     </SelectItem>
@@ -1402,6 +1514,14 @@ export default function AccountsPage() {
                                 冷却中
                               </Badge>
                             ) : null}
+                            {account.isNewAccountProtected ? (
+                              <Badge
+                                variant="secondary"
+                                className="h-4 shrink-0 bg-cyan-500/15 px-1.5 text-[9px] text-cyan-700 dark:text-cyan-300"
+                              >
+                                新号保护
+                              </Badge>
+                            ) : null}
                             <Badge
                               variant="secondary"
                               className={cn(
@@ -1466,6 +1586,14 @@ export default function AccountsPage() {
                               冷却中: {account.cooldownReason || "临时冷却"}
                               {account.cooldownUntil
                                 ? ` · 至 ${formatTsFromSeconds(account.cooldownUntil, "--")}`
+                                : ""}
+                            </span>
+                          ) : null}
+                          {account.isNewAccountProtected ? (
+                            <span className="text-[10px] text-cyan-700 dark:text-cyan-300">
+                              {account.newAccountProtectionReason || "新号保护期内，已自动降优先级"}
+                              {account.newAccountProtectionUntil
+                                ? ` · 至 ${formatTsFromSeconds(account.newAccountProtectionUntil, "--")}`
                                 : ""}
                             </span>
                           ) : null}
@@ -1565,6 +1693,13 @@ export default function AccountsPage() {
                               冷却中: {account.cooldownReason || "临时冷却"}
                               {account.cooldownUntil
                                 ? ` · 至 ${formatTsFromSeconds(account.cooldownUntil, "--")}`
+                                : ""}
+                            </div>
+                          ) : account.isNewAccountProtected ? (
+                            <div className="rounded-md bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-700 dark:text-cyan-300">
+                              {account.newAccountProtectionReason || "新号保护期内，已自动降优先级"}
+                              {account.newAccountProtectionUntil
+                                ? ` · 至 ${formatTsFromSeconds(account.newAccountProtectionUntil, "--")}`
                                 : ""}
                             </div>
                           ) : account.lastGovernanceReason ? (

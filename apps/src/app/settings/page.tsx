@@ -554,6 +554,7 @@ export default function SettingsPage() {
   const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
   const [mcpPortDraft, setMcpPortDraft] = useState<string | null>(null);
   const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
+  const [newAccountProtectionDaysDraft, setNewAccountProtectionDaysDraft] = useState<string | null>(null);
   const [quotaProtectionThresholdDraft, setQuotaProtectionThresholdDraft] = useState<string | null>(null);
   const [retryPolicyMaxRetriesDraft, setRetryPolicyMaxRetriesDraft] = useState<string | null>(null);
   const [retryableStatusCodesDraft, setRetryableStatusCodesDraft] = useState<string | null>(null);
@@ -991,6 +992,9 @@ export default function SettingsPage() {
   const quotaProtectionThresholdInput =
     quotaProtectionThresholdDraft ??
     stringifyNumber(snapshot?.quotaProtectionThresholdPercent);
+  const newAccountProtectionDaysInput =
+    newAccountProtectionDaysDraft ??
+    stringifyNumber(snapshot?.newAccountProtectionDays);
   const retryPolicyMaxRetriesInput =
     retryPolicyMaxRetriesDraft ?? stringifyNumber(snapshot?.retryPolicyMaxRetries);
   const retryableStatusCodesInput =
@@ -1210,6 +1214,24 @@ export default function SettingsPage() {
     void updateSettings
       .mutateAsync({ quotaProtectionThresholdPercent: nextValue })
       .then(() => setQuotaProtectionThresholdDraft(null))
+      .catch(() => undefined);
+  };
+
+  const saveNewAccountProtectionDays = () => {
+    if (!snapshot) return;
+    const nextValue = parseIntegerInput(newAccountProtectionDaysInput, 0);
+    if (nextValue == null || nextValue > 30) {
+      toast.error("新号保护天数请输入 0 到 30 之间的整数");
+      setNewAccountProtectionDaysDraft(null);
+      return;
+    }
+    if (nextValue === snapshot.newAccountProtectionDays) {
+      setNewAccountProtectionDaysDraft(null);
+      return;
+    }
+    void updateSettings
+      .mutateAsync({ newAccountProtectionDays: nextValue })
+      .then(() => setNewAccountProtectionDaysDraft(null))
       .catch(() => undefined);
   };
 
@@ -2099,6 +2121,22 @@ export default function SettingsPage() {
                 <p className="text-[10px] text-muted-foreground">
                   设为“跟随请求”时，不会额外改写 free / 7天单窗口账号的模型；
                   只有你选了具体模型后，命中这些账号时才会统一改写为该模型。
+                </p>
+              </div>
+
+              <div className="grid gap-2 md:max-w-[240px]">
+                <Label>新号保护天数</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={30}
+                  value={newAccountProtectionDaysInput}
+                  onChange={(event) => setNewAccountProtectionDaysDraft(event.target.value)}
+                  onBlur={saveNewAccountProtectionDays}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  默认 <code>3</code> 天。保护期内的新账号仍可参与路由，但会自动排在成熟账号之后；填
+                  <code>0</code> 可关闭。
                 </p>
               </div>
 

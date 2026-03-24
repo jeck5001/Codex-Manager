@@ -43,6 +43,9 @@ export interface Account {
   cooldownUntil: number | null;
   cooldownReasonCode: string | null;
   cooldownReason: string | null;
+  newAccountProtectionUntil: number | null;
+  newAccountProtectionReason: string | null;
+  isNewAccountProtected: boolean;
   isInCooldown: boolean;
   isIsolated: boolean;
   isAvailable: boolean;
@@ -838,6 +841,7 @@ export interface AppSettings {
   routeStrategyOptions: string[];
   freeAccountMaxModel: string;
   freeAccountMaxModelOptions: string[];
+  newAccountProtectionDays: number;
   quotaProtectionEnabled: boolean;
   quotaProtectionThresholdPercent: number;
   requestCompressionEnabled: boolean;
