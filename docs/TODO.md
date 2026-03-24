@@ -264,6 +264,12 @@
   - `pnpm run build:desktop` 通过（本轮复验平台密钥页与请求日志页桌面静态构建）
   - `pnpm exec tsc --noEmit` 通过（本轮复验请求日志快捷日期筛选：昨天 / 今天 / 本周 / 本月）
   - `pnpm run build:desktop` 通过（本轮复验请求日志快捷日期筛选桌面静态构建）
+  - `cargo check -p codexmanager-service` 通过（本轮复验 F17 Lua 插件运行时接入后默认 feature 服务编译）
+  - `cargo test -p codexmanager-service plugin_ -- --nocapture` 通过（本轮复验 F17 Lua 插件 CRUD / runtime 校验与 hook 执行回归）
+  - `pnpm run build:desktop` 通过（本轮复验 F17 运行时落地后桌面端前端静态构建）
+  - `docker build --no-cache -f docker/Dockerfile.service.local .` 通过（本轮复验 service 本地源码离线镜像构建）
+  - `docker build --no-cache -f docker/Dockerfile.web.local .` 通过（本轮复验 web 本地源码离线镜像构建）
+  - `docker compose -f docker/docker-compose.localbuild.yml build --no-cache codexmanager-service codexmanager-web` 失败：BuildKit/Compose 路径在复制 `vendor-rust/erased-serde/.cargo_vcs_info.json` 时出现校验和不一致；直接 `docker build` 可稳定通过，当前判定为 compose/build-cache 侧异常，待后续单独排查
 
 ---
 
