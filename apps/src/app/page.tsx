@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   Activity,
   BrainCircuit,
@@ -489,6 +490,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const {
+    accounts,
     stats,
     currentAccount,
     recommendations,
@@ -513,6 +515,52 @@ export default function DashboardPage() {
   const recentHealthcheck = dashboardHealth?.recentHealthcheck;
   const trendPoints = dashboardTrend?.points || [];
   const dashboardSectionLoading = isLoading || isDashboardLoading;
+  const cooldownReasonSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const account of accounts) {
+      if (!account.isInCooldown) {
+        continue;
+      }
+      const label = String(account.cooldownReason || "临时冷却").trim() || "临时冷却";
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((left, right) => {
+        if (right.count !== left.count) {
+          return right.count - left.count;
+        }
+        return left.label.localeCompare(right.label, "zh-CN");
+      });
+  }, [accounts]);
+  const protectedAccounts = useMemo(
+    () => accounts.filter((account) => account.isNewAccountProtected),
+    [accounts]
+  );
+  const protectedEndingSoonest = useMemo(() => {
+    return protectedAccounts.reduce<number | null>((soonest, account) => {
+      if (!account.newAccountProtectionUntil) {
+        return soonest;
+      }
+      if (soonest == null || account.newAccountProtectionUntil < soonest) {
+        return account.newAccountProtectionUntil;
+      }
+      return soonest;
+    }, null);
+  }, [protectedAccounts]);
+  const topCooldownReason = cooldownReasonSummary[0] ?? null;
+  const topGovernanceReason = governanceSummary[0] ?? null;
+  const primaryRiskSummary = topCooldownReason
+    ? `当前冷却账号主要集中在「${topCooldownReason.label}」，建议先排查该类异常并等待冷却释放。`
+    : topGovernanceReason
+      ? `最近自动治理主要由「${topGovernanceReason.label}」触发，建议优先复核对应账号。`
+      : protectedAccounts.length > 0
+        ? `当前有 ${protectedAccounts.length} 个新号处于保护期，路由已自动降优先级，避免过早消耗。`
+        : healthBuckets.find((item) => item.key === "quota_exhausted")?.count
+          ? "存在额度耗尽账号，建议补池或切换策略。"
+          : healthBuckets.find((item) => item.key === "unavailable")?.count
+            ? "存在不可用账号，建议查看授权与网络链路。"
+            : "主链路暂无明显异常，适合继续观察自动治理结果。";
 
   const invalidateOperationalViews = async () => {
     await Promise.all([
@@ -608,7 +656,14 @@ export default function DashboardPage() {
   };
 
   const openAccountsByStatus = (
-    status: "all" | "available" | "low_quota" | "deactivated" | "governed",
+    status:
+      | "all"
+      | "available"
+      | "low_quota"
+      | "cooldown"
+      | "protected"
+      | "deactivated"
+      | "governed",
   ) => {
     if (status === "all") {
       router.push("/accounts");
@@ -616,6 +671,15 @@ export default function DashboardPage() {
     }
     const params = new URLSearchParams();
     params.set("status", status);
+    router.push(`/accounts?${params.toString()}`);
+  };
+
+  const openCooldownAccounts = (cooldownReason?: string) => {
+    const params = new URLSearchParams();
+    params.set("status", "cooldown");
+    if (cooldownReason) {
+      params.set("cooldownReason", cooldownReason);
+    }
     router.push(`/accounts?${params.toString()}`);
   };
 
@@ -871,13 +935,7 @@ export default function DashboardPage() {
                     <p className="text-[11px] font-medium text-muted-foreground">
                       当前主要风险
                     </p>
-                    <p className="mt-2 font-medium">
-                      {healthBuckets.find((item) => item.key === "quota_exhausted")?.count
-                        ? "存在额度耗尽账号，建议补池或切换策略。"
-                        : healthBuckets.find((item) => item.key === "unavailable")?.count
-                          ? "存在不可用账号，建议查看授权与网络链路。"
-                          : "主链路暂无明显异常，适合继续观察自动治理结果。"}
-                    </p>
+                    <p className="mt-2 font-medium">{primaryRiskSummary}</p>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
@@ -913,6 +971,85 @@ export default function DashboardPage() {
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         {formatTsFromSeconds(recentHealthcheck?.finishedAt, "尚未执行")}
                       </p>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        冷却原因热点
+                      </p>
+                      <p className="mt-2 text-sm font-semibold">
+                        {topCooldownReason?.label || "暂无冷却账号"}
+                      </p>
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        {topCooldownReason
+                          ? `${topCooldownReason.count} 个账号处于该类冷却`
+                          : "当前没有账号处于 cooldown"}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-3 h-auto px-0 text-xs text-sky-600 hover:bg-transparent hover:text-sky-600 dark:text-sky-400 dark:hover:text-sky-400"
+                        onClick={() => openCooldownAccounts(topCooldownReason?.label)}
+                      >
+                        查看账号页
+                      </Button>
+                    </div>
+                    <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        最近治理原因
+                      </p>
+                      <p className="mt-2 text-sm font-semibold">
+                        {topGovernanceReason?.label || "最近无治理命中"}
+                      </p>
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        {topGovernanceReason
+                          ? `${topGovernanceReason.affectedAccounts} 个账号受影响`
+                          : "最近 24 小时没有自动治理事件"}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-3 h-auto px-0 text-xs text-rose-600 hover:bg-transparent hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-400"
+                        onClick={() =>
+                          topGovernanceReason
+                            ? openGovernedAccounts(topGovernanceReason.label)
+                            : openGovernedAccounts()
+                        }
+                      >
+                        查看治理账号
+                      </Button>
+                    </div>
+                    <div className="rounded-2xl border border-border/40 bg-accent/20 p-4 shadow-sm">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        新号保护概览
+                      </p>
+                      <p className="mt-2 text-sm font-semibold">
+                        {protectedAccounts.length > 0
+                          ? `${protectedAccounts.length} 个新号保护中`
+                          : "当前无保护中新号"}
+                      </p>
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        {protectedAccounts.length > 0
+                          ? `最早释放时间 ${formatTsFromSeconds(
+                              protectedEndingSoonest,
+                              "--"
+                            )}`
+                          : "保护期账号会自动排在成熟账号之后"}
+                      </p>
+                      <p className="mt-3 text-[11px] text-muted-foreground">
+                        {protectedAccounts.length > 0
+                          ? "首页已识别保护态，账号页可继续查看单号明细。"
+                          : "新注册账号进入保护期后会在这里汇总展示。"}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-3 h-auto px-0 text-xs text-cyan-700 hover:bg-transparent hover:text-cyan-700 dark:text-cyan-300 dark:hover:text-cyan-300"
+                        onClick={() => openAccountsByStatus("protected")}
+                      >
+                        查看保护账号
+                      </Button>
                     </div>
                   </div>
                 </CardContent>

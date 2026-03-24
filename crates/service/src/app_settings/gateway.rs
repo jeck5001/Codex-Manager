@@ -6,6 +6,7 @@ use super::{
     normalize_optional_text, save_persisted_app_setting, save_persisted_bool_setting,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+    APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
     APP_SETTING_GATEWAY_ORIGINATOR_KEY, APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
@@ -106,6 +107,25 @@ pub fn set_gateway_free_account_max_model(model: &str) -> Result<String, String>
 
 pub fn current_gateway_free_account_max_model() -> String {
     gateway::current_free_account_max_model()
+}
+
+pub fn set_gateway_new_account_protection_days(value: u64) -> Result<u64, String> {
+    if value > 30 {
+        return Err("newAccountProtectionDays must be between 0 and 30".to_string());
+    }
+    std::env::set_var(
+        crate::account_risk::ENV_NEW_ACCOUNT_PROTECTION_DAYS,
+        value.to_string(),
+    );
+    save_persisted_app_setting(
+        APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
+        Some(&value.to_string()),
+    )?;
+    Ok(value)
+}
+
+pub fn current_gateway_new_account_protection_days() -> u64 {
+    crate::account_risk::current_new_account_protection_days().min(30)
 }
 
 pub fn set_gateway_quota_protection_enabled(enabled: bool) -> Result<bool, String> {

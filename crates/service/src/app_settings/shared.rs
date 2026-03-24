@@ -12,6 +12,8 @@ pub const APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY: &str =
     "gateway.quota_protection_enabled";
 pub const APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY: &str =
     "gateway.quota_protection_threshold_percent";
+pub const APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY: &str =
+    "gateway.new_account_protection_days";
 pub const APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY: &str =
     "gateway.request_compression_enabled";
 pub const APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY: &str =

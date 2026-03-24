@@ -609,6 +609,9 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
   const cooldownUntil = toNullableNumber(
     source.cooldownUntil ?? source.cooldown_until
   );
+  const newAccountProtectionUntil = toNullableNumber(
+    source.newAccountProtectionUntil ?? source.new_account_protection_until
+  );
   const availability = calcAvailability(usage, { status });
   const usageBuckets = getUsageDisplayBuckets(usage);
   const healthTier = deriveAccountHealthTier({
@@ -662,6 +665,15 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
       asString(source.cooldownReasonCode ?? source.cooldown_reason_code) || null,
     cooldownReason:
       asString(source.cooldownReason ?? source.cooldown_reason) || null,
+    newAccountProtectionUntil,
+    newAccountProtectionReason:
+      asString(
+        source.newAccountProtectionReason ?? source.new_account_protection_reason
+      ) || null,
+    isNewAccountProtected:
+      typeof newAccountProtectionUntil === "number" &&
+      Number.isFinite(newAccountProtectionUntil) &&
+      newAccountProtectionUntil > Math.floor(Date.now() / 1000),
     isInCooldown:
       typeof cooldownUntil === "number" &&
       Number.isFinite(cooldownUntil) &&
@@ -1367,6 +1379,7 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     freeAccountMaxModelOptions: asArray(source.freeAccountMaxModelOptions).map((item) =>
       asString(item)
     ),
+    newAccountProtectionDays: asInteger(source.newAccountProtectionDays, 3, 0),
     quotaProtectionEnabled: asBoolean(source.quotaProtectionEnabled, false),
     quotaProtectionThresholdPercent: asInteger(
       source.quotaProtectionThresholdPercent,

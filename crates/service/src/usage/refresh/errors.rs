@@ -45,29 +45,45 @@ pub(super) fn mark_usage_unreachable_if_needed(storage: &Storage, account_id: &s
         );
         return;
     }
-    if error_contains_status_code(err, 401) || error_contains_status_code(err, 403) {
-        crate::gateway::mark_account_cooldown(
-            account_id,
-            crate::gateway::CooldownReason::Challenge,
-        );
+    if let Some(status_code) =
+        extract_usage_status_code(err.trim()).or_else(|| extract_generic_status_code(err.trim()))
+    {
+        crate::gateway::mark_account_cooldown_for_status(account_id, status_code);
         let current_status = storage
             .find_account_by_id(account_id)
             .ok()
             .flatten()
             .map(|account| account.status)
             .unwrap_or_default();
-        if !current_status.trim().eq_ignore_ascii_case("disabled")
+        if matches!(status_code, 401 | 403)
+            && !current_status.trim().eq_ignore_ascii_case("disabled")
             && !current_status.trim().eq_ignore_ascii_case("inactive")
             && !current_status.trim().eq_ignore_ascii_case("deactivated")
         {
             set_account_status(storage, account_id, "unavailable", "usage_http_401");
         }
+        return;
+    }
+    if usage_error_indicates_network_cooldown(err) {
+        crate::gateway::mark_account_cooldown(account_id, crate::gateway::CooldownReason::Network);
     }
     let _ = (storage, account_id, err);
 }
 
 pub(super) fn should_retry_with_refresh(err: &str) -> bool {
     err.contains("401") || err.contains("403")
+}
+
+fn usage_error_indicates_network_cooldown(message: &str) -> bool {
+    let normalized = message.trim().to_ascii_lowercase();
+    normalized.contains("timeout")
+        || normalized.contains("timed out")
+        || normalized.contains("connection")
+        || normalized.contains("connect")
+        || normalized.contains("dns")
+        || normalized.contains("network")
+        || normalized.contains("reset by peer")
+        || normalized.contains("broken pipe")
 }
 
 fn usage_refresh_failure_event_window_secs() -> i64 {
@@ -153,12 +169,6 @@ fn extract_generic_status_code(message: &str) -> Option<u16> {
         }
     }
     None
-}
-
-fn error_contains_status_code(message: &str, status_code: u16) -> bool {
-    extract_usage_status_code(message.trim())
-        .or_else(|| extract_generic_status_code(message.trim()))
-        .is_some_and(|value| value == status_code)
 }
 
 fn should_record_failure_event(

@@ -25,6 +25,12 @@
   - 本轮继续收口批量注册轮询：改为在批次创建时预分配邮箱服务 / 代理轮询序列，避免并发任务在运行时重复抢到同一个服务；同时确认当前本地 `codex-register` 实际仅有 1 个启用的 `temp_mail` 服务，单服务场景本身不会产生可见轮换
   - 本轮补齐 freeproxy 同步兼容：注册中心代理列表缺失 `isDefault` 时不再反序列化失败，`gateway/freeProxy/sync` 可兼容旧版 `codex-register` 返回
   - 本轮补齐邮箱服务安全展示：服务列表“配置概览”对密码 / token / secret 类字段统一显示“已隐藏”，不再在列表中暴露真实凭证
+  - 本轮落地新号保护 MVP：新增 `CODEXMANAGER_NEW_ACCOUNT_PROTECTION_DAYS`（默认 3 天），网关会把保护期内新账号自动降到成熟账号之后；账号列表同步展示“新号保护”状态与保护截止时间
+  - 本轮补齐新号保护设置收口：`appSettings` 已支持 `newAccountProtectionDays` 的持久化、环境变量回灌与设置页编辑，桌面端默认状态也已同步该字段
+  - 本轮补齐巡检失败的 cooldown 收口：登录态巡检 / usage refresh 遇到 429、上游 5xx、网络超时或连接异常时，也会按现有 cooldown 原因与时长配置标记账号，避免短时异常账号继续被优先路由
+  - 本轮补齐巡检后的自动治理收口：`healthcheck/run` 与后台巡检线程结束后都会立即触发现有 auto governance，重复 401/403 等巡检失败不再只能停留在 `unavailable`，满足阈值时可直接升级为自动禁用/治理状态
+  - 本轮补齐首页风险可见性收口：仪表盘「观测摘要」已补充冷却原因热点、最近治理原因和新号保护概览，首页可直接判断当前风险主要由哪类原因触发并跳到账号页继续排查
+  - 本轮补齐首页到账号页的风控筛选闭环：账号页新增“新号保护”状态与“冷却原因”筛选，仪表盘风险卡片可直接带参跳到对应账号集合，不再需要手动二次筛选
 
 - [x] **通用验收缺口**
   - G7 `cargo clippy`（`codexmanager-service`）已收口：`cargo clippy -p codexmanager-service --tests -- -D warnings` 当前通过，本轮继续清空 `account/account_register.rs`、`app_settings/api/current.rs` 与测试层历史 warning
@@ -42,12 +48,38 @@
   - 本轮继续收敛测试层 warning：`tests/shutdown_flag.rs` 改为布尔断言，`tests/gateway_logs/cache.rs` 改为 `contains_key` 判定；`clippy` 最终清零
 
 - [-] **本轮验证结果**
+  - `cargo test -p codexmanager-service new_account_protection_ -- --nocapture` 通过（覆盖新号保护派生与路由降优先级）
+  - `cargo test -p codexmanager-core account_summary_serialization_matches_compact_contract -- --nocapture` 通过（复验账号摘要新增保护字段的 RPC 序列化）
+  - `cargo check -p codexmanager-service` 通过（确认新号保护接入后主服务编译正常）
+  - `pnpm exec tsc --noEmit` 通过（账号页新号保护展示类型无回退）
+  - `pnpm run build:desktop` 通过（账号页新号保护展示可参与桌面静态构建）
+  - `git diff --check` 通过（本轮 Rust / 前端 / 文档改动无格式问题）
   - `pnpm exec tsc --noEmit` 通过（本轮补齐邮箱服务列表配置概览脱敏展示）
   - `pnpm run build:desktop` 通过（确认邮箱服务列表脱敏改动在桌面静态构建下无回退）
   - `git diff --check` 通过（本轮前端改动无格式问题）
   - `cargo test -p codexmanager-service register_proxy_item_ -- --nocapture` 通过（本轮补齐旧版注册中心代理列表缺失 `isDefault` 的兼容解析回归）
   - `cargo check -p codexmanager-service` 通过（确认 `gateway/freeProxy/sync` 相关兼容修复未引入编译回退）
   - `git diff --check` 通过（本轮 Rust 修复无格式问题）
+  - `cargo test -p codexmanager-service --test app_settings app_settings_set_persists_snapshot_and_password_hash -- --nocapture` 通过（覆盖新号保护设置的持久化快照与存储回写）
+  - `cargo test -p codexmanager-service --test app_settings app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing -- --nocapture` 通过（覆盖 `CODEXMANAGER_NEW_ACCOUNT_PROTECTION_DAYS` 的 env 回灌与自动持久化）
+  - `cargo check -p codexmanager-service` 通过（确认新号保护设置接线后的 service 编译正常）
+  - `pnpm exec tsc --noEmit` 通过（设置页与 Zustand 默认快照已对齐 `newAccountProtectionDays` 类型）
+  - `pnpm run build:desktop` 通过（确认设置页“新号保护天数”可参与桌面端静态构建）
+  - `git diff --check` 通过（本轮设置 / 测试 / 文档改动无格式问题）
+  - `cargo test -p codexmanager-service mark_usage_unreachable_ -- --nocapture` 通过（覆盖巡检 / usage refresh 失败时对 429、上游 5xx、网络超时的 cooldown 标记）
+  - `cargo test -p codexmanager-service usage_refresh_error_ -- --nocapture` 通过（复验 usage refresh 错误分类与失败节流单测）
+  - `cargo check -p codexmanager-service` 通过（确认巡检失败 cooldown 补丁未引入编译或 warning 回退）
+  - `git diff --check` 通过（本轮 usage refresh 风控补丁无格式问题）
+  - `cargo test -p codexmanager-service healthcheck_run_triggers_auto_governance_after_probe_failures -- --nocapture` 通过（覆盖手动巡检完成后立即触发 auto governance，单次 401 失败在阈值=1 时升级为自动禁用）
+  - `cargo test -p codexmanager-service healthcheck_run_triggers_token_refresh_fail_alerts_when_probe_fails -- --nocapture` 通过（复验巡检告警链路在补接 auto governance 后未回退）
+  - `cargo check -p codexmanager-service` 通过（确认巡检后治理触发补丁未引入编译或 warning 回退）
+  - `git diff --check` 通过（本轮巡检治理补丁无格式问题）
+  - `pnpm exec tsc --noEmit` 通过（首页观测摘要补充冷却原因热点 / 最近治理原因 / 新号保护概览后前端类型无回退）
+  - `pnpm run build:desktop` 通过（确认首页风险概览收口可参与桌面端静态构建）
+  - `git diff --check` 通过（本轮首页风控可见性改动无格式问题）
+  - `pnpm exec tsc --noEmit` 通过（账号页新增“新号保护”状态与“冷却原因”筛选，首页风险卡跳转链路类型无回退）
+  - `pnpm run build:desktop` 通过（确认首页到账号页的风险筛选闭环可参与桌面端静态构建）
+  - `git diff --check` 通过（本轮首页 / 账号页风险筛选收口无格式问题）
   - `pnpm exec tsc --noEmit` 通过（F17 插件管理前端：插件类型、RPC normalize、设置页 CRUD 与模板入口）
   - `pnpm run build:desktop` 失败：Next 16 Turbopack 在当前 automation 沙箱内处理 `src/app/globals.css` 时尝试创建子进程并绑定端口，触发 `Operation not permitted`
   - `pnpm exec next build --webpack` 通过（作为当前环境下的等价前端构建复验，静态路由继续包含 `/settings`，插件管理页签可参与静态构建）
@@ -316,6 +348,8 @@
   - [x] 仪表盘顶部增加账号状态分布卡片（数量 + 百分比）
   - [x] 增加网关实时指标卡片（QPS / 成功率 / P95 延迟）
   - [x] 接入真实接口并开启 30 秒刷新
+  - [x] 「观测摘要」补充风险原因概览：冷却热点、治理原因、新号保护
+  - [x] 风险卡片可直接跳转到账号页精确筛选：治理原因 / 冷却原因 / 新号保护
   - 完成标准：首页可见实时健康分布与网关指标
 
 - [x] **前端：mini 趋势图**

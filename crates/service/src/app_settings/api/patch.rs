@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use super::{
     save_persisted_app_setting, save_persisted_bool_setting, set_close_to_tray_on_close_setting,
     set_env_overrides, set_gateway_background_tasks, set_gateway_cpa_no_cookie_header_mode,
-    set_gateway_free_account_max_model, set_gateway_model_alias_pools_json, set_gateway_originator,
+    set_gateway_free_account_max_model, set_gateway_model_alias_pools_json,
+    set_gateway_new_account_protection_days, set_gateway_originator,
     set_gateway_payload_rewrite_rules_json, set_gateway_quota_protection_enabled,
     set_gateway_quota_protection_threshold_percent, set_gateway_request_compression_enabled,
     set_gateway_residency_requirement, set_gateway_response_cache_enabled,
@@ -34,6 +35,7 @@ pub(super) struct AppSettingsPatch {
     remote_management_enabled: Option<bool>,
     route_strategy: Option<String>,
     free_account_max_model: Option<String>,
+    new_account_protection_days: Option<u64>,
     quota_protection_enabled: Option<bool>,
     quota_protection_threshold_percent: Option<u64>,
     request_compression_enabled: Option<bool>,
@@ -117,6 +119,9 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     }
     if let Some(model) = patch.free_account_max_model {
         let _ = set_gateway_free_account_max_model(&model)?;
+    }
+    if let Some(value) = patch.new_account_protection_days {
+        let _ = set_gateway_new_account_protection_days(value)?;
     }
     if let Some(enabled) = patch.quota_protection_enabled {
         let _ = set_gateway_quota_protection_enabled(enabled)?;

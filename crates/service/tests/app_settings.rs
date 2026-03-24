@@ -25,6 +25,7 @@ fn reset_runtime_defaults() {
     let _ = codexmanager_service::app_settings_set(Some(&json!({
         "routeStrategy": "balanced",
         "freeAccountMaxModel": "gpt-5.2",
+        "newAccountProtectionDays": 3,
         "quotaProtectionEnabled": false,
         "quotaProtectionThresholdPercent": 10,
         "requestCompressionEnabled": true,
@@ -192,6 +193,7 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "remoteManagementSecret": "manage-me",
             "routeStrategy": "rr",
             "freeAccountMaxModel": "gpt-5.3-codex",
+            "newAccountProtectionDays": 5,
             "quotaProtectionEnabled": true,
             "quotaProtectionThresholdPercent": 12,
             "requestCompressionEnabled": false,
@@ -300,6 +302,12 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             snapshot
+                .get("newAccountProtectionDays")
+                .and_then(|value| value.as_u64()),
+            Some(5)
+        );
+        assert_eq!(
+            snapshot
                 .get("quotaProtectionEnabled")
                 .and_then(|value| value.as_bool()),
             Some(true)
@@ -397,6 +405,14 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
                 )
                 .expect("read free account max model"),
             Some("gpt-5.3-codex".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY
+                )
+                .expect("read new account protection days"),
+            Some("5".to_string())
         );
         assert_eq!(
             storage
@@ -717,6 +733,7 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
+            codexmanager_service::APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
@@ -742,6 +759,7 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             ("CODEXMANAGER_REMOTE_MANAGEMENT_SECRET", Some("env-manage")),
             ("CODEXMANAGER_ROUTE_STRATEGY", Some("balanced")),
             ("CODEXMANAGER_FREE_ACCOUNT_MAX_MODEL", Some("gpt-5.2-codex")),
+            ("CODEXMANAGER_NEW_ACCOUNT_PROTECTION_DAYS", Some("6")),
             ("CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_ENABLED", Some("1")),
             (
                 "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT",
@@ -837,6 +855,12 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .get("freeAccountMaxModel")
                 .and_then(|value| value.as_str()),
             Some("gpt-5.2-codex")
+        );
+        assert_eq!(
+            snapshot
+                .get("newAccountProtectionDays")
+                .and_then(|value| value.as_u64()),
+            Some(6)
         );
         assert_eq!(
             snapshot
@@ -965,6 +989,14 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 )
                 .expect("read free account max model"),
             Some("gpt-5.2-codex".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY
+                )
+                .expect("read new account protection days"),
+            Some("6".to_string())
         );
         assert_eq!(
             storage

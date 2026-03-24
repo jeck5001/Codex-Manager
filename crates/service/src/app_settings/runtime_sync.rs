@@ -7,6 +7,7 @@ use super::{
     reload_runtime_after_env_override_apply, set_service_bind_mode, BackgroundTasksInput,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+    APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
     APP_SETTING_GATEWAY_ORIGINATOR_KEY, APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
@@ -45,6 +46,16 @@ pub fn sync_runtime_settings_from_storage() {
             if let Err(err) = gateway::set_free_account_max_model(&model) {
                 log::warn!("sync persisted free account max model failed: {err}");
             }
+        }
+    }
+    if let Some(raw) = settings.get(APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY) {
+        if let Ok(value) = raw.trim().parse::<u64>() {
+            std::env::set_var(
+                crate::account_risk::ENV_NEW_ACCOUNT_PROTECTION_DAYS,
+                value.min(30).to_string(),
+            );
+        } else {
+            log::warn!("parse persisted new account protection days failed: {raw}");
         }
     }
     if let Some(raw) = settings.get(APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY) {
