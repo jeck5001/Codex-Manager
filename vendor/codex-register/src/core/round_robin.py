@@ -3,30 +3,21 @@
 """
 
 from datetime import datetime
-from typing import Callable, Iterable, Optional, TypeVar
+from typing import Callable, Iterable, List, Optional, TypeVar
 
 T = TypeVar("T")
 
 
-def pick_round_robin_item(
+def _sorted_round_robin_items(
     items: Iterable[T],
     *,
     priority_getter: Callable[[T], object] = lambda item: getattr(item, "priority", 0),
     last_used_getter: Callable[[T], object] = lambda item: getattr(item, "last_used", None),
     id_getter: Callable[[T], object] = lambda item: getattr(item, "id", 0),
-) -> Optional[T]:
-    """
-    选择最适合用于下一次轮询的对象。
-
-    规则：
-    1. `priority` 越小越优先
-    2. `last_used` 越早越优先，`None` 视为从未使用，优先级最高
-    3. 最后按 `id` 稳定排序，避免结果抖动
-    """
-
+) -> List[T]:
     candidates = list(items)
     if not candidates:
-        return None
+        return []
 
     def _normalize_priority(value: object) -> int:
         return value if isinstance(value, int) else 0
@@ -46,4 +37,55 @@ def pick_round_robin_item(
             _normalize_id(id_getter(item)),
         )
     )
+    return candidates
+
+
+def pick_round_robin_item(
+    items: Iterable[T],
+    *,
+    priority_getter: Callable[[T], object] = lambda item: getattr(item, "priority", 0),
+    last_used_getter: Callable[[T], object] = lambda item: getattr(item, "last_used", None),
+    id_getter: Callable[[T], object] = lambda item: getattr(item, "id", 0),
+) -> Optional[T]:
+    """
+    选择最适合用于下一次轮询的对象。
+
+    规则：
+    1. `priority` 越小越优先
+    2. `last_used` 越早越优先，`None` 视为从未使用，优先级最高
+    3. 最后按 `id` 稳定排序，避免结果抖动
+    """
+
+    candidates = _sorted_round_robin_items(
+        items,
+        priority_getter=priority_getter,
+        last_used_getter=last_used_getter,
+        id_getter=id_getter,
+    )
+    if not candidates:
+        return None
     return candidates[0]
+
+
+def build_round_robin_schedule(
+    items: Iterable[T],
+    count: int,
+    *,
+    priority_getter: Callable[[T], object] = lambda item: getattr(item, "priority", 0),
+    last_used_getter: Callable[[T], object] = lambda item: getattr(item, "last_used", None),
+    id_getter: Callable[[T], object] = lambda item: getattr(item, "id", 0),
+) -> List[T]:
+    """
+    基于轮询排序生成一个固定长度的分配计划。
+    """
+    if count <= 0:
+        return []
+    candidates = _sorted_round_robin_items(
+        items,
+        priority_getter=priority_getter,
+        last_used_getter=last_used_getter,
+        id_getter=id_getter,
+    )
+    if not candidates:
+        return []
+    return [candidates[index % len(candidates)] for index in range(count)]
