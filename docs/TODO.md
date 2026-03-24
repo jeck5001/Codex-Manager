@@ -22,6 +22,7 @@
   - 文档导航：根 `README.md` 已收口为项目首页，深度说明继续以 `docs/README.md` 与 `CHANGELOG.md` 为准
   - 本轮补齐账号治理小收口：`workspace_deactivated` 已纳入封禁识别，账号页支持“一键清理封禁账号”，5 小时 / 7 天额度列补充重置时间展示
   - 本轮补齐注册中心调度收口：批量注册在“只选邮箱服务类型、不选具体服务”时会按该类型可用服务轮询；代理留空时也会按代理池轮询，不再被前端默认首项锁死
+  - 本轮继续收口批量注册轮询：改为在批次创建时预分配邮箱服务 / 代理轮询序列，避免并发任务在运行时重复抢到同一个服务；同时确认当前本地 `codex-register` 实际仅有 1 个启用的 `temp_mail` 服务，单服务场景本身不会产生可见轮换
 
 - [x] **通用验收缺口**
   - G7 `cargo clippy`（`codexmanager-service`）已收口：`cargo clippy -p codexmanager-service --tests -- -D warnings` 当前通过，本轮继续清空 `account/account_register.rs`、`app_settings/api/current.rs` 与测试层历史 warning
@@ -264,6 +265,8 @@
   - `python3 -m py_compile vendor/codex-register/src/core/round_robin.py vendor/codex-register/src/database/crud.py vendor/codex-register/src/web/routes/registration.py` 通过（本轮复验 vendored `codex-register` 注册链路语法）
   - `pnpm exec tsc --noEmit` 通过（本轮复验注册弹窗“具体服务自动轮询”前端类型）
   - `pnpm run build:desktop` 通过（本轮复验注册弹窗桌面构建产物）
+  - `python3 -m unittest vendor/codex-register/tests/test_round_robin.py` 通过（本轮补齐“批量创建时预分配轮询计划”回归）
+  - `python3 -m py_compile vendor/codex-register/src/core/round_robin.py vendor/codex-register/src/web/routes/registration.py` 通过（本轮复验 vendored `codex-register` 批量预分配路由语法）
   - `cargo test -p codexmanager-service requestlog_list_and_summary_support_extended_filters -- --nocapture` 通过（本轮复验请求日志列表 / 摘要扩展筛选，并覆盖 `keyIds` 多密钥过滤）
   - `cargo test -p codexmanager-service requestlog_export_rpc_supports_key_model_and_time_filters -- --nocapture` 通过（本轮复验请求日志导出扩展筛选，并覆盖 `keyIds` 多密钥过滤）
   - `pnpm exec tsc --noEmit` 通过（本轮复验平台密钥页完整 ID 展示、复制兜底与请求日志按密钥名称筛选）

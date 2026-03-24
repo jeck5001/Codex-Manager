@@ -16,7 +16,7 @@ from ...database import crud
 from ...database.session import get_db
 from ...database.models import RegistrationTask, Proxy, EmailService as EmailServiceModel, Account
 from ...core.register import RegistrationEngine, RegistrationResult
-from ...core.round_robin import pick_round_robin_item
+from ...core.round_robin import build_round_robin_schedule, pick_round_robin_item
 from ...services import EmailServiceFactory, EmailServiceType
 from ...config.settings import get_settings
 from ..task_manager import task_manager
@@ -93,6 +93,68 @@ def _pick_outlook_service_for_registration(db) -> Optional[EmailServiceModel]:
 def _mark_email_service_used(db, service_id: Optional[int]):
     if service_id:
         crud.update_email_service_last_used(db, service_id)
+
+
+def _list_outlook_services_for_registration(db) -> List[EmailServiceModel]:
+    services = db.query(EmailServiceModel).filter(
+        EmailServiceModel.service_type == EmailServiceType.OUTLOOK.value,
+        EmailServiceModel.enabled == True
+    ).all()
+    available_services = []
+    for service in services:
+        config = service.config or {}
+        email = config.get("email") or service.name
+        if not email:
+            continue
+        existing = db.query(Account).filter(Account.email == email).first()
+        if existing is None:
+            available_services.append(service)
+    return available_services
+
+
+def _list_email_services_for_batch(db, service_type: EmailServiceType) -> List[EmailServiceModel]:
+    if service_type == EmailServiceType.OUTLOOK:
+        return _list_outlook_services_for_registration(db)
+    return db.query(EmailServiceModel).filter(
+        EmailServiceModel.service_type == service_type.value,
+        EmailServiceModel.enabled == True
+    ).all()
+
+
+def _build_batch_email_service_plan(
+    db,
+    service_type: EmailServiceType,
+    explicit_email_service_id: Optional[int],
+    count: int,
+) -> List[Optional[int]]:
+    if count <= 0:
+        return []
+    if explicit_email_service_id:
+        return [explicit_email_service_id] * count
+    if service_type == EmailServiceType.TEMPMAIL:
+        return [None] * count
+
+    services = _list_email_services_for_batch(db, service_type)
+    schedule = build_round_robin_schedule(services, count)
+    if not schedule:
+        raise HTTPException(
+            status_code=400,
+            detail=f"当前没有可用于轮询的 {service_type.value} 邮箱服务"
+        )
+    return [service.id for service in schedule]
+
+
+def _build_batch_proxy_plan(db, explicit_proxy: Optional[str], count: int) -> List[Optional[str]]:
+    if count <= 0:
+        return []
+    if explicit_proxy:
+        return [explicit_proxy] * count
+
+    proxies = crud.get_enabled_proxies(db)
+    schedule = build_round_robin_schedule(proxies, count)
+    if not schedule:
+        return [None] * count
+    return [proxy.proxy_url for proxy in schedule]
 
 
 # ============== Pydantic Models ==============
@@ -619,6 +681,8 @@ async def run_batch_parallel(
     proxy: Optional[str],
     email_service_config: Optional[dict],
     email_service_id: Optional[int],
+    task_proxies: Optional[List[Optional[str]]],
+    task_email_service_ids: Optional[List[Optional[int]]],
     concurrency: int,
     auto_upload_cpa: bool = False,
     cpa_service_id: Optional[int] = None
@@ -634,9 +698,15 @@ async def run_batch_parallel(
 
     async def _run_one(idx: int, uuid: str):
         prefix = f"[任务{idx + 1}]"
+        resolved_proxy = task_proxies[idx] if task_proxies and idx < len(task_proxies) else proxy
+        resolved_email_service_id = (
+            task_email_service_ids[idx]
+            if task_email_service_ids and idx < len(task_email_service_ids)
+            else email_service_id
+        )
         async with semaphore:
             await run_registration_task(
-                uuid, email_service_type, proxy, email_service_config, email_service_id,
+                uuid, email_service_type, resolved_proxy, email_service_config, resolved_email_service_id,
                 log_prefix=prefix, batch_id=batch_id, auto_upload_cpa=auto_upload_cpa,
                 cpa_service_id=cpa_service_id
             )
@@ -677,6 +747,8 @@ async def run_batch_pipeline(
     proxy: Optional[str],
     email_service_config: Optional[dict],
     email_service_id: Optional[int],
+    task_proxies: Optional[List[Optional[str]]],
+    task_email_service_ids: Optional[List[Optional[int]]],
     interval_min: int,
     interval_max: int,
     concurrency: int,
@@ -695,8 +767,14 @@ async def run_batch_pipeline(
 
     async def _run_and_release(idx: int, uuid: str, pfx: str):
         try:
+            resolved_proxy = task_proxies[idx] if task_proxies and idx < len(task_proxies) else proxy
+            resolved_email_service_id = (
+                task_email_service_ids[idx]
+                if task_email_service_ids and idx < len(task_email_service_ids)
+                else email_service_id
+            )
             await run_registration_task(
-                uuid, email_service_type, proxy, email_service_config, email_service_id,
+                uuid, email_service_type, resolved_proxy, email_service_config, resolved_email_service_id,
                 log_prefix=pfx, batch_id=batch_id, auto_upload_cpa=auto_upload_cpa,
                 cpa_service_id=cpa_service_id
             )
@@ -760,6 +838,8 @@ async def run_batch_registration(
     proxy: Optional[str],
     email_service_config: Optional[dict],
     email_service_id: Optional[int],
+    task_proxies: Optional[List[Optional[str]]],
+    task_email_service_ids: Optional[List[Optional[int]]],
     interval_min: int,
     interval_max: int,
     concurrency: int = 1,
@@ -771,13 +851,13 @@ async def run_batch_registration(
     if mode == "parallel":
         await run_batch_parallel(
             batch_id, task_uuids, email_service_type, proxy,
-            email_service_config, email_service_id, concurrency,
+            email_service_config, email_service_id, task_proxies, task_email_service_ids, concurrency,
             auto_upload_cpa=auto_upload_cpa, cpa_service_id=cpa_service_id
         )
     else:
         await run_batch_pipeline(
             batch_id, task_uuids, email_service_type, proxy,
-            email_service_config, email_service_id,
+            email_service_config, email_service_id, task_proxies, task_email_service_ids,
             interval_min, interval_max, concurrency,
             auto_upload_cpa=auto_upload_cpa, cpa_service_id=cpa_service_id
         )
@@ -861,13 +941,27 @@ async def start_batch_registration(
     task_uuids = []
 
     with get_db() as db:
-        for _ in range(request.count):
+        service_type = EmailServiceType(request.email_service_type)
+        task_email_service_ids = _build_batch_email_service_plan(
+            db,
+            service_type,
+            request.email_service_id,
+            request.count,
+        )
+        task_proxies = _build_batch_proxy_plan(db, request.proxy, request.count)
+
+        for index in range(request.count):
             task_uuid = str(uuid.uuid4())
-            task = crud.create_registration_task(
+            resolved_email_service_id = task_email_service_ids[index]
+            resolved_proxy = task_proxies[index]
+            crud.create_registration_task(
                 db,
                 task_uuid=task_uuid,
-                proxy=request.proxy
+                email_service_id=resolved_email_service_id,
+                proxy=resolved_proxy
             )
+            if resolved_email_service_id:
+                _mark_email_service_used(db, resolved_email_service_id)
             task_uuids.append(task_uuid)
 
     # 获取所有任务
@@ -883,6 +977,8 @@ async def start_batch_registration(
         request.proxy,
         request.email_service_config,
         request.email_service_id,
+        task_proxies,
+        task_email_service_ids,
         request.interval_min,
         request.interval_max,
         request.concurrency,
