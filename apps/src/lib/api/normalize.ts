@@ -1375,6 +1375,7 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     ),
     requestCompressionEnabled: asBoolean(source.requestCompressionEnabled, true),
     payloadRewriteRulesJson: asString(source.payloadRewriteRulesJson) || "[]",
+    modelAliasPoolsJson: asString(source.modelAliasPoolsJson) || "[]",
     retryPolicyMaxRetries: asInteger(source.retryPolicyMaxRetries, 3, 0),
     retryPolicyBackoffStrategy:
       asString(source.retryPolicyBackoffStrategy) || "exponential",

@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 
 use super::{
     current_background_tasks_snapshot_value, current_close_to_tray_on_close_setting,
-    current_env_overrides, current_gateway_free_account_max_model, current_gateway_originator,
+    current_env_overrides, current_gateway_free_account_max_model,
+    current_gateway_model_alias_pools_json, current_gateway_originator,
     current_gateway_payload_rewrite_rules_json, current_gateway_quota_protection_enabled,
     current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
@@ -22,8 +23,8 @@ use super::{
     save_persisted_bool_setting, sync_runtime_settings_from_storage,
     APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
     APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
-    APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
-    APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
+    APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+    APP_SETTING_GATEWAY_ORIGINATOR_KEY, APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
@@ -77,6 +78,7 @@ struct PersistCurrentSnapshotInput<'a> {
     quota_protection_threshold_percent: u64,
     request_compression_enabled: bool,
     payload_rewrite_rules_json: &'a str,
+    model_alias_pools_json: &'a str,
     retry_policy_max_retries: usize,
     retry_policy_backoff_strategy: &'a str,
     retry_policy_retryable_status_codes: &'a [u16],
@@ -118,6 +120,7 @@ pub(super) fn current_app_settings_value(
     let quota_protection_threshold_percent = current_gateway_quota_protection_threshold_percent();
     let request_compression_enabled = current_gateway_request_compression_enabled();
     let payload_rewrite_rules_json = current_gateway_payload_rewrite_rules_json();
+    let model_alias_pools_json = current_gateway_model_alias_pools_json();
     let retry_policy = current_gateway_retry_policy();
     let response_cache_enabled = current_gateway_response_cache_enabled();
     let response_cache_ttl_secs = current_gateway_response_cache_ttl_secs();
@@ -159,6 +162,7 @@ pub(super) fn current_app_settings_value(
         quota_protection_threshold_percent,
         request_compression_enabled,
         payload_rewrite_rules_json: &payload_rewrite_rules_json,
+        model_alias_pools_json: &model_alias_pools_json,
         retry_policy_max_retries: retry_policy.max_retries,
         retry_policy_backoff_strategy: &retry_policy.backoff_strategy,
         retry_policy_retryable_status_codes: &retry_policy.retryable_status_codes,
@@ -201,6 +205,7 @@ pub(super) fn current_app_settings_value(
         "quotaProtectionThresholdPercent": quota_protection_threshold_percent,
         "requestCompressionEnabled": request_compression_enabled,
         "payloadRewriteRulesJson": payload_rewrite_rules_json,
+        "modelAliasPoolsJson": model_alias_pools_json,
         "retryPolicyMaxRetries": retry_policy.max_retries,
         "retryPolicyBackoffStrategy": retry_policy.backoff_strategy,
         "retryPolicyRetryableStatusCodes": retry_policy.retryable_status_codes,
@@ -288,6 +293,7 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
         quota_protection_threshold_percent,
         request_compression_enabled,
         payload_rewrite_rules_json,
+        model_alias_pools_json,
         retry_policy_max_retries,
         retry_policy_backoff_strategy,
         retry_policy_retryable_status_codes,
@@ -347,6 +353,10 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
         Some(payload_rewrite_rules_json),
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+        Some(model_alias_pools_json),
     );
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,

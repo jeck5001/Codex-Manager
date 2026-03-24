@@ -5,8 +5,8 @@ use serde::Deserialize;
 use super::{
     normalize_optional_text, save_persisted_app_setting, save_persisted_bool_setting,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
-    APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
-    APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
+    APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+    APP_SETTING_GATEWAY_ORIGINATOR_KEY, APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
@@ -163,6 +163,19 @@ pub fn set_gateway_payload_rewrite_rules_json(raw: Option<&str>) -> Result<Strin
 
 pub fn current_gateway_payload_rewrite_rules_json() -> String {
     gateway::current_payload_rewrite_rules_json()
+}
+
+pub fn set_gateway_model_alias_pools_json(raw: Option<&str>) -> Result<String, String> {
+    let applied = gateway::set_model_alias_pools_json(raw)?;
+    save_persisted_app_setting(
+        APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+        Some(&applied),
+    )?;
+    Ok(applied)
+}
+
+pub fn current_gateway_model_alias_pools_json() -> String {
+    gateway::current_model_alias_pools_json()
 }
 
 pub fn set_gateway_response_cache_enabled(enabled: bool) -> Result<bool, String> {

@@ -71,8 +71,9 @@ fn validate_api_key_allowed_model_rejects_disallowed_model() {
 
 #[test]
 fn validate_api_key_allowed_models_rejects_disallowed_requested_model_before_override() {
-    let error = validate_api_key_allowed_models(&["o3".to_string()], Some("gpt-4o"), Some("o3"))
-        .expect_err("disallowed requested model should be rejected before rewrite");
+    let error =
+        validate_api_key_allowed_models(&["o3".to_string()], Some("gpt-4o"), Some("o3"), false)
+            .expect_err("disallowed requested model should be rejected before rewrite");
 
     assert_eq!(error.status_code, 403);
     assert!(error.message.contains("gpt-4o"));
@@ -80,7 +81,40 @@ fn validate_api_key_allowed_models_rejects_disallowed_requested_model_before_ove
 
 #[test]
 fn validate_api_key_allowed_models_allows_all_models_when_allowlist_is_empty() {
-    let result = validate_api_key_allowed_models(&[], Some("gpt-4o"), Some("o3"));
+    let result = validate_api_key_allowed_models(&[], Some("gpt-4o"), Some("o3"), false);
 
     assert!(result.is_ok());
+}
+
+#[test]
+fn validate_api_key_allowed_models_accepts_alias_when_alias_itself_is_allowed() {
+    let result = validate_api_key_allowed_models(
+        &["o3-auto".to_string()],
+        Some("o3-auto"),
+        Some("o3"),
+        true,
+    );
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn validate_api_key_allowed_models_accepts_alias_when_selected_model_is_allowed() {
+    let result =
+        validate_api_key_allowed_models(&["o3".to_string()], Some("o3-auto"), Some("o3"), true);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn validate_api_key_allowed_models_rejects_alias_when_neither_alias_nor_selected_model_is_allowed()
+{
+    let error =
+        validate_api_key_allowed_models(&["gpt-4o".to_string()], Some("o3-auto"), Some("o3"), true)
+            .expect_err(
+                "alias should be rejected when allowlist matches neither alias nor selected model",
+            );
+
+    assert_eq!(error.status_code, 403);
+    assert!(error.message.contains("o3"));
 }

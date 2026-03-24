@@ -578,6 +578,7 @@ export default function SettingsPage() {
   const [teamManagerApiKeyDraft, setTeamManagerApiKeyDraft] = useState("");
   const [remoteManagementSecretDraft, setRemoteManagementSecretDraft] = useState("");
   const [payloadRewriteRulesDraft, setPayloadRewriteRulesDraft] = useState<string | null>(null);
+  const [modelAliasPoolsDraft, setModelAliasPoolsDraft] = useState<string | null>(null);
   const [selectedAlertRuleId, setSelectedAlertRuleId] = useState<string | null>(null);
   const [selectedAlertChannelId, setSelectedAlertChannelId] = useState<string | null>(null);
   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
@@ -1020,6 +1021,7 @@ export default function SettingsPage() {
   const remoteManagementSecretInput = remoteManagementSecretDraft.trim();
   const payloadRewriteRulesInput =
     payloadRewriteRulesDraft ?? snapshot?.payloadRewriteRulesJson ?? "[]";
+  const modelAliasPoolsInput = modelAliasPoolsDraft ?? snapshot?.modelAliasPoolsJson ?? "[]";
   const cacheStats: GatewayResponseCacheStats = responseCacheStats ?? {
     enabled: snapshot?.responseCacheEnabled ?? false,
     ttlSecs: snapshot?.responseCacheTtlSecs ?? 3600,
@@ -1399,6 +1401,29 @@ export default function SettingsPage() {
       })
       .then(() => {
         setPayloadRewriteRulesDraft(null);
+      })
+      .catch(() => undefined);
+  };
+
+  const handleSaveModelAliasPools = () => {
+    const raw = modelAliasPoolsInput.trim();
+    const candidate = raw || "[]";
+    try {
+      const parsed = JSON.parse(candidate);
+      if (!Array.isArray(parsed)) {
+        toast.error("模型别名池配置必须是 JSON 数组");
+        return;
+      }
+    } catch {
+      toast.error("模型别名池配置不是合法 JSON");
+      return;
+    }
+    void updateSettings
+      .mutateAsync({
+        modelAliasPoolsJson: candidate,
+      })
+      .then(() => {
+        setModelAliasPoolsDraft(null);
       })
       .catch(() => undefined);
   };
@@ -2612,6 +2637,64 @@ export default function SettingsPage() {
                     variant="outline"
                     disabled={updateSettings.isPending}
                     onClick={() => setPayloadRewriteRulesDraft(snapshot?.payloadRewriteRulesJson ?? "[]")}
+                  >
+                    还原当前配置
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 border-t pt-6">
+                <div className="space-y-1">
+                  <Label htmlFor="model-alias-pools">模型别名 / 模型池</Label>
+                  <p className="text-xs text-muted-foreground">
+                    用 JSON 数组定义客户端可见模型名到真实模型池的映射。当前支持
+                    <code className="mx-1">ordered</code>
+                    和
+                    <code className="mx-1">weighted</code>
+                    两种策略，命中后会先选出真实模型，再继续走现有的 API Key 模型降级链。
+                  </p>
+                </div>
+                <Textarea
+                  id="model-alias-pools"
+                  rows={10}
+                  className="font-mono text-xs leading-5"
+                  placeholder={`[
+  {
+    "alias": "o3-auto",
+    "strategy": "weighted",
+    "targets": [
+      { "model": "o3", "weight": 8 },
+      { "model": "o4-mini", "weight": 2 }
+    ]
+  }
+]`}
+                  value={modelAliasPoolsInput}
+                  onChange={(event) => setModelAliasPoolsDraft(event.target.value)}
+                />
+                <div className="rounded-xl border border-border/40 bg-background/40 p-3 text-[11px] text-muted-foreground">
+                  保存后会同步写入
+                  <code className="mx-1">appSettings</code>
+                  持久化配置；如需环境变量覆盖，可使用
+                  <code className="mx-1">CODEXMANAGER_MODEL_ALIAS_POOLS</code>
+                  。请求日志中的
+                  <code className="mx-1">requestedModel</code>
+                  会保留别名，真实上游模型不同步时会返回
+                  <code className="mx-1">X-CodexManager-Actual-Model</code>
+                  。
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    className="gap-2"
+                    disabled={updateSettings.isPending}
+                    onClick={handleSaveModelAliasPools}
+                  >
+                    <Save className="h-4 w-4" />
+                    保存模型池配置
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={updateSettings.isPending}
+                    onClick={() => setModelAliasPoolsDraft(snapshot?.modelAliasPoolsJson ?? "[]")}
                   >
                     还原当前配置
                   </Button>

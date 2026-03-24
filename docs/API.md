@@ -172,6 +172,7 @@ curl -s http://127.0.0.1:48761/api/management/status \
 - `responseCacheTtlSecs: number`
 - `responseCacheMaxEntries: number`
 - `payloadRewriteRulesJson: string`
+- `modelAliasPoolsJson: string`
 - `retryPolicyMaxRetries: number`
 - `retryPolicyBackoffStrategy: string`
 - `retryPolicyRetryableStatusCodes: number[]`
@@ -189,6 +190,7 @@ curl -s http://127.0.0.1:48761/api/management/status \
 - `responseCacheTtlSecs`
 - `responseCacheMaxEntries`
 - `payloadRewriteRulesJson`
+- `modelAliasPoolsJson`
 - `retryPolicyMaxRetries`
 - `retryPolicyBackoffStrategy`
 - `retryPolicyRetryableStatusCodes`
@@ -199,6 +201,12 @@ curl -s http://127.0.0.1:48761/api/management/status \
 - `mode` 目前支持 `set` / `set_if_missing`，`path` 支持精确路径或 `*`。
 - 为避免绕过现有 API Key 模型白名单，第一版明确禁止改写 `model` 字段。
 - 可通过环境变量 `CODEXMANAGER_PAYLOAD_REWRITE_RULES` 覆盖。
+- `modelAliasPoolsJson` 是模型别名 / 模型池的第一版后端入口，内容为 JSON 数组字符串。
+- 第一版只做“客户端看到一个别名，网关先选出一个真实模型，再复用现有 API Key 模型 fallback”的后端闭环；当前不区分渠道路由，`channel` 仅作为可选元数据保留。
+- 当前支持 `ordered` / `weighted` 两种策略，规则形如 `[{ "alias": "o3-auto", "strategy": "weighted", "targets": [{ "model": "o3", "weight": 8 }, { "model": "o4-mini", "weight": 2 }] }]`。
+- 当客户端请求别名时，请求日志里的 `requestedModel` 会保留别名；真正发往上游的模型会写入 `model`，并在与别名不同的时候返回响应头 `X-CodexManager-Actual-Model`。
+- API Key 模型白名单已兼容别名：白名单里允许别名时，不强制要求把池内真实模型全部重复配置；若别名不在白名单中，但本次选中的真实模型在白名单中，也会放行。
+- 可通过环境变量 `CODEXMANAGER_MODEL_ALIAS_POOLS` 覆盖。
 
 ### 插件管理（实验）
 

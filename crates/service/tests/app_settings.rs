@@ -29,6 +29,7 @@ fn reset_runtime_defaults() {
         "quotaProtectionThresholdPercent": 10,
         "requestCompressionEnabled": true,
         "payloadRewriteRulesJson": "[]",
+        "modelAliasPoolsJson": "[]",
         "gatewayOriginator": "codex_cli_rs",
         "gatewayResidencyRequirement": "",
         "appearancePreset": "classic",
@@ -195,6 +196,7 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "quotaProtectionThresholdPercent": 12,
             "requestCompressionEnabled": false,
             "payloadRewriteRulesJson": "[{\"path\":\"/v1/responses\",\"field\":\"service_tier\",\"mode\":\"set_if_missing\",\"value\":\"flex\"}]",
+            "modelAliasPoolsJson": "[{\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"model\":\"o3\"}]}]",
             "gatewayOriginator": "codex_cli_rs_test",
             "gatewayResidencyRequirement": "us",
             "cpaNoCookieHeaderModeEnabled": true,
@@ -324,6 +326,14 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             snapshot
+                .get("modelAliasPoolsJson")
+                .and_then(|value| value.as_str()),
+            Some(
+                "[{\"enabled\":true,\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"enabled\":true,\"model\":\"o3\",\"weight\":1,\"channel\":null}]}]"
+            )
+        );
+        assert_eq!(
+            snapshot
                 .get("gatewayOriginator")
                 .and_then(|value| value.as_str()),
             Some("codex_cli_rs_test")
@@ -420,6 +430,17 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
                 .expect("read payload rewrite rules"),
             Some(
                 "[{\"enabled\":true,\"path\":\"/v1/responses\",\"field\":\"service_tier\",\"mode\":\"set_if_missing\",\"value\":\"flex\"}]"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY
+                )
+                .expect("read model alias pools"),
+            Some(
+                "[{\"enabled\":true,\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"enabled\":true,\"model\":\"o3\",\"weight\":1,\"channel\":null}]}]"
                     .to_string()
             )
         );
@@ -700,6 +721,7 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
+            codexmanager_service::APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_ORIGINATOR_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
@@ -729,6 +751,10 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             (
                 "CODEXMANAGER_PAYLOAD_REWRITE_RULES",
                 Some("[{\"path\":\"*\",\"field\":\"service_tier\",\"mode\":\"set\",\"value\":\"priority\"}]"),
+            ),
+            (
+                "CODEXMANAGER_MODEL_ALIAS_POOLS",
+                Some("[{\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"model\":\"o3\"}]}]"),
             ),
             ("CODEXMANAGER_ORIGINATOR", Some("codex_cli_rs_env")),
             ("CODEXMANAGER_RESIDENCY_REQUIREMENT", Some("us")),
@@ -778,6 +804,14 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .and_then(|value| value.as_str()),
             Some(
                 "[{\"enabled\":true,\"path\":\"*\",\"field\":\"service_tier\",\"mode\":\"set\",\"value\":\"priority\"}]"
+            )
+        );
+        assert_eq!(
+            snapshot
+                .get("modelAliasPoolsJson")
+                .and_then(|value| value.as_str()),
+            Some(
+                "[{\"enabled\":true,\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"enabled\":true,\"model\":\"o3\",\"weight\":1,\"channel\":null}]}]"
             )
         );
         assert_eq!(

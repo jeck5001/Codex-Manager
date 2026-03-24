@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use super::{
     save_persisted_app_setting, save_persisted_bool_setting, set_close_to_tray_on_close_setting,
     set_env_overrides, set_gateway_background_tasks, set_gateway_cpa_no_cookie_header_mode,
-    set_gateway_free_account_max_model, set_gateway_originator,
+    set_gateway_free_account_max_model, set_gateway_model_alias_pools_json, set_gateway_originator,
     set_gateway_payload_rewrite_rules_json, set_gateway_quota_protection_enabled,
     set_gateway_quota_protection_threshold_percent, set_gateway_request_compression_enabled,
     set_gateway_residency_requirement, set_gateway_response_cache_enabled,
@@ -38,6 +38,7 @@ pub(super) struct AppSettingsPatch {
     quota_protection_threshold_percent: Option<u64>,
     request_compression_enabled: Option<bool>,
     payload_rewrite_rules_json: Option<String>,
+    model_alias_pools_json: Option<String>,
     retry_policy_max_retries: Option<usize>,
     retry_policy_backoff_strategy: Option<String>,
     retry_policy_retryable_status_codes: Option<Vec<u16>>,
@@ -128,6 +129,9 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     }
     if let Some(raw) = patch.payload_rewrite_rules_json {
         let _ = set_gateway_payload_rewrite_rules_json(Some(&raw))?;
+    }
+    if let Some(raw) = patch.model_alias_pools_json {
+        let _ = set_gateway_model_alias_pools_json(Some(&raw))?;
     }
     if patch.retry_policy_max_retries.is_some()
         || patch.retry_policy_backoff_strategy.is_some()

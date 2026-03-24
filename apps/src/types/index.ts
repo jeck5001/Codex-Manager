@@ -842,6 +842,7 @@ export interface AppSettings {
   quotaProtectionThresholdPercent: number;
   requestCompressionEnabled: boolean;
   payloadRewriteRulesJson: string;
+  modelAliasPoolsJson: string;
   retryPolicyMaxRetries: number;
   retryPolicyBackoffStrategy: string;
   retryPolicyRetryableStatusCodes: number[];

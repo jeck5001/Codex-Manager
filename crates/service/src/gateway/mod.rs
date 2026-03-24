@@ -290,6 +290,21 @@ pub(crate) fn set_payload_rewrite_rules_json(raw: Option<&str>) -> Result<String
     runtime_config::set_payload_rewrite_rules_json(raw)
 }
 
+pub(crate) fn current_model_alias_pools_json() -> String {
+    runtime_config::current_model_alias_pools_json()
+}
+
+pub(crate) fn set_model_alias_pools_json(raw: Option<&str>) -> Result<String, String> {
+    runtime_config::set_model_alias_pools_json(raw)
+}
+
+pub(crate) fn resolve_model_alias(
+    requested_model: &str,
+    trace_id: &str,
+) -> Option<runtime_config::ModelAliasResolution> {
+    runtime_config::resolve_model_alias(requested_model, trace_id)
+}
+
 pub(crate) fn current_originator() -> String {
     runtime_config::current_originator()
 }

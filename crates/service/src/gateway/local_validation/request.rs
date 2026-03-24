@@ -61,12 +61,24 @@ fn validate_api_key_allowed_models(
     allowed_models: &[String],
     requested_model: Option<&str>,
     effective_model: Option<&str>,
+    alias_selected: bool,
 ) -> Result<(), LocalValidationError> {
+    if allowed_models.is_empty() {
+        return Ok(());
+    }
+
+    let requested_allowed =
+        requested_model.is_some_and(|model| model_is_allowed(allowed_models, model));
     if let Some(requested_model) = requested_model {
-        validate_api_key_allowed_model(allowed_models, Some(requested_model))?;
+        if !alias_selected || requested_allowed {
+            validate_api_key_allowed_model(allowed_models, Some(requested_model))?;
+        }
     }
 
     if let Some(effective_model) = effective_model {
+        if alias_selected && requested_allowed {
+            return Ok(());
+        }
         validate_api_key_allowed_model(allowed_models, Some(effective_model))?;
     }
 
@@ -115,7 +127,21 @@ pub(super) fn build_local_validation_result(
     // 中文注释：下游调用方的 stream 语义应在请求改写前确定；
     // 否则上游兼容改写（例如 /responses 强制 stream=true）会污染下游响应模式判断。
     let client_request_meta = super::super::parse_request_metadata(&body);
-    let (effective_model, effective_reasoning) = resolve_effective_request_overrides(&api_key);
+    let requested_model_for_log = client_request_meta
+        .model
+        .clone()
+        .or(api_key.model_slug.clone());
+    let alias_resolution = client_request_meta
+        .model
+        .as_deref()
+        .and_then(|model| super::super::resolve_model_alias(model, trace_id.as_str()));
+    let alias_selected_model = alias_resolution
+        .as_ref()
+        .map(|resolution| resolution.actual_model.clone());
+    let (effective_model_override, effective_reasoning) =
+        resolve_effective_request_overrides(&api_key);
+    let alias_selected = effective_model_override.is_none() && alias_selected_model.is_some();
+    let effective_model = effective_model_override.or(alias_selected_model);
     let allowed_models = storage
         .find_api_key_allowed_models_by_id(&api_key.id)
         .map_err(|err| LocalValidationError::new(500, format!("storage read failed: {err}")))?
@@ -125,6 +151,7 @@ pub(super) fn build_local_validation_result(
         allowed_models.as_slice(),
         client_request_meta.model.as_deref(),
         effective_model.as_deref(),
+        alias_selected,
     )?;
     body = super::super::apply_request_overrides_with_prompt_cache_key(
         &path,
@@ -166,6 +193,7 @@ pub(super) fn build_local_validation_result(
         request_method,
         key_id: api_key.id,
         api_key_name: api_key.name,
+        requested_model_for_log,
         model_for_log,
         reasoning_for_log,
         method,

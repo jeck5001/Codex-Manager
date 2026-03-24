@@ -48,6 +48,71 @@ fn respond_error(request: Request, status: u16, message: &str, trace_id: Option<
     let _ = request.respond(response);
 }
 
+struct AzureRequestLogArgs<'a> {
+    storage: &'a Storage,
+    trace_id: &'a str,
+    original_path: &'a str,
+    path: &'a str,
+    response_adapter: super::super::super::ResponseAdapter,
+    key_id: &'a str,
+    request_method: &'a str,
+    model_for_log: Option<&'a str>,
+    requested_model: Option<&'a str>,
+    reasoning_for_log: Option<&'a str>,
+    upstream_url: Option<&'a str>,
+    status_code: u16,
+    usage: super::super::super::request_log::RequestLogUsage,
+    error: Option<&'a str>,
+    elapsed_ms: u128,
+}
+
+fn write_azure_request_log(args: AzureRequestLogArgs<'_>) {
+    let AzureRequestLogArgs {
+        storage,
+        trace_id,
+        original_path,
+        path,
+        response_adapter,
+        key_id,
+        request_method,
+        model_for_log,
+        requested_model,
+        reasoning_for_log,
+        upstream_url,
+        status_code,
+        usage,
+        error,
+        elapsed_ms,
+    } = args;
+    super::super::super::request_log::write_request_log_with_attempts_and_model_fallback(
+        storage,
+        super::super::super::request_log::RequestLogTraceContext {
+            trace_id: Some(trace_id),
+            original_path: Some(original_path),
+            adapted_path: Some(path),
+            response_adapter: Some(response_adapter),
+        },
+        super::super::super::request_log::RequestLogEntry {
+            key_id: Some(key_id),
+            account_id: None,
+            request_path: path,
+            method: request_method,
+            model: model_for_log,
+            reasoning_effort: reasoning_for_log,
+            upstream_url,
+            status_code: Some(status_code),
+            usage,
+            error,
+            duration_ms: Some(elapsed_ms),
+        },
+        super::super::super::request_log::RequestLogRouteMeta {
+            attempted_account_ids: None,
+            requested_model,
+            model_fallback_path: None,
+        },
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(in super::super) fn proxy_azure_request(
     request: Request,
@@ -66,6 +131,8 @@ pub(in super::super) fn proxy_azure_request(
     reasoning_for_log: Option<&str>,
     upstream_base_url: Option<&str>,
     static_headers_json: Option<&str>,
+    requested_model: Option<&str>,
+    actual_model_header: Option<&str>,
     request_deadline: Option<Instant>,
     started_at: Instant,
 ) -> Result<(), String> {
@@ -83,28 +150,23 @@ pub(in super::super) fn proxy_azure_request(
             Some(message),
             started_at.elapsed().as_millis(),
         );
-        super::super::super::write_request_log(
+        write_azure_request_log(AzureRequestLogArgs {
             storage,
-            super::super::super::request_log::RequestLogTraceContext {
-                trace_id: Some(trace_id),
-                original_path: Some(original_path),
-                adapted_path: Some(path),
-                response_adapter: Some(response_adapter),
-            },
-            super::super::super::request_log::RequestLogEntry {
-                key_id: Some(key_id),
-                account_id: None,
-                request_path: path,
-                method: request_method,
-                model: model_for_log,
-                reasoning_effort: reasoning_for_log,
-                upstream_url: None,
-                status_code: Some(400),
-                usage: super::super::super::request_log::RequestLogUsage::default(),
-                error: Some(message),
-                duration_ms: Some(started_at.elapsed().as_millis()),
-            },
-        );
+            trace_id,
+            original_path,
+            path,
+            response_adapter,
+            key_id,
+            request_method,
+            model_for_log,
+            requested_model,
+            reasoning_for_log,
+            upstream_url: None,
+            status_code: 400,
+            usage: super::super::super::request_log::RequestLogUsage::default(),
+            error: Some(message),
+            elapsed_ms: started_at.elapsed().as_millis(),
+        });
         respond_error(request, 400, message, Some(trace_id));
         return Ok(());
     };
@@ -125,28 +187,23 @@ pub(in super::super) fn proxy_azure_request(
                 Some(err.as_str()),
                 started_at.elapsed().as_millis(),
             );
-            super::super::super::write_request_log(
+            write_azure_request_log(AzureRequestLogArgs {
                 storage,
-                super::super::super::request_log::RequestLogTraceContext {
-                    trace_id: Some(trace_id),
-                    original_path: Some(original_path),
-                    adapted_path: Some(path),
-                    response_adapter: Some(response_adapter),
-                },
-                super::super::super::request_log::RequestLogEntry {
-                    key_id: Some(key_id),
-                    account_id: None,
-                    request_path: path,
-                    method: request_method,
-                    model: model_for_log,
-                    reasoning_effort: reasoning_for_log,
-                    upstream_url: None,
-                    status_code: Some(400),
-                    usage: super::super::super::request_log::RequestLogUsage::default(),
-                    error: Some(err.as_str()),
-                    duration_ms: Some(started_at.elapsed().as_millis()),
-                },
-            );
+                trace_id,
+                original_path,
+                path,
+                response_adapter,
+                key_id,
+                request_method,
+                model_for_log,
+                requested_model,
+                reasoning_for_log,
+                upstream_url: None,
+                status_code: 400,
+                usage: super::super::super::request_log::RequestLogUsage::default(),
+                error: Some(err.as_str()),
+                elapsed_ms: started_at.elapsed().as_millis(),
+            });
             respond_error(request, 400, err.as_str(), Some(trace_id));
             return Ok(());
         }
@@ -171,28 +228,23 @@ pub(in super::super) fn proxy_azure_request(
                     Some(message),
                     started_at.elapsed().as_millis(),
                 );
-                super::super::super::write_request_log(
+                write_azure_request_log(AzureRequestLogArgs {
                     storage,
-                    super::super::super::request_log::RequestLogTraceContext {
-                        trace_id: Some(trace_id),
-                        original_path: Some(original_path),
-                        adapted_path: Some(path),
-                        response_adapter: Some(response_adapter),
-                    },
-                    super::super::super::request_log::RequestLogEntry {
-                        key_id: Some(key_id),
-                        account_id: None,
-                        request_path: path,
-                        method: request_method,
-                        model: model_for_log,
-                        reasoning_effort: reasoning_for_log,
-                        upstream_url: None,
-                        status_code: Some(403),
-                        usage: super::super::super::request_log::RequestLogUsage::default(),
-                        error: Some(message),
-                        duration_ms: Some(started_at.elapsed().as_millis()),
-                    },
-                );
+                    trace_id,
+                    original_path,
+                    path,
+                    response_adapter,
+                    key_id,
+                    request_method,
+                    model_for_log,
+                    requested_model,
+                    reasoning_for_log,
+                    upstream_url: None,
+                    status_code: 403,
+                    usage: super::super::super::request_log::RequestLogUsage::default(),
+                    error: Some(message),
+                    elapsed_ms: started_at.elapsed().as_millis(),
+                });
                 respond_error(request, 403, message, Some(trace_id));
                 return Ok(());
             }
@@ -211,28 +263,23 @@ pub(in super::super) fn proxy_azure_request(
                     Some(message.as_str()),
                     started_at.elapsed().as_millis(),
                 );
-                super::super::super::write_request_log(
+                write_azure_request_log(AzureRequestLogArgs {
                     storage,
-                    super::super::super::request_log::RequestLogTraceContext {
-                        trace_id: Some(trace_id),
-                        original_path: Some(original_path),
-                        adapted_path: Some(path),
-                        response_adapter: Some(response_adapter),
-                    },
-                    super::super::super::request_log::RequestLogEntry {
-                        key_id: Some(key_id),
-                        account_id: None,
-                        request_path: path,
-                        method: request_method,
-                        model: model_for_log,
-                        reasoning_effort: reasoning_for_log,
-                        upstream_url: None,
-                        status_code: Some(500),
-                        usage: super::super::super::request_log::RequestLogUsage::default(),
-                        error: Some(message.as_str()),
-                        duration_ms: Some(started_at.elapsed().as_millis()),
-                    },
-                );
+                    trace_id,
+                    original_path,
+                    path,
+                    response_adapter,
+                    key_id,
+                    request_method,
+                    model_for_log,
+                    requested_model,
+                    reasoning_for_log,
+                    upstream_url: None,
+                    status_code: 500,
+                    usage: super::super::super::request_log::RequestLogUsage::default(),
+                    error: Some(message.as_str()),
+                    elapsed_ms: started_at.elapsed().as_millis(),
+                });
                 respond_error(request, 500, message.as_str(), Some(trace_id));
                 return Ok(());
             }
@@ -336,28 +383,23 @@ pub(in super::super) fn proxy_azure_request(
                         Some(message.as_str()),
                         started_at.elapsed().as_millis(),
                     );
-                    super::super::super::write_request_log(
+                    write_azure_request_log(AzureRequestLogArgs {
                         storage,
-                        super::super::super::request_log::RequestLogTraceContext {
-                            trace_id: Some(trace_id),
-                            original_path: Some(original_path),
-                            adapted_path: Some(path),
-                            response_adapter: Some(response_adapter),
-                        },
-                        super::super::super::request_log::RequestLogEntry {
-                            key_id: Some(key_id),
-                            account_id: None,
-                            request_path: path,
-                            method: request_method,
-                            model: model_for_log,
-                            reasoning_effort: reasoning_for_log,
-                            upstream_url: Some(url.as_str()),
-                            status_code: Some(502),
-                            usage: super::super::super::request_log::RequestLogUsage::default(),
-                            error: Some(message.as_str()),
-                            duration_ms: Some(started_at.elapsed().as_millis()),
-                        },
-                    );
+                        trace_id,
+                        original_path,
+                        path,
+                        response_adapter,
+                        key_id,
+                        request_method,
+                        model_for_log,
+                        requested_model,
+                        reasoning_for_log,
+                        upstream_url: Some(url.as_str()),
+                        status_code: 502,
+                        usage: super::super::super::request_log::RequestLogUsage::default(),
+                        error: Some(message.as_str()),
+                        elapsed_ms: started_at.elapsed().as_millis(),
+                    });
                     respond_error(request, 502, message.as_str(), Some(trace_id));
                     return Ok(());
                 }
@@ -382,7 +424,7 @@ pub(in super::super) fn proxy_azure_request(
             tool_name_restore_map: Some(tool_name_restore_map),
             is_stream,
             trace_id: Some(trace_id),
-            actual_model_header: None,
+            actual_model_header,
             response_cache_key: None,
         },
     )?;
@@ -411,34 +453,29 @@ pub(in super::super) fn proxy_azure_request(
         final_error_text.as_deref(),
         started_at.elapsed().as_millis(),
     );
-    super::super::super::write_request_log(
+    write_azure_request_log(AzureRequestLogArgs {
         storage,
-        super::super::super::request_log::RequestLogTraceContext {
-            trace_id: Some(trace_id),
-            original_path: Some(original_path),
-            adapted_path: Some(path),
-            response_adapter: Some(response_adapter),
+        trace_id,
+        original_path,
+        path,
+        response_adapter,
+        key_id,
+        request_method,
+        model_for_log,
+        requested_model,
+        reasoning_for_log,
+        upstream_url: Some(url.as_str()),
+        status_code: final_status_code,
+        usage: super::super::super::request_log::RequestLogUsage {
+            input_tokens: usage.input_tokens,
+            cached_input_tokens: usage.cached_input_tokens,
+            output_tokens: usage.output_tokens,
+            total_tokens: usage.total_tokens,
+            reasoning_output_tokens: usage.reasoning_output_tokens,
         },
-        super::super::super::request_log::RequestLogEntry {
-            key_id: Some(key_id),
-            account_id: None,
-            request_path: path,
-            method: request_method,
-            model: model_for_log,
-            reasoning_effort: reasoning_for_log,
-            upstream_url: Some(url.as_str()),
-            status_code: Some(final_status_code),
-            usage: super::super::super::request_log::RequestLogUsage {
-                input_tokens: usage.input_tokens,
-                cached_input_tokens: usage.cached_input_tokens,
-                output_tokens: usage.output_tokens,
-                total_tokens: usage.total_tokens,
-                reasoning_output_tokens: usage.reasoning_output_tokens,
-            },
-            error: final_error_text.as_deref(),
-            duration_ms: Some(started_at.elapsed().as_millis()),
-        },
-    );
+        error: final_error_text.as_deref(),
+        elapsed_ms: started_at.elapsed().as_millis(),
+    });
     Ok(())
 }
 
