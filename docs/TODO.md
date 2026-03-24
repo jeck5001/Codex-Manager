@@ -24,6 +24,7 @@
   - 本轮补齐注册中心调度收口：批量注册在“只选邮箱服务类型、不选具体服务”时会按该类型可用服务轮询；代理留空时也会按代理池轮询，不再被前端默认首项锁死
   - 本轮继续收口批量注册轮询：改为在批次创建时预分配邮箱服务 / 代理轮询序列，避免并发任务在运行时重复抢到同一个服务；同时确认当前本地 `codex-register` 实际仅有 1 个启用的 `temp_mail` 服务，单服务场景本身不会产生可见轮换
   - 本轮补齐 freeproxy 同步兼容：注册中心代理列表缺失 `isDefault` 时不再反序列化失败，`gateway/freeProxy/sync` 可兼容旧版 `codex-register` 返回
+  - 本轮补齐邮箱服务安全展示：服务列表“配置概览”对密码 / token / secret 类字段统一显示“已隐藏”，不再在列表中暴露真实凭证
 
 - [x] **通用验收缺口**
   - G7 `cargo clippy`（`codexmanager-service`）已收口：`cargo clippy -p codexmanager-service --tests -- -D warnings` 当前通过，本轮继续清空 `account/account_register.rs`、`app_settings/api/current.rs` 与测试层历史 warning
@@ -41,6 +42,9 @@
   - 本轮继续收敛测试层 warning：`tests/shutdown_flag.rs` 改为布尔断言，`tests/gateway_logs/cache.rs` 改为 `contains_key` 判定；`clippy` 最终清零
 
 - [-] **本轮验证结果**
+  - `pnpm exec tsc --noEmit` 通过（本轮补齐邮箱服务列表配置概览脱敏展示）
+  - `pnpm run build:desktop` 通过（确认邮箱服务列表脱敏改动在桌面静态构建下无回退）
+  - `git diff --check` 通过（本轮前端改动无格式问题）
   - `cargo test -p codexmanager-service register_proxy_item_ -- --nocapture` 通过（本轮补齐旧版注册中心代理列表缺失 `isDefault` 的兼容解析回归）
   - `cargo check -p codexmanager-service` 通过（确认 `gateway/freeProxy/sync` 相关兼容修复未引入编译回退）
   - `git diff --check` 通过（本轮 Rust 修复无格式问题）
