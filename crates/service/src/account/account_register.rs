@@ -44,6 +44,7 @@ pub(crate) struct RegisterProxyItem {
     pub port: u16,
     pub username: Option<String>,
     pub enabled: bool,
+    #[serde(default, alias = "is_default")]
     pub is_default: bool,
     pub priority: i64,
 }
@@ -1236,8 +1237,10 @@ mod tests {
     use super::{
         classify_register_failure_reason, normalized_register_service_url,
         pick_remote_account_by_email, resolve_existing_imported_account_id_from_accounts,
+        RegisterProxyItem,
     };
     use codexmanager_core::storage::{now_ts, Account};
+    use serde_json::json;
 
     #[test]
     fn normalized_register_service_url_uses_default_and_trims_slash() {
@@ -1287,6 +1290,40 @@ mod tests {
             classify_register_failure_reason(Some("proxy authentication required"), ""),
             Some(("register_proxy_error", "注册代理异常"))
         );
+    }
+
+    #[test]
+    fn register_proxy_item_defaults_missing_is_default_to_false() {
+        let item = serde_json::from_value::<RegisterProxyItem>(json!({
+            "id": 1,
+            "name": "pool-a",
+            "type": "socks5",
+            "host": "127.0.0.1",
+            "port": 1080,
+            "username": "tester",
+            "enabled": true,
+            "priority": 5
+        }))
+        .expect("register proxy item should parse without isDefault");
+
+        assert!(!item.is_default);
+    }
+
+    #[test]
+    fn register_proxy_item_accepts_is_default_alias() {
+        let item = serde_json::from_value::<RegisterProxyItem>(json!({
+            "id": 2,
+            "name": "pool-b",
+            "type": "http",
+            "host": "127.0.0.2",
+            "port": 8080,
+            "enabled": true,
+            "is_default": true,
+            "priority": 1
+        }))
+        .expect("register proxy item should parse snake_case is_default");
+
+        assert!(item.is_default);
     }
 
     #[test]
