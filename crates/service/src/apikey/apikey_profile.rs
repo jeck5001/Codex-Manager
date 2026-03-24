@@ -5,6 +5,8 @@ pub(crate) const PROTOCOL_AZURE_OPENAI: &str = "azure_openai";
 pub(crate) const AUTH_BEARER: &str = "authorization_bearer";
 pub(crate) const AUTH_X_API_KEY: &str = "x_api_key";
 pub(crate) const AUTH_API_KEY: &str = "api_key";
+pub(crate) const ROTATION_ACCOUNT: &str = "account_rotation";
+pub(crate) const ROTATION_AGGREGATE_API: &str = "aggregate_api_rotation";
 
 fn normalize_key(value: &str) -> String {
     value.trim().to_ascii_lowercase().replace('-', "_")
@@ -34,6 +36,24 @@ pub(crate) fn profile_from_protocol(
         AUTH_BEARER.to_string()
     };
     Ok((CLIENT_CODEX.to_string(), protocol, auth_scheme))
+}
+
+pub(crate) fn normalize_rotation_strategy(value: Option<String>) -> Result<String, String> {
+    match value {
+        Some(raw) => match normalize_key(&raw).as_str() {
+            "account" | "account_rotation" | "account_rotate" | "账号轮转" => {
+                Ok(ROTATION_ACCOUNT.to_string())
+            }
+            "aggregateapi"
+            | "aggregate_api"
+            | "aggregate_api_rotation"
+            | "aggregateapirotation"
+            | "聚合api"
+            | "聚合api轮转" => Ok(ROTATION_AGGREGATE_API.to_string()),
+            other => Err(format!("unsupported rotation strategy: {other}")),
+        },
+        None => Ok(ROTATION_ACCOUNT.to_string()),
+    }
 }
 
 pub(crate) fn normalize_upstream_base_url(value: Option<String>) -> Result<Option<String>, String> {

@@ -6,6 +6,7 @@ use serde_json::Value;
 use crate::storage_helpers;
 
 mod account;
+mod aggregate_api;
 mod apikey;
 mod app_settings;
 mod gateway;
@@ -85,6 +86,9 @@ pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
     }
 
     if let Some(resp) = account::try_handle(&req) {
+        return resp;
+    }
+    if let Some(resp) = aggregate_api::try_handle(&req) {
         return resp;
     }
     if let Some(resp) = apikey::try_handle(&req) {

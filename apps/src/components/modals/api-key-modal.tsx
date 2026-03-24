@@ -48,6 +48,11 @@ const SERVICE_TIER_LABELS: Record<string, string> = {
   flex: "Flex",
 };
 
+const ROTATION_STRATEGY_LABELS: Record<string, string> = {
+  account_rotation: "账号轮转",
+  aggregate_api_rotation: "聚合API轮转",
+};
+
 interface ApiKeyModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -62,6 +67,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
   const [modelSlug, setModelSlug] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState("");
   const [serviceTier, setServiceTier] = useState("");
+  const [rotationStrategy, setRotationStrategy] = useState("account_rotation");
   const [upstreamBaseUrl, setUpstreamBaseUrl] = useState("");
   const [azureEndpoint, setAzureEndpoint] = useState("");
   const [azureApiKey, setAzureApiKey] = useState("");
@@ -93,6 +99,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
       setModelSlug("");
       setReasoningEffort("");
       setServiceTier("");
+      setRotationStrategy("account_rotation");
       setUpstreamBaseUrl("");
       setAzureEndpoint("");
       setAzureApiKey("");
@@ -105,6 +112,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
     setModelSlug(apiKey.modelSlug || "");
     setReasoningEffort(apiKey.reasoningEffort || "");
     setServiceTier(apiKey.serviceTier || "");
+    setRotationStrategy(apiKey.rotationStrategy || "account_rotation");
     setGeneratedKey("");
 
     if (apiKey.protocol === "azure_openai") {
@@ -132,7 +140,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
       toast.info(
         canAccessManagementRpc
           ? "服务未连接，暂时无法保存平台密钥"
-          : "当前运行环境暂不支持平台密钥管理"
+          : "当前运行环境暂不支持平台密钥管理",
       );
       return;
     }
@@ -161,6 +169,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
           Object.keys(staticHeaders).length > 0
             ? JSON.stringify(staticHeaders)
             : null,
+        rotationStrategy,
       };
 
       if (apiKey?.id) {
@@ -219,15 +228,46 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
               {unavailableMessage}
             </div>
           ) : null}
-          <div className="grid gap-2">
-            <Label htmlFor="name">密钥名称 (可选)</Label>
-            <Input
-              id="name"
-              placeholder="例如：主机房 / 测试"
-              value={name}
-              disabled={!isServiceReady}
-              onChange={(e) => setName(e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-4 items-start">
+            <div className="grid gap-2 content-start">
+              <Label htmlFor="name">密钥名称 (可选)</Label>
+              <Input
+                id="name"
+                placeholder="例如：主机房 / 测试"
+                value={name}
+                disabled={!isServiceReady}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2 content-start">
+              <Label>轮转策略</Label>
+              <Select
+                value={rotationStrategy}
+                onValueChange={(val) => {
+                  if (!val) return;
+                  setRotationStrategy(val);
+                }}
+                disabled={!isServiceReady}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {(value) =>
+                      ROTATION_STRATEGY_LABELS[String(value || "")] ||
+                      "账号轮转"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent align="start">
+                  <SelectItem value="account_rotation">账号轮转</SelectItem>
+                  <SelectItem value="aggregate_api_rotation">
+                    聚合API轮转
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="col-span-2 -mt-1 text-[11px] text-muted-foreground">
+              账号轮转保持现有路由逻辑；聚合API轮转会直接透传请求。
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -245,7 +285,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
                     }
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="start">
                   <SelectItem value="openai_compat">OpenAI 兼容</SelectItem>
                   <SelectItem value="azure_openai">Azure OpenAI</SelectItem>
                   <SelectItem value="anthropic_native">
@@ -273,7 +313,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
                     }}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="start">
                   <SelectItem value="auto">跟随请求</SelectItem>
                   {models?.map((model) => (
                     <SelectItem key={model.slug} value={model.slug}>
@@ -305,7 +345,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
                     }}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="start">
                   <SelectItem value="auto">跟随请求</SelectItem>
                   <SelectItem value="low">低 (low)</SelectItem>
                   <SelectItem value="medium">中 (medium)</SelectItem>
@@ -333,7 +373,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
                     }}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="start">
                   <SelectItem value="auto">跟随请求</SelectItem>
                   <SelectItem value="fast">Fast</SelectItem>
                   <SelectItem value="flex">Flex</SelectItem>
@@ -399,7 +439,10 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
             {generatedKey ? "关闭" : "取消"}
           </Button>
           {!generatedKey && (
-            <Button onClick={handleSave} disabled={!isServiceReady || isLoading}>
+            <Button
+              onClick={handleSave}
+              disabled={!isServiceReady || isLoading}
+            >
               {isLoading ? "保存中..." : "完成"}
             </Button>
           )}

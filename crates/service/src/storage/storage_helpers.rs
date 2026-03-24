@@ -136,6 +136,16 @@ pub(crate) fn generate_key_id() -> String {
     out
 }
 
+pub(crate) fn generate_aggregate_api_id() -> String {
+    let mut buf = [0u8; 6];
+    rand::rngs::OsRng.fill_bytes(&mut buf);
+    let mut out = String::from("ag_");
+    for b in buf {
+        out.push_str(&format!("{:02x}", b));
+    }
+    out
+}
+
 #[cfg(test)]
 static STORAGE_OPEN_COUNTS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, usize>>> =
     std::sync::OnceLock::new();

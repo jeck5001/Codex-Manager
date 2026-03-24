@@ -1,4 +1,6 @@
 use crate::apikey_profile::{PROTOCOL_ANTHROPIC_NATIVE, PROTOCOL_AZURE_OPENAI};
+use crate::apikey_profile::ROTATION_AGGREGATE_API;
+use crate::aggregate_api::resolve_aggregate_api_for_rotation;
 use crate::gateway::request_log::RequestLogUsage;
 use std::time::Instant;
 use tiny_http::Request;
@@ -65,6 +67,8 @@ pub(in super::super) fn proxy_validated_request(
         has_prompt_cache_key,
         request_shape,
         protocol_type,
+        rotation_strategy,
+        aggregate_api_id,
         upstream_base_url,
         static_headers_json,
         response_adapter,
@@ -99,6 +103,82 @@ pub(in super::super) fn proxy_validated_request(
         protocol_type.as_str(),
     );
     super::super::trace_log::log_request_body_preview(trace_id.as_str(), body.as_ref());
+
+    if rotation_strategy == ROTATION_AGGREGATE_API {
+        let aggregate_api = match resolve_aggregate_api_for_rotation(
+            &storage,
+            protocol_type.as_str(),
+            aggregate_api_id.as_deref(),
+        ) {
+            Ok(api) => api,
+            Err(err) => {
+                let message = err;
+                super::super::record_gateway_request_outcome(
+                    path.as_str(),
+                    404,
+                    Some("aggregate_api"),
+                );
+                super::super::trace_log::log_request_final(
+                    trace_id.as_str(),
+                    404,
+                    Some(key_id.as_str()),
+                    None,
+                    Some(message.as_str()),
+                    started_at.elapsed().as_millis(),
+                );
+                super::super::write_request_log(
+                    &storage,
+                    super::super::request_log::RequestLogTraceContext {
+                        trace_id: Some(trace_id.as_str()),
+                        original_path: Some(original_path.as_str()),
+                        adapted_path: Some(path.as_str()),
+                        response_adapter: Some(super::super::ResponseAdapter::Passthrough),
+                    },
+                    Some(key_id.as_str()),
+                    None,
+                    path.as_str(),
+                    request_method.as_str(),
+                    model_for_log.as_deref(),
+                    reasoning_for_log.as_deref(),
+                    None,
+                    Some(404),
+                    super::super::request_log::RequestLogUsage::default(),
+                    Some(message.as_str()),
+                    Some(started_at.elapsed().as_millis()),
+                );
+                let response = super::super::error_response::terminal_text_response(
+                    404,
+                    message,
+                    Some(trace_id.as_str()),
+                );
+                let _ = request.respond(response);
+                return Ok(());
+            }
+        };
+
+        return super::protocol::aggregate_api::proxy_aggregate_request(
+            request,
+            &storage,
+            trace_id.as_str(),
+            key_id.as_str(),
+            original_path.as_str(),
+            path.as_str(),
+            request_method.as_str(),
+            &method,
+            &body,
+            client_is_stream,
+            super::super::ResponseAdapter::Passthrough,
+            model_for_log.as_deref(),
+            reasoning_for_log.as_deref(),
+            Some(aggregate_api.url.as_str()),
+            storage
+                .find_aggregate_api_secret_by_id(aggregate_api.id.as_str())
+                .map_err(|err| err.to_string())?
+                .as_deref(),
+            request_deadline,
+            started_at,
+        );
+    }
 
     if protocol_type == PROTOCOL_AZURE_OPENAI {
         return super::protocol::azure_openai::proxy_azure_request(

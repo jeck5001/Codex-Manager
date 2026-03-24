@@ -92,7 +92,22 @@ export function useApiKeys() {
   const updateMutation = useMutation({
     mutationFn: ({ id, params }: { id: string; params: ApiKeyPayload }) =>
       accountClient.updateApiKey(id, params),
-    onSuccess: async () => {
+    onSuccess: async (_result, variables) => {
+      queryClient.setQueryData(["apikeys"], (current: unknown) =>
+        Array.isArray(current)
+          ? current.map((item) =>
+              item && typeof item === "object" && "id" in item && item.id === variables.id
+                ? {
+                    ...item,
+                    rotationStrategy:
+                      variables.params.rotationStrategy ?? item.rotationStrategy,
+                    aggregateApiId:
+                      variables.params.aggregateApiId ?? item.aggregateApiId,
+                  }
+                : item,
+            )
+          : current,
+      );
       await invalidateAll();
       toast.success("密钥配置已更新");
     },

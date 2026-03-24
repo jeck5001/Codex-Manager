@@ -18,6 +18,8 @@ pub(super) struct LocalValidationResult {
     pub(super) has_prompt_cache_key: bool,
     pub(super) request_shape: Option<String>,
     pub(super) protocol_type: String,
+    pub(super) rotation_strategy: String,
+    pub(super) aggregate_api_id: Option<String>,
     pub(super) upstream_base_url: Option<String>,
     pub(super) static_headers_json: Option<String>,
     pub(super) response_adapter: super::ResponseAdapter,

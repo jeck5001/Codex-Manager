@@ -42,6 +42,11 @@ import { accountClient } from "@/lib/api/account-client";
 import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { formatCompactNumber } from "@/lib/utils/usage";
 
+const ROTATION_STRATEGY_LABELS: Record<string, string> = {
+  account_rotation: "账号轮转",
+  aggregate_api_rotation: "聚合API轮转",
+};
+
 export default function ApiKeysPage() {
   const {
     apiKeys,
@@ -198,6 +203,7 @@ export default function ApiKeysPage() {
                 <TableHead>密钥 / ID</TableHead>
                 <TableHead>名称</TableHead>
                 <TableHead>协议</TableHead>
+                <TableHead>轮转策略</TableHead>
                 <TableHead>绑定模型</TableHead>
                 <TableHead>总使用 Token</TableHead>
                 <TableHead>状态</TableHead>
@@ -207,19 +213,20 @@ export default function ApiKeysPage() {
             <TableBody>
               {isLoading ? (
                 Array.from({ length: 3 }).map((_, index) => (
-                  <TableRow key={index}>
-                    <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                    <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
-                    <TableCell className="text-center"><Skeleton className="mx-auto h-8 w-8" /></TableCell>
-                  </TableRow>
+                    <TableRow key={index}>
+                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="mx-auto h-8 w-8" /></TableCell>
+                    </TableRow>
                 ))
               ) : apiKeys.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-48 text-center">
+                  <TableCell colSpan={8} className="h-48 text-center">
                     <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
                       <Plus className="h-8 w-8 opacity-20" />
                       <p>暂无平台密钥，点击右上角创建</p>
@@ -273,6 +280,12 @@ export default function ApiKeysPage() {
                       <TableCell>
                         <Badge variant="outline" className="bg-accent/20 text-[10px] font-normal capitalize">
                           {key.protocol.replace(/_/g, " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-[10px] font-normal">
+                          {ROTATION_STRATEGY_LABELS[key.rotationStrategy] ||
+                            key.rotationStrategy}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs font-medium text-muted-foreground">

@@ -1,4 +1,4 @@
-use crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE;
+use crate::apikey_profile::{PROTOCOL_ANTHROPIC_NATIVE, ROTATION_AGGREGATE_API};
 use bytes::Bytes;
 use codexmanager_core::storage::ApiKey;
 use reqwest::Method;
@@ -39,6 +39,33 @@ fn allow_openai_responses_path_rewrite(protocol_type: &str, normalized_path: &st
             || normalized_path.starts_with("/v1/completions"))
 }
 
+fn apply_passthrough_request_overrides(
+    path: &str,
+    body: Vec<u8>,
+    api_key: &ApiKey,
+) -> (Vec<u8>, Option<String>, Option<String>, bool, Option<String>) {
+    let (effective_model, effective_reasoning, effective_service_tier) =
+        resolve_effective_request_overrides(api_key);
+    let rewritten_body =
+        super::super::apply_request_overrides_with_service_tier_and_prompt_cache_key(
+            path,
+            body,
+            effective_model.as_deref(),
+            effective_reasoning.as_deref(),
+            effective_service_tier.as_deref(),
+            api_key.upstream_base_url.as_deref(),
+            None,
+        );
+    let request_meta = super::super::parse_request_metadata(&rewritten_body);
+    (
+        rewritten_body,
+        request_meta.model.or(api_key.model_slug.clone()),
+        request_meta.reasoning_effort.or(api_key.reasoning_effort.clone()),
+        request_meta.has_prompt_cache_key,
+        request_meta.request_shape,
+    )
+}
+
 pub(super) fn build_local_validation_result(
     request: &Request,
     trace_id: String,
@@ -49,6 +76,45 @@ pub(super) fn build_local_validation_result(
 ) -> Result<LocalValidationResult, LocalValidationError> {
     // 按当前策略取消每次请求都更新 api_keys.last_used_at，减少并发写入冲突。
     let normalized_path = super::super::normalize_models_path(request.url());
+    let request_method = request.method().as_str().to_string();
+    let method = Method::from_bytes(request_method.as_bytes())
+        .map_err(|_| LocalValidationError::new(405, "unsupported method"))?;
+    let initial_request_meta = super::super::parse_request_metadata(&body);
+    let initial_local_conversation_id = incoming_headers.conversation_id().map(str::to_string);
+
+    if api_key.rotation_strategy == ROTATION_AGGREGATE_API {
+        let (rewritten_body, model_for_log, reasoning_for_log, has_prompt_cache_key, request_shape) =
+            apply_passthrough_request_overrides(&normalized_path, body, &api_key);
+        let incoming_headers =
+            incoming_headers.with_conversation_id_override(initial_local_conversation_id.as_deref());
+        return Ok(LocalValidationResult {
+            trace_id,
+            incoming_headers,
+            storage,
+            original_path: normalized_path.clone(),
+            path: normalized_path,
+            body: Bytes::from(rewritten_body),
+            is_stream: initial_request_meta.is_stream,
+            has_prompt_cache_key,
+            request_shape,
+            protocol_type: api_key.protocol_type,
+            rotation_strategy: api_key.rotation_strategy,
+            aggregate_api_id: api_key.aggregate_api_id,
+            upstream_base_url: api_key.upstream_base_url,
+            static_headers_json: api_key.static_headers_json,
+            response_adapter: super::super::ResponseAdapter::Passthrough,
+            tool_name_restore_map: super::super::ToolNameRestoreMap::default(),
+            request_method,
+            key_id: api_key.id,
+            platform_key_hash: api_key.key_hash,
+            local_conversation_id: initial_local_conversation_id,
+            conversation_binding: None,
+            model_for_log,
+            reasoning_for_log,
+            method,
+        });
+    }
+
     let original_body = body.clone();
     let adapted = super::super::adapt_request_for_protocol(
         api_key.protocol_type.as_str(),
@@ -120,10 +186,6 @@ pub(super) fn build_local_validation_result(
         )
     };
 
-    let request_method = request.method().as_str().to_string();
-    let method = Method::from_bytes(request_method.as_bytes())
-        .map_err(|_| LocalValidationError::new(405, "unsupported method"))?;
-
     let request_meta = super::super::parse_request_metadata(&body);
     let model_for_log = request_meta.model.or(api_key.model_slug.clone());
     let reasoning_for_log = request_meta
@@ -153,6 +215,8 @@ pub(super) fn build_local_validation_result(
         platform_key_hash: api_key.key_hash,
         local_conversation_id,
         conversation_binding,
+        rotation_strategy: api_key.rotation_strategy,
+        aggregate_api_id: api_key.aggregate_api_id,
         model_for_log,
         reasoning_for_log,
         method,

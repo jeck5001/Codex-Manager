@@ -24,6 +24,8 @@ pub async fn service_apikey_create(
     protocol_type: Option<String>,
     upstream_base_url: Option<String>,
     static_headers_json: Option<String>,
+    rotation_strategy: Option<String>,
+    aggregate_api_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let params = serde_json::json!({
       "name": name,
@@ -33,6 +35,8 @@ pub async fn service_apikey_create(
       "protocolType": protocol_type,
       "upstreamBaseUrl": upstream_base_url,
       "staticHeadersJson": static_headers_json,
+      "rotationStrategy": rotation_strategy,
+      "aggregateApiId": aggregate_api_id,
     });
     rpc_call_in_background("apikey/create", addr, Some(params)).await
 }
@@ -62,6 +66,8 @@ pub async fn service_apikey_update_model(
     protocol_type: Option<String>,
     upstream_base_url: Option<String>,
     static_headers_json: Option<String>,
+    rotation_strategy: Option<String>,
+    aggregate_api_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let params = serde_json::json!({
       "id": key_id,
@@ -72,6 +78,8 @@ pub async fn service_apikey_update_model(
       "protocolType": protocol_type,
       "upstreamBaseUrl": upstream_base_url,
       "staticHeadersJson": static_headers_json,
+      "rotationStrategy": rotation_strategy,
+      "aggregateApiId": aggregate_api_id,
     });
     rpc_call_in_background("apikey/updateModel", addr, Some(params)).await
 }

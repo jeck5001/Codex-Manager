@@ -45,6 +45,8 @@ export function Header() {
         return "账号管理";
       case "/apikeys":
         return "平台密钥";
+      case "/aggregate-api":
+        return "聚合API";
       case "/logs":
         return "请求日志";
       case "/settings":

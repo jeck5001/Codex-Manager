@@ -79,21 +79,25 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
             }
         };
 
-    let request = match super::maybe_respond_local_models(
-        request,
-        validated.trace_id.as_str(),
-        validated.key_id.as_str(),
-        validated.protocol_type.as_str(),
-        validated.original_path.as_str(),
-        validated.path.as_str(),
-        validated.response_adapter,
-        validated.request_method.as_str(),
-        validated.model_for_log.as_deref(),
-        validated.reasoning_for_log.as_deref(),
-        &validated.storage,
-    )? {
-        Some(request) => request,
-        None => return Ok(()),
+    let request = if validated.rotation_strategy == crate::apikey_profile::ROTATION_AGGREGATE_API {
+        request
+    } else {
+        match super::maybe_respond_local_models(
+            request,
+            validated.trace_id.as_str(),
+            validated.key_id.as_str(),
+            validated.protocol_type.as_str(),
+            validated.original_path.as_str(),
+            validated.path.as_str(),
+            validated.response_adapter,
+            validated.request_method.as_str(),
+            validated.model_for_log.as_deref(),
+            validated.reasoning_for_log.as_deref(),
+            &validated.storage,
+        )? {
+            Some(request) => request,
+            None => return Ok(()),
+        }
     };
 
     let trace_id_for_count_tokens = validated.trace_id.clone();
@@ -103,22 +107,26 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
     let request_method_for_count_tokens = validated.request_method.clone();
     let model_for_count_tokens = validated.model_for_log.clone();
     let reasoning_for_count_tokens = validated.reasoning_for_log.clone();
-    let request = match super::maybe_respond_local_count_tokens(
-        request,
-        trace_id_for_count_tokens.as_str(),
-        key_id_for_count_tokens.as_str(),
-        protocol_type_for_count_tokens.as_str(),
-        validated.original_path.as_str(),
-        path_for_count_tokens.as_str(),
-        validated.response_adapter,
-        request_method_for_count_tokens.as_str(),
-        validated.body.as_ref(),
-        model_for_count_tokens.as_deref(),
-        reasoning_for_count_tokens.as_deref(),
-        &validated.storage,
-    )? {
-        Some(request) => request,
-        None => return Ok(()),
+    let request = if validated.rotation_strategy == crate::apikey_profile::ROTATION_AGGREGATE_API {
+        request
+    } else {
+        match super::maybe_respond_local_count_tokens(
+            request,
+            trace_id_for_count_tokens.as_str(),
+            key_id_for_count_tokens.as_str(),
+            protocol_type_for_count_tokens.as_str(),
+            validated.original_path.as_str(),
+            path_for_count_tokens.as_str(),
+            validated.response_adapter,
+            request_method_for_count_tokens.as_str(),
+            validated.body.as_ref(),
+            model_for_count_tokens.as_deref(),
+            reasoning_for_count_tokens.as_deref(),
+            &validated.storage,
+        )? {
+            Some(request) => request,
+            None => return Ok(()),
+        }
     };
 
     super::proxy_validated_request(request, validated, debug)

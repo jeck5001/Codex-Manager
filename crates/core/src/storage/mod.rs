@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod account_metadata;
 mod accounts;
+mod aggregate_apis;
 mod api_keys;
 mod conversation_bindings;
 mod events;
@@ -171,6 +172,9 @@ pub struct ApiKey {
     pub model_slug: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
+    pub rotation_strategy: String,
+    pub aggregate_api_id: Option<String>,
+    pub aggregate_api_url: Option<String>,
     pub client_type: String,
     pub protocol_type: String,
     pub auth_scheme: String,
@@ -180,6 +184,20 @@ pub struct ApiKey {
     pub status: String,
     pub created_at: i64,
     pub last_used_at: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AggregateApi {
+    pub id: String,
+    pub provider_type: String,
+    pub supplier_name: Option<String>,
+    pub url: String,
+    pub status: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub last_test_at: Option<i64>,
+    pub last_test_status: Option<String>,
+    pub last_test_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -381,6 +399,18 @@ impl Storage {
             "036_accounts_metadata_and_drop_group_name",
             include_str!("../../migrations/036_accounts_metadata_and_drop_group_name.sql"),
         )?;
+        self.apply_sql_or_compat_migration(
+            "037_aggregate_api_routing",
+            include_str!("../../migrations/037_aggregate_api_routing.sql"),
+            |s| {
+                s.ensure_api_key_rotation_columns()?;
+                s.ensure_aggregate_apis_table()?;
+                s.ensure_aggregate_api_secrets_table()
+            },
+        )?;
+        self.ensure_api_key_rotation_columns()?;
+        self.ensure_aggregate_apis_table()?;
+        self.ensure_aggregate_api_secrets_table()?;
         self.ensure_request_token_stats_table()?;
         Ok(())
     }

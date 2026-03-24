@@ -180,6 +180,9 @@ pub struct ApiKeySummary {
     pub model_slug: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
+    pub rotation_strategy: String,
+    pub aggregate_api_id: Option<String>,
+    pub aggregate_api_url: Option<String>,
     pub client_type: String,
     pub protocol_type: String,
     pub auth_scheme: String,
@@ -219,6 +222,51 @@ pub struct ApiKeyCreateResult {
 pub struct ApiKeySecretResult {
     pub id: String,
     pub key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregateApiSummary {
+    pub id: String,
+    pub provider_type: String,
+    pub supplier_name: Option<String>,
+    pub url: String,
+    pub status: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub last_test_at: Option<i64>,
+    pub last_test_status: Option<String>,
+    pub last_test_error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AggregateApiListResult {
+    pub items: Vec<AggregateApiSummary>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregateApiCreateResult {
+    pub id: String,
+    pub key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregateApiSecretResult {
+    pub id: String,
+    pub key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregateApiTestResult {
+    pub id: String,
+    pub ok: bool,
+    pub status_code: Option<i64>,
+    pub message: Option<String>,
+    pub tested_at: i64,
+    pub latency_ms: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

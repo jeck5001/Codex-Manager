@@ -1,6 +1,9 @@
 import { invoke, withAddr } from "./transport";
 import {
   normalizeAccountList,
+  normalizeAggregateApiCreateResult,
+  normalizeAggregateApiList,
+  normalizeAggregateApiTestResult,
   normalizeApiKeyCreateResult,
   normalizeApiKeyList,
   normalizeApiKeyUsageStats,
@@ -13,6 +16,9 @@ import {
 import {
   AccountListResult,
   AccountUsage,
+  AggregateApi,
+  AggregateApiCreateResult,
+  AggregateApiTestResult,
   ApiKey,
   ApiKeyCreateResult,
   ApiKeyUsageStat,
@@ -78,6 +84,15 @@ interface ApiKeyPayload {
   protocolType?: string | null;
   upstreamBaseUrl?: string | null;
   staticHeadersJson?: string | null;
+  rotationStrategy?: string | null;
+  aggregateApiId?: string | null;
+}
+
+interface AggregateApiPayload {
+  providerType?: string | null;
+  supplierName?: string | null;
+  url?: string | null;
+  key?: string | null;
 }
 
 export const accountClient = {
@@ -268,6 +283,50 @@ export const accountClient = {
     };
   },
 
+  async listAggregateApis(): Promise<AggregateApi[]> {
+    const result = await invoke<unknown>("service_aggregate_api_list", withAddr());
+    return normalizeAggregateApiList(result);
+  },
+  async createAggregateApi(params: AggregateApiPayload): Promise<AggregateApiCreateResult> {
+    const result = await invoke<unknown>(
+      "service_aggregate_api_create",
+      withAddr({
+        providerType: params.providerType || null,
+        supplierName: params.supplierName || null,
+        url: params.url || null,
+        key: params.key || null,
+      })
+    );
+    return normalizeAggregateApiCreateResult(result);
+  },
+  updateAggregateApi: (apiId: string, params: AggregateApiPayload) =>
+    invoke(
+      "service_aggregate_api_update",
+      withAddr({
+        apiId,
+        providerType: params.providerType || null,
+        supplierName: params.supplierName || null,
+        url: params.url || null,
+        key: params.key || null,
+      })
+    ),
+  deleteAggregateApi: (apiId: string) =>
+    invoke("service_aggregate_api_delete", withAddr({ apiId })),
+  async readAggregateApiSecret(apiId: string): Promise<string> {
+    const result = await invoke<{ key?: string }>(
+      "service_aggregate_api_read_secret",
+      withAddr({ apiId })
+    );
+    return String(result?.key || "").trim();
+  },
+  async testAggregateApiConnection(apiId: string): Promise<AggregateApiTestResult> {
+    const result = await invoke<unknown>(
+      "service_aggregate_api_test_connection",
+      withAddr({ apiId })
+    );
+    return normalizeAggregateApiTestResult(result);
+  },
+
   async listApiKeys(): Promise<ApiKey[]> {
     const result = await invoke<unknown>("service_apikey_list", withAddr());
     return normalizeApiKeyList(result);
@@ -283,6 +342,8 @@ export const accountClient = {
         protocolType: params.protocolType || null,
         upstreamBaseUrl: params.upstreamBaseUrl || null,
         staticHeadersJson: params.staticHeadersJson || null,
+        rotationStrategy: params.rotationStrategy || null,
+        aggregateApiId: params.aggregateApiId || null,
       })
     );
     return normalizeApiKeyCreateResult(result);
@@ -305,6 +366,8 @@ export const accountClient = {
         protocolType: params.protocolType || null,
         upstreamBaseUrl: params.upstreamBaseUrl || null,
         staticHeadersJson: params.staticHeadersJson || null,
+        rotationStrategy: params.rotationStrategy || null,
+        aggregateApiId: params.aggregateApiId || null,
       })
     ),
   disableApiKey: (keyId: string) =>

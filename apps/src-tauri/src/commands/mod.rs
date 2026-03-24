@@ -1,4 +1,5 @@
 pub mod account;
+pub mod aggregate_api;
 pub mod apikey;
 pub mod login;
 mod registry;

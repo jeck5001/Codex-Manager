@@ -8,6 +8,9 @@ const API_KEY_SELECT_SQL: &str = "SELECT
     COALESCE(p.default_model, k.model_slug) AS model_slug,
     COALESCE(p.reasoning_effort, k.reasoning_effort) AS reasoning_effort,
     p.service_tier,
+    COALESCE(k.rotation_strategy, 'account_rotation') AS rotation_strategy,
+    k.aggregate_api_id,
+    a.url AS aggregate_api_url,
     COALESCE(p.client_type, 'codex') AS client_type,
     COALESCE(p.protocol_type, 'openai_compat') AS protocol_type,
     COALESCE(p.auth_scheme, 'authorization_bearer') AS auth_scheme,
@@ -18,12 +21,13 @@ const API_KEY_SELECT_SQL: &str = "SELECT
     k.created_at,
     k.last_used_at
  FROM api_keys k
- LEFT JOIN api_key_profiles p ON p.key_id = k.id";
+ LEFT JOIN api_key_profiles p ON p.key_id = k.id
+ LEFT JOIN aggregate_apis a ON a.id = k.aggregate_api_id";
 
 impl Storage {
     pub fn insert_api_key(&self, key: &ApiKey) -> Result<()> {
         self.conn.execute(
-            "INSERT OR REPLACE INTO api_keys (id, name, model_slug, reasoning_effort, key_hash, status, created_at, last_used_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT OR REPLACE INTO api_keys (id, name, model_slug, reasoning_effort, key_hash, status, created_at, last_used_at, rotation_strategy, aggregate_api_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             (
                 &key.id,
                 &key.name,
@@ -33,6 +37,8 @@ impl Storage {
                 &key.status,
                 key.created_at,
                 &key.last_used_at,
+                &key.rotation_strategy,
+                &key.aggregate_api_id,
             ),
         )?;
         self.conn.execute(
@@ -117,6 +123,19 @@ impl Storage {
         self.conn.execute(
             "UPDATE api_keys SET status = ?1 WHERE id = ?2",
             (status, key_id),
+        )?;
+        Ok(())
+    }
+
+    pub fn update_api_key_rotation_config(
+        &self,
+        key_id: &str,
+        rotation_strategy: &str,
+        aggregate_api_id: Option<&str>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE api_keys SET rotation_strategy = ?1, aggregate_api_id = ?2 WHERE id = ?3",
+            (rotation_strategy, aggregate_api_id, key_id),
         )?;
         Ok(())
     }
@@ -290,6 +309,18 @@ impl Storage {
         Ok(())
     }
 
+    pub(super) fn ensure_api_key_rotation_columns(&self) -> Result<()> {
+        self.ensure_column("api_keys", "rotation_strategy", "TEXT")?;
+        self.ensure_column("api_keys", "aggregate_api_id", "TEXT")?;
+        self.conn.execute(
+            "UPDATE api_keys
+             SET rotation_strategy = COALESCE(NULLIF(TRIM(rotation_strategy), ''), 'account_rotation')
+             WHERE rotation_strategy IS NULL OR TRIM(rotation_strategy) = ''",
+            [],
+        )?;
+        Ok(())
+    }
+
     pub(super) fn ensure_api_key_profiles_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS api_key_profiles (
@@ -377,14 +408,17 @@ fn map_api_key_row(row: &Row<'_>) -> Result<ApiKey> {
         model_slug: row.get(2)?,
         reasoning_effort: row.get(3)?,
         service_tier: row.get(4)?,
-        client_type: row.get(5)?,
-        protocol_type: row.get(6)?,
-        auth_scheme: row.get(7)?,
-        upstream_base_url: row.get(8)?,
-        static_headers_json: row.get(9)?,
-        key_hash: row.get(10)?,
-        status: row.get(11)?,
-        created_at: row.get(12)?,
-        last_used_at: row.get(13)?,
+        rotation_strategy: row.get(5)?,
+        aggregate_api_id: row.get(6)?,
+        aggregate_api_url: row.get(7)?,
+        client_type: row.get(8)?,
+        protocol_type: row.get(9)?,
+        auth_scheme: row.get(10)?,
+        upstream_base_url: row.get(11)?,
+        static_headers_json: row.get(12)?,
+        key_hash: row.get(13)?,
+        status: row.get(14)?,
+        created_at: row.get(15)?,
+        last_used_at: row.get(16)?,
     })
 }

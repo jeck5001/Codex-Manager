@@ -83,6 +83,9 @@ export interface ApiKey {
   modelSlug: string;
   reasoningEffort: string;
   serviceTier: string;
+  rotationStrategy: string;
+  aggregateApiId: string | null;
+  aggregateApiUrl: string | null;
   protocol: string;
   clientType: string;
   authScheme: string;
@@ -96,6 +99,33 @@ export interface ApiKey {
 export interface ApiKeyCreateResult {
   id: string;
   key: string;
+}
+
+export interface AggregateApi {
+  id: string;
+  providerType: string;
+  supplierName: string | null;
+  url: string;
+  status: string;
+  createdAt: number | null;
+  updatedAt: number | null;
+  lastTestAt: number | null;
+  lastTestStatus: string | null;
+  lastTestError: string | null;
+}
+
+export interface AggregateApiCreateResult {
+  id: string;
+  key: string;
+}
+
+export interface AggregateApiTestResult {
+  id: string;
+  ok: boolean;
+  statusCode: number | null;
+  message: string | null;
+  testedAt: number;
+  latencyMs: number;
 }
 
 export interface ApiKeyUsageStat {

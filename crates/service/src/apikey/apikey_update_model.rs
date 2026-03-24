@@ -1,7 +1,7 @@
 use crate::apikey::service_tier::normalize_service_tier_owned;
 use crate::apikey_profile::{
-    normalize_protocol_type, normalize_static_headers_json, normalize_upstream_base_url,
-    profile_from_protocol,
+    normalize_protocol_type, normalize_rotation_strategy, normalize_static_headers_json,
+    normalize_upstream_base_url, profile_from_protocol, ROTATION_AGGREGATE_API,
 };
 use crate::reasoning_effort::normalize_reasoning_effort;
 use crate::storage_helpers::open_storage;
@@ -16,6 +16,8 @@ pub(crate) fn update_api_key_model(
     protocol_type: Option<String>,
     upstream_base_url: Option<String>,
     static_headers_json: Option<String>,
+    rotation_strategy: Option<String>,
+    aggregate_api_id: Option<String>,
 ) -> Result<(), String> {
     if key_id.is_empty() {
         return Err("key id required".to_string());
@@ -38,12 +40,29 @@ pub(crate) fn update_api_key_model(
         .as_deref()
         .and_then(normalize_reasoning_effort);
     let normalized_service_tier = normalize_service_tier_owned(service_tier)?;
+    let normalized_rotation_strategy = normalize_rotation_strategy(rotation_strategy)?;
+    let normalized_aggregate_api_id = if normalized_rotation_strategy == ROTATION_AGGREGATE_API {
+        aggregate_api_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    } else {
+        None
+    };
     storage
         .update_api_key_model_config(
             key_id,
             normalized,
             normalized_reasoning,
             normalized_service_tier.as_deref(),
+        )
+        .map_err(|e| e.to_string())?;
+    storage
+        .update_api_key_rotation_config(
+            key_id,
+            normalized_rotation_strategy.as_str(),
+            normalized_aggregate_api_id.as_deref(),
         )
         .map_err(|e| e.to_string())?;
 

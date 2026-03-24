@@ -20,6 +20,8 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let protocol_type = super::string_param(req, "protocolType");
             let upstream_base_url = super::string_param(req, "upstreamBaseUrl");
             let static_headers_json = super::string_param(req, "staticHeadersJson");
+            let rotation_strategy = super::string_param(req, "rotationStrategy");
+            let aggregate_api_id = super::string_param(req, "aggregateApiId");
             super::value_or_error(apikey_create::create_api_key(
                 name,
                 model_slug,
@@ -28,6 +30,8 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 protocol_type,
                 upstream_base_url,
                 static_headers_json,
+                rotation_strategy,
+                aggregate_api_id,
             ))
         }
         "apikey/readSecret" => {
@@ -57,6 +61,8 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let protocol_type = super::string_param(req, "protocolType");
             let upstream_base_url = super::string_param(req, "upstreamBaseUrl");
             let static_headers_json = super::string_param(req, "staticHeadersJson");
+            let rotation_strategy = super::string_param(req, "rotationStrategy");
+            let aggregate_api_id = super::string_param(req, "aggregateApiId");
             super::ok_or_error(apikey_update_model::update_api_key_model(
                 key_id,
                 name,
@@ -67,6 +73,8 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 protocol_type,
                 upstream_base_url,
                 static_headers_json,
+                rotation_strategy,
+                aggregate_api_id,
             ))
         }
         "apikey/delete" => {

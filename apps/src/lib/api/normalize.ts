@@ -4,6 +4,9 @@ import {
   Account,
   AccountListResult,
   AccountUsage,
+  AggregateApi,
+  AggregateApiCreateResult,
+  AggregateApiTestResult,
   ApiKey,
   ApiKeyCreateResult,
   ApiKeyUsageStat,
@@ -258,6 +261,9 @@ export function normalizeApiKey(item: unknown): ApiKey | null {
     modelSlug: asString(source.modelSlug ?? source.model_slug),
     reasoningEffort: asString(source.reasoningEffort ?? source.reasoning_effort),
     serviceTier: asString(source.serviceTier ?? source.service_tier),
+    rotationStrategy: asString(source.rotationStrategy ?? source.rotation_strategy) || "account_rotation",
+    aggregateApiId: asString(source.aggregateApiId ?? source.aggregate_api_id) || null,
+    aggregateApiUrl: asString(source.aggregateApiUrl ?? source.aggregate_api_url) || null,
     protocol: asString(source.protocolType ?? source.protocol_type) || "openai_compat",
     clientType: asString(source.clientType ?? source.client_type),
     authScheme: asString(source.authScheme ?? source.auth_scheme),
@@ -282,6 +288,53 @@ export function normalizeApiKeyCreateResult(payload: unknown): ApiKeyCreateResul
   return {
     id: asString(source.id),
     key: asString(source.key),
+  };
+}
+
+export function normalizeAggregateApi(item: unknown): AggregateApi | null {
+  const source = asObject(item);
+  const id = asString(source.id);
+  if (!id) return null;
+
+  return {
+    id,
+    providerType: asString(source.providerType ?? source.provider_type) || "codex",
+    supplierName: asString(source.supplierName ?? source.supplier_name) || null,
+    url: asString(source.url),
+    status: asString(source.status) || "active",
+    createdAt: toNullableNumber(source.createdAt ?? source.created_at),
+    updatedAt: toNullableNumber(source.updatedAt ?? source.updated_at),
+    lastTestAt: toNullableNumber(source.lastTestAt ?? source.last_test_at),
+    lastTestStatus: asString(source.lastTestStatus ?? source.last_test_status) || null,
+    lastTestError: asString(source.lastTestError ?? source.last_test_error) || null,
+  };
+}
+
+export function normalizeAggregateApiList(payload: unknown): AggregateApi[] {
+  const source = asObject(payload);
+  const items = asArray(source.items ?? payload);
+  return items
+    .map((item) => normalizeAggregateApi(item))
+    .filter((item): item is AggregateApi => Boolean(item));
+}
+
+export function normalizeAggregateApiCreateResult(payload: unknown): AggregateApiCreateResult {
+  const source = asObject(payload);
+  return {
+    id: asString(source.id),
+    key: asString(source.key),
+  };
+}
+
+export function normalizeAggregateApiTestResult(payload: unknown): AggregateApiTestResult {
+  const source = asObject(payload);
+  return {
+    id: asString(source.id),
+    ok: asBoolean(source.ok),
+    statusCode: toNullableNumber(source.statusCode ?? source.status_code),
+    message: asString(source.message) || null,
+    testedAt: asInteger(source.testedAt ?? source.tested_at, 0, 0),
+    latencyMs: asInteger(source.latencyMs ?? source.latency_ms, 0, 0),
   };
 }
 
