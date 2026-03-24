@@ -23,6 +23,7 @@
   - 本轮补齐账号治理小收口：`workspace_deactivated` 已纳入封禁识别，账号页支持“一键清理封禁账号”，5 小时 / 7 天额度列补充重置时间展示
   - 本轮补齐注册中心调度收口：批量注册在“只选邮箱服务类型、不选具体服务”时会按该类型可用服务轮询；代理留空时也会按代理池轮询，不再被前端默认首项锁死
   - 本轮继续收口批量注册轮询：改为在批次创建时预分配邮箱服务 / 代理轮询序列，避免并发任务在运行时重复抢到同一个服务；同时确认当前本地 `codex-register` 实际仅有 1 个启用的 `temp_mail` 服务，单服务场景本身不会产生可见轮换
+  - 本轮补齐 freeproxy 同步兼容：注册中心代理列表缺失 `isDefault` 时不再反序列化失败，`gateway/freeProxy/sync` 可兼容旧版 `codex-register` 返回
 
 - [x] **通用验收缺口**
   - G7 `cargo clippy`（`codexmanager-service`）已收口：`cargo clippy -p codexmanager-service --tests -- -D warnings` 当前通过，本轮继续清空 `account/account_register.rs`、`app_settings/api/current.rs` 与测试层历史 warning
@@ -40,6 +41,9 @@
   - 本轮继续收敛测试层 warning：`tests/shutdown_flag.rs` 改为布尔断言，`tests/gateway_logs/cache.rs` 改为 `contains_key` 判定；`clippy` 最终清零
 
 - [-] **本轮验证结果**
+  - `cargo test -p codexmanager-service register_proxy_item_ -- --nocapture` 通过（本轮补齐旧版注册中心代理列表缺失 `isDefault` 的兼容解析回归）
+  - `cargo check -p codexmanager-service` 通过（确认 `gateway/freeProxy/sync` 相关兼容修复未引入编译回退）
+  - `git diff --check` 通过（本轮 Rust 修复无格式问题）
   - `pnpm exec tsc --noEmit` 通过（F17 插件管理前端：插件类型、RPC normalize、设置页 CRUD 与模板入口）
   - `pnpm run build:desktop` 失败：Next 16 Turbopack 在当前 automation 沙箱内处理 `src/app/globals.css` 时尝试创建子进程并绑定端口，触发 `Operation not permitted`
   - `pnpm exec next build --webpack` 通过（作为当前环境下的等价前端构建复验，静态路由继续包含 `/settings`，插件管理页签可参与静态构建）
