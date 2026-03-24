@@ -165,6 +165,7 @@ pub(super) fn build_local_validation_result(
         tool_name_restore_map,
         request_method,
         key_id: api_key.id,
+        api_key_name: api_key.name,
         model_for_log,
         reasoning_for_log,
         method,

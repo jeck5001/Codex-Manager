@@ -733,13 +733,13 @@
 
 ### F17 插件 / Hook 系统
 
-- [-] **后端**
+- [x] **后端**
   - [x] 新增 migration：`plugins` 表（id, name, description, runtime, hook_points_json, script_content, enabled, timeout_ms, created_at, updated_at）
   - [x] 新增 storage CRUD：插件元数据、脚本内容、启用状态与 hook 点声明可持久化
   - [x] 补充 `codexmanager-core` 存储层回归：插件新增 / 更新 / 删除与 migration 追踪
-  - [ ] 引入 `mlua` crate
+  - [x] 引入 `mlua` crate
   - [x] 定义钩子点：pre_route / post_route / post_response
-  - [ ] 实现 Lua 脚本加载、沙箱执行、超时保护
+  - [x] 实现 Lua 脚本加载、沙箱执行、超时保护
   - [x] 插件管理 CRUD（`plugin/list`、`plugin/upsert`、`plugin/delete`，含 runtime / hook point 校验与审计快照）
 
 - [x] **前端**

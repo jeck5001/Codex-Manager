@@ -13,7 +13,7 @@ env:
 
 jobs:
   fmt:
-    name: Tidy Code
+    name: Check Formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -21,17 +21,11 @@ jobs:
         with:
           rust-version: stable
           components: rustfmt
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: typos-cli
       - name: Check Formatting
         run: cargo fmt --all -- --check
-      - name: Run Typos
-        run: typos
 
   tests:
     name: Tests
-    needs: fmt
     # `raw-window-handle` only has `cfg` guards for Android, so we just run Ubuntu
     # and manually test Android
     runs-on: ubuntu-latest
@@ -45,20 +39,20 @@ jobs:
       - uses: hecrj/setup-rust-action@v1
         with:
           rust-version: ${{ matrix.rust_version }}
-      - run: rustup target add wasm32-unknown-unknown
 
-      - name: Pin deps that break MSRV
-        if: matrix.rust_version == '1.64'
-        run: |
-          cargo update -p bumpalo --precise 3.14.0
+      - run: rustup target add x86_64-linux-android
 
       - name: Check documentation
         run: cargo doc --no-deps --document-private-items
 
-      - uses: taiki-e/install-action@cargo-hack
-
       - name: Run tests
-        run: cargo hack test --feature-powerset
+        run: cargo test --verbose
 
-      - name: Run tests for wasm32-unknown-unknown
-        run: cargo hack check --target wasm32-unknown-unknown --feature-powerset
+      - name: Run tests with std
+        run: cargo test --verbose --features std
+
+      - name: Check on Android
+        run: cargo check --verbose --target x86_64-linux-android
+
+      - name: Check on Android with std
+        run: cargo check --verbose --target x86_64-linux-android --features std

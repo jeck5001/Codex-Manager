@@ -1806,7 +1806,14 @@ fn plugin_rpc_supports_upsert_list_and_delete() {
             "description": "阻止高风险请求",
             "runtime": "lua",
             "hookPoints": ["pre_route", "post_response", "pre_route"],
-            "scriptContent": "return { allow = true }",
+            "scriptContent": r#"
+                function handle(ctx)
+                    return {
+                        action = "continue",
+                        annotations = { plugin = "quota-guard" }
+                    }
+                end
+            "#,
             "enabled": true,
             "timeoutMs": 250,
         })),
@@ -1921,6 +1928,47 @@ fn plugin_rpc_rejects_invalid_runtime_and_hook_point() {
         .and_then(|value| value.as_str())
         .unwrap_or("");
     assert!(invalid_hook_point_error.contains("unsupported plugin hook point"));
+}
+
+#[test]
+fn plugin_rpc_rejects_invalid_lua_script_and_missing_handle() {
+    let (_db_scope, _storage) = setup_test_db("plugin-rpc-lua-validation");
+
+    let invalid_syntax_resp = handle_request(JsonRpcRequest {
+        id: 52,
+        method: "plugin/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "语法错误插件",
+            "runtime": "lua",
+            "hookPoints": ["pre_route"],
+            "scriptContent": "function handle(ctx) return { action = 'continue' ",
+            "timeoutMs": 100,
+        })),
+    });
+    let invalid_syntax_error = invalid_syntax_resp
+        .result
+        .get("error")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    assert!(invalid_syntax_error.contains("load plugin script failed"));
+
+    let missing_handle_resp = handle_request(JsonRpcRequest {
+        id: 53,
+        method: "plugin/upsert".to_string(),
+        params: Some(serde_json::json!({
+            "name": "缺少入口插件",
+            "runtime": "lua",
+            "hookPoints": ["pre_route"],
+            "scriptContent": "local x = 1",
+            "timeoutMs": 100,
+        })),
+    });
+    let missing_handle_error = missing_handle_resp
+        .result
+        .get("error")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    assert!(missing_handle_error.contains("handle"));
 }
 
 #[test]

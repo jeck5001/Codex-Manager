@@ -3,18 +3,16 @@ use std::fmt;
 use std::time::Duration;
 
 use http::{request::Parts, Request as HttpRequest, Version};
-#[cfg(any(feature = "query", feature = "form", feature = "json"))]
 use serde::Serialize;
 #[cfg(feature = "json")]
 use serde_json;
+use serde_urlencoded;
 
 use super::body::{self, Body};
 #[cfg(feature = "multipart")]
 use super::multipart;
 use super::Client;
-#[cfg(any(feature = "multipart", feature = "form", feature = "json"))]
-use crate::header::CONTENT_TYPE;
-use crate::header::{HeaderMap, HeaderName, HeaderValue};
+use crate::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 use crate::{async_impl, Method, Url};
 
 /// A request which can be executed with `Client::execute()`.
@@ -393,15 +391,9 @@ impl RequestBuilder {
     /// as `.query(&[("key", "val")])`. It's also possible to serialize structs
     /// and maps into a key-value pair.
     ///
-    /// # Optional
-    ///
-    /// This requires the optional `query` feature to be enabled.
-    ///
     /// # Errors
     /// This method will fail if the object you provide cannot be serialized
     /// into a query string.
-    #[cfg(feature = "query")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "query")))]
     pub fn query<T: Serialize + ?Sized>(mut self, query: &T) -> RequestBuilder {
         let mut error = None;
         if let Ok(ref mut req) = self.request {
@@ -454,16 +446,10 @@ impl RequestBuilder {
     /// # }
     /// ```
     ///
-    /// # Optional
-    ///
-    /// This requires the optional `form` feature to be enabled.
-    ///
     /// # Errors
     ///
     /// This method fails if the passed value cannot be serialized into
     /// url encoded format
-    #[cfg(feature = "form")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "form")))]
     pub fn form<T: Serialize + ?Sized>(mut self, form: &T) -> RequestBuilder {
         let mut error = None;
         if let Ok(ref mut req) = self.request {
@@ -523,9 +509,10 @@ impl RequestBuilder {
         if let Ok(ref mut req) = self.request {
             match serde_json::to_vec(json) {
                 Ok(body) => {
-                    req.headers_mut()
-                        .entry(CONTENT_TYPE)
-                        .or_insert_with(|| HeaderValue::from_static("application/json"));
+                    if !req.headers().contains_key(CONTENT_TYPE) {
+                        req.headers_mut()
+                            .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+                    }
                     *req.body_mut() = Some(body.into());
                 }
                 Err(err) => error = Some(crate::error::builder(err)),
@@ -694,12 +681,16 @@ fn fmt_request_fields<'a, 'b>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::header::{ACCEPT, HOST};
-    #[cfg(feature = "query")]
-    use std::collections::BTreeMap;
-    #[cfg(feature = "form")]
-    use std::collections::HashMap;
+    use super::super::{body, Client};
+    use super::{HttpRequest, Request, Version};
+    use crate::header::{HeaderMap, HeaderValue, ACCEPT, CONTENT_TYPE, HOST};
+    use crate::Method;
+    use serde::Serialize;
+    #[cfg(feature = "json")]
+    use serde_json;
+    use serde_urlencoded;
+    use std::collections::{BTreeMap, HashMap};
+    use std::time::Duration;
 
     #[test]
     fn basic_get_request() {
@@ -834,7 +825,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "query")]
     fn add_query_append() {
         let client = Client::new();
         let some_url = "https://google.com/";
@@ -848,7 +838,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "query")]
     fn add_query_append_same() {
         let client = Client::new();
         let some_url = "https://google.com/";
@@ -861,7 +850,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "query")]
     fn add_query_struct() {
         #[derive(Serialize)]
         struct Params {
@@ -885,7 +873,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "query")]
     fn add_query_map() {
         let mut params = BTreeMap::new();
         params.insert("foo", "bar");
@@ -902,7 +889,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "form")]
     fn add_form() {
         let client = Client::new();
         let some_url = "https://google.com/";
@@ -997,7 +983,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "query")]
     fn normalize_empty_query() {
         let client = Client::new();
         let some_url = "https://google.com/";

@@ -532,6 +532,25 @@ pub(crate) fn log_attempt_profile(
     buffer_trace_line(trace_id, line);
 }
 
+pub(crate) fn log_plugin_hook(
+    trace_id: &str,
+    plugin_id: &str,
+    hook_point: &str,
+    action: &str,
+    detail: Option<&str>,
+) {
+    let line = format!(
+        "ts={} event=PLUGIN_HOOK trace_id={} plugin_id={} hook_point={} action={} detail={}",
+        current_trace_ts(),
+        sanitize_text(trace_id),
+        sanitize_text(plugin_id),
+        sanitize_text(hook_point),
+        sanitize_text(action),
+        sanitize_text(detail.unwrap_or("-")),
+    );
+    buffer_trace_line(trace_id, line);
+}
+
 pub(crate) fn log_request_final(
     trace_id: &str,
     status_code: u16,

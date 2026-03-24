@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.64.0"
 name = "reqwest"
-version = "0.13.2"
+version = "0.12.28"
 authors = ["Sean McArthur <sean@seanmonstar.com>"]
 build = false
 include = [
@@ -60,34 +60,22 @@ targets = [
 features = [
     "blocking",
     "cookies",
-    "query",
-    "form",
     "json",
     "multipart",
 ]
 
 [features]
-__native-tls = [
-    "dep:hyper-tls",
-    "dep:native-tls-crate",
-    "__tls",
-    "dep:tokio-native-tls",
-]
-__native-tls-alpn = [
-    "native-tls-crate?/alpn",
-    "hyper-tls?/alpn",
-]
 __rustls = [
     "dep:hyper-rustls",
     "dep:tokio-rustls",
     "dep:rustls",
     "__tls",
 ]
-__rustls-aws-lc-rs = [
-    "hyper-rustls?/aws-lc-rs",
-    "tokio-rustls?/aws-lc-rs",
-    "rustls?/aws-lc-rs",
-    "quinn?/rustls-aws-lc-rs",
+__rustls-ring = [
+    "hyper-rustls?/ring",
+    "tokio-rustls?/ring",
+    "rustls?/ring",
+    "quinn?/ring",
 ]
 __tls = [
     "dep:rustls-pki-types",
@@ -116,63 +104,70 @@ default = [
     "http2",
     "system-proxy",
 ]
-default-tls = ["rustls"]
-deflate = ["tower-http/decompression-deflate"]
-form = [
-    "dep:serde",
-    "dep:serde_urlencoded",
+default-tls = [
+    "dep:hyper-tls",
+    "dep:native-tls-crate",
+    "__tls",
+    "dep:tokio-native-tls",
 ]
+deflate = ["tower-http/decompression-deflate"]
 gzip = ["tower-http/decompression-gzip"]
 hickory-dns = [
     "dep:hickory-resolver",
     "dep:once_cell",
 ]
 http2 = [
-    "dep:h2",
+    "h2",
     "hyper/http2",
     "hyper-util/http2",
     "hyper-rustls?/http2",
 ]
 http3 = [
-    "rustls",
+    "rustls-tls-manual-roots",
     "dep:h3",
     "dep:h3-quinn",
     "dep:quinn",
     "tokio/macros",
 ]
-json = [
-    "dep:serde",
-    "dep:serde_json",
-]
+json = ["dep:serde_json"]
+macos-system-configuration = ["system-proxy"]
 multipart = [
     "dep:mime_guess",
     "dep:futures-util",
 ]
-native-tls = [
-    "__native-tls",
-    "__native-tls-alpn",
+native-tls = ["default-tls"]
+native-tls-alpn = [
+    "native-tls",
+    "native-tls-crate?/alpn",
+    "hyper-tls?/alpn",
 ]
-native-tls-no-alpn = ["__native-tls"]
 native-tls-vendored = [
-    "__native-tls",
-    "native-tls-crate?/vendored",
-    "__native-tls-alpn",
-]
-native-tls-vendored-no-alpn = [
-    "__native-tls",
+    "native-tls",
     "native-tls-crate?/vendored",
 ]
-query = [
-    "dep:serde",
-    "dep:serde_urlencoded",
+rustls-tls = ["rustls-tls-webpki-roots"]
+rustls-tls-manual-roots = [
+    "rustls-tls-manual-roots-no-provider",
+    "__rustls-ring",
 ]
-rustls = [
-    "__rustls-aws-lc-rs",
-    "dep:rustls-platform-verifier",
+rustls-tls-manual-roots-no-provider = ["__rustls"]
+rustls-tls-native-roots = [
+    "rustls-tls-native-roots-no-provider",
+    "__rustls-ring",
+]
+rustls-tls-native-roots-no-provider = [
+    "dep:rustls-native-certs",
+    "hyper-rustls?/native-tokio",
     "__rustls",
 ]
-rustls-no-provider = [
-    "dep:rustls-platform-verifier",
+rustls-tls-no-provider = ["rustls-tls-manual-roots-no-provider"]
+rustls-tls-webpki-roots = [
+    "rustls-tls-webpki-roots-no-provider",
+    "__rustls-ring",
+]
+rustls-tls-webpki-roots-no-provider = [
+    "dep:webpki-roots",
+    "hyper-rustls?/webpki-tokio",
     "__rustls",
 ]
 socks = []
@@ -183,6 +178,7 @@ stream = [
     "dep:wasm-streams",
 ]
 system-proxy = ["hyper-util/client-proxy-system"]
+trust-dns = []
 zstd = ["tower-http/decompression-zstd"]
 
 [lib]
@@ -214,7 +210,6 @@ default-features = false
 
 [dependencies.serde]
 version = "1.0"
-optional = true
 
 [dependencies.serde_json]
 version = "1.0"
@@ -222,7 +217,6 @@ optional = true
 
 [dependencies.serde_urlencoded]
 version = "0.7.1"
-optional = true
 
 [dependencies.sync_wrapper]
 version = "1.0"
@@ -336,7 +330,10 @@ version = "0.2.11"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.quinn]
 version = "0.11.1"
-features = ["runtime-tokio"]
+features = [
+    "rustls",
+    "runtime-tokio",
+]
 optional = true
 default-features = false
 
@@ -349,13 +346,13 @@ features = [
 optional = true
 default-features = false
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.rustls-native-certs]
+version = "0.8.0"
+optional = true
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.rustls-pki-types]
 version = "1.9.0"
 features = ["std"]
-optional = true
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies.rustls-platform-verifier]
-version = "0.6"
 optional = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.tokio]
@@ -398,6 +395,10 @@ default-features = false
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.tower-service]
 version = "0.3"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.webpki-roots]
+version = "1"
+optional = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.brotli_crate]
 version = "8"
@@ -461,6 +462,9 @@ package = "zstd"
 [target.'cfg(target_arch = "wasm32")'.dependencies.js-sys]
 version = "0.3.77"
 
+[target.'cfg(target_arch = "wasm32")'.dependencies.serde_json]
+version = "1.0"
+
 [target.'cfg(target_arch = "wasm32")'.dependencies.wasm-bindgen]
 version = "0.2.89"
 
@@ -468,7 +472,7 @@ version = "0.2.89"
 version = "0.4.18"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.wasm-streams]
-version = "0.5"
+version = "0.4"
 optional = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]

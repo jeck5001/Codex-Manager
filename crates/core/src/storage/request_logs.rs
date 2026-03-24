@@ -663,7 +663,9 @@ fn append_optional_in_clause(
     } else {
         clauses.push(format!(
             "{column} IN ({})",
-            std::iter::repeat_n("?", normalized.len()).collect::<Vec<_>>().join(", ")
+            std::iter::repeat_n("?", normalized.len())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     for value in normalized {

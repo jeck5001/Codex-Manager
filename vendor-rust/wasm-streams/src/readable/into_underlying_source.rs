@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -46,11 +45,7 @@ impl IntoUnderlyingSource {
         let fut = fut.unwrap_or_else(|_| Ok(JsValue::undefined()));
 
         self.pull_handle = Some(handle);
-        // SAFETY: We use the take-and-replace pattern in Inner::pull() to ensure
-        // that if a panic occurs, the stream is already taken out of the Option,
-        // leaving it in a clean None state. This prevents use of corrupted state
-        // after a panic is caught.
-        future_to_promise(AssertUnwindSafe(fut))
+        future_to_promise(fut)
     }
 
     pub fn cancel(self) {
@@ -83,27 +78,22 @@ impl Inner {
         &mut self,
         controller: sys::ReadableStreamDefaultController,
     ) -> Result<JsValue, JsValue> {
-        // Take the stream out before the fallible/panickable operation.
-        // This ensures that if a panic occurs, self.stream is already None,
-        // so any subsequent call will fail cleanly instead of using corrupted state.
-        let mut stream = self.stream.take().unwrap_throw();
-
+        // The stream should still exist, since pull() will not be called again
+        // after the stream has closed or encountered an error.
+        let stream = self.stream.as_mut().unwrap_throw();
         match stream.try_next().await {
-            Ok(Some(chunk)) => {
-                // Success with chunk: put the stream back and enqueue
-                self.stream = Some(stream);
-                controller.enqueue_with_chunk(&chunk)?;
-            }
+            Ok(Some(chunk)) => controller.enqueue_with_chunk(&chunk)?,
             Ok(None) => {
-                // Stream closed: don't put it back (it's exhausted), close controller
+                // The stream has closed, drop it.
+                self.stream = None;
                 controller.close()?;
             }
             Err(err) => {
-                // Error: don't put it back, return the error
+                // The stream encountered an error, drop it.
+                self.stream = None;
                 return Err(err);
             }
         };
-        // Panic: stream is dropped during unwind, self.stream remains None
         Ok(JsValue::undefined())
     }
 }

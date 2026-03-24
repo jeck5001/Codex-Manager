@@ -11,7 +11,7 @@ use super::candidate_attempt::{
     run_candidate_attempt, CandidateAttemptParams, CandidateAttemptTrace,
 };
 use super::candidate_state::CandidateExecutionState;
-use super::execution_context::GatewayUpstreamExecutionContext;
+use super::execution_context::{FinalResultLogArgs, GatewayUpstreamExecutionContext};
 use super::request_setup::UpstreamRequestSetup;
 use super::response_finalize::{
     finalize_terminal_candidate, finalize_upstream_response, respond_total_timeout,
@@ -49,6 +49,8 @@ pub(in super::super) struct CandidateExecutorParams<'a> {
     pub(in super::super) incoming_headers: &'a super::super::super::IncomingHeaderSnapshot,
     pub(in super::super) body: &'a Bytes,
     pub(in super::super) path: &'a str,
+    pub(in super::super) key_id: &'a str,
+    pub(in super::super) api_key_name: Option<&'a str>,
     pub(in super::super) request_shape: Option<&'a str>,
     pub(in super::super) trace_id: &'a str,
     pub(in super::super) model_for_log: Option<&'a str>,
@@ -80,6 +82,8 @@ pub(in super::super) fn execute_candidate_sequence(
         incoming_headers,
         body,
         path,
+        key_id,
+        api_key_name,
         request_shape,
         trace_id,
         model_for_log,
@@ -127,14 +131,19 @@ pub(in super::super) fn execute_candidate_sequence(
         let strip_session_affinity =
             state.strip_session_affinity(&account, idx, setup.anthropic_has_prompt_cache_key);
         let attempt_model_override = free_account_model_override(storage, &account, &token);
-        let effective_model_override = attempt_model_override.as_deref().or(request_model_override);
-        let attempt_model_for_log = effective_model_override.or(model_for_log);
-        let body_for_attempt = state.body_for_attempt(
+        let mut effective_model_override = attempt_model_override
+            .as_deref()
+            .or(request_model_override)
+            .map(str::to_string);
+        let mut attempt_model_for_log = effective_model_override
+            .clone()
+            .or_else(|| model_for_log.map(str::to_string));
+        let mut body_for_attempt = state.body_for_attempt(
             path,
             body,
             strip_session_affinity,
             setup,
-            effective_model_override,
+            effective_model_override.as_deref(),
         );
         context.log_candidate_start(&account.id, idx, strip_session_affinity);
         if let Some(skip_reason) = context.should_skip_candidate(&account.id, idx) {
@@ -158,6 +167,57 @@ pub(in super::super) fn execute_candidate_sequence(
         let incoming_session_id = incoming_headers.session_id();
         let incoming_turn_state = incoming_headers.turn_state();
         let incoming_conversation_id = incoming_headers.conversation_id();
+        match crate::plugin_runtime::execute_post_route_plugins(
+            crate::plugin_runtime::PostRoutePluginInput {
+                storage,
+                trace_id,
+                key_id,
+                api_key_name,
+                path,
+                method: method.as_str(),
+                body: &body_for_attempt,
+                model_for_log: attempt_model_for_log.as_deref(),
+                is_stream: client_is_stream,
+                account: &account,
+                route_strategy: super::super::super::current_route_strategy(),
+            },
+        ) {
+            crate::plugin_runtime::RequestHookOutcome::Continue(patch) => {
+                body_for_attempt = patch.body;
+                attempt_model_for_log = patch.model_for_log;
+                effective_model_override = attempt_model_for_log.clone();
+            }
+            crate::plugin_runtime::RequestHookOutcome::Reject(reject) => {
+                let request = request
+                    .take()
+                    .expect("request should be available before plugin reject response");
+                log::info!(
+                    "event=plugin_request_reject trace_id={} plugin_id={} plugin_name={} hook_point=post_route status_code={} account_id={}",
+                    trace_id,
+                    reject.plugin_id,
+                    reject.plugin_name,
+                    reject.status_code,
+                    account.id
+                );
+                context.log_final_result_with_model(FinalResultLogArgs {
+                    final_account_id: Some(&account.id),
+                    upstream_url: None,
+                    model_for_log: attempt_model_for_log.as_deref(),
+                    status_code: reject.status_code,
+                    usage: super::super::super::request_log::RequestLogUsage::default(),
+                    error: Some(reject.message.as_str()),
+                    elapsed_ms: started_at.elapsed().as_millis(),
+                    attempted_account_ids: Some(attempted_account_ids.as_slice()),
+                });
+                let response = super::super::super::error_response::json_value_response(
+                    reject.status_code,
+                    &reject.body,
+                    Some(trace_id),
+                );
+                let _ = request.respond(response);
+                return Ok(CandidateExecutionResult::Handled);
+            }
+        }
         let prompt_cache_key_for_trace =
             extract_prompt_cache_key_for_trace(body_for_attempt.as_ref());
         super::super::super::trace_log::log_attempt_profile(
@@ -172,7 +232,7 @@ pub(in super::super) fn execute_candidate_sequence(
             prompt_cache_key_for_trace.as_deref(),
             request_shape,
             body_for_attempt.len(),
-            attempt_model_for_log,
+            attempt_model_for_log.as_deref(),
         );
 
         let mut inflight_guard = Some(super::super::super::acquire_account_inflight(&account.id));
@@ -242,7 +302,7 @@ pub(in super::super) fn execute_candidate_sequence(
                     message,
                     trace_id,
                     started_at,
-                    model_for_log: attempt_model_for_log,
+                    model_for_log: attempt_model_for_log.as_deref(),
                     attempted_account_ids: Some(attempted_account_ids.as_slice()),
                 })?;
                 return Ok(CandidateExecutionResult::Handled);
@@ -252,7 +312,7 @@ pub(in super::super) fn execute_candidate_sequence(
                     && !strip_session_affinity
                     && (incoming_turn_state.is_some() || setup.has_body_encrypted_content)
                 {
-                    let retry_body = state.retry_body(path, body, setup, effective_model_override);
+                    let retry_body = state.retry_body(path, &body_for_attempt, setup, None);
                     let retry_decision = run_candidate_attempt(CandidateAttemptParams {
                         storage,
                         method,
@@ -318,7 +378,7 @@ pub(in super::super) fn execute_candidate_sequence(
                                 message,
                                 trace_id,
                                 started_at,
-                                model_for_log: attempt_model_for_log,
+                                model_for_log: attempt_model_for_log.as_deref(),
                                 attempted_account_ids: Some(attempted_account_ids.as_slice()),
                             })?;
                             return Ok(CandidateExecutionResult::Handled);
@@ -331,6 +391,23 @@ pub(in super::super) fn execute_candidate_sequence(
                 let guard = inflight_guard
                     .take()
                     .expect("inflight guard should be available before terminal response");
+                crate::plugin_runtime::execute_post_response_plugins(
+                    crate::plugin_runtime::PostResponsePluginInput {
+                        storage,
+                        trace_id,
+                        key_id,
+                        api_key_name,
+                        path,
+                        method: method.as_str(),
+                        body: &body_for_attempt,
+                        model_for_log: attempt_model_for_log.as_deref(),
+                        is_stream: client_is_stream,
+                        account: &account,
+                        route_strategy: super::super::super::current_route_strategy(),
+                        status_code: resp.status().as_u16(),
+                        response_headers: resp.headers(),
+                    },
+                );
                 finalize_upstream_response(FinalizeUpstreamResponseArgs {
                     request,
                     response: resp,
@@ -346,7 +423,7 @@ pub(in super::super) fn execute_candidate_sequence(
                     trace_id,
                     started_at,
                     actual_model_header,
-                    model_for_log: attempt_model_for_log,
+                    model_for_log: attempt_model_for_log.as_deref(),
                     response_cache_key,
                     attempted_account_ids: Some(attempted_account_ids.as_slice()),
                 })?;

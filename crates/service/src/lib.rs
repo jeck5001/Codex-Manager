@@ -24,6 +24,7 @@ pub mod mcp;
 mod operation_audit;
 mod operation_audit_summary;
 mod plugin;
+mod plugin_runtime;
 mod requestlog;
 mod rpc_dispatch;
 mod runtime;

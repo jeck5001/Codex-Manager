@@ -71,6 +71,7 @@ pub(super) use request_helpers::{
 #[cfg(test)]
 use request_helpers::{should_drop_incoming_header, should_drop_incoming_header_for_failover};
 use request_rewrite::{apply_request_overrides_with_prompt_cache_key, compute_upstream_url};
+pub(crate) use trace_log::log_plugin_hook;
 #[cfg(test)]
 use upstream::config::normalize_upstream_base_url;
 use upstream::config::{
