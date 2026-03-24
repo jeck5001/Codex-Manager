@@ -3,6 +3,9 @@ use serde_json::Value;
 use super::request_rewrite_shared::{
     path_matches_template, retain_fields_by_templates, TemplateAllowlist,
 };
+use super::request_rewrite_prompt_cache::{
+    fingerprint_prompt_cache_key, resolve_prompt_cache_key_rewrite,
+};
 
 pub(super) fn is_compact_path(path: &str) -> bool {
     path_matches_template(path, "/v1/responses/compact")
@@ -111,22 +114,37 @@ pub(super) fn ensure_prompt_cache_key(
     if !is_standard_responses_path(path) {
         return false;
     }
-    let Some(prompt_cache_key) = prompt_cache_key
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
+    let existing_prompt_cache_key = obj.get("prompt_cache_key").and_then(Value::as_str);
+    let decision = resolve_prompt_cache_key_rewrite(
+        existing_prompt_cache_key,
+        prompt_cache_key,
+        force_override,
+    );
+    let existing_prompt_cache_key_fp = existing_prompt_cache_key
+        .map(fingerprint_prompt_cache_key)
+        .unwrap_or_else(|| "-".to_string());
+    let requested_prompt_cache_key_fp = prompt_cache_key
+        .map(|value| fingerprint_prompt_cache_key(value.trim()))
+        .unwrap_or_else(|| "-".to_string());
+    let final_prompt_cache_key_fp = decision
+        .final_value
+        .map(fingerprint_prompt_cache_key)
+        .unwrap_or_else(|| "-".to_string());
+    log::debug!(
+        "event=gateway_prompt_cache_key_rewrite path={} source={} force_override={} changed={} existing_fp={} requested_fp={} final_fp={}",
+        path,
+        decision.source.as_str(),
+        if force_override { "true" } else { "false" },
+        if decision.changed { "true" } else { "false" },
+        existing_prompt_cache_key_fp,
+        requested_prompt_cache_key_fp,
+        final_prompt_cache_key_fp,
+    );
+    let Some(prompt_cache_key) = decision.final_value else {
         return false;
     };
-
-    match obj.get("prompt_cache_key") {
-        Some(Value::String(existing)) if !force_override && !existing.trim().is_empty() => {
-            return false;
-        }
-        Some(Value::String(existing)) if force_override && existing.trim() == prompt_cache_key => {
-            return false;
-        }
-        Some(_) => {}
-        None => {}
+    if !decision.changed {
+        return false;
     }
 
     obj.insert(

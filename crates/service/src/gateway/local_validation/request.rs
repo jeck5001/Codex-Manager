@@ -94,8 +94,10 @@ pub(super) fn build_local_validation_result(
         local_conversation_id.as_deref(),
         conversation_binding.as_ref(),
     );
+    // 中文注释：保留原始 local conversation_id 作为对外会话标识；
+    // 线程世代只参与 prompt_cache_key 与路由绑定，不直接污染对外请求头。
     let incoming_headers =
-        incoming_headers.with_conversation_id_override(effective_thread_anchor.as_deref());
+        incoming_headers.with_conversation_id_override(local_conversation_id.as_deref());
     body = if effective_thread_anchor.is_some() {
         super::super::apply_request_overrides_with_service_tier_and_forced_prompt_cache_key(
             &path,

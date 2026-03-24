@@ -48,12 +48,12 @@ pub(in super::super) fn prepare_request_setup(
             conversation_binding,
             candidates,
         );
-    if !conversation_routing
-        .as_ref()
-        .is_some_and(|routing| routing.binding_selected)
-    {
-        super::super::super::apply_route_strategy(candidates, key_id, model_for_log);
-    }
+    let rotation_plan = super::super::super::conversation_binding::apply_candidate_rotation(
+        candidates,
+        conversation_routing.as_ref(),
+        key_id,
+        model_for_log,
+    );
     let candidate_order = candidates
         .iter()
         .map(|(account, _)| format!("{}#sort={}", account.id, account.sort))
@@ -61,14 +61,9 @@ pub(in super::super) fn prepare_request_setup(
     super::super::super::trace_log::log_candidate_pool(
         trace_id,
         key_id,
-        if conversation_routing
-            .as_ref()
-            .is_some_and(|routing| routing.binding_selected)
-        {
-            "conversation_bound"
-        } else {
-            super::super::super::current_route_strategy()
-        },
+        rotation_plan.strategy_label,
+        rotation_plan.source.as_str(),
+        rotation_plan.strategy_applied,
         candidate_order.as_slice(),
     );
 

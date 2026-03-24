@@ -12,6 +12,28 @@ pub(crate) struct ConversationRoutingContext {
     pub(crate) next_thread_anchor: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CandidateRotationSource {
+    ConversationBinding,
+    RouteStrategy,
+}
+
+impl CandidateRotationSource {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::ConversationBinding => "conversation_bound",
+            Self::RouteStrategy => "route_strategy",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CandidateRotationPlan {
+    pub(crate) source: CandidateRotationSource,
+    pub(crate) strategy_label: &'static str,
+    pub(crate) strategy_applied: bool,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ConversationThreadAttempt {
     pub(crate) thread_anchor: String,
@@ -143,6 +165,27 @@ pub(crate) fn prepare_conversation_routing(
     })
 }
 
+pub(crate) fn apply_candidate_rotation(
+    candidates: &mut Vec<(Account, Token)>,
+    routing: Option<&ConversationRoutingContext>,
+    key_id: &str,
+    model_for_log: Option<&str>,
+) -> CandidateRotationPlan {
+    if routing.as_ref().is_some_and(|routing| routing.binding_selected) {
+        return CandidateRotationPlan {
+            source: CandidateRotationSource::ConversationBinding,
+            strategy_label: "conversation_bound",
+            strategy_applied: false,
+        };
+    }
+    super::apply_route_strategy(candidates, key_id, model_for_log);
+    CandidateRotationPlan {
+        source: CandidateRotationSource::RouteStrategy,
+        strategy_label: super::current_route_strategy(),
+        strategy_applied: true,
+    }
+}
+
 pub(crate) fn resolve_attempt_thread(
     routing: Option<&ConversationRoutingContext>,
     account: &Account,
@@ -242,8 +285,9 @@ pub(crate) fn record_conversation_binding_terminal_response(
 #[cfg(test)]
 mod tests {
     use super::{
-        effective_thread_anchor, prepare_conversation_routing,
+        apply_candidate_rotation, effective_thread_anchor, prepare_conversation_routing,
         record_conversation_binding_terminal_response, resolve_attempt_thread,
+        CandidateRotationSource,
     };
     use codexmanager_core::storage::{Account, ConversationBinding, Storage, Token};
 
@@ -336,6 +380,37 @@ mod tests {
         assert!(actual.reset_session_affinity);
         assert_eq!(actual.thread_epoch, 2);
         assert_ne!(actual.thread_anchor, binding.thread_anchor);
+    }
+
+    #[test]
+    fn apply_candidate_rotation_reports_binding_source_when_binding_selected() {
+        let binding = sample_binding("acc-1");
+        let routing = prepare_conversation_routing(
+            "key-hash-1",
+            Some("conv-1"),
+            Some(&binding),
+            &mut vec![
+                (sample_account("acc-2", 0), sample_token("acc-2")),
+                (sample_account("acc-1", 1), sample_token("acc-1")),
+            ],
+        )
+        .expect("routing context");
+        let mut candidates = vec![
+            (sample_account("acc-2", 0), sample_token("acc-2")),
+            (sample_account("acc-1", 1), sample_token("acc-1")),
+        ];
+
+        let plan = apply_candidate_rotation(
+            &mut candidates,
+            Some(&routing),
+            "key-hash-1",
+            Some("gpt-5.4"),
+        );
+
+        assert_eq!(plan.source, CandidateRotationSource::ConversationBinding);
+        assert_eq!(plan.strategy_label, "conversation_bound");
+        assert!(!plan.strategy_applied);
+        assert_eq!(candidates[0].0.id, "acc-2");
     }
 
     #[test]

@@ -1,5 +1,12 @@
 use codexmanager_core::storage::{now_ts, Event, Storage};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AccountAvailabilitySignal {
+    RefreshToken(crate::usage_http::RefreshTokenAuthErrorReason),
+    Deactivation(&'static str),
+    UsageHttp401,
+}
+
 fn latest_status_reason(storage: &Storage, account_id: &str) -> Option<String> {
     storage
         .latest_account_status_reasons(&[account_id.to_string()])
@@ -41,6 +48,21 @@ fn should_preserve_manual_account_status(storage: &Storage, account_id: &str) ->
         .unwrap_or(false)
 }
 
+pub(crate) fn classify_account_availability_signal(
+    err: &str,
+) -> Option<AccountAvailabilitySignal> {
+    if let Some(reason) = crate::usage_http::refresh_token_auth_error_reason_from_message(err) {
+        return Some(AccountAvailabilitySignal::RefreshToken(reason));
+    }
+    if let Some(reason) = deactivation_reason_from_message(err) {
+        return Some(AccountAvailabilitySignal::Deactivation(reason));
+    }
+    if err.starts_with("usage endpoint status 401") {
+        return Some(AccountAvailabilitySignal::UsageHttp401);
+    }
+    None
+}
+
 pub(crate) fn deactivation_reason_from_message(message: &str) -> Option<&'static str> {
     let normalized = message.trim().to_ascii_lowercase();
     if normalized.contains("workspace_deactivated")
@@ -65,14 +87,11 @@ pub(crate) fn is_banned_status_reason(reason: &str) -> bool {
     )
 }
 
-pub(crate) fn mark_account_unavailable_for_deactivation_error(
+fn set_account_unavailable_with_reason(
     storage: &Storage,
     account_id: &str,
-    err: &str,
+    reason: &str,
 ) -> bool {
-    let Some(reason) = deactivation_reason_from_message(err) else {
-        return false;
-    };
     if should_preserve_manual_account_status(storage, account_id) {
         return false;
     }
@@ -80,15 +99,49 @@ pub(crate) fn mark_account_unavailable_for_deactivation_error(
     true
 }
 
+pub(crate) fn mark_account_unavailable_for_usage_http_error(
+    storage: &Storage,
+    account_id: &str,
+    err: &str,
+) -> bool {
+    let Some(AccountAvailabilitySignal::UsageHttp401) = classify_account_availability_signal(err)
+    else {
+        return false;
+    };
+    set_account_unavailable_with_reason(storage, account_id, "usage_http_401")
+}
+
+pub(crate) fn mark_account_unavailable_for_deactivation_error(
+    storage: &Storage,
+    account_id: &str,
+    err: &str,
+) -> bool {
+    let Some(AccountAvailabilitySignal::Deactivation(reason)) =
+        classify_account_availability_signal(err)
+    else {
+        return false;
+    };
+    set_account_unavailable_with_reason(storage, account_id, reason)
+}
+
 pub(crate) fn mark_account_unavailable_for_auth_error(
     storage: &Storage,
     account_id: &str,
     err: &str,
 ) -> bool {
-    if mark_account_unavailable_for_refresh_token_error(storage, account_id, err) {
-        return true;
+    let Some(signal) = classify_account_availability_signal(err) else {
+        return false;
+    };
+    match signal {
+        AccountAvailabilitySignal::RefreshToken(reason) => {
+            let status_reason = format!("refresh_token_invalid:{}", reason.as_code());
+            set_account_unavailable_with_reason(storage, account_id, &status_reason)
+        }
+        AccountAvailabilitySignal::Deactivation(reason) => {
+            set_account_unavailable_with_reason(storage, account_id, reason)
+        }
+        AccountAvailabilitySignal::UsageHttp401 => false,
     }
-    mark_account_unavailable_for_deactivation_error(storage, account_id, err)
 }
 
 pub(crate) fn mark_account_unavailable_for_refresh_token_error(
@@ -96,13 +149,38 @@ pub(crate) fn mark_account_unavailable_for_refresh_token_error(
     account_id: &str,
     err: &str,
 ) -> bool {
-    let Some(reason) = crate::usage_http::refresh_token_auth_error_reason_from_message(err) else {
+    let Some(AccountAvailabilitySignal::RefreshToken(reason)) =
+        classify_account_availability_signal(err)
+    else {
         return false;
     };
-    if should_preserve_manual_account_status(storage, account_id) {
-        return false;
-    }
     let status_reason = format!("refresh_token_invalid:{}", reason.as_code());
-    set_account_status(storage, account_id, "unavailable", &status_reason);
-    true
+    set_account_unavailable_with_reason(storage, account_id, &status_reason)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{classify_account_availability_signal, AccountAvailabilitySignal};
+
+    #[test]
+    fn classify_account_availability_signal_separates_usage_refresh_and_deactivation() {
+        assert!(matches!(
+            classify_account_availability_signal("usage endpoint status 401 Unauthorized"),
+            Some(AccountAvailabilitySignal::UsageHttp401)
+        ));
+
+        assert!(matches!(
+            classify_account_availability_signal(
+                "refresh token failed with status 401 Unauthorized: Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again."
+            ),
+            Some(AccountAvailabilitySignal::RefreshToken(
+                crate::usage_http::RefreshTokenAuthErrorReason::Invalidated
+            ))
+        ));
+
+        assert!(matches!(
+            classify_account_availability_signal("account_deactivated"),
+            Some(AccountAvailabilitySignal::Deactivation("account_deactivated"))
+        ));
+    }
 }

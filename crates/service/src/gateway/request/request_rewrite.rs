@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 mod request_rewrite_chat_completions;
+mod request_rewrite_prompt_cache;
 mod request_rewrite_responses;
 mod request_rewrite_shared;
 

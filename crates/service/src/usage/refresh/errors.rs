@@ -4,7 +4,8 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::account_status::{
     mark_account_unavailable_for_deactivation_error,
-    mark_account_unavailable_for_refresh_token_error, set_account_status,
+    mark_account_unavailable_for_refresh_token_error,
+    mark_account_unavailable_for_usage_http_error,
 };
 
 const DEFAULT_USAGE_REFRESH_FAILURE_EVENT_WINDOW_SECS: i64 = 60;
@@ -43,20 +44,7 @@ pub(super) fn mark_usage_unreachable_if_needed(storage: &Storage, account_id: &s
     if mark_account_unavailable_for_deactivation_error(storage, account_id, err) {
         return;
     }
-    if err.starts_with("usage endpoint status 401") {
-        let current_status = storage
-            .find_account_by_id(account_id)
-            .ok()
-            .flatten()
-            .map(|account| account.status)
-            .unwrap_or_default();
-        if !current_status.trim().eq_ignore_ascii_case("disabled")
-            && !current_status.trim().eq_ignore_ascii_case("inactive")
-        {
-            set_account_status(storage, account_id, "unavailable", "usage_http_401");
-        }
-    }
-    let _ = (storage, account_id, err);
+    let _ = mark_account_unavailable_for_usage_http_error(storage, account_id, err);
 }
 
 pub(super) fn should_retry_with_refresh(err: &str) -> bool {

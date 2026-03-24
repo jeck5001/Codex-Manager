@@ -370,6 +370,8 @@ pub(crate) fn log_candidate_pool(
     trace_id: &str,
     key_id: &str,
     strategy: &str,
+    rotation_source: &str,
+    strategy_applied: bool,
     candidates: &[String],
 ) {
     let candidates = if candidates.is_empty() {
@@ -382,11 +384,13 @@ pub(crate) fn log_candidate_pool(
             .join(",")
     };
     let line = format!(
-        "ts={} event=CANDIDATE_POOL trace_id={} key_id={} strategy={} candidates={}",
+        "ts={} event=CANDIDATE_POOL trace_id={} key_id={} strategy={} rotation_source={} strategy_applied={} candidates={}",
         current_trace_ts(),
         sanitize_text(trace_id),
         sanitize_text(key_id),
         sanitize_text(strategy),
+        sanitize_text(rotation_source),
+        if strategy_applied { "true" } else { "false" },
         candidates,
     );
     buffer_trace_line(trace_id, line);

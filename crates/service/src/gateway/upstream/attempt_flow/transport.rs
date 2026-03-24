@@ -159,77 +159,33 @@ pub(in super::super) fn send_upstream_request(
     let attempt_started_at = Instant::now();
     let is_openai_api_target = super::super::super::is_openai_api_base(target_url);
     let prompt_cache_key = extract_prompt_cache_key(body.as_ref());
-    let conversation_anchor = incoming_headers
-        .conversation_id()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
     let is_compact_request = is_compact_request_path(request_ctx.request_path);
-    let responses_thread_anchor = if is_compact_request {
-        conversation_anchor.clone()
-    } else {
-        prompt_cache_key
-            .clone()
-            .or_else(|| conversation_anchor.clone())
-    };
-    let original_incoming_session_id = incoming_headers.session_id();
-    let mut incoming_session_id = original_incoming_session_id;
-    let mut incoming_client_request_id = incoming_headers.client_request_id();
-    let mut incoming_turn_state = incoming_headers.turn_state();
-    if !is_compact_request {
-        incoming_client_request_id = responses_thread_anchor
-            .as_deref()
-            .or(incoming_client_request_id);
-    }
-    if responses_thread_anchor.is_some() {
-        // 中文注释：当请求已携带线程锚点（prompt_cache_key）时，优先让上游会话头也绑定到
-        // 同一锚点，避免继续透传旧 session_id 造成线程漂移或跨账号粘性。
-        incoming_session_id = None;
-    }
-    if is_compact_request && conversation_anchor.is_some() {
-        // 中文注释：官方 compact 客户端会直接把 conversation_id 映射成 session_id。
-        // compact 请求没有 prompt_cache_key，因此这里显式让会话头退回到 conversation 锚点。
-        incoming_session_id = None;
-    }
-    if incoming_turn_state.is_some()
-        && original_incoming_session_id.is_none()
-        && prompt_cache_key.is_none()
-    {
-        // 中文注释：客户端单独塞一个 turn-state、却没有任何稳定线程锚点时，
-        // 这份状态无法证明属于当前请求线程。此时直接透传只会把上游粘到未知历史 turn。
-        incoming_turn_state = None;
-    }
-    if let (Some(cache_key), Some(legacy_session_id)) =
-        (prompt_cache_key.as_deref(), original_incoming_session_id)
-    {
-        if legacy_session_id.trim() != cache_key {
-            // 中文注释：旧 session_id 已被新的线程锚点覆盖时，继续透传旧 turn-state
-            // 只会把上游路由粘到历史 turn，和官方同 turn 回放语义相悖。
-            incoming_turn_state = None;
-        }
-    }
-    let mut derived_session_id = None;
-    // 中文注释：Codex HTTP /responses 会把会话锚点同时写进 x-client-request-id 和 session_id。
-    // 这里无论是否正在切线程，只要当前尝试已经解析出新的线程锚点，就优先用它覆盖会话头。
-    if let Some(thread_anchor) = responses_thread_anchor.as_ref() {
-        derived_session_id = Some(thread_anchor.clone());
-    }
-    let compact_fallback_session_id = conversation_anchor
-        .as_deref()
-        .or(derived_session_id.as_deref());
+    let request_affinity = super::super::super::session_affinity::derive_outgoing_session_affinity(
+        incoming_headers.session_id(),
+        incoming_headers.client_request_id(),
+        incoming_headers.turn_state(),
+        incoming_headers.conversation_id(),
+        prompt_cache_key.as_deref(),
+    );
     let account_id = account
         .chatgpt_account_id
         .as_deref()
         .or_else(|| account.workspace_id.as_deref());
+    super::super::super::session_affinity::log_thread_anchor_conflict(
+        request_ctx.request_path,
+        account_id,
+        incoming_headers.conversation_id(),
+        prompt_cache_key.as_deref(),
+    );
     let include_account_id = !is_openai_api_target;
-    let mut upstream_headers = if is_compact_request_path(request_ctx.request_path) {
+    let mut upstream_headers = if is_compact_request {
         let header_input = super::super::header_profile::CodexCompactUpstreamHeaderInput {
             auth_token,
             account_id,
             include_account_id,
-            incoming_session_id,
+            incoming_session_id: request_affinity.incoming_session_id,
             incoming_subagent: incoming_headers.subagent(),
-            fallback_session_id: compact_fallback_session_id,
+            fallback_session_id: request_affinity.fallback_session_id,
             strip_session_affinity,
             has_body: !body.is_empty(),
         };
@@ -239,13 +195,13 @@ pub(in super::super) fn send_upstream_request(
             auth_token,
             account_id,
             include_account_id,
-            incoming_session_id,
-            incoming_client_request_id,
+            incoming_session_id: request_affinity.incoming_session_id,
+            incoming_client_request_id: request_affinity.incoming_client_request_id,
             incoming_subagent: incoming_headers.subagent(),
             incoming_beta_features: incoming_headers.beta_features(),
             incoming_turn_metadata: incoming_headers.turn_metadata(),
-            fallback_session_id: derived_session_id.as_deref(),
-            incoming_turn_state,
+            fallback_session_id: request_affinity.fallback_session_id,
+            incoming_turn_state: request_affinity.incoming_turn_state,
             include_turn_state: true,
             strip_session_affinity,
             is_stream,

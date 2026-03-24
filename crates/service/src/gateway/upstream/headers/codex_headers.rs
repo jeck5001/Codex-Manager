@@ -196,3 +196,141 @@ fn resolve_client_request_id(incoming_client_request_id: Option<&str>) -> Option
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{build_codex_compact_upstream_headers, build_codex_upstream_headers};
+    use crate::gateway::{
+        gateway_runtime_test_guard, set_codex_user_agent_version, set_originator,
+        CodexCompactUpstreamHeaderInput, CodexUpstreamHeaderInput,
+    };
+    use std::sync::MutexGuard;
+
+    fn test_guard() -> MutexGuard<'static, ()> {
+        gateway_runtime_test_guard()
+    }
+
+    fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+        headers
+            .iter()
+            .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    #[test]
+    fn build_codex_upstream_headers_keeps_final_affinity_shape() {
+        let _guard = test_guard();
+        let _ = set_originator("codex_cli_rs_tests").expect("set originator");
+        let _ = set_codex_user_agent_version("0.999.0").expect("set ua version");
+
+        let headers = build_codex_upstream_headers(CodexUpstreamHeaderInput {
+            auth_token: "token-123",
+            account_id: Some("account-xyz"),
+            include_account_id: true,
+            incoming_session_id: Some("conversation-anchor"),
+            incoming_client_request_id: Some("conversation-anchor"),
+            incoming_subagent: Some("subagent-a"),
+            incoming_beta_features: Some("beta-a"),
+            incoming_turn_metadata: Some("meta-a"),
+            fallback_session_id: Some("conversation-anchor"),
+            incoming_turn_state: Some("turn-state-a"),
+            include_turn_state: true,
+            strip_session_affinity: false,
+            is_stream: true,
+            has_body: true,
+        });
+
+        assert_eq!(
+            header_value(&headers, "Authorization"),
+            Some("Bearer token-123")
+        );
+        assert_eq!(
+            header_value(&headers, "Content-Type"),
+            Some("application/json")
+        );
+        assert_eq!(header_value(&headers, "Accept"), Some("text/event-stream"));
+        let expected_user_agent_prefix = format!(
+            "{}/0.999.0",
+            crate::gateway::current_wire_originator()
+        );
+        assert_eq!(
+            header_value(&headers, "User-Agent")
+                .map(|value| value.starts_with(expected_user_agent_prefix.as_str())),
+            Some(true)
+        );
+        assert_eq!(header_value(&headers, "originator"), Some("codex_cli_rs"));
+        assert_eq!(
+            header_value(&headers, "x-client-request-id"),
+            Some("conversation-anchor")
+        );
+        assert_eq!(header_value(&headers, "session_id"), Some("conversation-anchor"));
+        assert_eq!(
+            header_value(&headers, "x-codex-turn-state"),
+            Some("turn-state-a")
+        );
+        assert_eq!(
+            header_value(&headers, "ChatGPT-Account-ID"),
+            Some("account-xyz")
+        );
+    }
+
+    #[test]
+    fn build_codex_upstream_headers_clears_turn_state_when_affinity_diverges() {
+        let _guard = test_guard();
+        let _ = set_originator("codex_cli_rs_tests").expect("set originator");
+        let _ = set_codex_user_agent_version("0.999.1").expect("set ua version");
+
+        let headers = build_codex_upstream_headers(CodexUpstreamHeaderInput {
+            auth_token: "token-456",
+            account_id: Some("account-xyz"),
+            include_account_id: true,
+            incoming_session_id: Some("conversation-anchor"),
+            incoming_client_request_id: Some("conversation-anchor"),
+            incoming_subagent: None,
+            incoming_beta_features: None,
+            incoming_turn_metadata: None,
+            fallback_session_id: Some("prompt-cache-anchor"),
+            incoming_turn_state: None,
+            include_turn_state: true,
+            strip_session_affinity: false,
+            is_stream: false,
+            has_body: false,
+        });
+
+        assert_eq!(header_value(&headers, "Accept"), Some("application/json"));
+        assert_eq!(
+            header_value(&headers, "x-client-request-id"),
+            Some("conversation-anchor")
+        );
+        assert_eq!(header_value(&headers, "session_id"), Some("conversation-anchor"));
+        assert_eq!(header_value(&headers, "x-codex-turn-state"), None);
+    }
+
+    #[test]
+    fn build_codex_compact_upstream_headers_use_session_fallback_only() {
+        let _guard = test_guard();
+        let _ = set_originator("codex_cli_rs_tests").expect("set originator");
+        let _ = set_codex_user_agent_version("0.999.2").expect("set ua version");
+
+        let headers = build_codex_compact_upstream_headers(CodexCompactUpstreamHeaderInput {
+            auth_token: "token-789",
+            account_id: Some("account-xyz"),
+            include_account_id: true,
+            incoming_session_id: None,
+            incoming_subagent: Some("subagent-b"),
+            fallback_session_id: Some("conversation-anchor"),
+            strip_session_affinity: true,
+            has_body: true,
+        });
+
+        assert_eq!(header_value(&headers, "Accept"), Some("application/json"));
+        assert_eq!(header_value(&headers, "x-client-request-id"), None);
+        assert_eq!(header_value(&headers, "session_id"), Some("conversation-anchor"));
+        assert_eq!(header_value(&headers, "x-codex-turn-state"), None);
+        assert_eq!(
+            header_value(&headers, "ChatGPT-Account-ID"),
+            Some("account-xyz")
+        );
+        assert_eq!(header_value(&headers, "x-openai-subagent"), Some("subagent-b"));
+    }
+}

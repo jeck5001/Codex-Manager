@@ -1,5 +1,6 @@
 use crate::storage_helpers::open_storage;
 
+mod anchor_fingerprint;
 #[path = "routing/conversation_binding.rs"]
 mod conversation_binding;
 #[path = "routing/cooldown.rs"]
@@ -28,6 +29,8 @@ mod request_entry;
 mod request_gate;
 #[path = "request/request_helpers.rs"]
 mod request_helpers;
+#[path = "request/session_affinity.rs"]
+mod session_affinity;
 #[path = "observability/request_log.rs"]
 mod request_log;
 #[path = "request/request_rewrite.rs"]
