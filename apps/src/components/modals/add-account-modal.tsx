@@ -60,6 +60,7 @@ interface AddAccountModalProps {
 
 type RegisterMode = "single" | "batch" | "outlook-batch";
 type RegisterExecutionMode = "pipeline" | "parallel";
+const REGISTER_SERVICE_AUTO = "__auto__";
 
 const GROUP_LABELS: Record<string, string> = {
   TEAM: "团队 (TEAM)",
@@ -185,6 +186,14 @@ function buildRegisterImportSummary(title: string, importedCount: number, failur
     return head;
   }
   return [head, "", ...failures.slice(0, 8)].join("\n");
+}
+
+function normalizeRegisterServiceIdForSubmit(rawValue: string): number | null {
+  if (!rawValue || rawValue === REGISTER_SERVICE_AUTO) {
+    return null;
+  }
+  const parsed = Number(rawValue);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
@@ -401,10 +410,9 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         nextOptions[0]?.value ||
         "tempmail";
       const nextGroup = nextOptions.find((item) => item.value === nextType)?.group || null;
-      const nextServiceId =
-        nextGroup?.services.find((item) => item.id != null)?.id != null
-          ? String(nextGroup.services.find((item) => item.id != null)?.id)
-          : "";
+      const nextServiceId = (nextGroup?.services || []).some((item) => item.id != null)
+        ? REGISTER_SERVICE_AUTO
+        : "";
       setRegisterServiceType(nextType);
       setRegisterServiceId(nextServiceId);
     },
@@ -825,7 +833,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
       if (registerMode === "single") {
         const task = await accountClient.startRegisterTask({
           emailServiceType: registerServiceType,
-          emailServiceId: registerServiceId ? Number(registerServiceId) : null,
+          emailServiceId: normalizeRegisterServiceIdForSubmit(registerServiceId),
           proxy: registerProxy || null,
         });
         setRegisterTask(task);
@@ -845,7 +853,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         const count = parseIntegerInput(registerBatchCount, "注册数量", 1);
         const started = await accountClient.startRegisterBatch({
           emailServiceType: registerServiceType,
-          emailServiceId: registerServiceId ? Number(registerServiceId) : null,
+          emailServiceId: normalizeRegisterServiceIdForSubmit(registerServiceId),
           proxy: registerProxy || null,
           count,
           intervalMin,
@@ -1186,10 +1194,9 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                           if (!value) return;
                           setRegisterServiceType(value);
                           const nextGroup = registerTypeOptions.find((item) => item.value === value)?.group;
-                          const nextId =
-                            nextGroup?.services.find((item) => item.id != null)?.id != null
-                              ? String(nextGroup.services.find((item) => item.id != null)?.id)
-                              : "";
+                          const nextId = (nextGroup?.services || []).some((item) => item.id != null)
+                            ? REGISTER_SERVICE_AUTO
+                            : "";
                           setRegisterServiceId(nextId);
                         }}
                       >
@@ -1220,12 +1227,15 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                       <Label>具体服务</Label>
                       <Select
                         value={registerServiceId}
-                        onValueChange={(value) => setRegisterServiceId(value || "")}
+                        onValueChange={(value) => setRegisterServiceId(value || REGISTER_SERVICE_AUTO)}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="选择具体服务" />
+                          <SelectValue placeholder="按当前类型自动轮询" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value={REGISTER_SERVICE_AUTO}>
+                            按当前类型自动轮询
+                          </SelectItem>
                           {(selectedRegisterGroup?.services || [])
                             .filter((item) => item.id != null)
                             .map((item) => (
@@ -1238,11 +1248,16 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                     </div>
                   ) : null}
 
-                  {selectedRegisterGroup?.services?.[0]?.description ? (
+                  <div className="space-y-1">
+                    {selectedRegisterGroup?.services?.[0]?.description ? (
+                      <p className="text-xs text-muted-foreground">
+                        {selectedRegisterGroup.services[0].description}
+                      </p>
+                    ) : null}
                     <p className="text-xs text-muted-foreground">
-                      {selectedRegisterGroup.services[0].description}
+                      具体服务留空时，会在当前类型的可用服务之间自动轮询；代理留空时会按代理池轮询。
                     </p>
-                  ) : null}
+                  </div>
                 </>
               ) : (
                 <>

@@ -228,6 +228,17 @@ def update_email_service(
     return db_service
 
 
+def update_email_service_last_used(db: Session, service_id: int) -> bool:
+    """更新邮箱服务最后使用时间"""
+    db_service = get_email_service_by_id(db, service_id)
+    if not db_service:
+        return False
+
+    db_service.last_used = datetime.utcnow()
+    db.commit()
+    return True
+
+
 def delete_email_service(db: Session, service_id: int) -> bool:
     """删除邮箱服务配置"""
     db_service = get_email_service_by_id(db, service_id)
@@ -486,9 +497,8 @@ def update_proxy_last_used(db: Session, proxy_id: int) -> bool:
 
 
 def get_random_proxy(db: Session) -> Optional[Proxy]:
-    """随机获取一个启用的代理，优先返回 is_default=True 的代理"""
+    """兼容旧接口：优先返回默认代理，否则回退为启用代理列表中的随机一项"""
     import random
-    # 优先返回默认代理
     default_proxy = db.query(Proxy).filter(Proxy.enabled == True, Proxy.is_default == True).first()
     if default_proxy:
         return default_proxy

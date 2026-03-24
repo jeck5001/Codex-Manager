@@ -21,6 +21,7 @@
   - 文档差异：`docs/ACCEPTANCE.md` 覆盖范围大于原 TODO，后续继续按验收项补齐
   - 文档导航：根 `README.md` 已收口为项目首页，深度说明继续以 `docs/README.md` 与 `CHANGELOG.md` 为准
   - 本轮补齐账号治理小收口：`workspace_deactivated` 已纳入封禁识别，账号页支持“一键清理封禁账号”，5 小时 / 7 天额度列补充重置时间展示
+  - 本轮补齐注册中心调度收口：批量注册在“只选邮箱服务类型、不选具体服务”时会按该类型可用服务轮询；代理留空时也会按代理池轮询，不再被前端默认首项锁死
 
 - [x] **通用验收缺口**
   - G7 `cargo clippy`（`codexmanager-service`）已收口：`cargo clippy -p codexmanager-service --tests -- -D warnings` 当前通过，本轮继续清空 `account/account_register.rs`、`app_settings/api/current.rs` 与测试层历史 warning
@@ -259,6 +260,10 @@
   - `pnpm exec tsc --noEmit` 通过（本轮复验 F17 设置页插件管理 Tab 与模板草稿类型）
   - `cargo test -p codexmanager-service resolve_existing_imported_account_id_ -- --nocapture` 通过（本轮补齐注册任务“已入池 / 待入池”判断，覆盖 identity hint 与邮箱回退匹配）
   - `pnpm exec tsc --noEmit` 通过（本轮补齐注册中心“待入池”标识与手动加入号池按钮）
+  - `python3 -m unittest vendor/codex-register/tests/test_round_robin.py` 通过（本轮补齐注册服务 / 代理池轮询选择回归）
+  - `python3 -m py_compile vendor/codex-register/src/core/round_robin.py vendor/codex-register/src/database/crud.py vendor/codex-register/src/web/routes/registration.py` 通过（本轮复验 vendored `codex-register` 注册链路语法）
+  - `pnpm exec tsc --noEmit` 通过（本轮复验注册弹窗“具体服务自动轮询”前端类型）
+  - `pnpm run build:desktop` 通过（本轮复验注册弹窗桌面构建产物）
   - `cargo test -p codexmanager-service requestlog_list_and_summary_support_extended_filters -- --nocapture` 通过（本轮复验请求日志列表 / 摘要扩展筛选，并覆盖 `keyIds` 多密钥过滤）
   - `cargo test -p codexmanager-service requestlog_export_rpc_supports_key_model_and_time_filters -- --nocapture` 通过（本轮复验请求日志导出扩展筛选，并覆盖 `keyIds` 多密钥过滤）
   - `pnpm exec tsc --noEmit` 通过（本轮复验平台密钥页完整 ID 展示、复制兜底与请求日志按密钥名称筛选）

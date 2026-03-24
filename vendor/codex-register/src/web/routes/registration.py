@@ -14,8 +14,9 @@ from pydantic import BaseModel, Field
 
 from ...database import crud
 from ...database.session import get_db
-from ...database.models import RegistrationTask, Proxy
+from ...database.models import RegistrationTask, Proxy, EmailService as EmailServiceModel, Account
 from ...core.register import RegistrationEngine, RegistrationResult
+from ...core.round_robin import pick_round_robin_item
 from ...services import EmailServiceFactory, EmailServiceType
 from ...config.settings import get_settings
 from ..task_manager import task_manager
@@ -36,7 +37,7 @@ def get_proxy_for_registration(db) -> Tuple[Optional[str], Optional[int]]:
     获取用于注册的代理
 
     策略：
-    1. 优先从代理列表中随机选择一个启用的代理
+    1. 优先从代理池中按最后使用时间轮询选择一个启用的代理
     2. 如果代理列表为空且启用了动态代理，调用动态代理 API 获取
     3. 否则使用系统设置中的静态默认代理
 
@@ -44,7 +45,8 @@ def get_proxy_for_registration(db) -> Tuple[Optional[str], Optional[int]]:
         Tuple[proxy_url, proxy_id]: 代理 URL 和代理 ID（如果来自代理列表）
     """
     # 先尝试从代理列表中获取
-    proxy = crud.get_random_proxy(db)
+    enabled_proxies = crud.get_enabled_proxies(db)
+    proxy = pick_round_robin_item(enabled_proxies)
     if proxy:
         return proxy.proxy_url, proxy.id
 
@@ -61,6 +63,36 @@ def update_proxy_usage(db, proxy_id: Optional[int]):
     """更新代理的使用时间"""
     if proxy_id:
         crud.update_proxy_last_used(db, proxy_id)
+
+
+def _pick_email_service_for_registration(db, service_type: EmailServiceType) -> Optional[EmailServiceModel]:
+    services = db.query(EmailServiceModel).filter(
+        EmailServiceModel.service_type == service_type.value,
+        EmailServiceModel.enabled == True
+    ).all()
+    return pick_round_robin_item(services)
+
+
+def _pick_outlook_service_for_registration(db) -> Optional[EmailServiceModel]:
+    services = db.query(EmailServiceModel).filter(
+        EmailServiceModel.service_type == EmailServiceType.OUTLOOK.value,
+        EmailServiceModel.enabled == True
+    ).all()
+    available_services = []
+    for service in services:
+        config = service.config or {}
+        email = config.get("email") or service.name
+        if not email:
+            continue
+        existing = db.query(Account).filter(Account.email == email).first()
+        if existing is None:
+            available_services.append(service)
+    return pick_round_robin_item(available_services)
+
+
+def _mark_email_service_used(db, service_id: Optional[int]):
+    if service_id:
+        crud.update_email_service_last_used(db, service_id)
 
 
 # ============== Pydantic Models ==============
@@ -334,6 +366,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                 actual_proxy_url, proxy_id = get_proxy_for_registration(db)
                 if actual_proxy_url:
                     logger.info(f"任务 {task_uuid} 使用代理: {actual_proxy_url[:50]}...")
+            update_proxy_usage(db, proxy_id)
 
             # 更新任务的代理记录
             crud.update_registration_task(db, task_uuid, proxy=actual_proxy_url)
@@ -344,7 +377,6 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
 
             # 优先使用数据库中配置的邮箱服务
             if email_service_id:
-                from ...database.models import EmailService as EmailServiceModel
                 db_service = db.query(EmailServiceModel).filter(
                     EmailServiceModel.id == email_service_id,
                     EmailServiceModel.enabled == True
@@ -356,6 +388,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                     config = _merge_runtime_email_service_config(config, email_service_config)
                     # 更新任务关联的邮箱服务
                     crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
+                    _mark_email_service_used(db, db_service.id)
                     logger.info(f"使用数据库邮箱服务: {db_service.name} (ID: {db_service.id}, 类型: {service_type.value})")
                 else:
                     raise ValueError(f"邮箱服务不存在或已禁用: {email_service_id}")
@@ -369,17 +402,13 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                         "proxy_url": actual_proxy_url,
                     }
                 elif service_type == EmailServiceType.CUSTOM_DOMAIN:
-                    # 检查数据库中是否有可用的自定义域名服务
-                    from ...database.models import EmailService as EmailServiceModel
-                    db_service = db.query(EmailServiceModel).filter(
-                        EmailServiceModel.service_type == "custom_domain",
-                        EmailServiceModel.enabled == True
-                    ).order_by(EmailServiceModel.priority.asc()).first()
+                    db_service = _pick_email_service_for_registration(db, EmailServiceType.CUSTOM_DOMAIN)
 
                     if db_service and db_service.config:
                         config = _normalize_email_service_config(service_type, db_service.config, actual_proxy_url)
                         config = _merge_runtime_email_service_config(config, email_service_config)
                         crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
+                        _mark_email_service_used(db, db_service.id)
                         logger.info(f"使用数据库自定义域名服务: {db_service.name}")
                     elif settings.custom_domain_base_url and settings.custom_domain_api_key:
                         config = {
@@ -390,37 +419,26 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                         config = _merge_runtime_email_service_config(config, email_service_config)
                     else:
                         raise ValueError("没有可用的自定义域名邮箱服务，请先在设置中配置")
+                elif service_type == EmailServiceType.TEMP_MAIL:
+                    db_service = _pick_email_service_for_registration(db, EmailServiceType.TEMP_MAIL)
+                    if db_service and db_service.config:
+                        config = _normalize_email_service_config(service_type, db_service.config, actual_proxy_url)
+                        config = _merge_runtime_email_service_config(config, email_service_config)
+                        crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
+                        _mark_email_service_used(db, db_service.id)
+                        logger.info(f"使用数据库 Temp Mail 服务: {db_service.name}")
+                    else:
+                        raise ValueError("没有可用的 Temp Mail 服务，请先在邮箱服务中配置")
                 elif service_type == EmailServiceType.OUTLOOK:
-                    # 检查数据库中是否有可用的 Outlook 账户
-                    from ...database.models import EmailService as EmailServiceModel, Account
-                    # 获取所有启用的 Outlook 服务
-                    outlook_services = db.query(EmailServiceModel).filter(
-                        EmailServiceModel.service_type == "outlook",
-                        EmailServiceModel.enabled == True
-                    ).order_by(EmailServiceModel.priority.asc()).all()
-
-                    if not outlook_services:
+                    selected_service = _pick_outlook_service_for_registration(db)
+                    if not selected_service:
                         raise ValueError("没有可用的 Outlook 账户，请先在设置中导入账户")
-
-                    # 找到一个未注册的 Outlook 账户
-                    selected_service = None
-                    for svc in outlook_services:
-                        email = svc.config.get("email") if svc.config else None
-                        if not email:
-                            continue
-                        # 检查是否已在 accounts 表中注册
-                        existing = db.query(Account).filter(Account.email == email).first()
-                        if not existing:
-                            selected_service = svc
-                            logger.info(f"选择未注册的 Outlook 账户: {email}")
-                            break
-                        else:
-                            logger.info(f"跳过已注册的 Outlook 账户: {email}")
 
                     if selected_service and selected_service.config:
                         config = selected_service.config.copy()
                         config = _merge_runtime_email_service_config(config, email_service_config)
                         crud.update_registration_task(db, task_uuid, email_service_id=selected_service.id)
+                        _mark_email_service_used(db, selected_service.id)
                         logger.info(f"使用数据库 Outlook 账户: {selected_service.name}")
                     else:
                         raise ValueError("所有 Outlook 账户都已注册过 OpenAI 账号，请添加新的 Outlook 账户")
@@ -445,9 +463,6 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
             result = engine.run()
 
             if result.success:
-                # 更新代理使用时间
-                update_proxy_usage(db, proxy_id)
-
                 # 保存到数据库
                 engine.save_to_database(result)
 
