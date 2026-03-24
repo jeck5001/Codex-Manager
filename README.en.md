@@ -12,8 +12,12 @@
   <a href="#sponsor">Sponsor</a>
 </p>
 
-
 A local desktop + service toolkit for managing Codex-compatible accounts, usage, platform keys, and a built-in local gateway.
+
+## Star Chart
+<p align="center">
+  <img src="assets/images/star-history.png" alt="Star Chart" width="900" />
+</p>
 
 ## Source Code Description:
 > This product is completely by my command + AI to build Codex (98%) Gemini (2%) If the use of the process of generating problems please friendly exchanges, because the open source just think that someone can use, the basic function is no problem, do not like do not spray.

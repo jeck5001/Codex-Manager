@@ -48,5 +48,5 @@
 ## 相关文档
 
 - 测试探针说明：[tests/README.md](tests/README.md)
-- 发布旁路说明：[../docs/release/20260309195735630_release-all旁路说明.md](../docs/release/20260309195735630_release-all旁路说明.md)
+- 构建发布说明：[../docs/release/20260310122606851_构建发布与脚本说明.md](../docs/release/20260310122606851_构建发布与脚本说明.md)
 - 职责对照与盘点：[../docs/report/20260309195735631_脚本与发布职责对照.md](../docs/report/20260309195735631_脚本与发布职责对照.md)

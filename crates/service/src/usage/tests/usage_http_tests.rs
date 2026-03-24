@@ -22,8 +22,8 @@ fn usage_header_runtime_guard() -> MutexGuard<'static, ()> {
 fn usage_header_runtime_scope() -> (MutexGuard<'static, ()>, UsageHeaderRuntimeRestore) {
     let guard = usage_header_runtime_guard();
     let restore = UsageHeaderRuntimeRestore::capture();
-    let _ = crate::set_gateway_originator("codex_cli_rs");
-    let _ = crate::set_gateway_residency_requirement(None);
+    let _ = crate::gateway::set_originator("codex_cli_rs");
+    let _ = crate::gateway::set_residency_requirement(None);
     (guard, restore)
 }
 
@@ -43,8 +43,8 @@ impl UsageHeaderRuntimeRestore {
 
 impl Drop for UsageHeaderRuntimeRestore {
     fn drop(&mut self) {
-        let _ = crate::set_gateway_originator(&self.originator);
-        let _ = crate::set_gateway_residency_requirement(self.residency_requirement.as_deref());
+        let _ = crate::gateway::set_originator(&self.originator);
+        let _ = crate::gateway::set_residency_requirement(self.residency_requirement.as_deref());
     }
 }
 

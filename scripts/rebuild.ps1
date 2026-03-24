@@ -11,7 +11,6 @@ param(
   [string]$WorkflowFile = "release-all.yml",
   [string]$GitRef,
   [string]$ReleaseTag,
-  [switch]$NoVerify,
   [ValidateSet("auto", "true", "false")]
   [string]$Prerelease = "auto",
   [bool]$DownloadArtifacts = $true,
@@ -253,21 +252,19 @@ function Invoke-AllPlatformBuild {
 
   $dispatchUri = "https://api.github.com/repos/$($repo.owner)/$($repo.repo)/actions/workflows/$WorkflowFile/dispatches"
   $runsUri = "https://api.github.com/repos/$($repo.owner)/$($repo.repo)/actions/workflows/$WorkflowFile/runs?event=workflow_dispatch&per_page=50"
-  $runVerifyInput = if ($NoVerify) { "false" } else { "true" }
   $prereleaseInput = $Prerelease.ToLowerInvariant()
   $dispatchBody = @{
     ref = $GitRef
     inputs = @{
-      tag         = $ReleaseTag
-      ref         = $GitRef
-      run_verify  = $runVerifyInput
-      prerelease  = $prereleaseInput
+      tag        = $ReleaseTag
+      ref        = $GitRef
+      prerelease = $prereleaseInput
     }
   }
 
   if ($DryRun) {
     Write-Step "DRY RUN: using workflow .github/workflows/$WorkflowFile"
-    Write-Step "DRY RUN: dispatch workflow $WorkflowFile on ref=$GitRef tag=$ReleaseTag run_verify=$runVerifyInput prerelease=$prereleaseInput"
+    Write-Step "DRY RUN: dispatch workflow $WorkflowFile on ref=$GitRef tag=$ReleaseTag prerelease=$prereleaseInput"
     Write-Step "DRY RUN: resolved target sha $resolvedSha"
     Write-Step "DRY RUN: POST $dispatchUri"
     Write-Step "DRY RUN: payload $($dispatchBody | ConvertTo-Json -Depth 10 -Compress)"
@@ -279,7 +276,7 @@ function Invoke-AllPlatformBuild {
 
   $workflow = Resolve-WorkflowDefinition -Repo $repo -Token $token -WorkflowFile $WorkflowFile
   Write-Step "using workflow: $($workflow.path)"
-  Write-Step "dispatching workflow: $WorkflowFile (ref=$GitRef tag=$ReleaseTag run_verify=$runVerifyInput prerelease=$prereleaseInput)"
+  Write-Step "dispatching workflow: $WorkflowFile (ref=$GitRef tag=$ReleaseTag prerelease=$prereleaseInput)"
   Invoke-GitHubApi -Method POST -Uri $dispatchUri -Token $token -Body $dispatchBody | Out-Null
 
   $deadline = (Get-Date).ToUniversalTime().AddMinutes($TimeoutMin)

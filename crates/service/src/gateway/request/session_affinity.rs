@@ -10,6 +10,7 @@ fn normalize_anchor(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
 }
 
+#[cfg(test)]
 pub(crate) fn has_thread_anchor_conflict(
     conversation_id: Option<&str>,
     prompt_cache_key: Option<&str>,

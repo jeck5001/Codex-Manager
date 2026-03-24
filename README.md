@@ -17,7 +17,7 @@
 
 ## Star 曲线
 <p align="center">
-  <img src="assets/images/star-history-2026324.png" alt="Star 曲线" width="900" />
+  <img src="assets/images/star-history.png" alt="Star 曲线" width="900" />
 </p>
 
 ## 源码说明：
@@ -61,12 +61,6 @@
 - `feb759b`：修复设置页监听地址与更新按钮状态。补回 `localhost / 0.0.0.0` 切换入口，并修正自动检查更新误触发按钮 loading 的问题。
 - `50d6a03`：修复 Web 刷新下载与剪贴板复制失败。静态路由尾斜杠行为已收口，剪贴板在不支持原生 API 时也会自动降级。
 - `e3a7557`：移除 upstream cookie 链路。当前主路径不再依赖全局上游 Cookie，出站请求行为继续向官方 Codex 收口。
-
-
-## Star 曲线
-<p align="center">
-  <img src="assets/images/star-history-2026324.png" alt="Star 曲线" width="900" />
-</p>
 
 ## 功能概览
 - 账号池管理：分组、标签、排序、备注、封禁识别与封禁筛选

@@ -351,8 +351,6 @@ fn main() {
         std::process::exit(1);
     }
 
-    let mut spawned_service = false;
-    let mut service_child: Option<Child> = None;
     if tcp_probe(&service_addr) {
         println!("检测到 service 已在运行，尝试重启以应用当前配置...");
         if !stop_existing_service_best_effort(&service_addr) {
@@ -363,26 +361,25 @@ fn main() {
     if tcp_probe(&service_addr) {
         eprintln!("service 端口仍被占用，请先关闭旧实例：{service_addr}");
         std::process::exit(1);
-    } else if !service_bin.is_file() {
+    }
+
+    if !service_bin.is_file() {
         eprintln!("service 不可达且缺少文件：{}", service_bin.display());
         std::process::exit(1);
-    } else {
-        println!("正在启动 service...");
-        match spawn_child(&service_bin, Some(&service_bind_addr)) {
-            Ok(child) => {
-                #[cfg(target_os = "windows")]
-                if let Some(job) = child_job.as_ref() {
-                    if let Err(err) = job.assign(&child) {
-                        eprintln!("service 未能加入 Windows 回收句柄，关闭窗口时可能残留：{err}");
-                    }
-                }
-                service_child = Some(child);
-                spawned_service = true;
-            }
-            Err(err) => {
-                eprintln!("启动 service 失败：{err}");
-                std::process::exit(1);
-            }
+    }
+
+    println!("正在启动 service...");
+    let mut service_child = match spawn_child(&service_bin, Some(&service_bind_addr)) {
+        Ok(child) => child,
+        Err(err) => {
+            eprintln!("启动 service 失败：{err}");
+            std::process::exit(1);
+        }
+    };
+    #[cfg(target_os = "windows")]
+    if let Some(job) = child_job.as_ref() {
+        if let Err(err) = job.assign(&service_child) {
+            eprintln!("service 未能加入 Windows 回收句柄，关闭窗口时可能残留：{err}");
         }
     }
 
@@ -433,31 +430,24 @@ fn main() {
             println!("web 已退出：{status}");
             break;
         }
-        if let Some(child) = service_child.as_mut() {
-            if let Ok(Some(status)) = child.try_wait() {
-                println!("service 已退出：{status}");
-                break;
-            }
+        if let Ok(Some(status)) = service_child.try_wait() {
+            println!("service 已退出：{status}");
+            break;
         }
         std::thread::sleep(Duration::from_millis(250));
     }
 
     println!("正在关闭...");
 
-    // 先关 web，再关 service；仅当本进程拉起过 service 才尝试关闭它。
+    // 先关 web，再关 service。
     simple_get_best_effort(&web_addr, "/__quit");
-    if spawned_service {
-        simple_get_best_effort(&service_addr, "/__shutdown");
-    }
+    simple_get_best_effort(&service_addr, "/__shutdown");
 
     // 最后兜底：短等后强杀
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     loop {
         let web_done = web_child.try_wait().ok().flatten().is_some();
-        let service_done = match service_child.as_mut() {
-            Some(child) => child.try_wait().ok().flatten().is_some(),
-            None => true,
-        };
+        let service_done = service_child.try_wait().ok().flatten().is_some();
         if web_done && service_done {
             break;
         }
@@ -468,9 +458,7 @@ fn main() {
     }
 
     let _ = web_child.kill();
-    if let Some(mut child) = service_child {
-        let _ = child.kill();
-    }
+    let _ = service_child.kill();
 }
 
 #[cfg(test)]

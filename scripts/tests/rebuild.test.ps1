@@ -46,9 +46,6 @@ if ($multiOutput -notlike "*repos/*/actions/workflows/release-all.yml/dispatches
 if ($multiOutput -notmatch '"tag":"v0.0.0-test"') {
   throw "expected release tag in workflow dispatch payload"
 }
-if ($multiOutput -notmatch '"run_verify":"true"') {
-  throw "expected run_verify=true in workflow dispatch payload"
-}
 if ($multiOutput -notmatch '"prerelease":"auto"') {
   throw "expected prerelease=auto in workflow dispatch payload"
 }

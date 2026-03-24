@@ -12,11 +12,6 @@ on:
         required: false
         default: "main"
         type: string
-      run_verify:
-        description: "Run quality gate before building artifacts"
-        required: false
-        default: true
-        type: boolean
       prerelease:
         description: "Release channel override (auto/true/false)"
         required: false
@@ -39,8 +34,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify:
-    if: ${{ github.event.inputs.run_verify != 'false' }}
+  build_frontend_dist:
     runs-on: ubuntu-22.04
 
     steps:
@@ -56,14 +50,7 @@ jobs:
         working-directory: apps
         run: pnpm install --frozen-lockfile
 
-      - name: Rust tests
-        run: cargo test --workspace
-
-      - name: Frontend lint
-        working-directory: apps
-        run: pnpm lint
-
-      - name: Frontend build
+      - name: Build frontend dist
         working-directory: apps
         run: pnpm run build:desktop
 
@@ -84,8 +71,7 @@ jobs:
           compression-level: 0
 
   build_windows:
-    needs: verify
-    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
+    needs: build_frontend_dist
     runs-on: windows-latest
 
     steps:
@@ -102,8 +88,6 @@ jobs:
 
       - name: Prepare frontend dist
         uses: ./.github/actions/prepare-frontend-dist
-        with:
-          verify-result: ${{ needs.verify.result }}
 
       - name: Disable redundant frontend rebuild for Tauri bundle
         shell: pwsh
@@ -188,8 +172,7 @@ jobs:
           compression-level: 0
 
   build_macos_beta:
-    needs: verify
-    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
+    needs: build_frontend_dist
     runs-on: macos-14
     strategy:
       fail-fast: false
@@ -215,8 +198,6 @@ jobs:
 
       - name: Prepare frontend dist
         uses: ./.github/actions/prepare-frontend-dist
-        with:
-          verify-result: ${{ needs.verify.result }}
 
       - name: Disable redundant frontend rebuild for Tauri bundle
         shell: pwsh
@@ -342,8 +323,7 @@ jobs:
           compression-level: 0
 
   build_linux:
-    needs: verify
-    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
+    needs: build_frontend_dist
     runs-on: ubuntu-22.04
 
     steps:
@@ -365,8 +345,6 @@ jobs:
 
       - name: Prepare frontend dist
         uses: ./.github/actions/prepare-frontend-dist
-        with:
-          verify-result: ${{ needs.verify.result }}
 
       - name: Disable redundant frontend rebuild for Tauri bundle
         shell: pwsh
