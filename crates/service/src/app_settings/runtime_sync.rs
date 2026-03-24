@@ -7,6 +7,7 @@ use super::{
     reload_runtime_after_env_override_apply, set_service_bind_mode, BackgroundTasksInput,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
+    APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
@@ -68,6 +69,11 @@ pub fn sync_runtime_settings_from_storage() {
     }
     if let Some(raw) = settings.get(APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY) {
         gateway::set_request_compression_enabled(parse_bool_with_default(raw, true));
+    }
+    if let Some(raw) = settings.get(APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY) {
+        if let Err(err) = gateway::set_payload_rewrite_rules_json(Some(raw)) {
+            log::warn!("sync persisted payload rewrite rules failed: {err}");
+        }
     }
     if let Some(raw) = settings.get(APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY) {
         gateway::set_response_cache_enabled(parse_bool_with_default(raw, false));

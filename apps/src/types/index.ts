@@ -826,6 +826,9 @@ export interface AppSettings {
   webAccessPasswordConfigured: boolean;
   webAccessTwoFactorEnabled: boolean;
   webAccessRecoveryCodesRemaining: number;
+  remoteManagementEnabled: boolean;
+  remoteManagementSecretConfigured: boolean;
+  remoteManagementSecret?: string;
   serviceAddr: string;
   serviceListenMode: string;
   serviceListenModeOptions: string[];
@@ -838,6 +841,7 @@ export interface AppSettings {
   quotaProtectionEnabled: boolean;
   quotaProtectionThresholdPercent: number;
   requestCompressionEnabled: boolean;
+  payloadRewriteRulesJson: string;
   retryPolicyMaxRetries: number;
   retryPolicyBackoffStrategy: string;
   retryPolicyRetryableStatusCodes: number[];

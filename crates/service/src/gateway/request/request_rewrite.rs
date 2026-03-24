@@ -71,6 +71,36 @@ fn is_allowed_field(path: &str, key: &str, retain_fn: RetainFn) -> bool {
     one.contains_key(key)
 }
 
+fn payload_rewrite_path_matches(rule_path: &str, request_path: &str) -> bool {
+    let normalized_rule = rule_path.trim();
+    normalized_rule == "*" || normalized_rule == request_path
+}
+
+fn apply_payload_rewrite_rules(
+    path: &str,
+    obj: &mut serde_json::Map<String, Value>,
+) -> Vec<String> {
+    let mut applied_fields = Vec::new();
+    for rule in super::runtime_config::current_payload_rewrite_rules() {
+        if !rule.enabled || !payload_rewrite_path_matches(&rule.path, path) {
+            continue;
+        }
+        let field = rule.field.trim();
+        if field.is_empty() {
+            continue;
+        }
+        let should_apply = match rule.mode {
+            super::runtime_config::PayloadRewriteMode::Set => true,
+            super::runtime_config::PayloadRewriteMode::SetIfMissing => !obj.contains_key(field),
+        };
+        if should_apply {
+            obj.insert(field.to_string(), rule.value.clone());
+            applied_fields.push(field.to_string());
+        }
+    }
+    applied_fields
+}
+
 fn find_subsequence(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
     if needle.is_empty() || start >= haystack.len() || haystack.len() < needle.len() {
         return None;
@@ -295,6 +325,18 @@ pub(super) fn apply_request_overrides_with_prompt_cache_key(
             }
             if chat_completions::ensure_stream_usage_override(path, obj) {
                 changed = true;
+            }
+
+            let mut rewritten_fields = apply_payload_rewrite_rules(path, obj);
+            if !rewritten_fields.is_empty() {
+                rewritten_fields.sort_unstable();
+                rewritten_fields.dedup();
+                changed = true;
+                log::debug!(
+                    "event=gateway_request_payload_rewrite_applied path={} fields={}",
+                    path,
+                    rewritten_fields.join(",")
+                );
             }
 
             if super::strict_request_param_allowlist_enabled() {

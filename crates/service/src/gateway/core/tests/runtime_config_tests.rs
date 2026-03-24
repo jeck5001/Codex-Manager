@@ -47,6 +47,10 @@ fn reload_from_env_updates_timeout_and_cookie() {
     let _client_id_guard = EnvGuard::set(ENV_TOKEN_EXCHANGE_CLIENT_ID, "client-id-123");
     let _issuer_guard = EnvGuard::set(ENV_TOKEN_EXCHANGE_ISSUER, "https://issuer.example");
     let _proxy_guard = EnvGuard::set(ENV_UPSTREAM_PROXY_URL, "socks5://127.0.0.1:7890");
+    let _payload_rewrite_guard = EnvGuard::set(
+        ENV_PAYLOAD_REWRITE_RULES,
+        r#"[{"enabled":true,"path":"/v1/responses","field":"service_tier","mode":"set_if_missing","value":"flex"}]"#,
+    );
 
     reload_from_env();
 
@@ -66,6 +70,12 @@ fn reload_from_env_updates_timeout_and_cookie() {
         upstream_proxy_url().as_deref(),
         Some("socks5h://127.0.0.1:7890")
     );
+    let rules = current_payload_rewrite_rules();
+    assert_eq!(rules.len(), 1);
+    assert_eq!(rules[0].path, "/v1/responses");
+    assert_eq!(rules[0].field, "service_tier");
+    assert_eq!(rules[0].mode, PayloadRewriteMode::SetIfMissing);
+    assert_eq!(rules[0].value, serde_json::json!("flex"));
 }
 
 #[test]
@@ -174,6 +184,39 @@ fn set_upstream_stream_timeout_ms_updates_env_and_cache() {
             .as_deref(),
         Some("432100")
     );
+}
+
+#[test]
+fn set_payload_rewrite_rules_json_normalizes_env_and_cache() {
+    let _guard = test_guard();
+    let _guard = EnvGuard::clear(ENV_PAYLOAD_REWRITE_RULES);
+
+    let applied = set_payload_rewrite_rules_json(Some(
+        r#"[{"path":"*","field":"service_tier","mode":"set","value":"priority"}]"#,
+    ))
+    .expect("set payload rewrite rules");
+
+    assert_eq!(
+        applied,
+        r#"[{"enabled":true,"path":"*","field":"service_tier","mode":"set","value":"priority"}]"#
+    );
+    assert_eq!(
+        std::env::var(ENV_PAYLOAD_REWRITE_RULES).ok().as_deref(),
+        Some(applied.as_str())
+    );
+    assert_eq!(current_payload_rewrite_rules().len(), 1);
+}
+
+#[test]
+fn set_payload_rewrite_rules_json_rejects_model_override() {
+    let _guard = test_guard();
+
+    let err = set_payload_rewrite_rules_json(Some(
+        r#"[{"path":"*","field":"model","mode":"set","value":"gpt-5.4"}]"#,
+    ))
+    .expect_err("model override should be rejected");
+
+    assert!(err.contains("does not support 'model'"));
 }
 
 #[test]

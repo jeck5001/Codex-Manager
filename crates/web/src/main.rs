@@ -268,6 +268,14 @@ async fn async_main() {
         .route("/__auth_status", get(auth::auth_status))
         .route("/__login", get(auth::login_page).post(auth::login_submit))
         .route("/__logout", get(auth::logout).post(auth::logout))
+        .route(
+            "/api/management/status",
+            get(service_gateway::management_status),
+        )
+        .route(
+            "/api/management/rpc",
+            post(service_gateway::management_rpc_proxy),
+        )
         .merge(protected_app)
         .layer(middleware::from_fn(access_log))
         .with_state(state);

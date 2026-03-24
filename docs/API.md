@@ -17,9 +17,29 @@
 ### Web 代理
 - Web 地址：`http://127.0.0.1:48761`
 - 代理 RPC：`POST /api/rpc`
+- 远程管理状态：`GET /api/management/status`
+- 远程管理 RPC：`POST /api/management/rpc`
+  - Header：`x-codexmanager-management-secret: <secret>`，也支持 `Authorization: Bearer <secret>`
+  - 仅在设置页启用“远程管理 API”且已配置访问密钥后可用
+  - `GET /api/management/status` 与 `POST /api/management/rpc` 使用相同密钥鉴权
 - 导出代理：
   - `GET /api/export/requestlogs`
   - `GET /api/export/auditlogs`
+
+远程管理状态示例：
+
+```bash
+curl -s http://127.0.0.1:48761/api/management/status \
+  -H "x-codexmanager-management-secret: <secret>"
+```
+
+返回字段示例：
+- `enabled: boolean`
+- `secretConfigured: boolean`
+- `serviceAddr: string`
+- `serviceReachable: boolean`
+- `webAccessPasswordConfigured: boolean`
+- `webAccessTwoFactorEnabled: boolean`
 
 ### Web 登录与安全
 - 登录页：`GET /__login`
@@ -146,9 +166,12 @@
 - `webAccessPasswordConfigured: boolean`
 - `webAccessTwoFactorEnabled: boolean`
 - `webAccessRecoveryCodesRemaining: number`
+- `remoteManagementEnabled: boolean`
+- `remoteManagementSecretConfigured: boolean`
 - `responseCacheEnabled: boolean`
 - `responseCacheTtlSecs: number`
 - `responseCacheMaxEntries: number`
+- `payloadRewriteRulesJson: string`
 - `retryPolicyMaxRetries: number`
 - `retryPolicyBackoffStrategy: string`
 - `retryPolicyRetryableStatusCodes: number[]`
@@ -160,12 +183,22 @@
 
 当前前端已消费的近期字段：
 - `webAccessPassword`
+- `remoteManagementEnabled`
+- `remoteManagementSecret`
 - `responseCacheEnabled`
 - `responseCacheTtlSecs`
 - `responseCacheMaxEntries`
+- `payloadRewriteRulesJson`
 - `retryPolicyMaxRetries`
 - `retryPolicyBackoffStrategy`
 - `retryPolicyRetryableStatusCodes`
+
+补充说明：
+- `payloadRewriteRulesJson` 当前是网关声明式 Payload Rewrite 的后端第一版入口，内容为 JSON 数组字符串。
+- 第一版仅支持顶层字段改写，规则形如 `[{ "path": "/v1/responses", "field": "service_tier", "mode": "set_if_missing", "value": "flex" }]`。
+- `mode` 目前支持 `set` / `set_if_missing`，`path` 支持精确路径或 `*`。
+- 为避免绕过现有 API Key 模型白名单，第一版明确禁止改写 `model` 字段。
+- 可通过环境变量 `CODEXMANAGER_PAYLOAD_REWRITE_RULES` 覆盖。
 
 ### 插件管理（实验）
 

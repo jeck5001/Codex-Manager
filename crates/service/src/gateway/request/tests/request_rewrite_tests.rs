@@ -1,6 +1,22 @@
 use super::{apply_request_overrides, apply_request_overrides_with_prompt_cache_key};
 use serde_json::json;
 
+struct PayloadRewriteGuard {
+    _guard: std::sync::MutexGuard<'static, ()>,
+}
+
+impl Drop for PayloadRewriteGuard {
+    fn drop(&mut self) {
+        crate::gateway::set_payload_rewrite_rules_json(None).expect("clear payload rewrite rules");
+    }
+}
+
+fn payload_rewrite_guard(raw: Option<&str>) -> PayloadRewriteGuard {
+    let guard = crate::gateway::gateway_runtime_test_guard();
+    crate::gateway::set_payload_rewrite_rules_json(raw).expect("set payload rewrite rules");
+    PayloadRewriteGuard { _guard: guard }
+}
+
 #[test]
 fn chat_completions_stream_enforces_include_usage() {
     let body = json!({
@@ -186,6 +202,59 @@ fn chat_completions_normalizes_responses_function_tools() {
             .and_then(|v| v.get("name"))
             .and_then(serde_json::Value::as_str),
         Some("ping")
+    );
+}
+
+#[test]
+fn payload_rewrite_rules_set_top_level_field() {
+    let _guard = payload_rewrite_guard(Some(
+        r#"[{"path":"/v1/responses","field":"service_tier","mode":"set","value":"flex"}]"#,
+    ));
+
+    let body = json!({
+        "model": "gpt-5.3-codex",
+        "input": "hello"
+    });
+    let out = apply_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert_eq!(
+        value
+            .get("service_tier")
+            .and_then(serde_json::Value::as_str),
+        Some("flex")
+    );
+}
+
+#[test]
+fn payload_rewrite_rules_set_if_missing_preserves_existing_value() {
+    let _guard = payload_rewrite_guard(Some(
+        r#"[{"path":"*","field":"service_tier","mode":"set_if_missing","value":"flex"}]"#,
+    ));
+
+    let body = json!({
+        "model": "gpt-5.3-codex",
+        "service_tier": "priority",
+        "input": "hello"
+    });
+    let out = apply_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert_eq!(
+        value
+            .get("service_tier")
+            .and_then(serde_json::Value::as_str),
+        Some("priority")
     );
 }
 

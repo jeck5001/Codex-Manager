@@ -6,13 +6,14 @@ use super::{
     save_persisted_app_setting, save_persisted_bool_setting, set_close_to_tray_on_close_setting,
     set_env_overrides, set_gateway_background_tasks, set_gateway_cpa_no_cookie_header_mode,
     set_gateway_free_account_max_model, set_gateway_originator,
-    set_gateway_quota_protection_enabled, set_gateway_quota_protection_threshold_percent,
-    set_gateway_request_compression_enabled, set_gateway_residency_requirement,
-    set_gateway_response_cache_enabled, set_gateway_response_cache_max_entries,
-    set_gateway_response_cache_ttl_secs, set_gateway_retry_policy, set_gateway_route_strategy,
-    set_gateway_sse_keepalive_interval_ms, set_gateway_upstream_proxy_url,
-    set_gateway_upstream_stream_timeout_ms, set_lightweight_mode_on_close_to_tray_setting,
-    set_mcp_enabled, set_mcp_port, set_saved_service_addr, set_service_bind_mode,
+    set_gateway_payload_rewrite_rules_json, set_gateway_quota_protection_enabled,
+    set_gateway_quota_protection_threshold_percent, set_gateway_request_compression_enabled,
+    set_gateway_residency_requirement, set_gateway_response_cache_enabled,
+    set_gateway_response_cache_max_entries, set_gateway_response_cache_ttl_secs,
+    set_gateway_retry_policy, set_gateway_route_strategy, set_gateway_sse_keepalive_interval_ms,
+    set_gateway_upstream_proxy_url, set_gateway_upstream_stream_timeout_ms,
+    set_lightweight_mode_on_close_to_tray_setting, set_mcp_enabled, set_mcp_port,
+    set_remote_management_enabled, set_saved_service_addr, set_service_bind_mode,
     set_ui_appearance_preset, set_ui_low_transparency_enabled, set_ui_theme,
     set_update_auto_check_enabled, BackgroundTasksInput,
 };
@@ -30,11 +31,13 @@ pub(super) struct AppSettingsPatch {
     service_listen_mode: Option<String>,
     mcp_enabled: Option<bool>,
     mcp_port: Option<u16>,
+    remote_management_enabled: Option<bool>,
     route_strategy: Option<String>,
     free_account_max_model: Option<String>,
     quota_protection_enabled: Option<bool>,
     quota_protection_threshold_percent: Option<u64>,
     request_compression_enabled: Option<bool>,
+    payload_rewrite_rules_json: Option<String>,
     retry_policy_max_retries: Option<usize>,
     retry_policy_backoff_strategy: Option<String>,
     retry_policy_retryable_status_codes: Option<Vec<u16>>,
@@ -53,6 +56,7 @@ pub(super) struct AppSettingsPatch {
     team_manager_api_url: Option<String>,
     team_manager_api_key: Option<String>,
     web_access_password: Option<String>,
+    remote_management_secret: Option<String>,
 }
 
 pub(super) fn parse_app_settings_patch(params: Option<&Value>) -> Result<AppSettingsPatch, String> {
@@ -94,6 +98,19 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     if let Some(port) = patch.mcp_port {
         let _ = set_mcp_port(port)?;
     }
+    if let Some(secret) = patch.remote_management_secret {
+        let _ = crate::set_remote_management_secret(Some(&secret))?;
+    }
+    if let Some(enabled) = patch.remote_management_enabled {
+        if enabled && !crate::remote_management_secret_configured() {
+            return Err("启用远程管理 API 前请先设置访问密钥".to_string());
+        }
+        let _ = set_remote_management_enabled(enabled)?;
+    } else if crate::current_remote_management_enabled()
+        && !crate::remote_management_secret_configured()
+    {
+        return Err("远程管理 API 已启用，不能在未关闭前清空访问密钥".to_string());
+    }
     if let Some(strategy) = patch.route_strategy {
         let _ = set_gateway_route_strategy(&strategy)?;
     }
@@ -108,6 +125,9 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     }
     if let Some(enabled) = patch.request_compression_enabled {
         let _ = set_gateway_request_compression_enabled(enabled)?;
+    }
+    if let Some(raw) = patch.payload_rewrite_rules_json {
+        let _ = set_gateway_payload_rewrite_rules_json(Some(&raw))?;
     }
     if patch.retry_policy_max_retries.is_some()
         || patch.retry_policy_backoff_strategy.is_some()

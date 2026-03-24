@@ -764,3 +764,24 @@
   - [x] 编写插件开发指南与 API 参考
   - [x] `docs/report/20260323193000000_插件管理与Lua开发指南.md` 已补齐当前已落地能力、Lua 模板、建议 Hook 契约与后续收口顺序
   - [x] `docs/API.md`、`docs/README.md` 已同步插件实验能力与文档入口
+
+---
+
+## 借鉴增强（CLIProxyAPI）
+
+- [x] **远程管理 API**
+  - [x] 本轮先落地基础闭环：设置页新增“远程管理 API”开关与访问密钥，`appSettings/get|set` 暴露 `remoteManagementEnabled` / `remoteManagementSecretConfigured` / `remoteManagementSecret`
+  - [x] Web 新增 `POST /api/management/rpc`，支持 `x-codexmanager-management-secret` 或 `Authorization: Bearer <secret>` 鉴权后代理到 service RPC
+  - [x] 支持 `CODEXMANAGER_REMOTE_MANAGEMENT_ENABLED` / `CODEXMANAGER_REMOTE_MANAGEMENT_SECRET` 环境变量覆盖
+  - [x] 补充 `GET /api/management/status` 只读状态端点，便于远程脚本先探测服务与 Web 安全状态
+  - [x] `docs/API.md` 已补充远程管理 curl 示例与状态字段说明
+  - [x] 本轮验证：`cargo test -p codexmanager-service --test app_settings app_settings_set_persists_snapshot_and_password_hash -- --nocapture`、`cargo test -p codexmanager-service --test app_settings app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing -- --nocapture`、`cargo test -p codexmanager-service --test app_settings app_settings_set_rejects_enabling_remote_management_without_secret -- --nocapture`、`cargo test -p codexmanager-web resolve_management_secret_ -- --nocapture`、`pnpm exec tsc --noEmit`
+  - [x] 本轮补充收尾验证：`cargo test -p codexmanager-web management_ -- --nocapture`
+
+- [x] **声明式 Payload Rewrite**
+  - [x] 已落地后端第一版：`appSettings/get|set` / `CODEXMANAGER_PAYLOAD_REWRITE_RULES` 支持声明式 JSON 规则，网关在 request rewrite 链中按 `set | set_if_missing` 改写顶层字段
+  - [x] 第一版安全边界已收紧：仅支持 JSON body、精确路径或 `*` 匹配、顶层字段，且显式禁止改写 `model`
+  - [x] 设置页传输配置区已补最小 JSON 编辑入口，支持直接保存 / 回滚当前规则
+
+- [ ] **模型别名 / 模型池**
+  - [ ] 先明确是做“对外别名 -> 单模型映射”还是“对外别名 -> 多上游池”的第一版最小闭环，避免和现有 fallback / route strategy 语义重叠

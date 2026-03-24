@@ -7,20 +7,23 @@ use std::collections::BTreeMap;
 use super::{
     current_background_tasks_snapshot_value, current_close_to_tray_on_close_setting,
     current_env_overrides, current_gateway_free_account_max_model, current_gateway_originator,
-    current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
+    current_gateway_payload_rewrite_rules_json, current_gateway_quota_protection_enabled,
+    current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
     current_gateway_response_cache_enabled, current_gateway_response_cache_max_entries,
     current_gateway_response_cache_ttl_secs, current_gateway_retry_policy,
     current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
     current_lightweight_mode_on_close_to_tray_setting, current_mcp_enabled, current_mcp_port,
-    current_saved_service_addr, current_service_bind_mode, current_ui_appearance_preset,
-    current_ui_low_transparency_enabled, current_ui_theme, current_update_auto_check_enabled,
-    env_override_catalog_value, env_override_reserved_keys, env_override_unsupported_keys,
-    get_persisted_app_setting, parse_bool_with_default, residency_requirement_options,
-    save_env_overrides_value, save_persisted_app_setting, save_persisted_bool_setting,
-    sync_runtime_settings_from_storage, APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
-    APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
+    current_remote_management_enabled, current_saved_service_addr, current_service_bind_mode,
+    current_ui_appearance_preset, current_ui_low_transparency_enabled, current_ui_theme,
+    current_update_auto_check_enabled, env_override_catalog_value, env_override_reserved_keys,
+    env_override_unsupported_keys, get_persisted_app_setting, parse_bool_with_default,
+    residency_requirement_options, save_env_overrides_value, save_persisted_app_setting,
+    save_persisted_bool_setting, sync_runtime_settings_from_storage,
+    APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
+    APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
+    APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
     APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
@@ -33,7 +36,8 @@ use super::{
     APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY, APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
     APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_MCP_ENABLED_KEY,
-    APP_SETTING_MCP_PORT_KEY, APP_SETTING_SERVICE_ADDR_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
+    APP_SETTING_MCP_PORT_KEY, APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY,
+    APP_SETTING_SERVICE_ADDR_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
     APP_SETTING_TEAM_MANAGER_API_URL_KEY, APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
     APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
     APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
@@ -66,11 +70,13 @@ struct PersistCurrentSnapshotInput<'a> {
     service_listen_mode: &'a str,
     mcp_enabled: bool,
     mcp_port: u16,
+    remote_management_enabled: bool,
     route_strategy: &'a str,
     free_account_max_model: &'a str,
     quota_protection_enabled: bool,
     quota_protection_threshold_percent: u64,
     request_compression_enabled: bool,
+    payload_rewrite_rules_json: &'a str,
     retry_policy_max_retries: usize,
     retry_policy_backoff_strategy: &'a str,
     retry_policy_retryable_status_codes: &'a [u16],
@@ -105,11 +111,13 @@ pub(super) fn current_app_settings_value(
     let service_listen_mode = current_service_bind_mode();
     let mcp_enabled = current_mcp_enabled();
     let mcp_port = current_mcp_port();
+    let remote_management_enabled = current_remote_management_enabled();
     let route_strategy = crate::gateway::current_route_strategy().to_string();
     let free_account_max_model = current_gateway_free_account_max_model();
     let quota_protection_enabled = current_gateway_quota_protection_enabled();
     let quota_protection_threshold_percent = current_gateway_quota_protection_threshold_percent();
     let request_compression_enabled = current_gateway_request_compression_enabled();
+    let payload_rewrite_rules_json = current_gateway_payload_rewrite_rules_json();
     let retry_policy = current_gateway_retry_policy();
     let response_cache_enabled = current_gateway_response_cache_enabled();
     let response_cache_ttl_secs = current_gateway_response_cache_ttl_secs();
@@ -144,11 +152,13 @@ pub(super) fn current_app_settings_value(
         service_listen_mode: &service_listen_mode,
         mcp_enabled,
         mcp_port,
+        remote_management_enabled,
         route_strategy: &route_strategy,
         free_account_max_model: &free_account_max_model,
         quota_protection_enabled,
         quota_protection_threshold_percent,
         request_compression_enabled,
+        payload_rewrite_rules_json: &payload_rewrite_rules_json,
         retry_policy_max_retries: retry_policy.max_retries,
         retry_policy_backoff_strategy: &retry_policy.backoff_strategy,
         retry_policy_retryable_status_codes: &retry_policy.retryable_status_codes,
@@ -181,6 +191,8 @@ pub(super) fn current_app_settings_value(
         ],
         "mcpEnabled": mcp_enabled,
         "mcpPort": mcp_port,
+        "remoteManagementEnabled": remote_management_enabled,
+        "remoteManagementSecretConfigured": crate::remote_management_secret_configured(),
         "routeStrategy": route_strategy,
         "routeStrategyOptions": ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
         "freeAccountMaxModel": free_account_max_model,
@@ -188,6 +200,7 @@ pub(super) fn current_app_settings_value(
         "quotaProtectionEnabled": quota_protection_enabled,
         "quotaProtectionThresholdPercent": quota_protection_threshold_percent,
         "requestCompressionEnabled": request_compression_enabled,
+        "payloadRewriteRulesJson": payload_rewrite_rules_json,
         "retryPolicyMaxRetries": retry_policy.max_retries,
         "retryPolicyBackoffStrategy": retry_policy.backoff_strategy,
         "retryPolicyRetryableStatusCodes": retry_policy.retryable_status_codes,
@@ -268,11 +281,13 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
         service_listen_mode,
         mcp_enabled,
         mcp_port,
+        remote_management_enabled,
         route_strategy,
         free_account_max_model,
         quota_protection_enabled,
         quota_protection_threshold_percent,
         request_compression_enabled,
+        payload_rewrite_rules_json,
         retry_policy_max_retries,
         retry_policy_backoff_strategy,
         retry_policy_retryable_status_codes,
@@ -307,6 +322,10 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
     let _ = save_persisted_app_setting(SERVICE_BIND_MODE_SETTING_KEY, Some(service_listen_mode));
     let _ = save_persisted_bool_setting(APP_SETTING_MCP_ENABLED_KEY, mcp_enabled);
     let _ = save_persisted_app_setting(APP_SETTING_MCP_PORT_KEY, Some(&mcp_port.to_string()));
+    let _ = save_persisted_bool_setting(
+        APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY,
+        remote_management_enabled,
+    );
     let _ =
         save_persisted_app_setting(APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, Some(route_strategy));
     let _ = save_persisted_app_setting(
@@ -324,6 +343,10 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
     let _ = save_persisted_bool_setting(
         APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
         request_compression_enabled,
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
+        Some(payload_rewrite_rules_json),
     );
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
