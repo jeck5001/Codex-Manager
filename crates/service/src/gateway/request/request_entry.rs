@@ -19,7 +19,7 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
     let trace_id = super::trace_log::next_trace_id();
     let request_path_for_log = super::normalize_models_path(request.url());
     let request_method_for_log = request.method().as_str().to_string();
-    let validated =
+    let mut validated =
         match super::local_validation::prepare_local_request(&mut request, trace_id.clone(), debug)
         {
             Ok(v) => v,
@@ -122,6 +122,76 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
         Some(request) => request,
         None => return Ok(()),
     };
+
+    match crate::plugin_runtime::execute_pre_route_plugins(
+        crate::plugin_runtime::PreRoutePluginInput {
+            storage: &validated.storage,
+            trace_id: validated.trace_id.as_str(),
+            key_id: validated.key_id.as_str(),
+            api_key_name: validated.api_key_name.as_deref(),
+            path: validated.path.as_str(),
+            method: validated.request_method.as_str(),
+            body: &validated.body,
+            model_for_log: validated.model_for_log.as_deref(),
+            is_stream: validated.is_stream,
+        },
+    ) {
+        crate::plugin_runtime::RequestHookOutcome::Continue(patch) => {
+            validated.body = patch.body;
+            validated.model_for_log = patch.model_for_log;
+        }
+        crate::plugin_runtime::RequestHookOutcome::Reject(reject) => {
+            log::info!(
+                "event=plugin_request_reject trace_id={} plugin_id={} plugin_name={} hook_point=pre_route status_code={}",
+                validated.trace_id,
+                reject.plugin_id,
+                reject.plugin_name,
+                reject.status_code
+            );
+            super::trace_log::log_request_final(
+                validated.trace_id.as_str(),
+                reject.status_code,
+                None,
+                None,
+                Some(reject.message.as_str()),
+                0,
+            );
+            super::record_gateway_request_outcome(
+                validated.path.as_str(),
+                reject.status_code,
+                Some(validated.protocol_type.as_str()),
+            );
+            super::write_request_log(
+                &validated.storage,
+                super::request_log::RequestLogTraceContext {
+                    trace_id: Some(validated.trace_id.as_str()),
+                    original_path: Some(validated.original_path.as_str()),
+                    adapted_path: Some(validated.path.as_str()),
+                    response_adapter: Some(validated.response_adapter),
+                },
+                super::request_log::RequestLogEntry {
+                    key_id: Some(validated.key_id.as_str()),
+                    account_id: None,
+                    request_path: validated.path.as_str(),
+                    method: validated.request_method.as_str(),
+                    model: validated.model_for_log.as_deref(),
+                    reasoning_effort: validated.reasoning_for_log.as_deref(),
+                    upstream_url: None,
+                    status_code: Some(reject.status_code),
+                    usage: super::request_log::RequestLogUsage::default(),
+                    error: Some(reject.message.as_str()),
+                    duration_ms: None,
+                },
+            );
+            let response = super::error_response::json_value_response(
+                reject.status_code,
+                &reject.body,
+                Some(validated.trace_id.as_str()),
+            );
+            let _ = request.respond(response);
+            return Ok(());
+        }
+    }
 
     super::proxy_validated_request(request, validated, debug)
 }

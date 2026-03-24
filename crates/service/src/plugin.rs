@@ -44,6 +44,11 @@ pub(crate) fn upsert_plugin(
     }
 
     let normalized_timeout_ms = normalize_timeout_ms(timeout_ms)?;
+    crate::plugin_runtime::validate_plugin_script(
+        normalized_runtime.as_str(),
+        normalized_script_content.as_str(),
+        normalized_timeout_ms,
+    )?;
     let normalized_description = description
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
@@ -73,6 +78,7 @@ pub(crate) fn upsert_plugin(
     storage
         .upsert_plugin(&record)
         .map_err(|err| err.to_string())?;
+    crate::plugin_runtime::refresh_plugin_cache(&storage);
     to_plugin_item(record)
 }
 
@@ -84,7 +90,9 @@ pub(crate) fn delete_plugin(plugin_id: &str) -> Result<(), String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     storage
         .delete_plugin(normalized_id)
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    crate::plugin_runtime::refresh_plugin_cache(&storage);
+    Ok(())
 }
 
 pub(crate) fn to_plugin_item(record: PluginRecord) -> Result<PluginItem, String> {

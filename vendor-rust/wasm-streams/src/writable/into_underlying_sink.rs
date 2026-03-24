@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -26,32 +25,26 @@ impl IntoUnderlyingSink {
 impl IntoUnderlyingSink {
     pub fn write(&mut self, chunk: JsValue) -> Promise {
         let inner = self.inner.clone();
-        // SAFETY: We use the take-and-replace pattern in Inner::write() to ensure
-        // that if a panic occurs, the sink is already taken out of the Option,
-        // leaving it in a clean None state. This prevents use of corrupted state
-        // after a panic is caught.
-        future_to_promise(AssertUnwindSafe(async move {
+        future_to_promise(async move {
             // This mutable borrow can never panic, since the WritableStream always queues
             // each operation on the underlying sink.
             let mut inner = inner.try_borrow_mut().unwrap_throw();
             inner.write(chunk).await.map(|_| JsValue::undefined())
-        }))
+        })
     }
 
     pub fn close(self) -> Promise {
-        // SAFETY: Inner::close() takes the sink before the fallible operation.
-        future_to_promise(AssertUnwindSafe(async move {
+        future_to_promise(async move {
             let mut inner = self.inner.try_borrow_mut().unwrap_throw();
             inner.close().await.map(|_| JsValue::undefined())
-        }))
+        })
     }
 
     pub fn abort(self, reason: JsValue) -> Promise {
-        // SAFETY: Inner::abort() just sets sink to None, no fallible operation.
-        future_to_promise(AssertUnwindSafe(async move {
+        future_to_promise(async move {
             let mut inner = self.inner.try_borrow_mut().unwrap_throw();
             inner.abort(reason).await.map(|_| JsValue::undefined())
-        }))
+        })
     }
 }
 
@@ -67,32 +60,24 @@ impl Inner {
     }
 
     async fn write(&mut self, chunk: JsValue) -> Result<(), JsValue> {
-        // Take the sink out before the fallible/panickable operation.
-        // This ensures that if a panic occurs, self.sink is already None,
-        // so any subsequent call will fail cleanly instead of using corrupted state.
-        let mut sink = self.sink.take().unwrap_throw();
-
+        // The stream should still exist, since write() will not be called again
+        // after the sink has closed, aborted or encountered an error.
+        let sink = self.sink.as_mut().unwrap_throw();
         match sink.send(chunk).await {
-            Ok(()) => {
-                // Success: put the sink back for reuse
-                self.sink = Some(sink);
-                Ok(())
-            }
+            Ok(()) => Ok(()),
             Err(err) => {
-                // Error: the sink is dropped, self.sink remains None
+                // The stream encountered an error, drop it.
+                self.sink = None;
                 Err(err)
             }
         }
-        // Panic: sink is dropped during unwind, self.sink remains None
     }
 
     async fn close(&mut self) -> Result<(), JsValue> {
-        // Take ownership and close - sink is dropped after close completes
         self.sink.take().unwrap_throw().close().await
     }
 
     async fn abort(&mut self, _reason: JsValue) -> Result<(), JsValue> {
-        // Take and drop the sink immediately
         self.sink = None;
         Ok(())
     }

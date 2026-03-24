@@ -173,8 +173,12 @@
 
 补充说明：
 - 更完整的插件脚本约定、模板和后续 Hook 契约见 [插件管理与 Lua 开发指南](report/20260323193000000_插件管理与Lua开发指南.md)。
-- 当前插件系统仍处于“管理面 + 注册表”阶段，尚未把 Lua 执行器接入 gateway 请求链路。
-- `enabled` 和 `timeoutMs` 已持久化，但目前主要作为后续执行器的预留配置。
+- 已接入 `mlua` 运行时：启用插件会在 gateway 请求链路中执行。
+- `pre_route` 可读取请求与 API Key 信息，并支持拒绝请求、改写请求体或修改 `model`。
+- `post_route` 可在选定账号后继续基于账号 / 路由信息改写上游请求，或直接拒绝。
+- `post_response` 可读取响应状态码与响应头，并记录 `annotations` 到 trace / 日志；当前不改写响应体。
+- Lua 运行时已启用沙箱与超时保护：默认超时 `100ms`，可通过 `timeoutMs` 调整。
+- 无启用插件时，网关仅做一次进程内缓存判断，不会继续扫描插件表。
 
 ### `plugin/list`
 
@@ -211,7 +215,8 @@
 - 当前仅接受 `lua` runtime。
 - `hookPoints` 当前仅接受 `pre_route`、`post_route`、`post_response`。
 - `scriptContent` 不能为空；`hookPoints` 会在写入前去重并保持输入顺序。
-- 现阶段不会执行脚本内容；该接口只负责管理插件注册表。
+- 保存前会执行 Lua 加载校验，脚本必须暴露 `handle(ctx)` 函数。
+- 运行时会禁用 `io` / `os` / `package` / `debug` / `require` / `loadfile` 等高风险能力。
 
 ### `plugin/delete`
 

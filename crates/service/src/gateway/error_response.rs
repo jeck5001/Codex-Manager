@@ -69,6 +69,24 @@ pub(super) fn terminal_text_response(
     with_trace_id_header(response, trace_id)
 }
 
+pub(super) fn json_value_response(
+    status_code: u16,
+    body: &serde_json::Value,
+    trace_id: Option<&str>,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let body = serde_json::to_string(body).unwrap_or_else(|_| {
+        "{\"error\":{\"message\":\"invalid plugin response body\"}}".to_string()
+    });
+    let mut response = Response::from_string(body).with_status_code(status_code);
+    if let Ok(header) = Header::from_bytes(
+        b"Content-Type".as_slice(),
+        b"application/json; charset=utf-8".as_slice(),
+    ) {
+        response.add_header(header);
+    }
+    with_trace_id_header(response, trace_id)
+}
+
 #[cfg(test)]
 #[path = "tests/error_response_tests.rs"]
 mod tests;

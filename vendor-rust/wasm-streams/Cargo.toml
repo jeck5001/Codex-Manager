@@ -12,14 +12,10 @@
 [package]
 edition = "2021"
 name = "wasm-streams"
-version = "0.5.0"
+version = "0.4.2"
 authors = ["Mattias Buelens <mattias@buelens.com>"]
 build = false
-exclude = [
-    ".github/",
-    "tests/panic-unwind/",
-]
-autolib = false
+exclude = [".github/"]
 autobins = false
 autoexamples = false
 autotests = false
@@ -47,6 +43,10 @@ name = "fetch_as_stream"
 path = "examples/fetch_as_stream.rs"
 
 [[test]]
+name = "node"
+path = "tests/node.rs"
+
+[[test]]
 name = "unit"
 path = "tests/unit.rs"
 
@@ -62,16 +62,16 @@ features = [
 ]
 
 [dependencies.js-sys]
-version = "^0.3.85"
+version = "^0.3.72"
 
 [dependencies.wasm-bindgen]
-version = "0.2.108"
+version = "0.2.95"
 
 [dependencies.wasm-bindgen-futures]
-version = "^0.4.58"
+version = "^0.4.45"
 
 [dependencies.web-sys]
-version = "^0.3.85"
+version = "^0.3.72"
 features = [
     "AbortSignal",
     "QueuingStrategy",
@@ -112,10 +112,10 @@ features = [
 ]
 
 [dev-dependencies.wasm-bindgen-test]
-version = "0.3.58"
+version = "0.3.45"
 
 [dev-dependencies.web-sys]
-version = "^0.3.85"
+version = "^0.3.72"
 features = [
     "console",
     "AbortSignal",

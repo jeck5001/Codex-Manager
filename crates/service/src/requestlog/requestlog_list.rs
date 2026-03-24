@@ -177,8 +177,7 @@ pub(crate) fn to_request_log_summary(item: RequestLog) -> RequestLogSummary {
 mod tests {
     use super::{
         normalize_filter_params, normalize_optional_text, normalize_optional_timestamp,
-        normalize_text_list,
-        normalize_status_filter, normalize_upstream_url, RequestLogListParams,
+        normalize_status_filter, normalize_text_list, normalize_upstream_url, RequestLogListParams,
         DEFAULT_REQUEST_LOG_PAGE_SIZE,
     };
     use codexmanager_core::rpc::types::RequestLogFilterParams;
@@ -251,7 +250,10 @@ mod tests {
         assert_eq!(normalized.query.as_deref(), Some("trace:=abc"));
         assert_eq!(normalized.status_filter, None);
         assert_eq!(normalized.key_id.as_deref(), Some("gk-1"));
-        assert_eq!(normalized.key_ids, vec!["gk-1".to_string(), "gk-2".to_string()]);
+        assert_eq!(
+            normalized.key_ids,
+            vec!["gk-1".to_string(), "gk-2".to_string()]
+        );
         assert_eq!(normalized.model.as_deref(), Some("gpt-4o"));
         assert_eq!(normalized.time_from, Some(100));
         assert_eq!(normalized.time_to, None);
