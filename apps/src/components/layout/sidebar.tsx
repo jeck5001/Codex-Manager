@@ -21,6 +21,11 @@ import { Button } from "@/components/ui/button";
 import { isTauriRuntime } from "@/lib/api/transport";
 import { useAppStore } from "@/lib/store/useAppStore";
 import {
+  APP_NAV_ITEMS,
+  type AppNavItemId,
+  normalizeVisibleMenuItems,
+} from "@/lib/navigation";
+import {
   memo,
   startTransition,
   useCallback,
@@ -30,19 +35,23 @@ import {
   type MouseEvent,
 } from "react";
 
-const NAV_ITEMS = [
-  { name: "仪表盘", href: "/", icon: LayoutDashboard },
-  { name: "账号管理", href: "/accounts/", icon: Users },
-  { name: "注册中心", href: "/register/", icon: Sparkles },
-  { name: "支付中心", href: "/payment/", icon: CreditCard },
-  { name: "邮箱服务", href: "/email-services/", icon: Mail },
-  { name: "平台密钥", href: "/apikeys/", icon: Key },
-  { name: "请求日志", href: "/logs/", icon: FileText },
-  { name: "审计日志", href: "/audit/", icon: ShieldCheck },
-  { name: "费用统计", href: "/costs/", icon: BarChart3 },
-  { name: "用量分析", href: "/analytics/", icon: Activity },
-  { name: "设置", href: "/settings/", icon: Settings },
-];
+const NAV_ICONS: Record<AppNavItemId, typeof LayoutDashboard> = {
+  dashboard: LayoutDashboard,
+  accounts: Users,
+  register: Sparkles,
+  payment: CreditCard,
+  emailServices: Mail,
+  apiKeys: Key,
+  logs: FileText,
+  audit: ShieldCheck,
+  costs: BarChart3,
+  analytics: Activity,
+  settings: Settings,
+};
+const NAV_ITEMS = APP_NAV_ITEMS.map((item) => ({
+  ...item,
+  icon: NAV_ICONS[item.id],
+}));
 const DESKTOP_NAVIGATION_FALLBACK_MS = 500;
 
 function normalizeRoutePath(path: string) {
@@ -79,10 +88,14 @@ NavItem.displayName = "NavItem";
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { isSidebarOpen, toggleSidebar } = useAppStore();
+  const { isSidebarOpen, toggleSidebar, appSettings } = useAppStore();
   const normalizedPathname = normalizeRoutePath(pathname);
   const isDesktopStaticRuntime = isTauriRuntime();
   const desktopNavigationFallbackTimerRef = useRef<number | null>(null);
+  const visibleMenuItems = useMemo(
+    () => new Set(normalizeVisibleMenuItems(appSettings.visibleMenuItems)),
+    [appSettings.visibleMenuItems]
+  );
 
   const handleNavigate = useCallback(
     (href: string, event: MouseEvent<HTMLAnchorElement>) => {
@@ -147,7 +160,10 @@ export function Sidebar() {
 
     const prefetchRoutes = () => {
       for (const item of NAV_ITEMS) {
-        if (normalizeRoutePath(item.href) !== normalizedPathname) {
+        if (
+          visibleMenuItems.has(item.id) &&
+          normalizeRoutePath(item.href) !== normalizedPathname
+        ) {
           router.prefetch(item.href);
         }
       }
@@ -162,10 +178,10 @@ export function Sidebar() {
 
     const timer = globalThis.setTimeout(prefetchRoutes, 120);
     return () => globalThis.clearTimeout(timer);
-  }, [isDesktopStaticRuntime, normalizedPathname, router]);
+  }, [isDesktopStaticRuntime, normalizedPathname, router, visibleMenuItems]);
 
   const renderedItems = useMemo(() => 
-    NAV_ITEMS.map((item) => (
+    NAV_ITEMS.filter((item) => visibleMenuItems.has(item.id)).map((item) => (
       <NavItem 
         key={item.href} 
         item={item} 
@@ -174,7 +190,7 @@ export function Sidebar() {
         onNavigate={handleNavigate}
       />
     )),
-    [handleNavigate, normalizedPathname, isSidebarOpen]
+    [handleNavigate, normalizedPathname, isSidebarOpen, visibleMenuItems]
   );
 
   return (

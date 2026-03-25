@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { AppSettings, ServiceStatus } from "../../types";
+import { APP_NAV_DEFAULT_VISIBLE_IDS } from "@/lib/navigation";
 
 interface AppState {
   serviceStatus: ServiceStatus;
@@ -109,6 +110,7 @@ export const useAppStore = create<AppState>((set) => ({
     envOverrideUnsupportedKeys: [],
     theme: "tech",
     appearancePreset: "classic",
+    visibleMenuItems: [...APP_NAV_DEFAULT_VISIBLE_IDS],
   },
   isSidebarOpen: true,
 

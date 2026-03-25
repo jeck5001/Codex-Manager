@@ -61,6 +61,7 @@ import {
   WebAuthTwoFactorSetupResult,
   WebAuthTwoFactorStatusResult,
 } from "@/types";
+import { APP_NAV_DEFAULT_VISIBLE_IDS, normalizeVisibleMenuItems } from "@/lib/navigation";
 import {
   calcAvailability,
   getUsageDisplayBuckets,
@@ -1337,6 +1338,12 @@ export function normalizeEnvOverrideCatalog(payload: unknown): EnvOverrideCatalo
 
 export function normalizeAppSettings(payload: unknown): AppSettings {
   const source = asObject(payload);
+  const camelVisibleMenuItems = asArray(source.visibleMenuItems)
+    .map((item) => asString(item))
+    .filter(Boolean);
+  const snakeVisibleMenuItems = asArray(source.visible_menu_items)
+    .map((item) => asString(item))
+    .filter(Boolean);
   return {
     updateAutoCheck: asBoolean(source.updateAutoCheck, true),
     closeToTrayOnClose: asBoolean(source.closeToTrayOnClose, false),
@@ -1426,6 +1433,13 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     ),
     theme: asString(source.theme) || "tech",
     appearancePreset: asString(source.appearancePreset) || "classic",
+    visibleMenuItems: normalizeVisibleMenuItems(
+      camelVisibleMenuItems.length > 0
+        ? camelVisibleMenuItems
+        : snakeVisibleMenuItems.length > 0
+          ? snakeVisibleMenuItems
+          : APP_NAV_DEFAULT_VISIBLE_IDS
+    ),
   };
 }
 

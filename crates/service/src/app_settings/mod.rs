@@ -71,6 +71,7 @@ pub use shared::{
     APP_SETTING_TEAM_MANAGER_API_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_URL_KEY,
     APP_SETTING_TEAM_MANAGER_ENABLED_KEY, APP_SETTING_UI_APPEARANCE_PRESET_KEY,
     APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY,
+    APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY,
     APP_SETTING_UPDATE_AUTO_CHECK_KEY, APP_SETTING_WEB_ACCESS_2FA_RECOVERY_CODES_KEY,
     APP_SETTING_WEB_ACCESS_2FA_SECRET_ENCRYPTED_KEY, APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY,
     WEB_ACCESS_SESSION_COOKIE_NAME,
@@ -82,7 +83,9 @@ pub(crate) use store::{
 pub use ui::{
     current_close_to_tray_on_close_setting, current_lightweight_mode_on_close_to_tray_setting,
     current_ui_appearance_preset, current_ui_low_transparency_enabled, current_ui_theme,
+    current_ui_visible_menu_items,
     current_update_auto_check_enabled, set_close_to_tray_on_close_setting,
     set_lightweight_mode_on_close_to_tray_setting, set_ui_appearance_preset,
-    set_ui_low_transparency_enabled, set_ui_theme, set_update_auto_check_enabled,
+    set_ui_low_transparency_enabled, set_ui_theme, set_ui_visible_menu_items,
+    set_update_auto_check_enabled,
 };

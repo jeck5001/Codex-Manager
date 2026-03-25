@@ -16,7 +16,7 @@ use super::{
     set_lightweight_mode_on_close_to_tray_setting, set_mcp_enabled, set_mcp_port,
     set_remote_management_enabled, set_saved_service_addr, set_service_bind_mode,
     set_ui_appearance_preset, set_ui_low_transparency_enabled, set_ui_theme,
-    set_update_auto_check_enabled, BackgroundTasksInput,
+    set_ui_visible_menu_items, set_update_auto_check_enabled, BackgroundTasksInput,
 };
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -28,6 +28,7 @@ pub(super) struct AppSettingsPatch {
     low_transparency: Option<bool>,
     theme: Option<String>,
     appearance_preset: Option<String>,
+    visible_menu_items: Option<Vec<String>>,
     service_addr: Option<String>,
     service_listen_mode: Option<String>,
     mcp_enabled: Option<bool>,
@@ -88,6 +89,9 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     }
     if let Some(preset) = patch.appearance_preset {
         let _ = set_ui_appearance_preset(Some(&preset))?;
+    }
+    if let Some(visible_menu_items) = patch.visible_menu_items {
+        let _ = set_ui_visible_menu_items(&visible_menu_items)?;
     }
     if let Some(service_addr) = patch.service_addr {
         let _ = set_saved_service_addr(Some(&service_addr))?;

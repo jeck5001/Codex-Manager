@@ -31,6 +31,7 @@ fn reset_runtime_defaults() {
         "requestCompressionEnabled": true,
         "payloadRewriteRulesJson": "[]",
         "modelAliasPoolsJson": "[]",
+        "visibleMenuItems": ["dashboard", "accounts", "register", "payment", "emailServices", "apiKeys", "logs", "audit", "costs", "analytics", "settings"],
         "gatewayOriginator": "codex_cli_rs",
         "gatewayResidencyRequirement": "",
         "appearancePreset": "classic",
@@ -185,6 +186,7 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "lowTransparency": true,
             "theme": "dark",
             "appearancePreset": "classic",
+            "visibleMenuItems": ["dashboard", "accounts", "logs"],
             "serviceAddr": "127.0.0.1:4999",
             "serviceListenMode": "all_interfaces",
             "mcpEnabled": false,
@@ -249,6 +251,13 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
                 .get("appearancePreset")
                 .and_then(|value| value.as_str()),
             Some("classic")
+        );
+        assert_eq!(
+            snapshot
+                .get("visibleMenuItems")
+                .and_then(|value| value.as_array())
+                .map(|items| items.iter().filter_map(|item| item.as_str()).collect::<Vec<_>>()),
+            Some(vec!["dashboard", "accounts", "logs", "settings"])
         );
         assert_eq!(
             snapshot
@@ -379,6 +388,12 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
                 .get_app_setting(codexmanager_service::APP_SETTING_UI_APPEARANCE_PRESET_KEY)
                 .expect("read appearance preset"),
             Some("classic".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(codexmanager_service::APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY)
+                .expect("read visible menu items"),
+            Some("[\"dashboard\",\"accounts\",\"logs\",\"settings\"]".to_string())
         );
         assert_eq!(
             storage
@@ -746,6 +761,7 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
+            codexmanager_service::APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY,
         ] {
             storage.delete_app_setting(key).expect("delete app setting");
         }
@@ -773,6 +789,10 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             (
                 "CODEXMANAGER_MODEL_ALIAS_POOLS",
                 Some("[{\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"model\":\"o3\"}]}]"),
+            ),
+            (
+                "CODEXMANAGER_UI_VISIBLE_MENU_ITEMS",
+                Some("dashboard,logs,analytics"),
             ),
             ("CODEXMANAGER_ORIGINATOR", Some("codex_cli_rs_env")),
             ("CODEXMANAGER_RESIDENCY_REQUIREMENT", Some("us")),
@@ -831,6 +851,13 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             Some(
                 "[{\"enabled\":true,\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"enabled\":true,\"model\":\"o3\",\"weight\":1,\"channel\":null}]}]"
             )
+        );
+        assert_eq!(
+            snapshot
+                .get("visibleMenuItems")
+                .and_then(|value| value.as_array())
+                .map(|items| items.iter().filter_map(|item| item.as_str()).collect::<Vec<_>>()),
+            Some(vec!["dashboard", "logs", "analytics", "settings"])
         );
         assert_eq!(
             snapshot

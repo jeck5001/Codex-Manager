@@ -18,6 +18,7 @@ use super::{
     current_lightweight_mode_on_close_to_tray_setting, current_mcp_enabled, current_mcp_port,
     current_remote_management_enabled, current_saved_service_addr, current_service_bind_mode,
     current_ui_appearance_preset, current_ui_low_transparency_enabled, current_ui_theme,
+    current_ui_visible_menu_items,
     current_update_auto_check_enabled, env_override_catalog_value, env_override_reserved_keys,
     env_override_unsupported_keys, get_persisted_app_setting, parse_bool_with_default,
     residency_requirement_options, save_env_overrides_value, save_persisted_app_setting,
@@ -43,7 +44,8 @@ use super::{
     APP_SETTING_SERVICE_ADDR_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
     APP_SETTING_TEAM_MANAGER_API_URL_KEY, APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
     APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
-    APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
+    APP_SETTING_UI_THEME_KEY, APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY,
+    APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
     SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
 };
 
@@ -69,6 +71,7 @@ struct PersistCurrentSnapshotInput<'a> {
     low_transparency: bool,
     theme: &'a str,
     appearance_preset: &'a str,
+    visible_menu_items: &'a [String],
     service_addr: &'a str,
     service_listen_mode: &'a str,
     mcp_enabled: bool,
@@ -112,6 +115,7 @@ pub(super) fn current_app_settings_value(
     let low_transparency = current_ui_low_transparency_enabled();
     let theme = current_ui_theme();
     let appearance_preset = current_ui_appearance_preset();
+    let visible_menu_items = current_ui_visible_menu_items();
     let service_addr = current_saved_service_addr();
     let service_listen_mode = current_service_bind_mode();
     let mcp_enabled = current_mcp_enabled();
@@ -155,6 +159,7 @@ pub(super) fn current_app_settings_value(
         low_transparency,
         theme: &theme,
         appearance_preset: &appearance_preset,
+        visible_menu_items: &visible_menu_items,
         service_addr: &service_addr,
         service_listen_mode: &service_listen_mode,
         mcp_enabled,
@@ -192,6 +197,7 @@ pub(super) fn current_app_settings_value(
         "lowTransparency": low_transparency,
         "theme": theme,
         "appearancePreset": appearance_preset,
+        "visibleMenuItems": visible_menu_items,
         "serviceAddr": service_addr,
         "serviceListenMode": service_listen_mode,
         "serviceListenModeOptions": [
@@ -288,6 +294,7 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
         low_transparency,
         theme,
         appearance_preset,
+        visible_menu_items,
         service_addr,
         service_listen_mode,
         mcp_enabled,
@@ -330,6 +337,10 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
     let _ = save_persisted_app_setting(
         APP_SETTING_UI_APPEARANCE_PRESET_KEY,
         Some(appearance_preset),
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY,
+        serde_json::to_string(visible_menu_items).ok().as_deref(),
     );
     let _ = save_persisted_app_setting(APP_SETTING_SERVICE_ADDR_KEY, Some(service_addr));
     let _ = save_persisted_app_setting(SERVICE_BIND_MODE_SETTING_KEY, Some(service_listen_mode));
