@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   CalendarRange,
+  Database,
   Flame,
   Grid2X2,
   LineChart,
@@ -24,6 +25,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { serviceClient } from "@/lib/api/service-client";
 import { useAppStore } from "@/lib/store/useAppStore";
+import CacheAnalyticsPanel from "@/components/CacheAnalyticsPanel";
 import type {
   HeatmapCellItem,
   HeatmapTrendResult,
@@ -607,6 +609,17 @@ export default function AnalyticsPage() {
               ) : (
                 <HeatmapPanel data={heatmapQuery.data} />
               )}
+            </CardContent>
+          </Card>
+          <Card className="glass-card border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Database className="h-5 w-5 text-emerald-500" />
+                Prompt Cache 分析
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CacheAnalyticsPanel preset={preset === "90d" ? "month" : "month"} />
             </CardContent>
           </Card>
         </>

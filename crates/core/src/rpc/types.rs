@@ -909,3 +909,182 @@ pub struct StartupSnapshotResult {
 #[cfg(test)]
 #[path = "tests/types_tests.rs"]
 mod tests;
+
+// -- Consumer Analytics types --
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsumerDetailParams {
+    pub key_id: String,
+    #[serde(default)]
+    pub preset: Option<String>,
+    #[serde(default)]
+    pub start_ts: Option<i64>,
+    #[serde(default)]
+    pub end_ts: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsumerOverviewResult {
+    pub key_id: String,
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+    pub success_rate: f64,
+    pub avg_duration_ms: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsumerTrendDayItem {
+    pub day: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsumerTrendResult {
+    pub key_id: String,
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    #[serde(default)]
+    pub items: Vec<ConsumerTrendDayItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsumerModelItem {
+    pub model: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsumerModelBreakdownResult {
+    pub key_id: String,
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    #[serde(default)]
+    pub items: Vec<ConsumerModelItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsumerRankingParams {
+    #[serde(default)]
+    pub preset: Option<String>,
+    #[serde(default)]
+    pub start_ts: Option<i64>,
+    #[serde(default)]
+    pub end_ts: Option<i64>,
+    #[serde(default)]
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsumerRankingResult {
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    #[serde(default)]
+    pub items: Vec<CostSummaryKeyItem>,
+}
+
+// -- Cache Analytics types --
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheAnalyticsSummaryResult {
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    pub total_requests: i64,
+    pub cached_requests: i64,
+    pub hit_rate: f64,
+    pub total_input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub cache_token_ratio: f64,
+    pub estimated_savings_usd: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheAnalyticsTrendDayItem {
+    pub day: String,
+    pub total_requests: i64,
+    pub cached_requests: i64,
+    pub hit_rate: f64,
+    pub total_input_tokens: i64,
+    pub cached_input_tokens: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheAnalyticsTrendResult {
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    #[serde(default)]
+    pub items: Vec<CacheAnalyticsTrendDayItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheAnalyticsModelItem {
+    pub model: String,
+    pub total_requests: i64,
+    pub cached_requests: i64,
+    pub hit_rate: f64,
+    pub total_input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub estimated_savings_usd: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheAnalyticsByModelResult {
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    #[serde(default)]
+    pub items: Vec<CacheAnalyticsModelItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheAnalyticsKeyItem {
+    pub key_id: String,
+    pub total_requests: i64,
+    pub cached_requests: i64,
+    pub hit_rate: f64,
+    pub total_input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub estimated_savings_usd: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheAnalyticsByKeyResult {
+    pub preset: String,
+    pub range_start: i64,
+    pub range_end: i64,
+    #[serde(default)]
+    pub items: Vec<CacheAnalyticsKeyItem>,
+}

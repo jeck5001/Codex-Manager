@@ -9,6 +9,14 @@ import {
   normalizeAlertRule,
   normalizeAlertRuleList,
   normalizeAppSettings,
+  normalizeCacheAnalyticsByKey,
+  normalizeCacheAnalyticsByModel,
+  normalizeCacheAnalyticsSummary,
+  normalizeCacheAnalyticsTrend,
+  normalizeConsumerModelBreakdown,
+  normalizeConsumerOverview,
+  normalizeConsumerRanking,
+  normalizeConsumerTrend,
   normalizeDashboardHealth,
   normalizeDashboardTrend,
   normalizeFreeProxySyncResult,
@@ -40,6 +48,14 @@ import {
   AlertHistoryItem,
   AlertRule,
   BackgroundTaskSettings,
+  CacheAnalyticsByKeyResult,
+  CacheAnalyticsByModelResult,
+  CacheAnalyticsSummaryResult,
+  CacheAnalyticsTrendResult,
+  ConsumerModelBreakdownResult,
+  ConsumerOverviewResult,
+  ConsumerRankingResult,
+  ConsumerTrendResult,
   CostExportResult,
   CostSummaryResult,
   DashboardHealth,
@@ -588,5 +604,137 @@ export const serviceClient = {
   getEnvOverrides: async () => {
     const result = await invoke<unknown>("app_settings_get");
     return normalizeAppSettings(result).envOverrides;
+  },
+
+  // -- Consumer Analytics --
+  async getConsumerOverview(params: {
+    keyId: string;
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<ConsumerOverviewResult> {
+    const result = await invoke<unknown>(
+      "service_stats_consumer_overview",
+      withAddr({
+        keyId: params.keyId,
+        preset: params.preset || "month",
+        startTs: params.startTs ?? null,
+        endTs: params.endTs ?? null,
+      })
+    );
+    return normalizeConsumerOverview(result);
+  },
+  async getConsumerTrend(params: {
+    keyId: string;
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<ConsumerTrendResult> {
+    const result = await invoke<unknown>(
+      "service_stats_consumer_trend",
+      withAddr({
+        keyId: params.keyId,
+        preset: params.preset || "month",
+        startTs: params.startTs ?? null,
+        endTs: params.endTs ?? null,
+      })
+    );
+    return normalizeConsumerTrend(result);
+  },
+  async getConsumerModelBreakdown(params: {
+    keyId: string;
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<ConsumerModelBreakdownResult> {
+    const result = await invoke<unknown>(
+      "service_stats_consumer_model_breakdown",
+      withAddr({
+        keyId: params.keyId,
+        preset: params.preset || "month",
+        startTs: params.startTs ?? null,
+        endTs: params.endTs ?? null,
+      })
+    );
+    return normalizeConsumerModelBreakdown(result);
+  },
+  async getConsumerRanking(params?: {
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+    limit?: number;
+  }): Promise<ConsumerRankingResult> {
+    const result = await invoke<unknown>(
+      "service_stats_consumer_ranking",
+      withAddr({
+        preset: params?.preset || "month",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
+        limit: params?.limit ?? 20,
+      })
+    );
+    return normalizeConsumerRanking(result);
+  },
+
+  // -- Cache Analytics --
+  async getCacheAnalyticsSummary(params?: {
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<CacheAnalyticsSummaryResult> {
+    const result = await invoke<unknown>(
+      "service_stats_cache_summary",
+      withAddr({
+        preset: params?.preset || "month",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
+      })
+    );
+    return normalizeCacheAnalyticsSummary(result);
+  },
+  async getCacheAnalyticsTrend(params?: {
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<CacheAnalyticsTrendResult> {
+    const result = await invoke<unknown>(
+      "service_stats_cache_trend",
+      withAddr({
+        preset: params?.preset || "month",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
+      })
+    );
+    return normalizeCacheAnalyticsTrend(result);
+  },
+  async getCacheAnalyticsByModel(params?: {
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<CacheAnalyticsByModelResult> {
+    const result = await invoke<unknown>(
+      "service_stats_cache_by_model",
+      withAddr({
+        preset: params?.preset || "month",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
+      })
+    );
+    return normalizeCacheAnalyticsByModel(result);
+  },
+  async getCacheAnalyticsByKey(params?: {
+    preset?: string;
+    startTs?: number | null;
+    endTs?: number | null;
+  }): Promise<CacheAnalyticsByKeyResult> {
+    const result = await invoke<unknown>(
+      "service_stats_cache_by_key",
+      withAddr({
+        preset: params?.preset || "month",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
+      })
+    );
+    return normalizeCacheAnalyticsByKey(result);
   },
 };

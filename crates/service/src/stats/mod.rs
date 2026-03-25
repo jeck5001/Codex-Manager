@@ -1,3 +1,7 @@
+#[path = "stats_cache.rs"]
+pub(crate) mod cache;
+#[path = "stats_consumer.rs"]
+pub(crate) mod consumer;
 #[path = "stats_cost_export.rs"]
 pub(crate) mod cost_export;
 #[path = "stats_cost_summary.rs"]
