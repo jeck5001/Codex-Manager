@@ -143,6 +143,13 @@ function normalizeRegisterStatusFilter(value: string | null): string {
   return "all";
 }
 
+function normalizeRegisterImportFilter(value: string | null): string {
+  if (value === "manual-import" || value === "imported" || value === "no-import-info") {
+    return value;
+  }
+  return "all";
+}
+
 function resolveRegisterFailureReasonLabel(code: string, fallback?: string) {
   const normalized = String(code || "").trim().toLowerCase();
   if (normalized && REGISTER_FAILURE_REASON_LABELS[normalized]) {
@@ -196,6 +203,7 @@ export default function RegisterPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [importFilter, setImportFilter] = useState("all");
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTask, setDetailTask] = useState<RegisterTaskSnapshot | null>(null);
@@ -275,12 +283,27 @@ export default function RegisterPage() {
   );
   const filteredTasks = useMemo(
     () =>
-      failureCodeFilter
-        ? tasks.filter(
-            (task) => String(task.failureCode || "").trim().toLowerCase() === failureCodeFilter,
-          )
-        : tasks,
-    [failureCodeFilter, tasks],
+      tasks.filter((task) => {
+        if (failureCodeFilter) {
+          const failureMatched =
+            String(task.failureCode || "").trim().toLowerCase() === failureCodeFilter;
+          if (!failureMatched) {
+            return false;
+          }
+        }
+
+        if (importFilter === "manual-import") {
+          return task.requiresManualImport;
+        }
+        if (importFilter === "imported") {
+          return task.isImported;
+        }
+        if (importFilter === "no-import-info") {
+          return !task.requiresManualImport && !task.isImported;
+        }
+        return true;
+      }),
+    [failureCodeFilter, importFilter, tasks],
   );
   const recommendedRetryStrategy = useMemo(
     () => recommendedRetryStrategyForFailure(failureCodeFilter),
@@ -346,8 +369,10 @@ export default function RegisterPage() {
     }
     const params = new URLSearchParams(window.location.search);
     const nextStatusFilter = normalizeRegisterStatusFilter(params.get("status"));
+    const nextImportFilter = normalizeRegisterImportFilter(params.get("importStatus"));
     const nextFailureCode = (params.get("failureCode") || "").trim().toLowerCase();
     setStatusFilter((current) => (current === nextStatusFilter ? current : nextStatusFilter));
+    setImportFilter((current) => (current === nextImportFilter ? current : nextImportFilter));
     setFailureCodeFilter((current) => (current === nextFailureCode ? current : nextFailureCode));
     setPage(1);
   }, []);
@@ -791,7 +816,7 @@ export default function RegisterPage() {
           </div>
         </CardHeader>
         <CardContent className="min-w-0 space-y-4 pt-4">
-          <div className="grid min-w-0 gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="grid min-w-0 gap-4 md:grid-cols-[220px_220px_minmax(0,1fr)]">
             <div className="min-w-0 space-y-2">
               <Label>任务状态</Label>
               <Select
@@ -814,10 +839,30 @@ export default function RegisterPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="min-w-0 space-y-2">
+              <Label>入池状态</Label>
+              <Select
+                value={importFilter}
+                onValueChange={(value) => {
+                  setImportFilter(value || "all");
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部</SelectItem>
+                  <SelectItem value="manual-import">待入池</SelectItem>
+                  <SelectItem value="imported">已入池</SelectItem>
+                  <SelectItem value="no-import-info">无入池信息</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="min-w-0 flex items-end justify-end">
               <div className="flex flex-wrap items-center justify-end gap-3">
                 <div className="text-sm text-muted-foreground">
-                  {failureCodeFilter
+                  {failureCodeFilter || importFilter !== "all"
                     ? `当前页命中 ${filteredTasks.length} 条，共返回 ${total} 条任务`
                     : `共 ${total} 条任务，当前第 ${page} / ${totalPages} 页`}
                 </div>

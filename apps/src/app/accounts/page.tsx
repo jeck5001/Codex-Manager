@@ -172,7 +172,7 @@ function QuotaProgress({
   const indicatorClassName = tone === "blue" ? "bg-blue-500" : "bg-green-500";
 
   return (
-    <div className="flex min-w-[120px] flex-col gap-1">
+    <div className="flex w-full min-w-0 flex-col gap-1">
       <div className="flex items-center justify-between text-[10px]">
         <div className="flex items-center gap-1 text-muted-foreground">
           <Icon className="h-3 w-3" />
@@ -1004,7 +1004,7 @@ export default function AccountsPage() {
                 </button>
               ))}
             </div>
-            {governanceOptions.length > 0 ? (
+            {statusFilter === "governed" && governanceOptions.length > 0 ? (
               <Select
                 value={governanceFilter}
                 onValueChange={handleGovernanceFilterChange}
@@ -1032,7 +1032,7 @@ export default function AccountsPage() {
                 </SelectContent>
               </Select>
             ) : null}
-            {cooldownOptions.length > 0 ? (
+            {statusFilter === "cooldown" && cooldownOptions.length > 0 ? (
               <Select
                 value={cooldownReasonFilter}
                 onValueChange={handleCooldownReasonFilterChange}
@@ -1336,7 +1336,7 @@ export default function AccountsPage() {
 
       <Card className="glass-card overflow-hidden border-none py-0 shadow-xl backdrop-blur-md">
         <CardContent className="p-0">
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12 text-center">
@@ -1350,12 +1350,12 @@ export default function AccountsPage() {
                     onCheckedChange={toggleSelectAllVisible}
                   />
                 </TableHead>
-                <TableHead className="max-w-[220px]">账号信息</TableHead>
-                <TableHead>5h 额度</TableHead>
-                <TableHead>7d 额度</TableHead>
-                <TableHead className="w-20">顺序</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead className="text-center">操作</TableHead>
+                <TableHead className="w-[36%] whitespace-normal">账号信息</TableHead>
+                <TableHead className="w-[13%] whitespace-normal">5h 额度</TableHead>
+                <TableHead className="w-[13%] whitespace-normal">7d 额度</TableHead>
+                <TableHead className="w-[72px]">顺序</TableHead>
+                <TableHead className="w-[18%] whitespace-normal">状态</TableHead>
+                <TableHead className="w-[104px] text-center">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1412,55 +1412,63 @@ export default function AccountsPage() {
                           onCheckedChange={() => toggleSelect(account.id)}
                         />
                       </TableCell>
-                      <TableCell className="max-w-[220px]">
-                        <div className="flex flex-col overflow-hidden">
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            <span className="truncate text-sm font-semibold">
-                              {account.name}
-                            </span>
-                            <Badge
-                              variant="secondary"
-                              className="h-4 shrink-0 bg-accent/50 px-1.5 text-[9px]"
-                            >
-                              {account.group || "默认"}
-                            </Badge>
-                            {manualPreferredAccountId === account.id ? (
+                      <TableCell className="align-top whitespace-normal">
+                        <div className="flex flex-col gap-2">
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="break-all text-sm font-semibold leading-5">
+                                {account.name}
+                              </span>
                               <Badge
                                 variant="secondary"
-                                className="h-4 shrink-0 bg-amber-500/15 px-1.5 text-[9px] text-amber-700 dark:text-amber-300"
+                                className="h-4 bg-accent/50 px-1.5 text-[9px]"
                               >
-                                优先
+                                {account.group || "默认"}
                               </Badge>
-                            ) : null}
-                            {account.subscriptionPlanType ? (
-                              <Badge
-                                variant="secondary"
-                                className="h-4 shrink-0 bg-sky-500/15 px-1.5 text-[9px] text-sky-700 dark:text-sky-300"
-                              >
-                                {String(account.subscriptionPlanType).toUpperCase()}
-                              </Badge>
-                            ) : null}
-                            {account.tags.slice(0, 2).map((tag) => (
+                              {manualPreferredAccountId === account.id ? (
+                                <Badge
+                                  variant="secondary"
+                                  className="h-4 bg-amber-500/15 px-1.5 text-[9px] text-amber-700 dark:text-amber-300"
+                                >
+                                  优先
+                                </Badge>
+                              ) : null}
+                              {account.subscriptionPlanType ? (
+                                <Badge
+                                  variant="secondary"
+                                  className="h-4 bg-sky-500/15 px-1.5 text-[9px] text-sky-700 dark:text-sky-300"
+                                >
+                                  {String(account.subscriptionPlanType).toUpperCase()}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <div className="font-mono text-[10px] leading-4 text-muted-foreground/70 [overflow-wrap:anywhere]">
+                              {account.id}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5">
+                            {account.tags.slice(0, 1).map((tag) => (
                               <Badge
                                 key={`${account.id}-${tag}`}
                                 variant="secondary"
-                                className="h-4 shrink-0 bg-violet-500/15 px-1.5 text-[9px] text-violet-700 dark:text-violet-300"
+                                className="h-4 bg-violet-500/15 px-1.5 text-[9px] text-violet-700 dark:text-violet-300"
                               >
                                 #{tag}
                               </Badge>
                             ))}
-                            {account.tags.length > 2 ? (
+                            {account.tags.length > 1 ? (
                               <Badge
                                 variant="secondary"
-                                className="h-4 shrink-0 bg-muted/50 px-1.5 text-[9px]"
+                                className="h-4 bg-muted/50 px-1.5 text-[9px]"
                               >
-                                +{account.tags.length - 2}
+                                +{account.tags.length - 1}
                               </Badge>
                             ) : null}
                             {account.isInCooldown ? (
                               <Badge
                                 variant="secondary"
-                                className="h-4 shrink-0 bg-amber-500/15 px-1.5 text-[9px] text-amber-700 dark:text-amber-300"
+                                className="h-4 bg-amber-500/15 px-1.5 text-[9px] text-amber-700 dark:text-amber-300"
                               >
                                 冷却中
                               </Badge>
@@ -1468,7 +1476,7 @@ export default function AccountsPage() {
                             {account.isNewAccountProtected ? (
                               <Badge
                                 variant="secondary"
-                                className="h-4 shrink-0 bg-cyan-500/15 px-1.5 text-[9px] text-cyan-700 dark:text-cyan-300"
+                                className="h-4 bg-cyan-500/15 px-1.5 text-[9px] text-cyan-700 dark:text-cyan-300"
                               >
                                 新号保护
                               </Badge>
@@ -1476,7 +1484,7 @@ export default function AccountsPage() {
                             <Badge
                               variant="secondary"
                               className={cn(
-                                "h-4 shrink-0 px-1.5 text-[9px]",
+                                "h-4 px-1.5 text-[9px]",
                                 healthTierToneClass(account.healthTier)
                               )}
                             >
@@ -1485,14 +1493,14 @@ export default function AccountsPage() {
                             {account.isIsolated && account.lastIsolationReason ? (
                               <Badge
                                 variant="secondary"
-                                className="h-4 shrink-0 bg-rose-500/20 px-1.5 text-[9px] text-rose-700 dark:text-rose-300"
+                                className="h-4 bg-rose-500/20 px-1.5 text-[9px] text-rose-700 dark:text-rose-300"
                               >
                                 隔离 {account.lastIsolationReason}
                               </Badge>
                             ) : account.lastGovernanceReason ? (
                               <Badge
                                 variant="secondary"
-                                className="h-4 shrink-0 bg-rose-500/15 px-1.5 text-[9px] text-rose-700 dark:text-rose-300"
+                                className="h-4 bg-rose-500/15 px-1.5 text-[9px] text-rose-700 dark:text-rose-300"
                               >
                                 治理 {account.lastGovernanceReason}
                               </Badge>
@@ -1500,67 +1508,67 @@ export default function AccountsPage() {
                             {account.teamManagerUploadedAt ? (
                               <Badge
                                 variant="secondary"
-                                className="h-4 shrink-0 bg-emerald-500/15 px-1.5 text-[9px] text-emerald-700 dark:text-emerald-300"
+                                className="h-4 bg-emerald-500/15 px-1.5 text-[9px] text-emerald-700 dark:text-emerald-300"
                               >
                                 TM
                               </Badge>
                             ) : null}
                           </div>
-                          <span className="truncate font-mono text-[10px] uppercase text-muted-foreground opacity-60">
-                            {account.id.slice(0, 16)}...
-                          </span>
-                          <span className="mt-1 text-[10px] text-muted-foreground">
-                            最近刷新:{" "}
-                            {formatTsFromSeconds(
-                              account.lastRefreshAt,
-                              "从未刷新",
-                            )}
-                          </span>
-                          {account.lastStatusReason ? (
-                            <span className="text-[10px] text-muted-foreground">
-                              最近状态: {account.lastStatusReason}
-                              {account.lastStatusChangedAt
-                                ? ` · ${formatTsFromSeconds(account.lastStatusChangedAt, "--")}`
-                                : ""}
+
+                          <div className="space-y-0.5 text-[10px] leading-4">
+                            <span className="block text-muted-foreground">
+                              最近刷新:{" "}
+                              {formatTsFromSeconds(
+                                account.lastRefreshAt,
+                                "从未刷新",
+                              )}
                             </span>
-                          ) : null}
-                          {account.lastIsolationReason ? (
-                            <span className="text-[10px] text-rose-600 dark:text-rose-400">
-                              隔离原因: {account.lastIsolationReason}
-                              {account.lastIsolationAt
-                                ? ` · ${formatTsFromSeconds(account.lastIsolationAt, "--")}`
-                                : ""}
-                            </span>
-                          ) : null}
-                          {account.isInCooldown ? (
-                            <span className="text-[10px] text-amber-600 dark:text-amber-400">
-                              冷却中: {account.cooldownReason || "临时冷却"}
-                              {account.cooldownUntil
-                                ? ` · 至 ${formatTsFromSeconds(account.cooldownUntil, "--")}`
-                                : ""}
-                            </span>
-                          ) : null}
-                          {account.isNewAccountProtected ? (
-                            <span className="text-[10px] text-cyan-700 dark:text-cyan-300">
-                              {account.newAccountProtectionReason || "新号保护期内，已自动降优先级"}
-                              {account.newAccountProtectionUntil
-                                ? ` · 至 ${formatTsFromSeconds(account.newAccountProtectionUntil, "--")}`
-                                : ""}
-                            </span>
-                          ) : null}
-                          {account.subscriptionUpdatedAt ? (
-                            <span className="text-[10px] text-muted-foreground">
-                              订阅标记: {formatTsFromSeconds(account.subscriptionUpdatedAt, "--")}
-                            </span>
-                          ) : null}
-                          {account.tags.length > 0 ? (
-                            <span className="text-[10px] text-muted-foreground">
-                              标签: {account.tags.join(", ")}
-                            </span>
-                          ) : null}
+                            {account.lastStatusReason ? (
+                              <span className="block text-muted-foreground [overflow-wrap:anywhere]">
+                                最近状态: {account.lastStatusReason}
+                                {account.lastStatusChangedAt
+                                  ? ` · ${formatTsFromSeconds(account.lastStatusChangedAt, "--")}`
+                                  : ""}
+                              </span>
+                            ) : null}
+                            {account.lastIsolationReason ? (
+                              <span className="block text-rose-600 dark:text-rose-400 [overflow-wrap:anywhere]">
+                                隔离原因: {account.lastIsolationReason}
+                                {account.lastIsolationAt
+                                  ? ` · ${formatTsFromSeconds(account.lastIsolationAt, "--")}`
+                                  : ""}
+                              </span>
+                            ) : null}
+                            {account.isInCooldown ? (
+                              <span className="block text-amber-600 dark:text-amber-400 [overflow-wrap:anywhere]">
+                                冷却中: {account.cooldownReason || "临时冷却"}
+                                {account.cooldownUntil
+                                  ? ` · 至 ${formatTsFromSeconds(account.cooldownUntil, "--")}`
+                                  : ""}
+                              </span>
+                            ) : null}
+                            {account.isNewAccountProtected ? (
+                              <span className="block text-cyan-700 dark:text-cyan-300 [overflow-wrap:anywhere]">
+                                {account.newAccountProtectionReason || "新号保护期内，已自动降优先级"}
+                                {account.newAccountProtectionUntil
+                                  ? ` · 至 ${formatTsFromSeconds(account.newAccountProtectionUntil, "--")}`
+                                  : ""}
+                              </span>
+                            ) : null}
+                            {account.subscriptionUpdatedAt ? (
+                              <span className="block text-muted-foreground">
+                                订阅标记: {formatTsFromSeconds(account.subscriptionUpdatedAt, "--")}
+                              </span>
+                            ) : null}
+                            {account.tags.length > 0 ? (
+                              <span className="block text-muted-foreground [overflow-wrap:anywhere]">
+                                标签: {account.tags.join(", ")}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top">
                         <QuotaProgress
                           label="5小时"
                           remainPercent={account.primaryRemainPercent}
@@ -1570,7 +1578,7 @@ export default function AccountsPage() {
                           emptyText={secondaryWindowOnly ? "未提供" : "--"}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top">
                         <QuotaProgress
                           label="7天"
                           remainPercent={account.secondaryRemainPercent}
@@ -1580,7 +1588,7 @@ export default function AccountsPage() {
                           emptyText={primaryWindowOnly ? "未提供" : "--"}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top">
                         <div className="flex items-center gap-1">
                           <span className="rounded bg-muted/50 px-2 py-0.5 font-mono text-xs">
                             {account.priority}
@@ -1597,7 +1605,7 @@ export default function AccountsPage() {
                           </Button>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top whitespace-normal">
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center gap-1.5">
                             <Badge
@@ -1667,7 +1675,7 @@ export default function AccountsPage() {
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top">
                         <div className="table-action-cell gap-1">
                           <Button
                             variant="ghost"
