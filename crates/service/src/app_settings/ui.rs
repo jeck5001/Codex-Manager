@@ -3,16 +3,33 @@ use super::{
     get_persisted_app_setting, save_persisted_app_setting, save_persisted_bool_setting,
     APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY,
     APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
-    APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY,
+    APP_SETTING_UI_THEME_KEY, APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY,
+    APP_SETTING_UPDATE_AUTO_CHECK_KEY,
 };
 
 const DEFAULT_UI_THEME: &str = "tech";
 const DEFAULT_UI_APPEARANCE_PRESET: &str = "classic";
+const ENV_UI_VISIBLE_MENU_ITEMS: &str = "CODEXMANAGER_UI_VISIBLE_MENU_ITEMS";
 const VALID_UI_THEMES: &[&str] = &[
     "tech", "dark", "dark-one", "business", "mint", "sunset", "grape", "ocean", "forest", "rose",
     "slate", "aurora",
 ];
 const VALID_UI_APPEARANCE_PRESETS: &[&str] = &["modern", "classic"];
+const VALID_UI_MENU_ITEMS: &[&str] = &[
+    "dashboard",
+    "accounts",
+    "register",
+    "payment",
+    "emailServices",
+    "apiKeys",
+    "logs",
+    "audit",
+    "costs",
+    "analytics",
+    "settings",
+];
+const DEFAULT_UI_VISIBLE_MENU_ITEMS: &[&str] = VALID_UI_MENU_ITEMS;
+const ALWAYS_VISIBLE_UI_MENU_ITEMS: &[&str] = &["settings"];
 
 fn normalize_ui_theme(raw: Option<&str>) -> String {
     let candidate = raw.unwrap_or(DEFAULT_UI_THEME).trim().to_ascii_lowercase();
@@ -36,6 +53,47 @@ fn normalize_ui_appearance_preset(raw: Option<&str>) -> String {
     } else {
         DEFAULT_UI_APPEARANCE_PRESET.to_string()
     }
+}
+
+fn normalize_ui_visible_menu_items(items: &[String]) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for candidate in VALID_UI_MENU_ITEMS {
+        if ALWAYS_VISIBLE_UI_MENU_ITEMS.contains(candidate)
+            || items.iter().any(|item| item == candidate)
+        {
+            normalized.push((*candidate).to_string());
+        }
+    }
+    if normalized.is_empty() {
+        DEFAULT_UI_VISIBLE_MENU_ITEMS
+            .iter()
+            .map(|item| (*item).to_string())
+            .collect()
+    } else {
+        normalized
+    }
+}
+
+fn parse_ui_visible_menu_items(raw: Option<&str>) -> Vec<String> {
+    let text = raw.unwrap_or_default().trim();
+    if text.is_empty() {
+        return DEFAULT_UI_VISIBLE_MENU_ITEMS
+            .iter()
+            .map(|item| (*item).to_string())
+            .collect();
+    }
+
+    if text.starts_with('[') {
+        let parsed = serde_json::from_str::<Vec<String>>(text).unwrap_or_default();
+        return normalize_ui_visible_menu_items(&parsed);
+    }
+
+    let parsed = text
+        .split(',')
+        .map(|item| item.trim().to_string())
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+    normalize_ui_visible_menu_items(&parsed)
 }
 
 pub fn current_update_auto_check_enabled() -> bool {
@@ -101,5 +159,23 @@ pub fn current_ui_appearance_preset() -> String {
 pub fn set_ui_appearance_preset(preset: Option<&str>) -> Result<String, String> {
     let normalized = normalize_ui_appearance_preset(preset);
     save_persisted_app_setting(APP_SETTING_UI_APPEARANCE_PRESET_KEY, Some(&normalized))?;
+    Ok(normalized)
+}
+
+pub fn current_ui_visible_menu_items() -> Vec<String> {
+    if let Ok(raw) = std::env::var(ENV_UI_VISIBLE_MENU_ITEMS) {
+        return parse_ui_visible_menu_items(Some(&raw));
+    }
+    parse_ui_visible_menu_items(
+        get_persisted_app_setting(APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY).as_deref(),
+    )
+}
+
+pub fn set_ui_visible_menu_items(items: &[String]) -> Result<Vec<String>, String> {
+    let normalized = normalize_ui_visible_menu_items(items);
+    let serialized = serde_json::to_string(&normalized)
+        .map_err(|err| format!("serialize visible menu items failed: {err}"))?;
+    save_persisted_app_setting(APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY, Some(&serialized))?;
+    std::env::set_var(ENV_UI_VISIBLE_MENU_ITEMS, normalized.join(","));
     Ok(normalized)
 }

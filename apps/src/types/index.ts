@@ -871,6 +871,7 @@ export interface AppSettings {
   envOverrideUnsupportedKeys: string[];
   theme: string;
   appearancePreset: string;
+  visibleMenuItems: string[];
   [key: string]: unknown;
 }
 

@@ -81,6 +81,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTsFromSeconds } from "@/lib/utils/usage";
+import {
+  APP_NAV_ALWAYS_VISIBLE_IDS,
+  APP_NAV_ITEMS,
+  type AppNavItemId,
+  normalizeVisibleMenuItems,
+} from "@/lib/navigation";
 
 const ENV_DESCRIPTION_MAP: Record<string, string> = {
   CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS:
@@ -624,6 +630,10 @@ export default function SettingsPage() {
     queryKey: ["plugins"],
     queryFn: () => serviceClient.listPlugins(),
   });
+  const visibleMenuItems = useMemo(
+    () => normalizeVisibleMenuItems(snapshot?.visibleMenuItems),
+    [snapshot?.visibleMenuItems]
+  );
 
   const updateSettings = useMutation({
     mutationFn: (patch: Partial<AppSettings> & { _silent?: boolean }) => {
@@ -775,6 +785,19 @@ export default function SettingsPage() {
       toast.error(`检查更新失败: ${getAppErrorMessage(error)}`);
     },
   });
+
+  const handleVisibleMenuToggle = (menuId: AppNavItemId, checked: boolean) => {
+    if (!snapshot) return;
+    const current = new Set(visibleMenuItems);
+    if (checked) {
+      current.add(menuId);
+    } else {
+      current.delete(menuId);
+    }
+    updateSettings.mutate({
+      visibleMenuItems: normalizeVisibleMenuItems(Array.from(current)),
+    });
+  };
 
   const prepareUpdate = useMutation({
     mutationFn: () => appClient.prepareUpdate(),
@@ -2012,6 +2035,51 @@ export default function SettingsPage() {
                     ) : null}
                   </button>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <AppWindow className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">菜单显示</CardTitle>
+              </div>
+              <CardDescription>
+                选择侧边栏需要展示的菜单；设置入口始终保留，避免误隐藏。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-2">
+                {APP_NAV_ITEMS.map((item) => {
+                  const locked = APP_NAV_ALWAYS_VISIBLE_IDS.includes(item.id);
+                  const checked = visibleMenuItems.includes(item.id);
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between rounded-2xl border border-border/60 bg-background/50 px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{item.name}</p>
+                        <p className="text-[11px] text-muted-foreground">{item.href}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {locked ? (
+                          <Badge variant="secondary" className="bg-primary/10 text-primary">
+                            固定
+                          </Badge>
+                        ) : null}
+                        <Switch
+                          checked={checked}
+                          disabled={locked || updateSettings.isPending}
+                          onCheckedChange={(value) =>
+                            handleVisibleMenuToggle(item.id, value)
+                          }
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

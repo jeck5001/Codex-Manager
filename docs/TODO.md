@@ -31,6 +31,7 @@
   - 本轮补齐巡检后的自动治理收口：`healthcheck/run` 与后台巡检线程结束后都会立即触发现有 auto governance，重复 401/403 等巡检失败不再只能停留在 `unavailable`，满足阈值时可直接升级为自动禁用/治理状态
   - 本轮补齐首页风险可见性收口：仪表盘「观测摘要」已补充冷却原因热点、最近治理原因和新号保护概览，首页可直接判断当前风险主要由哪类原因触发并跳到账号页继续排查
   - 本轮补齐首页到账号页的风控筛选闭环：账号页新增“新号保护”状态与“冷却原因”筛选，仪表盘风险卡片可直接带参跳到对应账号集合，不再需要手动二次筛选
+  - 本轮补齐侧边栏菜单配置：设置页“外观”Tab 支持按菜单勾选显示/隐藏项，菜单可通过 `appSettings` 持久化并支持 `CODEXMANAGER_UI_VISIBLE_MENU_ITEMS` 环境变量覆盖；“设置”入口固定保留，避免误隐藏
 
 - [x] **通用验收缺口**
   - G7 `cargo clippy`（`codexmanager-service`）已收口：`cargo clippy -p codexmanager-service --tests -- -D warnings` 当前通过，本轮继续清空 `account/account_register.rs`、`app_settings/api/current.rs` 与测试层历史 warning
@@ -80,6 +81,12 @@
   - `pnpm exec tsc --noEmit` 通过（账号页新增“新号保护”状态与“冷却原因”筛选，首页风险卡跳转链路类型无回退）
   - `pnpm run build:desktop` 通过（确认首页到账号页的风险筛选闭环可参与桌面端静态构建）
   - `git diff --check` 通过（本轮首页 / 账号页风险筛选收口无格式问题）
+  - `cargo test -p codexmanager-service --test app_settings app_settings_set_persists_snapshot_and_password_hash -- --nocapture` 通过（覆盖菜单可见性设置的持久化快照与存储回写）
+  - `cargo test -p codexmanager-service --test app_settings app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing -- --nocapture` 通过（覆盖 `CODEXMANAGER_UI_VISIBLE_MENU_ITEMS` 的 env 覆盖回灌）
+  - `cargo check -p codexmanager-service` 通过（确认菜单配置接入 `appSettings` 后 service 编译正常）
+  - `pnpm exec tsc --noEmit` 通过（设置页菜单显隐配置与侧边栏过滤类型无回退）
+  - `pnpm run build:desktop` 通过（确认菜单配置可参与桌面端静态构建）
+  - `git diff --check` 通过（本轮菜单配置改动无格式问题）
   - `pnpm exec tsc --noEmit` 通过（F17 插件管理前端：插件类型、RPC normalize、设置页 CRUD 与模板入口）
   - `pnpm run build:desktop` 失败：Next 16 Turbopack 在当前 automation 沙箱内处理 `src/app/globals.css` 时尝试创建子进程并绑定端口，触发 `Operation not permitted`
   - `pnpm exec next build --webpack` 通过（作为当前环境下的等价前端构建复验，静态路由继续包含 `/settings`，插件管理页签可参与静态构建）
