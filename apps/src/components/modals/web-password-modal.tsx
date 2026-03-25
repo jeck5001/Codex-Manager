@@ -202,7 +202,7 @@ export function WebPasswordModal({ open, onOpenChange }: WebPasswordModalProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[640px]">
+      <DialogContent className="glass-card border-none sm:max-w-[640px]">
         <DialogHeader>
           <div className="mb-2 flex items-center gap-3">
             <div className="rounded-full bg-primary/10 p-2">
@@ -309,7 +309,7 @@ export function WebPasswordModal({ open, onOpenChange }: WebPasswordModalProps) 
                   <div className="grid gap-3">
                     <div className="grid gap-2">
                       <Label>手动输入 Secret</Label>
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row">
                         <Input value={setupData.secret} readOnly />
                         <Button
                           type="button"
@@ -325,7 +325,7 @@ export function WebPasswordModal({ open, onOpenChange }: WebPasswordModalProps) 
                     </div>
 
                     <div className="grid gap-2">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <Label>恢复码</Label>
                         <Button
                           type="button"
@@ -345,7 +345,7 @@ export function WebPasswordModal({ open, onOpenChange }: WebPasswordModalProps) 
                     </div>
 
                     <div className="grid gap-2">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <Label>OTPAuth URL</Label>
                         <Button
                           type="button"
@@ -414,7 +414,7 @@ export function WebPasswordModal({ open, onOpenChange }: WebPasswordModalProps) 
           )}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2 sm:gap-2">
           {appSettings.webAccessPasswordConfigured ? (
             <Button
               variant="ghost"

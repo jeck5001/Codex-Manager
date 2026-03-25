@@ -253,7 +253,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px] glass-card border-none">
+      <DialogContent className="glass-card border-none sm:max-w-[550px]">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 rounded-full bg-primary/10">
@@ -277,7 +277,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label>协议类型</Label>
               <Select value={protocolType} onValueChange={(val) => val && setProtocolType(val)}>
@@ -369,7 +369,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
                 留空表示不限流；配置后会在鉴权通过后、路由前直接返回 429。
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="grid gap-2">
                 <Label htmlFor="rpm-limit" className="text-xs">RPM</Label>
                 <Input
@@ -476,7 +476,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
             />
           </div>
 
-          <div className="flex items-start justify-between gap-4 rounded-xl border border-primary/10 bg-accent/20 p-4">
+          <div className="flex flex-col gap-4 rounded-xl border border-primary/10 bg-accent/20 p-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1">
               <Label htmlFor="response-cache-enabled">响应缓存</Label>
               <p className="text-[11px] text-muted-foreground">
@@ -530,7 +530,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
               <Label className="text-xs text-primary flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5" /> 平台密钥已生成
               </Label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Input value={generatedKey} readOnly className="font-mono text-sm bg-primary/5" />
                 <Button variant="outline" onClick={copyKey}>
                   <Clipboard className="h-4 w-4" />

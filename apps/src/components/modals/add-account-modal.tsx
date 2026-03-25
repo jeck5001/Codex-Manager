@@ -998,9 +998,9 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="glass-card max-h-[85vh] overflow-hidden border-none p-0 sm:max-w-[760px]">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="shrink-0 bg-muted/20 px-6 pt-6">
+      <DialogContent className="glass-card overflow-hidden border-none p-0 sm:max-w-[760px]">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 w-full flex-col">
+          <div className="shrink-0 bg-muted/20 px-4 pt-4 sm:px-6 sm:pt-6">
             <DialogHeader className="mb-4">
               <DialogTitle className="flex items-center gap-2">
                 <LogIn className="h-5 w-5 text-primary" />
@@ -1023,9 +1023,9 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
             </TabsList>
           </div>
 
-          <div className="max-h-[calc(85vh-154px)] overflow-y-auto p-6">
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
             <TabsContent value="login" className="mt-0 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>标签 (逗号分隔)</Label>
                   <Input
@@ -1071,7 +1071,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                   <ExternalLink className="h-4 w-4" /> 登录授权
                 </Button>
                 {loginUrl ? (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-primary/10 bg-primary/5 p-2 animate-in fade-in zoom-in duration-300">
+                  <div className="mt-3 flex flex-col gap-2 rounded-lg border border-primary/10 bg-primary/5 p-2 animate-in fade-in zoom-in duration-300 sm:flex-row sm:items-center">
                     <Input
                       value={loginUrl}
                       readOnly
@@ -1092,7 +1092,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                   <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Hash className="h-3 w-3" /> 手动解析回调 (当本地 48760 端口占用时)
                   </Label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <Input
                       placeholder="粘贴浏览器跳转后的完整回调 URL (包含 state 和 code)"
                       value={manualCallback}
@@ -1142,7 +1142,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid gap-2 sm:grid-cols-3">
                 <Button
                   type="button"
                   variant={registerMode === "single" ? "default" : "outline"}
@@ -1185,7 +1185,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
 
               {registerMode !== "outlook-batch" ? (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>邮箱服务类型</Label>
                       <Select
@@ -1266,7 +1266,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                     当前模式会使用已导入的 Outlook 邮箱服务逐个注册，已注册邮箱可按开关选择是否跳过注册但仍参与导入。
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>代理 (可选)</Label>
                       <Input
@@ -1370,7 +1370,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
               )}
 
               {(registerMode === "batch" || registerMode === "outlook-batch") ? (
-                <div className="grid grid-cols-2 gap-4 rounded-lg border border-border/60 bg-muted/10 p-4">
+                <div className="grid gap-4 rounded-lg border border-border/60 bg-muted/10 p-4 sm:grid-cols-2">
                   {registerMode === "batch" ? (
                     <div className="space-y-2">
                       <Label>注册数量</Label>
@@ -1428,7 +1428,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                     />
                   </div>
                   {registerMode === "batch" ? (
-                    <div className="col-span-2 space-y-2">
+                    <div className="space-y-2 sm:col-span-2">
                       <Label>执行模式</Label>
                       <Select
                         value={registerExecutionMode}
@@ -1449,7 +1449,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                 </div>
               ) : null}
 
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   onClick={handleStartRegister}
                   disabled={
