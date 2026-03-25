@@ -45,8 +45,8 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 
 ## Recent Changes
 - Current latest version: `v0.1.12` (2026-03-20)
-- Added an “Aggregate API” management page: create minimal upstream relays for `Codex / Claude`, with connection testing, supplier name, URL, key, and created-at display.
-- Platform-key rotation now supports `Account Rotation` and `Aggregate API Rotation`; Aggregate API rotation forwards requests upstream by protocol while keeping account rotation unchanged.
+- Added an “Aggregate API” management page: manage multiple third-party relay providers as minimal upstreams, with `Codex / Claude` categorization, supplier name, sort order, URL, key, and connection testing.
+- Platform-key rotation now supports `Account Rotation` and `Aggregate API Rotation`; Aggregate API rotation prefers the configured provider order first, then forwards upstream requests by protocol while keeping account rotation unchanged.
 - `v0.1.12` continues the desktop and docs cleanup from this round: platform-key name updates now round-trip correctly on both Web and desktop, key IDs are fully visible by default, and the README adds a sponsor jump entry.
 - Account management adds the most practical governance features from this round: `account_deactivated` and `workspace_deactivated` are now recognized as unavailable signals, the list supports a dedicated `Banned` filter, and the actions menu can clean banned accounts in one click.
 - The 5-hour and 7-day quota columns now show reset timestamps under each progress bar. Free accounts that only expose a 7-day window also render the reset time under the 7-day column instead of the wrong bucket.
@@ -69,7 +69,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 - Usage dashboard: 5-hour + 7-day windows, plus accounts that only expose a 7-day window, with per-window reset timestamps
 - OAuth login: browser flow + manual callback parsing
 - Platform keys: create, disable, delete, model binding, reasoning effort, and service tier overrides (`Follow Request` / `Fast` / `Flex`)
-- Aggregate API: create, edit, connection testing, supplier name, and Codex / Claude categorization
+- Aggregate API: manage third-party minimal upstream relays with create/edit, connection testing, supplier name, sort priority, and `Codex / Claude` categorization
 - Local service with configurable port and listen address
 - Local OpenAI-compatible gateway for CLI and third-party tools
 
@@ -77,6 +77,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 ![Dashboard](assets/images/dashboard.png)
 ![Accounts](assets/images/accounts.png)
 ![Platform Key](assets/images/platform-key.png)
+![Aggregate API](assets/images/aggregate-api.png)
 ![Logs](assets/images/log.png)
 ![Settings](assets/images/themes.png)
 
