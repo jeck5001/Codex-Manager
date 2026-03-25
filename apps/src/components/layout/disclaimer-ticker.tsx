@@ -58,7 +58,7 @@ export function DisclaimerTicker() {
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="glass-card border-none max-w-xl">
           <DialogHeader>
             <DialogTitle>免责声明</DialogTitle>
             <DialogDescription>

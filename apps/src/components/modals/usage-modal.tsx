@@ -109,7 +109,7 @@ export default function UsageModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-card border-none p-6 sm:max-w-[450px]">
+      <DialogContent className="glass-card border-none p-4 sm:max-w-[450px] sm:p-6">
         <DialogHeader>
           <div className="mb-2 flex items-center gap-3">
             <div className="rounded-full bg-primary/10 p-2 text-primary">

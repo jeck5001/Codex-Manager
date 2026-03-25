@@ -1991,7 +1991,7 @@ export default function AccountsPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="glass-card border-none sm:max-w-md">
           <DialogHeader>
             <DialogTitle>标记订阅</DialogTitle>
             <DialogDescription>

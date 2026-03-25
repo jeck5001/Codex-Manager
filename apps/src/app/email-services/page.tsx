@@ -867,7 +867,7 @@ export default function EmailServicesPage() {
           }
         }}
       >
-        <DialogContent className="glass-card max-h-[88vh] overflow-y-auto border-none p-6 sm:max-w-[720px]">
+        <DialogContent className="glass-card border-none p-4 sm:max-w-[720px] sm:p-6">
           <DialogHeader>
             <DialogTitle>{formState.mode === "create" ? "新建邮箱服务" : "编辑邮箱服务"}</DialogTitle>
             <DialogDescription>
@@ -928,7 +928,7 @@ export default function EmailServicesPage() {
 
             <div className="space-y-2">
               <Label>启用状态</Label>
-              <div className="flex h-10 items-center justify-between rounded-xl border border-border/60 px-3">
+              <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
                 <span className="text-sm text-muted-foreground">创建后立即参与调度</span>
                 <Switch
                   checked={formState.enabled}
@@ -953,7 +953,7 @@ export default function EmailServicesPage() {
                     {field.required ? <span className="text-destructive">*</span> : null}
                   </Label>
                   {isBoolean ? (
-                    <div className="flex h-10 items-center justify-between rounded-xl border border-border/60 px-3">
+                    <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
                       <span className="text-sm text-muted-foreground">
                         {field.placeholder || "启用后按该配置运行"}
                       </span>
@@ -991,7 +991,7 @@ export default function EmailServicesPage() {
       </Dialog>
 
       <Dialog open={outlookImportOpen} onOpenChange={setOutlookImportOpen}>
-        <DialogContent className="glass-card max-h-[88vh] overflow-y-auto border-none p-6 sm:max-w-[760px]">
+        <DialogContent className="glass-card border-none p-4 sm:max-w-[760px] sm:p-6">
           <DialogHeader>
             <DialogTitle>Outlook 批量导入</DialogTitle>
             <DialogDescription>
@@ -1023,7 +1023,7 @@ export default function EmailServicesPage() {
               </div>
               <div className="space-y-2">
                 <Label>导入后启用</Label>
-                <div className="flex h-10 items-center justify-between rounded-xl border border-border/60 px-3">
+                <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
                   <span className="text-sm text-muted-foreground">新导入账号立即可用</span>
                   <Switch
                     checked={outlookImportEnabled}
@@ -1058,7 +1058,7 @@ export default function EmailServicesPage() {
       </Dialog>
 
       <Dialog open={tempmailTestOpen} onOpenChange={setTempmailTestOpen}>
-        <DialogContent className="glass-card border-none p-6 sm:max-w-[560px]">
+        <DialogContent className="glass-card border-none p-4 sm:max-w-[560px] sm:p-6">
           <DialogHeader>
             <DialogTitle>测试 Tempmail 直连</DialogTitle>
             <DialogDescription>
