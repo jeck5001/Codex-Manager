@@ -255,6 +255,9 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_gateway_background_tasks_set: {
     rpcMethod: "gateway/backgroundTasks/set",
   },
+  service_healthcheck_config_get: { rpcMethod: "healthcheck/config/get" },
+  service_healthcheck_config_set: { rpcMethod: "healthcheck/config/set" },
+  service_healthcheck_run: { rpcMethod: "healthcheck/run" },
   service_gateway_cache_stats: { rpcMethod: "gateway/cache/stats" },
   service_gateway_cache_clear: { rpcMethod: "gateway/cache/clear" },
   service_gateway_freeproxy_sync: { rpcMethod: "gateway/freeProxy/sync" },
