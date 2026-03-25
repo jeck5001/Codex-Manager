@@ -259,239 +259,257 @@ export default function AggregateApiPage() {
         </Button>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">查询</span>
-          <Select
-            value={providerFilter}
-            onValueChange={(value) => setProviderFilter(value || "all")}
-          >
-            <SelectTrigger className="w-[160px]">
-              <SelectValue>
-                {(value) =>
-                  AGGREGATE_API_PROVIDER_FILTER_LABELS[String(value || "")] ||
-                  "全部类型"
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部类型</SelectItem>
-              <SelectItem value="codex">Codex</SelectItem>
-              <SelectItem value="claude">Claude</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="text-xs text-muted-foreground">
-          共 {filteredAggregateApis.length} 条
-        </div>
-      </div>
+      <div className="space-y-4">
+        <Card className="glass-card border-none shadow-xl backdrop-blur-md">
+          <CardContent className="px-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">查询</span>
+                <Select
+                  value={providerFilter}
+                  onValueChange={(value) => setProviderFilter(value || "all")}
+                >
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue>
+                      {(value) =>
+                        AGGREGATE_API_PROVIDER_FILTER_LABELS[
+                          String(value || "")
+                        ] || "全部类型"
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部类型</SelectItem>
+                    <SelectItem value="codex">Codex</SelectItem>
+                    <SelectItem value="claude">Claude</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                共 {filteredAggregateApis.length} 条
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-      <Card className="glass-card overflow-hidden border-none py-0 shadow-xl backdrop-blur-md">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>供应商名称</TableHead>
-                <TableHead>URL</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>密钥</TableHead>
-                <TableHead>测试连通性</TableHead>
-                <TableHead className="text-center">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 3 }).map((_, index) => (
-                  <TableRow key={index}>
-                    <TableCell>
-                      <Skeleton className="h-4 w-28" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-64" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-6 w-20 rounded-full" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-40" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-6 w-24 rounded-full" />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Skeleton className="mx-auto h-8 w-8" />
+        <Card className="glass-card overflow-hidden border-none py-0 shadow-xl backdrop-blur-md">
+          <CardContent className="p-0">
+            <Table className="table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>供应商名称</TableHead>
+                  <TableHead>URL</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>密钥</TableHead>
+                  <TableHead>测试连通性</TableHead>
+                  <TableHead className="text-center">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 3 }).map((_, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-64" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-6 w-16 rounded-full" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-40" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-6 w-24 rounded-full" />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Skeleton className="mx-auto h-8 w-8" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : filteredAggregateApis.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-48 text-center">
+                      <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                        <ShieldCheck className="h-8 w-8 opacity-20" />
+                        <p>
+                          {providerFilter === "all"
+                            ? "暂无聚合 API，点击右上角新建"
+                            : `暂无 ${AGGREGATE_API_PROVIDER_LABELS[providerFilter] || providerFilter} 聚合 API`}
+                        </p>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))
-              ) : filteredAggregateApis.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-48 text-center">
-                    <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                      <ShieldCheck className="h-8 w-8 opacity-20" />
-                      <p>
-                        {providerFilter === "all"
-                          ? "暂无聚合 API，点击右上角新建"
-                          : `暂无 ${AGGREGATE_API_PROVIDER_LABELS[providerFilter] || providerFilter} 聚合 API`}
-                      </p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredAggregateApis.map((api) => {
-                  const revealed = revealedSecrets[api.id];
-                  const createdTimeText = formatTsFromSeconds(
-                    api.createdAt,
-                    "未知时间",
-                  );
+                ) : (
+                  filteredAggregateApis.map((api) => {
+                    const revealed = revealedSecrets[api.id];
+                    const createdTimeText = formatTsFromSeconds(
+                      api.createdAt,
+                      "未知时间",
+                    );
 
-                  return (
-                    <TableRow key={api.id} className="group">
-                      <TableCell className="max-w-[180px]">
-                        <span
-                          className="block truncate text-xs text-muted-foreground"
-                          title={api.supplierName || "-"}
-                        >
-                          {api.supplierName || "-"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        <Tooltip>
-                        <TooltipTrigger
-                          render={<div />}
-                          className="block cursor-help text-left"
-                        >
-                          <span className="block truncate">{api.url}</span>
-                        </TooltipTrigger>
-                          <TooltipContent className="max-w-sm whitespace-pre-wrap break-words">
-                            <div className="grid gap-1">
-                              <div className="break-all">{api.url}</div>
-                              <div className="text-[11px] opacity-80">
-                                创建时间: {createdTimeText}
+                    return (
+                      <TableRow key={api.id} className="group">
+                        <TableCell className="overflow-hidden">
+                          <span
+                            className="block truncate text-xs text-muted-foreground"
+                            title={api.supplierName || "-"}
+                          >
+                            {api.supplierName || "-"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={<div />}
+                              className="block cursor-help text-left overflow-hidden"
+                            >
+                              <span className="block truncate">{api.url}</span>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-sm whitespace-pre-wrap break-words">
+                              <div className="grid gap-1">
+                                <div className="break-all">{api.url}</div>
+                                <div className="text-[11px] opacity-80">
+                                  创建时间: {createdTimeText}
+                                </div>
                               </div>
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TableCell>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="w-fit">
+                            {AGGREGATE_API_PROVIDER_LABELS[api.providerType] ||
+                              api.providerType}
+                          </Badge>
+                        </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="w-fit">
-                          {AGGREGATE_API_PROVIDER_LABELS[api.providerType] ||
-                            api.providerType}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <code
-                            className="max-w-[260px] truncate rounded border border-primary/5 bg-muted/50 px-2 py-1 font-mono text-[10px] leading-4 text-primary"
-                            title={revealed || api.id}
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={<div />}
+                            className="block cursor-help"
                           >
-                            {revealed
-                              ? revealed
-                              : loadingSecretId === api.id
-                                ? "读取中..."
-                                : api.id}
-                          </code>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-primary"
-                            disabled={!isServiceReady}
-                            onClick={() => void toggleSecret(api.id)}
-                          >
-                            {revealed ? (
-                              <EyeOff className="h-3.5 w-3.5" />
-                            ) : (
-                              <Eye className="h-3.5 w-3.5" />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-primary"
-                            disabled={!isServiceReady}
-                            onClick={() => void copySecret(api.id)}
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          {renderTestStatus(api)}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-2"
-                            disabled={!isServiceReady || testMutation.isPending}
-                            onClick={() => testMutation.mutate(api.id)}
-                          >
-                            <RefreshCw
-                              className={
-                                testMutation.isPending
-                                  ? "h-3.5 w-3.5 animate-spin"
-                                  : "h-3.5 w-3.5"
-                              }
-                            />
-                            测试
-                          </Button>
-                        </div>
-                        {api.lastTestAt ? (
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {formatTsFromSeconds(api.lastTestAt, "未知时间")}
-                          </p>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
-                        <div className="table-action-cell gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground transition-colors hover:text-primary"
-                            disabled={!isServiceReady}
-                            onClick={() => openEditModal(api.id)}
-                            title="编辑配置"
-                          >
-                            <Settings2 className="h-4 w-4" />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger>
+                            <div className="flex items-center gap-2">
+                              <code
+                                className="max-w-[260px] truncate rounded border border-primary/5 bg-muted/50 px-2 py-1 font-mono text-[10px] leading-4 text-primary"
+                              >
+                                {revealed
+                                  ? revealed
+                                  : loadingSecretId === api.id
+                                    ? "读取中..."
+                                    : api.id}
+                              </code>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8"
-                                render={<span />}
-                                nativeButton={false}
+                                className="h-7 w-7 text-muted-foreground hover:text-primary"
                                 disabled={!isServiceReady}
+                                onClick={() => void toggleSecret(api.id)}
                               >
-                                <MoreVertical className="h-4 w-4" />
+                                {revealed ? (
+                                  <EyeOff className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Eye className="h-3.5 w-3.5" />
+                                )}
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                className="gap-2"
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-primary"
                                 disabled={!isServiceReady}
-                                onClick={() => openEditModal(api.id)}
+                                onClick={() => void copySecret(api.id)}
                               >
-                                编辑聚合 API
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="gap-2 text-red-500"
-                                disabled={!isServiceReady}
-                                onClick={() => setDeleteId(api.id)}
-                              >
-                                <Trash2 className="h-4 w-4" /> 删除聚合 API
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-sm whitespace-pre-wrap break-words">
+                            {revealed || api.id}
+                          </TooltipContent>
+                        </Tooltip>
                       </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                        <TableCell className="whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            {renderTestStatus(api)}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-2"
+                              disabled={
+                                !isServiceReady || testMutation.isPending
+                              }
+                              onClick={() => testMutation.mutate(api.id)}
+                            >
+                              <RefreshCw
+                                className={
+                                  testMutation.isPending
+                                    ? "h-3.5 w-3.5 animate-spin"
+                                    : "h-3.5 w-3.5"
+                                }
+                              />
+                              测试
+                            </Button>
+                          </div>
+                          {api.lastTestAt ? (
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              {formatTsFromSeconds(api.lastTestAt, "未知时间")}
+                            </p>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          <div className="table-action-cell gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground transition-colors hover:text-primary"
+                              disabled={!isServiceReady}
+                              onClick={() => openEditModal(api.id)}
+                              title="编辑配置"
+                            >
+                              <Settings2 className="h-4 w-4" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  render={<span />}
+                                  nativeButton={false}
+                                  disabled={!isServiceReady}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  disabled={!isServiceReady}
+                                  onClick={() => openEditModal(api.id)}
+                                >
+                                  编辑聚合 API
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="gap-2 text-red-500"
+                                  disabled={!isServiceReady}
+                                  onClick={() => setDeleteId(api.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" /> 删除聚合 API
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
 
       <AggregateApiModal
         open={modalOpen}
