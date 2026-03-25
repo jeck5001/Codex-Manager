@@ -42,7 +42,6 @@ const PRIMARY_PAGE_ROUTES = [
 ] as const;
 const DEV_ROUTE_WARMUP_TIMEOUT_MS = 12_000;
 const STARTUP_WARMUP_LABEL = "[startup warmup]";
-const BOOTSTRAP_RECOVERY_RETRY_MS = 1_200;
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export function AppBootstrap({ children }: { children: React.ReactNode }) {
@@ -62,8 +61,6 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   const [isInitializing, setIsInitializing] = useState(true);
   const hasInitializedOnce = useRef(false);
   const hasWarmedDevRoutes = useRef(false);
-  const recoveryTimerRef = useRef<number | null>(null);
-  const retryInitRef = useRef<(() => Promise<void>) | null>(null);
   const serviceStatusRef = useRef(serviceStatus);
   const runtimeCapabilitiesRef = useRef(runtimeCapabilities);
   const [error, setError] = useState<string | null>(null);
@@ -272,11 +269,6 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
           );
         }
       }
-
-      if (recoveryTimerRef.current !== null) {
-        window.clearTimeout(recoveryTimerRef.current);
-        recoveryTimerRef.current = null;
-      }
       setServiceStatus({
         addr,
         connected: true,
@@ -288,24 +280,6 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       void warmupConnectedService(addr);
     },
     [prefetchStartupSnapshot, setServiceStatus, warmupConnectedService],
-  );
-
-  const scheduleBootstrapRecovery = useCallback(() => {
-    if (typeof window === "undefined" || recoveryTimerRef.current !== null) {
-      return;
-    }
-    recoveryTimerRef.current = window.setTimeout(() => {
-      recoveryTimerRef.current = null;
-      void retryInitRef.current?.();
-    }, BOOTSTRAP_RECOVERY_RETRY_MS);
-  }, []);
-
-  const tryRecoverServiceAfterFailure = useCallback(
-    async (addr: string, lowTransparency: boolean) => {
-      const recovered = await initializeService(addr, 6);
-      await applyConnectedServiceState(addr, recovered.version, lowTransparency);
-    },
-    [applyConnectedServiceState, initializeService],
   );
 
   const warmupDevRouteTransitions = useCallback(() => {
@@ -452,14 +426,9 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
           { blockOnDashboardSnapshot: shouldBlockOnDashboardSnapshot },
         );
       } catch (serviceError: unknown) {
-        try {
-          await tryRecoverServiceAfterFailure(addr, settings.lowTransparency);
-          return;
-        } catch {}
         if (!hasInitializedOnce.current) {
            setServiceStatus({ addr, connected: false, version: "" });
            setError(formatServiceError(serviceError));
-           scheduleBootstrapRecovery();
         }
         setIsInitializing(false);
       }
@@ -473,14 +442,12 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   }, [
     applyConnectedServiceState,
     initializeService,
-    scheduleBootstrapRecovery,
     setAppSettings,
     setRuntimeCapabilities,
     setServiceStatus,
     setTheme,
     startAndInitializeService,
     shouldBlockOnInitialDashboardSnapshot,
-    tryRecoverServiceAfterFailure,
   ]);
 
   const handleForceStart = async () => {
@@ -514,35 +481,15 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       );
       toast.success("服务已启动");
     } catch (startError: unknown) {
-      try {
-        const addr = normalizeServiceAddr(serviceStatus.addr || DEFAULT_SERVICE_ADDR);
-        const settings = await appClient.getSettings();
-        await tryRecoverServiceAfterFailure(addr, settings.lowTransparency);
-        toast.success("服务已启动");
-        return;
-      } catch {}
       setServiceStatus({ connected: false, version: "" });
       setError(formatServiceError(startError));
-      scheduleBootstrapRecovery();
       setIsInitializing(false);
     }
   };
 
   useEffect(() => {
-    retryInitRef.current = init;
-  }, [init]);
-
-  useEffect(() => {
     void init();
   }, [init]);
-
-  useEffect(() => {
-    return () => {
-      if (recoveryTimerRef.current !== null) {
-        window.clearTimeout(recoveryTimerRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => warmupDevRouteTransitions(), [warmupDevRouteTransitions]);
 
