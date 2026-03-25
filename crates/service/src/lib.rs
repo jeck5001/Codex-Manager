@@ -85,6 +85,8 @@ pub(crate) use requestlog::today_summary as requestlog_today_summary;
 pub(crate) use runtime::lock_utils;
 pub use runtime::process_env;
 pub(crate) use runtime::reasoning_effort;
+pub(crate) use stats::cache as stats_cache;
+pub(crate) use stats::consumer as stats_consumer;
 pub(crate) use stats::cost_export as stats_cost_export;
 pub(crate) use stats::cost_summary as stats_cost_summary;
 pub(crate) use stats::model_pricing as stats_model_pricing;

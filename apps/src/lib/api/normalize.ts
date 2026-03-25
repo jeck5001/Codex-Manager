@@ -11,6 +11,14 @@ import {
   AlertChannelTestResult,
   AlertHistoryItem,
   AlertRule,
+  CacheAnalyticsByKeyResult,
+  CacheAnalyticsByModelResult,
+  CacheAnalyticsSummaryResult,
+  CacheAnalyticsTrendResult,
+  ConsumerModelBreakdownResult,
+  ConsumerOverviewResult,
+  ConsumerRankingResult,
+  ConsumerTrendResult,
   CostExportResult,
   CostSummaryDayItem,
   CostSummaryKeyItem,
@@ -1553,5 +1561,166 @@ export function normalizeStartupSnapshot(payload: unknown): StartupSnapshot {
     manualPreferredAccountId: asString(source.manualPreferredAccountId),
     requestLogTodaySummary: normalizeTodaySummary(source.requestLogTodaySummary),
     requestLogs: normalizeRequestLogs(source.requestLogs),
+  };
+}
+
+// -- Consumer Analytics normalize functions --
+
+export function normalizeConsumerOverview(payload: unknown): ConsumerOverviewResult {
+  const source = asObject(payload);
+  return {
+    keyId: asString(source.keyId ?? source.key_id),
+    preset: asString(source.preset) || "month",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    requestCount: asInteger(source.requestCount ?? source.request_count, 0, 0),
+    inputTokens: asInteger(source.inputTokens ?? source.input_tokens, 0, 0),
+    cachedInputTokens: asInteger(source.cachedInputTokens ?? source.cached_input_tokens, 0, 0),
+    outputTokens: asInteger(source.outputTokens ?? source.output_tokens, 0, 0),
+    totalTokens: asInteger(source.totalTokens ?? source.total_tokens, 0, 0),
+    estimatedCostUsd: toNullableNumber(source.estimatedCostUsd ?? source.estimated_cost_usd) ?? 0,
+    successRate: toNullableNumber(source.successRate ?? source.success_rate) ?? 0,
+    avgDurationMs: toNullableNumber(source.avgDurationMs ?? source.avg_duration_ms),
+  };
+}
+
+export function normalizeConsumerTrend(payload: unknown): ConsumerTrendResult {
+  const source = asObject(payload);
+  return {
+    keyId: asString(source.keyId ?? source.key_id),
+    preset: asString(source.preset) || "month",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    items: asArray(source.items).map((item) => {
+      const entry = asObject(item);
+      return {
+        day: asString(entry.day),
+        requestCount: asInteger(entry.requestCount ?? entry.request_count, 0, 0),
+        inputTokens: asInteger(entry.inputTokens ?? entry.input_tokens, 0, 0),
+        outputTokens: asInteger(entry.outputTokens ?? entry.output_tokens, 0, 0),
+        estimatedCostUsd: toNullableNumber(entry.estimatedCostUsd ?? entry.estimated_cost_usd) ?? 0,
+      };
+    }),
+  };
+}
+
+export function normalizeConsumerModelBreakdown(payload: unknown): ConsumerModelBreakdownResult {
+  const source = asObject(payload);
+  return {
+    keyId: asString(source.keyId ?? source.key_id),
+    preset: asString(source.preset) || "month",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    items: asArray(source.items).map((item) => {
+      const entry = asObject(item);
+      return {
+        model: asString(entry.model),
+        requestCount: asInteger(entry.requestCount ?? entry.request_count, 0, 0),
+        inputTokens: asInteger(entry.inputTokens ?? entry.input_tokens, 0, 0),
+        outputTokens: asInteger(entry.outputTokens ?? entry.output_tokens, 0, 0),
+        totalTokens: asInteger(entry.totalTokens ?? entry.total_tokens, 0, 0),
+        estimatedCostUsd: toNullableNumber(entry.estimatedCostUsd ?? entry.estimated_cost_usd) ?? 0,
+      };
+    }),
+  };
+}
+
+export function normalizeConsumerRanking(payload: unknown): ConsumerRankingResult {
+  const source = asObject(payload);
+  return {
+    preset: asString(source.preset) || "month",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    items: asArray(source.items)
+      .map((item) => {
+        const entry = asObject(item);
+        const keyId = asString(entry.keyId ?? entry.key_id);
+        if (!keyId) return null;
+        return {
+          keyId,
+          ...normalizeCostUsageSummary(entry),
+        };
+      })
+      .filter((item): item is CostSummaryKeyItem => Boolean(item)),
+  };
+}
+
+// -- Cache Analytics normalize functions --
+
+export function normalizeCacheAnalyticsSummary(payload: unknown): CacheAnalyticsSummaryResult {
+  const source = asObject(payload);
+  return {
+    preset: asString(source.preset) || "month",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    totalRequests: asInteger(source.totalRequests ?? source.total_requests, 0, 0),
+    cachedRequests: asInteger(source.cachedRequests ?? source.cached_requests, 0, 0),
+    hitRate: toNullableNumber(source.hitRate ?? source.hit_rate) ?? 0,
+    totalInputTokens: asInteger(source.totalInputTokens ?? source.total_input_tokens, 0, 0),
+    cachedInputTokens: asInteger(source.cachedInputTokens ?? source.cached_input_tokens, 0, 0),
+    cacheTokenRatio: toNullableNumber(source.cacheTokenRatio ?? source.cache_token_ratio) ?? 0,
+    estimatedSavingsUsd: toNullableNumber(source.estimatedSavingsUsd ?? source.estimated_savings_usd) ?? 0,
+  };
+}
+
+export function normalizeCacheAnalyticsTrend(payload: unknown): CacheAnalyticsTrendResult {
+  const source = asObject(payload);
+  return {
+    preset: asString(source.preset) || "month",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    items: asArray(source.items).map((item) => {
+      const entry = asObject(item);
+      return {
+        day: asString(entry.day),
+        totalRequests: asInteger(entry.totalRequests ?? entry.total_requests, 0, 0),
+        cachedRequests: asInteger(entry.cachedRequests ?? entry.cached_requests, 0, 0),
+        hitRate: toNullableNumber(entry.hitRate ?? entry.hit_rate) ?? 0,
+        totalInputTokens: asInteger(entry.totalInputTokens ?? entry.total_input_tokens, 0, 0),
+        cachedInputTokens: asInteger(entry.cachedInputTokens ?? entry.cached_input_tokens, 0, 0),
+      };
+    }),
+  };
+}
+
+export function normalizeCacheAnalyticsByModel(payload: unknown): CacheAnalyticsByModelResult {
+  const source = asObject(payload);
+  return {
+    preset: asString(source.preset) || "month",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    items: asArray(source.items).map((item) => {
+      const entry = asObject(item);
+      return {
+        model: asString(entry.model),
+        totalRequests: asInteger(entry.totalRequests ?? entry.total_requests, 0, 0),
+        cachedRequests: asInteger(entry.cachedRequests ?? entry.cached_requests, 0, 0),
+        hitRate: toNullableNumber(entry.hitRate ?? entry.hit_rate) ?? 0,
+        totalInputTokens: asInteger(entry.totalInputTokens ?? entry.total_input_tokens, 0, 0),
+        cachedInputTokens: asInteger(entry.cachedInputTokens ?? entry.cached_input_tokens, 0, 0),
+        estimatedSavingsUsd: toNullableNumber(entry.estimatedSavingsUsd ?? entry.estimated_savings_usd) ?? 0,
+      };
+    }),
+  };
+}
+
+export function normalizeCacheAnalyticsByKey(payload: unknown): CacheAnalyticsByKeyResult {
+  const source = asObject(payload);
+  return {
+    preset: asString(source.preset) || "month",
+    rangeStart: asInteger(source.rangeStart ?? source.range_start, 0, 0),
+    rangeEnd: asInteger(source.rangeEnd ?? source.range_end, 0, 0),
+    items: asArray(source.items).map((item) => {
+      const entry = asObject(item);
+      return {
+        keyId: asString(entry.keyId ?? entry.key_id),
+        totalRequests: asInteger(entry.totalRequests ?? entry.total_requests, 0, 0),
+        cachedRequests: asInteger(entry.cachedRequests ?? entry.cached_requests, 0, 0),
+        hitRate: toNullableNumber(entry.hitRate ?? entry.hit_rate) ?? 0,
+        totalInputTokens: asInteger(entry.totalInputTokens ?? entry.total_input_tokens, 0, 0),
+        cachedInputTokens: asInteger(entry.cachedInputTokens ?? entry.cached_input_tokens, 0, 0),
+        estimatedSavingsUsd: toNullableNumber(entry.estimatedSavingsUsd ?? entry.estimated_savings_usd) ?? 0,
+      };
+    }),
   };
 }

@@ -17,9 +17,12 @@ fn start_of_local_day_ts(day: chrono::NaiveDate) -> Result<i64, String> {
     })
 }
 
-fn resolve_range(params: CostSummaryParams) -> Result<(String, i64, i64), String> {
-    let preset = params
-        .preset
+pub(crate) fn resolve_cost_range(
+    preset: Option<String>,
+    start_ts: Option<i64>,
+    end_ts: Option<i64>,
+) -> Result<(String, i64, i64), String> {
+    let preset = preset
         .unwrap_or_else(|| "today".to_string())
         .trim()
         .to_ascii_lowercase();
@@ -54,10 +57,9 @@ fn resolve_range(params: CostSummaryParams) -> Result<(String, i64, i64), String
             ))
         }
         "custom" => {
-            let start = params
-                .start_ts
+            let start = start_ts
                 .ok_or_else(|| "startTs required".to_string())?;
-            let end = params.end_ts.ok_or_else(|| "endTs required".to_string())?;
+            let end = end_ts.ok_or_else(|| "endTs required".to_string())?;
             if end <= start {
                 return Err("endTs must be greater than startTs".to_string());
             }
@@ -65,6 +67,10 @@ fn resolve_range(params: CostSummaryParams) -> Result<(String, i64, i64), String
         }
         _ => Err("preset must be one of today/week/month/custom".to_string()),
     }
+}
+
+fn resolve_range(params: CostSummaryParams) -> Result<(String, i64, i64), String> {
+    resolve_cost_range(params.preset, params.start_ts, params.end_ts)
 }
 
 pub(crate) fn read_cost_summary(params: CostSummaryParams) -> Result<CostSummaryResult, String> {

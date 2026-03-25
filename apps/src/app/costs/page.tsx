@@ -42,6 +42,7 @@ import {
   buildApiKeyNameMap,
   formatApiKeyDetailLabel,
 } from "@/lib/utils/api-key-display";
+import ConsumerDetailPanel from "@/components/ConsumerDetailPanel";
 import type { CostSummaryDayItem, CostSummaryModelItem, ModelPricingItem } from "@/types";
 
 type DraftPricingRow = {
@@ -214,6 +215,7 @@ export default function CostsPage() {
   const [preset, setPreset] = useState("month");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
 
   const pricingQuery = useQuery({
     queryKey: ["costs", "model-pricing"],
@@ -629,7 +631,11 @@ export default function CostsPage() {
                       </TableHeader>
                       <TableBody>
                         {sortedKeyItems.slice(0, 6).map((item) => (
-                          <TableRow key={item.keyId}>
+                          <TableRow
+                            key={item.keyId}
+                            className="cursor-pointer hover:bg-muted/40"
+                            onClick={() => setSelectedKeyId(item.keyId)}
+                          >
                             <TableCell className="font-mono text-xs">
                               {formatApiKeyDetailLabel(item.keyId, apiKeyNameMap)}
                             </TableCell>
@@ -697,6 +703,15 @@ export default function CostsPage() {
           )}
         </CardContent>
       </Card>
+
+      {selectedKeyId && (
+        <ConsumerDetailPanel
+          keyId={selectedKeyId}
+          keyName={formatApiKeyDetailLabel(selectedKeyId, apiKeyNameMap)}
+          preset={preset}
+          onClose={() => setSelectedKeyId(null)}
+        />
+      )}
 
       <Card className="glass-card border-none shadow-lg">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

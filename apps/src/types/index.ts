@@ -402,6 +402,128 @@ export interface HeatmapTrendResult {
   items: HeatmapCellItem[];
 }
 
+// -- Consumer Analytics --
+
+export interface ConsumerOverviewResult {
+  keyId: string;
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  requestCount: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+  successRate: number;
+  avgDurationMs: number | null;
+}
+
+export interface ConsumerTrendDayItem {
+  day: string;
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+}
+
+export interface ConsumerTrendResult {
+  keyId: string;
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  items: ConsumerTrendDayItem[];
+}
+
+export interface ConsumerModelItem {
+  model: string;
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+}
+
+export interface ConsumerModelBreakdownResult {
+  keyId: string;
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  items: ConsumerModelItem[];
+}
+
+export interface ConsumerRankingResult {
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  items: CostSummaryKeyItem[];
+}
+
+// -- Cache Analytics --
+
+export interface CacheAnalyticsSummaryResult {
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  totalRequests: number;
+  cachedRequests: number;
+  hitRate: number;
+  totalInputTokens: number;
+  cachedInputTokens: number;
+  cacheTokenRatio: number;
+  estimatedSavingsUsd: number;
+}
+
+export interface CacheAnalyticsTrendDayItem {
+  day: string;
+  totalRequests: number;
+  cachedRequests: number;
+  hitRate: number;
+  totalInputTokens: number;
+  cachedInputTokens: number;
+}
+
+export interface CacheAnalyticsTrendResult {
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  items: CacheAnalyticsTrendDayItem[];
+}
+
+export interface CacheAnalyticsModelItem {
+  model: string;
+  totalRequests: number;
+  cachedRequests: number;
+  hitRate: number;
+  totalInputTokens: number;
+  cachedInputTokens: number;
+  estimatedSavingsUsd: number;
+}
+
+export interface CacheAnalyticsByModelResult {
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  items: CacheAnalyticsModelItem[];
+}
+
+export interface CacheAnalyticsKeyItem {
+  keyId: string;
+  totalRequests: number;
+  cachedRequests: number;
+  hitRate: number;
+  totalInputTokens: number;
+  cachedInputTokens: number;
+  estimatedSavingsUsd: number;
+}
+
+export interface CacheAnalyticsByKeyResult {
+  preset: string;
+  rangeStart: number;
+  rangeEnd: number;
+  items: CacheAnalyticsKeyItem[];
+}
+
 export interface ModelOption {
   slug: string;
   displayName: string;

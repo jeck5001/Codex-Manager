@@ -311,6 +311,79 @@ pub struct CostSummaryDayRow {
     pub estimated_cost_usd: f64,
 }
 
+// -- Consumer Analytics --
+
+#[derive(Debug, Clone)]
+pub struct ConsumerOverviewRow {
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+    pub success_count: i64,
+    pub avg_duration_ms: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsumerDayRow {
+    pub day: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsumerModelRow {
+    pub model: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+// -- Cache Analytics --
+
+#[derive(Debug, Clone)]
+pub struct CacheSummaryRow {
+    pub total_requests: i64,
+    pub cached_requests: i64,
+    pub total_input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub estimated_savings_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CacheSummaryDayRow {
+    pub day: String,
+    pub total_requests: i64,
+    pub cached_requests: i64,
+    pub total_input_tokens: i64,
+    pub cached_input_tokens: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CacheSummaryModelRow {
+    pub model: String,
+    pub total_requests: i64,
+    pub cached_requests: i64,
+    pub total_input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub estimated_savings_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CacheSummaryKeyRow {
+    pub key_id: String,
+    pub total_requests: i64,
+    pub cached_requests: i64,
+    pub total_input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub estimated_savings_usd: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct RequestTrendRow {
     pub bucket: String,
