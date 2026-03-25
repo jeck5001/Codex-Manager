@@ -1100,22 +1100,21 @@ export default function RegisterPage() {
       </Card>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="glass-card overflow-hidden border-none p-0 sm:max-w-[760px]">
-          <div className="flex min-h-0 flex-col">
-            <DialogHeader className="px-4 pt-4 sm:px-6 sm:pt-6">
-              <DialogTitle>任务详情</DialogTitle>
-              <DialogDescription>
-                查看单个注册任务的实时快照和日志明细。
-              </DialogDescription>
-            </DialogHeader>
-            {isLoadingDetail || !detailTask ? (
-              <div className="space-y-3 px-4 pb-4 sm:px-6 sm:pb-6">
-                <Skeleton className="h-6 w-48" />
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-64 w-full" />
-              </div>
-            ) : (
-              <div className="min-h-0 space-y-4 overflow-y-auto px-4 pb-4 sm:px-6 sm:pb-6">
+        <DialogContent className="glass-card border-none p-4 sm:max-w-[760px] sm:p-6">
+          <DialogHeader>
+            <DialogTitle>任务详情</DialogTitle>
+            <DialogDescription>
+              查看单个注册任务的实时快照和日志明细。
+            </DialogDescription>
+          </DialogHeader>
+          {isLoadingDetail || !detailTask ? (
+            <div className="space-y-3">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          ) : (
+            <div className="space-y-4">
               {(() => {
                 const importStatusMeta = getImportStatusMeta(detailTask);
                 return importStatusMeta ? (
@@ -1180,9 +1179,8 @@ export default function RegisterPage() {
                 value={detailTask.logs.join("\n")}
                 className="min-h-[360px] resize-none overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-4 [overflow-wrap:anywhere]"
               />
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

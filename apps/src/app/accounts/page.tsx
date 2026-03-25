@@ -470,22 +470,6 @@ export default function AccountsPage() {
         return left.label.localeCompare(right.label, "zh-CN");
       });
   }, [scopedAccounts]);
-  const statusReasonOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const account of scopedAccounts) {
-      const label = String(account.lastStatusReason || "").trim();
-      if (!label) continue;
-      counts.set(label, (counts.get(label) || 0) + 1);
-    }
-    return Array.from(counts.entries())
-      .map(([label, count]) => ({ label, count }))
-      .sort((left, right) => {
-        if (right.count !== left.count) {
-          return right.count - left.count;
-        }
-        return left.label.localeCompare(right.label, "zh-CN");
-      });
-  }, [scopedAccounts]);
   const tagOptions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const account of scopedAccounts) {
@@ -652,11 +636,6 @@ export default function AccountsPage() {
     if (nextValue !== "all") {
       setStatusFilter("governed");
     }
-    setPage(1);
-  };
-
-  const handleStatusReasonFilterChange = (value: string | null) => {
-    setStatusReasonFilter(normalizeStatusReasonFilter(value));
     setPage(1);
   };
 
@@ -1074,34 +1053,6 @@ export default function AccountsPage() {
                     全部冷却原因 ({cooldownOptions.length})
                   </SelectItem>
                   {cooldownOptions.map((option) => (
-                    <SelectItem key={option.label} value={option.label}>
-                      {option.label} ({option.count})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
-            {statusReasonOptions.length > 0 ? (
-              <Select
-                value={statusReasonFilter}
-                onValueChange={handleStatusReasonFilterChange}
-              >
-                <SelectTrigger className="h-10 w-[200px] shrink-0 rounded-xl bg-card/50">
-                  <SelectValue placeholder="状态原因">
-                    {(value) => {
-                      const nextValue = String(value || "").trim();
-                      if (!nextValue || nextValue === "all") {
-                        return `全部状态原因 (${statusReasonOptions.length})`;
-                      }
-                      return nextValue;
-                    }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">
-                    全部状态原因 ({statusReasonOptions.length})
-                  </SelectItem>
-                  {statusReasonOptions.map((option) => (
                     <SelectItem key={option.label} value={option.label}>
                       {option.label} ({option.count})
                     </SelectItem>

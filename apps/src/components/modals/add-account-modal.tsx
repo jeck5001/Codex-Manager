@@ -998,8 +998,8 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="glass-card overflow-hidden border-none p-0 sm:max-w-[760px]">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 w-full flex-col">
+      <DialogContent className="glass-card border-none p-0 sm:max-w-[760px]">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="shrink-0 bg-muted/20 px-4 pt-4 sm:px-6 sm:pt-6">
             <DialogHeader className="mb-4">
               <DialogTitle className="flex items-center gap-2">
@@ -1023,7 +1023,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
             </TabsList>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="p-4 sm:p-6">
             <TabsContent value="login" className="mt-0 space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

@@ -31,8 +31,10 @@
   - 本轮补齐巡检后的自动治理收口：`healthcheck/run` 与后台巡检线程结束后都会立即触发现有 auto governance，重复 401/403 等巡检失败不再只能停留在 `unavailable`，满足阈值时可直接升级为自动禁用/治理状态
   - 本轮补齐首页风险可见性收口：仪表盘「观测摘要」已补充冷却原因热点、最近治理原因和新号保护概览，首页可直接判断当前风险主要由哪类原因触发并跳到账号页继续排查
   - 本轮补齐首页到账号页的风控筛选闭环：账号页新增“新号保护”状态与“冷却原因”筛选，仪表盘风险卡片可直接带参跳到对应账号集合，不再需要手动二次筛选
+  - 本轮收口账号页筛选条占位：移除顶部“状态原因”大下拉，保留 URL / 首页跳转带来的 `statusReason` 深链过滤与“当前筛选”标签展示，减少主筛选条宽度占用
   - 本轮补齐侧边栏菜单配置：设置页“外观”Tab 支持按菜单勾选显示/隐藏项，菜单可通过 `appSettings` 持久化并支持 `CODEXMANAGER_UI_VISIBLE_MENU_ITEMS` 环境变量覆盖；“设置”入口固定保留，避免误隐藏
   - 本轮完成主要弹窗的视口适配收口：共用 `DialogContent` 增加最大视口高度、内部滚动与 `DialogHeader` / `DialogFooter` 固定区兜底；`新增账号`、`平台密钥`、`注册任务详情`、`邮箱服务`、`访问密码与 2FA`、`用量详情`、`免责声明`、账号页订阅标记弹窗均已补齐小屏布局，避免内容截断、横向挤压或无法完整滚动，对齐 G5
+  - 本轮修复弹窗滚动回归：`新增账号` 与 `注册任务详情` 不再依赖内部 `flex-1` 滚动容器，改回由弹窗本体承担滚动，避免在桌面 / Web 下出现内容能展示但完全无法下滑、底部操作按钮点不到的问题
 
 - [x] **通用验收缺口**
   - G7 `cargo clippy`（`codexmanager-service`）已收口：`cargo clippy -p codexmanager-service --tests -- -D warnings` 当前通过，本轮继续清空 `account/account_register.rs`、`app_settings/api/current.rs` 与测试层历史 warning
@@ -50,6 +52,12 @@
   - 本轮继续收敛测试层 warning：`tests/shutdown_flag.rs` 改为布尔断言，`tests/gateway_logs/cache.rs` 改为 `contains_key` 判定；`clippy` 最终清零
 
 - [-] **本轮验证结果**
+  - `pnpm exec tsc --noEmit` 通过（本轮修复大弹窗滚动回归后前端类型无回退）
+  - `pnpm run build:desktop` 通过（确认“新增账号” / “注册任务详情”改回弹窗本体滚动后桌面端静态构建正常）
+  - `git diff --check` 通过（本轮滚动回归修复无格式问题）
+  - `pnpm exec tsc --noEmit` 通过（本轮移除账号页“状态原因”顶部筛选后前端类型无回退）
+  - `pnpm run build:desktop` 通过（确认账号页筛选条收口后仍可参与桌面端静态构建）
+  - `git diff --check` 通过（本轮账号页 UI 收口无格式问题）
   - `pnpm exec tsc --noEmit` 通过（本轮继续补齐注册详情 / 邮箱服务 / 2FA 等弹窗响应式与滚动后前端类型无回退）
   - `pnpm run build:desktop` 通过（确认主要弹窗统一视口适配后仍可参与桌面端静态构建）
   - `git diff --check` 通过（本轮弹窗布局与滚动收口无格式问题）
