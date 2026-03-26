@@ -435,6 +435,21 @@ jobs:
           release-dir: ${{ env.CARGO_TARGET_DIR }}/release
           shell-type: bash
 
+      - name: Stage web package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_dir="${{ env.CARGO_TARGET_DIR }}/release"
+          release_assets_dir="${release_dir}/release-assets"
+          service_zip="stage/CodexManager-service-linux-x86_64.zip"
+          web_zip="${release_assets_dir}/CodexManager-web-linux-x86_64.zip"
+
+          mkdir -p "$release_assets_dir"
+          test -f "$service_zip" || { echo "service package not found: $service_zip"; exit 1; }
+          cp -f "$service_zip" "$web_zip"
+          echo "web package: $web_zip"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -451,6 +466,14 @@ jobs:
         with:
           name: codexmanager-service-linux
           path: stage/*.zip
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload web artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: codexmanager-web-linux
+          path: ${{ env.CARGO_TARGET_DIR }}/release/release-assets/CodexManager-web-linux-x86_64.zip
           if-no-files-found: error
           compression-level: 0
 
