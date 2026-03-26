@@ -15,6 +15,7 @@ import {
   normalizeUsageSnapshot,
 } from "./normalize";
 import {
+  AccountAuthRecoveryResult,
   AccountBulkStatusUpdateResult,
   AccountListResult,
   AccountOfficialPromoLinkResult,
@@ -1127,6 +1128,29 @@ export const accountClient = {
   },
   logoutCurrentAccessTokenAccount: () =>
     invoke("service_account_logout", withAddr()),
+  async recoverAccountAuth(
+    accountId: string,
+    openBrowser?: boolean
+  ): Promise<AccountAuthRecoveryResult> {
+    const result = await invoke<unknown>(
+      "service_account_auth_recover",
+      withAddr({
+        accountId,
+        openBrowser: openBrowser ?? false,
+      })
+    );
+    const source =
+      result && typeof result === "object" && !Array.isArray(result)
+        ? (result as Record<string, unknown>)
+        : {};
+    return {
+      status: String(source.status || "").trim(),
+      accountId: String(source.accountId || "").trim(),
+      loginId: typeof source.loginId === "string" ? source.loginId.trim() : null,
+      authUrl: typeof source.authUrl === "string" ? source.authUrl.trim() : null,
+      warning: typeof source.warning === "string" ? source.warning.trim() : null,
+    };
+  },
   async refreshChatgptAuthTokens(
     previousAccountId?: string
   ): Promise<ChatgptAuthTokensRefreshResult> {

@@ -35,6 +35,12 @@ function isAccountRefreshBlocked(status: string | null | undefined): boolean {
   return String(status || "").trim().toLowerCase() === "disabled";
 }
 
+function isRefreshTokenExpiredError(error: unknown): boolean {
+  return getAppErrorMessage(error)
+    .toLowerCase()
+    .includes("refresh token failed with status 401");
+}
+
 function buildImportSummaryMessage(result: ImportByDirectoryResult): string {
   const total = Number(result?.total || 0);
   const created = Number(result?.created || 0);
@@ -48,7 +54,7 @@ function formatUsageRefreshErrorMessage(error: unknown): string {
   if (message.toLowerCase().includes("your openai account has been deactivated")) {
     return "账号已被 OpenAI 停用，已自动标记到停用列表";
   }
-  if (message.toLowerCase().includes("refresh token failed with status 401")) {
+  if (isRefreshTokenExpiredError(error)) {
     return "账号长期未登录，refresh 已过期，已改为不可用状态";
   }
   return message;
@@ -128,11 +134,24 @@ export function useAccounts() {
       toast.success("账号用量已刷新");
     },
     onError: (error: unknown) => {
+      if (isRefreshTokenExpiredError(error)) {
+        return;
+      }
       toast.error(`刷新失败: ${formatUsageRefreshErrorMessage(error)}`);
     },
     onSettled: async () => {
       await invalidateAll();
     },
+  });
+
+  const recoverAccountAuthMutation = useMutation({
+    mutationFn: ({
+      accountId,
+      openBrowser,
+    }: {
+      accountId: string;
+      openBrowser: boolean;
+    }) => accountClient.recoverAccountAuth(accountId, openBrowser),
   });
 
   const refreshAllMutation = useMutation({
@@ -524,13 +543,47 @@ export function useAccounts() {
     },
   });
 
+  const recoverAccountAfterRefreshFailure = async (accountId: string) => {
+    toast.info("检测到 refresh 已过期，正在自动恢复登录...");
+    const recovery = await recoverAccountAuthMutation.mutateAsync({
+      accountId,
+      openBrowser: false,
+    });
+    if (recovery.warning) {
+      toast.warning(recovery.warning);
+    }
+
+    if (recovery.status !== "recovered") {
+      throw new Error(
+        getAppErrorMessage(
+          recovery.warning || "自动恢复未返回成功状态"
+        )
+      );
+    }
+    await accountClient.refreshUsage(accountId);
+    await invalidateAll();
+    toast.success("已自动恢复登录并刷新用量");
+  };
+
   return {
     accounts,
     groups,
     total: accountsQuery.data?.total || accounts.length,
     isLoading: accountsQuery.isLoading || usagesQuery.isLoading,
     manualPreferredAccountId: manualPreferredAccountQuery.data || "",
-    refreshAccount: (accountId: string) => refreshAccountMutation.mutate(accountId),
+    refreshAccount: (accountId: string) => {
+      void refreshAccountMutation.mutateAsync(accountId).catch(async (error: unknown) => {
+        if (!isRefreshTokenExpiredError(error)) {
+          return;
+        }
+        try {
+          await recoverAccountAfterRefreshFailure(accountId);
+        } catch (recoveryError: unknown) {
+          toast.error(`自动登录失败: ${getAppErrorMessage(recoveryError)}`);
+          await invalidateAll();
+        }
+      });
+    },
     refreshAllAccounts: () => {
       if (!accounts.some((account) => !isAccountRefreshBlocked(account.status))) {
         toast.info("当前没有可刷新的账号");
@@ -576,7 +629,15 @@ export function useAccounts() {
     updateManyTags: (accountIds: string[], tags: string[] | string | null) =>
       bulkUpdateTagsMutation.mutate({ accountIds, tags }),
     isRefreshingAccountId:
-      refreshAccountMutation.isPending && typeof refreshAccountMutation.variables === "string"
+      recoverAccountAuthMutation.isPending &&
+      recoverAccountAuthMutation.variables &&
+      typeof recoverAccountAuthMutation.variables === "object" &&
+      "accountId" in recoverAccountAuthMutation.variables
+        ? String(
+            (recoverAccountAuthMutation.variables as { accountId?: unknown }).accountId || ""
+          )
+        : refreshAccountMutation.isPending &&
+            typeof refreshAccountMutation.variables === "string"
         ? refreshAccountMutation.variables
         : "",
     isRefreshingAllAccounts: refreshAllMutation.isPending,

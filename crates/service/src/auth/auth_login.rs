@@ -1,9 +1,12 @@
 use codexmanager_core::auth::{
     build_authorize_url, device_redirect_uri, device_token_url, device_usercode_url,
-    device_verification_url, generate_pkce, generate_state, DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
+    device_verification_url, generate_pkce, generate_state, parse_id_token_claims,
+    DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
 };
-use codexmanager_core::rpc::types::{DeviceAuthInfo, LoginStartResult};
-use codexmanager_core::storage::{now_ts, Event, LoginSession};
+use codexmanager_core::rpc::types::{
+    AccountAuthRecoveryResult, DeviceAuthInfo, LoginStartResult,
+};
+use codexmanager_core::storage::{now_ts, Account, Event, LoginSession, Storage};
 
 use crate::auth_callback::{ensure_login_server, resolve_redirect_uri};
 use crate::storage_helpers::open_storage;
@@ -128,4 +131,79 @@ pub(crate) fn login_status(login_id: &str) -> serde_json::Value {
         "error": session.error,
         "updatedAt": session.updated_at
     })
+}
+
+pub(crate) fn recover_account_auth(
+    account_id: &str,
+    _open_browser: bool,
+) -> Result<AccountAuthRecoveryResult, String> {
+    let normalized_account_id = account_id.trim();
+    if normalized_account_id.is_empty() {
+        return Err("missing accountId".to_string());
+    }
+
+    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let account = storage
+        .find_account_by_id(normalized_account_id)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| format!("account not found: {normalized_account_id}"))?;
+
+    if crate::auth_account::refresh_current_chatgpt_auth_tokens(Some(normalized_account_id)).is_ok() {
+        crate::account_status::set_account_status(
+            &storage,
+            &account.id,
+            "active",
+            "auth_recovered",
+        );
+        return Ok(AccountAuthRecoveryResult {
+            status: "recovered".to_string(),
+            account_id: account.id,
+            login_id: None,
+            auth_url: None,
+            warning: None,
+        });
+    }
+
+    let recovery_email = resolve_account_recovery_email(&storage, &account)
+        .ok_or_else(|| format!("account {} missing recoverable email", account.id))?;
+
+    crate::account_register::refresh_and_import_register_account_by_email(
+        &recovery_email,
+        account.chatgpt_account_id.clone(),
+        account.workspace_id.clone(),
+    )?;
+    crate::account_status::set_account_status(&storage, &account.id, "active", "auth_recovered");
+
+    Ok(AccountAuthRecoveryResult {
+        status: "recovered".to_string(),
+        account_id: account.id,
+        login_id: None,
+        auth_url: None,
+        warning: None,
+    })
+}
+
+fn resolve_account_recovery_email(storage: &Storage, account: &Account) -> Option<String> {
+    let label = account.label.trim();
+    if label.contains('@') {
+        return Some(label.to_string());
+    }
+
+    let token = storage.find_token_by_account_id(&account.id).ok().flatten()?;
+    for raw_token in [&token.id_token, &token.access_token] {
+        let normalized = raw_token.trim();
+        if normalized.is_empty() {
+            continue;
+        }
+        if let Ok(claims) = parse_id_token_claims(normalized) {
+            if let Some(email) = claims.email.as_deref() {
+                let normalized_email = email.trim();
+                if !normalized_email.is_empty() {
+                    return Some(normalized_email.to_string());
+                }
+            }
+        }
+    }
+
+    None
 }

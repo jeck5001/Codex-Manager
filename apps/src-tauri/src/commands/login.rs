@@ -97,3 +97,16 @@ pub async fn service_chatgpt_auth_tokens_refresh(
     });
     rpc_call_in_background("account/chatgptAuthTokens/refresh", addr, Some(params)).await
 }
+
+#[tauri::command]
+pub async fn service_account_auth_recover(
+    addr: Option<String>,
+    account_id: String,
+    open_browser: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+      "accountId": account_id,
+      "openBrowser": open_browser.unwrap_or(true)
+    });
+    rpc_call_in_background("account/auth/recover", addr, Some(params)).await
+}

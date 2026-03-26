@@ -246,6 +246,156 @@ fn start_mock_oauth_token_server(
     (addr, rx, handle)
 }
 
+fn start_mock_register_service_server(
+    expected_email: String,
+    refreshed_access_token: String,
+    refreshed_refresh_token: String,
+    refreshed_id_token: String,
+    cookies: String,
+) -> (
+    String,
+    std::sync::mpsc::Receiver<(String, String)>,
+    thread::JoinHandle<()>,
+) {
+    let server = Server::http("127.0.0.1:0").expect("start mock register server");
+    let addr = format!("http://{}", server.server_addr());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = thread::spawn(move || {
+        for _ in 0..3 {
+            let request = server.recv().expect("receive register request");
+            let method = request.method().as_str().to_string();
+            let path = request.url().to_string();
+            tx.send((method.clone(), path.clone()))
+                .expect("send register request");
+
+            let response_body = if method == "GET" && path.starts_with("/api/accounts?") {
+                serde_json::json!({
+                    "accounts": [{
+                        "id": 123,
+                        "email": expected_email,
+                        "account_id": "chatgpt-register-fallback",
+                        "workspace_id": "workspace-register-fallback",
+                        "cookies": cookies,
+                    }]
+                })
+                .to_string()
+            } else if method == "POST" && path == "/api/accounts/123/refresh" {
+                serde_json::json!({
+                    "success": true,
+                    "message": "Token refreshed"
+                })
+                .to_string()
+            } else if method == "GET" && path == "/api/accounts/123/tokens" {
+                serde_json::json!({
+                    "access_token": refreshed_access_token,
+                    "refresh_token": refreshed_refresh_token,
+                    "id_token": refreshed_id_token
+                })
+                .to_string()
+            } else {
+                serde_json::json!({
+                    "error": format!("unexpected request: {method} {path}")
+                })
+                .to_string()
+            };
+
+            let response = Response::from_string(response_body)
+                .with_status_code(StatusCode(200))
+                .with_header(
+                    Header::from_bytes("Content-Type", "application/json")
+                        .expect("content-type header"),
+                );
+            request
+                .respond(response)
+                .expect("respond register request");
+        }
+    });
+    (addr, rx, handle)
+}
+
+fn start_mock_register_service_server_email_miss_account_match(
+    missed_email: String,
+    account_search: String,
+    remote_email: String,
+    refreshed_access_token: String,
+    refreshed_refresh_token: String,
+    refreshed_id_token: String,
+    cookies: String,
+) -> (
+    String,
+    std::sync::mpsc::Receiver<(String, String)>,
+    thread::JoinHandle<()>,
+) {
+    let server = Server::http("127.0.0.1:0").expect("start mock register fallback server");
+    let addr = format!("http://{}", server.server_addr());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = thread::spawn(move || {
+        for _ in 0..4 {
+            let request = server.recv().expect("receive register request");
+            let method = request.method().as_str().to_string();
+            let path = request.url().to_string();
+            tx.send((method.clone(), path.clone()))
+                .expect("send register request");
+
+            let response_body = if method == "GET"
+                && path
+                    == format!(
+                        "/api/accounts?page=1&page_size=20&search={}",
+                        urlencoding::encode(&missed_email)
+                    )
+            {
+                serde_json::json!({ "accounts": [] }).to_string()
+            } else if method == "GET"
+                && path
+                    == format!(
+                        "/api/accounts?page=1&page_size=20&search={}",
+                        urlencoding::encode(&account_search)
+                    )
+            {
+                serde_json::json!({
+                    "accounts": [{
+                        "id": 321,
+                        "email": remote_email,
+                        "account_id": account_search,
+                        "workspace_id": "workspace-register-fallback",
+                        "cookies": cookies,
+                    }]
+                })
+                .to_string()
+            } else if method == "POST" && path == "/api/accounts/321/refresh" {
+                serde_json::json!({
+                    "success": true,
+                    "message": "Token refreshed"
+                })
+                .to_string()
+            } else if method == "GET" && path == "/api/accounts/321/tokens" {
+                serde_json::json!({
+                    "access_token": refreshed_access_token,
+                    "refresh_token": refreshed_refresh_token,
+                    "id_token": refreshed_id_token
+                })
+                .to_string()
+            } else {
+                serde_json::json!({
+                    "error": format!("unexpected request: {method} {path}")
+                })
+                .to_string()
+            };
+
+            let response = Response::from_string(response_body)
+                .with_status_code(StatusCode(200))
+                .with_header(
+                    Header::from_bytes("Content-Type", "application/json")
+                        .expect("content-type header"),
+                );
+            request
+                .respond(response)
+                .expect("respond register request");
+        }
+    });
+    (addr, rx, handle)
+}
+
 #[test]
 fn rpc_initialize_roundtrip() {
     let _ctx = RpcTestContext::new("rpc-initialize");
@@ -1000,6 +1150,381 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
         .expect("token exists");
     assert_eq!(token.access_token, refreshed_access_token);
     assert_eq!(token.refresh_token, "refresh-token-new");
+}
+
+#[test]
+fn rpc_account_auth_recover_silently_refreshes_and_reactivates_account() {
+    let ctx = RpcTestContext::new("rpc-account-auth-recover-silent");
+    let refreshed_access_token = build_access_token(
+        "sub-recover",
+        "recovered@example.com",
+        "org-recover",
+        "pro",
+    );
+    let refresh_response = serde_json::json!({
+        "access_token": refreshed_access_token,
+        "refresh_token": "refresh-token-recovered"
+    });
+    let (issuer, refresh_rx, refresh_join) = start_mock_oauth_token_server(
+        200,
+        serde_json::to_string(&refresh_response).expect("serialize refresh response"),
+    );
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
+    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-auth-recover");
+
+    let login_req = JsonRpcRequest {
+        id: 46,
+        method: "account/login/start".to_string(),
+        params: Some(serde_json::json!({
+            "type": "chatgptAuthTokens",
+            "accessToken": build_access_token(
+                "sub-recover",
+                "initial-recover@example.com",
+                "org-recover",
+                "pro"
+            ),
+            "refreshToken": "refresh-token-old",
+            "chatgptAccountId": "org-recover"
+        })),
+    };
+    let login_json = serde_json::to_string(&login_req).expect("serialize login");
+    let login_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let login_resp = post_rpc(&login_server.addr, &login_json);
+    let account_id = login_resp
+        .get("result")
+        .and_then(|value| value.get("accountId"))
+        .and_then(|value| value.as_str())
+        .expect("account id")
+        .to_string();
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage
+        .update_account_status(&account_id, "unavailable")
+        .expect("mark unavailable");
+
+    let recover_req = JsonRpcRequest {
+        id: 47,
+        method: "account/auth/recover".to_string(),
+        params: Some(serde_json::json!({
+            "accountId": account_id
+        })),
+    };
+    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
+    let recover_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
+    let recover_result = recover_resp.get("result").expect("recover result");
+    assert_eq!(
+        recover_result.get("status").and_then(|value| value.as_str()),
+        Some("recovered")
+    );
+    assert_eq!(
+        recover_result
+            .get("accountId")
+            .and_then(|value| value.as_str()),
+        Some(account_id.as_str())
+    );
+
+    let refresh_body = refresh_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive refresh request");
+    refresh_join.join().expect("join mock oauth server");
+    assert!(refresh_body.contains("grant_type=refresh_token"));
+    assert!(refresh_body.contains("refresh_token=refresh-token-old"));
+
+    let updated_account = storage
+        .find_account_by_id(&account_id)
+        .expect("find account")
+        .expect("account exists");
+    assert_eq!(updated_account.status, "active");
+
+    let updated_token = storage
+        .find_token_by_account_id(&account_id)
+        .expect("find token")
+        .expect("token exists");
+    assert_eq!(updated_token.access_token, refreshed_access_token);
+    assert_eq!(updated_token.refresh_token, "refresh-token-recovered");
+}
+
+#[test]
+fn rpc_account_auth_recover_returns_error_when_no_noninteractive_recovery_available() {
+    let ctx = RpcTestContext::new("rpc-account-auth-recover-login");
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let now = now_ts();
+    storage
+        .insert_account(&Account {
+            id: "acc-recover-login".to_string(),
+            label: "Recover Login".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt-recover-login".to_string()),
+            workspace_id: Some("workspace-recover-login".to_string()),
+            group_name: Some("TEAM".to_string()),
+            sort: 0,
+            status: "unavailable".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+
+    let recover_req = JsonRpcRequest {
+        id: 48,
+        method: "account/auth/recover".to_string(),
+        params: Some(serde_json::json!({
+            "accountId": "acc-recover-login",
+            "openBrowser": false
+        })),
+    };
+    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
+    let recover_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
+    let recover_result = recover_resp.get("result").expect("recover result");
+    assert_eq!(
+        recover_result.get("status").and_then(|value| value.as_str()),
+        None
+    );
+    let error_message = recover_result
+        .get("error")
+        .and_then(|value| value.as_str())
+        .expect("error message");
+    assert!(
+        error_message.contains("missing recoverable email")
+            || error_message.contains("register service account not found"),
+        "unexpected error: {error_message}"
+    );
+}
+
+#[test]
+fn rpc_account_auth_recover_falls_back_to_register_service_refresh() {
+    let ctx = RpcTestContext::new("rpc-account-auth-recover-register-fallback");
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-id-register-fallback");
+    let email = "recover-register@example.com";
+    let expired_access_token = build_access_token(
+        "subject-register-old",
+        email,
+        "chatgpt-register-fallback",
+        "free",
+    );
+    let refreshed_access_token = build_access_token(
+        "subject-register-new",
+        email,
+        "chatgpt-register-fallback",
+        "plus",
+    );
+    let refreshed_id_token = build_access_token(
+        "subject-register-new",
+        email,
+        "chatgpt-register-fallback",
+        "plus",
+    );
+    let (issuer, _refresh_rx, oauth_join) = start_mock_oauth_token_server(
+        401,
+        r#"{"error":"invalid_grant","error_description":"refresh token expired"}"#.to_string(),
+    );
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
+    let (register_url, register_rx, register_join) = start_mock_register_service_server(
+        email.to_string(),
+        refreshed_access_token.clone(),
+        "refresh-token-register-new".to_string(),
+        refreshed_id_token.clone(),
+        "cf_clearance=register-cookie; oai-did=device-id".to_string(),
+    );
+    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let now = now_ts();
+    storage
+        .insert_account(&Account {
+            id: "acc-recover-register".to_string(),
+            label: email.to_string(),
+            issuer: issuer.clone(),
+            chatgpt_account_id: Some("chatgpt-register-fallback".to_string()),
+            workspace_id: Some("workspace-register-fallback".to_string()),
+            group_name: Some("TEAM".to_string()),
+            sort: 0,
+            status: "unavailable".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&codexmanager_core::storage::Token {
+            account_id: "acc-recover-register".to_string(),
+            id_token: expired_access_token.clone(),
+            access_token: expired_access_token,
+            refresh_token: "refresh-token-expired".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let recover_req = JsonRpcRequest {
+        id: 49,
+        method: "account/auth/recover".to_string(),
+        params: Some(serde_json::json!({
+            "accountId": "acc-recover-register",
+            "openBrowser": false
+        })),
+    };
+    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
+    let recover_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
+    let recover_result = recover_resp.get("result").expect("recover result");
+    assert_eq!(
+        recover_result.get("status").and_then(|value| value.as_str()),
+        Some("recovered")
+    );
+    assert_eq!(
+        recover_result.get("loginId").and_then(|value| value.as_str()),
+        None
+    );
+    assert_eq!(
+        recover_result.get("authUrl").and_then(|value| value.as_str()),
+        None
+    );
+
+    oauth_join.join().expect("join oauth server");
+    let register_requests = (0..3)
+        .map(|_| {
+            register_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("receive register request")
+        })
+        .collect::<Vec<_>>();
+    register_join.join().expect("join register server");
+    assert_eq!(
+        register_requests,
+        vec![
+            (
+                "GET".to_string(),
+                "/api/accounts?page=1&page_size=20&search=recover-register%40example.com"
+                    .to_string(),
+            ),
+            ("POST".to_string(), "/api/accounts/123/refresh".to_string()),
+            ("GET".to_string(), "/api/accounts/123/tokens".to_string()),
+        ]
+    );
+
+    let updated_account = storage
+        .find_account_by_id("acc-recover-register")
+        .expect("find account")
+        .expect("account exists");
+    assert_eq!(updated_account.status, "active");
+
+    let updated_token = storage
+        .find_token_by_account_id("acc-recover-register")
+        .expect("find token")
+        .expect("token exists");
+    assert_eq!(updated_token.access_token, refreshed_access_token);
+    assert_eq!(updated_token.refresh_token, "refresh-token-register-new");
+    assert_eq!(updated_token.id_token, refreshed_id_token);
+}
+
+#[test]
+fn rpc_account_auth_recover_falls_back_to_register_account_id_when_email_misses() {
+    let ctx = RpcTestContext::new("rpc-account-auth-recover-register-account-id");
+    let local_email = "guavrybt52g@wwjjff.qzz.io";
+    let remote_email = "recover-register@example.com";
+    let account_identity = "chatgpt-register-fallback";
+    let expired_access_token =
+        build_access_token("subject-register-old", local_email, account_identity, "free");
+    let refreshed_access_token =
+        build_access_token("subject-register-new", remote_email, account_identity, "plus");
+    let refreshed_id_token =
+        build_access_token("subject-register-new", remote_email, account_identity, "plus");
+    let (issuer, _refresh_rx, oauth_join) = start_mock_oauth_token_server(
+        401,
+        r#"{"error":"invalid_grant","error_description":"refresh token expired"}"#.to_string(),
+    );
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
+    let (register_url, register_rx, register_join) =
+        start_mock_register_service_server_email_miss_account_match(
+            local_email.to_string(),
+            account_identity.to_string(),
+            remote_email.to_string(),
+            refreshed_access_token.clone(),
+            "refresh-token-register-new".to_string(),
+            refreshed_id_token.clone(),
+            "cf_clearance=register-cookie; oai-did=device-id".to_string(),
+        );
+    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let now = now_ts();
+    storage
+        .insert_account(&Account {
+            id: "acc-recover-register-account-id".to_string(),
+            label: local_email.to_string(),
+            issuer: issuer.clone(),
+            chatgpt_account_id: Some(account_identity.to_string()),
+            workspace_id: Some("workspace-register-fallback".to_string()),
+            group_name: Some("TEAM".to_string()),
+            sort: 0,
+            status: "unavailable".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&codexmanager_core::storage::Token {
+            account_id: "acc-recover-register-account-id".to_string(),
+            id_token: expired_access_token.clone(),
+            access_token: expired_access_token,
+            refresh_token: "refresh-token-expired".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let recover_req = JsonRpcRequest {
+        id: 50,
+        method: "account/auth/recover".to_string(),
+        params: Some(serde_json::json!({
+            "accountId": "acc-recover-register-account-id",
+            "openBrowser": false
+        })),
+    };
+    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
+    let recover_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
+    let recover_result = recover_resp.get("result").expect("recover result");
+    assert_eq!(
+        recover_result.get("status").and_then(|value| value.as_str()),
+        Some("recovered")
+    );
+
+    oauth_join.join().expect("join oauth server");
+    let register_requests = (0..4)
+        .map(|_| {
+            register_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("receive register request")
+        })
+        .collect::<Vec<_>>();
+    register_join.join().expect("join register server");
+    assert_eq!(
+        register_requests,
+        vec![
+            (
+                "GET".to_string(),
+                "/api/accounts?page=1&page_size=20&search=guavrybt52g%40wwjjff.qzz.io".to_string(),
+            ),
+            (
+                "GET".to_string(),
+                "/api/accounts?page=1&page_size=20&search=chatgpt-register-fallback".to_string(),
+            ),
+            ("POST".to_string(), "/api/accounts/321/refresh".to_string()),
+            ("GET".to_string(), "/api/accounts/321/tokens".to_string()),
+        ]
+    );
+
+    let updated_token = storage
+        .find_token_by_account_id("acc-recover-register-account-id")
+        .expect("find token")
+        .expect("token exists");
+    assert_eq!(updated_token.access_token, refreshed_access_token);
+    assert_eq!(updated_token.refresh_token, "refresh-token-register-new");
 }
 
 #[test]

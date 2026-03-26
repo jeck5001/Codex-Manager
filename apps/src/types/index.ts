@@ -676,6 +676,14 @@ export interface LoginStartResult {
   device: DeviceAuthInfo | null;
 }
 
+export interface AccountAuthRecoveryResult {
+  status: string;
+  accountId: string;
+  loginId: string | null;
+  authUrl: string | null;
+  warning: string | null;
+}
+
 export interface CurrentAccessTokenAccount {
   type: string;
   accountId: string;

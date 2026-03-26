@@ -142,6 +142,19 @@ pub struct LoginStartResult {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AccountAuthRecoveryResult {
+    pub status: String,
+    pub account_id: String,
+    #[serde(default)]
+    pub login_id: Option<String>,
+    #[serde(default)]
+    pub auth_url: Option<String>,
+    #[serde(default)]
+    pub warning: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UsageSnapshotResult {
     pub account_id: Option<String>,
     pub availability_status: Option<String>,
