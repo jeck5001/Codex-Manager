@@ -3,9 +3,7 @@ use codexmanager_core::auth::{
     device_verification_url, generate_pkce, generate_state, parse_id_token_claims,
     DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
 };
-use codexmanager_core::rpc::types::{
-    AccountAuthRecoveryResult, DeviceAuthInfo, LoginStartResult,
-};
+use codexmanager_core::rpc::types::{AccountAuthRecoveryResult, DeviceAuthInfo, LoginStartResult};
 use codexmanager_core::storage::{now_ts, Account, Event, LoginSession, Storage};
 
 use crate::auth_callback::{ensure_login_server, resolve_redirect_uri};
@@ -148,7 +146,8 @@ pub(crate) fn recover_account_auth(
         .map_err(|err| err.to_string())?
         .ok_or_else(|| format!("account not found: {normalized_account_id}"))?;
 
-    if crate::auth_account::refresh_current_chatgpt_auth_tokens(Some(normalized_account_id)).is_ok() {
+    if crate::auth_account::refresh_current_chatgpt_auth_tokens(Some(normalized_account_id)).is_ok()
+    {
         crate::account_status::set_account_status(
             &storage,
             &account.id,
@@ -164,23 +163,65 @@ pub(crate) fn recover_account_auth(
         });
     }
 
-    let recovery_email = resolve_account_recovery_email(&storage, &account)
-        .ok_or_else(|| format!("account {} missing recoverable email", account.id))?;
+    let recovery_email = resolve_account_recovery_email(&storage, &account);
+    let mut recovery_errors = Vec::new();
 
-    crate::account_register::refresh_and_import_register_account_by_email(
-        &recovery_email,
-        account.chatgpt_account_id.clone(),
-        account.workspace_id.clone(),
-    )?;
-    crate::account_status::set_account_status(&storage, &account.id, "active", "auth_recovered");
+    if let Some(email) = recovery_email.as_deref() {
+        match crate::account_register::refresh_and_import_register_account_by_email(
+            email,
+            account.chatgpt_account_id.clone(),
+            account.workspace_id.clone(),
+        ) {
+            Ok(_) => {
+                crate::account_status::set_account_status(
+                    &storage,
+                    &account.id,
+                    "active",
+                    "auth_recovered",
+                );
+                return Ok(AccountAuthRecoveryResult {
+                    status: "recovered".to_string(),
+                    account_id: account.id,
+                    login_id: None,
+                    auth_url: None,
+                    warning: None,
+                });
+            }
+            Err(err) => recovery_errors.push(err),
+        }
+    } else {
+        recovery_errors.push(format!("account {} missing recoverable email", account.id));
+    }
 
-    Ok(AccountAuthRecoveryResult {
-        status: "recovered".to_string(),
-        account_id: account.id,
-        login_id: None,
-        auth_url: None,
-        warning: None,
-    })
+    if crate::account_recovery_source::recovery_source_configured() {
+        match crate::account_recovery_source::import_remote_recovery_account(
+            recovery_email.as_deref(),
+            account.chatgpt_account_id.as_deref(),
+            account.workspace_id.as_deref(),
+        ) {
+            Ok(_) => {
+                crate::account_status::set_account_status(
+                    &storage,
+                    &account.id,
+                    "active",
+                    "auth_recovered",
+                );
+                return Ok(AccountAuthRecoveryResult {
+                    status: "recovered".to_string(),
+                    account_id: account.id,
+                    login_id: None,
+                    auth_url: None,
+                    warning: None,
+                });
+            }
+            Err(err) => recovery_errors.push(err),
+        }
+    }
+
+    Err(recovery_errors
+        .into_iter()
+        .find(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| format!("account {} missing recoverable email", account.id)))
 }
 
 fn resolve_account_recovery_email(storage: &Storage, account: &Account) -> Option<String> {
@@ -189,7 +230,10 @@ fn resolve_account_recovery_email(storage: &Storage, account: &Account) -> Optio
         return Some(label.to_string());
     }
 
-    let token = storage.find_token_by_account_id(&account.id).ok().flatten()?;
+    let token = storage
+        .find_token_by_account_id(&account.id)
+        .ok()
+        .flatten()?;
     for raw_token in [&token.id_token, &token.access_token] {
         let normalized = raw_token.trim();
         if normalized.is_empty() {

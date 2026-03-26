@@ -28,6 +28,7 @@ services:
       CODEXMANAGER_DB_PATH: /data/codexmanager.db
       CODEXMANAGER_RPC_TOKEN_FILE: /data/codexmanager.rpc-token
       CODEXMANAGER_REGISTER_SERVICE_URL: http://codexmanager-register:9000
+      CODEXMANAGER_ACCOUNT_RECOVERY_SOURCE_URL: ${CODEXMANAGER_ACCOUNT_RECOVERY_SOURCE_URL:-http://192.168.5.35:48761}
     volumes:
       - ./codexmanager-data:/data
     ports:
