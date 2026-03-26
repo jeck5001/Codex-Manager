@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-03-25
+
+### Added
+- 新增“聚合 API”管理页，支持供应商名称、顺序优先级、按 `Codex / Claude` 分类、连通性测试与最小转发上游管理。
+- 平台密钥新增 `账号轮转 / 聚合 API 轮转` 策略，聚合 API 轮转会按顺序优先命中对应供应商，再继续下一个渠道。
+
+### Fixed
+- 修复桌面端服务启动与页面切换时的自动恢复行为，避免关停后被切页重新拉起，也避免断连时仪表盘误清空数据。
+
+### Changed
+- README、workspace、前端包、Tauri 桌面端与版本一致性校验脚本统一提升到 `0.1.13`。
+
 ## [0.1.12] - 2026-03-20
 
 ### Fixed
@@ -136,7 +148,8 @@
 ### Changed
 - 账号管理页操作区整合为单一“账号操作”下拉菜单，替代右侧多按钮堆叠，界面更简洁。
 
-[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.12...HEAD
+[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.13...HEAD
+[0.1.13]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.13
 [0.1.12]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.12
 [0.1.11]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.10

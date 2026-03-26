@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "CodexManager"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "codexmanager-core",
  "codexmanager-service",
@@ -707,7 +707,7 @@ checksum = "6e4de3bc4ea267985becf712dc6d9eed8b04c953b3fcfb339ebc87acd9804901"
 
 [[package]]
 name = "codexmanager-core"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "base64 0.22.1",
  "rand 0.8.5",
@@ -720,7 +720,7 @@ dependencies = [
 
 [[package]]
 name = "codexmanager-service"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "axum",
  "bytes",
@@ -2335,7 +2335,7 @@ dependencies = [
 
 [[package]]
 name = "libredox"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d0b95e02c851351f877147b7deea7b1afb1df71b63aa5f8270716e0c5720616"
 dependencies = [
@@ -6153,7 +6153,7 @@ dependencies = [
 
 [[package]]
 name = "winres"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b68db261ef59e9e52806f688020631e987592bd83619edccda9c47d42cde4f6c"
 dependencies = [
