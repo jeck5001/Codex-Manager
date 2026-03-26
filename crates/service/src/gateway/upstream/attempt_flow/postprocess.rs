@@ -58,7 +58,7 @@ fn retry_upstream_server_error_once(
     debug: bool,
     status: reqwest::StatusCode,
 ) -> Result<Option<reqwest::blocking::Response>, ()> {
-    if !matches!(status.as_u16(), 500..=599) {
+    if status.as_u16() != 500 {
         return Ok(None);
     }
     if debug {
