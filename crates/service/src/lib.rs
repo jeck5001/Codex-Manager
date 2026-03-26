@@ -43,6 +43,7 @@ pub(crate) use account::list as account_list;
 pub(crate) use account::payment as account_payment;
 pub(crate) use account::plan as account_plan;
 pub(crate) use account::risk as account_risk;
+pub(crate) use account::recovery_source as account_recovery_source;
 pub(crate) use account::register as account_register;
 pub(crate) use account::status as account_status;
 pub(crate) use account::update as account_update;
