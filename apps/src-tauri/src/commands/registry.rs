@@ -97,6 +97,7 @@ macro_rules! invoke_handler {
             crate::commands::login::service_account_read,
             crate::commands::login::service_account_logout,
             crate::commands::login::service_chatgpt_auth_tokens_refresh,
+            crate::commands::login::service_account_auth_recover,
             // api key
             crate::commands::apikey::service_apikey_list,
             crate::commands::apikey::service_apikey_read_secret,

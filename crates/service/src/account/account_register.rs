@@ -578,17 +578,110 @@ fn resolve_remote_account_for_email(email: &str) -> Result<Value, String> {
         .ok_or_else(|| format!("register service account not found for email: {email}"))
 }
 
-fn import_remote_account_for_email(
+fn find_remote_account_by_field<'a>(
+    items: &'a [Value],
+    field: &str,
+    expected: &str,
+) -> Option<&'a Value> {
+    let normalized = expected.trim();
+    if normalized.is_empty() {
+        return None;
+    }
+    items.iter().find(|item| {
+        item.get(field)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .map(|value| value.eq_ignore_ascii_case(normalized))
+            .unwrap_or(false)
+    })
+}
+
+fn search_remote_accounts(search: &str) -> Result<Vec<Value>, String> {
+    let payload = register_get_json_with_query(
+        "/api/accounts",
+        &[
+            ("page".to_string(), "1".to_string()),
+            ("page_size".to_string(), "20".to_string()),
+            ("search".to_string(), search.to_string()),
+        ],
+    )?;
+    payload
+        .get("accounts")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| "register service accounts response missing accounts".to_string())
+}
+
+fn resolve_remote_account(
+    email_hint: Option<&str>,
+    chatgpt_account_id_hint: Option<&str>,
+    workspace_id_hint: Option<&str>,
+) -> Result<Value, String> {
+    if let Some(email) = email_hint.map(str::trim).filter(|value| !value.is_empty()) {
+        if let Ok(account) = resolve_remote_account_for_email(email) {
+            return Ok(account);
+        }
+    }
+
+    if let Some(account_id) = chatgpt_account_id_hint
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let items = search_remote_accounts(account_id)?;
+        if let Some(account) = find_remote_account_by_field(&items, "account_id", account_id) {
+            return Ok(account.clone());
+        }
+    }
+
+    if let Some(workspace_id) = workspace_id_hint
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let items = search_remote_accounts(workspace_id)?;
+        if let Some(account) = find_remote_account_by_field(&items, "workspace_id", workspace_id) {
+            return Ok(account.clone());
+        }
+    }
+
+    let mut reasons = Vec::new();
+    if let Some(email) = email_hint.map(str::trim).filter(|value| !value.is_empty()) {
+        reasons.push(format!("email: {email}"));
+    }
+    if let Some(account_id) = chatgpt_account_id_hint
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        reasons.push(format!("account_id: {account_id}"));
+    }
+    if let Some(workspace_id) = workspace_id_hint
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        reasons.push(format!("workspace_id: {workspace_id}"));
+    }
+    Err(format!(
+        "register service account not found for identity: {}",
+        reasons.join(", ")
+    ))
+}
+
+fn import_remote_account(
+    remote_account: &Value,
     email: &str,
     chatgpt_account_id_hint: Option<String>,
     workspace_id_hint: Option<String>,
 ) -> Result<Value, String> {
-    let normalized_email = email.trim();
-    if normalized_email.is_empty() {
-        return Err("email is required".to_string());
-    }
+    let normalized_email = remote_account_string_field(remote_account, "email")
+        .or_else(|| {
+            let normalized = email.trim();
+            if normalized.is_empty() {
+                None
+            } else {
+                Some(normalized.to_string())
+            }
+        })
+        .ok_or_else(|| "email is required".to_string())?;
 
-    let remote_account = resolve_remote_account_for_email(normalized_email)?;
     let remote_account_id = remote_account
         .get("id")
         .and_then(Value::as_i64)
@@ -646,6 +739,71 @@ fn import_remote_account_for_email(
         "workspaceId": imported.workspace_id,
         "type": imported.kind,
     }))
+}
+
+fn import_remote_account_for_email(
+    email: &str,
+    chatgpt_account_id_hint: Option<String>,
+    workspace_id_hint: Option<String>,
+) -> Result<Value, String> {
+    let remote_account = resolve_remote_account(
+        Some(email),
+        chatgpt_account_id_hint.as_deref(),
+        workspace_id_hint.as_deref(),
+    )?;
+    import_remote_account(
+        &remote_account,
+        email,
+        chatgpt_account_id_hint,
+        workspace_id_hint,
+    )
+}
+
+pub(crate) fn refresh_and_import_register_account_by_email(
+    email: &str,
+    chatgpt_account_id_hint: Option<String>,
+    workspace_id_hint: Option<String>,
+) -> Result<Value, String> {
+    let remote_account = resolve_remote_account(
+        Some(email),
+        chatgpt_account_id_hint.as_deref(),
+        workspace_id_hint.as_deref(),
+    )?;
+    let remote_account_id = remote_account
+        .get("id")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| "register service account missing id".to_string())?;
+    let refresh_payload = register_post_json(
+        &format!("/api/accounts/{remote_account_id}/refresh"),
+        &json!({}),
+    )?;
+    let refresh_success = refresh_payload
+        .get("success")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if !refresh_success {
+        let error_message = refresh_payload
+            .get("error")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                refresh_payload
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+            })
+            .unwrap_or("register service refresh failed");
+        return Err(error_message.to_string());
+    }
+
+    import_remote_account(
+        &remote_account,
+        email,
+        chatgpt_account_id_hint,
+        workspace_id_hint,
+    )
 }
 
 pub(crate) fn available_register_services() -> Result<Value, String> {

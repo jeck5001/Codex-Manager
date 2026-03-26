@@ -158,6 +158,13 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   },
   service_account_read: { rpcMethod: "account/read" },
   service_account_logout: { rpcMethod: "account/logout" },
+  service_account_auth_recover: {
+    rpcMethod: "account/auth/recover",
+    mapParams: (params) => ({
+      ...(params ?? {}),
+      openBrowser: false,
+    }),
+  },
   service_chatgpt_auth_tokens_refresh: {
     rpcMethod: "account/chatgptAuthTokens/refresh",
   },

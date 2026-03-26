@@ -690,6 +690,11 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 ))
             }
         }
+        "account/auth/recover" => {
+            let account_id = super::str_param(req, "accountId").unwrap_or("");
+            let open_browser = super::bool_param(req, "openBrowser").unwrap_or(true);
+            super::value_or_error(auth_login::recover_account_auth(account_id, open_browser))
+        }
         "account/login/status" => {
             let login_id = super::str_param(req, "loginId").unwrap_or("");
             super::as_json(auth_login::login_status(login_id))
