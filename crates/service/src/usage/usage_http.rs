@@ -19,7 +19,9 @@ const REFRESH_TOKEN_INVALIDATED_MESSAGE: &str =
     "Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.";
 const REFRESH_TOKEN_UNKNOWN_MESSAGE: &str =
     "Your access token could not be refreshed. Please log out and sign in again.";
+const SESSION_REFRESH_URL: &str = "https://chatgpt.com/api/auth/session";
 const REFRESH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
+const SESSION_REFRESH_URL_OVERRIDE_ENV_VAR: &str = "CODEX_SESSION_REFRESH_URL_OVERRIDE";
 const REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REFRESH_TOKEN_URL_OVERRIDE";
 const RESIDENCY_HEADER_NAME: &str = "x-openai-internal-codex-residency";
 const CHATGPT_ACCOUNT_ID_HEADER_NAME: &str = "ChatGPT-Account-ID";
@@ -63,6 +65,12 @@ pub(crate) struct RefreshTokenResponse {
     pub(crate) refresh_token: Option<String>,
     #[serde(default)]
     pub(crate) id_token: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct SessionRefreshResponse {
+    #[serde(rename = "accessToken")]
+    access_token: Option<String>,
 }
 
 fn extract_refresh_token_error_code(body: &str) -> Option<String> {
@@ -340,6 +348,14 @@ fn resolve_refresh_token_url(issuer: &str) -> String {
     format!("{normalized_issuer}/oauth/token")
 }
 
+fn resolve_session_refresh_url() -> String {
+    std::env::var(SESSION_REFRESH_URL_OVERRIDE_ENV_VAR)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| SESSION_REFRESH_URL.to_string())
+}
+
 fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)
@@ -525,6 +541,55 @@ pub(crate) fn refresh_access_token(
     }
     resp.json::<RefreshTokenResponse>()
         .map_err(|e| format!("read refresh token response json failed: {e}"))
+}
+
+pub(crate) fn refresh_access_token_with_session_cookies(cookies: &str) -> Result<String, String> {
+    let normalized_cookies = cookies.trim();
+    if normalized_cookies.is_empty() {
+        return Err("session cookies are empty".to_string());
+    }
+
+    let session_refresh_url = resolve_session_refresh_url();
+    let build_request = || {
+        let client = usage_http_client();
+        client
+            .get(session_refresh_url.clone())
+            .header("Accept", "application/json")
+            .header("Cookie", normalized_cookies.to_string())
+    };
+    let resp = match build_request().send() {
+        Ok(resp) => resp,
+        Err(first_err) => {
+            rebuild_usage_http_client();
+            let retried = build_request().send();
+            match retried {
+                Ok(resp) => resp,
+                Err(second_err) => {
+                    return Err(format!(
+                        "{}; retry_after_client_rebuild: {}",
+                        first_err, second_err
+                    ));
+                }
+            }
+        }
+    };
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = resp.text().unwrap_or_default();
+        return Err(format!(
+            "session cookie refresh failed: {}",
+            summarize_usage_error_response(status, &headers, &body, false)
+        ));
+    }
+    let payload = resp
+        .json::<SessionRefreshResponse>()
+        .map_err(|e| format!("read session refresh response json failed: {e}"))?;
+    payload
+        .access_token
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "session refresh response missing accessToken".to_string())
 }
 
 fn build_refresh_token_body(client_id: &str, refresh_token: &str) -> String {

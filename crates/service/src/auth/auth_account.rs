@@ -1,6 +1,6 @@
 use codexmanager_core::auth::{
-    extract_chatgpt_account_id, extract_workspace_id, parse_id_token_claims, DEFAULT_CLIENT_ID,
-    DEFAULT_ISSUER,
+    extract_chatgpt_account_id, extract_token_exp, extract_workspace_id, parse_id_token_claims,
+    DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
 };
 use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 use serde::Serialize;
@@ -288,15 +288,13 @@ pub(crate) fn refresh_current_chatgpt_auth_tokens(
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let (account, mut token) = resolve_refresh_target(&storage, previous_account_id)?
         .ok_or_else(|| "no current chatgptAuthTokens account".to_string())?;
-    if token.refresh_token.trim().is_empty() {
-        return Err("current account does not have refresh_token".to_string());
-    }
-
     let issuer =
         std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
     let client_id =
         std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
-    if let Err(err) = refresh_and_persist_access_token(&storage, &mut token, &issuer, &client_id) {
+    if let Err(err) =
+        refresh_chatgpt_auth_tokens_with_fallback(&storage, &account, &mut token, &issuer, &client_id)
+    {
         let _ = mark_account_unavailable_for_refresh_token_error(&storage, &account.id, &err);
         return Err(err);
     }
@@ -324,6 +322,53 @@ pub(crate) fn refresh_current_chatgpt_auth_tokens(
             .map(|plan| plan.normalized.clone()),
         chatgpt_plan_type_raw: plan_type_resolution.and_then(|plan| plan.raw),
     })
+}
+
+fn refresh_chatgpt_auth_tokens_with_fallback(
+    storage: &Storage,
+    account: &Account,
+    token: &mut Token,
+    issuer: &str,
+    client_id: &str,
+) -> Result<(), String> {
+    let refresh_error = if token.refresh_token.trim().is_empty() {
+        Some("current account does not have refresh_token".to_string())
+    } else if let Err(err) = refresh_and_persist_access_token(storage, token, issuer, client_id) {
+        Some(err)
+    } else {
+        return Ok(());
+    };
+
+    let cookies = crate::account_payment::read_account_cookies(&account.id)
+        .ok_or_else(|| refresh_error.clone().unwrap_or_default())?;
+    match crate::usage_http::refresh_access_token_with_session_cookies(&cookies) {
+        Ok(access_token) => persist_session_refreshed_access_token(storage, token, &access_token),
+        Err(session_err) => Err(match refresh_error {
+            Some(refresh_err) if !refresh_err.trim().is_empty() => {
+                format!("{refresh_err}; {session_err}")
+            }
+            _ => session_err,
+        }),
+    }
+}
+
+fn persist_session_refreshed_access_token(
+    storage: &Storage,
+    token: &mut Token,
+    access_token: &str,
+) -> Result<(), String> {
+    let normalized_access_token = access_token.trim();
+    if normalized_access_token.is_empty() {
+        return Err("session refreshed access token is empty".to_string());
+    }
+
+    token.access_token = normalized_access_token.to_string();
+    token.last_refresh = now_ts();
+    storage.insert_token(token).map_err(|err| err.to_string())?;
+    let access_exp = extract_token_exp(&token.access_token);
+    let next_refresh_at = access_exp.map(|exp| exp.saturating_sub(600));
+    let _ = storage.update_token_refresh_schedule(&token.account_id, access_exp, next_refresh_at);
+    Ok(())
 }
 
 pub(crate) fn logout_current_account() -> Result<serde_json::Value, String> {

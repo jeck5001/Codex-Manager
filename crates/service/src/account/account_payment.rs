@@ -263,7 +263,7 @@ pub(crate) fn store_account_cookies(
     })
 }
 
-fn account_cookies(account_id: &str) -> Option<String> {
+pub(crate) fn read_account_cookies(account_id: &str) -> Option<String> {
     read_session_state_map()
         .get(account_id.trim())
         .and_then(|entry| entry.cookies.clone())
@@ -519,7 +519,7 @@ pub(crate) fn generate_payment_link(
     };
     let link = generate_checkout_link(CheckoutLinkArgs {
         access_token: &token.access_token,
-        cookies: account_cookies(&account.id).as_deref(),
+        cookies: read_account_cookies(&account.id).as_deref(),
         plan_type: normalized_plan,
         workspace_name: workspace_name
             .map(str::trim)

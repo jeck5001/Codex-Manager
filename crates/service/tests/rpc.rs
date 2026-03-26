@@ -246,6 +246,34 @@ fn start_mock_oauth_token_server(
     (addr, rx, handle)
 }
 
+fn start_mock_session_refresh_server(
+    response_body: String,
+) -> (String, std::sync::mpsc::Receiver<String>, thread::JoinHandle<()>) {
+    let server = Server::http("127.0.0.1:0").expect("start mock session refresh server");
+    let addr = format!("http://{}", server.server_addr());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = thread::spawn(move || {
+        let request = server.recv().expect("receive session refresh request");
+        let cookie_header = request
+            .headers()
+            .iter()
+            .find(|header| header.field.equiv("Cookie"))
+            .map(|header| header.value.as_str().to_string())
+            .unwrap_or_default();
+        tx.send(cookie_header).expect("send session refresh cookie");
+        let response = Response::from_string(response_body)
+            .with_status_code(StatusCode(200))
+            .with_header(
+                Header::from_bytes("Content-Type", "application/json")
+                    .expect("content-type header"),
+            );
+        request
+            .respond(response)
+            .expect("respond session refresh request");
+    });
+    (addr, rx, handle)
+}
+
 fn start_mock_register_service_server(
     expected_email: String,
     refreshed_access_token: String,
@@ -1525,6 +1553,95 @@ fn rpc_account_auth_recover_falls_back_to_register_account_id_when_email_misses(
         .expect("token exists");
     assert_eq!(updated_token.access_token, refreshed_access_token);
     assert_eq!(updated_token.refresh_token, "refresh-token-register-new");
+}
+
+#[test]
+fn rpc_account_auth_recover_falls_back_to_session_cookies_when_refresh_token_reused() {
+    let ctx = RpcTestContext::new("rpc-account-auth-recover-session-cookie");
+    let email = "recover-session@example.com";
+    let account_identity = "workspace-session-recover";
+    let expired_access_token =
+        build_access_token("subject-session-old", email, account_identity, "free");
+    let refreshed_access_token =
+        build_access_token("subject-session-new", email, account_identity, "plus");
+    let (issuer, _refresh_rx, oauth_join) = start_mock_oauth_token_server(
+        401,
+        r#"{"error":"refresh_token_reused"}"#.to_string(),
+    );
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
+    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-session-cookie");
+    let (session_url, session_rx, session_join) = start_mock_session_refresh_server(
+        serde_json::json!({
+            "accessToken": refreshed_access_token,
+            "expires": "2026-03-26T16:00:00Z"
+        })
+        .to_string(),
+    );
+    let _session_url_guard =
+        EnvGuard::set("CODEX_SESSION_REFRESH_URL_OVERRIDE", &session_url);
+
+    let login_server = codexmanager_service::start_one_shot_server().expect("start login server");
+    let login_req = JsonRpcRequest {
+        id: 60,
+        method: "account/login/start".to_string(),
+        params: Some(serde_json::json!({
+            "type": "chatgptAuthTokens",
+            "accessToken": expired_access_token,
+            "refreshToken": "refresh-token-reused",
+            "idToken": "",
+            "cookies": "__Secure-next-auth.session-token=session-recover; oai-did=device-123",
+            "email": email,
+            "chatgptAccountId": account_identity,
+            "workspaceId": account_identity,
+        })),
+    };
+    let login_json = serde_json::to_string(&login_req).expect("serialize login");
+    let login_resp = post_rpc(&login_server.addr, &login_json);
+    let login_result = login_resp.get("result").expect("login result");
+    let account_id = login_result
+        .get("accountId")
+        .and_then(|value| value.as_str())
+        .expect("account id");
+
+    let recover_req = JsonRpcRequest {
+        id: 61,
+        method: "account/auth/recover".to_string(),
+        params: Some(serde_json::json!({
+            "accountId": account_id,
+            "openBrowser": false
+        })),
+    };
+    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
+    let recover_server = codexmanager_service::start_one_shot_server().expect("start recover server");
+    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
+    let recover_result = recover_resp.get("result").expect("recover result");
+    assert_eq!(
+        recover_result.get("status").and_then(|value| value.as_str()),
+        Some("recovered")
+    );
+
+    oauth_join.join().expect("join oauth server");
+    let cookie_header = session_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive session refresh cookie");
+    session_join.join().expect("join session server");
+    assert!(
+        cookie_header.contains("__Secure-next-auth.session-token=session-recover"),
+        "unexpected cookie header: {cookie_header}"
+    );
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    let updated_token = storage
+        .find_token_by_account_id(account_id)
+        .expect("find token")
+        .expect("token exists");
+    assert_eq!(updated_token.access_token, build_access_token(
+        "subject-session-new",
+        email,
+        account_identity,
+        "plus"
+    ));
+    assert_eq!(updated_token.refresh_token, "refresh-token-reused");
 }
 
 #[test]
