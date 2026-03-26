@@ -185,3 +185,5 @@
 - 交流群：答案是项目名：CodexManager
 
   <img src="assets/images/qq_group.jpg" alt="交流群二维码" width="280" />
+
+- Telegram 群聊：[CodexManager TG 群](https://t.me/+OdpFa9GvjxhjMDhl)

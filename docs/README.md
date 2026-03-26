@@ -102,3 +102,6 @@ yyyyMMddHHmmssfff_主题.md
 - 架构总览继续维护在 `ARCHITECTURE.md`。
 - 协作规范继续维护在 `CONTRIBUTING.md`。
 - 不要把未发版更新同时写进多个长文档；需要对外说明时，优先补 `CHANGELOG.md`，README 只保留摘要和入口。
+
+## 联系方式
+- Telegram 群聊：[CodexManager TG 群](https://t.me/+OdpFa9GvjxhjMDhl)

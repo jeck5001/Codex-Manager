@@ -171,6 +171,7 @@ If this project helps you, you are welcome to support its ongoing maintenance an
 ## Contact Information
 - Official Account: 七线牛马
 - WeChat: ProsperGao
+- Telegram group: [CodexManager TG Group](https://t.me/+OdpFa9GvjxhjMDhl)
 - Community Group:
 
   <img src="assets/images/qq_group.jpg" alt="Community Group QR Code" width="280" />
