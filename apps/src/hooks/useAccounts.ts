@@ -560,7 +560,7 @@ export function useAccounts() {
         )
       );
     }
-    await accountClient.refreshUsage(accountId);
+    await accountClient.refreshUsage(recovery.accountId || accountId);
     await invalidateAll();
     toast.success("已自动恢复登录并刷新用量");
   };
