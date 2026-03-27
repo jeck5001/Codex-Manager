@@ -36,9 +36,15 @@ interface AccountImportResult {
   created?: number;
   updated?: number;
   failed?: number;
+  errors?: AccountImportError[];
   fileCount?: number;
   directoryPath?: string;
   contents?: string[];
+}
+
+interface AccountImportError {
+  index: number;
+  message: string;
 }
 
 interface AccountExportResult {
@@ -96,6 +102,93 @@ interface AggregateApiPayload {
   key?: string | null;
 }
 
+const MAX_IMPORT_RPC_BODY_BYTES = 4 * 1024 * 1024;
+const MAX_IMPORT_ERROR_ITEMS = 50;
+
+function createEmptyImportResult(): AccountImportResult {
+  return {
+    total: 0,
+    created: 0,
+    updated: 0,
+    failed: 0,
+    errors: [],
+  };
+}
+
+function estimateImportRequestBytes(contents: string[]): number {
+  return new Blob([JSON.stringify({ contents })]).size;
+}
+
+function splitImportContents(contents: string[]): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+
+  for (const content of contents) {
+    const next = current.concat(content);
+    if (current.length > 0 && estimateImportRequestBytes(next) > MAX_IMPORT_RPC_BODY_BYTES) {
+      chunks.push(current);
+      current = [content];
+      if (estimateImportRequestBytes(current) > MAX_IMPORT_RPC_BODY_BYTES) {
+        throw new Error("单条导入内容过大，请拆分后重试");
+      }
+      continue;
+    }
+
+    current = next;
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
+function mergeImportResult(
+  target: AccountImportResult,
+  source: AccountImportResult,
+  indexOffset: number
+) {
+  target.total = (target.total || 0) + (source.total || 0);
+  target.created = (target.created || 0) + (source.created || 0);
+  target.updated = (target.updated || 0) + (source.updated || 0);
+  target.failed = (target.failed || 0) + (source.failed || 0);
+
+  const errors = source.errors || [];
+  if (!target.errors) {
+    target.errors = [];
+  }
+  for (const error of errors) {
+    if (target.errors.length >= MAX_IMPORT_ERROR_ITEMS) {
+      break;
+    }
+    target.errors.push({
+      index: (error.index || 0) + indexOffset,
+      message: error.message || "",
+    });
+  }
+}
+
+async function importAccountContents(contents: string[]): Promise<AccountImportResult> {
+  const batches = splitImportContents(contents);
+  if (batches.length === 0) {
+    return createEmptyImportResult();
+  }
+
+  const merged = createEmptyImportResult();
+  let processed = 0;
+  for (const batch of batches) {
+    const imported = await invoke<AccountImportResult>(
+      "service_account_import",
+      withAddr({ contents: batch })
+    );
+    mergeImportResult(merged, imported, processed);
+    processed += batch.length;
+  }
+
+  return merged;
+}
+
 export const accountClient = {
   async list(params?: Record<string, unknown>): Promise<AccountListResult> {
     const result = await invoke<unknown>("service_account_list", withAddr(params));
@@ -130,8 +223,7 @@ export const accountClient = {
     invoke("service_account_update", withAddr({ accountId, status: "disabled" })),
   enableAccount: (accountId: string) =>
     invoke("service_account_update", withAddr({ accountId, status: "active" })),
-  import: (contents: string[]) =>
-    invoke<AccountImportResult>("service_account_import", withAddr({ contents })),
+  import: importAccountContents,
   async importByDirectory(): Promise<AccountImportResult> {
     const picked = await invoke<AccountImportResult>(
       "service_account_import_by_directory",
@@ -141,10 +233,7 @@ export const accountClient = {
       return picked;
     }
 
-    const imported = await invoke<AccountImportResult>(
-      "service_account_import",
-      withAddr({ contents: picked.contents })
-    );
+    const imported = await importAccountContents(picked.contents);
     return {
       ...imported,
       canceled: false,
@@ -161,10 +250,7 @@ export const accountClient = {
       return picked;
     }
 
-    const imported = await invoke<AccountImportResult>(
-      "service_account_import",
-      withAddr({ contents: picked.contents })
-    );
+    const imported = await importAccountContents(picked.contents);
     return {
       ...imported,
       canceled: false,
