@@ -10,6 +10,8 @@ const ENV_REGISTER_SERVICE_URL: &str = "CODEXMANAGER_REGISTER_SERVICE_URL";
 const DEFAULT_REGISTER_SERVICE_URL: &str = "http://127.0.0.1:9000";
 const REGISTER_BATCH_AUTO_IMPORT_POLL_INTERVAL_SECS: u64 = 3;
 const REGISTER_BATCH_AUTO_IMPORT_TIMEOUT_SECS: u64 = 30 * 60;
+const REGISTER_RECOVERY_AUTO_LOGIN_POLL_INTERVAL_SECS: u64 = 3;
+const REGISTER_RECOVERY_AUTO_LOGIN_TIMEOUT_SECS: u64 = 20 * 60;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,6 +73,12 @@ pub(crate) struct CreateRegisterProxyInput<'a> {
     pub password: Option<&'a str>,
     pub enabled: bool,
     pub priority: i64,
+}
+
+#[derive(Debug, Clone)]
+struct AutoRegisterRecoveryPlan {
+    service_type: String,
+    email_service_id: Option<i64>,
 }
 
 impl RegisterTaskReadResponse {
@@ -806,6 +814,59 @@ pub(crate) fn refresh_and_import_register_account_by_email(
     )
 }
 
+pub(crate) fn auto_register_and_import_account() -> Result<Value, String> {
+    let plan = resolve_auto_register_recovery_plan()?;
+    let started = register_post_json(
+        "/api/registration/batch",
+        &json!({
+            "email_service_type": plan.service_type,
+            "email_service_id": plan.email_service_id,
+            "proxy": Value::Null,
+            "count": 1,
+            "interval_min": 0,
+            "interval_max": 0,
+            "concurrency": 1,
+            "mode": "parallel",
+        }),
+    )?;
+    let task_uuid = task_uuid_strings_from_payload(&started)
+        .into_iter()
+        .next()
+        .ok_or_else(|| "register auto login returned no task uuid".to_string())?;
+    let deadline =
+        std::time::Instant::now() + Duration::from_secs(REGISTER_RECOVERY_AUTO_LOGIN_TIMEOUT_SECS);
+
+    while std::time::Instant::now() < deadline {
+        let snapshot = read_register_task(task_uuid.as_str())?;
+        if is_register_task_terminal(snapshot.status()) {
+            if snapshot.can_import() {
+                let mut imported = import_register_task(task_uuid.as_str())?;
+                if let Some(object) = imported.as_object_mut() {
+                    object.insert(
+                        "recoveryMode".to_string(),
+                        Value::String("registerAutoLogin".to_string()),
+                    );
+                }
+                return Ok(imported);
+            }
+            return Err(format!(
+                "register auto login task {} ended with status {}: {}",
+                task_uuid,
+                snapshot.status(),
+                snapshot.error_message().unwrap_or("not importable")
+            ));
+        }
+        thread::sleep(Duration::from_secs(
+            REGISTER_RECOVERY_AUTO_LOGIN_POLL_INTERVAL_SECS,
+        ));
+    }
+
+    Err(format!(
+        "register auto login task timed out: {}",
+        task_uuid
+    ))
+}
+
 pub(crate) fn available_register_services() -> Result<Value, String> {
     let mut payload = register_get_json("/api/registration/available-services")?;
     if let Some(object) = payload.as_object_mut() {
@@ -1388,6 +1449,69 @@ pub(crate) fn import_register_task(task_uuid: &str) -> Result<Value, String> {
 
 pub(crate) fn import_register_account_by_email(email: &str) -> Result<Value, String> {
     import_remote_account_for_email(email, None, None)
+}
+
+fn resolve_auto_register_recovery_plan() -> Result<AutoRegisterRecoveryPlan, String> {
+    let payload = available_register_services()?;
+
+    if recovery_group_available(&payload, &["tempmail"]) {
+        return Ok(AutoRegisterRecoveryPlan {
+            service_type: "tempmail".to_string(),
+            email_service_id: None,
+        });
+    }
+    if let Some(id) = first_recovery_service_id_from_group(
+        &payload,
+        &["customDomain", "custom_domain", "custom-domain"],
+    ) {
+        return Ok(AutoRegisterRecoveryPlan {
+            service_type: "custom_domain".to_string(),
+            email_service_id: Some(id),
+        });
+    }
+    if let Some(id) = first_recovery_service_id_from_group(&payload, &["outlook"]) {
+        return Ok(AutoRegisterRecoveryPlan {
+            service_type: "outlook".to_string(),
+            email_service_id: Some(id),
+        });
+    }
+    if let Some(id) =
+        first_recovery_service_id_from_group(&payload, &["tempMail", "temp_mail"])
+    {
+        return Ok(AutoRegisterRecoveryPlan {
+            service_type: "temp_mail".to_string(),
+            email_service_id: Some(id),
+        });
+    }
+
+    Err("no available email service for register auto login".to_string())
+}
+
+fn recovery_group_available(payload: &Value, keys: &[&str]) -> bool {
+    keys.iter().any(|key| {
+        payload
+            .get(*key)
+            .and_then(Value::as_object)
+            .and_then(|group| group.get("available"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    })
+}
+
+fn first_recovery_service_id_from_group(payload: &Value, keys: &[&str]) -> Option<i64> {
+    keys.iter().find_map(|key| {
+        payload
+            .get(*key)
+            .and_then(Value::as_object)
+            .and_then(|group| group.get("services"))
+            .and_then(Value::as_array)
+            .and_then(|items| {
+                items.iter().find_map(|item| {
+                    let id = item.get("id").and_then(Value::as_i64)?;
+                    (id > 0).then_some(id)
+                })
+            })
+    })
 }
 
 #[cfg(test)]

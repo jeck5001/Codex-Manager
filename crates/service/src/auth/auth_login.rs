@@ -9,6 +9,31 @@ use codexmanager_core::storage::{now_ts, Account, Event, LoginSession, Storage};
 use crate::auth_callback::{ensure_login_server, resolve_redirect_uri};
 use crate::storage_helpers::open_storage;
 
+fn recovered_account_result(account_id: String) -> AccountAuthRecoveryResult {
+    AccountAuthRecoveryResult {
+        status: "recovered".to_string(),
+        account_id,
+        login_id: None,
+        auth_url: None,
+        warning: None,
+    }
+}
+
+fn activate_recovered_account(storage: &Storage, account_id: &str) {
+    crate::account_status::set_account_status(storage, account_id, "active", "auth_recovered");
+}
+
+fn imported_account_id(payload: &serde_json::Value) -> Result<String, String> {
+    payload
+        .get("accountId")
+        .or_else(|| payload.get("account_id"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| "recovery import result missing accountId".to_string())
+}
+
 pub(crate) fn login_start(
     login_type: &str,
     open_browser: bool,
@@ -148,50 +173,12 @@ pub(crate) fn recover_account_auth(
 
     if crate::auth_account::refresh_current_chatgpt_auth_tokens(Some(normalized_account_id)).is_ok()
     {
-        crate::account_status::set_account_status(
-            &storage,
-            &account.id,
-            "active",
-            "auth_recovered",
-        );
-        return Ok(AccountAuthRecoveryResult {
-            status: "recovered".to_string(),
-            account_id: account.id,
-            login_id: None,
-            auth_url: None,
-            warning: None,
-        });
+        activate_recovered_account(&storage, &account.id);
+        return Ok(recovered_account_result(account.id));
     }
 
     let recovery_email = resolve_account_recovery_email(&storage, &account);
     let mut recovery_errors = Vec::new();
-
-    if let Some(email) = recovery_email.as_deref() {
-        match crate::account_register::refresh_and_import_register_account_by_email(
-            email,
-            account.chatgpt_account_id.clone(),
-            account.workspace_id.clone(),
-        ) {
-            Ok(_) => {
-                crate::account_status::set_account_status(
-                    &storage,
-                    &account.id,
-                    "active",
-                    "auth_recovered",
-                );
-                return Ok(AccountAuthRecoveryResult {
-                    status: "recovered".to_string(),
-                    account_id: account.id,
-                    login_id: None,
-                    auth_url: None,
-                    warning: None,
-                });
-            }
-            Err(err) => recovery_errors.push(err),
-        }
-    } else {
-        recovery_errors.push(format!("account {} missing recoverable email", account.id));
-    }
 
     if crate::account_recovery_source::recovery_source_configured() {
         match crate::account_recovery_source::import_remote_recovery_account(
@@ -199,23 +186,39 @@ pub(crate) fn recover_account_auth(
             account.chatgpt_account_id.as_deref(),
             account.workspace_id.as_deref(),
         ) {
-            Ok(_) => {
-                crate::account_status::set_account_status(
-                    &storage,
-                    &account.id,
-                    "active",
-                    "auth_recovered",
-                );
-                return Ok(AccountAuthRecoveryResult {
-                    status: "recovered".to_string(),
-                    account_id: account.id,
-                    login_id: None,
-                    auth_url: None,
-                    warning: None,
-                });
+            Ok(imported) => {
+                let recovered_account_id = imported_account_id(&imported)?;
+                activate_recovered_account(&storage, recovered_account_id.as_str());
+                return Ok(recovered_account_result(recovered_account_id));
             }
             Err(err) => recovery_errors.push(err),
         }
+    }
+
+    if let Some(email) = recovery_email.as_deref() {
+        match crate::account_register::refresh_and_import_register_account_by_email(
+            email,
+            account.chatgpt_account_id.clone(),
+            account.workspace_id.clone(),
+        ) {
+            Ok(imported) => {
+                let recovered_account_id = imported_account_id(&imported)?;
+                activate_recovered_account(&storage, recovered_account_id.as_str());
+                return Ok(recovered_account_result(recovered_account_id));
+            }
+            Err(err) => recovery_errors.push(err),
+        }
+    } else {
+        recovery_errors.push(format!("account {} missing recoverable email", account.id));
+    }
+
+    match crate::account_register::auto_register_and_import_account() {
+        Ok(imported) => {
+            let recovered_account_id = imported_account_id(&imported)?;
+            activate_recovered_account(&storage, recovered_account_id.as_str());
+            return Ok(recovered_account_result(recovered_account_id));
+        }
+        Err(err) => recovery_errors.push(err),
     }
 
     Err(recovery_errors
