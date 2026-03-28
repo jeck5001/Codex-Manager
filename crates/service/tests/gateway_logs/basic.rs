@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn gateway_logs_invalid_api_key_error() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-logs");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -54,7 +54,7 @@ fn gateway_logs_invalid_api_key_error() {
 
 #[test]
 fn gateway_tolerates_non_ascii_turn_metadata_header() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-logs-nonascii");
     let db_path: PathBuf = dir.join("codexmanager.db");
 

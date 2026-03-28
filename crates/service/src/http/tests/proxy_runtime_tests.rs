@@ -42,6 +42,7 @@ fn local_backend_client_builds_without_system_proxy() {
 
 #[test]
 fn request_without_content_length_over_limit_returns_413() {
+    let _guard = crate::test_env_guard();
     let _guard = EnvGuard::set("CODEXMANAGER_FRONT_PROXY_MAX_BODY_BYTES", "8");
     crate::gateway::reload_runtime_config_from_env();
 

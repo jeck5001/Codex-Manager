@@ -201,14 +201,9 @@ fn resolve_client_request_id(incoming_client_request_id: Option<&str>) -> Option
 mod tests {
     use super::{build_codex_compact_upstream_headers, build_codex_upstream_headers};
     use crate::gateway::{
-        gateway_runtime_test_guard, set_codex_user_agent_version, set_originator,
-        CodexCompactUpstreamHeaderInput, CodexUpstreamHeaderInput,
+        set_codex_user_agent_version, set_originator, CodexCompactUpstreamHeaderInput,
+        CodexUpstreamHeaderInput,
     };
-    use std::sync::MutexGuard;
-
-    fn test_guard() -> MutexGuard<'static, ()> {
-        gateway_runtime_test_guard()
-    }
 
     fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
         headers
@@ -219,7 +214,7 @@ mod tests {
 
     #[test]
     fn build_codex_upstream_headers_keeps_final_affinity_shape() {
-        let _guard = test_guard();
+        let _guard = crate::test_env_guard();
         let _ = set_originator("codex_cli_rs_tests").expect("set originator");
         let _ = set_codex_user_agent_version("0.999.0").expect("set ua version");
 
@@ -276,7 +271,7 @@ mod tests {
 
     #[test]
     fn build_codex_upstream_headers_clears_turn_state_when_affinity_diverges() {
-        let _guard = test_guard();
+        let _guard = crate::test_env_guard();
         let _ = set_originator("codex_cli_rs_tests").expect("set originator");
         let _ = set_codex_user_agent_version("0.999.1").expect("set ua version");
 
@@ -308,7 +303,7 @@ mod tests {
 
     #[test]
     fn build_codex_compact_upstream_headers_use_session_fallback_only() {
-        let _guard = test_guard();
+        let _guard = crate::test_env_guard();
         let _ = set_originator("codex_cli_rs_tests").expect("set originator");
         let _ = set_codex_user_agent_version("0.999.2").expect("set ua version");
 

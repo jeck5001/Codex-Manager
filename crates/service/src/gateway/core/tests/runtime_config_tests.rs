@@ -1,9 +1,4 @@
 use super::*;
-use std::sync::MutexGuard;
-
-fn test_guard() -> MutexGuard<'static, ()> {
-    gateway_runtime_test_guard()
-}
 
 struct EnvGuard {
     key: &'static str,
@@ -36,7 +31,7 @@ impl Drop for EnvGuard {
 
 #[test]
 fn reload_from_env_updates_timeout_and_proxy() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let _timeout_guard = EnvGuard::set(ENV_UPSTREAM_TOTAL_TIMEOUT_MS, "777");
     let _stream_timeout_guard = EnvGuard::set(ENV_UPSTREAM_STREAM_TIMEOUT_MS, "888");
     let _inflight_guard = EnvGuard::set(ENV_ACCOUNT_MAX_INFLIGHT, "4");
@@ -66,7 +61,7 @@ fn reload_from_env_updates_timeout_and_proxy() {
 
 #[test]
 fn reload_from_env_defaults_account_max_inflight_to_one() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let _guard = EnvGuard::clear(ENV_ACCOUNT_MAX_INFLIGHT);
     let _request_compression_guard = EnvGuard::clear(ENV_ENABLE_REQUEST_COMPRESSION);
 
@@ -78,7 +73,7 @@ fn reload_from_env_defaults_account_max_inflight_to_one() {
 
 #[test]
 fn parse_proxy_list_env_limits_to_five_entries() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let _guard = EnvGuard::set(
         ENV_PROXY_LIST,
         "http://p1:8080,http://p2:8080;http://p3:8080\nhttp://p4:8080\rhttp://p5:8080,http://p6:8080",
@@ -91,7 +86,7 @@ fn parse_proxy_list_env_limits_to_five_entries() {
 
 #[test]
 fn parse_proxy_list_env_normalizes_socks_entries() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let _guard = EnvGuard::set(
         ENV_PROXY_LIST,
         "socks5://127.0.0.1:7890,socks://127.0.0.1:7891,https://socks5://127.0.0.1:7892",
@@ -107,7 +102,7 @@ fn parse_proxy_list_env_normalizes_socks_entries() {
 
 #[test]
 fn stable_proxy_index_is_deterministic() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let idx1 = stable_proxy_index("account-42", 5);
     let idx2 = stable_proxy_index("account-42", 5);
     assert_eq!(idx1, idx2);
@@ -116,7 +111,7 @@ fn stable_proxy_index_is_deterministic() {
 
 #[test]
 fn set_upstream_proxy_url_updates_env_and_cache() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let _guard = EnvGuard::set(ENV_UPSTREAM_PROXY_URL, "");
 
     let applied = set_upstream_proxy_url(Some("http://127.0.0.1:7890")).expect("set proxy");
@@ -138,7 +133,7 @@ fn set_upstream_proxy_url_updates_env_and_cache() {
 
 #[test]
 fn set_upstream_proxy_url_normalizes_socks_scheme() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let _guard = EnvGuard::set(ENV_UPSTREAM_PROXY_URL, "");
 
     let applied =
@@ -153,7 +148,7 @@ fn set_upstream_proxy_url_normalizes_socks_scheme() {
 
 #[test]
 fn set_upstream_stream_timeout_ms_updates_env_and_cache() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let _guard = EnvGuard::set(ENV_UPSTREAM_STREAM_TIMEOUT_MS, "1800000");
 
     let applied = set_upstream_stream_timeout_ms(432100);
@@ -174,7 +169,7 @@ fn set_upstream_stream_timeout_ms_updates_env_and_cache() {
 
 #[test]
 fn normalize_model_slug_maps_legacy_gpt_5_4_pro_to_gpt_5_4() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
 
     let actual = normalize_model_slug("gpt-5.4-pro").expect("normalize model");
 
@@ -183,7 +178,7 @@ fn normalize_model_slug_maps_legacy_gpt_5_4_pro_to_gpt_5_4() {
 
 #[test]
 fn normalize_model_slug_accepts_auto() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
 
     let actual = normalize_model_slug("auto").expect("normalize model");
 
@@ -192,7 +187,7 @@ fn normalize_model_slug_accepts_auto() {
 
 #[test]
 fn set_originator_updates_env_and_dynamic_user_agent() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let _guard = EnvGuard::set(ENV_ORIGINATOR, "codex_cli_rs");
 
     let applied = set_originator("codex_cli_rs_windows").expect("set originator");
@@ -209,7 +204,7 @@ fn set_originator_updates_env_and_dynamic_user_agent() {
 
 #[test]
 fn set_codex_user_agent_version_updates_env_and_user_agent() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
 
     let applied = set_codex_user_agent_version("0.102.1").expect("set codex user agent version");
 
@@ -220,7 +215,7 @@ fn set_codex_user_agent_version_updates_env_and_user_agent() {
 
 #[test]
 fn set_residency_requirement_updates_env_and_cache() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let _guard = EnvGuard::clear(ENV_RESIDENCY_REQUIREMENT);
 
     let applied = set_residency_requirement(Some("us")).expect("set residency requirement");
@@ -239,7 +234,7 @@ fn set_residency_requirement_updates_env_and_cache() {
 
 #[test]
 fn set_request_compression_enabled_updates_env_and_cache() {
-    let _guard = test_guard();
+    let _guard = crate::test_env_guard();
     let _guard = EnvGuard::set(ENV_ENABLE_REQUEST_COMPRESSION, "1");
 
     let applied = set_request_compression_enabled(false);

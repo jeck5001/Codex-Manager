@@ -1,3 +1,8 @@
+#[path = "../support.rs"]
+mod shared;
+
+pub(super) use shared::{test_env_guard, EnvGuard};
+
 pub(super) use codexmanager_core::rpc::types::ModelOption;
 pub(super) use codexmanager_core::storage::{now_ts, Account, ApiKey, Storage, Token};
 pub(super) use sha2::{Digest, Sha256};
@@ -9,25 +14,11 @@ pub(super) use std::net::TcpStream;
 pub(super) use std::path::PathBuf;
 pub(super) use std::sync::atomic::{AtomicUsize, Ordering};
 pub(super) use std::sync::mpsc::{self, Receiver};
-pub(super) use std::sync::Mutex;
 pub(super) use std::thread;
 pub(super) use std::time::{Duration, Instant};
 
-pub(super) struct EnvGuard {
-    key: &'static str,
-    original: Option<std::ffi::OsString>,
-}
-
-pub(super) static ENV_LOCK: Mutex<()> = Mutex::new(());
 pub(super) static TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
 pub(super) static TEST_PORT_SEQ: AtomicUsize = AtomicUsize::new(41000);
-
-pub(super) fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-    // 中文注释：若某个测试 panic 导致锁被 poison，不应让后续测试直接二次失败。
-    ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
 
 pub(super) fn new_test_dir(prefix: &str) -> PathBuf {
     // 中文注释：Windows 进程 ID 可能被复用；增加递增序号避免复用旧目录/旧 db 文件导致用例不稳定。
@@ -48,24 +39,6 @@ pub(super) fn bind_test_listener(label: &str) -> TcpListener {
         }
     }
     panic!("exhausted test ports for {label}");
-}
-
-impl EnvGuard {
-    pub(super) fn set(key: &'static str, value: &str) -> Self {
-        let original = std::env::var_os(key);
-        std::env::set_var(key, value);
-        Self { key, original }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        if let Some(val) = &self.original {
-            std::env::set_var(self.key, val);
-        } else {
-            std::env::remove_var(self.key);
-        }
-    }
 }
 
 fn decode_chunked_body_if_needed(body: &str) -> String {

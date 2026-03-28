@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-claude-e2e");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -181,7 +181,7 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
 
 #[test]
 fn gateway_claude_failover_cross_workspace_strips_session_affinity_headers() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-claude-strip-cross-workspace");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -376,7 +376,7 @@ fn gateway_claude_failover_cross_workspace_strips_session_affinity_headers() {
 
 #[test]
 fn gateway_claude_failover_same_workspace_preserves_session_affinity_headers() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-claude-strip-same-workspace");
     let db_path: PathBuf = dir.join("codexmanager.db");
 

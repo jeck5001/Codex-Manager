@@ -184,14 +184,5 @@ fn clear_account_token_exchange_locks_for_tests() {
 }
 
 #[cfg(test)]
-fn token_exchange_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    static TOKEN_EXCHANGE_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    TOKEN_EXCHANGE_TEST_MUTEX
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("token exchange test mutex")
-}
-
-#[cfg(test)]
 #[path = "tests/token_exchange_tests.rs"]
 mod tests;

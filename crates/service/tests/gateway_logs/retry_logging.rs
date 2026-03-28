@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-strip-encrypted-content-on-400");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -133,7 +133,7 @@ fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content
 
 #[test]
 fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-final-log");
     let db_path: PathBuf = dir.join("codexmanager.db");
     let trace_log_path: PathBuf = dir.join("gateway-trace.log");
@@ -282,7 +282,7 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
 
 #[test]
 fn gateway_error_logging_writes_only_trace_log_file() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-single-log-file");
     let db_path: PathBuf = dir.join("codexmanager.db");
     let trace_log_path: PathBuf = dir.join("gateway-trace.log");

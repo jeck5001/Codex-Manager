@@ -7,43 +7,14 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::MutexGuard;
 use std::thread;
 use std::time::Duration;
 use tiny_http::{Header, Response, Server, StatusCode};
 
-struct EnvGuard {
-    key: &'static str,
-    original: Option<std::ffi::OsString>,
-}
-
-impl EnvGuard {
-    fn set(key: &'static str, value: &str) -> Self {
-        let original = std::env::var_os(key);
-        std::env::set_var(key, value);
-        Self { key, original }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        if let Some(value) = &self.original {
-            std::env::set_var(self.key, value);
-        } else {
-            std::env::remove_var(self.key);
-        }
-    }
-}
-
-static RPC_TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
+mod support;
+use support::{test_env_guard, EnvGuard};
 static RPC_TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
-
-fn lock_rpc_test_env() -> MutexGuard<'static, ()> {
-    // 中文注释：RPC 集成测试依赖进程级环境变量，串行化可避免不同用例互相污染数据库路径。
-    RPC_TEST_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
 
 fn new_test_dir(prefix: &str) -> PathBuf {
     // 中文注释：用进程号 + 自增序号构造临时目录，避免 Windows 复用旧目录导致脏数据串用。
@@ -62,7 +33,7 @@ struct RpcTestContext {
 
 impl RpcTestContext {
     fn new(prefix: &str) -> Self {
-        let env_lock = lock_rpc_test_env();
+        let env_lock = test_env_guard();
         let dir = new_test_dir(prefix);
         let db_path = dir.join("codexmanager.db");
         let db_path_guard =

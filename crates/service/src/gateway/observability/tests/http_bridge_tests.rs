@@ -10,17 +10,9 @@ use super::{
 use serde_json::json;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-
-static TEST_ENV_MUTEX: Mutex<()> = Mutex::new(());
-
-fn test_env_guard() -> MutexGuard<'static, ()> {
-    TEST_ENV_MUTEX
-        .lock()
-        .expect("lock http bridge test env mutex")
-}
 
 struct EnvGuard {
     key: &'static str,
@@ -757,7 +749,7 @@ fn openai_completions_sse_reader_requires_terminal_event_before_success() {
 
 #[test]
 fn passthrough_sse_reader_emits_keepalive_for_responses_stream() {
-    let _guard = test_env_guard();
+    let _guard = crate::test_env_guard();
     let _keepalive_guard = EnvGuard::set("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS", "15");
     super::reload_from_env();
 
@@ -827,7 +819,7 @@ fn passthrough_sse_reader_captures_raw_html_error_body() {
 
 #[test]
 fn openai_chat_sse_reader_emits_keepalive_chunk_during_idle_gap() {
-    let _guard = test_env_guard();
+    let _guard = crate::test_env_guard();
     let _keepalive_guard = EnvGuard::set("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS", "15");
     super::reload_from_env();
 

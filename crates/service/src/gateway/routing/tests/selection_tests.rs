@@ -1,12 +1,9 @@
 use super::{clear_candidate_cache_for_tests, collect_gateway_candidates, CANDIDATE_CACHE_TTL_ENV};
 use codexmanager_core::storage::{now_ts, Account, Storage, Token, UsageSnapshotRecord};
-use std::sync::Mutex;
-
-static CANDIDATE_CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn candidate_snapshot_cache_reuses_recent_snapshot() {
-    let _guard = CANDIDATE_CACHE_TEST_LOCK.lock().expect("lock");
+    let _guard = crate::test_env_guard();
     let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "2000");
@@ -79,7 +76,7 @@ fn candidate_snapshot_cache_reuses_recent_snapshot() {
 
 #[test]
 fn candidates_follow_account_sort_order() {
-    let _guard = CANDIDATE_CACHE_TEST_LOCK.lock().expect("lock");
+    let _guard = crate::test_env_guard();
     let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "0");

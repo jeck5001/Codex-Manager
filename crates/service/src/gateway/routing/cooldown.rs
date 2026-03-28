@@ -201,14 +201,5 @@ fn clear_account_cooldown_for_tests() {
 }
 
 #[cfg(test)]
-fn cooldown_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    static COOLDOWN_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    COOLDOWN_TEST_MUTEX
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("cooldown test mutex")
-}
-
-#[cfg(test)]
 #[path = "tests/cooldown_tests.rs"]
 mod tests;

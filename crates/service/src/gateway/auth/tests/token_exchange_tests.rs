@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn same_account_reuses_exchange_lock() {
-    let _guard = token_exchange_test_guard();
+    let _guard = crate::test_env_guard();
     clear_account_token_exchange_locks_for_tests();
     let first = account_token_exchange_lock("acc-1");
     let second = account_token_exchange_lock("acc-1");
@@ -11,7 +11,7 @@ fn same_account_reuses_exchange_lock() {
 
 #[test]
 fn stale_unshared_exchange_lock_entry_is_reclaimed() {
-    let _guard = token_exchange_test_guard();
+    let _guard = crate::test_env_guard();
     clear_account_token_exchange_locks_for_tests();
     let first = account_token_exchange_lock("acc-1");
     let weak = Arc::downgrade(&first);
@@ -35,7 +35,7 @@ fn stale_unshared_exchange_lock_entry_is_reclaimed() {
 
 #[test]
 fn stale_shared_exchange_lock_entry_is_not_reclaimed() {
-    let _guard = token_exchange_test_guard();
+    let _guard = crate::test_env_guard();
     clear_account_token_exchange_locks_for_tests();
     let first = account_token_exchange_lock("acc-1");
 

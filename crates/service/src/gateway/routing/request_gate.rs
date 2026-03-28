@@ -168,14 +168,5 @@ fn clear_request_gate_locks_for_tests() {
 }
 
 #[cfg(test)]
-fn request_gate_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    static REQUEST_GATE_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    REQUEST_GATE_TEST_MUTEX
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("request gate test mutex")
-}
-
-#[cfg(test)]
 #[path = "tests/request_gate_tests.rs"]
 mod tests;

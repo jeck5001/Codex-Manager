@@ -545,15 +545,6 @@ fn residency_requirement_cell() -> &'static RwLock<Option<String>> {
     RESIDENCY_REQUIREMENT.get_or_init(|| RwLock::new(None))
 }
 
-#[cfg(test)]
-pub(crate) fn gateway_runtime_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    static GATEWAY_RUNTIME_TEST_MUTEX: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
-    GATEWAY_RUNTIME_TEST_MUTEX
-        .get_or_init(|| std::sync::Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
 fn current_upstream_proxy_url() -> Option<String> {
     crate::lock_utils::read_recover(upstream_proxy_url_cell(), "upstream_proxy_url").clone()
 }

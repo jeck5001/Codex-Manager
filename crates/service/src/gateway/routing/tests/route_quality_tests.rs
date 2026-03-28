@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn route_quality_penalty_prefers_successful_accounts() {
-    let _guard = route_quality_test_guard();
+    let _guard = crate::test_env_guard();
     clear_route_quality_for_tests();
     record_route_quality("acc_a", 403);
     record_route_quality("acc_a", 403);
@@ -13,7 +13,7 @@ fn route_quality_penalty_prefers_successful_accounts() {
 
 #[test]
 fn route_quality_penalty_evicts_expired_record() {
-    let _guard = route_quality_test_guard();
+    let _guard = crate::test_env_guard();
     clear_route_quality_for_tests();
     let lock = ROUTE_QUALITY.get_or_init(|| Mutex::new(RouteQualityState::default()));
     let mut state = lock.lock().expect("route quality state lock");
@@ -39,7 +39,7 @@ fn route_quality_penalty_evicts_expired_record() {
 
 #[test]
 fn record_path_cleanup_prunes_expired_records() {
-    let _guard = route_quality_test_guard();
+    let _guard = crate::test_env_guard();
     clear_route_quality_for_tests();
     let lock = ROUTE_QUALITY.get_or_init(|| Mutex::new(RouteQualityState::default()));
     let mut state = lock.lock().expect("route quality state lock");

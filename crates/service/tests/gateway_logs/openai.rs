@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn gateway_openai_stream_logs_cached_and_reasoning_tokens() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-stream-usage");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -120,7 +120,7 @@ fn gateway_openai_stream_logs_cached_and_reasoning_tokens() {
 
 #[test]
 fn gateway_openai_api_base_suppresses_cookie_and_account_headers() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-api-base-no-cookie");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -229,7 +229,7 @@ fn gateway_openai_api_base_suppresses_cookie_and_account_headers() {
 
 #[test]
 fn gateway_openai_stream_usage_with_plain_content_type() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-stream-plain-ct");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -347,7 +347,7 @@ fn gateway_openai_stream_usage_with_plain_content_type() {
 
 #[test]
 fn gateway_openai_non_stream_sse_with_plain_content_type_is_collapsed_to_json() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-non-stream-plain-ct");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -447,7 +447,7 @@ fn gateway_openai_non_stream_sse_with_plain_content_type_is_collapsed_to_json() 
 
 #[test]
 fn gateway_openai_non_stream_without_usage_keeps_tokens_null() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-no-usage");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -573,7 +573,7 @@ fn gateway_openai_non_stream_without_usage_keeps_tokens_null() {
 
 #[test]
 fn gateway_openai_compact_route_aligns_with_codex_remote_compact_request() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-compact-route");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -751,7 +751,7 @@ fn gateway_openai_compact_route_aligns_with_codex_remote_compact_request() {
 
 #[test]
 fn gateway_openai_compact_invalid_success_body_is_mapped_to_502() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-compact-invalid-success");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -885,7 +885,7 @@ fn gateway_openai_compact_invalid_success_body_is_mapped_to_502() {
 
 #[test]
 fn gateway_openai_compact_uses_conversation_id_as_session_anchor() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-compact-conversation-anchor");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -1007,7 +1007,7 @@ fn gateway_openai_compact_uses_conversation_id_as_session_anchor() {
 
 #[test]
 fn gateway_openai_compact_html_non_success_is_mapped_to_structured_403() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-compact-html-non-success");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -1175,7 +1175,7 @@ fn gateway_openai_compact_html_non_success_is_mapped_to_structured_403() {
 
 #[test]
 fn gateway_openai_html_non_success_logs_debug_ids_for_responses() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-html-non-success-debug-ids");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -1308,7 +1308,7 @@ fn gateway_openai_html_non_success_logs_debug_ids_for_responses() {
 
 #[test]
 fn gateway_models_returns_cached_without_upstream() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-models-cache");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -1378,7 +1378,7 @@ fn gateway_models_returns_cached_without_upstream() {
 
 #[test]
 fn apikey_models_refresh_includes_client_version_query() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-apikey-models-client-version");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -1472,7 +1472,7 @@ fn apikey_models_refresh_includes_client_version_query() {
 
 #[test]
 fn gateway_chatgpt_primary_preserves_turn_state_headers_without_openai_fallback() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-chatgpt-primary-turn-state");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -1594,7 +1594,7 @@ fn gateway_chatgpt_primary_preserves_turn_state_headers_without_openai_fallback(
 
 #[test]
 fn gateway_chatgpt_primary_drops_turn_state_without_thread_anchor() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-chatgpt-primary-turn-state-no-anchor");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -1698,7 +1698,7 @@ fn gateway_chatgpt_primary_drops_turn_state_without_thread_anchor() {
 
 #[test]
 fn gateway_chatgpt_primary_uses_prompt_cache_anchor_for_session_without_inventing_request_id() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-chatgpt-primary-prompt-cache-anchor");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -1823,7 +1823,7 @@ fn gateway_chatgpt_primary_uses_prompt_cache_anchor_for_session_without_inventin
 
 #[test]
 fn gateway_unauthorized_refreshes_access_token_and_retries_once() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-unauthorized-refresh");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -1963,7 +1963,7 @@ fn gateway_unauthorized_refreshes_access_token_and_retries_once() {
 
 #[test]
 fn gateway_invalid_refresh_token_marks_first_account_unavailable_and_fails_over() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-invalid-refresh-failover");
     let db_path: PathBuf = dir.join("codexmanager.db");
 

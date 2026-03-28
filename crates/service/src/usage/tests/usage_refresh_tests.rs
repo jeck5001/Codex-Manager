@@ -6,14 +6,11 @@ use super::{
 use codexmanager_core::storage::{now_ts, Token};
 use std::collections::HashSet;
 use std::sync::mpsc;
-use std::sync::Mutex;
 use std::time::Duration;
-
-static USAGE_ASYNC_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn enqueue_usage_refresh_for_same_account_is_deduplicated_until_finish() {
-    let _guard = USAGE_ASYNC_TEST_LOCK.lock().expect("lock");
+    let _guard = crate::test_env_guard();
     clear_pending_usage_refresh_tasks_for_tests();
     let (started_tx, started_rx) = mpsc::channel();
     let (release_tx, release_rx) = mpsc::channel();
@@ -41,7 +38,7 @@ fn enqueue_usage_refresh_for_same_account_is_deduplicated_until_finish() {
 
 #[test]
 fn enqueue_usage_refresh_for_different_accounts_keeps_queue_progress() {
-    let _guard = USAGE_ASYNC_TEST_LOCK.lock().expect("lock");
+    let _guard = crate::test_env_guard();
     clear_pending_usage_refresh_tasks_for_tests();
     let (started_tx, started_rx) = mpsc::channel::<String>();
     let (release_tx, release_rx) = mpsc::channel();

@@ -490,14 +490,5 @@ fn clear_route_state_for_tests() {
 }
 
 #[cfg(test)]
-fn route_strategy_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    static ROUTE_STRATEGY_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    crate::lock_utils::lock_recover(
-        ROUTE_STRATEGY_TEST_MUTEX.get_or_init(|| Mutex::new(())),
-        "route strategy test mutex",
-    )
-}
-
-#[cfg(test)]
 #[path = "tests/route_hint_tests.rs"]
 mod tests;

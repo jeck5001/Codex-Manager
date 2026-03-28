@@ -1,14 +1,10 @@
 use codexmanager_core::storage::{now_ts, Storage};
 use serde_json::json;
-use std::ffi::OsString;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
+mod support;
+use support::test_env_guard;
 
 const ISOLATED_RUNTIME_ENV_KEYS: &[&str] = &[
     "CODEXMANAGER_SERVICE_ADDR",
@@ -77,9 +73,7 @@ fn reset_runtime_defaults() {
 }
 
 fn with_temp_db(test: impl FnOnce(&PathBuf)) {
-    let _guard = env_lock()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = test_env_guard();
     let db_path = unique_temp_db_path();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
     std::env::set_var("CODEXMANAGER_DB_PATH", &db_path);
@@ -102,7 +96,7 @@ fn with_temp_db(test: impl FnOnce(&PathBuf)) {
     let _ = std::fs::remove_file(&db_path);
 }
 
-struct EnvRestore(Vec<(String, Option<OsString>)>);
+struct EnvRestore(Vec<(String, Option<std::ffi::OsString>)>);
 
 impl Drop for EnvRestore {
     fn drop(&mut self) {

@@ -2,12 +2,8 @@ use super::*;
 use crate::gateway::{build_codex_compact_upstream_headers, CodexCompactUpstreamHeaderInput};
 use std::sync::MutexGuard;
 
-fn header_runtime_guard() -> MutexGuard<'static, ()> {
-    crate::gateway::gateway_runtime_test_guard()
-}
-
 fn header_runtime_scope() -> (MutexGuard<'static, ()>, GatewayHeaderRuntimeRestore) {
-    let guard = header_runtime_guard();
+    let guard = crate::test_env_guard();
     let restore = GatewayHeaderRuntimeRestore::capture();
     let _ = crate::set_gateway_originator("codex_cli_rs");
     let _ = crate::set_gateway_residency_requirement(None);

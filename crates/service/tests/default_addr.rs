@@ -1,12 +1,9 @@
 use codexmanager_core::storage::{now_ts, Storage};
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
+mod support;
+use support::test_env_guard;
 
 fn unique_temp_db_path() -> PathBuf {
     let unique = SystemTime::now()
@@ -17,7 +14,7 @@ fn unique_temp_db_path() -> PathBuf {
 }
 
 fn with_bind_mode(mode: Option<&str>, test: impl FnOnce()) {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = test_env_guard();
     let db_path = unique_temp_db_path();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
     std::env::set_var("CODEXMANAGER_DB_PATH", &db_path);
@@ -126,7 +123,7 @@ fn default_web_listener_addr_tracks_service_bind_mode() {
 
 #[test]
 fn default_web_listener_addr_tracks_service_port_offset() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = test_env_guard();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
     let previous_service_addr = std::env::var("CODEXMANAGER_SERVICE_ADDR").ok();
 

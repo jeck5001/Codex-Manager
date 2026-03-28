@@ -80,7 +80,7 @@ fn account_ids(candidates: &[(Account, Token)]) -> Vec<String> {
 
 #[test]
 fn defaults_to_ordered_strategy() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     let previous = std::env::var(ROUTE_STRATEGY_ENV).ok();
     std::env::remove_var(ROUTE_STRATEGY_ENV);
     reload_from_env();
@@ -118,7 +118,7 @@ fn defaults_to_ordered_strategy() {
 
 #[test]
 fn balanced_round_robin_rotates_start_by_key_and_model() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     let previous = std::env::var(ROUTE_STRATEGY_ENV).ok();
     std::env::set_var(ROUTE_STRATEGY_ENV, "balanced");
     reload_from_env();
@@ -167,7 +167,7 @@ fn balanced_round_robin_rotates_start_by_key_and_model() {
 
 #[test]
 fn balanced_round_robin_isolated_by_key_and_model() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     let previous = std::env::var(ROUTE_STRATEGY_ENV).ok();
     std::env::set_var(ROUTE_STRATEGY_ENV, "balanced");
     reload_from_env();
@@ -199,7 +199,7 @@ fn balanced_round_robin_isolated_by_key_and_model() {
 
 #[test]
 fn set_route_strategy_accepts_aliases_and_reports_canonical_name() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     clear_route_state_for_tests();
     assert_eq!(
         set_route_strategy("ordered").expect("set ordered"),
@@ -215,7 +215,7 @@ fn set_route_strategy_accepts_aliases_and_reports_canonical_name() {
 
 #[test]
 fn route_state_ttl_expires_per_key_state() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     let prev_strategy = std::env::var(ROUTE_STRATEGY_ENV).ok();
     let prev_ttl = std::env::var(ROUTE_STATE_TTL_SECS_ENV).ok();
     let prev_cap = std::env::var(ROUTE_STATE_CAPACITY_ENV).ok();
@@ -275,7 +275,7 @@ fn route_state_ttl_expires_per_key_state() {
 
 #[test]
 fn route_state_capacity_evicts_lru_and_keeps_maps_in_sync() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     let prev_ttl = std::env::var(ROUTE_STATE_TTL_SECS_ENV).ok();
     let prev_cap = std::env::var(ROUTE_STATE_CAPACITY_ENV).ok();
 
@@ -332,8 +332,8 @@ fn route_state_capacity_evicts_lru_and_keeps_maps_in_sync() {
 
 #[test]
 fn health_p2c_promotes_healthier_candidate_in_ordered_mode() {
-    let _guard = route_strategy_test_guard();
-    let _quality_guard = super::super::route_quality::route_quality_test_guard();
+    let _guard = crate::test_env_guard();
+    let _quality_guard = super::super::route_quality::route_quality_tests_guard();
     super::super::route_quality::clear_route_quality_for_tests();
     std::env::set_var(ROUTE_HEALTH_P2C_ENABLED_ENV, "1");
     // 中文注释：窗口=2 时挑战者固定为 index=1，确保测试稳定可复现。
@@ -359,8 +359,8 @@ fn health_p2c_promotes_healthier_candidate_in_ordered_mode() {
 
 #[test]
 fn balanced_mode_keeps_strict_round_robin_by_default() {
-    let _guard = route_strategy_test_guard();
-    let _quality_guard = super::super::route_quality::route_quality_test_guard();
+    let _guard = crate::test_env_guard();
+    let _quality_guard = super::super::route_quality::route_quality_tests_guard();
     let prev_strategy = std::env::var(ROUTE_STRATEGY_ENV).ok();
     let prev_p2c = std::env::var(ROUTE_HEALTH_P2C_ENABLED_ENV).ok();
     let prev_balanced_window = std::env::var(ROUTE_HEALTH_P2C_BALANCED_WINDOW_ENV).ok();
@@ -404,7 +404,7 @@ fn balanced_mode_keeps_strict_round_robin_by_default() {
 
 #[test]
 fn manual_preferred_account_is_preserved_when_current_candidates_do_not_include_it() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     clear_route_state_for_tests();
     set_manual_preferred_account("acc-missing").expect("set manual preferred");
 

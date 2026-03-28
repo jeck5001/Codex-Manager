@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn lookup_evicts_expired_target_entry_without_full_scan() {
-    let _guard = cooldown_test_guard();
+    let _guard = crate::test_env_guard();
     clear_account_cooldown_for_tests();
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut state = lock.lock().expect("cooldown state lock");
@@ -20,7 +20,7 @@ fn lookup_evicts_expired_target_entry_without_full_scan() {
 
 #[test]
 fn mark_path_cleanup_prunes_expired_entries() {
-    let _guard = cooldown_test_guard();
+    let _guard = crate::test_env_guard();
     clear_account_cooldown_for_tests();
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut state = lock.lock().expect("cooldown state lock");
@@ -47,7 +47,7 @@ fn rate_limit_ladder_maps_to_expected_steps() {
 
 #[test]
 fn rate_limited_mark_increments_and_success_clear_decays_offense() {
-    let _guard = cooldown_test_guard();
+    let _guard = crate::test_env_guard();
     clear_account_cooldown_for_tests();
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     mark_account_cooldown("acc", CooldownReason::RateLimited);
@@ -77,7 +77,7 @@ fn rate_limited_mark_increments_and_success_clear_decays_offense() {
 
 #[test]
 fn non_rate_limited_mark_keeps_existing_behavior_without_offense_count() {
-    let _guard = cooldown_test_guard();
+    let _guard = crate::test_env_guard();
     clear_account_cooldown_for_tests();
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     mark_account_cooldown("acc", CooldownReason::Default);
@@ -89,7 +89,7 @@ fn non_rate_limited_mark_keeps_existing_behavior_without_offense_count() {
 
 #[test]
 fn rate_limited_offense_resets_after_quiet_period() {
-    let _guard = cooldown_test_guard();
+    let _guard = crate::test_env_guard();
     clear_account_cooldown_for_tests();
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let now = now_ts();

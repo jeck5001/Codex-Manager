@@ -3,10 +3,11 @@ use super::{
     html_response, oauth_callback_error_message, resolve_redirect_uri, LOGIN_SERVER_STATE,
 };
 use std::net::TcpListener;
-use std::sync::Mutex;
 use url::Url;
 
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+#[path = "../support.rs"]
+mod support;
+use support::test_env_guard;
 
 fn reset_login_server_state() {
     if let Some(cell) = LOGIN_SERVER_STATE.get() {
@@ -18,7 +19,7 @@ fn reset_login_server_state() {
 
 #[test]
 fn resolve_redirect_uri_prefers_login_server() {
-    let _guard = ENV_LOCK.lock().expect("lock");
+    let _guard = test_env_guard();
     reset_login_server_state();
     let prev_redirect = std::env::var("CODEXMANAGER_REDIRECT_URI").ok();
     let prev_login = std::env::var("CODEXMANAGER_LOGIN_ADDR").ok();
@@ -52,7 +53,7 @@ fn resolve_redirect_uri_prefers_login_server() {
 
 #[test]
 fn login_server_reports_port_in_use() {
-    let _guard = ENV_LOCK.lock().expect("lock");
+    let _guard = test_env_guard();
     reset_login_server_state();
     let prev_login = std::env::var("CODEXMANAGER_LOGIN_ADDR").ok();
 
@@ -76,7 +77,7 @@ fn login_server_reports_port_in_use() {
 
 #[test]
 fn login_server_rejects_non_loopback_by_default() {
-    let _guard = ENV_LOCK.lock().expect("lock");
+    let _guard = test_env_guard();
     reset_login_server_state();
     let prev_allow = std::env::var("CODEXMANAGER_ALLOW_NON_LOOPBACK_LOGIN_ADDR").ok();
 
@@ -135,7 +136,7 @@ fn oauth_callback_error_message_maps_missing_entitlement() {
 
 #[test]
 fn login_start_fails_when_login_server_cannot_bind() {
-    let _guard = ENV_LOCK.lock().expect("lock");
+    let _guard = test_env_guard();
     reset_login_server_state();
     let prev_login = std::env::var("CODEXMANAGER_LOGIN_ADDR").ok();
 

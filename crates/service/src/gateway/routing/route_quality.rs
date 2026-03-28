@@ -114,7 +114,7 @@ pub(crate) fn clear_route_quality_for_tests() {
 }
 
 #[cfg(test)]
-pub(crate) fn route_quality_test_guard() -> std::sync::MutexGuard<'static, ()> {
+pub(crate) fn route_quality_tests_guard() -> std::sync::MutexGuard<'static, ()> {
     static ROUTE_QUALITY_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
     ROUTE_QUALITY_TEST_MUTEX
         .get_or_init(|| Mutex::new(()))
