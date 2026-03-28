@@ -71,6 +71,7 @@ fn request_without_content_length_over_limit_returns_413() {
 
 #[test]
 fn backend_send_failure_returns_502() {
+    let _ = crate::gateway::front_proxy_max_body_bytes();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

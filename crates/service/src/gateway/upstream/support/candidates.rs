@@ -70,6 +70,7 @@ mod tests {
 
     #[test]
     fn free_account_model_override_uses_configured_model_for_free_account() {
+        let _guard = crate::test_env_guard();
         let storage = Storage::open_in_memory().expect("open");
         storage.init().expect("init");
         let now = now_ts();
@@ -134,6 +135,7 @@ mod tests {
 
     #[test]
     fn free_account_model_override_accepts_single_window_weekly_account() {
+        let _guard = crate::test_env_guard();
         let storage = Storage::open_in_memory().expect("open");
         storage.init().expect("init");
         let now = now_ts();
@@ -198,6 +200,7 @@ mod tests {
 
     #[test]
     fn free_account_model_override_skips_rewrite_when_configured_auto() {
+        let _guard = crate::test_env_guard();
         let storage = Storage::open_in_memory().expect("open");
         storage.init().expect("init");
         let now = now_ts();
