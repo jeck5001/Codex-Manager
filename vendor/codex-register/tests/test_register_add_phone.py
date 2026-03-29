@@ -167,6 +167,71 @@ OAuthStart = sys.modules["src.core.oauth"].OAuthStart
 
 
 class RegisterAddPhoneTests(unittest.TestCase):
+    def test_run_falls_back_to_workspace_flow_when_add_phone_bypass_has_no_callback(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.logs = []
+        engine._log = lambda *_args, **_kwargs: None
+        engine._is_existing_account = False
+        engine._post_create_page_type = ""
+        engine._post_create_continue_url = ""
+        engine.password = "secret"
+        engine.proxy_url = None
+        engine.session = None
+        engine.email_service = types.SimpleNamespace(
+            service_type=types.SimpleNamespace(value="temp_mail")
+        )
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+
+        engine._check_ip_location = lambda: (True, "US")
+
+        def fake_create_email():
+            engine.email = "user@example.com"
+            return True
+
+        engine._create_email = fake_create_email
+        engine._init_session = lambda: True
+        engine._start_oauth = lambda: True
+        engine._get_device_id = lambda: "did"
+        engine._check_sentinel = lambda _did: "sentinel"
+
+        class SignupResult:
+            success = True
+            error_message = ""
+
+        engine._submit_signup_form = lambda _did, _sen: SignupResult()
+        engine._register_password = lambda: (True, "secret")
+        engine._send_verification_code = lambda: True
+        engine._wait_for_signup_verification_code = lambda: "123456"
+        engine._validate_signup_verification_code_with_retry = lambda code: True
+
+        def fake_create_user_account():
+            engine._post_create_page_type = "add_phone"
+            engine._post_create_continue_url = "https://auth.openai.com/add-phone"
+            return True
+
+        engine._create_user_account = fake_create_user_account
+        engine._attempt_add_phone_login_bypass = lambda _did, _sen: None
+        engine._get_workspace_id = lambda: "ws-1"
+        engine._select_workspace = lambda workspace_id: "https://auth.openai.com/continue"
+        engine._follow_redirects = lambda url: "http://localhost/callback?code=ok&state=state"
+        engine._handle_oauth_callback = lambda callback_url: {
+            "account_id": "acc-1",
+            "access_token": "access",
+            "refresh_token": "refresh",
+            "id_token": "id",
+        }
+
+        result = engine.run()
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.workspace_id, "ws-1")
+        self.assertEqual(result.account_id, "acc-1")
+
     def test_submit_login_identifier_follows_continue_url(self):
         class FakeResponse:
             status_code = 200

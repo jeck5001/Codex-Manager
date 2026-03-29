@@ -1702,13 +1702,14 @@ class RegistrationEngine:
                 ):
                     callback_url = self._attempt_add_phone_login_bypass(did, sen_token)
                     if not callback_url:
-                        result.error_message = "OpenAI 注册后进入手机号验证，且登录回退未能拿到 OAuth 回调"
                         result.metadata = {
                             "blocked_step": "add_phone",
                             "continue_url": self._post_create_continue_url,
                         }
-                        self._log(result.error_message, "error")
-                        return result
+                        self._log(
+                            "OpenAI 注册后进入手机号验证，登录回退未直接拿到 OAuth 回调；继续尝试从当前会话提取 Workspace",
+                            "warning",
+                        )
 
             if callback_url:
                 self._log("13. 已通过登录回退链路拿到 OAuth 回调，跳过 Workspace 预选择")
