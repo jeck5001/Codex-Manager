@@ -167,6 +167,114 @@ OAuthStart = sys.modules["src.core.oauth"].OAuthStart
 
 
 class RegisterAddPhoneTests(unittest.TestCase):
+    def test_submit_login_identifier_follows_continue_url(self):
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "continue_url": "https://auth.openai.com/log-in/password",
+                    "page": {"type": "login_password"},
+                }
+
+        class FakeSession:
+            def __init__(self):
+                self.get_calls = []
+
+            def post(self, *_args, **_kwargs):
+                return FakeResponse()
+
+            def get(self, url, **_kwargs):
+                self.get_calls.append(url)
+                return None
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._log_auth_response_preview = lambda *_args, **_kwargs: None
+        engine._clean_text = lambda value: str(value or "").strip()
+
+        page = engine._submit_login_identifier(None, None)
+
+        self.assertEqual(page, {"type": "login_password"})
+        self.assertEqual(
+            engine.session.get_calls,
+            ["https://auth.openai.com/log-in/password"],
+        )
+
+    def test_verify_login_password_follows_continue_url(self):
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "continue_url": "https://auth.openai.com/email-verification",
+                    "page": {"type": "email_otp_verification"},
+                }
+
+        class FakeSession:
+            def __init__(self):
+                self.get_calls = []
+
+            def post(self, *_args, **_kwargs):
+                return FakeResponse()
+
+            def get(self, url, **_kwargs):
+                self.get_calls.append(url)
+                return None
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._log_auth_response_preview = lambda *_args, **_kwargs: None
+        engine._clean_text = lambda value: str(value or "").strip()
+
+        page = engine._verify_login_password("secret")
+
+        self.assertEqual(page, {"type": "email_otp_verification"})
+        self.assertEqual(
+            engine.session.get_calls,
+            ["https://auth.openai.com/email-verification"],
+        )
+
+    def test_validate_login_otp_follows_continue_url(self):
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "continue_url": "https://auth.openai.com/add-phone",
+                    "page": {"type": "add_phone"},
+                }
+
+        class FakeSession:
+            def __init__(self):
+                self.get_calls = []
+
+            def post(self, *_args, **_kwargs):
+                return FakeResponse()
+
+            def get(self, url, **_kwargs):
+                self.get_calls.append(url)
+                return None
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._log_auth_response_preview = lambda *_args, **_kwargs: None
+        engine._clear_otp_error_state = lambda: None
+        engine._update_otp_error_state = lambda *_args, **_kwargs: None
+        engine._clean_text = lambda value: str(value or "").strip()
+
+        payload = engine._validate_verification_code_with_payload("123456")
+
+        self.assertEqual(payload["page"]["type"], "add_phone")
+        self.assertEqual(
+            engine.session.get_calls,
+            ["https://auth.openai.com/add-phone"],
+        )
+
     def test_reuses_current_session_oauth_after_login_otp_returns_add_phone(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
         engine.email = "user@example.com"
