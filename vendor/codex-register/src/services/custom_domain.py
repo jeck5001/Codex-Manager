@@ -362,7 +362,10 @@ class CustomDomainEmailService(BaseEmailService):
                     time.sleep(actual_poll_interval)
                     continue
 
-                for message in messages:
+                latest_match = None
+                latest_match_key = None
+
+                for index, message in enumerate(messages):
                     message_id = message.get("id")
                     if not message_id or message_id in seen_message_ids or message_id in used_message_ids:
                         continue
@@ -392,10 +395,20 @@ class CustomDomainEmailService(BaseEmailService):
                     match = re.search(pattern, re.sub(email_pattern, "", content))
                     if match:
                         code = match.group(1)
-                        used_message_ids.add(message_id)
-                        logger.info(f"从自定义域名邮箱 {email} 找到验证码: {code}")
-                        self.update_status(True)
-                        return code
+                        candidate_key = (
+                            message_timestamp if message_timestamp is not None else float("-inf"),
+                            index,
+                        )
+                        if latest_match_key is None or candidate_key > latest_match_key:
+                            latest_match_key = candidate_key
+                            latest_match = (message_id, code)
+
+                if latest_match:
+                    message_id, code = latest_match
+                    used_message_ids.add(message_id)
+                    logger.info(f"从自定义域名邮箱 {email} 找到验证码: {code}")
+                    self.update_status(True)
+                    return code
 
             except Exception as e:
                 logger.debug(f"检查邮件时出错: {e}")

@@ -409,7 +409,10 @@ class TempMailService(BaseEmailService):
                     time.sleep(actual_poll_interval)
                     continue
 
-                for mail in mails:
+                latest_match = None
+                latest_match_key = None
+
+                for index, mail in enumerate(mails):
                     mail_id = self._extract_mail_identity(mail)
                     if not mail_id or mail_id in seen_mail_ids or mail_id in used_mail_ids:
                         continue
@@ -433,10 +436,20 @@ class TempMailService(BaseEmailService):
                     match = re.search(pattern, content)
                     if match:
                         code = match.group(1)
-                        used_mail_ids.add(mail_id)
-                        logger.info(f"从 TempMail 邮箱 {email} 找到验证码: {code}")
-                        self.update_status(True)
-                        return code
+                        candidate_key = (
+                            message_timestamp if message_timestamp is not None else float("-inf"),
+                            index,
+                        )
+                        if latest_match_key is None or candidate_key > latest_match_key:
+                            latest_match_key = candidate_key
+                            latest_match = (mail_id, code)
+
+                if latest_match:
+                    mail_id, code = latest_match
+                    used_mail_ids.add(mail_id)
+                    logger.info(f"从 TempMail 邮箱 {email} 找到验证码: {code}")
+                    self.update_status(True)
+                    return code
 
             except Exception as e:
                 logger.debug(f"检查 TempMail 邮件时出错: {e}")

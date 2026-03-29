@@ -1524,6 +1524,11 @@ class RegistrationEngine:
                     )
 
             if page_type == "add_phone":
+                if self.oauth_start:
+                    self._log(f"{attempt_name} 命中 add_phone，先复用当前已登录会话重新跟随 OAuth URL...", "warning")
+                    callback_url = self._follow_redirects(self.oauth_start.auth_url)
+                    if callback_url:
+                        return callback_url
                 if recreate_session:
                     self._log("新 OAuth 会话登录后仍停留在 add_phone", "warning")
                 else:
