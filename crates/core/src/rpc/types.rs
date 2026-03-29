@@ -15,10 +15,14 @@ pub struct JsonRpcResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeResult {
     pub server_name: String,
     pub version: String,
     pub user_agent: String,
+    pub codex_home: String,
+    pub platform_family: String,
+    pub platform_os: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -94,17 +98,23 @@ pub struct DeviceAuthInfo {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LoginStartResult {
-    pub auth_url: String,
-    pub login_id: String,
-    pub login_type: String,
-    pub issuer: String,
-    pub client_id: String,
-    pub redirect_uri: String,
-    #[serde(default)]
-    pub warning: Option<String>,
-    pub device: Option<DeviceAuthInfo>,
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum LoginStartResult {
+    #[serde(rename = "apiKey", rename_all = "camelCase")]
+    ApiKey {},
+    #[serde(rename = "chatgpt", rename_all = "camelCase")]
+    Chatgpt {
+        login_id: String,
+        auth_url: String,
+    },
+    #[serde(rename = "chatgptDeviceCode", rename_all = "camelCase")]
+    ChatgptDeviceCode {
+        login_id: String,
+        verification_url: String,
+        user_code: String,
+    },
+    #[serde(rename = "chatgptAuthTokens", rename_all = "camelCase")]
+    ChatgptAuthTokens {},
 }
 
 #[derive(Debug, Serialize, Deserialize)]

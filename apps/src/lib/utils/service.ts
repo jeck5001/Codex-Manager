@@ -52,7 +52,25 @@ export function readInitializeResult(payload: unknown): ServiceInitializationRes
       : typeof source.user_agent === "string"
         ? source.user_agent
         : "";
-  return { serverName, version, userAgent };
+  const codexHome =
+    typeof source.codexHome === "string"
+      ? source.codexHome
+      : typeof source.codex_home === "string"
+        ? source.codex_home
+        : "";
+  const platformFamily =
+    typeof source.platformFamily === "string"
+      ? source.platformFamily
+      : typeof source.platform_family === "string"
+        ? source.platform_family
+        : "";
+  const platformOs =
+    typeof source.platformOs === "string"
+      ? source.platformOs
+      : typeof source.platform_os === "string"
+        ? source.platform_os
+        : "";
+  return { serverName, version, userAgent, codexHome, platformFamily, platformOs };
 }
 
 export function isExpectedInitializeResult(payload: unknown): boolean {
@@ -87,7 +105,7 @@ export function formatServiceError(error: unknown): string {
   if (lower.includes("port is in use") || lower.includes("unexpected service responded")) {
     return `端口已被占用或响应来源不是 CodexManager 服务（${LOOPBACK_PROXY_HINT}）`;
   }
-  if (lower.includes("missing server_name")) {
+  if (lower.includes("missing server_name") || lower.includes("missing servername")) {
     return `响应缺少服务标识（疑似非 CodexManager 服务，${LOOPBACK_PROXY_HINT}）`;
   }
   if (

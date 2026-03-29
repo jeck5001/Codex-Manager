@@ -72,7 +72,7 @@ export function Header() {
         await serviceClient.start(nextAddr);
         const initResult = await serviceClient.initialize(nextAddr);
         if (!isExpectedInitializeResult(initResult)) {
-          throw new Error("Port is in use or unexpected service responded (missing server_name)");
+          throw new Error("Port is in use or unexpected service responded (missing serverName)");
         }
         setServiceStatus({
           connected: true,

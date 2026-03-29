@@ -196,11 +196,11 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     return false;
   };
 
-  const waitForLogin = async (loginId: string) => {
+  const waitForLogin = async (loginId: string, pendingHint?: string) => {
     const pollToken = loginPollTokenRef.current + 1;
     loginPollTokenRef.current = pollToken;
     setIsPollingLogin(true);
-    setLoginHint("已生成登录链接，正在等待授权完成...");
+    setLoginHint(pendingHint || "已生成登录链接，正在等待授权完成...");
 
     const deadline = Date.now() + 2 * 60 * 1000;
     while (pollToken === loginPollTokenRef.current && Date.now() < deadline) {
@@ -248,13 +248,20 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         tags: tags.split(",").map(t => t.trim()).filter(Boolean),
         note,
       });
-      setLoginUrl(result.authUrl);
-      if (result.warning) {
-        toast.warning(result.warning);
+      setLoginUrl(result.authUrl || result.verificationUrl || "");
+      const pendingHint = result.userCode
+        ? `设备验证码：${result.userCode}，正在等待授权完成...`
+        : "已生成登录链接，正在等待授权完成...";
+      if (result.userCode) {
+        setLoginHint(`设备验证码：${result.userCode}`);
       }
-      toast.success("已生成登录链接，请在浏览器中完成授权");
+      toast.success(
+        result.userCode
+          ? "已生成设备登录信息，请按提示完成授权"
+          : "已生成登录链接，请在浏览器中完成授权"
+      );
       if (result.loginId) {
-        void waitForLogin(result.loginId);
+        void waitForLogin(result.loginId, pendingHint);
       } else {
         setLoginHint("未返回登录任务编号，请完成授权后使用手动解析。");
       }

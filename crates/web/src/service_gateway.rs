@@ -44,7 +44,7 @@ async fn service_rpc_probe(service_addr: &str, rpc_token: &str) -> Result<(), St
         .map_err(|err| format!("probe response parse failed: {err}"))?;
     let server_name = payload
         .get("result")
-        .and_then(|value| value.get("server_name"))
+        .and_then(|value| value.get("serverName").or_else(|| value.get("server_name")))
         .and_then(|value| value.as_str())
         .unwrap_or("");
     if server_name != "codexmanager-service" {

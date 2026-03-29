@@ -2,6 +2,7 @@ use codexmanager_core::auth::{
     extract_chatgpt_account_id, extract_workspace_id, parse_id_token_claims, DEFAULT_CLIENT_ID,
     DEFAULT_ISSUER,
 };
+use codexmanager_core::rpc::types::LoginStartResult;
 use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 use serde::Serialize;
 
@@ -24,7 +25,6 @@ const AUTH_MODE_CHATGPT_AUTH_TOKENS: &str = "chatgptAuthTokens";
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AccountReadResponse {
     pub(crate) account: Option<CurrentAuthAccount>,
-    pub(crate) auth_mode: Option<String>,
     pub(crate) requires_openai_auth: bool,
 }
 
@@ -45,21 +45,9 @@ pub(crate) struct CurrentAuthAccount {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ChatgptAuthTokensRefreshResponse {
-    pub(crate) account_id: String,
     pub(crate) access_token: String,
     pub(crate) chatgpt_account_id: String,
     pub(crate) chatgpt_plan_type: Option<String>,
-    pub(crate) chatgpt_plan_type_raw: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ChatgptAuthTokensLoginResponse {
-    #[serde(rename = "type")]
-    pub(crate) kind: String,
-    pub(crate) account_id: String,
-    pub(crate) chatgpt_account_id: String,
-    pub(crate) workspace_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +62,7 @@ pub(crate) struct ChatgptAuthTokensLoginInput {
 
 pub(crate) fn login_with_chatgpt_auth_tokens(
     input: ChatgptAuthTokensLoginInput,
-) -> Result<ChatgptAuthTokensLoginResponse, String> {
+) -> Result<LoginStartResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let access_token = input.access_token.trim();
     if access_token.is_empty() {
@@ -183,26 +171,19 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
     set_current_auth_mode(Some(AUTH_MODE_CHATGPT_AUTH_TOKENS))?;
     let _ = crate::gateway::set_manual_preferred_account(&account_id);
 
-    Ok(ChatgptAuthTokensLoginResponse {
-        kind: "chatgptAuthTokens".to_string(),
-        account_id,
-        chatgpt_account_id: chatgpt_account_id.unwrap_or_else(|| resolved_scope_id.clone()),
-        workspace_id: resolved_scope_id,
-    })
+    Ok(LoginStartResult::ChatgptAuthTokens {})
 }
 
 pub(crate) fn read_current_account(refresh_token: bool) -> Result<AccountReadResponse, String> {
     let Some(storage) = open_storage() else {
         return Ok(AccountReadResponse {
             account: None,
-            auth_mode: None,
             requires_openai_auth: true,
         });
     };
     let Some((account, token)) = resolve_current_account_with_token(&storage)? else {
         return Ok(AccountReadResponse {
             account: None,
-            auth_mode: None,
             requires_openai_auth: true,
         });
     };
@@ -228,7 +209,6 @@ pub(crate) fn read_current_account(refresh_token: bool) -> Result<AccountReadRes
             &token,
             auth_mode.as_str(),
         )),
-        auth_mode: Some(auth_mode),
         requires_openai_auth: true,
     })
 }
@@ -267,13 +247,11 @@ pub(crate) fn refresh_current_chatgpt_auth_tokens(
     let plan_type_resolution = resolve_plan_type_resolution(&token, access_claims.as_ref());
 
     Ok(ChatgptAuthTokensRefreshResponse {
-        account_id: refreshed_account.id,
         access_token: token.access_token,
         chatgpt_account_id,
         chatgpt_plan_type: plan_type_resolution
             .as_ref()
             .map(|plan| plan.normalized.clone()),
-        chatgpt_plan_type_raw: plan_type_resolution.and_then(|plan| plan.raw),
     })
 }
 
@@ -294,10 +272,7 @@ pub(crate) fn logout_current_account() -> Result<serde_json::Value, String> {
     }
     set_current_auth_account_id(None)?;
     set_current_auth_mode(None)?;
-    Ok(serde_json::json!({
-        "ok": true,
-        "accountId": current_account_id,
-    }))
+    Ok(serde_json::json!({}))
 }
 
 fn resolve_current_account_with_token(

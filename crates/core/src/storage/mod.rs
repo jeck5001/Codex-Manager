@@ -488,6 +488,18 @@ impl Storage {
         Ok(())
     }
 
+    pub fn update_login_session_code_verifier(
+        &self,
+        login_id: &str,
+        code_verifier: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE login_sessions SET code_verifier = ?1, updated_at = ?2 WHERE login_id = ?3",
+            (code_verifier, now_ts(), login_id),
+        )?;
+        Ok(())
+    }
+
     fn ensure_column(&self, table: &str, column: &str, column_type: &str) -> Result<()> {
         if self.has_column(table, column)? {
             return Ok(());

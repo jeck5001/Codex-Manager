@@ -374,15 +374,13 @@ export function normalizeDeviceAuthInfo(payload: unknown): DeviceAuthInfo | null
 
 export function normalizeLoginStartResult(payload: unknown): LoginStartResult {
   const source = asObject(payload);
+  const verificationUrl = asString(source.verificationUrl ?? source.verification_url);
   return {
-    authUrl: asString(source.authUrl ?? source.auth_url),
+    type: asString(source.type ?? source.loginType ?? source.login_type),
+    authUrl: asString(source.authUrl ?? source.auth_url ?? verificationUrl),
     loginId: asString(source.loginId ?? source.login_id),
-    loginType: asString(source.loginType ?? source.login_type),
-    issuer: asString(source.issuer),
-    clientId: asString(source.clientId ?? source.client_id),
-    redirectUri: asString(source.redirectUri ?? source.redirect_uri),
-    warning: asString(source.warning),
-    device: normalizeDeviceAuthInfo(source.device),
+    verificationUrl: verificationUrl || null,
+    userCode: asString(source.userCode ?? source.user_code) || null,
   };
 }
 

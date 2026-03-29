@@ -338,7 +338,6 @@ export const accountClient = {
         source.account && typeof source.account === "object" && !Array.isArray(source.account)
           ? (source.account as CurrentAccessTokenAccountReadResult["account"])
           : null,
-      authMode: typeof source.authMode === "string" ? source.authMode : null,
       requiresOpenaiAuth: Boolean(source.requiresOpenaiAuth),
     };
   },
@@ -356,16 +355,11 @@ export const accountClient = {
         ? (result as Record<string, unknown>)
         : {};
     return {
-      accountId: String(source.accountId || "").trim(),
       accessToken: String(source.accessToken || "").trim(),
       chatgptAccountId: String(source.chatgptAccountId || "").trim(),
       chatgptPlanType:
         typeof source.chatgptPlanType === "string"
           ? source.chatgptPlanType.trim()
-          : null,
-      chatgptPlanTypeRaw:
-        typeof source.chatgptPlanTypeRaw === "string"
-          ? source.chatgptPlanTypeRaw.trim()
           : null,
     };
   },

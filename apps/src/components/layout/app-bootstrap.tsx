@@ -90,7 +90,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       try {
         const initializeResult = await serviceClient.initialize(addr);
         if (!isExpectedInitializeResult(initializeResult)) {
-          throw new Error("Port is in use or unexpected service responded (missing server_name)");
+          throw new Error("Port is in use or unexpected service responded (missing serverName)");
         }
         return initializeResult;
       } catch (serviceError: unknown) {

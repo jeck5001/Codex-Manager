@@ -12,7 +12,7 @@ pub(super) fn validate_initialize_response(v: &serde_json::Value) -> Result<(), 
     // 连接探测必须确认对端确实是 codexmanager-service，避免端口被其他服务占用时误判“已连接”。
     let server_name = v
         .get("result")
-        .and_then(|r| r.get("server_name"))
+        .and_then(|r| r.get("serverName").or_else(|| r.get("server_name")))
         .and_then(|s| s.as_str())
         .unwrap_or("");
     if server_name == "codexmanager-service" {
@@ -20,7 +20,7 @@ pub(super) fn validate_initialize_response(v: &serde_json::Value) -> Result<(), 
     }
 
     let hint = if server_name.is_empty() {
-        "missing server_name"
+        "missing serverName"
     } else {
         server_name
     };

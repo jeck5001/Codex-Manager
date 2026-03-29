@@ -203,6 +203,97 @@ fn start_mock_oauth_token_server(
     (addr, rx, handle)
 }
 
+#[derive(Debug)]
+struct RecordedRequest {
+    path: String,
+    body: String,
+}
+
+fn start_mock_device_login_server() -> (
+    String,
+    std::sync::mpsc::Receiver<RecordedRequest>,
+    thread::JoinHandle<()>,
+) {
+    let server = Server::http("127.0.0.1:0").expect("start mock device server");
+    let addr = format!("http://{}", server.server_addr());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = thread::spawn(move || {
+        for _ in 0..4 {
+            let mut request = server
+                .recv_timeout(Duration::from_secs(5))
+                .expect("device login server timeout")
+                .expect("receive device request");
+            let path = request.url().to_string();
+            let mut body = String::new();
+            request
+                .as_reader()
+                .read_to_string(&mut body)
+                .expect("read device request body");
+            tx.send(RecordedRequest {
+                path: path.clone(),
+                body: body.clone(),
+            })
+            .expect("send device request body");
+
+            let response_body = match path.as_str() {
+                "/api/accounts/deviceauth/usercode" => serde_json::json!({
+                    "device_auth_id": "device-auth-123",
+                    "user_code": "ABCD-1234",
+                    "interval": 1
+                })
+                .to_string(),
+                "/api/accounts/deviceauth/token" => {
+                    assert!(body.contains("\"device_auth_id\":\"device-auth-123\""));
+                    assert!(body.contains("\"user_code\":\"ABCD-1234\""));
+                    serde_json::json!({
+                        "authorization_code": "auth-code-device-123",
+                        "code_challenge": "challenge-device-123",
+                        "code_verifier": "verifier-device-123"
+                    })
+                    .to_string()
+                }
+                "/oauth/token" => {
+                    if body.contains("grant_type=authorization_code") {
+                        assert!(body.contains("code=auth-code-device-123"));
+                        assert!(body.contains("redirect_uri=http%3A%2F%2F127.0.0.1"));
+                        serde_json::json!({
+                            "id_token": build_access_token(
+                                "sub-device",
+                                "device@example.com",
+                                "org-device",
+                                "pro"
+                            ),
+                            "access_token": build_access_token(
+                                "sub-device",
+                                "device@example.com",
+                                "org-device",
+                                "pro"
+                            ),
+                            "refresh_token": "refresh-device-123"
+                        })
+                        .to_string()
+                    } else {
+                        assert!(body.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange"));
+                        serde_json::json!({
+                            "access_token": "api-access-token-device-123"
+                        })
+                        .to_string()
+                    }
+                }
+                other => panic!("unexpected device login path: {other}"),
+            };
+            let response = Response::from_string(response_body)
+                .with_status_code(StatusCode(200))
+                .with_header(
+                    Header::from_bytes("Content-Type", "application/json")
+                        .expect("content-type header"),
+                );
+            request.respond(response).expect("respond device request");
+        }
+    });
+    (addr, rx, handle)
+}
+
 #[test]
 fn rpc_initialize_roundtrip() {
     let _ctx = RpcTestContext::new("rpc-initialize");
@@ -216,7 +307,10 @@ fn rpc_initialize_roundtrip() {
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
     let result = v.get("result").expect("result");
-    assert_eq!(result.get("server_name").unwrap(), "codexmanager-service");
+    assert_eq!(result.get("serverName").unwrap(), "codexmanager-service");
+    assert!(result.get("codexHome").and_then(|value| value.as_str()).is_some());
+    assert!(result.get("platformFamily").and_then(|value| value.as_str()).is_some());
+    assert!(result.get("platformOs").and_then(|value| value.as_str()).is_some());
 }
 
 #[test]
@@ -787,10 +881,116 @@ fn rpc_login_start_returns_url() {
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
     let result = v.get("result").expect("result");
+    assert_eq!(result.get("type").and_then(|v| v.as_str()), Some("chatgpt"));
     let auth_url = result.get("authUrl").and_then(|v| v.as_str()).unwrap();
     let login_id = result.get("loginId").and_then(|v| v.as_str()).unwrap();
     assert!(auth_url.contains("oauth/authorize"));
     assert!(!login_id.is_empty());
+}
+
+#[test]
+fn rpc_login_start_rejects_api_key_login() {
+    let _ctx = RpcTestContext::new("rpc-login-api-key");
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+
+    let req = JsonRpcRequest {
+        id: 44,
+        method: "account/login/start".to_string(),
+        params: Some(serde_json::json!({"type": "apiKey", "openBrowser": false})),
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+    let message = result.get("error").and_then(|value| value.as_str()).unwrap_or("");
+    assert!(
+        message.contains("apiKey login is not supported"),
+        "unexpected error payload: {result}"
+    );
+}
+
+#[test]
+fn rpc_login_start_chatgpt_device_code_returns_user_code() {
+    let _ctx = RpcTestContext::new("rpc-login-device-code");
+    let (issuer, request_rx, request_join) = start_mock_device_login_server();
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 4,
+        method: "account/login/start".to_string(),
+        params: Some(serde_json::json!({"type": "chatgptDeviceCode", "openBrowser": false})),
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+    assert_eq!(
+        result.get("type").and_then(|v| v.as_str()),
+        Some("chatgptDeviceCode")
+    );
+    assert!(
+        result
+            .get("verificationUrl")
+            .and_then(|v| v.as_str())
+            .is_some_and(|value| value.contains("/codex/device"))
+    );
+    assert_eq!(
+        result.get("userCode").and_then(|v| v.as_str()),
+        Some("ABCD-1234")
+    );
+    let login_id = result
+        .get("loginId")
+        .and_then(|v| v.as_str())
+        .expect("login id")
+        .to_string();
+
+    let mut requests = Vec::new();
+    for _ in 0..4 {
+        requests.push(
+            request_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("receive device request"),
+        );
+    }
+    request_join.join().expect("join mock device server");
+
+    assert_eq!(
+        requests[0].path,
+        "/api/accounts/deviceauth/usercode",
+        "unexpected first request: {requests:?}"
+    );
+    assert!(requests[0].body.contains("client_id"));
+    assert_eq!(requests[1].path, "/api/accounts/deviceauth/token");
+    assert!(requests[1].body.contains("\"device_auth_id\":\"device-auth-123\""));
+    assert!(requests[1].body.contains("\"user_code\":\"ABCD-1234\""));
+    assert_eq!(requests[2].path, "/oauth/token");
+    assert!(requests[2].body.contains("grant_type=authorization_code"));
+    assert_eq!(requests[3].path, "/oauth/token");
+    assert!(
+        requests[3]
+            .body
+            .contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange")
+    );
+
+    let status_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let status_req = JsonRpcRequest {
+        id: 5,
+        method: "account/login/status".to_string(),
+        params: Some(serde_json::json!({ "loginId": login_id })),
+    };
+    let status_json = serde_json::to_string(&status_req).expect("serialize status");
+    let status_resp = post_rpc(&status_server.addr, &status_json);
+    let status_result = status_resp.get("result").expect("status result");
+    assert_eq!(
+        status_result.get("status").and_then(|value| value.as_str()),
+        Some("success")
+    );
+
+    let storage = Storage::open(_ctx.db_path()).expect("open db");
+    let accounts = storage.list_accounts().expect("list accounts");
+    assert!(
+        accounts.iter().any(|account| account.id.contains("sub-device")),
+        "device login should persist an account: {accounts:?}"
+    );
 }
 
 #[test]
@@ -817,11 +1017,6 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     let login_server = codexmanager_service::start_one_shot_server().expect("start server");
     let login_resp = post_rpc(&login_server.addr, &login_json);
     let login_result = login_resp.get("result").expect("login result");
-    let account_id = login_result
-        .get("accountId")
-        .and_then(|value| value.as_str())
-        .expect("account id")
-        .to_string();
     assert_eq!(
         login_result.get("type").and_then(|value| value.as_str()),
         Some("chatgptAuthTokens")
@@ -837,10 +1032,7 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     let read_resp = post_rpc(&read_server.addr, &read_json);
     let read_result = read_resp.get("result").expect("read result");
     let account = read_result.get("account").expect("current account");
-    assert_eq!(
-        read_result.get("authMode").and_then(|value| value.as_str()),
-        Some("chatgptAuthTokens")
-    );
+    assert!(read_result.get("authMode").is_none());
     assert_eq!(
         account.get("email").and_then(|value| value.as_str()),
         Some("embedded@example.com")
@@ -865,16 +1057,7 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     let logout_server = codexmanager_service::start_one_shot_server().expect("start server");
     let logout_resp = post_rpc(&logout_server.addr, &logout_json);
     let logout_result = logout_resp.get("result").expect("logout result");
-    assert_eq!(
-        logout_result.get("ok").and_then(|value| value.as_bool()),
-        Some(true)
-    );
-    assert_eq!(
-        logout_result
-            .get("accountId")
-            .and_then(|value| value.as_str()),
-        Some(account_id.as_str())
-    );
+    assert!(logout_result.as_object().is_some_and(|value| value.is_empty()));
 
     let read_after_logout_server =
         codexmanager_service::start_one_shot_server().expect("start server");
@@ -883,6 +1066,13 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     assert!(read_after_logout_result.get("account").unwrap().is_null());
 
     let storage = Storage::open(ctx.db_path()).expect("open db");
+    let account_id = storage
+        .list_accounts()
+        .expect("list accounts")
+        .into_iter()
+        .find(|account| account.chatgpt_account_id.as_deref() == Some("org-embedded"))
+        .map(|account| account.id)
+        .expect("account id");
     let account = storage
         .find_account_by_id(&account_id)
         .expect("find account")
@@ -924,12 +1114,11 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
     let login_json = serde_json::to_string(&login_req).expect("serialize login");
     let login_server = codexmanager_service::start_one_shot_server().expect("start server");
     let login_resp = post_rpc(&login_server.addr, &login_json);
-    let account_id = login_resp
-        .get("result")
-        .and_then(|value| value.get("accountId"))
-        .and_then(|value| value.as_str())
-        .expect("account id")
-        .to_string();
+    let login_result = login_resp.get("result").expect("login result");
+    assert_eq!(
+        login_result.get("type").and_then(|value| value.as_str()),
+        Some("chatgptAuthTokens")
+    );
 
     let refresh_req = JsonRpcRequest {
         id: 45,
@@ -965,6 +1154,13 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
 
     let storage =
         Storage::open(std::env::var("CODEXMANAGER_DB_PATH").expect("db path")).expect("open db");
+    let account_id = storage
+        .list_accounts()
+        .expect("list accounts")
+        .into_iter()
+        .find(|account| account.chatgpt_account_id.as_deref() == Some("org-refresh"))
+        .map(|account| account.id)
+        .expect("account id");
     let token = storage
         .find_token_by_account_id(&account_id)
         .expect("find token")

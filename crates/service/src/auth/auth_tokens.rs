@@ -1,16 +1,19 @@
 use codexmanager_core::auth::{
-    extract_chatgpt_account_id, extract_workspace_id, parse_id_token_claims,
-    token_exchange_body_authorization_code, token_exchange_body_token_exchange, IdTokenClaims,
-    DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
+    device_redirect_uri, device_token_url, device_usercode_url, extract_chatgpt_account_id,
+    extract_workspace_id, parse_id_token_claims, token_exchange_body_authorization_code,
+    token_exchange_body_token_exchange, IdTokenClaims, DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
 };
 use codexmanager_core::storage::{now_ts, Account, Token};
 use reqwest::Client;
 use reqwest::header::HeaderMap;
 use reqwest::Error as ReqwestError;
+use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use std::future::Future;
 use std::sync::OnceLock;
 use std::time::Duration;
+use std::thread;
 use tokio::runtime::{Builder, Runtime};
 
 use crate::account_identity::{
@@ -497,6 +500,192 @@ fn auth_http_client_for_issuer(issuer: &str) -> Client {
     }
 
     openai_auth_http_client().clone()
+}
+
+#[derive(serde::Deserialize)]
+struct DeviceUserCodeResponse {
+    device_auth_id: String,
+    #[serde(alias = "user_code", alias = "usercode")]
+    user_code: String,
+    #[serde(default = "default_device_poll_interval", deserialize_with = "deserialize_interval")]
+    interval: u64,
+}
+
+fn default_device_poll_interval() -> u64 {
+    5
+}
+
+fn deserialize_interval<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::Number(number) => number
+            .as_u64()
+            .ok_or_else(|| serde::de::Error::custom("invalid interval value")),
+        serde_json::Value::String(value) => value
+            .trim()
+            .parse::<u64>()
+            .map_err(serde::de::Error::custom),
+        serde_json::Value::Null => Ok(default_device_poll_interval()),
+        other => Err(serde::de::Error::custom(format!(
+            "invalid interval value: {other}"
+        ))),
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DeviceCodeStartResult {
+    pub(crate) verification_url: String,
+    pub(crate) user_code: String,
+    pub(crate) device_auth_id: String,
+    pub(crate) interval: u64,
+}
+
+#[derive(serde::Deserialize)]
+struct DeviceAuthTokenResponse {
+    authorization_code: String,
+    #[serde(rename = "code_challenge")]
+    _code_challenge: String,
+    code_verifier: String,
+}
+
+pub(crate) fn request_device_code(
+    issuer: &str,
+    client_id: &str,
+) -> Result<DeviceCodeStartResult, String> {
+    run_auth_future(request_device_code_async(issuer, client_id))
+}
+
+async fn request_device_code_async(
+    issuer: &str,
+    client_id: &str,
+) -> Result<DeviceCodeStartResult, String> {
+    let client = auth_http_client_for_issuer(issuer);
+    let url = device_usercode_url(issuer);
+    let resp = client
+        .post(url)
+        .header("Content-Type", "application/json")
+        .body(serde_json::json!({ "client_id": client_id }).to_string())
+        .send()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    if !resp.status().is_success() {
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Err(
+                "device code login is not enabled for this Codex server. Use the browser login or verify the server URL."
+                    .to_string(),
+            );
+        }
+        return Err(format!("device code request failed with status {}", resp.status()));
+    }
+
+    let body: DeviceUserCodeResponse = read_json_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT).await?;
+    Ok(DeviceCodeStartResult {
+        verification_url: codexmanager_core::auth::device_verification_url(issuer),
+        user_code: body.user_code,
+        device_auth_id: body.device_auth_id,
+        interval: body.interval,
+    })
+}
+
+pub(crate) fn spawn_device_code_login_completion(
+    issuer: String,
+    login_id: String,
+    device_code: DeviceCodeStartResult,
+) {
+    let suffix = login_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(12)
+        .collect::<String>();
+    let thread_name = if suffix.is_empty() {
+        "device-login".to_string()
+    } else {
+        format!("device-login-{suffix}")
+    };
+    let _ = thread::Builder::new().name(thread_name).spawn(move || {
+        if let Err(err) = complete_device_code_login(issuer, login_id.clone(), device_code) {
+            if let Some(storage) = open_storage() {
+                let _ = storage.update_login_session_status(&login_id, "failed", Some(&err));
+            }
+        }
+    });
+}
+
+async fn poll_device_auth_token_async(
+    issuer: &str,
+    device_auth_id: &str,
+    user_code: &str,
+    interval: u64,
+) -> Result<DeviceAuthTokenResponse, String> {
+    let client = auth_http_client_for_issuer(issuer);
+    let url = device_token_url(issuer);
+    let max_wait = Duration::from_secs(15 * 60);
+    let started_at = tokio::time::Instant::now();
+
+    loop {
+        let resp = client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .body(
+                serde_json::json!({
+                    "device_auth_id": device_auth_id,
+                    "user_code": user_code,
+                })
+                .to_string(),
+            )
+            .send()
+            .await
+            .map_err(|err| err.to_string())?;
+
+        if resp.status().is_success() {
+            return read_json_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT).await;
+        }
+
+        if matches!(resp.status(), StatusCode::FORBIDDEN | StatusCode::NOT_FOUND) {
+            let elapsed = started_at.elapsed();
+            if elapsed >= max_wait {
+                return Err("device auth timed out after 15 minutes".to_string());
+            }
+            let remaining = max_wait.saturating_sub(elapsed);
+            let sleep_for = Duration::from_secs(interval).min(remaining);
+            tokio::time::sleep(sleep_for).await;
+            continue;
+        }
+
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = read_text_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT)
+            .await
+            .unwrap_or_default();
+        return Err(format_token_endpoint_status_error(status, &headers, &body));
+    }
+}
+
+fn complete_device_code_login(
+    issuer: String,
+    login_id: String,
+    device_code: DeviceCodeStartResult,
+) -> Result<(), String> {
+    let code = run_auth_future(poll_device_auth_token_async(
+        &issuer,
+        &device_code.device_auth_id,
+        &device_code.user_code,
+        device_code.interval,
+    ))?;
+
+    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    storage
+        .update_login_session_code_verifier(&login_id, &code.code_verifier)
+        .map_err(|err| err.to_string())?;
+    complete_login_with_redirect(
+        &login_id,
+        &code.authorization_code,
+        Some(&device_redirect_uri(&issuer)),
+    )
 }
 
 pub(crate) fn complete_login(state: &str, code: &str) -> Result<(), String> {

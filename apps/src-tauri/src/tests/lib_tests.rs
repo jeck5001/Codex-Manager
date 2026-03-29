@@ -98,7 +98,8 @@ fn rpc_call_falls_back_to_next_socket_after_empty_response() {
         if let Ok((mut stream, _)) = good_listener.accept() {
             let mut buf = [0u8; 1024];
             let _ = stream.read(&mut buf);
-            let body = r#"{"result":{"server_name":"codexmanager-service","version":"test"}}"#;
+            let body =
+                r#"{"result":{"serverName":"codexmanager-service","version":"test"}}"#;
             let response = format!(
           "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
           body.len(),
@@ -117,7 +118,7 @@ fn rpc_call_falls_back_to_next_socket_after_empty_response() {
     .expect("rpc_call_with_sockets");
     let server_name = res
         .get("result")
-        .and_then(|v| v.get("server_name"))
+        .and_then(|v| v.get("serverName").or_else(|| v.get("server_name")))
         .and_then(|v| v.as_str());
     assert_eq!(server_name, Some("codexmanager-service"));
 }

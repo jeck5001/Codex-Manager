@@ -210,14 +210,11 @@ export interface DeviceAuthInfo {
 }
 
 export interface LoginStartResult {
-  authUrl: string;
+  type: string;
+  authUrl?: string | null;
   loginId: string;
-  loginType: string;
-  issuer: string;
-  clientId: string;
-  redirectUri: string;
-  warning: string;
-  device: DeviceAuthInfo | null;
+  verificationUrl?: string | null;
+  userCode?: string | null;
 }
 
 export interface CurrentAccessTokenAccount {
@@ -233,16 +230,13 @@ export interface CurrentAccessTokenAccount {
 
 export interface CurrentAccessTokenAccountReadResult {
   account: CurrentAccessTokenAccount | null;
-  authMode: string | null;
   requiresOpenaiAuth: boolean;
 }
 
 export interface ChatgptAuthTokensRefreshResult {
-  accountId: string;
   accessToken: string;
   chatgptAccountId: string;
   chatgptPlanType: string | null;
-  chatgptPlanTypeRaw?: string | null;
 }
 
 export interface EnvOverrideCatalogItem {
@@ -303,6 +297,9 @@ export interface ServiceInitializationResult {
   serverName: string;
   version: string;
   userAgent: string;
+  codexHome: string;
+  platformFamily: string;
+  platformOs: string;
 }
 
 export interface StartupSnapshot {
