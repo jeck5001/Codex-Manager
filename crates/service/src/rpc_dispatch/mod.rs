@@ -16,7 +16,10 @@ mod startup;
 mod usage;
 
 pub(super) fn response(req: &JsonRpcRequest, result: Value) -> JsonRpcResponse {
-    JsonRpcResponse { id: req.id, result }
+    JsonRpcResponse {
+        id: req.id.clone(),
+        result,
+    }
 }
 
 pub(super) fn as_json<T: Serialize>(value: T) -> Value {

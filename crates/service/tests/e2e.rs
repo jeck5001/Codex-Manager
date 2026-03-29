@@ -35,7 +35,7 @@ fn e2e_initialize_writes_event() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let req = JsonRpcRequest {
-        id: 1,
+        id: 1.into(),
         method: "initialize".to_string(),
         params: None,
     };

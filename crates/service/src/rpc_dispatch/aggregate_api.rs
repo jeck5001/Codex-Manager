@@ -71,7 +71,7 @@ mod tests {
 
     fn rpc_request(method: &str, params: serde_json::Value) -> JsonRpcRequest {
         JsonRpcRequest {
-            id: 1,
+            id: 1.into(),
             method: method.to_string(),
             params: Some(params),
         }

@@ -300,7 +300,7 @@ fn rpc_initialize_roundtrip() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 1,
+        id: 1.into(),
         method: "initialize".to_string(),
         params: None,
     };
@@ -320,7 +320,7 @@ fn rpc_account_list_empty_uses_default_pagination() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 2,
+        id: 2.into(),
         method: "account/list".to_string(),
         params: None,
     };
@@ -351,7 +351,7 @@ fn rpc_account_list_supports_pagination() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 3,
+        id: 3.into(),
         method: "account/list".to_string(),
         params: Some(serde_json::json!({"page": 2, "pageSize": 3})),
     };
@@ -430,7 +430,7 @@ fn rpc_account_list_includes_account_plan_type() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let req = JsonRpcRequest {
-        id: 76,
+        id: 76.into(),
         method: "account/list".to_string(),
         params: None,
     };
@@ -468,7 +468,7 @@ fn rpc_account_update_profile_updates_label_note_tags_and_sort() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let req = JsonRpcRequest {
-        id: 78,
+        id: 78.into(),
         method: "account/update".to_string(),
         params: Some(serde_json::json!({
             "accountId": "acc-0",
@@ -508,7 +508,7 @@ fn rpc_app_settings_set_invalid_payload_returns_structured_error() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 30,
+        id: 30.into(),
         method: "appSettings/set".to_string(),
         params: Some(serde_json::json!("invalid-payload")),
     };
@@ -545,7 +545,7 @@ fn rpc_app_settings_can_roundtrip_free_account_max_model() {
     let set_server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let set_req = JsonRpcRequest {
-        id: 31,
+        id: 31.into(),
         method: "appSettings/set".to_string(),
         params: Some(serde_json::json!({
             "freeAccountMaxModel": "gpt-5.3-codex"
@@ -563,7 +563,7 @@ fn rpc_app_settings_can_roundtrip_free_account_max_model() {
 
     let get_server = codexmanager_service::start_one_shot_server().expect("start server");
     let get_req = JsonRpcRequest {
-        id: 32,
+        id: 32.into(),
         method: "appSettings/get".to_string(),
         params: None,
     };
@@ -625,7 +625,7 @@ fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let req = JsonRpcRequest {
-        id: 30,
+        id: 30.into(),
         method: "account/list".to_string(),
         params: Some(serde_json::json!({
             "page": 1,
@@ -666,7 +666,7 @@ fn rpc_account_delete_many_deletes_requested_accounts() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 11,
+        id: 11.into(),
         method: "account/deleteMany".to_string(),
         params: Some(serde_json::json!({
             "accountIds": ["acc-1", "acc-3", "missing"]
@@ -789,7 +789,7 @@ fn rpc_account_delete_unavailable_free_removes_refresh_invalid_free_accounts() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let req = JsonRpcRequest {
-        id: 77,
+        id: 77.into(),
         method: "account/deleteUnavailableFree".to_string(),
         params: None,
     };
@@ -823,7 +823,7 @@ fn rpc_account_update_status_toggles_manual_enable_disable() {
 
     let disable_server = codexmanager_service::start_one_shot_server().expect("start server");
     let disable_req = JsonRpcRequest {
-        id: 12,
+        id: 12.into(),
         method: "account/update".to_string(),
         params: Some(serde_json::json!({
             "accountId": "acc-0",
@@ -847,7 +847,7 @@ fn rpc_account_update_status_toggles_manual_enable_disable() {
 
     let enable_server = codexmanager_service::start_one_shot_server().expect("start server");
     let enable_req = JsonRpcRequest {
-        id: 13,
+        id: 13.into(),
         method: "account/update".to_string(),
         params: Some(serde_json::json!({
             "accountId": "acc-0",
@@ -875,7 +875,7 @@ fn rpc_login_start_returns_url() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 4,
+        id: 4.into(),
         method: "account/login/start".to_string(),
         params: Some(serde_json::json!({"type": "chatgpt", "openBrowser": false})),
     };
@@ -895,7 +895,7 @@ fn rpc_login_start_returns_api_key_variant() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 44,
+        id: 44.into(),
         method: "account/login/start".to_string(),
         params: Some(serde_json::json!({"type": "apiKey", "openBrowser": false})),
     };
@@ -913,7 +913,7 @@ fn rpc_login_start_chatgpt_device_code_returns_user_code() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let req = JsonRpcRequest {
-        id: 4,
+        id: 4.into(),
         method: "account/login/start".to_string(),
         params: Some(serde_json::json!({"type": "chatgptDeviceCode", "openBrowser": false})),
     };
@@ -970,7 +970,7 @@ fn rpc_login_start_chatgpt_device_code_returns_user_code() {
 
     let status_server = codexmanager_service::start_one_shot_server().expect("start server");
     let status_req = JsonRpcRequest {
-        id: 5,
+        id: 5.into(),
         method: "account/login/status".to_string(),
         params: Some(serde_json::json!({ "loginId": login_id })),
     };
@@ -1001,7 +1001,7 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     );
 
     let login_req = JsonRpcRequest {
-        id: 41,
+        id: 41.into(),
         method: "account/login/start".to_string(),
         params: Some(serde_json::json!({
             "type": "chatgptAuthTokens",
@@ -1020,7 +1020,7 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     );
 
     let read_req = JsonRpcRequest {
-        id: 42,
+        id: 42.into(),
         method: "account/read".to_string(),
         params: Some(serde_json::json!({ "refreshToken": false })),
     };
@@ -1046,7 +1046,7 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     );
 
     let logout_req = JsonRpcRequest {
-        id: 43,
+        id: 43.into(),
         method: "account/logout".to_string(),
         params: None,
     };
@@ -1094,7 +1094,7 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
     let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-rpc-refresh");
 
     let login_req = JsonRpcRequest {
-        id: 44,
+        id: 44.into(),
         method: "account/login/start".to_string(),
         params: Some(serde_json::json!({
             "type": "chatgptAuthTokens",
@@ -1118,7 +1118,7 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
     );
 
     let refresh_req = JsonRpcRequest {
-        id: 45,
+        id: 45.into(),
         method: "account/chatgptAuthTokens/refresh".to_string(),
         params: Some(serde_json::json!({
             "reason": "unauthorized",
@@ -1172,7 +1172,7 @@ fn rpc_usage_read_empty() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 5,
+        id: 5.into(),
         method: "account/usage/read".to_string(),
         params: None,
     };
@@ -1188,7 +1188,7 @@ fn rpc_login_status_pending() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 6,
+        id: 6.into(),
         method: "account/login/status".to_string(),
         params: Some(serde_json::json!({"loginId": "login-1"})),
     };
@@ -1204,7 +1204,7 @@ fn rpc_usage_list_empty() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 7,
+        id: 7.into(),
         method: "account/usage/list".to_string(),
         params: None,
     };
@@ -1286,7 +1286,7 @@ fn rpc_usage_aggregate_returns_backend_summary() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let req = JsonRpcRequest {
-        id: 71,
+        id: 71.into(),
         method: "account/usage/aggregate".to_string(),
         params: None,
     };
@@ -1382,7 +1382,7 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let list_req = JsonRpcRequest {
-        id: 72,
+        id: 72.into(),
         method: "requestlog/list".to_string(),
         params: Some(serde_json::json!({
             "page": 2,
@@ -1430,7 +1430,7 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
 
     let summary_server = codexmanager_service::start_one_shot_server().expect("start server");
     let summary_req = JsonRpcRequest {
-        id: 73,
+        id: 73.into(),
         method: "requestlog/summary".to_string(),
         params: Some(serde_json::json!({
             "statusFilter": "5xx"
@@ -1496,7 +1496,7 @@ fn rpc_apikey_update_model_updates_name_with_chinese() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let update_req = JsonRpcRequest {
-        id: 74,
+        id: 74.into(),
         method: "apikey/updateModel".to_string(),
         params: Some(serde_json::json!({
             "id": "gk-update-name",
@@ -1517,7 +1517,7 @@ fn rpc_apikey_update_model_updates_name_with_chinese() {
 
     let list_server = codexmanager_service::start_one_shot_server().expect("start server");
     let list_req = JsonRpcRequest {
-        id: 75,
+        id: 75.into(),
         method: "apikey/list".to_string(),
         params: None,
     };
@@ -1550,7 +1550,7 @@ fn rpc_rejects_missing_token() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 8,
+        id: 8.into(),
         method: "initialize".to_string(),
         params: None,
     };
@@ -1565,7 +1565,7 @@ fn rpc_rejects_cross_site_origin() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 9,
+        id: 9.into(),
         method: "initialize".to_string(),
         params: None,
     };
@@ -1590,7 +1590,7 @@ fn rpc_accepts_loopback_origin() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 10,
+        id: 10.into(),
         method: "initialize".to_string(),
         params: None,
     };

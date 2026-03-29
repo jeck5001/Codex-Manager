@@ -56,7 +56,7 @@ fn handle_parsed_rpc_request<F>(req: JsonRpcRequest, handler: F) -> (String, boo
 where
     F: FnOnce(JsonRpcRequest) -> JsonRpcResponse,
 {
-    let request_id = req.id;
+    let request_id = req.id.clone();
     let request_method = req.method.clone();
     match std::panic::catch_unwind(AssertUnwindSafe(|| handler(req))) {
         Ok(resp) => {
@@ -159,7 +159,7 @@ pub(crate) async fn handle_rpc_http(headers: HeaderMap, body: String) -> AxumRes
             Err(err) => {
                 log::error!("rpc http blocking task failed: {}", err);
                 let fallback = JsonRpcResponse {
-                    id: 0,
+                    id: 0.into(),
                     result: crate::error_codes::rpc_error_payload(
                         "internal_error: rpc task failed".to_string(),
                     ),
@@ -240,10 +240,10 @@ mod tests {
     #[test]
     fn panicking_rpc_handler_returns_structured_json_error() {
         let request = JsonRpcRequest {
-            id: 7,
+            id: 7.into(),
             method: "account/usage/refresh".to_string(),
             params: None,
-        };
+    };
 
         let (body, success) = handle_parsed_rpc_request(request, |_req| {
             panic!("usage refresh boom");
@@ -272,10 +272,10 @@ mod tests {
     #[test]
     fn normal_rpc_handler_keeps_success_shape() {
         let request = JsonRpcRequest {
-            id: 9,
+            id: 9.into(),
             method: "noop".to_string(),
             params: None,
-        };
+    };
 
         let (body, success) = handle_parsed_rpc_request(request, |req| JsonRpcResponse {
             id: req.id,

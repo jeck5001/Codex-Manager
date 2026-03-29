@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn login_complete_requires_params() {
     let req = JsonRpcRequest {
-        id: 1,
+        id: 1.into(),
         method: "account/login/complete".to_string(),
         params: None,
     };
@@ -16,7 +16,7 @@ fn login_complete_requires_params() {
     assert!(err.contains("missing"));
 
     let req = JsonRpcRequest {
-        id: 2,
+        id: 2.into(),
         method: "account/login/complete".to_string(),
         params: Some(serde_json::json!({ "code": "x" })),
     };
@@ -29,7 +29,7 @@ fn login_complete_requires_params() {
     assert!(err.contains("missing"));
 
     let req = JsonRpcRequest {
-        id: 3,
+        id: 3.into(),
         method: "account/login/complete".to_string(),
         params: Some(serde_json::json!({ "state": "y" })),
     };

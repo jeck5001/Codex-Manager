@@ -1,17 +1,94 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RequestId {
+    String(String),
+    Integer(i64),
+}
+
+impl fmt::Display for RequestId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::String(value) => f.write_str(value),
+            Self::Integer(value) => write!(f, "{value}"),
+        }
+    }
+}
+
+impl From<i64> for RequestId {
+    fn from(value: i64) -> Self {
+        Self::Integer(value)
+    }
+}
+
+impl From<i32> for RequestId {
+    fn from(value: i32) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+impl From<u64> for RequestId {
+    fn from(value: u64) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+impl From<u32> for RequestId {
+    fn from(value: u32) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+impl From<usize> for RequestId {
+    fn from(value: usize) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JsonRpcMessage {
+    Request(JsonRpcRequest),
+    Notification(JsonRpcNotification),
+    Response(JsonRpcResponse),
+    Error(JsonRpcError),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonRpcRequest {
-    pub id: u64,
+    pub id: RequestId,
     pub method: String,
     #[serde(default)]
     pub params: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JsonRpcNotification {
+    pub method: String,
+    #[serde(default)]
+    pub params: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonRpcResponse {
-    pub id: u64,
+    pub id: RequestId,
     pub result: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JsonRpcError {
+    pub error: JsonRpcErrorObject,
+    pub id: RequestId,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JsonRpcErrorObject {
+    pub code: i64,
+    #[serde(default)]
+    pub data: Option<serde_json::Value>,
+    pub message: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

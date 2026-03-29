@@ -47,7 +47,7 @@ fn rpc_call_on_socket(
     let _ = stream.set_write_timeout(Some(io_timeout));
 
     let req = JsonRpcRequest {
-        id: 1,
+        id: 1.into(),
         method: method.to_string(),
         params,
     };
