@@ -25,6 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -106,6 +107,76 @@ const RESIDENCY_REQUIREMENT_LABELS: Record<string, string> = {
   us: "仅美国 (us)",
 };
 const EMPTY_RESIDENCY_OPTION = "__none__";
+
+const WORKER_PRESET_KEYS = [
+  "usageRefreshWorkers",
+  "httpWorkerFactor",
+  "httpWorkerMin",
+  "httpStreamWorkerFactor",
+  "httpStreamWorkerMin",
+] as const;
+
+type WorkerPresetKey = (typeof WORKER_PRESET_KEYS)[number];
+
+type WorkerPreset = {
+  key: string;
+  label: string;
+  rangeLabel: string;
+  summary: string;
+  hints: string[];
+  backgroundTasks: Pick<BackgroundTaskSettings, WorkerPresetKey>;
+};
+
+const WORKER_PRESETS: WorkerPreset[] = [
+  {
+    key: "recommended",
+    label: "常规推荐",
+    rangeLabel: "8-16 核",
+    summary: "默认平衡档，适合大多数服务器和办公室电脑。",
+    hints: ["几百并发通常先从这里开始", "速度和资源占用比较均衡"],
+    backgroundTasks: {
+      usageRefreshWorkers: 4,
+      httpWorkerFactor: 4,
+      httpWorkerMin: 8,
+      httpStreamWorkerFactor: 1,
+      httpStreamWorkerMin: 2,
+    },
+  },
+  {
+    key: "light",
+    label: "轻量稳定",
+    rangeLabel: "4-8 核",
+    summary: "更少后台占用，适合低配机器、笔记本或只求稳。",
+    hints: ["更省 CPU 和内存", "适合小规模或低峰值场景"],
+    backgroundTasks: {
+      usageRefreshWorkers: 2,
+      httpWorkerFactor: 2,
+      httpWorkerMin: 4,
+      httpStreamWorkerFactor: 1,
+      httpStreamWorkerMin: 1,
+    },
+  },
+  {
+    key: "performance",
+    label: "高并发",
+    rangeLabel: "16 核以上",
+    summary: "更积极地并发处理，适合高核数机器和繁忙时段。",
+    hints: ["更适合上千并发峰值", "机器资源充足时再选"],
+    backgroundTasks: {
+      usageRefreshWorkers: 6,
+      httpWorkerFactor: 6,
+      httpWorkerMin: 12,
+      httpStreamWorkerFactor: 2,
+      httpStreamWorkerMin: 4,
+    },
+  },
+];
+
+const WORKER_REFERENCE_CORES = [8, 16, 32] as const;
+
+function estimateWorkerCount(cores: number, factor: number, minimum: number) {
+  return Math.max(cores * factor, minimum);
+}
 
 const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS = [
   "auto",
@@ -342,6 +413,8 @@ export default function SettingsPage() {
   const [backgroundTaskDraft, setBackgroundTaskDraft] = useState<
     Record<string, string>
   >({});
+  const [showWorkerAdvanced, setShowWorkerAdvanced] = useState(false);
+  const [showWorkerReference, setShowWorkerReference] = useState(true);
 
   const { data: fetchedSnapshot, isError: isSnapshotError } = useQuery({
     queryKey: ["app-settings-snapshot"],
@@ -654,6 +727,18 @@ export default function SettingsPage() {
       "")
     : "";
 
+  const activeWorkerPreset = useMemo(() => {
+    if (!snapshot) return null;
+    return (
+      WORKER_PRESETS.find((preset) =>
+        WORKER_PRESET_KEYS.every(
+          (key) =>
+            snapshot.backgroundTasks[key] === preset.backgroundTasks[key],
+        ),
+      ) ?? null
+    );
+  }, [snapshot]);
+
   const lastIntentThemeRef = useRef<string | null>(null);
   const lastIntentAppearancePresetRef = useRef<string | null>(null);
 
@@ -761,6 +846,33 @@ export default function SettingsPage() {
         ...patch,
       },
     });
+  };
+
+  const clearBackgroundTaskDraftKeys = (keys: readonly WorkerPresetKey[]) => {
+    setBackgroundTaskDraft((current) => {
+      const nextDraft = { ...current };
+      for (const key of keys) {
+        delete nextDraft[key];
+      }
+      return nextDraft;
+    });
+  };
+
+  const applyWorkerPreset = (preset: WorkerPreset) => {
+    if (!snapshot) return;
+    void updateSettings
+      .mutateAsync({
+        backgroundTasks: {
+          ...snapshot.backgroundTasks,
+          ...preset.backgroundTasks,
+        },
+        _silent: true,
+      })
+      .then(() => {
+        clearBackgroundTaskDraftKeys(WORKER_PRESET_KEYS);
+        toast.success(`已切换为「${preset.label}」`);
+      })
+      .catch(() => undefined);
   };
 
   const saveTransportField = (
@@ -1559,45 +1671,262 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="text-base">Worker 并发参数</CardTitle>
               <CardDescription>
-                调整执行单元并发规模；用量刷新并发会直接影响手动刷新和后台轮询
+                先按机器档位选，再按需求微调。普通请求和流式请求都是
+                “CPU 核数 × 因子，至少保底值”。几百并发先从常规推荐开始，
+                上千并发且机器资源充足时再考虑高并发。
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {[
-                { label: "用量刷新并发", key: "usageRefreshWorkers" },
-                { label: "HTTP 因子", key: "httpWorkerFactor" },
-                { label: "HTTP 最小并发", key: "httpWorkerMin" },
-                { label: "流式因子", key: "httpStreamWorkerFactor" },
-                { label: "流式最小并发", key: "httpStreamWorkerMin" },
-              ].map((worker) => (
-                <div key={worker.key} className="grid gap-1.5">
-                  <Label className="text-xs">{worker.label}</Label>
-                  <Input
-                    type="number"
-                    className="h-9"
-                    value={
-                      backgroundTaskDraft[worker.key] ||
-                      stringifyNumber(
-                        snapshot.backgroundTasks[
-                          worker.key as keyof BackgroundTaskSettings
-                        ] as number,
-                      )
+            <CardContent className="space-y-5">
+              <div className="rounded-2xl border border-border/70 bg-muted/30 p-4 text-xs leading-6 text-muted-foreground">
+                <p className="font-medium text-foreground">怎么理解这 5 个数字</p>
+                <p>
+                  <span className="font-medium text-foreground">用量刷新并发</span>
+                  是后台巡检线程，负责轮询和刷新状态。
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">HTTP / 流式因子</span>
+                  越大，机器越愿意多开线程处理请求。
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">最小并发</span>
+                  是保底值，避免小机器或空闲时线程太少。
+                </p>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-3">
+                {WORKER_PRESETS.map((preset) => {
+                  const isActive = activeWorkerPreset?.key === preset.key;
+                  return (
+                    <Button
+                      key={preset.key}
+                      type="button"
+                      variant={isActive ? "default" : "outline"}
+                      className={cn(
+                        "h-auto w-full min-w-0 flex-col items-start gap-2 whitespace-normal break-words rounded-2xl p-4 text-left",
+                        isActive && "shadow-sm",
+                      )}
+                      onClick={() => applyWorkerPreset(preset)}
+                    >
+                      <div className="flex w-full min-w-0 items-start justify-between gap-2">
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <span className="text-sm font-semibold">
+                            {preset.label}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {preset.rangeLabel}
+                          </span>
+                        </div>
+                        {isActive ? (
+                          <Badge variant="secondary" className="h-5 px-2">
+                            当前
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="h-5 px-2">
+                            一键套用
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs leading-5 opacity-90">
+                        {preset.summary}
+                      </p>
+                      <p className="text-[11px] leading-5 opacity-80">
+                        建议负载：{preset.rangeLabel}
+                      </p>
+                      <ul className="space-y-1 text-xs leading-5 opacity-80">
+                        {preset.hints.map((hint) => (
+                          <li key={hint}>• {hint}</li>
+                        ))}
+                      </ul>
+                    </Button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-muted/30 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium">参考换算</p>
+                      <Badge variant="secondary" className="h-5 px-2">
+                        参考
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      公式：并发线程数 = CPU 核数 × 因子，结果不会低于最小并发。
+                      下面是按当前预设的示例值，方便估算负载，不代表绝对吞吐上限。
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() =>
+                      setShowWorkerReference((current) => !current)
                     }
-                    onChange={(event) =>
-                      setBackgroundTaskDraft((current) => ({
-                        ...current,
-                        [worker.key]: event.target.value,
-                      }))
-                    }
-                    onBlur={() =>
-                      saveBackgroundTaskField(
-                        worker.key as keyof BackgroundTaskSettings,
-                        1,
-                      )
-                    }
-                  />
+                  >
+                    <SettingsIcon className="h-4 w-4" />
+                    {showWorkerReference ? "收起换算表" : "展开换算表"}
+                  </Button>
                 </div>
-              ))}
+                {showWorkerReference ? (
+                  <div className="overflow-hidden rounded-xl border border-border/70 bg-background/40">
+                    <table className="w-full border-collapse text-left text-xs">
+                      <thead className="bg-muted/50 text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">CPU 核数</th>
+                          <th className="px-3 py-2 font-medium">HTTP 并发</th>
+                          <th className="px-3 py-2 font-medium">流式并发</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {WORKER_REFERENCE_CORES.map((cores) => (
+                          <tr key={cores} className="border-t border-border/70">
+                            <td className="px-3 py-2 font-medium">{cores}</td>
+                            <td className="px-3 py-2">
+                              <div className="space-y-1 whitespace-normal break-words">
+                                <div>
+                                  常规推荐 {estimateWorkerCount(cores, 4, 8)}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  轻量稳定 {estimateWorkerCount(cores, 2, 4)}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  高并发 {estimateWorkerCount(cores, 6, 12)}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="space-y-1 whitespace-normal break-words">
+                                <div>
+                                  常规推荐 {estimateWorkerCount(cores, 1, 2)}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  轻量稳定 {estimateWorkerCount(cores, 1, 1)}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  高并发 {estimateWorkerCount(cores, 2, 4)}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    已收起换算表，点击右侧按钮可重新展开查看。
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-muted/30 p-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">当前档位</span>
+                    <Badge
+                      variant={activeWorkerPreset ? "default" : "secondary"}
+                      className="h-5 px-2"
+                    >
+                      {activeWorkerPreset?.label ?? "自定义"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    不确定怎么选的话，先看机器核数：4-8 核选轻量稳定，
+                    8-16 核选常规推荐，16 核以上再考虑高并发。
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {!activeWorkerPreset && snapshot && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => applyWorkerPreset(WORKER_PRESETS[0])}
+                    >
+                      恢复常规推荐
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => setShowWorkerAdvanced((current) => !current)}
+                  >
+                    <SettingsIcon className="h-4 w-4" />
+                    {showWorkerAdvanced ? "收起高级设置" : "显示高级设置"}
+                  </Button>
+                </div>
+              </div>
+
+              {showWorkerAdvanced && (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {[
+                    {
+                      label: "后台巡检并发",
+                      helper:
+                        "控制用量刷新、后台轮询这些任务同时跑多少个。",
+                      key: "usageRefreshWorkers",
+                    },
+                    {
+                      label: "普通请求自动并发",
+                      helper:
+                        "普通 HTTP 请求的自动并发倍率，越大越快，也越吃资源。",
+                      key: "httpWorkerFactor",
+                    },
+                    {
+                      label: "普通请求最低保底",
+                      helper:
+                        "普通 HTTP 请求至少保留多少个处理线程，防止太冷清。",
+                      key: "httpWorkerMin",
+                    },
+                    {
+                      label: "流式请求自动并发",
+                      helper:
+                        "流式请求的自动并发倍率，流式响应多时会更明显。",
+                      key: "httpStreamWorkerFactor",
+                    },
+                    {
+                      label: "流式请求最低保底",
+                      helper:
+                        "流式请求至少保留多少个处理线程，保证长连接不卡住。",
+                      key: "httpStreamWorkerMin",
+                    },
+                  ].map((worker) => (
+                    <div key={worker.key} className="grid gap-1.5">
+                      <Label className="text-xs">{worker.label}</Label>
+                      <p className="text-[11px] leading-5 text-muted-foreground">
+                        {worker.helper}
+                      </p>
+                      <Input
+                        type="number"
+                        className="h-9"
+                        value={
+                          backgroundTaskDraft[worker.key] ||
+                          stringifyNumber(
+                            snapshot.backgroundTasks[
+                              worker.key as keyof BackgroundTaskSettings
+                            ] as number,
+                          )
+                        }
+                        onChange={(event) =>
+                          setBackgroundTaskDraft((current) => ({
+                            ...current,
+                            [worker.key]: event.target.value,
+                          }))
+                        }
+                        onBlur={() =>
+                          saveBackgroundTaskField(
+                            worker.key as keyof BackgroundTaskSettings,
+                            1,
+                          )
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
