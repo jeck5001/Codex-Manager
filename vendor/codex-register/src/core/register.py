@@ -798,6 +798,7 @@ class RegistrationEngine:
             response_json = response.json()
             self._clear_otp_error_state()
             self._log_auth_response_preview("验证码校验响应摘要", response_json)
+            self._follow_auth_continue_url(response_json, "登录邮箱验证码")
             return response_json if isinstance(response_json, dict) else {}
         except Exception as e:
             self._log(f"验证验证码失败: {e}", "error")
@@ -1198,6 +1199,7 @@ class RegistrationEngine:
 
             response_json = response.json()
             self._log_auth_response_preview("登录邮箱响应摘要", response_json)
+            self._follow_auth_continue_url(response_json, "登录邮箱")
 
             page = (response_json or {}).get("page")
             if not isinstance(page, dict):
@@ -1232,6 +1234,7 @@ class RegistrationEngine:
 
             response_json = response.json()
             self._log_auth_response_preview("登录密码响应摘要", response_json)
+            self._follow_auth_continue_url(response_json, "登录密码")
 
             page = (response_json or {}).get("page")
             if not isinstance(page, dict):
@@ -1245,6 +1248,21 @@ class RegistrationEngine:
         except Exception as e:
             self._log(f"提交登录密码失败: {e}", "error")
             return None
+
+    def _follow_auth_continue_url(self, payload: Any, stage: str):
+        """最佳努力跟进认证接口返回的 continue_url，推进当前会话状态。"""
+        try:
+            continue_url = self._extract_auth_continue_url(payload)
+            if not continue_url or not self.session:
+                return
+
+            self._log(f"{stage} 跟进 continue_url: {continue_url[:120]}...", "warning")
+            self.session.get(
+                continue_url,
+                timeout=15,
+            )
+        except Exception as e:
+            self._log(f"{stage} 跟进 continue_url 失败: {e}", "warning")
 
     def _build_callback_url_from_page(self, page: Dict[str, Any]) -> Optional[str]:
         """从 token_exchange 页面构造 OAuth 回调 URL"""
