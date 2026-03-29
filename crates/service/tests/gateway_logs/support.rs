@@ -170,6 +170,20 @@ pub(super) fn hash_platform_key_for_test(key: &str) -> String {
     out
 }
 
+pub(super) fn seed_model_options_cache(storage: &Storage, models: &[&str]) {
+    let items = models
+        .iter()
+        .map(|slug| ModelOption {
+            slug: (*slug).to_string(),
+            display_name: (*slug).to_string(),
+        })
+        .collect::<Vec<_>>();
+    let items_json = serde_json::to_string(&items).expect("serialize model options cache");
+    storage
+        .upsert_model_options_cache("default", &items_json, now_ts())
+        .expect("upsert model options cache");
+}
+
 pub(super) fn decode_upstream_request_body(captured: &CapturedUpstreamRequest) -> Vec<u8> {
     if captured
         .headers

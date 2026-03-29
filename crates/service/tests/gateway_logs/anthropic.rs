@@ -27,6 +27,10 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
+    seed_model_options_cache(
+        &storage,
+        &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"],
+    );
 
     storage
         .insert_account(&Account {
@@ -147,7 +151,7 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
 
     let upstream_payload: serde_json::Value =
         serde_json::from_slice(&captured.body).expect("parse upstream payload");
-    assert_eq!(upstream_payload["model"], "gpt-5.3-codex");
+    assert_eq!(upstream_payload["model"], "claude-3-5-sonnet-20241022");
     assert_eq!(upstream_payload["reasoning"]["effort"], "high");
     assert_eq!(upstream_payload["stream"], true);
     assert_eq!(upstream_payload["input"][0]["role"], "user");
@@ -220,6 +224,10 @@ fn gateway_claude_failover_cross_workspace_strips_session_affinity_headers() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
+    seed_model_options_cache(
+        &storage,
+        &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"],
+    );
 
     storage
         .insert_account(&Account {
@@ -415,6 +423,10 @@ fn gateway_claude_failover_same_workspace_preserves_session_affinity_headers() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
+    seed_model_options_cache(
+        &storage,
+        &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"],
+    );
 
     for index in 1..=2 {
         storage
