@@ -168,6 +168,7 @@ pub struct RequestLogQuerySummary {
 pub struct ApiKeyTokenUsageSummary {
     pub key_id: String,
     pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
 }
 
 #[derive(Debug, Clone)]

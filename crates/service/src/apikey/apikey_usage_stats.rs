@@ -13,6 +13,7 @@ pub(crate) fn read_api_key_usage_stats() -> Result<Vec<ApiKeyUsageStatSummary>, 
         .map(|item| ApiKeyUsageStatSummary {
             key_id: item.key_id,
             total_tokens: item.total_tokens.max(0),
+            estimated_cost_usd: item.estimated_cost_usd.max(0.0),
         })
         .collect())
 }

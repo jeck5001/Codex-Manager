@@ -1,6 +1,6 @@
 use super::{
-    AccountListParams, AccountListResult, AccountSummary, RequestLogFilterSummaryResult,
-    RequestLogListParams, RequestLogListResult, RequestLogSummary,
+    AccountListParams, AccountListResult, AccountSummary, ApiKeyUsageStatSummary,
+    RequestLogFilterSummaryResult, RequestLogListParams, RequestLogListResult, RequestLogSummary,
 };
 
 #[test]
@@ -200,6 +200,23 @@ fn request_log_filter_summary_serialization_uses_camel_case() {
         "totalTokens",
         "totalCostUsd",
     ] {
+        assert!(obj.contains_key(key), "missing key: {key}");
+    }
+}
+
+#[test]
+fn api_key_usage_stat_summary_serialization_uses_camel_case() {
+    let result = ApiKeyUsageStatSummary {
+        key_id: "gk_test".to_string(),
+        total_tokens: 123,
+        estimated_cost_usd: 4.56,
+    };
+
+    let value = serde_json::to_value(result).expect("serialize api key usage stat summary");
+    let obj = value
+        .as_object()
+        .expect("api key usage stat summary object");
+    for key in ["keyId", "totalTokens", "estimatedCostUsd"] {
         assert!(obj.contains_key(key), "missing key: {key}");
     }
 }

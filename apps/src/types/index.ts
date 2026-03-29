@@ -132,6 +132,7 @@ export interface AggregateApiTestResult {
 export interface ApiKeyUsageStat {
   keyId: string;
   totalTokens: number;
+  estimatedCostUsd: number;
 }
 
 export interface ModelOption {

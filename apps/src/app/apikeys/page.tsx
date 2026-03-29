@@ -41,7 +41,6 @@ import { useDesktopPageActive } from "@/hooks/useDesktopPageActive";
 import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { accountClient } from "@/lib/api/account-client";
-import { serviceClient } from "@/lib/api/service-client";
 import { useAppStore } from "@/lib/store/useAppStore";
 import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { formatCompactNumber } from "@/lib/utils/usage";
@@ -129,11 +128,7 @@ export default function ApiKeysPage() {
   const { data: usageOverview, isPending: isUsageOverviewLoading } = useQuery({
     queryKey: ["apikey-usage-overview", serviceAddr || null],
     queryFn: async () => {
-      const [stats, summary] = await Promise.all([
-        accountClient.listApiKeyUsageStats(),
-        serviceClient.getRequestLogSummary(),
-      ]);
-
+      const stats = await accountClient.listApiKeyUsageStats();
       const usageByKey = stats.reduce<Record<string, number>>((result, item) => {
         const keyId = String(item.keyId || "").trim();
         if (!keyId) return result;
@@ -142,10 +137,14 @@ export default function ApiKeysPage() {
       }, {});
 
       const totalTokens = Object.values(usageByKey).reduce((sum, value) => sum + value, 0);
+      const totalCostUsd = stats.reduce(
+        (sum, item) => sum + Math.max(0, item.estimatedCostUsd || 0),
+        0,
+      );
       return {
         usageByKey,
         totalTokens,
-        totalCostUsd: summary.totalCostUsd,
+        totalCostUsd,
       };
     },
     enabled: isUsageQueryEnabled && isPageActive,
@@ -268,7 +267,7 @@ export default function ApiKeysPage() {
               value={formatUsd(usageOverview?.totalCostUsd || 0)}
               icon={DollarSign}
               color="h-4 w-4 text-emerald-500"
-              sub="按请求日志累计估算"
+              sub="按全部平台密钥累计"
             />
           </>
         )}

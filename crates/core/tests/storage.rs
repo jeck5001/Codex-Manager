@@ -958,8 +958,16 @@ fn request_token_stats_can_summarize_total_tokens_by_key() {
     storage.init().expect("init schema");
     let created_at = now_ts();
 
-    for (request_log_id, key_id, total_tokens, input_tokens, cached_input_tokens, output_tokens) in [
-        (101_i64, "gk_alpha", Some(120_i64), None, None, None),
+    for (
+        request_log_id,
+        key_id,
+        total_tokens,
+        input_tokens,
+        cached_input_tokens,
+        output_tokens,
+        estimated_cost_usd,
+    ) in [
+        (101_i64, "gk_alpha", Some(120_i64), None, None, None, Some(0.12)),
         (
             102_i64,
             "gk_alpha",
@@ -967,9 +975,10 @@ fn request_token_stats_can_summarize_total_tokens_by_key() {
             Some(90_i64),
             Some(30_i64),
             Some(25_i64),
+            Some(0.34),
         ),
-        (103_i64, "gk_beta", Some(75_i64), None, None, None),
-        (104_i64, "", Some(999_i64), None, None, None),
+        (103_i64, "gk_beta", Some(75_i64), None, None, None, Some(0.78)),
+        (104_i64, "", Some(999_i64), None, None, None, Some(9.99)),
     ] {
         storage
             .insert_request_token_stat(&RequestTokenStat {
@@ -986,7 +995,7 @@ fn request_token_stats_can_summarize_total_tokens_by_key() {
                 output_tokens,
                 total_tokens,
                 reasoning_output_tokens: Some(0),
-                estimated_cost_usd: Some(0.0),
+                estimated_cost_usd,
                 created_at,
             })
             .expect("insert token stat");
@@ -999,8 +1008,10 @@ fn request_token_stats_can_summarize_total_tokens_by_key() {
     assert_eq!(summary.len(), 2);
     assert_eq!(summary[0].key_id, "gk_alpha");
     assert_eq!(summary[0].total_tokens, 205);
+    assert!((summary[0].estimated_cost_usd - 0.46).abs() < f64::EPSILON);
     assert_eq!(summary[1].key_id, "gk_beta");
     assert_eq!(summary[1].total_tokens, 75);
+    assert!((summary[1].estimated_cost_usd - 0.78).abs() < f64::EPSILON);
 }
 
 #[test]

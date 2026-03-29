@@ -79,7 +79,8 @@ impl Storage {
                         END
                     ),
                     0
-                ) AS total_tokens
+                ) AS total_tokens,
+                IFNULL(SUM(estimated_cost_usd), 0.0) AS estimated_cost_usd
              FROM request_token_stats
              WHERE key_id IS NOT NULL AND TRIM(key_id) <> ''
              GROUP BY key_id
@@ -91,6 +92,7 @@ impl Storage {
             items.push(ApiKeyTokenUsageSummary {
                 key_id: row.get(0)?,
                 total_tokens: row.get(1)?,
+                estimated_cost_usd: row.get(2)?,
             });
         }
         Ok(items)

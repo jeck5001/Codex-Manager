@@ -350,6 +350,10 @@ export function normalizeApiKeyUsageStats(payload: unknown): ApiKeyUsageStat[] {
       return {
         keyId,
         totalTokens: asInteger(current.totalTokens ?? current.total_tokens, 0, 0),
+        estimatedCostUsd: Math.max(
+          0,
+          toNullableNumber(current.estimatedCostUsd ?? current.estimated_cost_usd) ?? 0
+        ),
       };
     })
     .filter((item): item is ApiKeyUsageStat => Boolean(item));
