@@ -29,7 +29,7 @@ pub async fn service_aggregate_api_create(
 #[tauri::command]
 pub async fn service_aggregate_api_update(
     addr: Option<String>,
-    api_id: String,
+    id: String,
     provider_type: Option<String>,
     supplier_name: Option<String>,
     sort: Option<i64>,
@@ -37,7 +37,7 @@ pub async fn service_aggregate_api_update(
     key: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let params = serde_json::json!({
-        "id": api_id,
+        "id": id,
         "providerType": provider_type,
         "supplierName": supplier_name,
         "sort": sort,
@@ -50,26 +50,26 @@ pub async fn service_aggregate_api_update(
 #[tauri::command]
 pub async fn service_aggregate_api_read_secret(
     addr: Option<String>,
-    api_id: String,
+    id: String,
 ) -> Result<serde_json::Value, String> {
-    let params = serde_json::json!({ "id": api_id });
+    let params = serde_json::json!({ "id": id });
     rpc_call_in_background("aggregateApi/readSecret", addr, Some(params)).await
 }
 
 #[tauri::command]
 pub async fn service_aggregate_api_delete(
     addr: Option<String>,
-    api_id: String,
+    id: String,
 ) -> Result<serde_json::Value, String> {
-    let params = serde_json::json!({ "id": api_id });
+    let params = serde_json::json!({ "id": id });
     rpc_call_in_background("aggregateApi/delete", addr, Some(params)).await
 }
 
 #[tauri::command]
 pub async fn service_aggregate_api_test_connection(
     addr: Option<String>,
-    api_id: String,
+    id: String,
 ) -> Result<serde_json::Value, String> {
-    let params = serde_json::json!({ "id": api_id });
+    let params = serde_json::json!({ "id": id });
     rpc_call_in_background("aggregateApi/testConnection", addr, Some(params)).await
 }

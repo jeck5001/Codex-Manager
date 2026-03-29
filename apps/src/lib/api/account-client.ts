@@ -391,7 +391,7 @@ export const accountClient = {
     invoke(
       "service_aggregate_api_update",
       withAddr({
-        apiId,
+        id: apiId,
         providerType: params.providerType || null,
         supplierName: params.supplierName || null,
         sort: typeof params.sort === "number" ? params.sort : null,
@@ -400,18 +400,18 @@ export const accountClient = {
       })
     ),
   deleteAggregateApi: (apiId: string) =>
-    invoke("service_aggregate_api_delete", withAddr({ apiId })),
+    invoke("service_aggregate_api_delete", withAddr({ id: apiId })),
   async readAggregateApiSecret(apiId: string): Promise<string> {
     const result = await invoke<{ key?: string }>(
       "service_aggregate_api_read_secret",
-      withAddr({ apiId })
+      withAddr({ id: apiId })
     );
     return String(result?.key || "").trim();
   },
   async testAggregateApiConnection(apiId: string): Promise<AggregateApiTestResult> {
     const result = await invoke<unknown>(
       "service_aggregate_api_test_connection",
-      withAddr({ apiId })
+      withAddr({ id: apiId })
     );
     return normalizeAggregateApiTestResult(result);
   },
