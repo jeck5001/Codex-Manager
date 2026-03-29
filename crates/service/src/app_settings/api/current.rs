@@ -40,6 +40,7 @@ const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS: &[&str] = &[
     "gpt-5.2",
     "gpt-5.2-codex",
     "gpt-5.3-codex",
+    "gpt-5.4-mini",
     "gpt-5.4",
 ];
 

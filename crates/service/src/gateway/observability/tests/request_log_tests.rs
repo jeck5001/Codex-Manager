@@ -28,7 +28,12 @@ fn estimate_cost_matches_openai_gpt5_family_prices() {
 }
 
 #[test]
-fn estimate_cost_matches_openai_gpt54_prices() {
+fn estimate_cost_matches_openai_gpt54_and_mini_prices() {
+    // gpt-5.4-mini：输入 0.75/M，缓存 0.075/M，输出 4.5/M
+    // 样本：输入 1000，缓存 200，输出 500 => 0.002865
+    let actual = estimate_cost_usd(Some("gpt-5.4-mini"), Some(1000), Some(200), Some(500));
+    assert_close(actual, 0.002865);
+
     // gpt-5.4：输入 2.5/M，缓存 0.25/M，输出 15/M
     // 样本：输入 1000，缓存 200，输出 500
     // => 非缓存输入 800*0.0025/1000 + 缓存 200*0.00025/1000 + 输出 500*0.015/1000
@@ -70,8 +75,11 @@ fn estimate_cost_matches_openai_gpt54_pro_large_context_prices() {
 fn estimate_cost_matches_openai_gpt5_mini_and_52_prices() {
     // mini：输入 0.25/M，缓存 0.025/M，输出 2/M
     // 样本同上 => 0.001205
-    let mini_cost = estimate_cost_usd(Some("gpt-5.1-codex-mini"), Some(1000), Some(200), Some(500));
-    assert_close(mini_cost, 0.001205);
+    let mini_models = ["gpt-5.1-codex-mini", "gpt-5-codex-mini", "gpt-5-mini"];
+    for model in mini_models {
+        let mini_cost = estimate_cost_usd(Some(model), Some(1000), Some(200), Some(500));
+        assert_close(mini_cost, 0.001205);
+    }
 
     // 5.2：输入 1.75/M，缓存 0.175/M，输出 14/M
     // 样本同上 => 0.008435
@@ -105,4 +113,28 @@ fn estimate_cost_falls_back_gpt_5_3_codex_to_gpt_5_2_codex_price() {
         Some(1_000_000),
     );
     assert_close(actual, 15.75);
+}
+
+#[test]
+fn estimate_cost_matches_openai_gpt4o_and_o3_prices() {
+    let gpt41_models = ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"];
+    let gpt41_expected = [0.0057_f64, 0.00114_f64, 0.000285_f64];
+    for (model, expected) in gpt41_models.into_iter().zip(gpt41_expected) {
+        let actual = estimate_cost_usd(Some(model), Some(1000), Some(200), Some(500));
+        assert_close(actual, expected);
+    }
+
+    let gpt4o_models = ["gpt-4o", "gpt-4o-mini", "gpt-4o-2024-05-13"];
+    let gpt4o_expected = [0.00725_f64, 0.000435_f64, 0.0125_f64];
+    for (model, expected) in gpt4o_models.into_iter().zip(gpt4o_expected) {
+        let actual = estimate_cost_usd(Some(model), Some(1000), Some(200), Some(500));
+        assert_close(actual, expected);
+    }
+
+    let o3_models = ["o3", "o3-mini", "o3-deep-research", "o3-pro"];
+    let o3_expected = [0.0057_f64, 0.00319_f64, 0.0285_f64, 0.06_f64];
+    for (model, expected) in o3_models.into_iter().zip(o3_expected) {
+        let actual = estimate_cost_usd(Some(model), Some(1000), Some(200), Some(500));
+        assert_close(actual, expected);
+    }
 }

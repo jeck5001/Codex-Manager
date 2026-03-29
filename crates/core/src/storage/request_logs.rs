@@ -222,7 +222,8 @@ impl Storage {
                                 ELSE 0
                             END
                     END
-                ), 0)
+                ), 0),
+                IFNULL(SUM(IFNULL(t.estimated_cost_usd, 0.0)), 0.0)
              FROM request_logs r
              LEFT JOIN request_token_stats t ON t.request_log_id = r.id
              {where_clause}",
@@ -235,6 +236,7 @@ impl Storage {
                     success_count: row.get(1)?,
                     error_count: row.get(2)?,
                     total_tokens: row.get(3)?,
+                    estimated_cost_usd: row.get(4)?,
                 })
             })
     }

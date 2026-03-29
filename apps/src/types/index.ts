@@ -184,6 +184,7 @@ export interface RequestLogFilterSummary {
   successCount: number;
   errorCount: number;
   totalTokens: number;
+  totalCostUsd: number;
 }
 
 export interface LoginStatusResult {

@@ -53,20 +53,14 @@ fn read_cached_model_options() -> Result<Vec<ModelOption>, String> {
         return Ok(Vec::new());
     };
     let items = serde_json::from_str::<Vec<ModelOption>>(&cache.items_json).unwrap_or_default();
-    Ok(items)
+    Ok(normalize_model_options(&items))
 }
 
 fn merge_model_options(
     cached: &[ModelOption],
     fetched: &[ModelOption],
 ) -> (Vec<ModelOption>, bool) {
-    let mut merged = cached
-        .iter()
-        .map(|item| ModelOption {
-            slug: item.slug.clone(),
-            display_name: item.display_name.clone(),
-        })
-        .collect::<Vec<_>>();
+    let mut merged = normalize_model_options(cached);
     let mut seen = cached
         .iter()
         .map(|item| item.slug.trim())
@@ -81,19 +75,30 @@ fn merge_model_options(
             continue;
         }
 
-        let display_name = item.display_name.trim();
         merged.push(ModelOption {
             slug: slug.to_string(),
-            display_name: if display_name.is_empty() {
-                slug.to_string()
-            } else {
-                display_name.to_string()
-            },
+            display_name: slug.to_string(),
         });
         changed = true;
     }
 
     (merged, changed)
+}
+
+fn normalize_model_options(items: &[ModelOption]) -> Vec<ModelOption> {
+    items
+        .iter()
+        .filter_map(|item| {
+            let slug = item.slug.trim().to_string();
+            if slug.is_empty() {
+                return None;
+            }
+            Some(ModelOption {
+                slug: slug.clone(),
+                display_name: slug,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -138,8 +143,8 @@ mod tests {
         assert_eq!(
             as_pairs(&merged),
             vec![
-                ("gpt-4.1".to_string(), "GPT-4.1".to_string()),
-                ("gpt-5".to_string(), "GPT-5".to_string()),
+                ("gpt-4.1".to_string(), "gpt-4.1".to_string()),
+                ("gpt-5".to_string(), "gpt-5".to_string()),
                 ("o3".to_string(), "o3".to_string()),
             ]
         );
@@ -167,7 +172,7 @@ mod tests {
         assert!(!changed);
         assert_eq!(
             as_pairs(&merged),
-            vec![("gpt-5".to_string(), "GPT-5".to_string())]
+            vec![("gpt-5".to_string(), "gpt-5".to_string())]
         );
     }
 }

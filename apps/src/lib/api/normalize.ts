@@ -483,6 +483,7 @@ export function normalizeRequestLogFilterSummary(
     successCount: asInteger(source.successCount, 0, 0),
     errorCount: asInteger(source.errorCount, 0, 0),
     totalTokens: asInteger(source.totalTokens, 0, 0),
+    totalCostUsd: Math.max(0, toNullableNumber(source.totalCostUsd) ?? 0),
   };
 }
 

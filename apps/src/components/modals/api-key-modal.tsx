@@ -88,7 +88,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
   });
 
   const modelLabelMap = Object.fromEntries(
-    (models || []).map((model) => [model.slug, model.displayName]),
+    (models || []).map((model) => [model.slug, model.slug]),
   );
 
   useEffect(() => {
@@ -318,7 +318,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
                   <SelectItem value="auto">跟随请求</SelectItem>
                   {models?.map((model) => (
                     <SelectItem key={model.slug} value={model.slug}>
-                      {model.displayName}
+                      {model.slug}
                     </SelectItem>
                   ))}
                 </SelectContent>

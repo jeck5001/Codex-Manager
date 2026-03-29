@@ -4,13 +4,15 @@ use serde_json::json;
 use tiny_http::Response;
 
 const MODEL_CACHE_SCOPE_DEFAULT: &str = "default";
-const MODELS_OWNED_BY: &str = "codexmanager";
+const MODELS_OWNED_BY: &str = "openai";
 
 fn build_openai_models_list(items: &[ModelOption]) -> String {
-    let created = now_ts();
-    let data = items
+    let mut ordered = items.iter().collect::<Vec<_>>();
+    ordered.sort_by(|a, b| a.slug.cmp(&b.slug));
+    let data = ordered
         .iter()
         .map(|item| {
+            let created = created_timestamp_for_model(item.slug.as_str());
             json!({
                 "id": item.slug.as_str(),
                 "object": "model",
@@ -24,6 +26,28 @@ fn build_openai_models_list(items: &[ModelOption]) -> String {
         "data": data,
     })
     .to_string()
+}
+
+fn created_timestamp_for_model(slug: &str) -> i64 {
+    let normalized = slug.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "gpt-5.4-mini" => 1773705600,
+        "gpt-5.4-pro" | "gpt-5.4" => 1772668800,
+        "gpt-5.3-codex" => 1770249600,
+        "gpt-5.2-pro" | "gpt-5.2-codex" | "gpt-5.2" => 1765411200,
+        "gpt-5.1-codex-mini" | "gpt-5-codex-mini" | "gpt-5.1-codex-max"
+        | "gpt-5.1-codex" | "gpt-5.1" => 1762992000,
+        "gpt-5-mini" | "gpt-5-nano" | "gpt-5-codex" | "gpt-5" => 1754524800,
+        "gpt-4.1-nano" | "gpt-4.1-mini" | "gpt-4.1" => 1744588800,
+        "o3-deep-research" => 1738454400,
+        "o3-mini" => 1738281600,
+        "o3" => 1744761600,
+        "o3-pro" => 1749513600,
+        "gpt-4o-mini" => 1721260800,
+        "gpt-4o-2024-05-13" | "gpt-4o" => 1715558400,
+        "gpt-4" => 1678752000,
+        _ => now_ts(),
+    }
 }
 
 fn fallback_model_options(model_for_log: Option<&str>) -> Vec<ModelOption> {

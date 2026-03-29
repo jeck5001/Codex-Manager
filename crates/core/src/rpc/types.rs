@@ -368,6 +368,7 @@ pub struct RequestLogFilterSummaryResult {
     pub success_count: i64,
     pub error_count: i64,
     pub total_tokens: i64,
+    pub total_cost_usd: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -60,10 +60,6 @@ function formatUsd(value: number): string {
   }).format(Math.max(0, value));
 }
 
-function sumRequestLogCost(items: Array<{ estimatedCostUsd: number | null }>): number {
-  return items.reduce((sum, item) => sum + Math.max(0, item.estimatedCostUsd || 0), 0);
-}
-
 function ApiKeyStatCard({
   title,
   value,
@@ -133,9 +129,9 @@ export default function ApiKeysPage() {
   const { data: usageOverview, isPending: isUsageOverviewLoading } = useQuery({
     queryKey: ["apikey-usage-overview", serviceAddr || null],
     queryFn: async () => {
-      const [stats, firstPage] = await Promise.all([
+      const [stats, summary] = await Promise.all([
         accountClient.listApiKeyUsageStats(),
-        serviceClient.listRequestLogs({ page: 1, pageSize: 500 }),
+        serviceClient.getRequestLogSummary(),
       ]);
 
       const usageByKey = stats.reduce<Record<string, number>>((result, item) => {
@@ -145,19 +141,11 @@ export default function ApiKeysPage() {
         return result;
       }, {});
 
-      let totalCostUsd = sumRequestLogCost(firstPage.items);
-      const pageSize = Math.max(1, firstPage.pageSize || 500);
-      const totalPages = Math.max(1, Math.ceil(firstPage.total / pageSize));
-      for (let page = 2; page <= totalPages; page += 1) {
-        const pageResult = await serviceClient.listRequestLogs({ page, pageSize });
-        totalCostUsd += sumRequestLogCost(pageResult.items);
-      }
-
       const totalTokens = Object.values(usageByKey).reduce((sum, value) => sum + value, 0);
       return {
         usageByKey,
         totalTokens,
-        totalCostUsd,
+        totalCostUsd: summary.totalCostUsd,
       };
     },
     enabled: isUsageQueryEnabled && isPageActive,

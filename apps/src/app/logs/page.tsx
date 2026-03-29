@@ -654,6 +654,10 @@ function buildSummaryPlaceholder(logs: RequestLog[]): RequestLogFilterSummary {
     (sum, item) => sum + Math.max(0, item.totalTokens || 0),
     0
   );
+  const totalCostUsd = logs.reduce(
+    (sum, item) => sum + Math.max(0, item.estimatedCostUsd || 0),
+    0
+  );
 
   return {
     totalCount: logs.length,
@@ -661,6 +665,7 @@ function buildSummaryPlaceholder(logs: RequestLog[]): RequestLogFilterSummary {
     successCount,
     errorCount,
     totalTokens,
+    totalCostUsd,
   };
 }
 

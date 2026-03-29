@@ -185,6 +185,7 @@ fn request_log_filter_summary_serialization_uses_camel_case() {
         success_count: 30,
         error_count: 3,
         total_tokens: 123456,
+        total_cost_usd: 12.34,
     };
 
     let value = serde_json::to_value(result).expect("serialize request log filter summary");
@@ -197,6 +198,7 @@ fn request_log_filter_summary_serialization_uses_camel_case() {
         "successCount",
         "errorCount",
         "totalTokens",
+        "totalCostUsd",
     ] {
         assert!(obj.contains_key(key), "missing key: {key}");
     }
