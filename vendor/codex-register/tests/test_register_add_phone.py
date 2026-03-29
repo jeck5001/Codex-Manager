@@ -167,6 +167,31 @@ OAuthStart = sys.modules["src.core.oauth"].OAuthStart
 
 
 class RegisterAddPhoneTests(unittest.TestCase):
+    def test_follow_auth_continue_url_caches_workspace_id_from_response(self):
+        class FakeResponse:
+            url = "https://auth.openai.com/sign-in-with-chatgpt/codex/consent"
+            text = '<script>window.__NEXT_DATA__={"activeWorkspaceId":"ws-script"}</script>'
+
+            def json(self):
+                raise ValueError("not json")
+
+        class FakeSession:
+            def get(self, url, **_kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._cached_workspace_id = ""
+
+        engine._follow_auth_continue_url(
+            {"continue_url": "https://auth.openai.com/add-phone"},
+            "登录邮箱验证码",
+        )
+
+        self.assertEqual(engine._cached_workspace_id, "ws-script")
+
     def test_run_falls_back_to_workspace_flow_when_add_phone_bypass_has_no_callback(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
         engine.logs = []

@@ -154,6 +154,7 @@ class RegistrationEngine:
         self._last_login_recovery_page_type: str = ""
         self._last_otp_error_code: str = ""
         self._last_otp_error_message: str = ""
+        self._cached_workspace_id: str = ""
 
     def _get_email_code_wait_settings(self) -> Tuple[int, int]:
         """获取验证码等待配置。"""
@@ -328,6 +329,106 @@ class RegistrationEngine:
                 return candidate
 
         return ""
+
+    def _extract_workspace_id_from_text(self, text: str) -> Optional[str]:
+        """从 HTML/脚本文本中提取 Workspace ID。"""
+        if not text:
+            return None
+
+        patterns = [
+            r'"workspace_id"\s*:\s*"([^"]+)"',
+            r'"workspaceId"\s*:\s*"([^"]+)"',
+            r'"default_workspace_id"\s*:\s*"([^"]+)"',
+            r'"defaultWorkspaceId"\s*:\s*"([^"]+)"',
+            r'"active_workspace_id"\s*:\s*"([^"]+)"',
+            r'"activeWorkspaceId"\s*:\s*"([^"]+)"',
+            r'"workspace"\s*:\s*\{[^{}]*"id"\s*:\s*"([^"]+)"',
+            r'"default_workspace"\s*:\s*\{[^{}]*"id"\s*:\s*"([^"]+)"',
+            r'"active_workspace"\s*:\s*\{[^{}]*"id"\s*:\s*"([^"]+)"',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                workspace_id = str(match.group(1) or "").strip()
+                if workspace_id:
+                    return workspace_id
+        return None
+
+    def _extract_workspace_id_from_url(self, url: str) -> Optional[str]:
+        """从 URL 查询参数或片段中提取 Workspace ID。"""
+        if not url:
+            return None
+
+        import urllib.parse
+
+        parsed = urllib.parse.urlparse(url)
+        for raw_query in (parsed.query, parsed.fragment):
+            query = urllib.parse.parse_qs(raw_query)
+            for key in (
+                "workspace_id",
+                "workspaceId",
+                "default_workspace_id",
+                "active_workspace_id",
+            ):
+                values = query.get(key) or []
+                if values:
+                    workspace_id = str(values[0] or "").strip()
+                    if workspace_id:
+                        return workspace_id
+        return None
+
+    def _extract_workspace_id_from_response_payload(self, payload: Any, depth: int = 0) -> Optional[str]:
+        """递归扫描响应载荷中的 Workspace ID。"""
+        if payload is None or depth > 5:
+            return None
+
+        if isinstance(payload, dict):
+            workspace_id = self._workspace_id_from_mapping(payload)
+            if workspace_id:
+                return workspace_id
+            for value in payload.values():
+                workspace_id = self._extract_workspace_id_from_response_payload(value, depth + 1)
+                if workspace_id:
+                    return workspace_id
+            return None
+
+        if isinstance(payload, list):
+            for item in payload:
+                workspace_id = self._extract_workspace_id_from_response_payload(item, depth + 1)
+                if workspace_id:
+                    return workspace_id
+
+        return None
+
+    def _extract_workspace_id_from_response(
+        self,
+        response: Optional[Any] = None,
+        html: Optional[str] = None,
+        url: Optional[str] = None,
+    ) -> Optional[str]:
+        """统一从响应 JSON、HTML、脚本内容和 URL 中提取 Workspace ID。"""
+        response_url = str(getattr(response, "url", "") or "").strip()
+        response_text = html if html is not None else str(getattr(response, "text", "") or "")
+        candidate_url = url or response_url
+
+        if response is not None:
+            try:
+                payload = response.json()
+            except Exception:
+                payload = None
+            workspace_id = self._extract_workspace_id_from_response_payload(payload)
+            if workspace_id:
+                return workspace_id
+
+        for extractor in (
+            lambda: self._extract_workspace_id_from_text(response_text),
+            lambda: self._extract_workspace_id_from_url(candidate_url),
+        ):
+            workspace_id = extractor()
+            if workspace_id:
+                return workspace_id
+
+        return None
 
     def _log_auth_response_preview(self, prefix: str, payload: Any):
         """记录认证接口响应摘要"""
@@ -923,6 +1024,11 @@ class RegistrationEngine:
     def _get_workspace_id(self) -> Optional[str]:
         """获取 Workspace ID"""
         try:
+            cached_workspace_id = self._clean_text(getattr(self, "_cached_workspace_id", ""))
+            if cached_workspace_id:
+                self._log(f"Workspace ID (cached): {cached_workspace_id}")
+                return cached_workspace_id
+
             auth_cookie = self.session.cookies.get("oai-client-auth-session")
 
             import base64
@@ -971,6 +1077,27 @@ class RegistrationEngine:
                 if workspace_id:
                     self._log(f"Workspace ID (client_auth_session_dump): {workspace_id}")
                     return workspace_id
+
+                auth_target = self._clean_text(self._post_create_continue_url) or (
+                    self.oauth_start.auth_url if self.oauth_start else ""
+                )
+                if auth_target and self.session:
+                    try:
+                        response = self.session.get(
+                            auth_target,
+                            timeout=20,
+                        )
+                        workspace_id = self._extract_workspace_id_from_response(
+                            response=response,
+                            html=str(getattr(response, "text", "") or ""),
+                            url=str(getattr(response, "url", "") or "").strip(),
+                        )
+                        if workspace_id:
+                            self._cached_workspace_id = workspace_id
+                            self._log(f"Workspace ID (response): {workspace_id}")
+                            return workspace_id
+                    except Exception as e:
+                        self._log(f"从授权页面提取 Workspace ID 失败: {e}", "warning")
 
                 return None
 
@@ -1257,10 +1384,18 @@ class RegistrationEngine:
                 return
 
             self._log(f"{stage} 跟进 continue_url: {continue_url[:120]}...", "warning")
-            self.session.get(
+            response = self.session.get(
                 continue_url,
                 timeout=15,
             )
+            workspace_id = self._extract_workspace_id_from_response(
+                response=response,
+                html=str(getattr(response, "text", "") or ""),
+                url=str(getattr(response, "url", "") or "").strip(),
+            )
+            if workspace_id:
+                self._cached_workspace_id = workspace_id
+                self._log(f"{stage} 提取到 Workspace ID: {workspace_id}", "warning")
         except Exception as e:
             self._log(f"{stage} 跟进 continue_url 失败: {e}", "warning")
 
