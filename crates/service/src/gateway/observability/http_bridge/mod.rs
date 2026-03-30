@@ -68,6 +68,7 @@ pub(super) fn respond_with_upstream(
     request_path: &str,
     tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
     is_stream: bool,
+    allow_failover_for_deactivation: bool,
     trace_id: Option<&str>,
 ) -> Result<UpstreamResponseBridgeResult, String> {
     delivery::respond_with_upstream(
@@ -78,6 +79,7 @@ pub(super) fn respond_with_upstream(
         request_path,
         tool_name_restore_map,
         is_stream,
+        allow_failover_for_deactivation,
         trace_id,
     )
 }

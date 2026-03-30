@@ -425,6 +425,7 @@ pub(in super::super) fn proxy_aggregate_request(
                 path,
                 None,
                 is_stream,
+                false,
                 Some(trace_id),
             )?;
             let bridge_output_text_len = bridge

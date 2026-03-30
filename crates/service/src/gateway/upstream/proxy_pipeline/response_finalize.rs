@@ -3,6 +3,11 @@ use tiny_http::Request;
 use super::super::super::request_log::RequestLogUsage;
 use super::execution_context::GatewayUpstreamExecutionContext;
 
+pub(super) enum FinalizeUpstreamResponseOutcome {
+    Handled,
+    Failover,
+}
+
 pub(in super::super) fn respond_terminal(
     request: Request,
     status_code: u16,
@@ -91,7 +96,8 @@ pub(super) fn finalize_upstream_response(
     started_at: std::time::Instant,
     model_for_log: Option<&str>,
     attempted_account_ids: Option<&[String]>,
-) -> Result<(), String> {
+    has_more_candidates: bool,
+) -> Result<FinalizeUpstreamResponseOutcome, String> {
     let status_code = response.status().as_u16();
     let mut final_error = None;
 
@@ -103,6 +109,7 @@ pub(super) fn finalize_upstream_response(
         path,
         Some(tool_name_restore_map),
         client_is_stream,
+        has_more_candidates,
         Some(trace_id),
     )?;
     let bridge_output_text_len = bridge
@@ -146,6 +153,9 @@ pub(super) fn finalize_upstream_response(
                 .unwrap_or_else(|| "upstream response incomplete".to_string()),
         );
     }
+    let deactivation_failover = final_error.as_deref().is_some_and(|error| {
+        crate::account_status::should_failover_for_deactivation_error(error, has_more_candidates)
+    });
 
     let upstream_stream_failed = client_is_stream
         && (!bridge.stream_terminal_seen || bridge.stream_terminal_error.is_some());
@@ -160,6 +170,8 @@ pub(super) fn finalize_upstream_response(
     } else if status_code >= 400 {
         status_code
     } else if upstream_stream_failed {
+        502
+    } else if deactivation_failover {
         502
     } else if bridge_ok {
         status_code
@@ -196,5 +208,8 @@ pub(super) fn finalize_upstream_response(
         started_at.elapsed().as_millis(),
         attempted_account_ids,
     );
-    Ok(())
+    if deactivation_failover {
+        return Ok(FinalizeUpstreamResponseOutcome::Failover);
+    }
+    Ok(FinalizeUpstreamResponseOutcome::Handled)
 }

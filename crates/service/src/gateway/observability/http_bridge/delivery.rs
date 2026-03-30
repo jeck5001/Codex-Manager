@@ -83,6 +83,16 @@ fn with_upstream_debug_suffix(
     }
 }
 
+fn should_suppress_deactivation_delivery(
+    upstream_error_hint: Option<&str>,
+    allow_failover_for_deactivation: bool,
+) -> bool {
+    allow_failover_for_deactivation
+        && upstream_error_hint.is_some_and(|message| {
+            crate::account_status::deactivation_reason_from_message(message).is_some()
+        })
+}
+
 fn looks_like_blocked_marker(value: &str) -> bool {
     let normalized = value.trim().to_ascii_lowercase();
     normalized.contains("blocked")
@@ -441,6 +451,7 @@ pub(crate) fn respond_with_upstream(
     request_path: &str,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
     is_stream: bool,
+    allow_failover_for_deactivation: bool,
     trace_id: Option<&str>,
 ) -> Result<UpstreamResponseBridgeResult, String> {
     let keepalive_frame = resolve_stream_keepalive_frame(response_adapter, request_path);
@@ -505,6 +516,33 @@ pub(crate) fn respond_with_upstream(
                         upstream_auth_error.as_deref(),
                         upstream_identity_error_code.as_deref(),
                     );
+                    if should_suppress_deactivation_delivery(
+                        upstream_error_hint.as_deref(),
+                        allow_failover_for_deactivation,
+                    ) {
+                        return Ok(with_bridge_debug_meta(
+                            UpstreamResponseBridgeResult {
+                                usage,
+                                stream_terminal_seen: true,
+                                stream_terminal_error: None,
+                                delivery_error: None,
+                                upstream_error_hint,
+                                delivered_status_code: None,
+                                upstream_request_id: None,
+                                upstream_cf_ray: None,
+                                upstream_auth_error: None,
+                                upstream_identity_error_code: None,
+                                upstream_content_type: None,
+                                last_sse_event_type: None,
+                            },
+                            &upstream_request_id,
+                            &upstream_cf_ray,
+                            &upstream_auth_error,
+                            &upstream_identity_error_code,
+                            &upstream_content_type,
+                            None,
+                        ));
+                    }
                     if synthesized_response {
                         headers.retain(|header| {
                             !header
@@ -641,6 +679,33 @@ pub(crate) fn respond_with_upstream(
                     upstream_auth_error.as_deref(),
                     upstream_identity_error_code.as_deref(),
                 );
+                if should_suppress_deactivation_delivery(
+                    upstream_error_hint.as_deref(),
+                    allow_failover_for_deactivation,
+                ) {
+                    return Ok(with_bridge_debug_meta(
+                        UpstreamResponseBridgeResult {
+                            usage,
+                            stream_terminal_seen: true,
+                            stream_terminal_error: None,
+                            delivery_error: None,
+                            upstream_error_hint,
+                            delivered_status_code: None,
+                            upstream_request_id: None,
+                            upstream_cf_ray: None,
+                            upstream_auth_error: None,
+                            upstream_identity_error_code: None,
+                            upstream_content_type: None,
+                            last_sse_event_type: None,
+                        },
+                        &upstream_request_id,
+                        &upstream_cf_ray,
+                        &upstream_auth_error,
+                        &upstream_identity_error_code,
+                        &upstream_content_type,
+                        None,
+                    ));
+                }
                 let len = Some(upstream_body.len());
                 let response = Response::new(
                     status,
@@ -980,9 +1045,6 @@ pub(crate) fn respond_with_upstream(
             {
                 headers.push(content_type_header);
             }
-            let len = Some(body.len());
-            let response = Response::new(status, headers, std::io::Cursor::new(body), len, None);
-            let delivery_error = request.respond(response).err().map(|err| err.to_string());
             let upstream_error_hint = with_upstream_debug_suffix(
                 extract_error_hint_from_body(status.0, upstream_body.as_ref()),
                 None,
@@ -991,6 +1053,36 @@ pub(crate) fn respond_with_upstream(
                 upstream_auth_error.as_deref(),
                 upstream_identity_error_code.as_deref(),
             );
+            if should_suppress_deactivation_delivery(
+                upstream_error_hint.as_deref(),
+                allow_failover_for_deactivation,
+            ) {
+                return Ok(with_bridge_debug_meta(
+                    UpstreamResponseBridgeResult {
+                        usage,
+                        stream_terminal_seen: true,
+                        stream_terminal_error: None,
+                        delivery_error: None,
+                        upstream_error_hint,
+                        delivered_status_code: None,
+                        upstream_request_id: None,
+                        upstream_cf_ray: None,
+                        upstream_auth_error: None,
+                        upstream_identity_error_code: None,
+                        upstream_content_type: None,
+                        last_sse_event_type: None,
+                    },
+                    &upstream_request_id,
+                    &upstream_cf_ray,
+                    &upstream_auth_error,
+                    &upstream_identity_error_code,
+                    &upstream_content_type,
+                    None,
+                ));
+            }
+            let len = Some(body.len());
+            let response = Response::new(status, headers, std::io::Cursor::new(body), len, None);
+            let delivery_error = request.respond(response).err().map(|err| err.to_string());
             Ok(with_bridge_debug_meta(
                 UpstreamResponseBridgeResult {
                     usage,
@@ -1106,10 +1198,6 @@ pub(crate) fn respond_with_upstream(
             {
                 headers.push(content_type_header);
             }
-
-            let len = Some(body.len());
-            let response = Response::new(status, headers, std::io::Cursor::new(body), len, None);
-            let delivery_error = request.respond(response).err().map(|err| err.to_string());
             let upstream_error_hint = with_upstream_debug_suffix(
                 extract_error_hint_from_body(status.0, upstream_body.as_ref()),
                 None,
@@ -1118,6 +1206,36 @@ pub(crate) fn respond_with_upstream(
                 upstream_auth_error.as_deref(),
                 upstream_identity_error_code.as_deref(),
             );
+            if should_suppress_deactivation_delivery(
+                upstream_error_hint.as_deref(),
+                allow_failover_for_deactivation,
+            ) {
+                return Ok(with_bridge_debug_meta(
+                    UpstreamResponseBridgeResult {
+                        usage,
+                        stream_terminal_seen: true,
+                        stream_terminal_error: None,
+                        delivery_error: None,
+                        upstream_error_hint,
+                        delivered_status_code: None,
+                        upstream_request_id: None,
+                        upstream_cf_ray: None,
+                        upstream_auth_error: None,
+                        upstream_identity_error_code: None,
+                        upstream_content_type: None,
+                        last_sse_event_type: None,
+                    },
+                    &upstream_request_id,
+                    &upstream_cf_ray,
+                    &upstream_auth_error,
+                    &upstream_identity_error_code,
+                    &upstream_content_type,
+                    None,
+                ));
+            }
+            let len = Some(body.len());
+            let response = Response::new(status, headers, std::io::Cursor::new(body), len, None);
+            let delivery_error = request.respond(response).err().map(|err| err.to_string());
             Ok(with_bridge_debug_meta(
                 UpstreamResponseBridgeResult {
                     usage,

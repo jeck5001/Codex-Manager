@@ -15,6 +15,7 @@ use super::execution_context::GatewayUpstreamExecutionContext;
 use super::request_setup::UpstreamRequestSetup;
 use super::response_finalize::{
     finalize_terminal_candidate, finalize_upstream_response, respond_total_timeout,
+    FinalizeUpstreamResponseOutcome,
 };
 
 fn extract_prompt_cache_key_for_trace(body: &[u8]) -> Option<String> {
@@ -304,21 +305,8 @@ pub(in super::super) fn execute_candidate_sequence(
                 let guard = inflight_guard
                     .take()
                     .expect("inflight guard should be available before terminal response");
-                if let Err(err) = super::super::super::conversation_binding::record_conversation_binding_terminal_response(
-                    storage,
-                    setup.conversation_routing.as_ref(),
-                    &account,
-                    attempt_model_for_log,
-                    resp.status().as_u16(),
-                ) {
-                    log::warn!(
-                        "event=gateway_conversation_binding_update_failed trace_id={} account_id={} err={}",
-                        trace_id,
-                        account.id,
-                        err
-                    );
-                }
-                finalize_upstream_response(
+                let response_status = resp.status().as_u16();
+                match finalize_upstream_response(
                     request,
                     resp,
                     guard,
@@ -334,8 +322,32 @@ pub(in super::super) fn execute_candidate_sequence(
                     started_at,
                     attempt_model_for_log,
                     Some(attempted_account_ids.as_slice()),
-                )?;
-                return Ok(CandidateExecutionResult::Handled);
+                    context.has_more_candidates(idx),
+                )? {
+                    FinalizeUpstreamResponseOutcome::Handled => {
+                        if let Err(err) = super::super::super::conversation_binding::record_conversation_binding_terminal_response(
+                            storage,
+                            setup.conversation_routing.as_ref(),
+                            &account,
+                            attempt_model_for_log,
+                            response_status,
+                        ) {
+                            log::warn!(
+                                "event=gateway_conversation_binding_update_failed trace_id={} account_id={} err={}",
+                                trace_id,
+                                account.id,
+                                err
+                            );
+                        }
+                        return Ok(CandidateExecutionResult::Handled);
+                    }
+                    FinalizeUpstreamResponseOutcome::Failover => {
+                        super::super::super::record_gateway_failover_attempt();
+                        last_attempt_url = attempt_trace.last_attempt_url.take();
+                        last_attempt_error = attempt_trace.last_attempt_error.take();
+                        continue;
+                    }
+                }
             }
         }
     }

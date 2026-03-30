@@ -98,6 +98,13 @@ pub(crate) fn is_banned_status_reason(reason: &str) -> bool {
     )
 }
 
+pub(crate) fn should_failover_for_deactivation_error(
+    err: &str,
+    has_more_candidates: bool,
+) -> bool {
+    has_more_candidates && deactivation_reason_from_message(err).is_some()
+}
+
 fn set_account_unavailable_with_reason(
     storage: &Storage,
     account_id: &str,
@@ -178,7 +185,10 @@ pub(crate) fn mark_account_unavailable_for_refresh_token_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_account_availability_signal, AccountAvailabilitySignal};
+    use super::{
+        classify_account_availability_signal, should_failover_for_deactivation_error,
+        AccountAvailabilitySignal,
+    };
 
     #[test]
     fn classify_account_availability_signal_separates_usage_refresh_and_deactivation() {
@@ -207,6 +217,15 @@ mod tests {
         assert!(matches!(
             classify_account_availability_signal("account_deactivated"),
             Some(AccountAvailabilitySignal::Deactivation("account_deactivated"))
+        ));
+
+        assert!(should_failover_for_deactivation_error(
+            "Your OpenAI account has been deactivated",
+            true
+        ));
+        assert!(!should_failover_for_deactivation_error(
+            "Your OpenAI account has been deactivated",
+            false
         ));
     }
 }
