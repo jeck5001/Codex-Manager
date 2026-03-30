@@ -333,6 +333,22 @@ fn to_installed_plugin_summary(
     task_count: i64,
     enabled_task_count: i64,
 ) -> InstalledPluginSummary {
+    let manifest_entry = serde_json::from_str::<serde_json::Value>(&plugin.manifest_json)
+        .ok()
+        .and_then(|value| super::catalog::parse_catalog_entry_value(&value, plugin.source_url.as_deref()).ok());
+    let manifest_version = manifest_entry
+        .as_ref()
+        .map(|entry| entry.manifest_version.clone())
+        .unwrap_or_else(|| "1".to_string());
+    let category = manifest_entry.as_ref().and_then(|entry| entry.category.clone());
+    let runtime_kind = manifest_entry
+        .as_ref()
+        .map(|entry| entry.runtime_kind.clone())
+        .unwrap_or_else(|| "rhai".to_string());
+    let tags = manifest_entry
+        .as_ref()
+        .map(|entry| entry.tags.clone())
+        .unwrap_or_default();
     InstalledPluginSummary {
         plugin_id: plugin.plugin_id.clone(),
         source_url: plugin.source_url.clone(),
@@ -350,6 +366,10 @@ fn to_installed_plugin_summary(
         last_error: plugin.last_error.clone(),
         task_count,
         enabled_task_count,
+        manifest_version,
+        category,
+        runtime_kind,
+        tags,
     }
 }
 

@@ -19,6 +19,7 @@ pub const APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY: &str =
 pub const APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY: &str =
     "gateway.sse_keepalive_interval_ms";
 pub const APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY: &str = "gateway.background_tasks";
+pub const APP_SETTING_PLUGIN_MARKET_MODE_KEY: &str = "plugin.market_mode";
 pub const APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY: &str = "plugin.market_source_url";
 pub const APP_SETTING_ENV_OVERRIDES_KEY: &str = "app.env_overrides";
 pub const APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY: &str = "web.auth.password_hash";

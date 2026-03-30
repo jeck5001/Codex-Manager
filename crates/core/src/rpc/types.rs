@@ -342,6 +342,10 @@ pub struct PluginCatalogEntry {
     pub script_body: Option<String>,
     pub permissions: Vec<String>,
     pub tasks: Vec<PluginCatalogTask>,
+    pub manifest_version: String,
+    pub category: Option<String>,
+    pub runtime_kind: String,
+    pub tags: Vec<String>,
     pub source_url: Option<String>,
 }
 
@@ -376,6 +380,10 @@ pub struct InstalledPluginSummary {
     pub last_error: Option<String>,
     pub task_count: i64,
     pub enabled_task_count: i64,
+    pub manifest_version: String,
+    pub category: Option<String>,
+    pub runtime_kind: String,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

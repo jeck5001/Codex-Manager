@@ -56,6 +56,7 @@ export const useAppStore = create<AppState>((set) => ({
     gatewayUserAgentVersion: "0.101.0",
     gatewayResidencyRequirement: "",
     gatewayResidencyRequirementOptions: ["", "us"],
+    pluginMarketMode: "builtin",
     pluginMarketSourceUrl: "",
     upstreamProxyUrl: "",
     upstreamStreamTimeoutMs: 1800000,

@@ -11,7 +11,8 @@ use super::{
     set_gateway_user_agent_version, set_lightweight_mode_on_close_to_tray_setting,
     set_saved_service_addr, set_service_bind_mode, set_ui_appearance_preset,
     set_ui_low_transparency_enabled, set_ui_theme, set_update_auto_check_enabled,
-    save_persisted_app_setting, APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY, BackgroundTasksInput,
+    save_persisted_app_setting, APP_SETTING_PLUGIN_MARKET_MODE_KEY,
+    APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY, BackgroundTasksInput,
 };
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -31,6 +32,7 @@ pub(super) struct AppSettingsPatch {
     gateway_originator: Option<String>,
     gateway_user_agent_version: Option<String>,
     gateway_residency_requirement: Option<String>,
+    plugin_market_mode: Option<String>,
     plugin_market_source_url: Option<String>,
     upstream_proxy_url: Option<String>,
     upstream_stream_timeout_ms: Option<u64>,
@@ -90,6 +92,16 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     }
     if let Some(residency_requirement) = patch.gateway_residency_requirement {
         let _ = set_gateway_residency_requirement(Some(&residency_requirement))?;
+    }
+    if let Some(plugin_market_mode) = patch.plugin_market_mode {
+        let _ = save_persisted_app_setting(
+            APP_SETTING_PLUGIN_MARKET_MODE_KEY,
+            if plugin_market_mode.trim().is_empty() {
+                None
+            } else {
+                Some(&plugin_market_mode)
+            },
+        )?;
     }
     if let Some(plugin_market_source_url) = patch.plugin_market_source_url {
         let _ = save_persisted_app_setting(

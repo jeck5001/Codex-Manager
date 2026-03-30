@@ -22,7 +22,8 @@ use super::{
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY, APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
-    APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY,
+    APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_PLUGIN_MARKET_MODE_KEY,
+    APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY,
     APP_SETTING_SERVICE_ADDR_KEY, APP_SETTING_UI_APPEARANCE_PRESET_KEY,
     APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY,
     SERVICE_BIND_MODE_ALL_INTERFACES, SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
@@ -96,6 +97,17 @@ pub(super) fn current_app_settings_value(
         .get(APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY)
         .cloned()
         .unwrap_or_default();
+    let plugin_market_mode = settings
+        .get(APP_SETTING_PLUGIN_MARKET_MODE_KEY)
+        .map(|value| normalize_market_mode(value))
+        .unwrap_or_else(|| {
+            if plugin_market_source_url.trim().is_empty() {
+                "builtin"
+            } else {
+                "custom"
+            }
+        })
+        .to_string();
     let background_tasks_raw = serde_json::to_string(&background_tasks)
         .map_err(|err| format!("serialize background tasks failed: {err}"))?;
     let env_overrides = current_env_overrides();
@@ -115,6 +127,7 @@ pub(super) fn current_app_settings_value(
         &gateway_originator,
         &gateway_user_agent_version,
         &gateway_residency_requirement,
+        &plugin_market_mode,
         &plugin_market_source_url,
         upstream_proxy_url.as_deref(),
         upstream_stream_timeout_ms,
@@ -152,6 +165,7 @@ pub(super) fn current_app_settings_value(
         "gatewayOriginator": gateway_originator,
         "gatewayUserAgentVersion": gateway_user_agent_version,
         "gatewayResidencyRequirement": gateway_residency_requirement,
+        "pluginMarketMode": plugin_market_mode,
         "pluginMarketSourceUrl": plugin_market_source_url,
         "gatewayResidencyRequirementOptions": residency_requirement_options(),
         "upstreamProxyUrl": upstream_proxy_url.unwrap_or_default(),
@@ -222,6 +236,7 @@ fn persist_current_snapshot(
     gateway_originator: &str,
     gateway_user_agent_version: &str,
     gateway_residency_requirement: &str,
+    plugin_market_mode: &str,
     plugin_market_source_url: &str,
     upstream_proxy_url: Option<&str>,
     upstream_stream_timeout_ms: u64,
@@ -279,6 +294,14 @@ fn persist_current_snapshot(
         },
     );
     let _ = save_persisted_app_setting(
+        APP_SETTING_PLUGIN_MARKET_MODE_KEY,
+        if plugin_market_mode.trim().is_empty() {
+            None
+        } else {
+            Some(plugin_market_mode)
+        },
+    );
+    let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
         upstream_proxy_url,
     );
@@ -297,9 +320,20 @@ fn persist_current_snapshot(
     let _ = save_env_overrides_value(env_overrides);
 }
 
+fn normalize_market_mode(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "private" => "private",
+        "custom" => "custom",
+        _ => "builtin",
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{collect_free_account_max_model_options, DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS};
+    use super::{
+        collect_free_account_max_model_options, normalize_market_mode,
+        DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS,
+    };
     use codexmanager_core::rpc::types::ModelOption;
 
     #[test]
@@ -349,5 +383,13 @@ mod tests {
                 "gpt-5.2".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn plugin_market_mode_normalization_defaults_to_builtin() {
+        assert_eq!(normalize_market_mode(""), "builtin");
+        assert_eq!(normalize_market_mode("private"), "private");
+        assert_eq!(normalize_market_mode("custom"), "custom");
+        assert_eq!(normalize_market_mode("unknown"), "builtin");
     }
 }

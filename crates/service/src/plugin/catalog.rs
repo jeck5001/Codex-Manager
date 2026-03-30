@@ -9,6 +9,7 @@ use crate::storage_helpers::open_storage;
 
 const BUILTIN_MARKET_SOURCE_URL: &str = "builtin://codexmanager";
 const BUILTIN_CLEANUP_TASK_INTERVAL_SECS: i64 = 60;
+const BUILTIN_MARKET_MODE: &str = "builtin";
 
 pub(crate) fn handle_catalog_list(req: &JsonRpcRequest) -> JsonRpcResponse {
     match catalog_list_result(req) {
@@ -69,6 +70,9 @@ fn catalog_list_result(req: &JsonRpcRequest) -> Result<Value, String> {
 }
 
 fn source_url_from_request(req: &JsonRpcRequest) -> Option<String> {
+    if current_market_source_mode() == BUILTIN_MARKET_MODE {
+        return None;
+    }
     string_param(req, "sourceUrl")
         .or_else(|| string_param(req, "source_url"))
         .or_else(current_market_source_url)
@@ -79,6 +83,25 @@ pub(crate) fn current_market_source_url() -> Option<String> {
         .get(crate::app_settings::APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY)
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+pub(crate) fn current_market_source_mode() -> String {
+    let settings = crate::app_settings::list_app_settings_map();
+    if let Some(value) = settings.get(crate::app_settings::APP_SETTING_PLUGIN_MARKET_MODE_KEY) {
+        return match value.trim().to_ascii_lowercase().as_str() {
+            "private" => "private".to_string(),
+            "custom" => "custom".to_string(),
+            _ => BUILTIN_MARKET_MODE.to_string(),
+        };
+    }
+    if settings
+        .get(crate::app_settings::APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+    {
+        return "custom".to_string();
+    }
+    BUILTIN_MARKET_MODE.to_string()
 }
 
 pub(crate) fn fetch_catalog_entries(
@@ -138,6 +161,10 @@ fn run(context) {
             .to_string(),
         ),
         permissions: vec!["accounts:cleanup".to_string()],
+        manifest_version: "1".to_string(),
+        category: Some("official".to_string()),
+        runtime_kind: "rhai".to_string(),
+        tags: vec!["账号治理".to_string(), "精选".to_string()],
         tasks: vec![PluginCatalogTask {
             id: "run".to_string(),
             name: "定时自动清理".to_string(),
@@ -281,6 +308,38 @@ pub(crate) fn parse_catalog_entry_value(
         })
         .transpose()?
         .unwrap_or_default();
+    let manifest_version = obj
+        .get("manifestVersion")
+        .or_else(|| obj.get("manifest_version"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("1")
+        .to_string();
+    let category = obj
+        .get("category")
+        .and_then(Value::as_str)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let runtime_kind = obj
+        .get("runtimeKind")
+        .or_else(|| obj.get("runtime_kind"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("rhai")
+        .to_string();
+    let tags = obj
+        .get("tags")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(|text| text.trim().to_string()))
+                .filter(|item| !item.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     Ok(PluginCatalogEntry {
         id: id.to_string(),
         name,
@@ -292,6 +351,10 @@ pub(crate) fn parse_catalog_entry_value(
         script_body,
         permissions,
         tasks,
+        manifest_version,
+        category,
+        runtime_kind,
+        tags,
         source_url: source_url
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
@@ -308,10 +371,14 @@ mod tests {
         assert_eq!(items.len(), 1);
         let item = &items[0];
         assert_eq!(item.id, "cleanup-banned-accounts");
+        assert_eq!(item.manifest_version, "1");
+        assert_eq!(item.category.as_deref(), Some("official"));
+        assert_eq!(item.runtime_kind, "rhai");
         assert!(item
             .permissions
             .iter()
             .any(|item| item == "accounts:cleanup"));
+        assert!(!item.tags.is_empty());
         assert_eq!(item.tasks.len(), 1);
         assert_eq!(item.tasks[0].entrypoint, "run");
         assert_eq!(item.tasks[0].schedule_kind, "interval");
@@ -515,6 +582,22 @@ fn to_installed_plugin_summary(
     plugin: &PluginInstall,
     tasks: &[PluginTask],
 ) -> InstalledPluginSummary {
+    let manifest_entry = serde_json::from_str::<Value>(&plugin.manifest_json)
+        .ok()
+        .and_then(|value| parse_catalog_entry_value(&value, plugin.source_url.as_deref()).ok());
+    let manifest_version = manifest_entry
+        .as_ref()
+        .map(|entry| entry.manifest_version.clone())
+        .unwrap_or_else(|| "1".to_string());
+    let category = manifest_entry.as_ref().and_then(|entry| entry.category.clone());
+    let runtime_kind = manifest_entry
+        .as_ref()
+        .map(|entry| entry.runtime_kind.clone())
+        .unwrap_or_else(|| "rhai".to_string());
+    let tags = manifest_entry
+        .as_ref()
+        .map(|entry| entry.tags.clone())
+        .unwrap_or_default();
     let task_count = tasks.len() as i64;
     let enabled_task_count = tasks.iter().filter(|task| task.enabled).count() as i64;
     InstalledPluginSummary {
@@ -535,6 +618,10 @@ fn to_installed_plugin_summary(
         last_error: plugin.last_error.clone(),
         task_count,
         enabled_task_count,
+        manifest_version,
+        category,
+        runtime_kind,
+        tags,
     }
 }
 

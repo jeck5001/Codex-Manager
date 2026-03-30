@@ -48,6 +48,24 @@ type SelectedPluginDetail =
   | { kind: "installed"; pluginId: string }
   | null;
 
+const MARKET_MODE_OPTIONS = [
+  {
+    value: "builtin",
+    label: "内置精选",
+    description: "默认使用官方精选插件，适合开箱即用。",
+  },
+  {
+    value: "private",
+    label: "企业私有",
+    description: "接入内网或私域仓库，适合团队统一分发。",
+  },
+  {
+    value: "custom",
+    label: "自定义源",
+    description: "接入你自己的远程 JSON 市场源。",
+  },
+] as const;
+
 function formatPermissionLabel(permission: string) {
   switch (permission) {
     case "accounts:cleanup":
@@ -58,6 +76,30 @@ function formatPermissionLabel(permission: string) {
       return "网络访问";
     default:
       return permission;
+  }
+}
+
+function formatMarketCategory(category: string | null | undefined) {
+  switch (category) {
+    case "official":
+      return "官方精选";
+    case "private":
+      return "企业私有";
+    case "community":
+      return "社区插件";
+    default:
+      return category || "";
+  }
+}
+
+function formatRuntimeKind(runtimeKind: string | null | undefined) {
+  switch (runtimeKind) {
+    case "rhai":
+      return "Rhai";
+    case "wasm":
+      return "WASM";
+    default:
+      return runtimeKind || "";
   }
 }
 
@@ -127,11 +169,19 @@ function PluginCard({
           {item.author ? <span>作者：{item.author}</span> : null}
           <span>权限 {item.permissions.length}</span>
           <span>任务 {item.tasks.length}</span>
+          {item.category ? <Badge variant="outline">{formatMarketCategory(item.category)}</Badge> : null}
+          <Badge variant="outline">{formatRuntimeKind(item.runtimeKind)}</Badge>
         </div>
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-3 pt-0">
         <div className="text-xs text-muted-foreground">
-          <span>{item.sourceUrl ? `来源：${item.sourceUrl}` : "内置市场"}</span>
+          <span>
+            {item.sourceUrl === "builtin://codexmanager"
+              ? "来源：内置精选市场"
+              : item.sourceUrl
+                ? `来源：${item.sourceUrl}`
+                : "内置市场"}
+          </span>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => onOpenDetails(item)}>
@@ -178,11 +228,19 @@ function InstalledPluginCard({
           {item.author ? <span>作者：{item.author}</span> : null}
           <span>权限 {item.permissions.length}</span>
           <span>任务 {item.enabledTaskCount}/{item.taskCount}</span>
+          {item.category ? <Badge variant="outline">{formatMarketCategory(item.category)}</Badge> : null}
+          <Badge variant="outline">{formatRuntimeKind(item.runtimeKind)}</Badge>
         </div>
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-3 pt-0">
         <div className="text-xs text-muted-foreground">
-          <span>{item.sourceUrl ? `来源：${item.sourceUrl}` : "内置安装"}</span>
+          <span>
+            {item.sourceUrl === "builtin://codexmanager"
+              ? "来源：内置精选市场"
+              : item.sourceUrl
+                ? `来源：${item.sourceUrl}`
+                : "内置安装"}
+          </span>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => onOpenDetails(item)}>
@@ -212,6 +270,7 @@ export default function PluginsPage() {
   const isActivationReady = useDeferredDesktopActivation(serviceReady);
   usePageTransitionReady("/plugins/", !serviceReady);
   const queryClient = useQueryClient();
+  const [marketMode, setMarketMode] = useState("builtin");
   const [sourceUrl, setSourceUrl] = useState("");
   const [selectedPlugin, setSelectedPlugin] = useState<SelectedPluginDetail>(null);
   const [pendingUninstallPlugin, setPendingUninstallPlugin] =
@@ -226,13 +285,15 @@ export default function PluginsPage() {
 
   useEffect(() => {
     if (settingsQuery.data) {
+      setMarketMode(settingsQuery.data.pluginMarketMode || "builtin");
       setSourceUrl(settingsQuery.data.pluginMarketSourceUrl || "");
     }
   }, [settingsQuery.data]);
 
   const catalogQuery = useQuery({
-    queryKey: ["plugin-catalog", sourceUrl],
-    queryFn: () => pluginClient.getCatalog(sourceUrl || undefined),
+    queryKey: ["plugin-catalog", marketMode, sourceUrl],
+    queryFn: () =>
+      pluginClient.getCatalog(marketMode === "builtin" ? undefined : sourceUrl || undefined),
     enabled: isPageActive && isActivationReady,
   });
 
@@ -255,8 +316,13 @@ export default function PluginsPage() {
   });
 
   const saveSourceMutation = useMutation({
-    mutationFn: async () => appClient.setSettings({ pluginMarketSourceUrl: sourceUrl }),
+    mutationFn: async () =>
+      appClient.setSettings({
+        pluginMarketMode: marketMode,
+        pluginMarketSourceUrl: sourceUrl,
+      }),
     onSuccess: (settings) => {
+      setMarketMode(settings.pluginMarketMode || "builtin");
       setSourceUrl(settings.pluginMarketSourceUrl || "");
       toast.success("市场源已保存");
       void queryClient.invalidateQueries({ queryKey: ["plugin-catalog"] });
@@ -377,35 +443,68 @@ export default function PluginsPage() {
             <Rocket className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold">插件市场</h1>
-            <p className="text-sm text-muted-foreground">接入第三方脚本、任务和自动化逻辑。</p>
+            <h1 className="text-2xl font-semibold">插件中心</h1>
+            <p className="text-sm text-muted-foreground">内置精选、企业私有和自定义源统一收口，脚本能力继续由 Rhai 承担。</p>
           </div>
         </div>
       </div>
 
       <Card className="glass-card border-none shadow-sm">
         <CardHeader>
-          <CardTitle>市场源</CardTitle>
-          <CardDescription>留空时使用内置市场，默认提供清理封禁账号插件。填写远程 JSON 地址后可接入自己的插件仓库。</CardDescription>
+          <CardTitle>市场层</CardTitle>
+          <CardDescription>内置精选优先，私有仓库和自定义源作为补充。切换模式后可保留历史地址，方便在精选和私有市场之间来回切换。</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3 md:flex-row md:items-center">
-          <Input
-            value={sourceUrl}
-            onChange={(event) => setSourceUrl(event.target.value)}
-            placeholder="https://example.com/plugin-market.json"
-            className="md:flex-1"
-          />
-          <div className="flex gap-2">
-            <Button onClick={() => saveSourceMutation.mutate()} disabled={saveSourceMutation.isPending}>
-              保存
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => void queryClient.invalidateQueries({ queryKey: ["plugin-catalog"] })}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              刷新
-            </Button>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            {MARKET_MODE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setMarketMode(option.value)}
+                className={cn(
+                  "rounded-2xl border p-4 text-left transition-all",
+                  marketMode === option.value
+                    ? "border-primary/40 bg-primary/10 shadow-sm"
+                    : "border-border/60 bg-background/40 hover:bg-background/70",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-medium">{option.label}</div>
+                  {marketMode === option.value ? <Badge>已选</Badge> : null}
+                </div>
+                <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {option.description}
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <Input
+              value={sourceUrl}
+              onChange={(event) => setSourceUrl(event.target.value)}
+              placeholder="https://example.com/plugin-market.json"
+              className="md:flex-1"
+              disabled={marketMode === "builtin"}
+            />
+            <div className="flex gap-2">
+              <Button onClick={() => saveSourceMutation.mutate()} disabled={saveSourceMutation.isPending}>
+                保存
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => void queryClient.invalidateQueries({ queryKey: ["plugin-catalog"] })}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                刷新
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-4 text-xs text-muted-foreground">
+            {marketMode === "builtin"
+              ? "当前使用内置精选市场，默认包含官方脚本插件。"
+              : marketMode === "private"
+                ? "当前使用企业私有市场，适合团队统一分发和内网部署。"
+                : "当前使用自定义源，适合接入你自己的 JSON 市场文件。"}
           </div>
         </CardContent>
       </Card>
@@ -507,13 +606,30 @@ export default function PluginsPage() {
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     {selectedDetail.author ? <span>作者：{selectedDetail.author}</span> : null}
-                    {selectedDetail.sourceUrl ? <span>来源：{selectedDetail.sourceUrl}</span> : null}
+                    {selectedDetail.sourceUrl ? (
+                      <span>
+                        来源：
+                        {selectedDetail.sourceUrl === "builtin://codexmanager"
+                          ? "内置精选市场"
+                          : selectedDetail.sourceUrl}
+                      </span>
+                    ) : null}
                     <span>权限 {selectedDetail.permissions.length}</span>
                     {"taskCount" in selectedDetail ? (
                       <span>任务 {selectedDetail.enabledTaskCount}/{selectedDetail.taskCount}</span>
                     ) : (
                       <span>任务 {selectedDetail.tasks.length}</span>
                     )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span>清单版本 {selectedDetail.manifestVersion}</span>
+                    <span>运行时 {formatRuntimeKind(selectedDetail.runtimeKind)}</span>
+                    {selectedDetail.category ? (
+                      <span>分类 {formatMarketCategory(selectedDetail.category)}</span>
+                    ) : null}
+                    {selectedDetail.tags.length > 0 ? (
+                      <span>标签 {selectedDetail.tags.join(" / ")}</span>
+                    ) : null}
                   </div>
                 </DialogHeader>
               </div>

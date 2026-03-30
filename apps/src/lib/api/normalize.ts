@@ -398,6 +398,10 @@ export function normalizePluginCatalogEntry(payload: unknown): PluginCatalogEntr
     tasks: asArray(source.tasks)
       .map((item) => normalizePluginCatalogTask(item))
       .filter((item): item is PluginCatalogTask => Boolean(item)),
+    manifestVersion: asString(source.manifestVersion ?? source.manifest_version) || "1",
+    category: asString(source.category) || null,
+    runtimeKind: asString(source.runtimeKind ?? source.runtime_kind) || "rhai",
+    tags: asArray(source.tags).map((item) => asString(item)).filter(Boolean),
     sourceUrl: asString(source.sourceUrl ?? source.source_url) || null,
   };
 }
@@ -435,6 +439,10 @@ export function normalizeInstalledPlugin(payload: unknown): InstalledPluginSumma
     lastError: asString(source.lastError ?? source.last_error) || null,
     taskCount: asInteger(source.taskCount ?? source.task_count, 0, 0),
     enabledTaskCount: asInteger(source.enabledTaskCount ?? source.enabled_task_count, 0, 0),
+    manifestVersion: asString(source.manifestVersion ?? source.manifest_version) || "1",
+    category: asString(source.category) || null,
+    runtimeKind: asString(source.runtimeKind ?? source.runtime_kind) || "rhai",
+    tags: asArray(source.tags).map((item) => asString(item)).filter(Boolean),
   };
 }
 
@@ -743,6 +751,7 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     gatewayResidencyRequirementOptions: asArray(
       source.gatewayResidencyRequirementOptions
     ).map((item) => asString(item)),
+    pluginMarketMode: asString(source.pluginMarketMode ?? source.plugin_market_mode) || "builtin",
     pluginMarketSourceUrl: asString(source.pluginMarketSourceUrl ?? source.plugin_market_source_url),
     upstreamProxyUrl: asString(source.upstreamProxyUrl),
     upstreamStreamTimeoutMs: asInteger(source.upstreamStreamTimeoutMs, 1_800_000, 0),

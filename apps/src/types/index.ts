@@ -156,6 +156,10 @@ export interface PluginCatalogEntry {
   scriptBody: string | null;
   permissions: string[];
   tasks: PluginCatalogTask[];
+  manifestVersion: string;
+  category: string | null;
+  runtimeKind: string;
+  tags: string[];
   sourceUrl: string | null;
 }
 
@@ -176,6 +180,10 @@ export interface InstalledPluginSummary {
   lastError: string | null;
   taskCount: number;
   enabledTaskCount: number;
+  manifestVersion: string;
+  category: string | null;
+  runtimeKind: string;
+  tags: string[];
 }
 
 export interface PluginTaskSummary {
@@ -359,6 +367,7 @@ export interface AppSettings {
   gatewayUserAgentVersion: string;
   gatewayResidencyRequirement: string;
   gatewayResidencyRequirementOptions: string[];
+  pluginMarketMode: string;
   pluginMarketSourceUrl: string;
   upstreamProxyUrl: string;
   upstreamStreamTimeoutMs: number;

@@ -32,7 +32,7 @@ const NAV_ITEMS = [
   { name: "账号管理", href: "/accounts/", icon: Users },
   { name: "聚合API", href: "/aggregate-api/", icon: Database },
   { name: "平台密钥", href: "/apikeys/", icon: Key },
-  { name: "插件市场", href: "/plugins/", icon: Puzzle },
+  { name: "插件中心", href: "/plugins/", icon: Puzzle },
   { name: "请求日志", href: "/logs/", icon: FileText },
   { name: "设置", href: "/settings/", icon: Settings },
 ];
