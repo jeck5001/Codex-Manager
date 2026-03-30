@@ -49,7 +49,8 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 
 ## Recent Changes
 - Current latest version: `v0.1.13` (2026-03-25)
-- The Settings page now includes a System Derive button and a single-account concurrency limit; it applies CPU / memory-based recommendations immediately, while the ingress path now uses short queue waits plus fast overload degradation to keep the service alive under heavy traffic.
+- This round of high-concurrency protection is now in place: the Settings page includes a System Derive button and a single-account concurrency limit, it applies CPU / memory-based recommendations immediately, and the ingress path now uses short queue waits plus fast overload degradation to keep the service alive under heavy traffic.
+- The Chinese and English READMEs now both cover the concurrency-protection flow, and the recent commit highlights have been refreshed to the latest commit.
 - Added an “Aggregate API” management page: manage multiple third-party relay providers as minimal upstreams, with `Codex / Claude` categorization, supplier name, sort order, URL, key, and connection testing.
 - Platform-key rotation now supports `Account Rotation` and `Aggregate API Rotation`; Aggregate API rotation prefers the configured provider order first, then forwards upstream requests by protocol while keeping account rotation unchanged.
 - `v0.1.13` continues the desktop and docs cleanup from this round: Aggregate API management and platform-key rotation are now wired through end to end, and desktop startup / tab switching is more stable. The README also reflects the latest feature set.
@@ -61,12 +62,12 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 - The release path stays unified: the product version is now `0.1.13`, and the workspace, frontend package, Tauri desktop app, release-version checks, and README version notes are all kept in sync. See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 ### Recent Commit Highlights
-- `cb990a1`: refine account cleanup entry points and tighten the docs surface. The accounts menu now exposes banned cleanup and count display, while README/docs navigation is trimmed to the current mainline path.
-- `42219c7`: add banned filtering and fix platform-key configuration presentation. The accounts list now exposes banned filtering and status reasons, and desktop platform-key save/round-trip behavior is fixed.
-- `07dffc0`: add platform-key service tier configuration. Platform keys now support `Follow Request / Fast / Flex` and feed the actual request rewrite path.
-- `feb759b`: restore the listen-address switch and fix the update button loading state. The Settings page now brings back `localhost / 0.0.0.0` switching and avoids false loading during silent checks.
-- `50d6a03`: fix Web refresh downloads and clipboard-copy failures. Static-route trailing-slash handling is normalized, and clipboard actions now fall back automatically when the native API is unavailable.
-- `e3a7557`: remove the upstream cookie path. The main request path no longer depends on a global upstream cookie and stays closer to official Codex behavior.
+- `85022b9`: improve high-concurrency protection and docs. The ingress path now uses short queue waits plus fast overload degradation, the Settings page adds System Derive and a single-account concurrency limit, and both READMEs were refreshed.
+- `a6a96d6`: add a plugin-center preview image to the README. Both the Chinese and English README screenshot sections now include `plugin.png`.
+- `ec03f2c`: remove date prefixes from long-lived docs. Long-term documents now use stable filenames, and README links were updated accordingly.
+- `927142a`: adjust the default interval for the scheduled script. The cleanup script now runs every minute by default, while users can still customize it.
+- `028c8c8`: add the scheduled-script entry and the internal interface inventory. The Accounts page now exposes the scheduled-script action, and the docs include the full system interface list.
+- `885edd0`: improve plugin-center docs and onboarding. The minimal integration guide and the full interface list are both completed.
 
 ## Features
 - Account pool management: groups, tags, sorting, notes, banned detection, and banned filtering
