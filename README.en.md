@@ -42,6 +42,8 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 | First launch, deployment, Docker, macOS allowlist | [Runtime and deployment guide](docs/report/20260310122606850_运行与部署指南.md) |
 | Configure port, proxy, database, Web password, environment variables | [Environment variables and runtime config](docs/report/20260309195355187_环境变量与运行配置说明.md) |
 | Troubleshoot account selection, import failures, challenge blocks, request issues | [FAQ and account-hit rules](docs/report/20260310122606852_FAQ与账号命中规则.md) |
+| Fast plugin-center integration and minimal onboarding | [Plugin center minimal integration guide](docs/report/20260330184000000_插件中心最小接入说明.md) |
+| Integrate the plugin center, API list, market modes, and Rhai interfaces | [Plugin center integration and interface list](docs/report/20260330183000000_插件中心对接与接口清单.md) |
 | Build locally, package, publish, run scripts | [Build, release, and script guide](docs/release/20260310122606851_构建发布与脚本说明.md) |
 
 ## Recent Changes
@@ -71,6 +73,8 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 - OAuth login: browser flow + manual callback parsing
 - Platform keys: create, disable, delete, model binding, reasoning effort, and service tier overrides (`Follow Request` / `Fast` / `Flex`)
 - Aggregate API: manage third-party minimal upstream relays with create/edit, connection testing, supplier name, sort priority, and `Codex / Claude` categorization
+- Plugin center minimal integration: route `/plugins/`, builtin/private/custom market modes, and the smallest manifest/RPC/Rhai contract for quick onboarding
+- Plugin center: route `/plugins/`, supports builtin curated, private, and custom market modes, with plugin manifests, tasks, logs, and Rhai integration
 - Local service with configurable port and listen address
 - Local OpenAI-compatible gateway for CLI and third-party tools
 
@@ -92,6 +96,8 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 ### Desktop
 - Accounts: bulk import/export, refresh accounts and usage, plus low-quota / banned filters and reset-time display
 - Platform Keys: bind keys by model, reasoning effort, and service tier, then inspect request logs
+- Plugin center minimal integration: `/plugins/` route, smallest plugin manifest, RPC surface, and Rhai built-ins
+- Plugin center: `/plugins/` route, builtin/private/custom market switching, plugin install/enable/disable, tasks, logs, and Rhai integration
 - Settings: manage ports, listen address, proxy, theme, auto-update, and background behavior
 
 ### Service Edition
@@ -114,6 +120,8 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 | [Environment variables and runtime config](docs/report/20260309195355187_环境变量与运行配置说明.md) | App config, proxy, listen address, database, Web security |
 | [FAQ and account-hit rules](docs/report/20260310122606852_FAQ与账号命中规则.md) | Account hit logic, challenge blocks, import/export, common issues |
 | [Minimal troubleshooting guide](docs/report/20260307234235414_最小排障手册.md) | Fast path for service startup, forwarding, and model refresh issues |
+| [Plugin center minimal integration guide](docs/report/20260330184000000_插件中心最小接入说明.md) | Plugin center minimal manifest, RPC surface, and Rhai built-ins |
+| [Plugin center integration and interface list](docs/report/20260330183000000_插件中心对接与接口清单.md) | Plugin center route, market modes, Tauri/RPC interfaces, manifest fields, Rhai built-ins |
 | [Build, release, and script guide](docs/release/20260310122606851_构建发布与脚本说明.md) | Local build, Tauri packaging, Release workflow, script flags |
 | [Release assets guide](docs/release/20260309195355216_发布与产物说明.md) | Platform artifacts, naming, release vs pre-release |
 | [Script and release responsibility matrix](docs/report/20260309195735631_脚本与发布职责对照.md) | Which script owns which step |
