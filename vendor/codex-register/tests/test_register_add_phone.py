@@ -171,6 +171,7 @@ class RegisterAddPhoneTests(unittest.TestCase):
         class FakeResponse:
             url = "https://auth.openai.com/sign-in-with-chatgpt/codex/consent"
             text = '<script>window.__NEXT_DATA__={"activeWorkspaceId":"ws-consent"}</script>'
+            history = []
 
             def json(self):
                 raise ValueError("not json")
@@ -191,6 +192,53 @@ class RegisterAddPhoneTests(unittest.TestCase):
 
         self.assertEqual(callback, "http://localhost/callback?code=ok&state=state")
         self.assertEqual(engine._cached_workspace_id, "ws-consent")
+
+    def test_advance_workspace_authorization_follows_discovered_consent_link(self):
+        class AddPhoneResponse:
+            url = "https://auth.openai.com/add-phone"
+            text = '<a href="/sign-in-with-chatgpt/codex/consent?step=1">continue</a>'
+            history = []
+
+            def json(self):
+                raise ValueError("not json")
+
+        class ConsentResponse:
+            url = "https://auth.openai.com/sign-in-with-chatgpt/codex/consent?step=1"
+            text = '<script>window.__NEXT_DATA__={"activeWorkspaceId":"ws-linked"}</script>'
+            history = []
+
+            def json(self):
+                raise ValueError("not json")
+
+        class FakeSession:
+            def __init__(self):
+                self.calls = []
+
+            def get(self, url, **_kwargs):
+                self.calls.append(url)
+                if "sign-in-with-chatgpt/codex/consent" in url:
+                    return ConsentResponse()
+                return AddPhoneResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._cached_workspace_id = ""
+        engine._select_workspace = lambda workspace_id: "https://auth.openai.com/continue"
+        engine._follow_redirects = lambda url: "http://localhost/callback?code=ok&state=state"
+
+        callback = engine._advance_workspace_authorization("https://auth.openai.com/add-phone")
+
+        self.assertEqual(callback, "http://localhost/callback?code=ok&state=state")
+        self.assertEqual(engine._cached_workspace_id, "ws-linked")
+        self.assertEqual(
+            engine.session.calls,
+            [
+                "https://auth.openai.com/add-phone",
+                "https://auth.openai.com/sign-in-with-chatgpt/codex/consent?step=1",
+            ],
+        )
 
     def test_follow_auth_continue_url_caches_workspace_id_from_response(self):
         class FakeResponse:
