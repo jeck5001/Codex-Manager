@@ -921,6 +921,7 @@ fn rpc_account_update_status_toggles_manual_enable_disable() {
 #[test]
 fn rpc_login_start_returns_url() {
     let _ctx = RpcTestContext::new("rpc-login-start");
+    let _login_addr_guard = EnvGuard::set("CODEXMANAGER_LOGIN_ADDR", "127.0.0.1:0");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {

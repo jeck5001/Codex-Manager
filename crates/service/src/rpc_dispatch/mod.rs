@@ -117,6 +117,9 @@ pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcMessage {
     if let Some(resp) = gateway::try_handle(&req) {
         return JsonRpcMessage::Response(resp);
     }
+    if let Some(resp) = crate::plugin::try_handle(&req) {
+        return JsonRpcMessage::Response(resp);
+    }
     if let Some(resp) = requestlog::try_handle(&req) {
         return JsonRpcMessage::Response(resp);
     }

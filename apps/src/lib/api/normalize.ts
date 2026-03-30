@@ -14,8 +14,14 @@ import {
   BackgroundTaskSettings,
   DeviceAuthInfo,
   EnvOverrideCatalogItem,
+  InstalledPluginSummary,
   LoginStartResult,
   ModelOption,
+  PluginCatalogEntry,
+  PluginCatalogResult,
+  PluginCatalogTask,
+  PluginRunLogSummary,
+  PluginTaskSummary,
   RequestLog,
   RequestLogFilterSummary,
   RequestLogListResult,
@@ -359,6 +365,145 @@ export function normalizeApiKeyUsageStats(payload: unknown): ApiKeyUsageStat[] {
     .filter((item): item is ApiKeyUsageStat => Boolean(item));
 }
 
+export function normalizePluginCatalogTask(payload: unknown): PluginCatalogTask | null {
+  const source = asObject(payload);
+  const id = asString(source.id);
+  if (!id) return null;
+
+  return {
+    id,
+    name: asString(source.name) || id,
+    description: asString(source.description) || null,
+    entrypoint: asString(source.entrypoint) || "run",
+    scheduleKind: asString(source.scheduleKind ?? source.schedule_kind) || "manual",
+    intervalSeconds: toNullableNumber(source.intervalSeconds ?? source.interval_seconds),
+    enabled: asBoolean(source.enabled, true),
+  };
+}
+
+export function normalizePluginCatalogEntry(payload: unknown): PluginCatalogEntry | null {
+  const source = asObject(payload);
+  const id = asString(source.id);
+  if (!id) return null;
+  return {
+    id,
+    name: asString(source.name) || id,
+    version: asString(source.version) || "0.0.0",
+    description: asString(source.description) || null,
+    author: asString(source.author) || null,
+    homepageUrl: asString(source.homepageUrl ?? source.homepage_url) || null,
+    scriptUrl: asString(source.scriptUrl ?? source.script_url) || null,
+    scriptBody: asString(source.scriptBody ?? source.script_body) || null,
+    permissions: asArray(source.permissions).map((item) => asString(item)).filter(Boolean),
+    tasks: asArray(source.tasks)
+      .map((item) => normalizePluginCatalogTask(item))
+      .filter((item): item is PluginCatalogTask => Boolean(item)),
+    sourceUrl: asString(source.sourceUrl ?? source.source_url) || null,
+  };
+}
+
+export function normalizePluginCatalogResult(payload: unknown): PluginCatalogResult {
+  const source = asObject(payload);
+  const items = asArray(source.items ?? payload)
+    .map((item) => normalizePluginCatalogEntry(item))
+    .filter((item): item is PluginCatalogEntry => Boolean(item));
+  return {
+    sourceUrl: asString(source.sourceUrl ?? source.source_url),
+    items,
+  };
+}
+
+export function normalizeInstalledPlugin(payload: unknown): InstalledPluginSummary | null {
+  const source = asObject(payload);
+  const pluginId = asString(source.pluginId ?? source.plugin_id);
+  if (!pluginId) return null;
+
+  return {
+    pluginId,
+    sourceUrl: asString(source.sourceUrl ?? source.source_url) || null,
+    name: asString(source.name) || pluginId,
+    version: asString(source.version) || "0.0.0",
+    description: asString(source.description) || null,
+    author: asString(source.author) || null,
+    homepageUrl: asString(source.homepageUrl ?? source.homepage_url) || null,
+    scriptUrl: asString(source.scriptUrl ?? source.script_url) || null,
+    permissions: asArray(source.permissions).map((item) => asString(item)).filter(Boolean),
+    status: asString(source.status) || "disabled",
+    installedAt: asInteger(source.installedAt ?? source.installed_at, 0, 0),
+    updatedAt: asInteger(source.updatedAt ?? source.updated_at, 0, 0),
+    lastRunAt: toNullableNumber(source.lastRunAt ?? source.last_run_at),
+    lastError: asString(source.lastError ?? source.last_error) || null,
+    taskCount: asInteger(source.taskCount ?? source.task_count, 0, 0),
+    enabledTaskCount: asInteger(source.enabledTaskCount ?? source.enabled_task_count, 0, 0),
+  };
+}
+
+export function normalizePluginInstalledList(payload: unknown): InstalledPluginSummary[] {
+  const source = asObject(payload);
+  const items = asArray(source.items ?? payload);
+  return items
+    .map((item) => normalizeInstalledPlugin(item))
+    .filter((item): item is InstalledPluginSummary => Boolean(item));
+}
+
+export function normalizePluginTask(payload: unknown): PluginTaskSummary | null {
+  const source = asObject(payload);
+  const id = asString(source.id);
+  const pluginId = asString(source.pluginId ?? source.plugin_id);
+  if (!id || !pluginId) return null;
+  return {
+    id,
+    pluginId,
+    pluginName: asString(source.pluginName ?? source.plugin_name) || pluginId,
+    name: asString(source.name) || id,
+    description: asString(source.description) || null,
+    entrypoint: asString(source.entrypoint) || "run",
+    scheduleKind: asString(source.scheduleKind ?? source.schedule_kind) || "manual",
+    intervalSeconds: toNullableNumber(source.intervalSeconds ?? source.interval_seconds),
+    enabled: asBoolean(source.enabled, true),
+    nextRunAt: toNullableNumber(source.nextRunAt ?? source.next_run_at),
+    lastRunAt: toNullableNumber(source.lastRunAt ?? source.last_run_at),
+    lastStatus: asString(source.lastStatus ?? source.last_status) || null,
+    lastError: asString(source.lastError ?? source.last_error) || null,
+  };
+}
+
+export function normalizePluginTaskList(payload: unknown): PluginTaskSummary[] {
+  const source = asObject(payload);
+  const items = asArray(source.items ?? payload);
+  return items
+    .map((item) => normalizePluginTask(item))
+    .filter((item): item is PluginTaskSummary => Boolean(item));
+}
+
+export function normalizePluginRunLog(payload: unknown): PluginRunLogSummary | null {
+  const source = asObject(payload);
+  const id = asInteger(source.id, 0, 0);
+  if (!id) return null;
+  return {
+    id,
+    pluginId: asString(source.pluginId ?? source.plugin_id),
+    pluginName: asString(source.pluginName ?? source.plugin_name) || null,
+    taskId: asString(source.taskId ?? source.task_id) || null,
+    taskName: asString(source.taskName ?? source.task_name) || null,
+    runType: asString(source.runType ?? source.run_type) || "manual",
+    status: asString(source.status) || "ok",
+    startedAt: asInteger(source.startedAt ?? source.started_at, 0, 0),
+    finishedAt: toNullableNumber(source.finishedAt ?? source.finished_at),
+    durationMs: toNullableNumber(source.durationMs ?? source.duration_ms),
+    output: source.output ?? null,
+    error: asString(source.error) || null,
+  };
+}
+
+export function normalizePluginRunLogList(payload: unknown): PluginRunLogSummary[] {
+  const source = asObject(payload);
+  const items = asArray(source.items ?? payload);
+  return items
+    .map((item) => normalizePluginRunLog(item))
+    .filter((item): item is PluginRunLogSummary => Boolean(item));
+}
+
 export function normalizeDeviceAuthInfo(payload: unknown): DeviceAuthInfo | null {
   const source = asObject(payload);
   const verificationUrl = asString(source.verificationUrl ?? source.verification_url);
@@ -598,6 +743,7 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     gatewayResidencyRequirementOptions: asArray(
       source.gatewayResidencyRequirementOptions
     ).map((item) => asString(item)),
+    pluginMarketSourceUrl: asString(source.pluginMarketSourceUrl ?? source.plugin_market_source_url),
     upstreamProxyUrl: asString(source.upstreamProxyUrl),
     upstreamStreamTimeoutMs: asInteger(source.upstreamStreamTimeoutMs, 1_800_000, 0),
     sseKeepaliveIntervalMs: asInteger(source.sseKeepaliveIntervalMs, 15_000, 1),

@@ -329,6 +329,90 @@ pub struct AggregateApiSummary {
     pub last_test_error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCatalogEntry {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub homepage_url: Option<String>,
+    pub script_url: Option<String>,
+    pub script_body: Option<String>,
+    pub permissions: Vec<String>,
+    pub tasks: Vec<PluginCatalogTask>,
+    pub source_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCatalogTask {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub entrypoint: String,
+    pub schedule_kind: String,
+    pub interval_seconds: Option<i64>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledPluginSummary {
+    pub plugin_id: String,
+    pub source_url: Option<String>,
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub homepage_url: Option<String>,
+    pub script_url: Option<String>,
+    pub permissions: Vec<String>,
+    pub status: String,
+    pub installed_at: i64,
+    pub updated_at: i64,
+    pub last_run_at: Option<i64>,
+    pub last_error: Option<String>,
+    pub task_count: i64,
+    pub enabled_task_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginTaskSummary {
+    pub id: String,
+    pub plugin_id: String,
+    pub plugin_name: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub entrypoint: String,
+    pub schedule_kind: String,
+    pub interval_seconds: Option<i64>,
+    pub enabled: bool,
+    pub next_run_at: Option<i64>,
+    pub last_run_at: Option<i64>,
+    pub last_status: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginRunLogSummary {
+    pub id: i64,
+    pub plugin_id: String,
+    pub plugin_name: Option<String>,
+    pub task_id: Option<String>,
+    pub task_name: Option<String>,
+    pub run_type: String,
+    pub status: String,
+    pub started_at: i64,
+    pub finished_at: Option<i64>,
+    pub duration_ms: Option<i64>,
+    pub output: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AggregateApiListResult {
     pub items: Vec<AggregateApiSummary>,

@@ -22,10 +22,10 @@ use super::{
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY, APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
-    APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_SERVICE_ADDR_KEY,
-    APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
-    APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
-    SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
+    APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY,
+    APP_SETTING_SERVICE_ADDR_KEY, APP_SETTING_UI_APPEARANCE_PRESET_KEY,
+    APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY,
+    SERVICE_BIND_MODE_ALL_INTERFACES, SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
 };
 
 const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS: &[&str] = &[
@@ -92,6 +92,10 @@ pub(super) fn current_app_settings_value(
     let upstream_proxy_url = crate::gateway::current_upstream_proxy_url();
     let upstream_stream_timeout_ms = current_gateway_upstream_stream_timeout_ms();
     let sse_keepalive_interval_ms = current_gateway_sse_keepalive_interval_ms();
+    let plugin_market_source_url = settings
+        .get(APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY)
+        .cloned()
+        .unwrap_or_default();
     let background_tasks_raw = serde_json::to_string(&background_tasks)
         .map_err(|err| format!("serialize background tasks failed: {err}"))?;
     let env_overrides = current_env_overrides();
@@ -111,6 +115,7 @@ pub(super) fn current_app_settings_value(
         &gateway_originator,
         &gateway_user_agent_version,
         &gateway_residency_requirement,
+        &plugin_market_source_url,
         upstream_proxy_url.as_deref(),
         upstream_stream_timeout_ms,
         sse_keepalive_interval_ms,
@@ -147,6 +152,7 @@ pub(super) fn current_app_settings_value(
         "gatewayOriginator": gateway_originator,
         "gatewayUserAgentVersion": gateway_user_agent_version,
         "gatewayResidencyRequirement": gateway_residency_requirement,
+        "pluginMarketSourceUrl": plugin_market_source_url,
         "gatewayResidencyRequirementOptions": residency_requirement_options(),
         "upstreamProxyUrl": upstream_proxy_url.unwrap_or_default(),
         "upstreamStreamTimeoutMs": upstream_stream_timeout_ms,
@@ -216,6 +222,7 @@ fn persist_current_snapshot(
     gateway_originator: &str,
     gateway_user_agent_version: &str,
     gateway_residency_requirement: &str,
+    plugin_market_source_url: &str,
     upstream_proxy_url: Option<&str>,
     upstream_stream_timeout_ms: u64,
     sse_keepalive_interval_ms: u64,
@@ -261,6 +268,14 @@ fn persist_current_snapshot(
             None
         } else {
             Some(gateway_residency_requirement)
+        },
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY,
+        if plugin_market_source_url.trim().is_empty() {
+            None
+        } else {
+            Some(plugin_market_source_url)
         },
     );
     let _ = save_persisted_app_setting(

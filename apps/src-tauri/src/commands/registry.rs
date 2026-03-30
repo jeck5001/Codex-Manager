@@ -28,6 +28,18 @@ macro_rules! invoke_handler {
             crate::commands::requestlog::service_requestlog_summary,
             crate::commands::requestlog::service_requestlog_clear,
             crate::commands::requestlog::service_requestlog_today_summary,
+            // plugin
+            crate::commands::plugin::service_plugin_catalog_list,
+            crate::commands::plugin::service_plugin_catalog_refresh,
+            crate::commands::plugin::service_plugin_install,
+            crate::commands::plugin::service_plugin_update,
+            crate::commands::plugin::service_plugin_uninstall,
+            crate::commands::plugin::service_plugin_list,
+            crate::commands::plugin::service_plugin_enable,
+            crate::commands::plugin::service_plugin_disable,
+            crate::commands::plugin::service_plugin_tasks_list,
+            crate::commands::plugin::service_plugin_tasks_run,
+            crate::commands::plugin::service_plugin_logs_list,
             // settings
             crate::commands::settings::service_listen::service_listen_config_get,
             crate::commands::settings::service_listen::service_listen_config_set,
