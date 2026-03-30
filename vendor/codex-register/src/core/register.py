@@ -1399,12 +1399,80 @@ class RegistrationEngine:
         except Exception as e:
             self._log(f"{stage} 跟进 continue_url 失败: {e}", "warning")
 
-    def _advance_workspace_authorization(self, auth_target: str) -> Optional[str]:
+    def _discover_auth_navigation_urls(
+        self,
+        response: Optional[Any],
+        fallback_url: str,
+    ) -> list[str]:
+        """从响应历史、Location 头和 HTML 中提取可能的授权下一跳 URL。"""
+        import urllib.parse
+
+        candidates: list[str] = []
+        seen: set[str] = set()
+
+        def add_candidate(raw_url: Any, base_url: str):
+            value = self._clean_text(raw_url)
+            if not value:
+                return
+
+            if (
+                "code=" not in value
+                and "consent" not in value
+                and "workspace" not in value
+                and "organization" not in value
+                and "/api/accounts/" not in value
+            ):
+                return
+
+            resolved = urllib.parse.urljoin(base_url or fallback_url, value)
+            normalized = self._clean_text(resolved)
+            if not normalized or normalized in seen:
+                return
+            seen.add(normalized)
+            candidates.append(normalized)
+
+        responses = []
+        history = getattr(response, "history", None)
+        if isinstance(history, list):
+            responses.extend(history)
+        if response is not None:
+            responses.append(response)
+
+        for item in responses:
+            current_url = self._clean_text(getattr(item, "url", "")) or fallback_url
+            add_candidate(current_url, current_url)
+
+            headers = getattr(item, "headers", None)
+            if headers and hasattr(headers, "get"):
+                add_candidate(headers.get("Location"), current_url)
+
+            body = str(getattr(item, "text", "") or "")
+            for pattern in (
+                r'action="([^"]+)"',
+                r"action='([^']+)'",
+                r'href="([^"]+)"',
+                r"href='([^']+)'",
+            ):
+                for match in re.finditer(pattern, body):
+                    add_candidate(match.group(1), current_url)
+
+        return candidates
+
+    def _advance_workspace_authorization(
+        self,
+        auth_target: str,
+        _visited: Optional[set[str]] = None,
+    ) -> Optional[str]:
         """主动请求授权页，若命中 consent/workspace 则完成 workspace 选择并继续拿 callback。"""
         try:
             target_url = self._clean_text(auth_target)
             if not target_url or not self.session:
                 return None
+
+            visited = _visited or set()
+            if target_url in visited:
+                return None
+            visited.add(target_url)
 
             self._log(f"尝试推进 Workspace 授权: {target_url[:120]}...", "warning")
             response = self.session.get(
@@ -1440,6 +1508,16 @@ class RegistrationEngine:
                 if not continue_url:
                     return None
                 return self._follow_redirects(continue_url)
+
+            for next_url in self._discover_auth_navigation_urls(response, target_url):
+                if next_url == target_url:
+                    continue
+                callback_url = self._advance_workspace_authorization(
+                    next_url,
+                    _visited=visited,
+                )
+                if callback_url:
+                    return callback_url
 
             return None
         except Exception as e:
