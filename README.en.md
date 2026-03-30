@@ -49,20 +49,15 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 
 ## Recent Changes
   - Current latest version: `v0.1.14` (2026-03-30)
-- This round of high-concurrency protection is now in place: the Settings page includes a System Derive button and a single-account concurrency limit, it applies CPU / memory-based recommendations immediately, and the ingress path now uses short queue waits plus fast overload degradation to keep the service alive under heavy traffic.
-- The Chinese and English READMEs now both cover the concurrency-protection flow, and the recent commit highlights have been refreshed to the latest commit.
-- Added an “Aggregate API” management page: manage multiple third-party relay providers as minimal upstreams, with `Codex / Claude` categorization, supplier name, sort order, URL, key, and connection testing.
-- Platform-key rotation now supports `Account Rotation` and `Aggregate API Rotation`; Aggregate API rotation prefers the configured provider order first, then forwards upstream requests by protocol while keeping account rotation unchanged.
-  - `v0.1.14` continues the high-concurrency protection and docs cleanup from this round: the ingress path now uses short queue waits plus fast overload degradation, the Settings page adds System Derive and a single-account concurrency limit, and the README reflects the latest version notes.
-- Account management adds the most practical governance features from this round: `account_deactivated` and `workspace_deactivated` are now recognized as unavailable signals, the list supports a dedicated `Banned` filter, and the actions menu can clean banned accounts in one click.
-- The 5-hour and 7-day quota columns now show reset timestamps under each progress bar. Free accounts that only expose a 7-day window also render the reset time under the 7-day column instead of the wrong bucket.
-- Platform keys now support service tier overrides with `Follow Request`, `Fast`, and `Flex`. `Fast` maps to upstream `priority`, while `Flex` is forwarded as `flex`; the desktop create/edit flow now saves and round-trips these values correctly.
-- The Settings page restores the service listen-mode switch so you can choose between `localhost` and `0.0.0.0`; the `Check for Updates` button now shows loading only for manual checks.
-- Web and desktop interaction bugs were also cleaned up: refreshing non-home Web routes no longer downloads the wrong file, and clipboard actions now degrade gracefully when `navigator.clipboard.writeText` is unavailable.
-  - The release path stays unified: the product version is now `0.1.14`, and the workspace, frontend package, Tauri desktop app, release-version checks, and README version notes are all kept in sync. See [CHANGELOG.md](CHANGELOG.md) for the full history.
+  - This release focuses on two main lines: a more resilient service and cleaner integration. The ingress path now uses short queue waits plus fast overload degradation, and the Settings page adds System Derive plus a single-account concurrency limit so the service can queue first and degrade instead of getting stuck.
+  - Plugin-center onboarding and documentation were tightened up: the README now includes a plugin-center preview image, and the minimal integration guide, full interface list, and system internal interface inventory are all up to date.
+  - Long-lived docs were normalized by removing date prefixes, and README/docs links were switched to stable filenames for easier maintenance.
+  - Scheduled cleanup is now exposed from the Accounts page and defaults to once per minute, while users can still customize the interval.
+  - The release pipeline is fully aligned to `0.1.14` across the workspace, frontend package, Tauri desktop app, validation scripts, and README version notes.
 
 ### Recent Commit Highlights
-- `85022b9`: improve high-concurrency protection and docs. The ingress path now uses short queue waits plus fast overload degradation, the Settings page adds System Derive and a single-account concurrency limit, and both READMEs were refreshed.
+- `8c9299f`: bump the release version to `0.1.14`, aligning the workspace, frontend package, Tauri desktop app, and release checks.
+- `85022b9`: improve high-concurrency protection and docs. The ingress path now uses short queue waits plus fast overload degradation, and the Settings page adds System Derive plus a single-account concurrency limit.
 - `a6a96d6`: add a plugin-center preview image to the README. Both the Chinese and English README screenshot sections now include `plugin.png`.
 - `ec03f2c`: remove date prefixes from long-lived docs. Long-term documents now use stable filenames, and README links were updated accordingly.
 - `927142a`: adjust the default interval for the scheduled script. The cleanup script now runs every minute by default, while users can still customize it.
