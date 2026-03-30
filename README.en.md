@@ -85,6 +85,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 ![Accounts](assets/images/accounts.png)
 ![Platform Key](assets/images/platform-key.png)
 ![Aggregate API](assets/images/aggregate-api.png)
+![Plugin Center](assets/images/plug.png)
 ![Logs](assets/images/log.png)
 ![Settings](assets/images/themes.png)
 

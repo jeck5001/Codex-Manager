@@ -86,6 +86,7 @@
 ![账号管理](assets/images/accounts.png)
 ![平台 Key](assets/images/platform-key.png)
 ![聚合 API](assets/images/aggregate-api.png)
+![插件中心](assets/images/plug.png)
 ![日志视图](assets/images/log.png)
 ![设置页](assets/images/themes.png)
 
