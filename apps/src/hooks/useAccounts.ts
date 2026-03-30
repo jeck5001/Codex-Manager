@@ -403,6 +403,11 @@ export function useAccounts() {
       }
       refreshAllMutation.mutate();
     },
+    refreshAccountList: async () => {
+      if (!ensureServiceReady("刷新账号列表")) return;
+      await invalidateAll();
+      toast.success("账号列表已刷新");
+    },
     deleteAccount: (accountId: string) => {
       if (!ensureServiceReady("删除账号")) return;
       deleteMutation.mutate(accountId);

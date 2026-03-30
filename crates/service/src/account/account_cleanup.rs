@@ -19,6 +19,16 @@ pub(crate) struct DeleteUnavailableFreeResult {
     deleted_account_ids: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DeleteBannedResult {
+    scanned: usize,
+    deleted: usize,
+    skipped_disabled: usize,
+    skipped_not_banned: usize,
+    deleted_account_ids: Vec<String>,
+}
+
 pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFreeResult, String> {
     let mut storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
@@ -106,6 +116,48 @@ pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFree
     Ok(result)
 }
 
+pub(crate) fn delete_banned_accounts() -> Result<DeleteBannedResult, String> {
+    let mut storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
+
+    let mut result = DeleteBannedResult {
+        scanned: 0,
+        deleted: 0,
+        skipped_disabled: 0,
+        skipped_not_banned: 0,
+        deleted_account_ids: Vec::new(),
+    };
+
+    for account in accounts {
+        result.scanned += 1;
+
+        let normalized_status = account.status.trim().to_ascii_lowercase();
+        if normalized_status == "disabled" {
+            result.skipped_disabled += 1;
+            continue;
+        }
+        if normalized_status != "banned" {
+            result.skipped_not_banned += 1;
+            continue;
+        }
+
+        storage
+            .delete_account(&account.id)
+            .map_err(|err| err.to_string())?;
+        let _ = storage.insert_event(&Event {
+            account_id: Some(account.id.clone()),
+            event_type: "account_bulk_delete_banned".to_string(),
+            message: "bulk delete banned account".to_string(),
+            created_at: now_ts(),
+        });
+
+        result.deleted += 1;
+        result.deleted_account_ids.push(account.id);
+    }
+
+    Ok(result)
+}
+
 fn plan_label_for_event(plan: Option<&ResolvedAccountPlan>) -> Option<&str> {
     plan.and_then(|value| {
         if value.normalized == "unknown" {
@@ -114,4 +166,100 @@ fn plan_label_for_event(plan: Option<&ResolvedAccountPlan>) -> Option<&str> {
             Some(value.normalized.as_str())
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::delete_banned_accounts;
+    use codexmanager_core::storage::{Account, Storage};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use crate::test_env_guard;
+
+    static CLEANUP_TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+    fn new_test_dir(prefix: &str) -> PathBuf {
+        let seq = CLEANUP_TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("{prefix}-{}-{seq}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        dir
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        original: Option<std::ffi::OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let original = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.original {
+                std::env::set_var(self.key, value);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    #[test]
+    fn delete_banned_accounts_removes_only_banned_accounts() {
+        let _lock = test_env_guard();
+        let dir = new_test_dir("cleanup-banned-accounts");
+        let db_path = dir.join("codexmanager.db");
+        let _guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+
+        let storage = Storage::open(&db_path).expect("open db");
+        storage.init().expect("init db");
+        storage
+            .insert_account(&Account {
+                id: "acc-banned".to_string(),
+                label: "Banned".to_string(),
+                issuer: "chatgpt".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: 1,
+                status: "banned".to_string(),
+                created_at: 1,
+                updated_at: 1,
+            })
+            .expect("insert banned");
+        storage
+            .insert_account(&Account {
+                id: "acc-active".to_string(),
+                label: "Active".to_string(),
+                issuer: "chatgpt".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: 2,
+                status: "active".to_string(),
+                created_at: 1,
+                updated_at: 1,
+            })
+            .expect("insert active");
+
+        let result = delete_banned_accounts().expect("cleanup result");
+        assert_eq!(result.deleted, 1);
+        assert_eq!(result.deleted_account_ids, vec!["acc-banned".to_string()]);
+        assert!(Storage::open(&db_path)
+            .expect("reopen db")
+            .find_account_by_id("acc-banned")
+            .expect("find banned")
+            .is_none());
+        assert!(Storage::open(&db_path)
+            .expect("reopen db")
+            .find_account_by_id("acc-active")
+            .expect("find active")
+            .is_some());
+    }
 }

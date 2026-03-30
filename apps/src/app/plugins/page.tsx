@@ -4,14 +4,26 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
+  Info,
   Play,
   RefreshCw,
   Rocket,
+  X,
   Trash2,
   ToggleLeft,
   ToggleRight,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/modals/confirm-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,10 +43,28 @@ import {
   PluginTaskSummary,
 } from "@/types";
 
+type SelectedPluginDetail =
+  | { kind: "catalog"; pluginId: string }
+  | { kind: "installed"; pluginId: string }
+  | null;
+
+function formatPermissionLabel(permission: string) {
+  switch (permission) {
+    case "accounts:cleanup":
+      return "清理封禁账号";
+    case "settings:read":
+      return "读取设置";
+    case "network":
+      return "网络访问";
+    default:
+      return permission;
+  }
+}
+
 function PermissionBadge({ permission }: { permission: string }) {
   return (
     <Badge variant="secondary" className="mr-1.5 mb-1">
-      {permission}
+      {formatPermissionLabel(permission)}
     </Badge>
   );
 }
@@ -50,20 +80,44 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge className={toneClass}>{status}</Badge>;
 }
 
+function formatDuration(value: number | null): string {
+  if (value == null) return "-";
+  if (value >= 10_000) return `${Math.round(value / 1000)}s`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}s`;
+  return `${Math.round(value)}ms`;
+}
+
+function formatTimestamp(value: number | null): string {
+  if (value == null) return "-";
+  const date = new Date(value * 1000);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function PluginCard({
   item,
+  onOpenDetails,
   onInstall,
 }: {
   item: PluginCatalogEntry;
+  onOpenDetails: (entry: PluginCatalogEntry) => void;
   onInstall: (entry: PluginCatalogEntry) => void;
 }) {
   return (
     <Card className="glass-card border-none shadow-sm">
-      <CardHeader className="space-y-2">
+      <CardHeader className="space-y-2 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="text-base">{item.name}</CardTitle>
-            <CardDescription className="mt-1 line-clamp-2">
+            <CardDescription className="mt-1 line-clamp-1">
               {item.description || "暂无描述"}
             </CardDescription>
           </div>
@@ -71,52 +125,20 @@ function PluginCard({
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
           {item.author ? <span>作者：{item.author}</span> : null}
-          {item.sourceUrl ? <span>来源：{item.sourceUrl}</span> : null}
+          <span>权限 {item.permissions.length}</span>
+          <span>任务 {item.tasks.length}</span>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <p className="mb-1 text-xs text-muted-foreground">权限</p>
-          <div>
-            {item.permissions.length > 0 ? (
-              item.permissions.map((permission) => (
-                <PermissionBadge key={permission} permission={permission} />
-              ))
-            ) : (
-              <span className="text-sm text-muted-foreground">无需额外权限</span>
-            )}
-          </div>
+      <CardContent className="flex items-center justify-between gap-3 pt-0">
+        <div className="text-xs text-muted-foreground">
+          <span>{item.sourceUrl ? `来源：${item.sourceUrl}` : "内置市场"}</span>
         </div>
-        <div>
-          <p className="mb-1 text-xs text-muted-foreground">任务</p>
-          <div className="space-y-2">
-            {item.tasks.map((task) => (
-              <div
-                key={task.id}
-                className="rounded-xl border border-border/60 bg-background/60 p-3 text-sm"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-medium">{task.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {task.scheduleKind === "manual"
-                        ? "手动"
-                        : `每 ${task.intervalSeconds || 0} 秒`}
-                      {" · "}
-                      {task.entrypoint}
-                    </div>
-                  </div>
-                  <Badge variant="outline">{task.enabled ? "启用" : "禁用"}</Badge>
-                </div>
-                {task.description ? (
-                  <div className="mt-1 text-xs text-muted-foreground">{task.description}</div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="flex justify-end">
-          <Button onClick={() => onInstall(item)} className="gap-2">
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenDetails(item)}>
+            <Info className="mr-1.5 h-4 w-4" />
+            详情
+          </Button>
+          <Button size="sm" onClick={() => onInstall(item)} className="gap-2">
             <Download className="h-4 w-4" />
             安装
           </Button>
@@ -128,30 +150,22 @@ function PluginCard({
 
 function InstalledPluginCard({
   item,
-  tasks,
-  logs,
+  onOpenDetails,
   onEnable,
   onDisable,
-  onUpdate,
-  onUninstall,
-  onRunTask,
 }: {
   item: InstalledPluginSummary;
-  tasks: PluginTaskSummary[];
-  logs: PluginRunLogSummary[];
+  onOpenDetails: (item: InstalledPluginSummary) => void;
   onEnable: (pluginId: string) => void;
   onDisable: (pluginId: string) => void;
-  onUpdate: (pluginId: string, sourceUrl?: string | null) => void;
-  onUninstall: (pluginId: string) => void;
-  onRunTask: (taskId: string) => void;
 }) {
   return (
     <Card className="glass-card border-none shadow-sm">
-      <CardHeader className="space-y-2">
+      <CardHeader className="space-y-2 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="text-base">{item.name}</CardTitle>
-            <CardDescription className="mt-1 line-clamp-2">
+            <CardDescription className="mt-1 line-clamp-1">
               {item.description || "暂无描述"}
             </CardDescription>
           </div>
@@ -162,112 +176,30 @@ function InstalledPluginCard({
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
           {item.author ? <span>作者：{item.author}</span> : null}
-          {item.sourceUrl ? <span>来源：{item.sourceUrl}</span> : null}
+          <span>权限 {item.permissions.length}</span>
           <span>任务 {item.enabledTaskCount}/{item.taskCount}</span>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <p className="mb-1 text-xs text-muted-foreground">已授予权限</p>
-          <div>
-            {item.permissions.length > 0 ? (
-              item.permissions.map((permission) => (
-                <PermissionBadge key={permission} permission={permission} />
-              ))
-            ) : (
-              <span className="text-sm text-muted-foreground">无</span>
-            )}
-          </div>
+      <CardContent className="flex items-center justify-between gap-3 pt-0">
+        <div className="text-xs text-muted-foreground">
+          <span>{item.sourceUrl ? `来源：${item.sourceUrl}` : "内置安装"}</span>
         </div>
-        <div>
-          <p className="mb-2 text-xs text-muted-foreground">任务</p>
-          <div className="space-y-2">
-            {tasks.length > 0 ? (
-              tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="rounded-xl border border-border/60 bg-background/60 p-3 text-sm"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-medium">{task.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {task.scheduleKind === "manual"
-                          ? "手动"
-                          : `每 ${task.intervalSeconds || 0} 秒`}
-                        {" · "}
-                        {task.entrypoint}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{task.enabled ? "启用" : "停用"}</Badge>
-                      <Button size="sm" variant="secondary" onClick={() => onRunTask(task.id)}>
-                        <Play className="mr-1.5 h-3.5 w-3.5" />
-                        运行
-                      </Button>
-                    </div>
-                  </div>
-                  {task.lastError ? (
-                    <div className="mt-1 text-xs text-red-500">{task.lastError}</div>
-                  ) : null}
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-muted-foreground">暂无任务</div>
-            )}
-          </div>
-        </div>
-        <div>
-          <p className="mb-2 text-xs text-muted-foreground">最近运行</p>
-          <div className="space-y-2">
-            {logs.length > 0 ? (
-              logs.slice(0, 3).map((log) => (
-                <div
-                  key={log.id}
-                  className="rounded-xl border border-border/60 bg-background/60 p-3 text-xs"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium">
-                      {log.taskName || log.taskId || "未知任务"}
-                    </div>
-                    <Badge variant={log.status === "ok" ? "secondary" : "destructive"}>
-                      {log.status}
-                    </Badge>
-                  </div>
-                  <div className="mt-1 text-muted-foreground">
-                    {log.error || (log.output ? JSON.stringify(log.output) : "无输出")}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-muted-foreground">暂无日志</div>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={() => onUpdate(item.pluginId, item.sourceUrl)}
-          >
-            <RefreshCw className="h-4 w-4" />
-            更新
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenDetails(item)}>
+            <Info className="mr-1.5 h-4 w-4" />
+            详情
           </Button>
           {item.status === "enabled" ? (
-            <Button variant="outline" className="gap-2" onClick={() => onDisable(item.pluginId)}>
-              <ToggleLeft className="h-4 w-4" />
+            <Button variant="outline" size="sm" onClick={() => onDisable(item.pluginId)}>
+              <ToggleLeft className="mr-1.5 h-4 w-4" />
               停用
             </Button>
           ) : (
-            <Button variant="outline" className="gap-2" onClick={() => onEnable(item.pluginId)}>
-              <ToggleRight className="h-4 w-4" />
+            <Button variant="outline" size="sm" onClick={() => onEnable(item.pluginId)}>
+              <ToggleRight className="mr-1.5 h-4 w-4" />
               启用
             </Button>
           )}
-          <Button variant="destructive" className="gap-2" onClick={() => onUninstall(item.pluginId)}>
-            <Trash2 className="h-4 w-4" />
-            卸载
-          </Button>
         </div>
       </CardContent>
     </Card>
@@ -281,6 +213,10 @@ export default function PluginsPage() {
   usePageTransitionReady("/plugins/", !serviceReady);
   const queryClient = useQueryClient();
   const [sourceUrl, setSourceUrl] = useState("");
+  const [selectedPlugin, setSelectedPlugin] = useState<SelectedPluginDetail>(null);
+  const [pendingUninstallPlugin, setPendingUninstallPlugin] =
+    useState<InstalledPluginSummary | null>(null);
+  const [taskIntervalDrafts, setTaskIntervalDrafts] = useState<Record<string, string>>({});
 
   const settingsQuery = useQuery({
     queryKey: ["plugin-settings"],
@@ -355,20 +291,6 @@ export default function PluginsPage() {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: (payload: { pluginId: string; sourceUrl?: string | null }) =>
-      pluginClient.update(payload.pluginId, payload.sourceUrl || undefined),
-    onSuccess: () => {
-      toast.success("插件已更新");
-      void queryClient.invalidateQueries({ queryKey: ["plugin-installed"] });
-      void queryClient.invalidateQueries({ queryKey: ["plugin-tasks"] });
-      void queryClient.invalidateQueries({ queryKey: ["plugin-logs"] });
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "更新失败");
-    },
-  });
-
   const uninstallMutation = useMutation({
     mutationFn: (pluginId: string) => pluginClient.uninstall(pluginId),
     onSuccess: () => {
@@ -395,6 +317,20 @@ export default function PluginsPage() {
     },
   });
 
+  const updateTaskMutation = useMutation({
+    mutationFn: (payload: { taskId: string; intervalSeconds: number }) =>
+      pluginClient.updateTask(payload.taskId, payload.intervalSeconds),
+    onSuccess: () => {
+      toast.success("任务间隔已更新");
+      void queryClient.invalidateQueries({ queryKey: ["plugin-installed"] });
+      void queryClient.invalidateQueries({ queryKey: ["plugin-tasks"] });
+      void queryClient.invalidateQueries({ queryKey: ["plugin-logs"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "更新任务失败");
+    },
+  });
+
   const tasksByPluginId = useMemo(() => {
     const map = new Map<string, PluginTaskSummary[]>();
     for (const task of tasksQuery.data || []) {
@@ -417,6 +353,21 @@ export default function PluginsPage() {
 
   const catalogItems = catalogQuery.data?.items || [];
   const installedItems = installedQuery.data || [];
+  const selectedCatalogItem =
+    selectedPlugin?.kind === "catalog"
+      ? catalogItems.find((item) => item.id === selectedPlugin.pluginId) || null
+      : null;
+  const selectedInstalledItem =
+    selectedPlugin?.kind === "installed"
+      ? installedItems.find((item) => item.pluginId === selectedPlugin.pluginId) || null
+      : null;
+  const selectedTasks = selectedPlugin
+    ? tasksByPluginId.get(selectedPlugin.pluginId) || []
+    : [];
+  const selectedLogs = selectedPlugin
+    ? logsByPluginId.get(selectedPlugin.pluginId) || []
+    : [];
+  const selectedDetail = selectedCatalogItem || selectedInstalledItem;
 
   return (
     <div className="p-6 space-y-6">
@@ -435,7 +386,7 @@ export default function PluginsPage() {
       <Card className="glass-card border-none shadow-sm">
         <CardHeader>
           <CardTitle>市场源</CardTitle>
-          <CardDescription>留空时使用内置示例市场。填写远程 JSON 地址后可接入自己的插件仓库。</CardDescription>
+          <CardDescription>留空时使用内置市场，默认提供清理封禁账号插件。填写远程 JSON 地址后可接入自己的插件仓库。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 md:flex-row md:items-center">
           <Input
@@ -462,19 +413,24 @@ export default function PluginsPage() {
       <Card className="glass-card border-none shadow-sm">
         <CardHeader>
           <CardTitle>插件市场</CardTitle>
-          <CardDescription>点击安装即可把插件拉入本机，安装后可再启用或运行任务。</CardDescription>
+          <CardDescription>卡片只显示摘要，点“详情”可以展开查看权限、任务和运行日志。</CardDescription>
         </CardHeader>
         <CardContent>
           {catalogQuery.isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 2 }).map((_, index) => (
                 <Skeleton key={index} className="h-64 rounded-2xl" />
               ))}
             </div>
           ) : catalogItems.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {catalogItems.map((item) => (
-                <PluginCard key={item.id} item={item} onInstall={(entry) => installMutation.mutate(entry)} />
+                <PluginCard
+                  key={item.id}
+                  item={item}
+                  onOpenDetails={(entry) => setSelectedPlugin({ kind: "catalog", pluginId: entry.id })}
+                  onInstall={(entry) => installMutation.mutate(entry)}
+                />
               ))}
             </div>
           ) : (
@@ -488,34 +444,26 @@ export default function PluginsPage() {
       <Card className="glass-card border-none shadow-sm">
         <CardHeader>
           <CardTitle>已安装插件</CardTitle>
-          <CardDescription>这里可以启用、停用、更新和卸载插件，也能直接运行任务。</CardDescription>
+          <CardDescription>这里可以启用、停用和卸载插件，详情里再看任务与日志。</CardDescription>
         </CardHeader>
         <CardContent>
           {installedQuery.isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 2 }).map((_, index) => (
                 <Skeleton key={index} className="h-72 rounded-2xl" />
               ))}
             </div>
           ) : installedItems.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {installedItems.map((item) => (
                 <InstalledPluginCard
                   key={item.pluginId}
                   item={item}
-                  tasks={tasksByPluginId.get(item.pluginId) || []}
-                  logs={logsByPluginId.get(item.pluginId) || []}
+                  onOpenDetails={(entry) =>
+                    setSelectedPlugin({ kind: "installed", pluginId: entry.pluginId })
+                  }
                   onEnable={(pluginId) => toggleMutation.mutate({ pluginId, enabled: true })}
                   onDisable={(pluginId) => toggleMutation.mutate({ pluginId, enabled: false })}
-                  onUpdate={(pluginId, sourceUrlValue) =>
-                    updateMutation.mutate({ pluginId, sourceUrl: sourceUrlValue })
-                  }
-                  onUninstall={(pluginId) => {
-                    if (window.confirm("确认卸载这个插件吗？")) {
-                      uninstallMutation.mutate(pluginId);
-                    }
-                  }}
-                  onRunTask={(taskId) => runTaskMutation.mutate(taskId)}
                 />
               ))}
             </div>
@@ -527,45 +475,293 @@ export default function PluginsPage() {
         </CardContent>
       </Card>
 
-      <Card className="glass-card border-none shadow-sm">
-        <CardHeader>
-          <CardTitle>最近日志</CardTitle>
-          <CardDescription>方便快速查看插件运行结果和错误。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {logsQuery.isLoading ? (
-            <Skeleton className="h-40 rounded-2xl" />
-          ) : (logsQuery.data || []).length > 0 ? (
-            (logsQuery.data || []).map((log) => (
-              <div
-                key={log.id}
-                className={cn(
-                  "rounded-2xl border p-3 text-sm",
-                  log.status === "ok"
-                    ? "border-emerald-500/20 bg-emerald-500/5"
-                    : "border-red-500/20 bg-red-500/5",
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-medium">
-                    {log.pluginName || log.pluginId} · {log.taskName || log.taskId || "任务"}
+      <Dialog open={selectedPlugin !== null} onOpenChange={(open) => !open && setSelectedPlugin(null)}>
+        <DialogContent
+          showCloseButton={false}
+          className="glass-card max-h-[85vh] overflow-hidden border-none p-0 sm:max-w-[760px]"
+        >
+          {selectedDetail ? (
+            <div className="flex max-h-[85vh] flex-col">
+              <div className="border-b border-border/60 p-5">
+                <DialogHeader className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <DialogTitle className="text-xl">{selectedDetail.name}</DialogTitle>
+                      <DialogDescription className="mt-1 line-clamp-2">
+                        {selectedDetail.description || "暂无描述"}
+                      </DialogDescription>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">{selectedDetail.version}</Badge>
+                      {"status" in selectedDetail ? (
+                        <StatusBadge status={selectedDetail.status} />
+                      ) : null}
+                      <DialogClose
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        type="button"
+                      >
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">关闭</span>
+                      </DialogClose>
+                    </div>
                   </div>
-                  <Badge variant={log.status === "ok" ? "secondary" : "destructive"}>
-                    {log.status}
-                  </Badge>
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {log.error || (log.output ? JSON.stringify(log.output) : "无输出")}
-                </div>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {selectedDetail.author ? <span>作者：{selectedDetail.author}</span> : null}
+                    {selectedDetail.sourceUrl ? <span>来源：{selectedDetail.sourceUrl}</span> : null}
+                    <span>权限 {selectedDetail.permissions.length}</span>
+                    {"taskCount" in selectedDetail ? (
+                      <span>任务 {selectedDetail.enabledTaskCount}/{selectedDetail.taskCount}</span>
+                    ) : (
+                      <span>任务 {selectedDetail.tasks.length}</span>
+                    )}
+                  </div>
+                </DialogHeader>
               </div>
-            ))
-          ) : (
-            <div className="rounded-2xl border border-dashed border-border/60 p-10 text-center text-sm text-muted-foreground">
-              暂无日志
+
+              <div className="grid gap-4 overflow-y-auto p-5">
+                <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                  <div className="mb-2 text-sm font-medium">权限</div>
+                  <div>
+                    {selectedDetail.permissions.length > 0 ? (
+                      selectedDetail.permissions.map((permission) => (
+                        <PermissionBadge key={permission} permission={permission} />
+                      ))
+                    ) : (
+                      <div className="text-sm text-muted-foreground">无需额外权限</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                  <div className="mb-2 text-sm font-medium">任务</div>
+                  <div className="space-y-2">
+                    {selectedTasks.length > 0 ? (
+                      selectedTasks.map((task) => (
+                        <div
+                          key={task.id}
+                          className="rounded-xl border border-border/60 bg-background p-3 text-sm"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-medium">{task.name}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {task.scheduleKind === "manual"
+                                  ? "手动"
+                                  : `每 ${task.intervalSeconds || 0} 秒`}
+                                {" · "}
+                                {task.entrypoint}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">{task.enabled ? "启用" : "禁用"}</Badge>
+                              {selectedPlugin?.kind === "installed" ? (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => runTaskMutation.mutate(task.id)}
+                                >
+                                  <Play className="mr-1.5 h-3.5 w-3.5" />
+                                  运行
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                          {task.description ? (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {task.scheduleKind === "manual"
+                                ? task.description
+                                : `每 ${task.intervalSeconds || 0} 秒自动执行一次。`}
+                            </div>
+                          ) : null}
+                          {task.lastError ? (
+                            <div className="mt-1 text-xs text-red-500">{task.lastError}</div>
+                          ) : null}
+                          {"scheduleKind" in task && task.scheduleKind !== "manual" ? (
+                            <div className="mt-3 grid gap-2 rounded-xl border border-border/60 bg-background/70 p-3">
+                              <div className="text-xs font-medium text-muted-foreground">
+                                自动执行间隔
+                              </div>
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  className="h-9 w-full sm:max-w-[180px]"
+                                  value={
+                                    taskIntervalDrafts[task.id] ??
+                                    String(task.intervalSeconds || 60)
+                                  }
+                                  onChange={(event) =>
+                                    setTaskIntervalDrafts((prev) => ({
+                                      ...prev,
+                                      [task.id]: event.target.value,
+                                    }))
+                                  }
+                                  disabled={updateTaskMutation.isPending}
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                  秒
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="sm:ml-auto"
+                                  disabled={updateTaskMutation.isPending}
+                                  onClick={() => {
+                                    const raw =
+                                      taskIntervalDrafts[task.id] ??
+                                      String(task.intervalSeconds || 60);
+                                    const intervalSeconds = Number(raw);
+                                    if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) {
+                                      toast.error("请输入大于 0 的秒数");
+                                      return;
+                                    }
+                                    updateTaskMutation.mutate({
+                                      taskId: task.id,
+                                      intervalSeconds: Math.floor(intervalSeconds),
+                                    });
+                                  }}
+                                >
+                                  保存
+                                </Button>
+                              </div>
+                              <div className="text-[11px] text-muted-foreground">
+                                当前设置为每 {task.intervalSeconds || 0} 秒自动执行一次。
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-sm text-muted-foreground">暂无任务</div>
+                    )}
+                  </div>
+                </div>
+
+                {selectedPlugin?.kind === "installed" ? (
+                  <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                    <div className="mb-2 text-sm font-medium">最近运行</div>
+                    <div className="space-y-2">
+                      {selectedLogs.length > 0 ? (
+                        selectedLogs.slice(0, 5).map((log) => (
+                          <div
+                            key={log.id}
+                            className={cn(
+                              "rounded-xl border p-3 text-xs",
+                              log.status === "ok"
+                                ? "border-emerald-500/20 bg-emerald-500/5"
+                                : "border-red-500/20 bg-red-500/5",
+                            )}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="font-medium">
+                                {log.taskName || log.taskId || "未知任务"}
+                              </div>
+                              <Badge variant={log.status === "ok" ? "secondary" : "destructive"}>
+                                {log.status}
+                              </Badge>
+                            </div>
+                            <div className="mt-1 text-muted-foreground">
+                              {log.error || (log.output ? JSON.stringify(log.output) : "无输出")}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                              <span>执行于 {formatTimestamp(log.startedAt)}</span>
+                              <span>耗时 {formatDuration(log.durationMs)}</span>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-sm text-muted-foreground">暂无日志</div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <DialogFooter className="border-t border-border/60 bg-muted/20 px-5 py-4">
+                {selectedPlugin?.kind === "catalog" && selectedCatalogItem ? (
+                  <Button
+                    className="gap-2"
+                    onClick={() => {
+                      installMutation.mutate(selectedCatalogItem);
+                      setSelectedPlugin(null);
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
+                    安装
+                  </Button>
+                ) : null}
+                {selectedPlugin?.kind === "installed" && selectedInstalledItem ? (
+                  <>
+                    {selectedInstalledItem.status === "enabled" ? (
+                      <Button
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() =>
+                          toggleMutation.mutate({
+                            pluginId: selectedInstalledItem.pluginId,
+                            enabled: false,
+                          })
+                        }
+                      >
+                        <ToggleLeft className="h-4 w-4" />
+                        停用
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() =>
+                          toggleMutation.mutate({
+                            pluginId: selectedInstalledItem.pluginId,
+                            enabled: true,
+                          })
+                        }
+                      >
+                        <ToggleRight className="h-4 w-4" />
+                        启用
+                      </Button>
+                    )}
+                    <Button
+                      variant="destructive"
+                      className="gap-2"
+                      onClick={() => setPendingUninstallPlugin(selectedInstalledItem)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      卸载
+                    </Button>
+                  </>
+                ) : null}
+              </DialogFooter>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={pendingUninstallPlugin !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingUninstallPlugin(null);
+          }
+        }}
+        title="卸载插件"
+        description={
+          pendingUninstallPlugin
+            ? `确认卸载插件「${pendingUninstallPlugin.name}」吗？卸载后对应任务和运行记录会一并清理。`
+            : "确认卸载这个插件吗？"
+        }
+        confirmText="卸载"
+        confirmVariant="destructive"
+        onConfirm={() => {
+          if (!pendingUninstallPlugin) {
+            return;
+          }
+          uninstallMutation.mutate(pendingUninstallPlugin.pluginId);
+          setSelectedPlugin(null);
+          setPendingUninstallPlugin(null);
+        }}
+      />
     </div>
   );
 }

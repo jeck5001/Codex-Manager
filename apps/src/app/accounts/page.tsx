@@ -342,6 +342,7 @@ export default function AccountsPage() {
     isServiceReady,
     refreshAccount,
     refreshAllAccounts,
+    refreshAccountList,
     deleteAccount,
     deleteManyAccounts,
     deleteUnavailableFree,
@@ -709,6 +710,32 @@ export default function AccountsPage() {
               >
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
+                    刷新
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!isServiceReady || isRefreshingAllAccounts}
+                    onClick={() => refreshAllAccounts()}
+                  >
+                    <RefreshCw
+                      className={cn("mr-2 h-4 w-4", isRefreshingAllAccounts && "animate-spin")}
+                    />
+                    刷新账号用量
+                    <DropdownMenuShortcut>ALL</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!isServiceReady}
+                    onClick={() => refreshAccountList()}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    刷新列表
+                    <DropdownMenuShortcut>LIST</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
                     账号管理
                   </DropdownMenuLabel>
                   <DropdownMenuItem
@@ -781,19 +808,6 @@ export default function AccountsPage() {
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button
-              className="h-10 w-30 gap-1 rounded-xl shadow-lg shadow-primary/20"
-              onClick={() => refreshAllAccounts()}
-              disabled={!isServiceReady || isRefreshingAllAccounts}
-            >
-              <RefreshCw
-                className={cn(
-                  "h-4 w-1",
-                  isRefreshingAllAccounts && "animate-spin",
-                )}
-              />
-              刷新账号用量
-            </Button>
           </div>
         </CardContent>
       </Card>

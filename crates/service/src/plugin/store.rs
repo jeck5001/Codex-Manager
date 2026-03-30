@@ -1,7 +1,7 @@
 use codexmanager_core::rpc::types::{
     InstalledPluginSummary, JsonRpcRequest, PluginRunLogSummary, PluginTaskSummary,
 };
-use codexmanager_core::storage::PluginInstall;
+use codexmanager_core::storage::{now_ts, PluginInstall, Storage};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -18,6 +18,38 @@ fn parse_permissions(raw: &str) -> Vec<String> {
         .map(|item| item.trim().to_string())
         .filter(|item| !item.is_empty())
         .collect()
+}
+
+pub(crate) fn rearm_enabled_interval_tasks_for_plugin(
+    storage: &Storage,
+    plugin_id: Option<&str>,
+    now: i64,
+) -> Result<(), String> {
+    let tasks = storage
+        .list_plugin_tasks(plugin_id)
+        .map_err(|err| err.to_string())?;
+    for task in tasks {
+        if !task.enabled || task.schedule_kind == "manual" || task.next_run_at.is_some() {
+            continue;
+        }
+        let Some(interval_seconds) = task.interval_seconds.filter(|value| *value > 0) else {
+            continue;
+        };
+        let next_run_at = task
+            .last_run_at
+            .map(|last_run_at| last_run_at + interval_seconds)
+            .unwrap_or(now);
+        storage
+            .update_plugin_task_schedule(
+                &task.id,
+                Some(next_run_at),
+                task.last_run_at,
+                task.last_status.as_deref(),
+                task.last_error.as_deref(),
+            )
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(())
 }
 
 pub(crate) fn handle_list_installed(req: &JsonRpcRequest) -> codexmanager_core::rpc::types::JsonRpcResponse {
@@ -45,6 +77,11 @@ pub(crate) fn handle_enable(
     let Some(storage) = open_storage() else {
         return super::json_response(req, error_result("storage unavailable"));
     };
+    if enabled
+        && rearm_enabled_interval_tasks_for_plugin(&storage, Some(&plugin_id), now_ts()).is_err()
+    {
+        return super::json_response(req, error_result("rearm plugin tasks failed"));
+    }
     if storage
         .update_plugin_install_status(
             &plugin_id,
@@ -56,6 +93,85 @@ pub(crate) fn handle_enable(
         return super::json_response(req, error_result("update plugin status failed"));
     }
     super::json_response(req, serde_json::json!({ "ok": true }))
+}
+
+pub(crate) fn handle_task_update(req: &JsonRpcRequest) -> codexmanager_core::rpc::types::JsonRpcResponse {
+    let Some(task_id) = req
+        .params
+        .as_ref()
+        .and_then(|value| value.get("taskId").or_else(|| value.get("task_id")))
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
+        return super::json_response(req, error_result("missing taskId"));
+    };
+
+    let Some(interval_seconds) = req
+        .params
+        .as_ref()
+        .and_then(|value| value.get("intervalSeconds").or_else(|| value.get("interval_seconds")))
+        .and_then(|value| value.as_i64())
+    else {
+        return super::json_response(req, error_result("missing intervalSeconds"));
+    };
+
+    if interval_seconds <= 0 {
+        return super::json_response(req, error_result("intervalSeconds must be greater than 0"));
+    }
+
+    let Some(storage) = open_storage() else {
+        return super::json_response(req, error_result("storage unavailable"));
+    };
+    let Some(task) = storage
+        .find_plugin_task(&task_id)
+        .ok()
+        .flatten()
+    else {
+        return super::json_response(req, error_result("task not found"));
+    };
+
+    let task_json = match serde_json::from_str::<serde_json::Value>(&task.task_json) {
+        Ok(mut value) => {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("intervalSeconds".to_string(), serde_json::json!(interval_seconds));
+                obj.insert("scheduleKind".to_string(), serde_json::json!("interval"));
+            }
+            match serde_json::to_string(&value) {
+                Ok(text) => text,
+                Err(_) => task.task_json.clone(),
+            }
+        }
+        Err(_) => task.task_json.clone(),
+    };
+
+    let next_run_at = if task.enabled {
+        Some(now_ts() + interval_seconds)
+    } else {
+        None
+    };
+    if storage
+        .update_plugin_task_definition(
+            &task.id,
+            &task.name,
+            task.description.as_deref(),
+            &task.entrypoint,
+            "interval",
+            Some(interval_seconds),
+            task.enabled,
+            next_run_at,
+            &task_json,
+        )
+        .is_err()
+    {
+        return super::json_response(req, error_result("update task failed"));
+    }
+
+    super::json_response(req, serde_json::json!({
+        "ok": true,
+        "taskId": task.id,
+        "intervalSeconds": interval_seconds,
+    }))
 }
 
 pub(crate) fn handle_task_list(req: &JsonRpcRequest) -> codexmanager_core::rpc::types::JsonRpcResponse {
@@ -234,5 +350,106 @@ fn to_installed_plugin_summary(
         last_error: plugin.last_error.clone(),
         task_count,
         enabled_task_count,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{rearm_enabled_interval_tasks_for_plugin, Storage};
+    use codexmanager_core::storage::{PluginInstall, PluginTask};
+
+    #[test]
+    fn rearm_enabled_interval_tasks_updates_enabled_interval_tasks() {
+        let storage = Storage::open_in_memory().expect("open storage");
+        storage.init().expect("init storage");
+
+        let install = PluginInstall {
+            plugin_id: "cleanup-banned-accounts".to_string(),
+            source_url: Some("builtin://codexmanager".to_string()),
+            name: "清理封禁账号".to_string(),
+            version: "1.0.0".to_string(),
+            description: Some("test".to_string()),
+            author: Some("CodexManager".to_string()),
+            homepage_url: None,
+            script_url: None,
+            script_body: "fn run(context) { context }".to_string(),
+            permissions_json: serde_json::json!(["accounts:cleanup"]).to_string(),
+            manifest_json: serde_json::json!({ "id": "cleanup-banned-accounts" }).to_string(),
+            status: "disabled".to_string(),
+            installed_at: 1,
+            updated_at: 1,
+            last_run_at: None,
+            last_error: None,
+        };
+        let interval_task = PluginTask {
+            id: "cleanup-banned-accounts::run".to_string(),
+            plugin_id: install.plugin_id.clone(),
+            name: "自动清理".to_string(),
+            description: Some("interval".to_string()),
+            entrypoint: "run".to_string(),
+            schedule_kind: "interval".to_string(),
+            interval_seconds: Some(60),
+            enabled: true,
+            next_run_at: None,
+            last_run_at: Some(900),
+            last_status: Some("ok".to_string()),
+            last_error: None,
+            task_json: serde_json::json!({
+                "id": "run",
+                "name": "自动清理",
+                "entrypoint": "run",
+                "scheduleKind": "interval",
+                "intervalSeconds": 60,
+                "enabled": true
+            })
+            .to_string(),
+            created_at: 1,
+            updated_at: 1,
+        };
+        let manual_task = PluginTask {
+            id: "cleanup-banned-accounts::manual".to_string(),
+            plugin_id: install.plugin_id.clone(),
+            name: "手动清理".to_string(),
+            description: Some("manual".to_string()),
+            entrypoint: "run".to_string(),
+            schedule_kind: "manual".to_string(),
+            interval_seconds: None,
+            enabled: true,
+            next_run_at: None,
+            last_run_at: None,
+            last_status: None,
+            last_error: None,
+            task_json: serde_json::json!({
+                "id": "manual",
+                "name": "手动清理",
+                "entrypoint": "run",
+                "scheduleKind": "manual",
+                "enabled": true
+            })
+            .to_string(),
+            created_at: 2,
+            updated_at: 2,
+        };
+
+        storage
+            .replace_plugin_install(&install, &[interval_task, manual_task])
+            .expect("seed plugin");
+
+        rearm_enabled_interval_tasks_for_plugin(&storage, Some(&install.plugin_id), 1000)
+            .expect("rearm tasks");
+
+        let updated_interval = storage
+            .find_plugin_task("cleanup-banned-accounts::run")
+            .expect("read interval task")
+            .expect("interval task exists");
+        assert_eq!(updated_interval.next_run_at, Some(960));
+        assert_eq!(updated_interval.last_run_at, Some(900));
+        assert_eq!(updated_interval.last_status.as_deref(), Some("ok"));
+
+        let updated_manual = storage
+            .find_plugin_task("cleanup-banned-accounts::manual")
+            .expect("read manual task")
+            .expect("manual task exists");
+        assert_eq!(updated_manual.next_run_at, None);
     }
 }

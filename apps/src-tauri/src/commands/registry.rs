@@ -37,6 +37,7 @@ macro_rules! invoke_handler {
             crate::commands::plugin::service_plugin_list,
             crate::commands::plugin::service_plugin_enable,
             crate::commands::plugin::service_plugin_disable,
+            crate::commands::plugin::service_plugin_tasks_update,
             crate::commands::plugin::service_plugin_tasks_list,
             crate::commands::plugin::service_plugin_tasks_run,
             crate::commands::plugin::service_plugin_logs_list,

@@ -1,6 +1,6 @@
 use codexmanager_core::rpc::types::{
-    InstalledPluginSummary, JsonRpcRequest, JsonRpcResponse, PluginCatalogEntry,
-    PluginCatalogTask, PluginTaskSummary,
+    InstalledPluginSummary, JsonRpcRequest, JsonRpcResponse, PluginCatalogEntry, PluginCatalogTask,
+    PluginTaskSummary,
 };
 use codexmanager_core::storage::{now_ts, PluginInstall, PluginTask};
 use serde_json::Value;
@@ -8,6 +8,7 @@ use serde_json::Value;
 use crate::storage_helpers::open_storage;
 
 const BUILTIN_MARKET_SOURCE_URL: &str = "builtin://codexmanager";
+const BUILTIN_CLEANUP_TASK_INTERVAL_SECS: i64 = 60;
 
 pub(crate) fn handle_catalog_list(req: &JsonRpcRequest) -> JsonRpcResponse {
     match catalog_list_result(req) {
@@ -80,7 +81,9 @@ pub(crate) fn current_market_source_url() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-pub(crate) fn fetch_catalog_entries(source_url: Option<&str>) -> Result<Vec<PluginCatalogEntry>, String> {
+pub(crate) fn fetch_catalog_entries(
+    source_url: Option<&str>,
+) -> Result<Vec<PluginCatalogEntry>, String> {
     if let Some(source_url) = source_url {
         let normalized = source_url.trim();
         if !normalized.is_empty() {
@@ -88,7 +91,8 @@ pub(crate) fn fetch_catalog_entries(source_url: Option<&str>) -> Result<Vec<Plug
                 Ok(text) => {
                     let value: Value = serde_json::from_str(&text)
                         .map_err(|err| format!("parse catalog response failed: {err}"))?;
-                    let items = if let Some(items) = value.get("items").and_then(|value| value.as_array())
+                    let items = if let Some(items) =
+                        value.get("items").and_then(|value| value.as_array())
                     {
                         items.clone()
                     } else if let Some(items) = value.as_array() {
@@ -115,50 +119,90 @@ pub(crate) fn fetch_catalog_entries(source_url: Option<&str>) -> Result<Vec<Plug
 
 fn builtin_catalog_entries() -> Vec<PluginCatalogEntry> {
     vec![PluginCatalogEntry {
-        id: "sample-hello".to_string(),
-        name: "示例插件：打招呼".to_string(),
+        id: "cleanup-banned-accounts".to_string(),
+        name: "清理封禁账号".to_string(),
         version: "1.0.0".to_string(),
-        description: Some("一个最小可运行的插件示例，安装后可以手动执行或按间隔运行。".to_string()),
+        description: Some("一键清理所有状态为 banned 的账号，适合做批量收尾整理。".to_string()),
         author: Some("CodexManager".to_string()),
         homepage_url: None,
         script_url: None,
         script_body: Some(
             r#"
 fn run(context) {
-    log("示例插件运行：" + context["plugin"]["name"]);
-    #{ message: "hello", task: context["task"]["name"] }
-}
-
-fn heartbeat(context) {
-    log("示例插件心跳：" + context["plugin"]["id"]);
-    #{ ok: true, task: context["task"]["id"] }
+    log("开始清理封禁账号：" + context["plugin"]["name"]);
+    let result = cleanup_banned_accounts();
+    log("清理完成，删除 " + result["deleted"].to_string() + " 个账号");
+    result
 }
 "#
             .to_string(),
         ),
-        permissions: vec![],
-        tasks: vec![
-            PluginCatalogTask {
-                id: "run".to_string(),
-                name: "手动执行".to_string(),
-                description: Some("手动点一下就能运行".to_string()),
-                entrypoint: "run".to_string(),
-                schedule_kind: "manual".to_string(),
-                interval_seconds: None,
-                enabled: true,
-            },
-            PluginCatalogTask {
-                id: "heartbeat".to_string(),
-                name: "每 1 小时心跳".to_string(),
-                description: Some("安装后启用会按间隔轮询运行".to_string()),
-                entrypoint: "heartbeat".to_string(),
-                schedule_kind: "interval".to_string(),
-                interval_seconds: Some(3600),
-                enabled: true,
-            },
-        ],
+        permissions: vec!["accounts:cleanup".to_string()],
+        tasks: vec![PluginCatalogTask {
+            id: "run".to_string(),
+            name: "定时自动清理".to_string(),
+            description: Some("每 60 秒自动清理一次所有封禁账号".to_string()),
+            entrypoint: "run".to_string(),
+            schedule_kind: "interval".to_string(),
+            interval_seconds: Some(BUILTIN_CLEANUP_TASK_INTERVAL_SECS),
+            enabled: true,
+        }],
         source_url: Some(BUILTIN_MARKET_SOURCE_URL.to_string()),
     }]
+}
+
+pub(crate) fn sync_builtin_cleanup_task_schedule() {
+    let Some(storage) = open_storage() else {
+        return;
+    };
+    let Some(install) = storage
+        .find_plugin_install("cleanup-banned-accounts")
+        .ok()
+        .flatten()
+    else {
+        return;
+    };
+    if install.source_url.as_deref() != Some(BUILTIN_MARKET_SOURCE_URL) {
+        return;
+    }
+    let Some(task) = storage
+        .find_plugin_task("cleanup-banned-accounts::run")
+        .ok()
+        .flatten()
+    else {
+        return;
+    };
+    if task.schedule_kind != "manual" {
+        return;
+    }
+    let Some(entry) = builtin_catalog_entries().into_iter().next() else {
+        return;
+    };
+    let Some(task_entry) = entry.tasks.into_iter().next() else {
+        return;
+    };
+    let next_run_at = if install.status == "enabled" && task.enabled {
+        task_entry
+            .interval_seconds
+            .filter(|value| *value > 0)
+            .map(|value| now_ts() + value)
+    } else {
+        None
+    };
+    let Ok(task_json) = serde_json::to_string(&task_entry) else {
+        return;
+    };
+    let _ = storage.update_plugin_task_definition(
+        &task.id,
+        &task_entry.name,
+        task_entry.description.as_deref(),
+        &task_entry.entrypoint,
+        &task_entry.schedule_kind,
+        task_entry.interval_seconds,
+        task.enabled,
+        next_run_at,
+        &task_json,
+    );
 }
 
 pub(crate) fn parse_catalog_entry_value(
@@ -254,6 +298,30 @@ pub(crate) fn parse_catalog_entry_value(
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::builtin_catalog_entries;
+
+    #[test]
+    fn builtin_catalog_only_exposes_cleanup_banned_accounts_plugin() {
+        let items = builtin_catalog_entries();
+        assert_eq!(items.len(), 1);
+        let item = &items[0];
+        assert_eq!(item.id, "cleanup-banned-accounts");
+        assert!(item
+            .permissions
+            .iter()
+            .any(|item| item == "accounts:cleanup"));
+        assert_eq!(item.tasks.len(), 1);
+        assert_eq!(item.tasks[0].entrypoint, "run");
+        assert_eq!(item.tasks[0].schedule_kind, "interval");
+        assert_eq!(
+            item.tasks[0].interval_seconds,
+            Some(super::BUILTIN_CLEANUP_TASK_INTERVAL_SECS)
+        );
+    }
+}
+
 fn parse_catalog_task_value(value: &Value) -> Result<PluginCatalogTask, String> {
     let obj = value
         .as_object()
@@ -311,8 +379,13 @@ fn build_plugin_tasks(entry: &PluginCatalogEntry, now: i64) -> Result<Vec<Plugin
             let next_run_at = if task.schedule_kind == "manual" {
                 None
             } else {
-                task.interval_seconds
-                    .and_then(|interval| if interval > 0 { Some(now + interval) } else { None })
+                task.interval_seconds.and_then(|interval| {
+                    if interval > 0 {
+                        Some(now + interval)
+                    } else {
+                        None
+                    }
+                })
             };
             Ok(PluginTask {
                 id: format!("{}::{}", entry.id, task.id),
@@ -412,8 +485,12 @@ fn install_or_update_plugin(req: &JsonRpcRequest, is_update: bool) -> Result<Val
             .map(|plugin| plugin.installed_at)
             .unwrap_or(installed_at),
         updated_at: installed_at,
-        last_run_at: existing_install.as_ref().and_then(|plugin| plugin.last_run_at),
-        last_error: existing_install.as_ref().and_then(|plugin| plugin.last_error.clone()),
+        last_run_at: existing_install
+            .as_ref()
+            .and_then(|plugin| plugin.last_run_at),
+        last_error: existing_install
+            .as_ref()
+            .and_then(|plugin| plugin.last_error.clone()),
     };
 
     let Some(storage) = open_storage() else {
@@ -449,7 +526,8 @@ fn to_installed_plugin_summary(
         author: plugin.author.clone(),
         homepage_url: plugin.homepage_url.clone(),
         script_url: plugin.script_url.clone(),
-        permissions: serde_json::from_str::<Vec<String>>(&plugin.permissions_json).unwrap_or_default(),
+        permissions: serde_json::from_str::<Vec<String>>(&plugin.permissions_json)
+            .unwrap_or_default(),
         status: plugin.status.clone(),
         installed_at: plugin.installed_at,
         updated_at: plugin.updated_at,

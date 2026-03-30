@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use crate::storage_helpers::open_storage;
+use crate::account_cleanup::delete_banned_accounts;
 
 pub(crate) fn handle_task_run(req: &JsonRpcRequest) -> JsonRpcResponse {
     let Some(task_id) = req
@@ -153,6 +154,15 @@ fn execute_plugin_script(
         engine.register_fn("http_post", move |url: String, body: String| -> Dynamic {
             match fetch_http_value("POST", &url, Some(body)) {
                 Ok(value) => dynamic_from_json(value),
+                Err(err) => dynamic_from_json(json!({ "ok": false, "error": err })),
+            }
+        });
+    }
+
+    if permissions.contains("accounts:cleanup") {
+        engine.register_fn("cleanup_banned_accounts", move || -> Dynamic {
+            match delete_banned_accounts() {
+                Ok(value) => dynamic_from_json(json!(value)),
                 Err(err) => dynamic_from_json(json!({ "ok": false, "error": err })),
             }
         });

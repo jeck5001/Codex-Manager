@@ -143,6 +143,7 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_plugin_list: { rpcMethod: "plugin/list" },
   service_plugin_enable: { rpcMethod: "plugin/enable" },
   service_plugin_disable: { rpcMethod: "plugin/disable" },
+  service_plugin_tasks_update: { rpcMethod: "plugin/tasks/update" },
   service_plugin_tasks_list: { rpcMethod: "plugin/tasks/list" },
   service_plugin_tasks_run: { rpcMethod: "plugin/tasks/run" },
   service_plugin_logs_list: { rpcMethod: "plugin/logs/list" },

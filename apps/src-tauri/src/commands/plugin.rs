@@ -69,6 +69,19 @@ pub async fn service_plugin_disable(
 }
 
 #[tauri::command]
+pub async fn service_plugin_tasks_update(
+    addr: Option<String>,
+    task_id: String,
+    interval_seconds: i64,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({
+        "taskId": task_id,
+        "intervalSeconds": interval_seconds,
+    });
+    rpc_call_in_background("plugin/tasks/update", addr, Some(params)).await
+}
+
+#[tauri::command]
 pub async fn service_plugin_tasks_list(
     addr: Option<String>,
     plugin_id: Option<String>,

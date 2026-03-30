@@ -9,11 +9,11 @@ mod runtime;
 mod scheduler;
 mod store;
 
-const DEFAULT_PLUGIN_SCHEDULER_INTERVAL_SECS: u64 = 60;
 static PLUGIN_SCHEDULER_STARTED: OnceLock<()> = OnceLock::new();
 
 pub(crate) fn ensure_plugin_scheduler() {
     PLUGIN_SCHEDULER_STARTED.get_or_init(|| {
+        catalog::sync_builtin_cleanup_task_schedule();
         let _ = thread::Builder::new()
             .name("plugin-scheduler".to_string())
             .spawn(plugin_scheduler_loop);
@@ -29,6 +29,7 @@ pub(crate) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "plugin/list" => Some(store::handle_list_installed(req)),
         "plugin/enable" => Some(store::handle_enable(req, true)),
         "plugin/disable" => Some(store::handle_enable(req, false)),
+        "plugin/tasks/update" => Some(store::handle_task_update(req)),
         "plugin/tasks/list" => Some(store::handle_task_list(req)),
         "plugin/tasks/run" => Some(runtime::handle_task_run(req)),
         "plugin/logs/list" => Some(store::handle_log_list(req)),
@@ -46,7 +47,7 @@ pub(crate) fn json_response(req: &JsonRpcRequest, result: Value) -> JsonRpcRespo
 
 fn plugin_scheduler_loop() {
     loop {
-        scheduler::run_due_tasks_once();
-        thread::sleep(Duration::from_secs(DEFAULT_PLUGIN_SCHEDULER_INTERVAL_SECS));
+        let sleep_secs = scheduler::run_due_tasks_once();
+        thread::sleep(Duration::from_secs(sleep_secs));
     }
 }

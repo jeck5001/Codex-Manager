@@ -1,5 +1,5 @@
-use rusqlite::{params, params_from_iter, types::Value, Result, Row};
 use super::{now_ts, PluginInstall, PluginRunLog, PluginTask, Storage};
+use rusqlite::{params, params_from_iter, types::Value, Result, Row};
 
 impl Storage {
     pub fn upsert_plugin_install(&self, plugin: &PluginInstall) -> Result<()> {
@@ -92,7 +92,10 @@ impl Storage {
                 &plugin.last_error,
             ],
         )?;
-        tx.execute("DELETE FROM plugin_tasks WHERE plugin_id = ?1", [&plugin.plugin_id])?;
+        tx.execute(
+            "DELETE FROM plugin_tasks WHERE plugin_id = ?1",
+            [&plugin.plugin_id],
+        )?;
         for task in tasks {
             tx.execute(
                 "INSERT INTO plugin_tasks (
@@ -157,7 +160,12 @@ impl Storage {
         }
     }
 
-    pub fn update_plugin_install_status(&self, plugin_id: &str, status: &str, last_error: Option<&str>) -> Result<()> {
+    pub fn update_plugin_install_status(
+        &self,
+        plugin_id: &str,
+        status: &str,
+        last_error: Option<&str>,
+    ) -> Result<()> {
         self.conn.execute(
             "UPDATE plugin_installs
              SET status = ?1, last_error = ?2, updated_at = ?3
@@ -183,10 +191,8 @@ impl Storage {
     }
 
     pub fn delete_plugin_install(&self, plugin_id: &str) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM plugin_tasks WHERE plugin_id = ?1",
-            [plugin_id],
-        )?;
+        self.conn
+            .execute("DELETE FROM plugin_tasks WHERE plugin_id = ?1", [plugin_id])?;
         self.conn.execute(
             "DELETE FROM plugin_installs WHERE plugin_id = ?1",
             [plugin_id],
@@ -246,6 +252,46 @@ impl Storage {
         Ok(())
     }
 
+    pub fn update_plugin_task_definition(
+        &self,
+        task_id: &str,
+        name: &str,
+        description: Option<&str>,
+        entrypoint: &str,
+        schedule_kind: &str,
+        interval_seconds: Option<i64>,
+        enabled: bool,
+        next_run_at: Option<i64>,
+        task_json: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE plugin_tasks
+             SET name = ?,
+                 description = ?,
+                 entrypoint = ?,
+                 schedule_kind = ?,
+                 interval_seconds = ?,
+                 enabled = ?,
+                 next_run_at = ?,
+                 task_json = ?,
+                 updated_at = ?
+             WHERE id = ?",
+            (
+                name,
+                description,
+                entrypoint,
+                schedule_kind,
+                interval_seconds,
+                if enabled { 1_i64 } else { 0_i64 },
+                next_run_at,
+                task_json,
+                now_ts(),
+                task_id,
+            ),
+        )?;
+        Ok(())
+    }
+
     pub fn update_plugin_task_schedule(
         &self,
         task_id: &str,
@@ -266,8 +312,8 @@ impl Storage {
     pub fn list_due_plugin_tasks(&self, now: i64, limit: i64) -> Result<Vec<PluginTask>> {
         let normalized_limit = limit.max(1);
         let mut stmt = self.conn.prepare(
-            "SELECT id, plugin_id, name, description, entrypoint, schedule_kind, interval_seconds,
-                enabled, next_run_at, last_run_at, last_status, last_error, task_json, created_at, updated_at
+            "SELECT t.id, t.plugin_id, t.name, t.description, t.entrypoint, t.schedule_kind, t.interval_seconds,
+                t.enabled, t.next_run_at, t.last_run_at, t.last_status, t.last_error, t.task_json, t.created_at, t.updated_at
              FROM plugin_tasks t
              INNER JOIN plugin_installs p ON p.plugin_id = t.plugin_id
              WHERE t.enabled = 1 AND p.status = 'enabled' AND t.schedule_kind <> 'manual' AND IFNULL(t.next_run_at, 0) <= ?1
@@ -394,4 +440,152 @@ fn map_plugin_run_log_row(row: &Row<'_>) -> Result<PluginRunLog> {
         output_json: row.get(8)?,
         error: row.get(9)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{PluginInstall, PluginTask, Storage};
+
+    #[test]
+    fn update_plugin_task_definition_updates_interval() {
+        let storage = Storage::open_in_memory().expect("open storage");
+        storage.init().expect("init storage");
+
+        let install = PluginInstall {
+            plugin_id: "cleanup-banned-accounts".to_string(),
+            source_url: Some("builtin://codexmanager".to_string()),
+            name: "清理封禁账号".to_string(),
+            version: "1.0.0".to_string(),
+            description: Some("test".to_string()),
+            author: Some("CodexManager".to_string()),
+            homepage_url: None,
+            script_url: None,
+            script_body: "fn run(context) { context }".to_string(),
+            permissions_json: serde_json::json!(["accounts:cleanup"]).to_string(),
+            manifest_json: serde_json::json!({ "id": "cleanup-banned-accounts" }).to_string(),
+            status: "enabled".to_string(),
+            installed_at: 1,
+            updated_at: 1,
+            last_run_at: None,
+            last_error: None,
+        };
+        let task = PluginTask {
+            id: "cleanup-banned-accounts::run".to_string(),
+            plugin_id: install.plugin_id.clone(),
+            name: "手动清理".to_string(),
+            description: Some("click".to_string()),
+            entrypoint: "run".to_string(),
+            schedule_kind: "manual".to_string(),
+            interval_seconds: None,
+            enabled: true,
+            next_run_at: None,
+            last_run_at: None,
+            last_status: None,
+            last_error: None,
+            task_json: serde_json::json!({
+                "id": "run",
+                "name": "手动清理",
+                "entrypoint": "run",
+                "scheduleKind": "manual",
+                "enabled": true
+            })
+            .to_string(),
+            created_at: 1,
+            updated_at: 1,
+        };
+
+        storage
+            .replace_plugin_install(&install, &[task])
+            .expect("seed plugin");
+        storage
+            .update_plugin_task_definition(
+                "cleanup-banned-accounts::run",
+                "定时自动清理",
+                Some("每 60 秒自动清理一次所有封禁账号"),
+                "run",
+                "interval",
+                Some(60),
+                true,
+                Some(61),
+                &serde_json::json!({
+                    "id": "run",
+                    "name": "定时自动清理",
+                    "entrypoint": "run",
+                    "scheduleKind": "interval",
+                    "intervalSeconds": 60,
+                    "enabled": true
+                })
+                .to_string(),
+            )
+            .expect("update task");
+
+        let updated = storage
+            .find_plugin_task("cleanup-banned-accounts::run")
+            .expect("read task")
+            .expect("task exists");
+        assert_eq!(updated.schedule_kind, "interval");
+        assert_eq!(updated.interval_seconds, Some(60));
+        assert_eq!(updated.next_run_at, Some(61));
+    }
+
+    #[test]
+    fn list_due_plugin_tasks_returns_enabled_interval_tasks() {
+        let storage = Storage::open_in_memory().expect("open storage");
+        storage.init().expect("init storage");
+
+        let install = PluginInstall {
+            plugin_id: "cleanup-banned-accounts".to_string(),
+            source_url: Some("builtin://codexmanager".to_string()),
+            name: "清理封禁账号".to_string(),
+            version: "1.0.0".to_string(),
+            description: Some("test".to_string()),
+            author: Some("CodexManager".to_string()),
+            homepage_url: None,
+            script_url: None,
+            script_body: "fn run(context) { context }".to_string(),
+            permissions_json: serde_json::json!(["accounts:cleanup"]).to_string(),
+            manifest_json: serde_json::json!({ "id": "cleanup-banned-accounts" }).to_string(),
+            status: "enabled".to_string(),
+            installed_at: 1,
+            updated_at: 1,
+            last_run_at: None,
+            last_error: None,
+        };
+        let task = PluginTask {
+            id: "cleanup-banned-accounts::run".to_string(),
+            plugin_id: install.plugin_id.clone(),
+            name: "定时自动清理".to_string(),
+            description: Some("auto".to_string()),
+            entrypoint: "run".to_string(),
+            schedule_kind: "interval".to_string(),
+            interval_seconds: Some(60),
+            enabled: true,
+            next_run_at: Some(10),
+            last_run_at: None,
+            last_status: None,
+            last_error: None,
+            task_json: serde_json::json!({
+                "id": "run",
+                "name": "定时自动清理",
+                "entrypoint": "run",
+                "scheduleKind": "interval",
+                "intervalSeconds": 60,
+                "enabled": true
+            })
+            .to_string(),
+            created_at: 1,
+            updated_at: 1,
+        };
+
+        storage
+            .replace_plugin_install(&install, &[task])
+            .expect("seed plugin");
+
+        let due = storage
+            .list_due_plugin_tasks(100, 10)
+            .expect("list due tasks");
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].id, "cleanup-banned-accounts::run");
+        assert_eq!(due[0].plugin_id, "cleanup-banned-accounts");
+    }
 }

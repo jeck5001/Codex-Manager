@@ -42,6 +42,11 @@ export const pluginClient = {
     invoke("service_plugin_enable", withAddr({ pluginId })),
   disable: (pluginId: string) =>
     invoke("service_plugin_disable", withAddr({ pluginId })),
+  updateTask: (taskId: string, intervalSeconds: number) =>
+    invoke(
+      "service_plugin_tasks_update",
+      withAddr({ taskId, intervalSeconds })
+    ),
   async listTasks(pluginId?: string): Promise<PluginTaskSummary[]> {
     const result = await invoke<unknown>(
       "service_plugin_tasks_list",
