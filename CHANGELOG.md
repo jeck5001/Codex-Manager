@@ -5,6 +5,15 @@
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-03-30
+
+### Added
+- 设置页新增“系统推导”按钮和“单账号并发上限”，可以按当前机器资源一键回填并立即生效。
+- 入口层新增短队列等待与超载快速退化，避免高并发直接拖死服务进程。
+
+### Changed
+- README、workspace、前端包、Tauri 桌面端与版本一致性校验脚本统一提升到 `0.1.14`。
+
 ## [0.1.13] - 2026-03-25
 
 ### Added
@@ -148,7 +157,8 @@
 ### Changed
 - 账号管理页操作区整合为单一“账号操作”下拉菜单，替代右侧多按钮堆叠，界面更简洁。
 
-[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.13...HEAD
+[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.14...HEAD
+[0.1.14]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.14
 [0.1.13]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.13
 [0.1.12]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.12
 [0.1.11]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.10...v0.1.11
