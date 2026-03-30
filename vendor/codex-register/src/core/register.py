@@ -1399,6 +1399,53 @@ class RegistrationEngine:
         except Exception as e:
             self._log(f"{stage} 跟进 continue_url 失败: {e}", "warning")
 
+    def _advance_workspace_authorization(self, auth_target: str) -> Optional[str]:
+        """主动请求授权页，若命中 consent/workspace 则完成 workspace 选择并继续拿 callback。"""
+        try:
+            target_url = self._clean_text(auth_target)
+            if not target_url or not self.session:
+                return None
+
+            self._log(f"尝试推进 Workspace 授权: {target_url[:120]}...", "warning")
+            response = self.session.get(
+                target_url,
+                timeout=20,
+            )
+
+            current_url = self._clean_text(getattr(response, "url", ""))
+            html = str(getattr(response, "text", "") or "")
+
+            if "code=" in current_url and "state=" in current_url:
+                self._log(f"Workspace 授权页直接命中回调 URL: {current_url[:100]}...", "warning")
+                return current_url
+
+            workspace_id = self._extract_workspace_id_from_response(
+                response=response,
+                html=html,
+                url=current_url,
+            )
+            if workspace_id:
+                self._cached_workspace_id = workspace_id
+                self._log(f"Workspace 授权页提取到 Workspace ID: {workspace_id}", "warning")
+
+            consent_markers = (
+                "sign-in-with-chatgpt/codex/consent" in current_url
+                or 'action="/sign-in-with-chatgpt/codex/consent"' in html
+                or "/workspace" in current_url
+                or "/organization" in current_url
+            )
+
+            if consent_markers and workspace_id:
+                continue_url = self._select_workspace(workspace_id)
+                if not continue_url:
+                    return None
+                return self._follow_redirects(continue_url)
+
+            return None
+        except Exception as e:
+            self._log(f"推进 Workspace 授权失败: {e}", "warning")
+            return None
+
     def _build_callback_url_from_page(self, page: Dict[str, Any]) -> Optional[str]:
         """从 token_exchange 页面构造 OAuth 回调 URL"""
         try:
@@ -1475,6 +1522,9 @@ class RegistrationEngine:
                 return self._follow_redirects(continue_after_select)
 
             if path == "/add-phone":
+                callback_url = self._advance_workspace_authorization(target_url)
+                if callback_url:
+                    return callback_url
                 self._log(f"{stage} 仍然指向 add_phone", "warning")
                 return None
 
@@ -1677,6 +1727,14 @@ class RegistrationEngine:
                     )
 
             if page_type == "add_phone":
+                auth_target = (
+                    otp_resolution.continue_url
+                    or self._post_create_continue_url
+                    or (self.oauth_start.auth_url if self.oauth_start else "")
+                )
+                callback_url = self._advance_workspace_authorization(auth_target)
+                if callback_url:
+                    return callback_url
                 if self.oauth_start:
                     self._log(f"{attempt_name} 命中 add_phone，先复用当前已登录会话重新跟随 OAuth URL...", "warning")
                     callback_url = self._follow_redirects(self.oauth_start.auth_url)

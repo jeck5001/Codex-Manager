@@ -167,6 +167,31 @@ OAuthStart = sys.modules["src.core.oauth"].OAuthStart
 
 
 class RegisterAddPhoneTests(unittest.TestCase):
+    def test_advance_workspace_authorization_uses_consent_response(self):
+        class FakeResponse:
+            url = "https://auth.openai.com/sign-in-with-chatgpt/codex/consent"
+            text = '<script>window.__NEXT_DATA__={"activeWorkspaceId":"ws-consent"}</script>'
+
+            def json(self):
+                raise ValueError("not json")
+
+        class FakeSession:
+            def get(self, url, **_kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._cached_workspace_id = ""
+        engine._select_workspace = lambda workspace_id: "https://auth.openai.com/continue"
+        engine._follow_redirects = lambda url: "http://localhost/callback?code=ok&state=state"
+
+        callback = engine._advance_workspace_authorization("https://auth.openai.com/add-phone")
+
+        self.assertEqual(callback, "http://localhost/callback?code=ok&state=state")
+        self.assertEqual(engine._cached_workspace_id, "ws-consent")
+
     def test_follow_auth_continue_url_caches_workspace_id_from_response(self):
         class FakeResponse:
             url = "https://auth.openai.com/sign-in-with-chatgpt/codex/consent"
@@ -415,6 +440,51 @@ class RegisterAddPhoneTests(unittest.TestCase):
             ["https://auth.openai.com/oauth/authorize?client_id=test"],
         )
         self.assertEqual(restart_calls, [])
+
+    def test_attempt_add_phone_login_bypass_tries_workspace_authorization_before_oauth_retry(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.password = "secret"
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+        engine._last_login_recovery_page_type = ""
+        engine.logs = []
+        engine._log = lambda *_args, **_kwargs: None
+
+        followed_urls = []
+        advanced_targets = []
+
+        engine._submit_login_identifier = lambda did, sen: {"type": "login_password"}
+        engine._verify_login_password = lambda password: {"type": "email_otp_verification"}
+        engine._complete_login_email_otp_verification = lambda: AuthResolutionResult(
+            callback_url=None,
+            page_type="add_phone",
+            continue_url="https://auth.openai.com/add-phone",
+        )
+        engine._advance_workspace_authorization = lambda auth_target: (
+            advanced_targets.append(auth_target)
+            or "http://localhost/callback?code=ok&state=state"
+        )
+        engine._follow_redirects = lambda url: followed_urls.append(url) or None
+        engine._restart_oauth_session_for_login = lambda: ("new-did", "new-sentinel")
+        engine._resolve_callback_from_auth_page = lambda page, stage: None
+        engine._clean_text = lambda value: str(value or "").strip()
+
+        callback = engine._attempt_add_phone_login_bypass("did", "sentinel")
+
+        self.assertEqual(
+            callback,
+            "http://localhost/callback?code=ok&state=state",
+        )
+        self.assertEqual(
+            advanced_targets,
+            ["https://auth.openai.com/add-phone"],
+        )
+        self.assertEqual(followed_urls, [])
 
 
 if __name__ == "__main__":
