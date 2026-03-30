@@ -33,6 +33,9 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "gateway/backgroundTasks/get" => {
             super::as_json(crate::usage_refresh::background_tasks_settings())
         }
+        "gateway/concurrencyRecommendation/get" => {
+            super::as_json(crate::gateway::current_gateway_concurrency_recommendation())
+        }
         "gateway/upstreamProxy/get" => super::as_json(serde_json::json!({
             "proxyUrl": crate::gateway::current_upstream_proxy_url(),
             "envKey": "CODEXMANAGER_UPSTREAM_PROXY_URL",

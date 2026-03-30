@@ -183,6 +183,13 @@ pub(crate) fn account_max_inflight_limit() -> usize {
     ACCOUNT_MAX_INFLIGHT.load(Ordering::Relaxed)
 }
 
+pub(crate) fn set_account_max_inflight_limit(limit: usize) -> usize {
+    ensure_runtime_config_loaded();
+    ACCOUNT_MAX_INFLIGHT.store(limit, Ordering::Relaxed);
+    std::env::set_var(ENV_ACCOUNT_MAX_INFLIGHT, limit.to_string());
+    limit
+}
+
 pub(crate) fn strict_request_param_allowlist_enabled() -> bool {
     ensure_runtime_config_loaded();
     STRICT_REQUEST_PARAM_ALLOWLIST.load(Ordering::Relaxed)

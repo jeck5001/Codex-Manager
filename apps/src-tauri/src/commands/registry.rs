@@ -51,6 +51,7 @@ macro_rules! invoke_handler {
             crate::commands::settings::gateway::service_gateway_manual_account_clear,
             crate::commands::settings::gateway::service_gateway_background_tasks_get,
             crate::commands::settings::gateway::service_gateway_background_tasks_set,
+            crate::commands::settings::gateway::service_gateway_concurrency_recommend_get,
             crate::commands::settings::gateway::service_gateway_upstream_proxy_get,
             crate::commands::settings::gateway::service_gateway_upstream_proxy_set,
             crate::commands::settings::gateway::service_gateway_transport_get,

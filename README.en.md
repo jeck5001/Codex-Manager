@@ -49,6 +49,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 
 ## Recent Changes
 - Current latest version: `v0.1.13` (2026-03-25)
+- The Settings page now includes a System Derive button and a single-account concurrency limit; it applies CPU / memory-based recommendations immediately, while the ingress path now uses short queue waits plus fast overload degradation to keep the service alive under heavy traffic.
 - Added an “Aggregate API” management page: manage multiple third-party relay providers as minimal upstreams, with `Codex / Claude` categorization, supplier name, sort order, URL, key, and connection testing.
 - Platform-key rotation now supports `Account Rotation` and `Aggregate API Rotation`; Aggregate API rotation prefers the configured provider order first, then forwards upstream requests by protocol while keeping account rotation unchanged.
 - `v0.1.13` continues the desktop and docs cleanup from this round: Aggregate API management and platform-key rotation are now wired through end to end, and desktop startup / tab switching is more stable. The README also reflects the latest feature set.
@@ -74,6 +75,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 - OAuth login: browser flow + manual callback parsing
 - Platform keys: create, disable, delete, model binding, reasoning effort, and service tier overrides (`Follow Request` / `Fast` / `Flex`)
 - Aggregate API: manage third-party minimal upstream relays with create/edit, connection testing, supplier name, sort priority, and `Codex / Claude` categorization
+- Settings page concurrency controls: a System Derive button, a single-account concurrency limit, and a short-queue overload-degradation path
 - Plugin center minimal integration: route `/plugins/`, builtin/private/custom market modes, and the smallest manifest/RPC/Rhai contract for quick onboarding
 - Plugin center: route `/plugins/`, supports builtin curated, private, and custom market modes, with plugin manifests, tasks, logs, and Rhai integration
 - System internal interface inventory: a single place for desktop commands, RPC methods, and plugin built-ins
@@ -101,7 +103,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 - Platform Keys: bind keys by model, reasoning effort, and service tier, then inspect request logs
 - Plugin center minimal integration: `/plugins/` route, smallest plugin manifest, RPC surface, and Rhai built-ins
 - Plugin center: `/plugins/` route, builtin/private/custom market switching, plugin install/enable/disable, tasks, logs, and Rhai integration
-- Settings: manage ports, listen address, proxy, theme, auto-update, and background behavior
+- Settings: manage ports, listen address, proxy, theme, auto-update, background behavior, and concurrency tuning
 
 ### Service Edition
 - `codexmanager-service`: local OpenAI-compatible gateway

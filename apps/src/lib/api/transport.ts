@@ -131,6 +131,9 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_gateway_background_tasks_set: {
     rpcMethod: "gateway/backgroundTasks/set",
   },
+  service_gateway_concurrency_recommend_get: {
+    rpcMethod: "gateway/concurrencyRecommendation/get",
+  },
   service_requestlog_list: { rpcMethod: "requestlog/list" },
   service_requestlog_summary: { rpcMethod: "requestlog/summary" },
   service_requestlog_clear: { rpcMethod: "requestlog/clear" },

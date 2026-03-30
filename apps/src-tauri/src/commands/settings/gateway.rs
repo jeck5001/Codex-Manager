@@ -79,6 +79,13 @@ pub async fn service_gateway_background_tasks_set(
 }
 
 #[tauri::command]
+pub async fn service_gateway_concurrency_recommend_get(
+    addr: Option<String>,
+) -> Result<serde_json::Value, String> {
+    rpc_call_in_background("gateway/concurrencyRecommendation/get", addr, None).await
+}
+
+#[tauri::command]
 pub async fn service_gateway_upstream_proxy_get(
     addr: Option<String>,
 ) -> Result<serde_json::Value, String> {

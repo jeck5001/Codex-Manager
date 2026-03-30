@@ -744,6 +744,7 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     freeAccountMaxModelOptions: asArray(source.freeAccountMaxModelOptions).map((item) =>
       asString(item)
     ),
+    accountMaxInflight: asInteger(source.accountMaxInflight, 1, 0),
     requestCompressionEnabled: asBoolean(source.requestCompressionEnabled, true),
     gatewayOriginator: asString(source.gatewayOriginator) || "codex_cli_rs",
     gatewayUserAgentVersion: asString(source.gatewayUserAgentVersion) || "0.101.0",

@@ -225,6 +225,15 @@ function stringifyNumber(value: number | null | undefined): string {
   return value == null ? "" : String(value);
 }
 
+function readNumberField(
+  source: Record<string, unknown>,
+  key: string,
+  fallback = 0,
+): number {
+  const value = source[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
 function parseIntegerInput(value: string, minimum = 0): number | null {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
@@ -415,6 +424,44 @@ export default function SettingsPage() {
   >({});
   const [showWorkerAdvanced, setShowWorkerAdvanced] = useState(false);
   const [showWorkerReference, setShowWorkerReference] = useState(true);
+  const deriveConcurrencyRecommendation = useMutation({
+    mutationFn: () => appClient.getGatewayConcurrencyRecommendation(),
+    onSuccess: (result) => {
+      const source = asRecord(result) ?? {};
+      if (!snapshot) return;
+      void updateSettings
+        .mutateAsync({
+          backgroundTasks: {
+            ...snapshot.backgroundTasks,
+            usageRefreshWorkers: readNumberField(source, "usageRefreshWorkers", 4),
+            httpWorkerFactor: readNumberField(source, "httpWorkerFactor", 4),
+            httpWorkerMin: readNumberField(source, "httpWorkerMin", 8),
+            httpStreamWorkerFactor: readNumberField(source, "httpStreamWorkerFactor", 1),
+            httpStreamWorkerMin: readNumberField(source, "httpStreamWorkerMin", 2),
+          },
+          accountMaxInflight: readNumberField(source, "accountMaxInflight", 1),
+          _silent: true,
+        })
+        .then(() => {
+          clearBackgroundTaskDraftKeys([
+            "usageRefreshWorkers",
+            "httpWorkerFactor",
+            "httpWorkerMin",
+            "httpStreamWorkerFactor",
+            "httpStreamWorkerMin",
+            "accountMaxInflight",
+          ]);
+          setShowWorkerAdvanced(true);
+          toast.success("系统推导已应用");
+        })
+        .catch((error: unknown) => {
+          toast.error(`系统推导保存失败: ${getAppErrorMessage(error)}`);
+        });
+    },
+    onError: (error: unknown) => {
+      toast.error(`系统推导失败: ${getAppErrorMessage(error)}`);
+    },
+  });
 
   const { data: fetchedSnapshot, isError: isSnapshotError } = useQuery({
     queryKey: ["app-settings-snapshot"],
@@ -848,7 +895,7 @@ export default function SettingsPage() {
     });
   };
 
-  const clearBackgroundTaskDraftKeys = (keys: readonly WorkerPresetKey[]) => {
+  const clearBackgroundTaskDraftKeys = (keys: readonly string[]) => {
     setBackgroundTaskDraft((current) => {
       const nextDraft = { ...current };
       for (const key of keys) {
@@ -926,6 +973,35 @@ export default function SettingsPage() {
           ...snapshot.backgroundTasks,
           [key]: nextValue,
         },
+      })
+      .then(() => {
+        setBackgroundTaskDraft((current) => {
+          const nextDraft = { ...current };
+          delete nextDraft[draftKey];
+          return nextDraft;
+        });
+      })
+      .catch(() => undefined);
+  };
+
+  const saveAccountMaxInflightField = (minimum = 0) => {
+    if (!snapshot) return;
+    const draftKey = "accountMaxInflight";
+    const sourceValue =
+      backgroundTaskDraft[draftKey] ?? stringifyNumber(snapshot.accountMaxInflight);
+    const nextValue = parseIntegerInput(sourceValue, minimum);
+    if (nextValue == null) {
+      toast.error("请输入合法的数值");
+      setBackgroundTaskDraft((current) => {
+        const nextDraft = { ...current };
+        delete nextDraft[draftKey];
+        return nextDraft;
+      });
+      return;
+    }
+    void updateSettings
+      .mutateAsync({
+        accountMaxInflight: nextValue,
       })
       .then(() => {
         setBackgroundTaskDraft((current) => {
@@ -1673,7 +1749,8 @@ export default function SettingsPage() {
               <CardDescription>
                 先按机器档位选，再按需求微调。普通请求和流式请求都是
                 “CPU 核数 × 因子，至少保底值”。几百并发先从常规推荐开始，
-                上千并发且机器资源充足时再考虑高并发。
+                上千并发且机器资源充足时再考虑高并发。系统推导会直接更新当前设置，
+                不会改默认值。
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -1821,9 +1898,9 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-muted/30 p-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">当前档位</span>
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">当前档位</span>
                     <Badge
                       variant={activeWorkerPreset ? "default" : "secondary"}
                       className="h-5 px-2"
@@ -1834,6 +1911,11 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground">
                     不确定怎么选的话，先看机器核数：4-8 核选轻量稳定，
                     8-16 核选常规推荐，16 核以上再考虑高并发。
+                    当前单账号并发上限是{" "}
+                    {snapshot.accountMaxInflight > 0
+                      ? snapshot.accountMaxInflight
+                      : "不限制"}{" "}
+                   。
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1847,6 +1929,19 @@ export default function SettingsPage() {
                       恢复常规推荐
                     </Button>
                   )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    disabled={deriveConcurrencyRecommendation.isPending}
+                    onClick={() => deriveConcurrencyRecommendation.mutate()}
+                  >
+                    <Cpu className="h-4 w-4" />
+                    {deriveConcurrencyRecommendation.isPending
+                      ? "正在推导..."
+                      : "系统推导"}
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
@@ -1893,6 +1988,12 @@ export default function SettingsPage() {
                         "流式请求至少保留多少个处理线程，保证长连接不卡住。",
                       key: "httpStreamWorkerMin",
                     },
+                    {
+                      label: "单账号并发上限",
+                      helper:
+                        "同一账号同时能处理多少个请求。满了以后会优先换下一个账号；填 0 表示关闭上限。",
+                      key: "accountMaxInflight",
+                    },
                   ].map((worker) => (
                     <div key={worker.key} className="grid gap-1.5">
                       <Label className="text-xs">{worker.label}</Label>
@@ -1901,13 +2002,16 @@ export default function SettingsPage() {
                       </p>
                       <Input
                         type="number"
+                        min={worker.key === "accountMaxInflight" ? 0 : 1}
                         className="h-9"
                         value={
-                          backgroundTaskDraft[worker.key] ||
+                          backgroundTaskDraft[worker.key] ??
                           stringifyNumber(
-                            snapshot.backgroundTasks[
-                              worker.key as keyof BackgroundTaskSettings
-                            ] as number,
+                            worker.key === "accountMaxInflight"
+                              ? snapshot.accountMaxInflight
+                              : (snapshot.backgroundTasks[
+                                  worker.key as keyof BackgroundTaskSettings
+                                ] as number),
                           )
                         }
                         onChange={(event) =>
@@ -1917,10 +2021,12 @@ export default function SettingsPage() {
                           }))
                         }
                         onBlur={() =>
-                          saveBackgroundTaskField(
-                            worker.key as keyof BackgroundTaskSettings,
-                            1,
-                          )
+                          worker.key === "accountMaxInflight"
+                            ? saveAccountMaxInflightField(0)
+                            : saveBackgroundTaskField(
+                                worker.key as keyof BackgroundTaskSettings,
+                                1,
+                              )
                         }
                       />
                     </div>

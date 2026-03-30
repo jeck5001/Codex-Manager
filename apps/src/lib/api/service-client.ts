@@ -71,6 +71,8 @@ export const serviceClient = {
       "service_gateway_background_tasks_set",
       withAddr({ ...(settings as unknown as Record<string, unknown>) })
     ),
+  getConcurrencyRecommendation: () =>
+    invoke<unknown>("service_gateway_concurrency_recommend_get", withAddr()),
 
   async listRequestLogs(params?: {
     query?: string;

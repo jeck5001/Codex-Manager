@@ -19,6 +19,7 @@ mod local_models;
 mod local_validation;
 #[path = "observability/metrics.rs"]
 mod metrics;
+mod concurrency;
 mod model_picker;
 #[path = "auth/openai_fallback.rs"]
 mod openai_fallback;
@@ -57,6 +58,7 @@ use metrics::{
 pub(crate) use metrics::{
     begin_rpc_request, duration_to_millis, gateway_metrics_prometheus, record_usage_refresh_outcome,
 };
+pub(crate) use concurrency::current_gateway_concurrency_recommendation;
 use protocol_adapter::{
     adapt_request_for_protocol, adapt_upstream_response,
     adapt_upstream_response_with_tool_name_restore_map, build_anthropic_error_body,
@@ -216,8 +218,9 @@ use route_hint::apply_route_strategy;
 use route_quality::record_route_quality;
 pub(crate) use runtime_config::front_proxy_max_body_bytes;
 pub(crate) use runtime_config::fresh_upstream_client;
+pub(crate) use runtime_config::{account_max_inflight_limit, set_account_max_inflight_limit};
 use runtime_config::{
-    account_max_inflight_limit, fresh_upstream_client_for_account, request_gate_wait_timeout,
+    fresh_upstream_client_for_account, request_gate_wait_timeout,
     trace_body_preview_max_bytes, upstream_client, upstream_client_for_account,
     upstream_stream_timeout, upstream_total_timeout, DEFAULT_GATEWAY_DEBUG,
 };

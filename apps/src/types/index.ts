@@ -362,6 +362,7 @@ export interface AppSettings {
   routeStrategyOptions: string[];
   freeAccountMaxModel: string;
   freeAccountMaxModelOptions: string[];
+  accountMaxInflight: number;
   requestCompressionEnabled: boolean;
   gatewayOriginator: string;
   gatewayUserAgentVersion: string;

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::{
     set_close_to_tray_on_close_setting, set_env_overrides, set_gateway_background_tasks,
-    set_gateway_free_account_max_model, set_gateway_originator,
+    set_gateway_account_max_inflight, set_gateway_free_account_max_model, set_gateway_originator,
     set_gateway_request_compression_enabled, set_gateway_residency_requirement,
     set_gateway_route_strategy, set_gateway_sse_keepalive_interval_ms,
     set_gateway_upstream_proxy_url, set_gateway_upstream_stream_timeout_ms,
@@ -28,6 +28,7 @@ pub(super) struct AppSettingsPatch {
     pub(super) service_listen_mode: Option<String>,
     route_strategy: Option<String>,
     free_account_max_model: Option<String>,
+    account_max_inflight: Option<usize>,
     request_compression_enabled: Option<bool>,
     gateway_originator: Option<String>,
     gateway_user_agent_version: Option<String>,
@@ -80,6 +81,9 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     }
     if let Some(model) = patch.free_account_max_model {
         let _ = set_gateway_free_account_max_model(&model)?;
+    }
+    if let Some(limit) = patch.account_max_inflight {
+        let _ = set_gateway_account_max_inflight(limit)?;
     }
     if let Some(enabled) = patch.request_compression_enabled {
         let _ = set_gateway_request_compression_enabled(enabled)?;

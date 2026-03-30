@@ -11,6 +11,8 @@ export const appClient = {
     const result = await invoke<unknown>("app_settings_set", { patch });
     return normalizeAppSettings(result);
   },
+  getGatewayConcurrencyRecommendation: () =>
+    invoke<unknown>("service_gateway_concurrency_recommend_get"),
 
   getCloseToTray: () => invoke<boolean>("app_close_to_tray_on_close_get"),
   setCloseToTray: (enabled: boolean) =>

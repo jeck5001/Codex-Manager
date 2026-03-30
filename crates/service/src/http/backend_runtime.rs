@@ -5,7 +5,7 @@ use std::panic::AssertUnwindSafe;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{bounded, Receiver, Sender, SendTimeoutError};
 use tiny_http::Request;
 use tiny_http::Server;
 
@@ -17,6 +17,8 @@ const HTTP_QUEUE_FACTOR: usize = 4;
 const HTTP_QUEUE_MIN: usize = 32;
 const HTTP_STREAM_QUEUE_FACTOR: usize = 2;
 const HTTP_STREAM_QUEUE_MIN: usize = 16;
+const HTTP_QUEUE_SEND_TIMEOUT_MS: u64 = 100;
+const HTTP_STREAM_QUEUE_SEND_TIMEOUT_MS: u64 = 100;
 const ENV_HTTP_WORKER_FACTOR: &str = "CODEXMANAGER_HTTP_WORKER_FACTOR";
 const ENV_HTTP_WORKER_MIN: &str = "CODEXMANAGER_HTTP_WORKER_MIN";
 const ENV_HTTP_STREAM_WORKER_FACTOR: &str = "CODEXMANAGER_HTTP_STREAM_WORKER_FACTOR";
@@ -125,31 +127,64 @@ fn enqueue_request(
     request: Request,
     normal_tx: &Sender<Request>,
     stream_tx: &Sender<Request>,
-) -> Result<(), ()> {
+) -> Result<(), Request> {
     let prefer_stream = request_is_stream_like(&request);
     if prefer_stream {
-        match stream_tx.send(request) {
+        match send_with_timeout(
+            stream_tx,
+            request,
+            Duration::from_millis(HTTP_STREAM_QUEUE_SEND_TIMEOUT_MS),
+        ) {
             Ok(()) => {
                 crate::gateway::record_http_queue_enqueue(true);
                 Ok(())
             }
-            Err(err) => {
-                normal_tx.send(err.into_inner()).map_err(|_| ())?;
-                crate::gateway::record_http_queue_enqueue(false);
-                Ok(())
-            }
+            Err(request) => match send_with_timeout(
+                normal_tx,
+                request,
+                Duration::from_millis(HTTP_QUEUE_SEND_TIMEOUT_MS),
+            ) {
+                Ok(()) => {
+                    crate::gateway::record_http_queue_enqueue(false);
+                    Ok(())
+                }
+                Err(request) => Err(request),
+            },
         }
     } else {
-        match normal_tx.send(request) {
+        match send_with_timeout(
+            normal_tx,
+            request,
+            Duration::from_millis(HTTP_QUEUE_SEND_TIMEOUT_MS),
+        ) {
             Ok(()) => {
                 crate::gateway::record_http_queue_enqueue(false);
                 Ok(())
             }
-            Err(err) => {
-                stream_tx.send(err.into_inner()).map_err(|_| ())?;
-                crate::gateway::record_http_queue_enqueue(true);
-                Ok(())
-            }
+            Err(request) => match send_with_timeout(
+                stream_tx,
+                request,
+                Duration::from_millis(HTTP_STREAM_QUEUE_SEND_TIMEOUT_MS),
+            ) {
+                Ok(()) => {
+                    crate::gateway::record_http_queue_enqueue(true);
+                    Ok(())
+                }
+                Err(request) => Err(request),
+            },
+        }
+    }
+}
+
+fn send_with_timeout<T>(
+    tx: &Sender<T>,
+    request: T,
+    timeout: Duration,
+) -> Result<(), T> {
+    match tx.send_timeout(request, timeout) {
+        Ok(()) => Ok(()),
+        Err(SendTimeoutError::Timeout(request)) | Err(SendTimeoutError::Disconnected(request)) => {
+            Err(request)
         }
     }
 }
@@ -170,11 +205,24 @@ fn run_backend_server(server: Server) {
             let _ = request.respond(tiny_http::Response::from_string("shutdown"));
             break;
         }
-        if enqueue_request(request, &normal_tx, &stream_tx).is_err() {
+        if should_bypass_queue(request.url()) {
+            handle_backend_request_safely(request);
+            continue;
+        }
+        match enqueue_request(request, &normal_tx, &stream_tx) {
+            Ok(()) => {}
+            Err(request) => {
             crate::gateway::record_http_queue_enqueue_failure();
-            break;
+                let _ = request.respond(
+                    tiny_http::Response::from_string("server busy").with_status_code(503),
+                );
+            }
         }
     }
+}
+
+fn should_bypass_queue(path: &str) -> bool {
+    path == "/health" || path == "/metrics"
 }
 
 pub(crate) fn start_backend_server() -> io::Result<BackendServer> {
