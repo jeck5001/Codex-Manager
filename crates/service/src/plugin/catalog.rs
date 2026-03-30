@@ -9,6 +9,7 @@ use crate::storage_helpers::open_storage;
 
 const BUILTIN_MARKET_SOURCE_URL: &str = "builtin://codexmanager";
 const BUILTIN_CLEANUP_TASK_INTERVAL_SECS: i64 = 60;
+const BUILTIN_UNAVAILABLE_FREE_CLEANUP_TASK_INTERVAL_SECS: i64 = 24 * 60 * 60;
 const BUILTIN_MARKET_MODE: &str = "builtin";
 
 pub(crate) fn handle_catalog_list(req: &JsonRpcRequest) -> JsonRpcResponse {
@@ -141,41 +142,75 @@ pub(crate) fn fetch_catalog_entries(
 }
 
 fn builtin_catalog_entries() -> Vec<PluginCatalogEntry> {
-    vec![PluginCatalogEntry {
-        id: "cleanup-banned-accounts".to_string(),
-        name: "清理封禁账号".to_string(),
+    vec![
+        build_builtin_cleanup_plugin(
+            "cleanup-banned-accounts",
+            "清理封禁账号",
+            "一键清理所有状态为 banned 的账号，适合做批量收尾整理。",
+            "开始清理封禁账号：",
+            "cleanup_banned_accounts()",
+            "清理完成，删除 ",
+            "所有封禁账号",
+            BUILTIN_CLEANUP_TASK_INTERVAL_SECS,
+        ),
+        build_builtin_cleanup_plugin(
+            "cleanup-unavailable-free-accounts",
+            "清理不可用免费账号",
+            "自动清理状态不可用且属于 free 的账号，适合做定时收尾整理。",
+            "开始清理不可用免费账号：",
+            "cleanup_unavailable_free_accounts()",
+            "清理完成，删除 ",
+            "不可用免费账号",
+            BUILTIN_UNAVAILABLE_FREE_CLEANUP_TASK_INTERVAL_SECS,
+        ),
+    ]
+}
+
+fn build_builtin_cleanup_plugin(
+    id: &str,
+    name: &str,
+    description: &str,
+    start_message: &str,
+    cleanup_call: &str,
+    finish_prefix: &str,
+    task_subject: &str,
+    interval_seconds: i64,
+) -> PluginCatalogEntry {
+    PluginCatalogEntry {
+        id: id.to_string(),
+        name: name.to_string(),
         version: "1.0.0".to_string(),
-        description: Some("一键清理所有状态为 banned 的账号，适合做批量收尾整理。".to_string()),
+        description: Some(description.to_string()),
         author: Some("CodexManager".to_string()),
         homepage_url: None,
         script_url: None,
-        script_body: Some(
+        script_body: Some(format!(
             r#"
-fn run(context) {
-    log("开始清理封禁账号：" + context["plugin"]["name"]);
-    let result = cleanup_banned_accounts();
-    log("清理完成，删除 " + result["deleted"].to_string() + " 个账号");
+fn run(context) {{
+    log("{}" + context["plugin"]["name"]);
+    let result = {};
+    log("{}" + result["deleted"].to_string() + " 个账号");
     result
-}
-"#
-            .to_string(),
-        ),
+}}
+"#,
+            start_message, cleanup_call, finish_prefix
+        )),
         permissions: vec!["accounts:cleanup".to_string()],
         manifest_version: "1".to_string(),
         category: Some("official".to_string()),
         runtime_kind: "rhai".to_string(),
-        tags: vec!["账号治理".to_string(), "精选".to_string()],
+        tags: vec!["账号治理".to_string(), "精选".to_string(), task_subject.to_string()],
         tasks: vec![PluginCatalogTask {
             id: "run".to_string(),
             name: "定时自动清理".to_string(),
-            description: Some("每 60 秒自动清理一次所有封禁账号".to_string()),
+            description: Some(format!("每 {} 秒自动清理一次{}", interval_seconds, task_subject)),
             entrypoint: "run".to_string(),
             schedule_kind: "interval".to_string(),
-            interval_seconds: Some(BUILTIN_CLEANUP_TASK_INTERVAL_SECS),
+            interval_seconds: Some(interval_seconds),
             enabled: true,
         }],
         source_url: Some(BUILTIN_MARKET_SOURCE_URL.to_string()),
-    }]
+    }
 }
 
 pub(crate) fn sync_builtin_cleanup_task_schedule() {
@@ -366,25 +401,47 @@ mod tests {
     use super::builtin_catalog_entries;
 
     #[test]
-    fn builtin_catalog_only_exposes_cleanup_banned_accounts_plugin() {
+    fn builtin_catalog_exposes_cleanup_plugins() {
         let items = builtin_catalog_entries();
-        assert_eq!(items.len(), 1);
-        let item = &items[0];
-        assert_eq!(item.id, "cleanup-banned-accounts");
-        assert_eq!(item.manifest_version, "1");
-        assert_eq!(item.category.as_deref(), Some("official"));
-        assert_eq!(item.runtime_kind, "rhai");
-        assert!(item
+        assert_eq!(items.len(), 2);
+        let banned = items
+            .iter()
+            .find(|item| item.id == "cleanup-banned-accounts")
+            .expect("banned cleanup plugin");
+        assert_eq!(banned.manifest_version, "1");
+        assert_eq!(banned.category.as_deref(), Some("official"));
+        assert_eq!(banned.runtime_kind, "rhai");
+        assert!(banned
             .permissions
             .iter()
             .any(|item| item == "accounts:cleanup"));
-        assert!(!item.tags.is_empty());
-        assert_eq!(item.tasks.len(), 1);
-        assert_eq!(item.tasks[0].entrypoint, "run");
-        assert_eq!(item.tasks[0].schedule_kind, "interval");
+        assert!(!banned.tags.is_empty());
+        assert_eq!(banned.tasks.len(), 1);
+        assert_eq!(banned.tasks[0].entrypoint, "run");
+        assert_eq!(banned.tasks[0].schedule_kind, "interval");
         assert_eq!(
-            item.tasks[0].interval_seconds,
+            banned.tasks[0].interval_seconds,
             Some(super::BUILTIN_CLEANUP_TASK_INTERVAL_SECS)
+        );
+
+        let unavailable_free = items
+            .iter()
+            .find(|item| item.id == "cleanup-unavailable-free-accounts")
+            .expect("unavailable free cleanup plugin");
+        assert_eq!(unavailable_free.manifest_version, "1");
+        assert_eq!(unavailable_free.category.as_deref(), Some("official"));
+        assert_eq!(unavailable_free.runtime_kind, "rhai");
+        assert!(unavailable_free
+            .permissions
+            .iter()
+            .any(|item| item == "accounts:cleanup"));
+        assert!(!unavailable_free.tags.is_empty());
+        assert_eq!(unavailable_free.tasks.len(), 1);
+        assert_eq!(unavailable_free.tasks[0].entrypoint, "run");
+        assert_eq!(unavailable_free.tasks[0].schedule_kind, "interval");
+        assert_eq!(
+            unavailable_free.tasks[0].interval_seconds,
+            Some(super::BUILTIN_UNAVAILABLE_FREE_CLEANUP_TASK_INTERVAL_SECS)
         );
     }
 }

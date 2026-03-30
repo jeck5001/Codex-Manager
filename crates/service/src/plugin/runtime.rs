@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use crate::storage_helpers::open_storage;
-use crate::account_cleanup::delete_banned_accounts;
+use crate::account_cleanup::{delete_banned_accounts, delete_unavailable_free_accounts};
 
 pub(crate) fn handle_task_run(req: &JsonRpcRequest) -> JsonRpcResponse {
     let Some(task_id) = req
@@ -162,6 +162,12 @@ fn execute_plugin_script(
     if permissions.contains("accounts:cleanup") {
         engine.register_fn("cleanup_banned_accounts", move || -> Dynamic {
             match delete_banned_accounts() {
+                Ok(value) => dynamic_from_json(json!(value)),
+                Err(err) => dynamic_from_json(json!({ "ok": false, "error": err })),
+            }
+        });
+        engine.register_fn("cleanup_unavailable_free_accounts", move || -> Dynamic {
+            match delete_unavailable_free_accounts() {
                 Ok(value) => dynamic_from_json(json!(value)),
                 Err(err) => dynamic_from_json(json!({ "ok": false, "error": err })),
             }

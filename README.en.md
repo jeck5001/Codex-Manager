@@ -44,6 +44,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 | Troubleshoot account selection, import failures, challenge blocks, request issues | [FAQ and account-hit rules](docs/report/20260310122606852_FAQ与账号命中规则.md) |
 | Fast plugin-center integration and minimal onboarding | [Plugin center minimal integration guide](docs/report/20260330184000000_插件中心最小接入说明.md) |
 | Integrate the plugin center, API list, market modes, and Rhai interfaces | [Plugin center integration and interface list](docs/report/20260330183000000_插件中心对接与接口清单.md) |
+| Full internal interface inventory | [System internal interface inventory](docs/report/20260330190000000_系统内部接口总表.md) |
 | Build locally, package, publish, run scripts | [Build, release, and script guide](docs/release/20260310122606851_构建发布与脚本说明.md) |
 
 ## Recent Changes
@@ -75,6 +76,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 - Aggregate API: manage third-party minimal upstream relays with create/edit, connection testing, supplier name, sort priority, and `Codex / Claude` categorization
 - Plugin center minimal integration: route `/plugins/`, builtin/private/custom market modes, and the smallest manifest/RPC/Rhai contract for quick onboarding
 - Plugin center: route `/plugins/`, supports builtin curated, private, and custom market modes, with plugin manifests, tasks, logs, and Rhai integration
+- System internal interface inventory: a single place for desktop commands, RPC methods, and plugin built-ins
 - Local service with configurable port and listen address
 - Local OpenAI-compatible gateway for CLI and third-party tools
 
@@ -122,6 +124,7 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
 | [Minimal troubleshooting guide](docs/report/20260307234235414_最小排障手册.md) | Fast path for service startup, forwarding, and model refresh issues |
 | [Plugin center minimal integration guide](docs/report/20260330184000000_插件中心最小接入说明.md) | Plugin center minimal manifest, RPC surface, and Rhai built-ins |
 | [Plugin center integration and interface list](docs/report/20260330183000000_插件中心对接与接口清单.md) | Plugin center route, market modes, Tauri/RPC interfaces, manifest fields, Rhai built-ins |
+| [System internal interface inventory](docs/report/20260330190000000_系统内部接口总表.md) | Desktop commands, service RPC methods, and plugin built-ins |
 | [Build, release, and script guide](docs/release/20260310122606851_构建发布与脚本说明.md) | Local build, Tauri packaging, Release workflow, script flags |
 | [Release assets guide](docs/release/20260309195355216_发布与产物说明.md) | Platform artifacts, naming, release vs pre-release |
 | [Script and release responsibility matrix](docs/report/20260309195735631_脚本与发布职责对照.md) | Which script owns which step |
