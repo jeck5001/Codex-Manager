@@ -2132,5 +2132,5 @@ fn gateway_invalid_refresh_token_marks_first_account_unavailable_and_fails_over(
         .find_account_by_id("acc_refresh_bad")
         .expect("find first account")
         .expect("first account exists");
-    assert_eq!(bad_account.status, "unavailable");
+    assert_eq!(bad_account.status, "banned");
 }

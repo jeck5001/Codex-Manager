@@ -200,7 +200,8 @@ fn usage_refresh_worker_count() -> usize {
 }
 
 fn is_account_refresh_skipped(account: &Account) -> bool {
-    account.status.trim().eq_ignore_ascii_case("disabled")
+    let normalized = account.status.trim().to_ascii_lowercase();
+    normalized == "disabled" || normalized == "banned"
 }
 
 fn usage_poll_batch_limit(total: usize) -> usize {
@@ -318,7 +319,7 @@ mod tests {
             &[
                 account("acc-active", "active", Some("ws-active")),
                 account("acc-disabled", "disabled", Some("ws-disabled")),
-                account("acc-banned", "unavailable", Some("ws-banned")),
+                account("acc-banned", "banned", Some("ws-banned")),
                 account("acc-inactive", "inactive", Some("ws-inactive")),
                 account("acc-unavailable", "unavailable", Some("ws-unavailable")),
             ],

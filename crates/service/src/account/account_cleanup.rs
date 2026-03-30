@@ -50,7 +50,7 @@ pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFree
         }
 
         let snapshot = usage_by_account.get(&account.id);
-        if normalized_status != "unavailable" {
+        if normalized_status != "unavailable" && normalized_status != "banned" {
             let Some(snapshot) = snapshot else {
                 result.skipped_missing_usage += 1;
                 continue;

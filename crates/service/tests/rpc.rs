@@ -732,7 +732,7 @@ fn rpc_account_delete_unavailable_free_removes_refresh_invalid_free_accounts() {
             created_at: now,
             updated_at: now,
         })
-        .expect("insert unavailable free account");
+        .expect("insert banned free account");
     storage
         .insert_token(&Token {
             account_id: "acc-free-invalid".to_string(),
@@ -756,11 +756,46 @@ fn rpc_account_delete_unavailable_free_removes_refresh_invalid_free_accounts() {
     storage
         .insert_event(&Event {
             account_id: Some("acc-free-invalid".to_string()),
-            event_type: "account_unavailable".to_string(),
-            message: "refresh_token_invalid:invalid_grant".to_string(),
+            event_type: "account_status_update".to_string(),
+            message: "status=banned reason=account_deactivated".to_string(),
             created_at: now,
         })
         .expect("insert status reason");
+
+    storage
+        .insert_account(&Account {
+            id: "acc-free-unavailable".to_string(),
+            label: "Free Unavailable".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("org-free-unavailable".to_string()),
+            workspace_id: Some("org-free-unavailable".to_string()),
+            group_name: None,
+            sort: 1,
+            status: "unavailable".to_string(),
+            created_at: now + 1,
+            updated_at: now + 1,
+        })
+        .expect("insert unavailable free account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc-free-unavailable".to_string(),
+            id_token: build_access_token(
+                "sub-free-unavailable",
+                "free-unavailable@example.com",
+                "org-free-unavailable",
+                "free",
+            ),
+            access_token: build_access_token(
+                "sub-free-unavailable",
+                "free-unavailable@example.com",
+                "org-free-unavailable",
+                "free",
+            ),
+            refresh_token: "refresh-free-unavailable".to_string(),
+            api_key_access_token: None,
+            last_refresh: now + 1,
+        })
+        .expect("insert unavailable token");
 
     storage
         .insert_account(&Account {
@@ -810,14 +845,15 @@ fn rpc_account_delete_unavailable_free_removes_refresh_invalid_free_accounts() {
 
     assert_eq!(
         result.get("deleted").and_then(|value| value.as_u64()),
-        Some(1)
+        Some(2)
     );
     let deleted_ids = result
         .get("deletedAccountIds")
         .and_then(|value| value.as_array())
         .expect("deleted ids");
-    assert_eq!(deleted_ids.len(), 1);
+    assert_eq!(deleted_ids.len(), 2);
     assert_eq!(deleted_ids[0].as_str(), Some("acc-free-invalid"));
+    assert_eq!(deleted_ids[1].as_str(), Some("acc-free-unavailable"));
 
     let remaining = storage.list_accounts().expect("list accounts");
     let remaining_ids = remaining

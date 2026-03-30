@@ -117,6 +117,14 @@ fn set_account_unavailable_with_reason(
     true
 }
 
+fn set_account_banned_with_reason(storage: &Storage, account_id: &str, reason: &str) -> bool {
+    if should_preserve_manual_account_status(storage, account_id) {
+        return false;
+    }
+    set_account_status(storage, account_id, "banned", reason);
+    true
+}
+
 pub(crate) fn mark_account_unavailable_for_usage_http_error(
     storage: &Storage,
     account_id: &str,
@@ -146,7 +154,7 @@ pub(crate) fn mark_account_unavailable_for_deactivation_error(
     else {
         return false;
     };
-    set_account_unavailable_with_reason(storage, account_id, reason)
+    set_account_banned_with_reason(storage, account_id, reason)
 }
 
 pub(crate) fn mark_account_unavailable_for_auth_error(
@@ -163,7 +171,7 @@ pub(crate) fn mark_account_unavailable_for_auth_error(
             set_account_unavailable_with_reason(storage, account_id, &status_reason)
         }
         AccountAvailabilitySignal::Deactivation(reason) => {
-            set_account_unavailable_with_reason(storage, account_id, reason)
+            set_account_banned_with_reason(storage, account_id, reason)
         }
         AccountAvailabilitySignal::UsageHttp(_) => false,
     }

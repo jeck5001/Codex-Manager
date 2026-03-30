@@ -436,7 +436,7 @@ fn deactivation_reason_detects_workspace_and_account_scope() {
 }
 
 #[test]
-fn deactivation_error_marks_account_unavailable() {
+fn deactivation_error_marks_account_banned() {
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
     let account = Account {
@@ -458,15 +458,15 @@ fn deactivation_error_marks_account_unavailable() {
         "acc-workspace-deactivated",
         "unexpected status 402 Payment Required: detail: code deactivated workspace"
     ));
-    let unavailable = storage
+    let banned = storage
         .find_account_by_id("acc-workspace-deactivated")
         .expect("find")
         .expect("exists");
-    assert_eq!(unavailable.status, "unavailable");
+    assert_eq!(banned.status, "banned");
 }
 
 #[test]
-fn generic_deactivated_error_marks_account_unavailable() {
+fn generic_deactivated_error_marks_account_banned() {
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
     let account = Account {
@@ -488,11 +488,11 @@ fn generic_deactivated_error_marks_account_unavailable() {
         "acc-generic-deactivated",
         "unexpected upstream code: team_deactivated"
     ));
-    let unavailable = storage
+    let banned = storage
         .find_account_by_id("acc-generic-deactivated")
         .expect("find")
         .expect("exists");
-    assert_eq!(unavailable.status, "unavailable");
+    assert_eq!(banned.status, "banned");
 
     let reasons = storage
         .latest_account_status_reasons(&["acc-generic-deactivated".to_string()])
@@ -504,7 +504,7 @@ fn generic_deactivated_error_marks_account_unavailable() {
 }
 
 #[test]
-fn auth_error_deactivated_marks_account_unavailable() {
+fn auth_error_deactivated_marks_account_banned() {
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
     let account = Account {
@@ -526,11 +526,11 @@ fn auth_error_deactivated_marks_account_unavailable() {
         "acc-auth-generic-deactivated",
         "refresh token failed with status 403 Forbidden: team_deactivated"
     ));
-    let unavailable = storage
+    let banned = storage
         .find_account_by_id("acc-auth-generic-deactivated")
         .expect("find")
         .expect("exists");
-    assert_eq!(unavailable.status, "unavailable");
+    assert_eq!(banned.status, "banned");
 
     let reasons = storage
         .latest_account_status_reasons(&["acc-auth-generic-deactivated".to_string()])
@@ -572,11 +572,11 @@ fn deactivation_error_updates_reason_for_existing_unavailable_account() {
         "account_deactivated"
     ));
 
-    let unavailable = storage
+    let banned = storage
         .find_account_by_id("acc-deactivated-reason-update")
         .expect("find")
         .expect("exists");
-    assert_eq!(unavailable.status, "unavailable");
+    assert_eq!(banned.status, "banned");
 
     let reasons = storage
         .latest_account_status_reasons(&["acc-deactivated-reason-update".to_string()])

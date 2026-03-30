@@ -100,11 +100,13 @@ function isUnavailableAccount(account?: { status?: string } | null): boolean {
 export function isBannedAccount(
   account?: { status?: string; statusReason?: string } | null
 ): boolean {
-  if (normalizedAccountStatus(account) !== "unavailable") {
+  const status = normalizedAccountStatus(account);
+  if (status !== "banned" && status !== "unavailable") {
     return false;
   }
   const reason = normalizedAccountStatusReason(account);
   return (
+    status === "banned" ||
     reason === "account_deactivated" ||
     reason === "workspace_deactivated" ||
     reason === "deactivated_workspace"

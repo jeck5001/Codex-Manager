@@ -152,7 +152,7 @@ fn tokens_due_for_refresh_include_other_unavailable_accounts_but_skip_deactivate
     for (id, status) in [
         ("acc-active-refresh", "active"),
         ("acc-unavailable-refresh", "unavailable"),
-        ("acc-deactivated-refresh", "unavailable"),
+        ("acc-deactivated-refresh", "banned"),
     ] {
         storage
             .insert_account(&Account {
@@ -186,7 +186,7 @@ fn tokens_due_for_refresh_include_other_unavailable_accounts_but_skip_deactivate
         .insert_event(&Event {
             account_id: Some("acc-deactivated-refresh".to_string()),
             event_type: "account_status_update".to_string(),
-            message: "status=unavailable reason=account_deactivated".to_string(),
+            message: "status=banned reason=account_deactivated".to_string(),
             created_at: now + 1,
         })
         .expect("insert deactivated event");

@@ -192,7 +192,7 @@ function QuotaProgress({
 }
 
 function getAccountStatusAction(account: Account): {
-  enable: boolean;
+  action: "enable" | "disable" | null;
   label: string;
   icon: LucideIcon;
 } {
@@ -200,12 +200,15 @@ function getAccountStatusAction(account: Account): {
     .trim()
     .toLowerCase();
   if (normalizedStatus === "disabled") {
-    return { enable: true, label: "启用账号", icon: Power };
+    return { action: "enable", label: "启用账号", icon: Power };
   }
   if (normalizedStatus === "inactive") {
-    return { enable: true, label: "恢复账号", icon: Power };
+    return { action: "enable", label: "恢复账号", icon: Power };
   }
-  return { enable: false, label: "禁用账号", icon: PowerOff };
+  if (normalizedStatus === "banned") {
+    return { action: null, label: "封禁账号", icon: PowerOff };
+  }
+  return { action: "disable", label: "禁用账号", icon: PowerOff };
 }
 
 function formatAccountPlanLabel(account: Account): string | null {
@@ -987,12 +990,14 @@ export default function AccountsPage() {
                                 className="gap-2"
                                 disabled={
                                   !isServiceReady ||
-                                  isUpdatingStatusAccountId === account.id
+                                  isUpdatingStatusAccountId === account.id ||
+                                  statusAction.action === null
                                 }
                                 onClick={() =>
+                                  statusAction.action &&
                                   toggleAccountStatus(
                                     account.id,
-                                    statusAction.enable,
+                                    statusAction.action === "enable",
                                     account.status,
                                   )
                                 }
