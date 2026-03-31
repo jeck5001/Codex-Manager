@@ -460,8 +460,31 @@ class RegistrationEngine:
             pass
 
     def _generate_password(self, length: int = DEFAULT_PASSWORD_LENGTH) -> str:
-        """生成随机密码"""
-        return ''.join(secrets.choice(PASSWORD_CHARSET) for _ in range(length))
+        """生成符合当前 OpenAI 注册要求的随机密码。"""
+        normalized_length = max(int(length or DEFAULT_PASSWORD_LENGTH), 16)
+        lowercase_chars = string.ascii_lowercase
+        uppercase_chars = string.ascii_uppercase
+        digit_chars = string.digits
+        special_chars = "!@#$%^&*()-_=+"
+        base_pool = "".join(dict.fromkeys(PASSWORD_CHARSET + special_chars))
+
+        password_chars = [
+            secrets.choice(lowercase_chars),
+            secrets.choice(uppercase_chars),
+            secrets.choice(digit_chars),
+            secrets.choice(special_chars),
+        ]
+        while len(password_chars) < normalized_length:
+            password_chars.append(secrets.choice(base_pool))
+
+        for index in range(len(password_chars) - 1, 0, -1):
+            swap_index = secrets.randbelow(index + 1)
+            password_chars[index], password_chars[swap_index] = (
+                password_chars[swap_index],
+                password_chars[index],
+            )
+
+        return ''.join(password_chars)
 
     def _check_ip_location(self) -> Tuple[bool, Optional[str]]:
         """检查 IP 地理位置"""

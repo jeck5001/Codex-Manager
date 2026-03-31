@@ -601,6 +601,17 @@ class RegisterAddPhoneTests(unittest.TestCase):
         )
         self.assertEqual(followed_urls, [])
 
+    def test_generate_password_meets_current_policy(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+
+        password = engine._generate_password()
+
+        self.assertGreaterEqual(len(password), 16)
+        self.assertRegex(password, r"[a-z]")
+        self.assertRegex(password, r"[A-Z]")
+        self.assertRegex(password, r"\d")
+        self.assertRegex(password, r"[^A-Za-z0-9]")
+
 
 if __name__ == "__main__":
     unittest.main()
