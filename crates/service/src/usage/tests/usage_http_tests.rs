@@ -2,8 +2,8 @@ use super::{
     build_usage_request_headers, summarize_usage_error_response, usage_http_client,
     CHATGPT_ACCOUNT_ID_HEADER_NAME,
 };
-use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::Client;
 use reqwest::StatusCode;
 use std::sync::MutexGuard;
 

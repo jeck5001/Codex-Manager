@@ -273,7 +273,9 @@ fn start_mock_device_login_server() -> (
                         })
                         .to_string()
                     } else {
-                        assert!(body.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange"));
+                        assert!(body.contains(
+                            "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange"
+                        ));
                         serde_json::json!({
                             "access_token": "api-access-token-device-123"
                         })
@@ -309,10 +311,22 @@ fn rpc_initialize_roundtrip() {
     let v = post_rpc(&server.addr, &json);
     let result = v.get("result").expect("result");
     assert!(result.get("serverName").is_none());
-    assert!(result.get("codexHome").and_then(|value| value.as_str()).is_some());
-    assert!(result.get("platformFamily").and_then(|value| value.as_str()).is_some());
-    assert!(result.get("platformOs").and_then(|value| value.as_str()).is_some());
-    assert!(result.get("userAgent").and_then(|value| value.as_str()).is_some());
+    assert!(result
+        .get("codexHome")
+        .and_then(|value| value.as_str())
+        .is_some());
+    assert!(result
+        .get("platformFamily")
+        .and_then(|value| value.as_str())
+        .is_some());
+    assert!(result
+        .get("platformOs")
+        .and_then(|value| value.as_str())
+        .is_some());
+    assert!(result
+        .get("userAgent")
+        .and_then(|value| value.as_str())
+        .is_some());
 }
 
 #[test]
@@ -954,7 +968,10 @@ fn rpc_login_start_returns_api_key_variant() {
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
     let result = v.get("result").expect("result");
-    assert_eq!(result.get("type").and_then(|value| value.as_str()), Some("apiKey"));
+    assert_eq!(
+        result.get("type").and_then(|value| value.as_str()),
+        Some("apiKey")
+    );
 }
 
 #[test]
@@ -977,12 +994,10 @@ fn rpc_login_start_chatgpt_device_code_returns_user_code() {
         result.get("type").and_then(|v| v.as_str()),
         Some("chatgptDeviceCode")
     );
-    assert!(
-        result
-            .get("verificationUrl")
-            .and_then(|v| v.as_str())
-            .is_some_and(|value| value.contains("/codex/device"))
-    );
+    assert!(result
+        .get("verificationUrl")
+        .and_then(|v| v.as_str())
+        .is_some_and(|value| value.contains("/codex/device")));
     assert_eq!(
         result.get("userCode").and_then(|v| v.as_str()),
         Some("ABCD-1234")
@@ -1004,22 +1019,21 @@ fn rpc_login_start_chatgpt_device_code_returns_user_code() {
     request_join.join().expect("join mock device server");
 
     assert_eq!(
-        requests[0].path,
-        "/api/accounts/deviceauth/usercode",
+        requests[0].path, "/api/accounts/deviceauth/usercode",
         "unexpected first request: {requests:?}"
     );
     assert!(requests[0].body.contains("client_id"));
     assert_eq!(requests[1].path, "/api/accounts/deviceauth/token");
-    assert!(requests[1].body.contains("\"device_auth_id\":\"device-auth-123\""));
+    assert!(requests[1]
+        .body
+        .contains("\"device_auth_id\":\"device-auth-123\""));
     assert!(requests[1].body.contains("\"user_code\":\"ABCD-1234\""));
     assert_eq!(requests[2].path, "/oauth/token");
     assert!(requests[2].body.contains("grant_type=authorization_code"));
     assert_eq!(requests[3].path, "/oauth/token");
-    assert!(
-        requests[3]
-            .body
-            .contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange")
-    );
+    assert!(requests[3]
+        .body
+        .contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange"));
 
     let status_server = codexmanager_service::start_one_shot_server().expect("start server");
     let status_req = JsonRpcRequest {
@@ -1039,7 +1053,9 @@ fn rpc_login_start_chatgpt_device_code_returns_user_code() {
     let storage = Storage::open(_ctx.db_path()).expect("open db");
     let accounts = storage.list_accounts().expect("list accounts");
     assert!(
-        accounts.iter().any(|account| account.id.contains("sub-device")),
+        accounts
+            .iter()
+            .any(|account| account.id.contains("sub-device")),
         "device login should persist an account: {accounts:?}"
     );
 }
@@ -1111,7 +1127,9 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     let logout_server = codexmanager_service::start_one_shot_server().expect("start server");
     let logout_resp = post_rpc(&logout_server.addr, &logout_json);
     let logout_result = logout_resp.get("result").expect("logout result");
-    assert!(logout_result.as_object().is_some_and(|value| value.is_empty()));
+    assert!(logout_result
+        .as_object()
+        .is_some_and(|value| value.is_empty()));
 
     let read_after_logout_server =
         codexmanager_service::start_one_shot_server().expect("start server");

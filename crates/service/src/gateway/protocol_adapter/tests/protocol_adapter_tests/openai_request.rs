@@ -190,9 +190,7 @@ fn openai_chat_completions_default_tool_choice_is_auto() {
     let value: serde_json::Value =
         serde_json::from_slice(&adapted.body).expect("parse adapted body");
     assert_eq!(
-        value
-            .get("tool_choice")
-            .and_then(serde_json::Value::as_str),
+        value.get("tool_choice").and_then(serde_json::Value::as_str),
         Some("auto")
     );
 }

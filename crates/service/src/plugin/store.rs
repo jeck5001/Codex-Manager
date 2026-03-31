@@ -52,7 +52,9 @@ pub(crate) fn rearm_enabled_interval_tasks_for_plugin(
     Ok(())
 }
 
-pub(crate) fn handle_list_installed(req: &JsonRpcRequest) -> codexmanager_core::rpc::types::JsonRpcResponse {
+pub(crate) fn handle_list_installed(
+    req: &JsonRpcRequest,
+) -> codexmanager_core::rpc::types::JsonRpcResponse {
     match list_installed_plugins() {
         Ok(items) => super::json_response(req, serde_json::json!({ "items": items })),
         Err(err) => super::json_response(req, error_result(err)),
@@ -95,7 +97,9 @@ pub(crate) fn handle_enable(
     super::json_response(req, serde_json::json!({ "ok": true }))
 }
 
-pub(crate) fn handle_task_update(req: &JsonRpcRequest) -> codexmanager_core::rpc::types::JsonRpcResponse {
+pub(crate) fn handle_task_update(
+    req: &JsonRpcRequest,
+) -> codexmanager_core::rpc::types::JsonRpcResponse {
     let Some(task_id) = req
         .params
         .as_ref()
@@ -110,7 +114,11 @@ pub(crate) fn handle_task_update(req: &JsonRpcRequest) -> codexmanager_core::rpc
     let Some(interval_seconds) = req
         .params
         .as_ref()
-        .and_then(|value| value.get("intervalSeconds").or_else(|| value.get("interval_seconds")))
+        .and_then(|value| {
+            value
+                .get("intervalSeconds")
+                .or_else(|| value.get("interval_seconds"))
+        })
         .and_then(|value| value.as_i64())
     else {
         return super::json_response(req, error_result("missing intervalSeconds"));
@@ -123,18 +131,17 @@ pub(crate) fn handle_task_update(req: &JsonRpcRequest) -> codexmanager_core::rpc
     let Some(storage) = open_storage() else {
         return super::json_response(req, error_result("storage unavailable"));
     };
-    let Some(task) = storage
-        .find_plugin_task(&task_id)
-        .ok()
-        .flatten()
-    else {
+    let Some(task) = storage.find_plugin_task(&task_id).ok().flatten() else {
         return super::json_response(req, error_result("task not found"));
     };
 
     let task_json = match serde_json::from_str::<serde_json::Value>(&task.task_json) {
         Ok(mut value) => {
             if let Some(obj) = value.as_object_mut() {
-                obj.insert("intervalSeconds".to_string(), serde_json::json!(interval_seconds));
+                obj.insert(
+                    "intervalSeconds".to_string(),
+                    serde_json::json!(interval_seconds),
+                );
                 obj.insert("scheduleKind".to_string(), serde_json::json!("interval"));
             }
             match serde_json::to_string(&value) {
@@ -167,14 +174,19 @@ pub(crate) fn handle_task_update(req: &JsonRpcRequest) -> codexmanager_core::rpc
         return super::json_response(req, error_result("update task failed"));
     }
 
-    super::json_response(req, serde_json::json!({
-        "ok": true,
-        "taskId": task.id,
-        "intervalSeconds": interval_seconds,
-    }))
+    super::json_response(
+        req,
+        serde_json::json!({
+            "ok": true,
+            "taskId": task.id,
+            "intervalSeconds": interval_seconds,
+        }),
+    )
 }
 
-pub(crate) fn handle_task_list(req: &JsonRpcRequest) -> codexmanager_core::rpc::types::JsonRpcResponse {
+pub(crate) fn handle_task_list(
+    req: &JsonRpcRequest,
+) -> codexmanager_core::rpc::types::JsonRpcResponse {
     let plugin_id = req
         .params
         .as_ref()
@@ -188,7 +200,9 @@ pub(crate) fn handle_task_list(req: &JsonRpcRequest) -> codexmanager_core::rpc::
     }
 }
 
-pub(crate) fn handle_log_list(req: &JsonRpcRequest) -> codexmanager_core::rpc::types::JsonRpcResponse {
+pub(crate) fn handle_log_list(
+    req: &JsonRpcRequest,
+) -> codexmanager_core::rpc::types::JsonRpcResponse {
     let plugin_id = req
         .params
         .as_ref()
@@ -218,8 +232,12 @@ pub(crate) fn handle_log_list(req: &JsonRpcRequest) -> codexmanager_core::rpc::t
 
 pub(crate) fn list_installed_plugins() -> Result<Vec<InstalledPluginSummary>, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let installs = storage.list_plugin_installs().map_err(|err| err.to_string())?;
-    let tasks = storage.list_plugin_tasks(None).map_err(|err| err.to_string())?;
+    let installs = storage
+        .list_plugin_installs()
+        .map_err(|err| err.to_string())?;
+    let tasks = storage
+        .list_plugin_tasks(None)
+        .map_err(|err| err.to_string())?;
     let mut task_count_by_plugin: HashMap<String, (i64, i64)> = HashMap::new();
     for task in tasks {
         let entry = task_count_by_plugin.entry(task.plugin_id).or_insert((0, 0));
@@ -245,11 +263,11 @@ pub(crate) fn list_installed_plugins() -> Result<Vec<InstalledPluginSummary>, St
         .collect()
 }
 
-pub(crate) fn list_plugin_tasks(
-    plugin_id: Option<&str>,
-) -> Result<Vec<PluginTaskSummary>, String> {
+pub(crate) fn list_plugin_tasks(plugin_id: Option<&str>) -> Result<Vec<PluginTaskSummary>, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let installs = storage.list_plugin_installs().map_err(|err| err.to_string())?;
+    let installs = storage
+        .list_plugin_installs()
+        .map_err(|err| err.to_string())?;
     let install_name_map: HashMap<String, String> = installs
         .into_iter()
         .map(|install| (install.plugin_id, install.name))
@@ -287,16 +305,18 @@ pub(crate) fn list_plugin_run_logs(
     limit: i64,
 ) -> Result<Vec<PluginRunLogSummary>, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let installs = storage.list_plugin_installs().map_err(|err| err.to_string())?;
-    let tasks = storage.list_plugin_tasks(None).map_err(|err| err.to_string())?;
+    let installs = storage
+        .list_plugin_installs()
+        .map_err(|err| err.to_string())?;
+    let tasks = storage
+        .list_plugin_tasks(None)
+        .map_err(|err| err.to_string())?;
     let install_name_map: HashMap<String, String> = installs
         .into_iter()
         .map(|install| (install.plugin_id, install.name))
         .collect();
-    let task_name_map: HashMap<String, String> = tasks
-        .into_iter()
-        .map(|task| (task.id, task.name))
-        .collect();
+    let task_name_map: HashMap<String, String> =
+        tasks.into_iter().map(|task| (task.id, task.name)).collect();
 
     storage
         .list_plugin_run_logs(plugin_id, task_id, limit)
@@ -335,12 +355,16 @@ fn to_installed_plugin_summary(
 ) -> InstalledPluginSummary {
     let manifest_entry = serde_json::from_str::<serde_json::Value>(&plugin.manifest_json)
         .ok()
-        .and_then(|value| super::catalog::parse_catalog_entry_value(&value, plugin.source_url.as_deref()).ok());
+        .and_then(|value| {
+            super::catalog::parse_catalog_entry_value(&value, plugin.source_url.as_deref()).ok()
+        });
     let manifest_version = manifest_entry
         .as_ref()
         .map(|entry| entry.manifest_version.clone())
         .unwrap_or_else(|| "1".to_string());
-    let category = manifest_entry.as_ref().and_then(|entry| entry.category.clone());
+    let category = manifest_entry
+        .as_ref()
+        .and_then(|entry| entry.category.clone());
     let runtime_kind = manifest_entry
         .as_ref()
         .map(|entry| entry.runtime_kind.clone())

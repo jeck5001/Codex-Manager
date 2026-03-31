@@ -967,7 +967,15 @@ fn request_token_stats_can_summarize_total_tokens_by_key() {
         output_tokens,
         estimated_cost_usd,
     ) in [
-        (101_i64, "gk_alpha", Some(120_i64), None, None, None, Some(0.12)),
+        (
+            101_i64,
+            "gk_alpha",
+            Some(120_i64),
+            None,
+            None,
+            None,
+            Some(0.12),
+        ),
         (
             102_i64,
             "gk_alpha",
@@ -977,7 +985,15 @@ fn request_token_stats_can_summarize_total_tokens_by_key() {
             Some(25_i64),
             Some(0.34),
         ),
-        (103_i64, "gk_beta", Some(75_i64), None, None, None, Some(0.78)),
+        (
+            103_i64,
+            "gk_beta",
+            Some(75_i64),
+            None,
+            None,
+            None,
+            Some(0.78),
+        ),
         (104_i64, "", Some(999_i64), None, None, None, Some(9.99)),
     ] {
         storage

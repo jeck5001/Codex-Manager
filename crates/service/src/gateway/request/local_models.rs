@@ -35,8 +35,8 @@ fn created_timestamp_for_model(slug: &str) -> i64 {
         "gpt-5.4-pro" | "gpt-5.4" => 1772668800,
         "gpt-5.3-codex" => 1770249600,
         "gpt-5.2-pro" | "gpt-5.2-codex" | "gpt-5.2" => 1765411200,
-        "gpt-5.1-codex-mini" | "gpt-5-codex-mini" | "gpt-5.1-codex-max"
-        | "gpt-5.1-codex" | "gpt-5.1" => 1762992000,
+        "gpt-5.1-codex-mini" | "gpt-5-codex-mini" | "gpt-5.1-codex-max" | "gpt-5.1-codex"
+        | "gpt-5.1" => 1762992000,
         "gpt-5-mini" | "gpt-5-nano" | "gpt-5-codex" | "gpt-5" => 1754524800,
         "gpt-4.1-nano" | "gpt-4.1-mini" | "gpt-4.1" => 1744588800,
         "o3-deep-research" => 1738454400,

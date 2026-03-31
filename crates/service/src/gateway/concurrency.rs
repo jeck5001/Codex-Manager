@@ -34,14 +34,20 @@ pub(crate) fn recommend_gateway_concurrency(
     let memory_blocks = ((memory_mib / 2_048).max(1)) as usize;
     let resource_score = cpu_cores.min(memory_blocks).max(1);
 
-    let (usage_refresh_workers, http_worker_factor, http_worker_min, http_stream_worker_factor, http_stream_worker_min, account_max_inflight) =
-        match resource_score {
-            1 => (2, 2, 4, 1, 1, 1),
-            2..=4 => (3, 3, 6, 1, 2, 1),
-            5..=8 => (4, 4, 8, 1, 2, 2),
-            9..=16 => (6, 5, 12, 2, 4, 2),
-            _ => (8, 6, 16, 2, 4, 4),
-        };
+    let (
+        usage_refresh_workers,
+        http_worker_factor,
+        http_worker_min,
+        http_stream_worker_factor,
+        http_stream_worker_min,
+        account_max_inflight,
+    ) = match resource_score {
+        1 => (2, 2, 4, 1, 1, 1),
+        2..=4 => (3, 3, 6, 1, 2, 1),
+        5..=8 => (4, 4, 8, 1, 2, 2),
+        9..=16 => (6, 5, 12, 2, 4, 2),
+        _ => (8, 6, 16, 2, 4, 4),
+    };
 
     GatewayConcurrencyRecommendation {
         cpu_cores,

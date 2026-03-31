@@ -1,6 +1,6 @@
 use codexmanager_core::usage::usage_endpoint;
-use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
+use reqwest::Client;
 use reqwest::Proxy;
 use std::future::Future;
 use std::sync::{OnceLock, RwLock};

@@ -21,10 +21,7 @@ fn build_openai_models_list_outputs_expected_shape() {
         .and_then(Value::as_array)
         .expect("data array");
     assert_eq!(data.len(), 2);
-    assert_eq!(
-        data[0].get("id").and_then(Value::as_str),
-        Some("gpt-4o")
-    );
+    assert_eq!(data[0].get("id").and_then(Value::as_str), Some("gpt-4o"));
     assert_eq!(
         data[1].get("id").and_then(Value::as_str),
         Some("gpt-5.3-codex")

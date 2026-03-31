@@ -1,6 +1,4 @@
-use codexmanager_core::rpc::types::{
-    AggregateApiListResult, JsonRpcRequest, JsonRpcResponse,
-};
+use codexmanager_core::rpc::types::{AggregateApiListResult, JsonRpcRequest, JsonRpcResponse};
 
 use crate::{
     create_aggregate_api, delete_aggregate_api, list_aggregate_apis, read_aggregate_api_secret,
@@ -112,8 +110,11 @@ mod tests {
 
     #[test]
     fn aggregate_api_test_connection_accepts_id_and_api_id() {
-        let missing = try_handle(&rpc_request("aggregateApi/testConnection", serde_json::json!({})))
-            .expect("response");
+        let missing = try_handle(&rpc_request(
+            "aggregateApi/testConnection",
+            serde_json::json!({}),
+        ))
+        .expect("response");
         assert_eq!(error_message(&missing), "aggregate api id required");
 
         let with_id = try_handle(&rpc_request(

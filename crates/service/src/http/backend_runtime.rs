@@ -5,7 +5,7 @@ use std::panic::AssertUnwindSafe;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{bounded, Receiver, Sender, SendTimeoutError};
+use crossbeam_channel::{bounded, Receiver, SendTimeoutError, Sender};
 use tiny_http::Request;
 use tiny_http::Server;
 
@@ -176,11 +176,7 @@ fn enqueue_request(
     }
 }
 
-fn send_with_timeout<T>(
-    tx: &Sender<T>,
-    request: T,
-    timeout: Duration,
-) -> Result<(), T> {
+fn send_with_timeout<T>(tx: &Sender<T>, request: T, timeout: Duration) -> Result<(), T> {
     match tx.send_timeout(request, timeout) {
         Ok(()) => Ok(()),
         Err(SendTimeoutError::Timeout(request)) | Err(SendTimeoutError::Disconnected(request)) => {
@@ -212,10 +208,9 @@ fn run_backend_server(server: Server) {
         match enqueue_request(request, &normal_tx, &stream_tx) {
             Ok(()) => {}
             Err(request) => {
-            crate::gateway::record_http_queue_enqueue_failure();
-                let _ = request.respond(
-                    tiny_http::Response::from_string("server busy").with_status_code(503),
-                );
+                crate::gateway::record_http_queue_enqueue_failure();
+                let _ = request
+                    .respond(tiny_http::Response::from_string("server busy").with_status_code(503));
             }
         }
     }

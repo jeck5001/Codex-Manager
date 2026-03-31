@@ -1,6 +1,6 @@
+use crate::app_settings::{list_app_settings_map, listener_bind_addr_for_mode};
 use crate::initialize_storage_if_needed;
 use crate::web_access_password_configured;
-use crate::app_settings::{list_app_settings_map, listener_bind_addr_for_mode};
 use codexmanager_core::rpc::types::ModelOption;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -17,17 +17,17 @@ use super::{
     env_override_catalog_value, env_override_reserved_keys, env_override_unsupported_keys,
     residency_requirement_options, save_env_overrides_value, save_persisted_app_setting,
     save_persisted_bool_setting, sync_runtime_settings_from_storage,
-    APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
-    APP_SETTING_GATEWAY_ACCOUNT_MAX_INFLIGHT_KEY, APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
+    APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_GATEWAY_ACCOUNT_MAX_INFLIGHT_KEY,
+    APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
     APP_SETTING_GATEWAY_ORIGINATOR_KEY, APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY, APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
     APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_PLUGIN_MARKET_MODE_KEY,
-    APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY,
-    APP_SETTING_SERVICE_ADDR_KEY, APP_SETTING_UI_APPEARANCE_PRESET_KEY,
-    APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY,
-    SERVICE_BIND_MODE_ALL_INTERFACES, SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
+    APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY, APP_SETTING_SERVICE_ADDR_KEY,
+    APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
+    APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
+    SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
 };
 
 const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS: &[&str] = &[
@@ -52,9 +52,7 @@ fn normalize_service_bind_mode_value(raw: Option<&str>) -> &'static str {
     };
     let normalized = value.trim().to_ascii_lowercase();
     match normalized.as_str() {
-        "all_interfaces" | "all-interfaces" | "all" | "0.0.0.0" => {
-            SERVICE_BIND_MODE_ALL_INTERFACES
-        }
+        "all_interfaces" | "all-interfaces" | "all" | "0.0.0.0" => SERVICE_BIND_MODE_ALL_INTERFACES,
         _ => SERVICE_BIND_MODE_LOOPBACK,
     }
 }

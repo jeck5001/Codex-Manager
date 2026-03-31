@@ -227,11 +227,18 @@ fn run(context) {{
         manifest_version: "1".to_string(),
         category: Some("official".to_string()),
         runtime_kind: "rhai".to_string(),
-        tags: vec!["账号治理".to_string(), "精选".to_string(), task_subject.to_string()],
+        tags: vec![
+            "账号治理".to_string(),
+            "精选".to_string(),
+            task_subject.to_string(),
+        ],
         tasks: vec![PluginCatalogTask {
             id: "run".to_string(),
             name: "定时自动清理".to_string(),
-            description: Some(format!("每 {} 秒自动清理一次{}", interval_seconds, task_subject)),
+            description: Some(format!(
+                "每 {} 秒自动清理一次{}",
+                interval_seconds, task_subject
+            )),
             entrypoint: "run".to_string(),
             schedule_kind: "interval".to_string(),
             interval_seconds: Some(interval_seconds),
@@ -754,7 +761,9 @@ fn to_installed_plugin_summary(
         .as_ref()
         .map(|entry| entry.manifest_version.clone())
         .unwrap_or_else(|| "1".to_string());
-    let category = manifest_entry.as_ref().and_then(|entry| entry.category.clone());
+    let category = manifest_entry
+        .as_ref()
+        .and_then(|entry| entry.category.clone());
     let runtime_kind = manifest_entry
         .as_ref()
         .map(|entry| entry.runtime_kind.clone())

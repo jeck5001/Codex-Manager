@@ -7,8 +7,8 @@ use crate::auth_tokens::{
 };
 use codexmanager_core::auth::parse_id_token_claims;
 use codexmanager_core::storage::{now_ts, Account, Storage};
-use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::Client;
 
 fn build_account(
     id: &str,

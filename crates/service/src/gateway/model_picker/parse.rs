@@ -39,11 +39,7 @@ fn parse_models_array(
             .map(str::trim)
             .filter(|v| !v.is_empty());
         if let Some(slug) = slug {
-            push_model_option(
-                slug,
-                seen,
-                items,
-            );
+            push_model_option(slug, seen, items);
         }
     }
 }
@@ -64,20 +60,12 @@ fn parse_data_array(
             .map(str::trim)
             .filter(|v| !v.is_empty());
         if let Some(slug) = slug {
-            push_model_option(
-                slug,
-                seen,
-                items,
-            );
+            push_model_option(slug, seen, items);
         }
     }
 }
 
-fn push_model_option(
-    slug: &str,
-    seen: &mut HashSet<String>,
-    items: &mut Vec<ModelOption>,
-) {
+fn push_model_option(slug: &str, seen: &mut HashSet<String>, items: &mut Vec<ModelOption>) {
     if seen.insert(slug.to_string()) {
         items.push(ModelOption {
             slug: slug.to_string(),

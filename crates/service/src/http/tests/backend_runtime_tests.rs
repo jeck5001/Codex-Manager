@@ -1,6 +1,6 @@
 use super::{
     http_queue_size, http_stream_queue_size, http_stream_worker_count, http_worker_count,
-    panic_payload_message, should_bypass_queue, send_with_timeout, HTTP_QUEUE_MIN,
+    panic_payload_message, send_with_timeout, should_bypass_queue, HTTP_QUEUE_MIN,
     HTTP_STREAM_QUEUE_MIN, HTTP_STREAM_WORKER_MIN, HTTP_WORKER_MIN,
 };
 use crossbeam_channel::bounded;

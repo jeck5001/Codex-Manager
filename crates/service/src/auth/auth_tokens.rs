@@ -4,16 +4,16 @@ use codexmanager_core::auth::{
     token_exchange_body_token_exchange, IdTokenClaims, DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
 };
 use codexmanager_core::storage::{now_ts, Account, Token};
-use reqwest::Client;
 use reqwest::header::HeaderMap;
+use reqwest::Client;
 use reqwest::Error as ReqwestError;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use std::future::Future;
 use std::sync::OnceLock;
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 use tokio::runtime::{Builder, Runtime};
 
 use crate::account_identity::{
@@ -54,7 +54,10 @@ where
     auth_runtime().block_on(future)
 }
 
-async fn read_json_with_timeout<T>(resp: reqwest::Response, read_timeout: Duration) -> Result<T, String>
+async fn read_json_with_timeout<T>(
+    resp: reqwest::Response,
+    read_timeout: Duration,
+) -> Result<T, String>
 where
     T: DeserializeOwned + Send + 'static,
 {
@@ -68,7 +71,10 @@ where
     }
 }
 
-async fn read_text_with_timeout(resp: reqwest::Response, read_timeout: Duration) -> Result<String, String> {
+async fn read_text_with_timeout(
+    resp: reqwest::Response,
+    read_timeout: Duration,
+) -> Result<String, String> {
     match tokio::time::timeout(read_timeout, resp.text()).await {
         Ok(Ok(result)) => Ok(result),
         Ok(Err(err)) => Err(err.to_string()),
@@ -507,7 +513,10 @@ struct DeviceUserCodeResponse {
     device_auth_id: String,
     #[serde(alias = "user_code", alias = "usercode")]
     user_code: String,
-    #[serde(default = "default_device_poll_interval", deserialize_with = "deserialize_interval")]
+    #[serde(
+        default = "default_device_poll_interval",
+        deserialize_with = "deserialize_interval"
+    )]
     interval: u64,
 }
 
@@ -579,10 +588,14 @@ async fn request_device_code_async(
                     .to_string(),
             );
         }
-        return Err(format!("device code request failed with status {}", resp.status()));
+        return Err(format!(
+            "device code request failed with status {}",
+            resp.status()
+        ));
     }
 
-    let body: DeviceUserCodeResponse = read_json_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT).await?;
+    let body: DeviceUserCodeResponse =
+        read_json_with_timeout(resp, OPENAI_AUTH_READ_TIMEOUT).await?;
     Ok(DeviceCodeStartResult {
         verification_url: codexmanager_core::auth::device_verification_url(issuer),
         user_code: body.user_code,
@@ -715,7 +728,13 @@ pub(crate) fn complete_login_with_redirect(
         .unwrap_or_else(|| "http://localhost:1455/auth/callback".to_string());
 
     // 交换授权码获取 token
-    let tokens = exchange_code_for_tokens(&issuer, &client_id, &redirect_uri, &session.code_verifier, code)
+    let tokens = exchange_code_for_tokens(
+        &issuer,
+        &client_id,
+        &redirect_uri,
+        &session.code_verifier,
+        code,
+    )
     .map_err(|e| {
         let _ = storage.update_login_session_status(state, "failed", Some(&e));
         e

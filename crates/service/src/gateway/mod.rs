@@ -1,6 +1,7 @@
 use crate::storage_helpers::open_storage;
 
 mod anchor_fingerprint;
+mod concurrency;
 #[path = "routing/conversation_binding.rs"]
 mod conversation_binding;
 #[path = "routing/cooldown.rs"]
@@ -19,7 +20,6 @@ mod local_models;
 mod local_validation;
 #[path = "observability/metrics.rs"]
 mod metrics;
-mod concurrency;
 mod model_picker;
 #[path = "auth/openai_fallback.rs"]
 mod openai_fallback;
@@ -30,8 +30,6 @@ mod request_entry;
 mod request_gate;
 #[path = "request/request_helpers.rs"]
 mod request_helpers;
-#[path = "request/session_affinity.rs"]
-mod session_affinity;
 #[path = "observability/request_log.rs"]
 mod request_log;
 #[path = "request/request_rewrite.rs"]
@@ -44,12 +42,15 @@ mod route_quality;
 mod runtime_config;
 #[path = "routing/selection.rs"]
 mod selection;
+#[path = "request/session_affinity.rs"]
+mod session_affinity;
 #[path = "auth/token_exchange.rs"]
 mod token_exchange;
 #[path = "observability/trace_log.rs"]
 mod trace_log;
 mod upstream;
 
+pub(crate) use concurrency::current_gateway_concurrency_recommendation;
 use metrics::{
     account_inflight_count, acquire_account_inflight, begin_gateway_request,
     record_gateway_cooldown_mark, record_gateway_failover_attempt, record_gateway_request_outcome,
@@ -58,7 +59,6 @@ use metrics::{
 pub(crate) use metrics::{
     begin_rpc_request, duration_to_millis, gateway_metrics_prometheus, record_usage_refresh_outcome,
 };
-pub(crate) use concurrency::current_gateway_concurrency_recommendation;
 use protocol_adapter::{
     adapt_request_for_protocol, adapt_upstream_response,
     adapt_upstream_response_with_tool_name_restore_map, build_anthropic_error_body,
@@ -216,13 +216,13 @@ use request_gate::{request_gate_lock, RequestGateAcquireError};
 use request_log::write_request_log;
 use route_hint::apply_route_strategy;
 use route_quality::record_route_quality;
-pub(crate) use runtime_config::front_proxy_max_body_bytes;
 pub(crate) use runtime_config::fresh_upstream_client;
+pub(crate) use runtime_config::front_proxy_max_body_bytes;
 pub(crate) use runtime_config::{account_max_inflight_limit, set_account_max_inflight_limit};
 use runtime_config::{
-    fresh_upstream_client_for_account, request_gate_wait_timeout,
-    trace_body_preview_max_bytes, upstream_client, upstream_client_for_account,
-    upstream_stream_timeout, upstream_total_timeout, DEFAULT_GATEWAY_DEBUG,
+    fresh_upstream_client_for_account, request_gate_wait_timeout, trace_body_preview_max_bytes,
+    upstream_client, upstream_client_for_account, upstream_stream_timeout, upstream_total_timeout,
+    DEFAULT_GATEWAY_DEBUG,
 };
 use selection::collect_gateway_candidates;
 #[cfg(test)]

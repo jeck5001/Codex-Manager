@@ -268,7 +268,7 @@ mod tests {
             method: "account/usage/refresh".to_string(),
             params: None,
             trace: None,
-    };
+        };
 
         let (body, success) = handle_parsed_rpc_request(request, |_req| {
             panic!("usage refresh boom");
@@ -301,7 +301,7 @@ mod tests {
             method: "noop".to_string(),
             params: None,
             trace: None,
-    };
+        };
 
         let (body, success) = handle_parsed_rpc_request(request, |req| {
             JsonRpcMessage::Response(JsonRpcResponse {

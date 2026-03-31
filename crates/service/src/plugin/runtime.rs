@@ -5,8 +5,8 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::time::Duration;
 
-use crate::storage_helpers::open_storage;
 use crate::account_cleanup::{delete_banned_accounts, delete_unavailable_free_accounts};
+use crate::storage_helpers::open_storage;
 
 pub(crate) fn handle_task_run(req: &JsonRpcRequest) -> JsonRpcResponse {
     let Some(task_id) = req
@@ -17,10 +17,19 @@ pub(crate) fn handle_task_run(req: &JsonRpcRequest) -> JsonRpcResponse {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
     else {
-        return super::json_response(req, crate::error_codes::rpc_error_payload("missing taskId".to_string()));
+        return super::json_response(
+            req,
+            crate::error_codes::rpc_error_payload("missing taskId".to_string()),
+        );
     };
 
-    match run_plugin_task(&task_id, req.params.as_ref().and_then(|value| value.get("input")).cloned()) {
+    match run_plugin_task(
+        &task_id,
+        req.params
+            .as_ref()
+            .and_then(|value| value.get("input"))
+            .cloned(),
+    ) {
         Ok(value) => super::json_response(req, value),
         Err(err) => super::json_response(req, crate::error_codes::rpc_error_payload(err)),
     }
@@ -103,7 +112,10 @@ pub(crate) fn fetch_text(url: &str) -> Result<String, String> {
         .send()
         .map_err(|err| format!("fetch {url} failed: {err}"))?;
     if !response.status().is_success() {
-        return Err(format!("fetch {url} failed with status {}", response.status()));
+        return Err(format!(
+            "fetch {url} failed with status {}",
+            response.status()
+        ));
     }
     response
         .text()
@@ -199,7 +211,12 @@ fn execute_plugin_script(
         "runStartedAt": run_started_at,
     });
     let result = engine
-        .call_fn::<Dynamic>(&mut scope, &ast, &task.entrypoint, (dynamic_from_json(context),))
+        .call_fn::<Dynamic>(
+            &mut scope,
+            &ast,
+            &task.entrypoint,
+            (dynamic_from_json(context),),
+        )
         .map_err(|err| format!("plugin task failed: {err}"))?;
     Ok(json_from_dynamic(result))
 }

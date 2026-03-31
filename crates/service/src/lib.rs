@@ -112,8 +112,7 @@ pub use lifecycle::startup::{start_one_shot_server, start_server, ServerHandle};
 
 #[cfg(test)]
 pub(crate) fn test_env_guard() -> std::sync::MutexGuard<'static, ()> {
-    static TEST_ENV_MUTEX: std::sync::OnceLock<std::sync::Mutex<()>> =
-        std::sync::OnceLock::new();
+    static TEST_ENV_MUTEX: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     TEST_ENV_MUTEX
         .get_or_init(|| std::sync::Mutex::new(()))
         .lock()

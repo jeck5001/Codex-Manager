@@ -1,7 +1,7 @@
 use codexmanager_core::storage::{Account, Storage, Token};
-use reqwest::Client;
 use reqwest::header::HeaderMap;
 use reqwest::header::CONTENT_TYPE;
+use reqwest::Client;
 use reqwest::Method;
 use reqwest::StatusCode;
 use std::future::Future;
@@ -168,7 +168,10 @@ async fn read_response_text(resp: reqwest::Response, timeout: Duration) -> Resul
     }
 }
 
-async fn read_response_bytes(resp: reqwest::Response, timeout: Duration) -> Result<Vec<u8>, String> {
+async fn read_response_bytes(
+    resp: reqwest::Response,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
     match tokio::time::timeout(timeout, resp.bytes()).await {
         Ok(Ok(body)) => Ok(body.to_vec()),
         Ok(Err(err)) => Err(err.to_string()),

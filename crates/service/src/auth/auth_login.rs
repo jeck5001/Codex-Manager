@@ -8,7 +8,8 @@ use crate::auth_callback::{ensure_login_server, resolve_redirect_uri};
 use crate::storage_helpers::open_storage;
 
 fn is_device_login_type(login_type: &str) -> bool {
-    login_type.eq_ignore_ascii_case("chatgptDeviceCode") || login_type.eq_ignore_ascii_case("device")
+    login_type.eq_ignore_ascii_case("chatgptDeviceCode")
+        || login_type.eq_ignore_ascii_case("device")
 }
 
 fn is_supported_chatgpt_login_type(login_type: &str) -> bool {

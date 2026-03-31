@@ -289,9 +289,7 @@ fn anthropic_messages_default_tool_choice_is_auto() {
     }));
 
     assert_eq!(
-        value
-            .get("tool_choice")
-            .and_then(serde_json::Value::as_str),
+        value.get("tool_choice").and_then(serde_json::Value::as_str),
         Some("auto")
     );
 }
