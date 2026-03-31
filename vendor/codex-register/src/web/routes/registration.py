@@ -7,7 +7,7 @@ import logging
 import uuid
 import random
 from datetime import datetime
-from typing import Callable, List, Optional, Dict, Tuple
+from typing import Awaitable, Callable, List, Optional, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
@@ -28,6 +28,7 @@ router = APIRouter()
 running_tasks: dict = {}
 # 批量任务存储
 batch_tasks: Dict[str, dict] = {}
+RECOVERY_RESUME_CONCURRENCY = 3
 
 
 # ============== Proxy Helper Functions ==============
@@ -469,6 +470,25 @@ def _recover_interrupted_registration_tasks(
                 summary["failed_pending"] += 1
 
     return summary
+
+
+async def resume_recovered_registration_tasks(
+    task_specs: List[Tuple[str, str, Optional[str], Optional[int]]],
+    runner: Callable[[str, str, Optional[str], Optional[int]], Awaitable[None]],
+    concurrency: int = RECOVERY_RESUME_CONCURRENCY,
+) -> None:
+    """按受控并发恢复启动后遗留的 pending 注册任务。"""
+    if not task_specs:
+        return
+
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def _run_one(task_spec: Tuple[str, str, Optional[str], Optional[int]]) -> None:
+        task_uuid, email_service_type, proxy, email_service_id = task_spec
+        async with semaphore:
+            await runner(task_uuid, email_service_type, proxy, email_service_id)
+
+    await asyncio.gather(*[_run_one(task_spec) for task_spec in task_specs], return_exceptions=True)
 
 
 def _build_retry_runtime_config(task: RegistrationTask, strategy: Optional[str]) -> dict:

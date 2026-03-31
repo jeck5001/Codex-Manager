@@ -216,6 +216,34 @@ class RegistrationRecoveryTests(unittest.TestCase):
             any(task_uuid == "running-1" and status == "failed" for task_uuid, status, _kwargs in status_updates)
         )
 
+    def test_resume_recovered_registration_tasks_limits_concurrency(self):
+        task_specs = [
+            ("task-1", "temp_mail", None, None),
+            ("task-2", "temp_mail", None, None),
+            ("task-3", "temp_mail", None, None),
+            ("task-4", "temp_mail", None, None),
+        ]
+        active = 0
+        max_active = 0
+
+        async def runner(task_uuid, email_service_type, proxy, email_service_id):
+            nonlocal active, max_active
+            self.assertEqual(email_service_type, "temp_mail")
+            active += 1
+            max_active = max(max_active, active)
+            await __import__("asyncio").sleep(0.01)
+            active -= 1
+
+        __import__("asyncio").run(
+            REGISTRATION_MODULE.resume_recovered_registration_tasks(
+                task_specs,
+                runner,
+                concurrency=2,
+            )
+        )
+
+        self.assertEqual(max_active, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
