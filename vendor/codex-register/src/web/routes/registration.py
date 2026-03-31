@@ -7,7 +7,7 @@ import logging
 import uuid
 import random
 from datetime import datetime
-from typing import List, Optional, Dict, Tuple
+from typing import Callable, List, Optional, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
