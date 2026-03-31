@@ -43,6 +43,10 @@ import {
 } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { accountClient } from "@/lib/api/account-client";
+import {
+  buildManualImportSummary,
+  getRegisterSubmitLabel,
+} from "./register-auto-import";
 import type {
   RegisterAvailableServicesResult,
   RegisterBatchSnapshot,
@@ -235,6 +239,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   const [registerExecutionMode, setRegisterExecutionMode] =
     useState<RegisterExecutionMode>("pipeline");
   const [registerSkipRegistered, setRegisterSkipRegistered] = useState(true);
+  const [registerAutoImport, setRegisterAutoImport] = useState(true);
   const [registerSelectedOutlookIds, setRegisterSelectedOutlookIds] = useState<number[]>([]);
   const [registerTask, setRegisterTask] = useState<RegisterTaskSnapshot | null>(null);
   const [registerBatch, setRegisterBatch] = useState<RegisterBatchSnapshot | null>(null);
@@ -274,6 +279,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setRegisterConcurrency("1");
     setRegisterExecutionMode("pipeline");
     setRegisterSkipRegistered(true);
+    setRegisterAutoImport(true);
     setRegisterSelectedOutlookIds([]);
     setRegisterTask(null);
     setRegisterBatch(null);
@@ -315,6 +321,20 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
       onOpenChange(false);
     },
     [invalidateLoginQueries, onOpenChange, resetModalState],
+  );
+
+  const completeRegisterWithoutImport = useCallback(
+    async (message: string) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["register-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["register-stats"] }),
+        queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
+      ]);
+      toast.success(message);
+      resetModalState();
+      onOpenChange(false);
+    },
+    [onOpenChange, queryClient, resetModalState],
   );
 
   const waitForLogin = async (loginId: string) => {
@@ -545,6 +565,25 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     [finalizeRegisterImport],
   );
 
+  const completeRegisterEmailsWithoutImport = useCallback(
+    async (emails: string[], title: string) => {
+      const normalizedEmails = Array.from(
+        new Set(emails.map((item) => item.trim()).filter(Boolean)),
+      );
+      if (!normalizedEmails.length) {
+        setRegisterError(`${title}结束了，但没有拿到可手动入池的邮箱`);
+        setRegisterHint("");
+        setIsRegisterSubmitting(false);
+        return;
+      }
+
+      await completeRegisterWithoutImport(
+        buildManualImportSummary(title, normalizedEmails.length),
+      );
+    },
+    [completeRegisterWithoutImport],
+  );
+
   const importCompletedRegisterTask = useCallback(
     async (taskUuid: string) => {
       setIsRegisterImporting(true);
@@ -615,6 +654,41 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     [finalizeRegisterImport],
   );
 
+  const completeRegisterBatchWithoutImport = useCallback(
+    async (taskUuids: string[], title: string) => {
+      const snapshots = await Promise.all(
+        taskUuids.map(async (taskUuid) => {
+          try {
+            return await accountClient.getRegisterTask(taskUuid);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            setRegisterImportSummary((current) =>
+              current
+                ? `${current}\n${taskUuid}: ${message}`
+                : `${taskUuid}: ${message}`,
+            );
+            return null;
+          }
+        }),
+      );
+
+      const importableTasks = snapshots.filter(
+        (task): task is RegisterTaskSnapshot => Boolean(task?.canImport && task.taskUuid),
+      );
+      if (!importableTasks.length) {
+        setRegisterHint("");
+        setRegisterError(`${title}结束了，但没有成功注册出可手动入池的账号`);
+        setIsRegisterSubmitting(false);
+        return;
+      }
+
+      await completeRegisterWithoutImport(
+        buildManualImportSummary(title, importableTasks.length),
+      );
+    },
+    [completeRegisterWithoutImport],
+  );
+
   const waitForRegisterTask = useCallback(
     async (taskUuid: string) => {
       const pollToken = registerPollTokenRef.current + 1;
@@ -633,7 +707,11 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
           const status = String(snapshot.status || "").trim().toLowerCase();
           if (status === "completed") {
             if (snapshot.canImport) {
-              await importCompletedRegisterTask(snapshot.taskUuid);
+              if (registerAutoImport) {
+                await importCompletedRegisterTask(snapshot.taskUuid);
+              } else {
+                await completeRegisterWithoutImport(buildManualImportSummary("注册", 1));
+              }
               return;
             }
             setRegisterError("注册任务已完成，但未拿到可导入的账号信息");
@@ -665,7 +743,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         setIsRegisterSubmitting(false);
       }
     },
-    [importCompletedRegisterTask],
+    [completeRegisterWithoutImport, importCompletedRegisterTask, registerAutoImport],
   );
 
   const waitForRegisterBatch = useCallback(
@@ -684,10 +762,12 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
           setRegisterBatch(snapshot);
 
           if (snapshot.finished || snapshot.cancelled) {
-            await importCompletedRegisterBatch(
-              taskUuids,
-              snapshot.cancelled ? "批量注册（已取消）" : "批量注册",
-            );
+            const title = snapshot.cancelled ? "批量注册（已取消）" : "批量注册";
+            if (registerAutoImport) {
+              await importCompletedRegisterBatch(taskUuids, title);
+            } else {
+              await completeRegisterBatchWithoutImport(taskUuids, title);
+            }
             return;
           }
         } catch (err: unknown) {
@@ -706,7 +786,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         setIsRegisterSubmitting(false);
       }
     },
-    [importCompletedRegisterBatch],
+    [completeRegisterBatchWithoutImport, importCompletedRegisterBatch, registerAutoImport],
   );
 
   const waitForRegisterOutlookBatch = useCallback(
@@ -725,10 +805,12 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
           setRegisterOutlookBatch(snapshot);
 
           if (snapshot.finished || snapshot.cancelled) {
-            await importRegisterAccountsByEmail(
-              emails,
-              snapshot.cancelled ? "Outlook 批量注册（已取消）" : "Outlook 批量注册",
-            );
+            const title = snapshot.cancelled ? "Outlook 批量注册（已取消）" : "Outlook 批量注册";
+            if (registerAutoImport) {
+              await importRegisterAccountsByEmail(emails, title);
+            } else {
+              await completeRegisterEmailsWithoutImport(emails, title);
+            }
             return;
           }
         } catch (err: unknown) {
@@ -747,7 +829,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         setIsRegisterSubmitting(false);
       }
     },
-    [importRegisterAccountsByEmail],
+    [completeRegisterEmailsWithoutImport, importRegisterAccountsByEmail, registerAutoImport],
   );
 
   const handleStartLogin = async () => {
@@ -909,8 +991,12 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
       });
 
       if (!started.batchId || started.toRegister === 0) {
-        toast.success("所选 Outlook 账号已全部注册，正在直接导入");
-        await importRegisterAccountsByEmail(selectedEmails, "Outlook 批量注册");
+        if (registerAutoImport) {
+          toast.success("所选 Outlook 账号已全部注册，正在直接导入");
+          await importRegisterAccountsByEmail(selectedEmails, "Outlook 批量注册");
+        } else {
+          await completeRegisterEmailsWithoutImport(selectedEmails, "Outlook 批量注册");
+        }
         return;
       }
 
@@ -1263,7 +1349,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                 <>
                   <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                     <Mail className="h-3.5 w-3.5" />
-                    当前模式会使用已导入的 Outlook 邮箱服务逐个注册，已注册邮箱可按开关选择是否跳过注册但仍参与导入。
+                    当前模式会使用已导入的 Outlook 邮箱服务逐个注册，已注册邮箱可按开关选择是否跳过注册，结束后再按自动入池开关处理。
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -1369,6 +1455,19 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                 </>
               )}
 
+              <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">注册成功后自动入池</p>
+                  <p className="text-xs text-muted-foreground">
+                    默认开启；关闭后只创建注册结果，可在注册中心手动加入号池。
+                  </p>
+                </div>
+                <Switch
+                  checked={registerAutoImport}
+                  onCheckedChange={setRegisterAutoImport}
+                />
+              </div>
+
               {(registerMode === "batch" || registerMode === "outlook-batch") ? (
                 <div className="grid gap-4 rounded-lg border border-border/60 bg-muted/10 p-4 sm:grid-cols-2">
                   {registerMode === "batch" ? (
@@ -1460,7 +1559,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                   className="flex-1 gap-2"
                 >
                   <Sparkles className="h-4 w-4" />
-                  {isRegisterSubmitting || isRegisterImporting ? "处理中..." : "开始注册并导入"}
+                  {isRegisterSubmitting || isRegisterImporting ? "处理中..." : getRegisterSubmitLabel(registerAutoImport)}
                 </Button>
                 {(registerMode === "batch" &&
                   registerBatch &&
