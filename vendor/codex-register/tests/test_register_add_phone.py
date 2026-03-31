@@ -323,12 +323,79 @@ class RegisterAddPhoneTests(unittest.TestCase):
             "refresh_token": "refresh",
             "id_token": "id",
         }
+        engine._post_registration_health_check = lambda access_token: ("active", True, "")
 
         result = engine.run()
 
         self.assertTrue(result.success)
+        self.assertTrue(result.is_usable)
+        self.assertEqual(result.account_status, "active")
         self.assertEqual(result.workspace_id, "ws-1")
         self.assertEqual(result.account_id, "acc-1")
+
+    def test_run_marks_account_unusable_when_health_check_fails(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.logs = []
+        engine._log = lambda *_args, **_kwargs: None
+        engine._is_existing_account = False
+        engine._post_create_page_type = ""
+        engine._post_create_continue_url = ""
+        engine.password = "secret"
+        engine.proxy_url = None
+        engine.session = None
+        engine.email_service = types.SimpleNamespace(
+            service_type=types.SimpleNamespace(value="temp_mail")
+        )
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+
+        engine._check_ip_location = lambda: (True, "US")
+
+        def fake_create_email():
+            engine.email = "user@example.com"
+            return True
+
+        engine._create_email = fake_create_email
+        engine._init_session = lambda: True
+        engine._start_oauth = lambda: True
+        engine._get_device_id = lambda: "did"
+        engine._check_sentinel = lambda _did: "sentinel"
+
+        class SignupResult:
+            success = True
+            error_message = ""
+
+        engine._submit_signup_form = lambda _did, _sen: SignupResult()
+        engine._register_password = lambda: (True, "secret")
+        engine._send_verification_code = lambda: True
+        engine._wait_for_signup_verification_code = lambda: "123456"
+        engine._validate_signup_verification_code_with_retry = lambda code: True
+        engine._create_user_account = lambda: True
+        engine._get_workspace_id = lambda: "ws-1"
+        engine._select_workspace = lambda workspace_id: "https://auth.openai.com/continue"
+        engine._follow_redirects = lambda url: "http://localhost/callback?code=ok&state=state"
+        engine._handle_oauth_callback = lambda callback_url: {
+            "account_id": "acc-1",
+            "access_token": "access",
+            "refresh_token": "refresh",
+            "id_token": "id",
+        }
+        engine._post_registration_health_check = lambda access_token: (
+            "banned",
+            False,
+            "账号健康检查返回 403，疑似已受限或被封禁",
+        )
+
+        result = engine.run()
+
+        self.assertTrue(result.success)
+        self.assertFalse(result.is_usable)
+        self.assertEqual(result.account_status, "banned")
+        self.assertIn("403", result.error_message)
 
     def test_submit_login_identifier_follows_continue_url(self):
         class FakeResponse:
