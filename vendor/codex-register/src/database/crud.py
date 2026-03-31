@@ -339,6 +339,21 @@ def delete_registration_task(db: Session, task_uuid: str) -> bool:
     return True
 
 
+def delete_registration_tasks(db: Session, task_uuids: List[str]) -> int:
+    """批量删除注册任务"""
+    uuids = [str(task_uuid or "").strip() for task_uuid in task_uuids if str(task_uuid or "").strip()]
+    if not uuids:
+        return 0
+
+    deleted = (
+        db.query(RegistrationTask)
+        .filter(RegistrationTask.task_uuid.in_(uuids))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return int(deleted or 0)
+
+
 # 为 API 路由添加别名
 get_account = get_account_by_id
 get_registration_task = get_registration_task_by_uuid

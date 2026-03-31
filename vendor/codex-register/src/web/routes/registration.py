@@ -217,6 +217,11 @@ class RetryTaskRequest(BaseModel):
     )
 
 
+class BatchDeleteRegisterTasksRequest(BaseModel):
+    """批量删除注册任务"""
+    task_uuids: List[str] = Field(default_factory=list)
+
+
 def _infer_email_service_type_from_task(task: RegistrationTask) -> Optional[str]:
     """从历史任务推断邮箱服务类型。"""
     if task.email_service and task.email_service.service_type:
@@ -368,6 +373,37 @@ def _merge_runtime_email_service_config(
     if runtime_config:
         merged.update(runtime_config)
     return merged
+
+
+def _delete_register_tasks(db, task_uuids: List[str]) -> Dict[str, object]:
+    """批量删除注册任务，并返回成功/失败明细。"""
+    deleted_count = 0
+    errors: List[Dict[str, str]] = []
+
+    for raw_task_uuid in task_uuids:
+        task_uuid = str(raw_task_uuid or "").strip()
+        if not task_uuid:
+            continue
+
+        task = crud.get_registration_task(db, task_uuid)
+        if not task:
+            errors.append({"task_uuid": task_uuid, "error": "任务不存在"})
+            continue
+
+        if str(getattr(task, "status", "") or "").strip().lower() == "running":
+            errors.append({"task_uuid": task_uuid, "error": "无法删除运行中的任务"})
+            continue
+
+        if crud.delete_registration_task(db, task_uuid):
+            deleted_count += 1
+        else:
+            errors.append({"task_uuid": task_uuid, "error": "删除失败"})
+
+    return {
+        "deleted_count": deleted_count,
+        "failed_count": len(errors),
+        "errors": errors,
+    }
 
 
 def _build_retry_runtime_config(task: RegistrationTask, strategy: Optional[str]) -> dict:
@@ -1157,6 +1193,27 @@ async def delete_task(task_uuid: str):
         crud.delete_registration_task(db, task_uuid)
 
         return {"success": True, "message": "任务已删除"}
+
+
+@router.post("/tasks/batch-delete")
+async def batch_delete_tasks(request: BatchDeleteRegisterTasksRequest):
+    """批量删除任务"""
+    task_uuids = [
+        str(task_uuid or "").strip()
+        for task_uuid in request.task_uuids
+        if str(task_uuid or "").strip()
+    ]
+    if not task_uuids:
+        raise HTTPException(status_code=400, detail="task_uuids 不能为空")
+
+    with get_db() as db:
+        result = _delete_register_tasks(db, task_uuids)
+        return {
+            "success": result["failed_count"] == 0,
+            "deleted_count": result["deleted_count"],
+            "failed_count": result["failed_count"],
+            "errors": result["errors"],
+        }
 
 
 @router.get("/stats")
