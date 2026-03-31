@@ -10,15 +10,22 @@
   <a href="README.en.md">English</a>|
   <a href="https://github.com/qxcnm/Codex-Manager">GitHub 主仓库</a>|
   <a href="https://qxnm.top">官网</a>|
-  <a href="#赞助支持">赞助支持</a>
+  <a href="#赞助商">赞助商</a>
 </p>
 
 <p align="center"><strong>本地桌面端 + 服务进程的 Codex 账号池管理器</strong></p>
 <p align="center">统一管理账号、用量与平台 Key，并提供本地网关能力。</p>
 
-## Star 曲线
-<p align="center">
-  <img src="assets/images/star-history.png" alt="Star 曲线" width="900" />
+## 认可社区
+<p align="left">
+  <a href="https://linux.do/t/topic/1688401" title="LINUX DO">
+    <img
+      src="https://cdn3.linux.do/original/4X/d/1/4/d146c68151340881c884d95e0da4acdf369258c6.png"
+      alt="LINUX DO"
+      width="100"
+      hight="100"
+    />
+  </a>
 </p>
 
 ## 源码说明：
@@ -36,6 +43,32 @@
 - 作者不提供或分发任何账号、API Key 或代理服务，也不对本软件的具体使用方式负责。
 
 - 请勿使用本项目绕过速率限制或服务限制。
+
+## 赞助商
+
+感谢以下朋友与伙伴对 CodexManager 的支持。
+末端夏：感谢提供 token 支持。他的 GPT 卡网支持自助购买、自助兑换激活，稳定不到车，带质保，支持 Codex 5.4。官网：[https://www.aixiamo.com/](https://www.aixiamo.com/)
+ [Wonderdch](https://github.com/Wonderdch)、 Catch_Bat、 [suxinwl](https://github.com/suxinwl)、 Hermit、 [Suifeng023](https://github.com/Suifeng023)、 [HK-hub](https://github.com/HK-hub)
+
+
+## ☕ 支持项目 (Support)
+
+如果您觉得本项目对您有所帮助，欢迎打赏作者！
+<table>
+  <tr>
+    <th>支付宝 (Alipay)</th>
+    <th>微信支付 (WeChat)</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/images/AliPay.jpg" alt="支付宝赞助码" width="220" /></td>
+    <td align="center"><img src="assets/images/wechatPay.jpg" alt="微信赞助码" width="220" /></td>
+  </tr>
+</table>
+
+## Star 曲线
+<p align="center">
+  <img src="assets/images/star-history.png" alt="Star 曲线" width="900" />
+</p>
 
 ## 首页导览
 | 你要做什么 | 直接进入 |
@@ -159,33 +192,7 @@
 
 - Codex（OpenAI）：本项目在请求链路、登录语义与上游兼容行为上参考了该项目的实现与源码结构 <https://github.com/openai/codex>
 
-## 认可社区
-<p align="left">
-  <a href="https://linux.do/t/topic/1688401" title="LINUX DO">
-    <img
-      src="https://cdn3.linux.do/original/4X/d/1/4/d146c68151340881c884d95e0da4acdf369258c6.png"
-      alt="LINUX DO"
-      width="100"
-      hight="100"
-    />
-  </a>
-</p>
 
-## 赞助支持
-
-感谢每一位支持 CodexManager 的朋友。因为有你们的赞助与捐赠，项目才能持续迭代、稳定维护。
-
-特别感谢方木木、[Wonderdch](https://github.com/Wonderdch)、Catch_Bat 对项目的支持。
-
-- 方木木：感谢提供 token 支持。他的 GPT 卡网支持自助购买、自助兑换激活，稳定不到车，质保 30 天，支持 Codex 5.4。官网：[https://www.aixiamo.com/](https://www.aixiamo.com/)
-- 捐赠鸣谢：[Wonderdch](https://github.com/Wonderdch)、Catch_Bat
-
-如果这个项目对你有帮助，欢迎请作者喝杯咖啡，支持后续维护与更新。
-
-<p align="left">
-  <img src="assets/images/wechatPay.jpg" alt="微信赞助码" width="180" />
-  <img src="assets/images/AliPay.jpg" alt="支付宝赞助码" width="180" />
-</p>
 
 ## 联系方式
 - 公众号：七线牛马

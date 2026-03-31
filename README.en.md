@@ -4,158 +4,23 @@
 
 <h1 align="center">CodexManager</h1>
 
-<p align="center">A local desktop + service toolkit for Codex-compatible account and gateway management.</p>
+<p align="center">A local desktop app + service process manager and gateway relay for Codex accounts.</p>
 
 <p align="center">
-  <a href="README.en.md">中文</a>|
-  <a href="https://github.com/qxcnm/Codex-Manager">GitHub Repo</a>|
+  <a href="README.md">中文</a>|
+  <a href="https://github.com/qxcnm/Codex-Manager">GitHub Main Repository</a>|
   <a href="https://qxnm.top">Official Website</a>|
-  <a href="#sponsor">Sponsor</a>
+  <a href="#sponsors">Sponsors</a>
 </p>
 
-A local desktop + service toolkit for managing Codex-compatible accounts, usage, platform keys, and a built-in local gateway.
-
-## Star Chart
-<p align="center">
-  <img src="assets/images/star-history.png" alt="Star Chart" width="900" />
-</p>
-
-## Source Code Description:
-> This product is completely by my command + AI to build Codex (98%) Gemini (2%) If the use of the process of generating problems please friendly exchanges, because the open source just think that someone can use, the basic function is no problem, do not like do not spray.
-> Secondly, I do not have enough environment to verify that each package has no problem, I have to go to work (I'm just a poor bastard can not afford to buy macs and so on), I only guarantee the availability of Win desktop, if there are problems with the other end, please feedback in the exchange group or submit the Issues after sufficient testing, I will deal with it when I have time.
-> Finally, I would like to thank all the users in the A-flow group for their feedback on the various platforms and their participation in some of the tests. 
-
-
-## Disclaimer
-
-- This project is for learning and development purposes only.
-
-- Users must comply with the terms of service of all relevant platforms (e.g., OpenAI, Anthropic).
-
-- The author does not provide or distribute any accounts, API keys, or proxy services, and is not responsible for how this software is used.
-
-- Do not use this project to bypass rate limits or service restrictions
-
-## Landing Guide
-| What you want to do | Go here |
-| --- | --- |
-| First launch, deployment, Docker, macOS allowlist | [Runtime and deployment guide](docs/report/运行与部署指南.md) |
-| Configure port, proxy, database, Web password, environment variables | [Environment variables and runtime config](docs/report/环境变量与运行配置说明.md) |
-| Troubleshoot account selection, import failures, challenge blocks, request issues | [FAQ and account-hit rules](docs/report/FAQ与账号命中规则.md) |
-| Fast plugin-center integration and minimal onboarding | [Plugin center minimal integration guide](docs/report/插件中心最小接入说明.md) |
-| Integrate the plugin center, API list, market modes, and Rhai interfaces | [Plugin center integration and interface list](docs/report/插件中心对接与接口清单.md) |
-| Full internal interface inventory | [System internal interface inventory](docs/report/系统内部接口总表.md) |
-| Build locally, package, publish, run scripts | [Build, release, and script guide](docs/release/构建发布与脚本说明.md) |
-
-## Recent Changes
-  - Current latest version: `v0.1.14` (2026-03-30)
-  - This release focuses on two main lines: a more resilient service and cleaner integration. The ingress path now uses short queue waits plus fast overload degradation, and the Settings page adds System Derive plus a single-account concurrency limit so the service can queue first and degrade instead of getting stuck.
-  - Plugin-center onboarding and documentation were tightened up: the README now includes a plugin-center preview image, and the minimal integration guide, full interface list, and system internal interface inventory are all up to date.
-  - Long-lived docs were normalized by removing date prefixes, and README/docs links were switched to stable filenames for easier maintenance.
-  - Scheduled cleanup is now exposed from the Accounts page and defaults to once per minute, while users can still customize the interval.
-  - The release pipeline is fully aligned to `0.1.14` across the workspace, frontend package, Tauri desktop app, validation scripts, and README version notes.
-
-### Recent Commit Highlights
-- `8c9299f`: bump the release version to `0.1.14`, aligning the workspace, frontend package, Tauri desktop app, and release checks.
-- `85022b9`: improve high-concurrency protection and docs. The ingress path now uses short queue waits plus fast overload degradation, and the Settings page adds System Derive plus a single-account concurrency limit.
-- `a6a96d6`: add a plugin-center preview image to the README. Both the Chinese and English README screenshot sections now include `plugin.png`.
-- `ec03f2c`: remove date prefixes from long-lived docs. Long-term documents now use stable filenames, and README links were updated accordingly.
-- `927142a`: adjust the default interval for the scheduled script. The cleanup script now runs every minute by default, while users can still customize it.
-- `028c8c8`: add the scheduled-script entry and the internal interface inventory. The Accounts page now exposes the scheduled-script action, and the docs include the full system interface list.
-- `885edd0`: improve plugin-center docs and onboarding. The minimal integration guide and the full interface list are both completed.
-
-## Features
-- Account pool management: groups, tags, sorting, notes, banned detection, and banned filtering
-- Bulk import / export: multi-file import, recursive desktop folder import for JSON, one-file-per-account export
-- Usage dashboard: 5-hour + 7-day windows, plus accounts that only expose a 7-day window, with per-window reset timestamps
-- OAuth login: browser flow + manual callback parsing
-- Platform keys: create, disable, delete, model binding, reasoning effort, and service tier overrides (`Follow Request` / `Fast` / `Flex`)
-- Aggregate API: manage third-party minimal upstream relays with create/edit, connection testing, supplier name, sort priority, and `Codex / Claude` categorization
-- Settings page concurrency controls: a System Derive button, a single-account concurrency limit, and a short-queue overload-degradation path
-- Plugin center minimal integration: route `/plugins/`, builtin/private/custom market modes, and the smallest manifest/RPC/Rhai contract for quick onboarding
-- Plugin center: route `/plugins/`, supports builtin curated, private, and custom market modes, with plugin manifests, tasks, logs, and Rhai integration
-- System internal interface inventory: a single place for desktop commands, RPC methods, and plugin built-ins
-- Local service with configurable port and listen address
-- Local OpenAI-compatible gateway for CLI and third-party tools
-
-## Screenshots
-![Dashboard](assets/images/dashboard.png)
-![Accounts](assets/images/accounts.png)
-![Platform Key](assets/images/platform-key.png)
-![Aggregate API](assets/images/aggregate-api.png)
-![Plugin Center](assets/images/plug.png)
-![Logs](assets/images/log.png)
-![Settings](assets/images/themes.png)
-
-## Quick Start
-1. Launch the desktop app and click `Start Service`.
-2. Go to Accounts, add an account, and complete authorization.
-3. If callback parsing fails, paste the callback URL manually.
-4. Refresh usage and confirm the account status.
-
-## Page Overview
-### Desktop
-- Accounts: bulk import/export, refresh accounts and usage, plus low-quota / banned filters and reset-time display
-- Platform Keys: bind keys by model, reasoning effort, and service tier, then inspect request logs
-- Plugin center minimal integration: `/plugins/` route, smallest plugin manifest, RPC surface, and Rhai built-ins
-- Plugin center: `/plugins/` route, builtin/private/custom market switching, plugin install/enable/disable, tasks, logs, and Rhai integration
-- Settings: manage ports, listen address, proxy, theme, auto-update, background behavior, and concurrency tuning
-
-### Service Edition
-- `codexmanager-service`: local OpenAI-compatible gateway
-- `codexmanager-web`: browser-based management UI
-- `codexmanager-start`: one command to launch service + web
-
-## Core Docs
-- Version history: [CHANGELOG.md](CHANGELOG.md)
-- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
-- Testing baseline: [TESTING.md](TESTING.md)
-- Security: [SECURITY.md](SECURITY.md)
-- Docs index: [docs/README.md](docs/README.md)
-
-## Topic Pages
-| Page | Content |
-| --- | --- |
-| [Runtime and deployment guide](docs/report/运行与部署指南.md) | First launch, Docker, Service edition, macOS allowlist |
-| [Environment variables and runtime config](docs/report/环境变量与运行配置说明.md) | App config, proxy, listen address, database, Web security |
-| [FAQ and account-hit rules](docs/report/FAQ与账号命中规则.md) | Account hit logic, challenge blocks, import/export, common issues |
-| [Minimal troubleshooting guide](docs/report/最小排障手册.md) | Fast path for service startup, forwarding, and model refresh issues |
-| [Plugin center minimal integration guide](docs/report/插件中心最小接入说明.md) | Plugin center minimal manifest, RPC surface, and Rhai built-ins |
-| [Plugin center integration and interface list](docs/report/插件中心对接与接口清单.md) | Plugin center route, market modes, Tauri/RPC interfaces, manifest fields, Rhai built-ins |
-| [System internal interface inventory](docs/report/系统内部接口总表.md) | Desktop commands, service RPC methods, and plugin built-ins |
-| [Build, release, and script guide](docs/release/构建发布与脚本说明.md) | Local build, Tauri packaging, Release workflow, script flags |
-| [Release assets guide](docs/release/发布与产物说明.md) | Platform artifacts, naming, release vs pre-release |
-| [Script and release responsibility matrix](docs/report/脚本与发布职责对照.md) | Which script owns which step |
-| [Protocol regression checklist](docs/report/协议兼容回归清单.md) | `/v1/chat/completions`, `/v1/responses`, tools regression items |
-| [CHANGELOG.md](CHANGELOG.md) | Latest release notes, unreleased changes, and full version history |
-
-## Project Structure
-```text
-.
-├─ apps/                # Frontend and Tauri desktop app
-│  ├─ src/
-│  ├─ src-tauri/
-│  └─ dist/
-├─ crates/              # Rust core/service crates
-│  ├─ core
-│  ├─ service
-│  ├─ start              # Service starter (launches service + web)
-│  └─ web                # Service Web UI (optional embedded assets + /api/rpc proxy)
-├─ docs/                # Formal project documentation
-├─ scripts/             # Build and release scripts
-└─ README.en.md
-```
-
-## Acknowledgements And References
-
-- Codex (OpenAI): this project references its implementation and source layout for request-path behavior, login semantics, and upstream compatibility <https://github.com/openai/codex>
+<p align="center"><strong>A local desktop app + service process account pool manager for Codex</strong></p>
+<p align="center">Manage accounts, usage, and platform keys in one place, with a built-in local gateway.</p>
 
 ## Recognized Community
-<p align="center">
+<p align="left">
   <a href="https://linux.do/t/topic/1688401" title="LINUX DO">
     <img
-      src="https://cdn3.linux.do/original/4X/d/1/4/d146c68151340881c884d95e0da4acdf369258c6.png?style=for-the-badge&logo=discourse&logoColor=white"
+      src="https://cdn3.linux.do/original/4X/d/1/4/d146c68151340881c884d95e0da4acdf369258c6.png"
       alt="LINUX DO"
       width="100"
       hight="100"
@@ -163,26 +28,174 @@ A local desktop + service toolkit for managing Codex-compatible accounts, usage,
   </a>
 </p>
 
-## Sponsor
+## Source Notes
+> This project was built under my direction with AI assistance: Codex (98%) and Gemini (2%). If you run into issues while using it, please communicate in a friendly way. I open-sourced it because I thought it could help someone, and the core functionality is already usable.
+> I also do not have enough environments to verify every package on every platform. I still have a day job, and I cannot afford devices like Macs, so I only guarantee availability for the Windows desktop app. If there are issues on other platforms, please report them in the community group or submit Issues after sufficient testing. I will handle them when I have time.
+> Finally, thanks to everyone who reported platform-specific issues in the group and helped with part of the testing.
 
-Thanks to everyone supporting CodexManager. Your sponsorship and donations help keep the project actively maintained and steadily improved.
+## Disclaimer
 
-Special thanks to Fang Mumu, [Wonderdch](https://github.com/Wonderdch), and Catch_Bat for their support.
+- This project is for learning and development purposes only.
 
-- Fang Mumu: thanks for providing token support for the project. His GPT card service supports self-service purchase and activation, offers stable access, a 30-day guarantee, and support for Codex 5.4. Website: [https://www.aixiamo.com/](https://www.aixiamo.com/)
-- Donation acknowledgements: [Wonderdch](https://github.com/Wonderdch), Catch_Bat
+- Users must comply with the terms of service of the relevant platforms, such as OpenAI and Anthropic.
 
-If this project helps you, you are welcome to support its ongoing maintenance and updates.
+- The author does not provide or distribute any accounts, API keys, or proxy services, and is not responsible for specific usage of this software.
 
-<p align="left">
-  <img src="assets/images/wechatPay.jpg" alt="WeChat sponsor QR code" width="180" />
-  <img src="assets/images/AliPay.jpg" alt="Alipay sponsor QR code" width="180" />
+- Do not use this project to bypass rate limits or service restrictions.
+
+## Sponsors
+
+Thanks to the following friends and partners for supporting CodexManager.
+Mo Duan Xia: thank you for providing token support. The GPT card service supports self-service purchase and activation, offers stable availability, includes a guarantee, and supports Codex 5.4. Website: [https://www.aixiamo.com/](https://www.aixiamo.com/)
+[Wonderdch](https://github.com/Wonderdch), Catch_Bat, [suxinwl](https://github.com/suxinwl), Hermit, [Suifeng023](https://github.com/Suifeng023), [HK-hub](https://github.com/HK-hub)
+
+## ☕ Support the Project (Support)
+
+If this project has been helpful to you, you are welcome to support the author.
+<table>
+  <tr>
+    <th>Alipay</th>
+    <th>WeChat</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/images/AliPay.jpg" alt="Alipay sponsor QR code" width="220" /></td>
+    <td align="center"><img src="assets/images/wechatPay.jpg" alt="WeChat sponsor QR code" width="220" /></td>
+  </tr>
+</table>
+
+## Star History
+<p align="center">
+  <img src="assets/images/star-history.png" alt="Star History" width="900" />
 </p>
 
-## Contact Information
-- Official Account: 七线牛马
+## Navigation
+| What You Want To Do | Go Directly To |
+| --- | --- |
+| First launch, deployment, Docker, macOS allowlisting | [Runtime and Deployment Guide](docs/report/运行与部署指南.md) |
+| Configure ports, proxy, database, Web password, and environment variables | [Environment Variables and Runtime Configuration](docs/report/环境变量与运行配置说明.md) |
+| Troubleshoot account matching, import failures, challenge interception, and request errors | [FAQ and Account Matching Rules](docs/report/FAQ与账号命中规则.md) |
+| Troubleshoot why scheduled tasks skip accounts or why accounts are disabled | [Scheduled Task Account Skip Notes](docs/report/后台任务账号跳过说明.md) |
+| Minimal plugin center integration and quick onboarding | [Plugin Center Minimal Integration Guide](docs/report/插件中心最小接入说明.md) |
+| Integrate with the plugin center, view interface lists, market modes, and Rhai interfaces | [Plugin Center Integration and Interface Inventory](docs/report/插件中心对接与接口清单.md) |
+| View all internal interfaces exposed by the system | [System Internal Interface Inventory](docs/report/系统内部接口总表.md) |
+| Build locally, package, release, and run scripts | [Build, Release, and Script Guide](docs/release/构建发布与脚本说明.md) |
+
+## Recent Changes
+  - Current latest version: `v0.1.14` (2026-03-30)
+  - This release closes out around two main goals: a more stable service and easier integration. The ingress layer now adds short queue waiting plus fast overload degradation, and the Settings page adds `System Derive` and `Single-account concurrency limit`, so any machine can queue first and degrade more safely instead of getting dragged down.
+  - Plugin center support and integration docs continue to improve: the README now includes a plugin center preview image, and the minimal integration guide, full interface inventory, and system internal interface inventory are all in place, making external integration easier.
+  - Long-term documentation has been normalized by removing date prefixes, and links in the README and docs have been updated to stable filenames for easier maintenance.
+  - The scheduled script entry is now exposed on the Accounts page and runs once per minute by default, while users can still adjust it manually. The system internal interface inventory was also added to help hosts and plugins integrate.
+  - This round of release alignment is also complete: the workspace, frontend package, Tauri desktop app, validation scripts, and README version notes have all been unified to `0.1.14`.
+
+### Recent Commit Summary
+- `8c9299f`: bumped the release version to `0.1.14`, aligning the workspace, frontend package, Tauri desktop app, and release validation scripts.
+- `85022b9`: improved high-concurrency protection and documentation. The ingress layer now uses short queue waiting plus fast overload degradation, and the Settings page adds `System Derive` and a single-account concurrency limit.
+- `a6a96d6`: added a plugin center preview image to the README. Both Chinese and English screenshot sections now include `plugin.png`.
+- `ec03f2c`: removed date prefixes from long-term docs. Long-lived documents now use stable filenames, and multiple README links were updated accordingly.
+- `927142a`: adjusted the default interval for the scheduled script. It now runs once per minute by default, while users can still customize it.
+- `028c8c8`: added the scheduled script entry and the internal interface inventory. The Accounts page now includes the scheduled script entry, and docs now include the system interface inventory.
+- `885edd0`: improved plugin center docs and onboarding. The minimal integration guide and full interface inventory are now complete.
+
+## Feature Overview
+- Account pool management: groups, tags, sorting, notes, ban detection, and banned-account filtering
+- Bulk import / export: supports multi-file import, recursive JSON folder import on desktop, and single-file export per account
+- Usage display: supports both 5-hour + 7-day dual windows and accounts that only return a 7-day single window, with the corresponding reset times shown
+- Authorized login: browser authorization plus manual callback parsing
+- Platform keys: create, disable, delete, model binding, reasoning effort, and service tier (`Follow Request` / `Fast` / `Flex`)
+- Aggregate API: manage third-party minimal relay upstreams, with create, edit, connectivity testing, provider name, sort priority, and grouped display by Codex / Claude
+- Plugin center: route at `/plugins/`, supports built-in curated, enterprise private, and custom-source market modes, and provides plugin lists, tasks, logs, and Rhai integration interfaces
+- Settings page: supports the `System Derive` button, single-account concurrency limit, and a more conservative high-concurrency degradation strategy
+- System internal interface inventory: lists all currently available desktop commands, service RPC methods, and plugin built-in functions
+- Local service: auto-start, customizable port, and listen address
+- Local gateway: provides one unified OpenAI-compatible endpoint for CLI tools and third-party tooling
+
+## Screenshots
+![Dashboard](assets/images/dashboard.png)
+![Account Management](assets/images/accounts.png)
+![Platform Keys](assets/images/platform-key.png)
+![Aggregate API](assets/images/aggregate-api.png)
+![Plugin Center](assets/images/plug.png)
+![Log View](assets/images/log.png)
+![Settings](assets/images/themes.png)
+
+## Quick Start
+1. Launch the desktop app and click `Start Service`.
+2. Go to `Account Management`, add an account, and complete authorization.
+3. If callback parsing fails, paste the callback URL to complete parsing manually.
+4. Refresh usage and confirm the account status.
+
+## Default Data Directory
+- By default, the desktop app writes the SQLite database to the app data directory, with the fixed filename `codexmanager.db`.
+- Windows: `%APPDATA%\\com.codexmanager.desktop\\codexmanager.db`
+- macOS: `~/Library/Application Support/com.codexmanager.desktop/codexmanager.db`
+- Linux: `~/.local/share/com.codexmanager.desktop/codexmanager.db`
+- If you need to adjust the database, proxy, listen address, or other runtime configuration, continue with [Environment Variables and Runtime Configuration](docs/report/环境变量与运行配置说明.md).
+
+## Page Overview
+### Desktop App
+- Account Management: centrally import, export, and refresh accounts and usage, with low-quota / banned filters and reset-time display
+- Platform Keys: bind platform keys by model, reasoning effort, and service tier, and view invocation logs
+- Plugin Center: `/plugins/` route with built-in curated / enterprise private / custom-source market switching, plugin install, enable/disable, tasks, logs, and Rhai integration
+- Settings: centrally manage ports, listen address, proxy, theme, auto-update, and background behavior
+
+### Service Edition
+- `codexmanager-service`: provides a local OpenAI-compatible gateway
+- `codexmanager-web`: provides a browser management interface
+- `codexmanager-start`: launches service + web with one command
+
+## Common Documents
+- Version history: [CHANGELOG.md](CHANGELOG.md)
+- Collaboration guidelines: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Architecture notes: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Testing baseline: [TESTING.md](TESTING.md)
+- Security notes: [SECURITY.md](SECURITY.md)
+- Documentation index: [docs/README.md](docs/README.md)
+
+## Topic Pages
+| Page | Content |
+| --- | --- |
+| [Runtime and Deployment Guide](docs/report/运行与部署指南.md) | First launch, Docker, Service edition, macOS allowlisting |
+| [Environment Variables and Runtime Configuration](docs/report/环境变量与运行配置说明.md) | App configuration, proxy, listen address, database, Web security |
+| [FAQ and Account Matching Rules](docs/report/FAQ与账号命中规则.md) | Account matching, challenge interception, import/export, common exceptions |
+| [Scheduled Task Account Skip Notes](docs/report/后台任务账号跳过说明.md) | Background task filtering, disabled accounts, and reasons why a workspace is deactivated |
+| [Minimal Troubleshooting Guide](docs/report/最小排障手册.md) | Quickly locate service startup, request forwarding, and model refresh issues |
+| [Plugin Center Integration and Interface Inventory](docs/report/插件中心对接与接口清单.md) | Plugin center routes, market modes, Tauri/RPC interfaces, manifest fields, and Rhai built-ins |
+| [Build, Release, and Script Guide](docs/release/构建发布与脚本说明.md) | Local build, Tauri packaging, release workflow, and script parameters |
+| [Release and Artifact Notes](docs/release/发布与产物说明.md) | Release artifacts for each platform, naming, and pre-release status |
+| [Script and Release Responsibility Mapping](docs/report/脚本与发布职责对照.md) | What each script is responsible for and which one to use in each scenario |
+| [Protocol Compatibility Regression Checklist](docs/report/协议兼容回归清单.md) | Regression items for `/v1/chat/completions`, `/v1/responses`, and tools |
+| [Current Gateway vs Codex Header and Parameter Differences](docs/report/当前网关与Codex请求头和参数差异表.md) | Comparison of current gateway parameter passing, request headers, and request parameters against Codex |
+| [System Internal Interface Inventory](docs/report/系统内部接口总表.md) | All internal interfaces exposed by the desktop app, service, and plugin center |
+| [CHANGELOG.md](CHANGELOG.md) | Latest release notes, unreleased updates, and full version history |
+
+## Directory Structure
+```text
+.
+├─ apps/                # Frontend and Tauri desktop app
+│  ├─ src/
+│  ├─ src-tauri/
+│  └─ dist/
+├─ crates/              # Rust core/service
+│  ├─ core
+│  ├─ service
+│  ├─ start              # One-click starter for the Service edition (launches service + web)
+│  └─ web                # Service edition Web UI (can embed static assets + /api/rpc proxy)
+├─ docs/                # Official documentation
+├─ scripts/             # Build and release scripts
+└─ README.md
+```
+
+## Acknowledgements and Reference Projects
+
+- Codex (OpenAI): this project references its implementation and source structure for request flows, login semantics, and upstream compatibility behavior <https://github.com/openai/codex>
+
+## Contact
+- WeChat Official Account: 七线牛马
 - WeChat: ProsperGao
-- Telegram group: [CodexManager TG Group](https://t.me/+OdpFa9GvjxhjMDhl)
-- Community Group:
+
+- Community group answer: the project name, `CodexManager`
 
   <img src="assets/images/qq_group.jpg" alt="Community Group QR Code" width="280" />
+
+- Telegram Group: [CodexManager TG Group](https://t.me/+OdpFa9GvjxhjMDhl)
