@@ -95,7 +95,7 @@ runs:
 
     - name: Cache pnpm store
       if: ${{ inputs.enable-pnpm-cache == 'true' }}
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ steps.pnpm-cache.outputs.store-path }}
         key: ${{ runner.os }}-pnpm-${{ inputs.node-version }}-${{ inputs.pnpm-version }}-${{ steps.pnpm-cache.outputs.cache-key }}
