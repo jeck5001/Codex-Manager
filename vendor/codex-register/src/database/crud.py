@@ -294,6 +294,27 @@ def get_registration_tasks(
     return query.all()
 
 
+def get_registration_tasks_by_statuses(
+    db: Session,
+    statuses: List[str],
+) -> List[RegistrationTask]:
+    """根据多个状态获取注册任务"""
+    normalized_statuses = [
+        str(status or "").strip()
+        for status in statuses
+        if str(status or "").strip()
+    ]
+    if not normalized_statuses:
+        return []
+
+    return (
+        db.query(RegistrationTask)
+        .filter(RegistrationTask.status.in_(normalized_statuses))
+        .order_by(asc(RegistrationTask.created_at))
+        .all()
+    )
+
+
 def update_registration_task(
     db: Session,
     task_uuid: str,
