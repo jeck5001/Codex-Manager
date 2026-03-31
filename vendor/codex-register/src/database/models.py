@@ -107,6 +107,8 @@ class RegistrationTask(Base):
     task_uuid = Column(String(36), unique=True, nullable=False, index=True)  # 任务唯一标识
     status = Column(String(20), default='pending')  # 'pending', 'running', 'completed', 'failed', 'cancelled'
     email_service_id = Column(Integer, ForeignKey('email_services.id'), index=True)  # 使用的邮箱服务
+    register_mode = Column(String(50), default='standard', nullable=False)  # 'standard', 'browserbase_ddg'
+    browserbase_config_id = Column(Integer, ForeignKey('browserbase_configs.id'), index=True)
     proxy = Column(String(255))  # 使用的代理
     logs = Column(Text)  # 注册过程日志
     result = Column(JSONEncodedDict)  # 注册结果
@@ -117,6 +119,7 @@ class RegistrationTask(Base):
 
     # 关系
     email_service = relationship('EmailService')
+    browserbase_config = relationship('BrowserbaseConfig')
 
 
 class Setting(Base):
@@ -127,6 +130,20 @@ class Setting(Base):
     value = Column(Text)
     description = Column(Text)
     category = Column(String(50), default='general')  # 'general', 'email', 'proxy', 'openai'
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BrowserbaseConfig(Base):
+    """Browserbase/DDG 注册模式配置"""
+    __tablename__ = 'browserbase_configs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False, unique=True)
+    enabled = Column(Boolean, default=True)
+    priority = Column(Integer, default=0)
+    config = Column(JSONEncodedDict, nullable=False)
+    last_used = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

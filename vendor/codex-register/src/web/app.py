@@ -178,8 +178,8 @@ def create_app() -> FastAPI:
 
         pending_recovery_tasks = []
         recovery_summary = _recover_interrupted_registration_tasks(
-            lambda task_uuid, email_service_type, proxy, email_service_id: pending_recovery_tasks.append(
-                (task_uuid, email_service_type, proxy, email_service_id)
+            lambda task_uuid, email_service_type, proxy, email_service_id, register_mode, browserbase_config_id: pending_recovery_tasks.append(
+                (task_uuid, email_service_type, proxy, email_service_id, register_mode, browserbase_config_id)
             )
         )
         if any(recovery_summary.values()):
@@ -198,12 +198,14 @@ def create_app() -> FastAPI:
             loop.create_task(
                 resume_recovered_registration_tasks(
                     pending_recovery_tasks,
-                    lambda task_uuid, email_service_type, proxy, email_service_id: run_registration_task(
+                    lambda task_uuid, email_service_type, proxy, email_service_id, register_mode, browserbase_config_id: run_registration_task(
                         task_uuid,
                         email_service_type,
                         proxy,
                         None,
                         email_service_id,
+                        register_mode,
+                        browserbase_config_id,
                     ),
                 )
             )

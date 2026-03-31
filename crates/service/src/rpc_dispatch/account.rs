@@ -239,6 +239,8 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let email_service_type =
                 first_str_param(req, &["emailServiceType", "email_service_type", "type"])
                     .unwrap_or("");
+            let register_mode =
+                first_str_param(req, &["registerMode", "register_mode", "modeType"]);
             let email_service_id = req
                 .params
                 .as_ref()
@@ -248,10 +250,21 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                         .or_else(|| params.get("email_service_id"))
                 })
                 .and_then(|value| value.as_i64());
+            let browserbase_config_id = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("browserbaseConfigId")
+                        .or_else(|| params.get("browserbase_config_id"))
+                })
+                .and_then(|value| value.as_i64());
             let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
             super::value_or_error(account_register::start_register_task(
                 email_service_type,
                 email_service_id,
+                register_mode,
+                browserbase_config_id,
                 proxy,
             ))
         }
@@ -259,6 +272,8 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let email_service_type =
                 first_str_param(req, &["emailServiceType", "email_service_type", "type"])
                     .unwrap_or("");
+            let register_mode =
+                first_str_param(req, &["registerMode", "register_mode", "modeType"]);
             let email_service_id = req
                 .params
                 .as_ref()
@@ -266,6 +281,15 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     params
                         .get("emailServiceId")
                         .or_else(|| params.get("email_service_id"))
+                })
+                .and_then(|value| value.as_i64());
+            let browserbase_config_id = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("browserbaseConfigId")
+                        .or_else(|| params.get("browserbase_config_id"))
                 })
                 .and_then(|value| value.as_i64());
             let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
@@ -306,6 +330,8 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 account_register::StartRegisterBatchInput {
                     email_service_type,
                     email_service_id,
+                    register_mode,
+                    browserbase_config_id,
                     proxy,
                     count,
                     interval_min,
@@ -441,6 +467,76 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         }
         "account/register/emailServices/types" => {
             super::value_or_error(account_register::register_email_service_types())
+        }
+        "account/register/browserbaseConfigs/list" => {
+            super::value_or_error(account_register::list_register_browserbase_configs())
+        }
+        "account/register/browserbaseConfigs/readFull" => {
+            let config_id = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("configId").or_else(|| params.get("config_id")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default();
+            super::value_or_error(account_register::read_register_browserbase_config_full(
+                config_id,
+            ))
+        }
+        "account/register/browserbaseConfigs/create" => {
+            let name = first_str_param(req, &["name"]).unwrap_or("");
+            let enabled = first_bool_param(req, &["enabled"]).unwrap_or(true);
+            let priority = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("priority"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(0);
+            let config = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("config"))
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
+            super::value_or_error(account_register::create_register_browserbase_config(
+                name, enabled, priority, config,
+            ))
+        }
+        "account/register/browserbaseConfigs/update" => {
+            let config_id = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("configId").or_else(|| params.get("config_id")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default();
+            let enabled = first_bool_param(req, &["enabled"]);
+            let priority = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("priority"))
+                .and_then(|value| value.as_i64());
+            let config = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("config"))
+                .cloned();
+            super::value_or_error(account_register::update_register_browserbase_config(
+                config_id,
+                first_str_param(req, &["name"]),
+                enabled,
+                priority,
+                config,
+            ))
+        }
+        "account/register/browserbaseConfigs/delete" => {
+            let config_id = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("configId").or_else(|| params.get("config_id")))
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default();
+            super::value_or_error(account_register::delete_register_browserbase_config(
+                config_id,
+            ))
         }
         "account/register/emailServices/list" => {
             let service_type = first_str_param(req, &["serviceType", "service_type"]);

@@ -103,12 +103,23 @@ def load_registration_module():
     models_module.Proxy = type("Proxy", (), {})
     models_module.EmailService = type("EmailService", (), {})
     models_module.Account = type("Account", (), {})
+    models_module.BrowserbaseConfig = type("BrowserbaseConfig", (), {})
     sys.modules["src.database.models"] = models_module
 
     register_module = types.ModuleType("src.core.register")
     register_module.RegistrationEngine = type("RegistrationEngine", (), {})
     register_module.RegistrationResult = type("RegistrationResult", (), {})
     sys.modules["src.core.register"] = register_module
+
+    browserbase_module = types.ModuleType("src.core.browserbase_ddg")
+    browserbase_module.BROWSERBASE_DDG_REGISTER_MODE = "browserbase_ddg"
+    browserbase_module.DEFAULT_REGISTER_MODE = "standard"
+    browserbase_module.BrowserbaseDDGRegistrationRunner = type(
+        "BrowserbaseDDGRegistrationRunner",
+        (),
+        {},
+    )
+    sys.modules["src.core.browserbase_ddg"] = browserbase_module
 
     round_robin_module = types.ModuleType("src.core.round_robin")
     round_robin_module.build_round_robin_schedule = lambda items, count: []
@@ -195,8 +206,8 @@ class RegistrationRecoveryTests(unittest.TestCase):
         )
 
         summary = REGISTRATION_MODULE._recover_interrupted_registration_tasks(
-            lambda task_uuid, email_service_type, proxy, email_service_id: scheduled.append(
-                (task_uuid, email_service_type, proxy, email_service_id)
+            lambda task_uuid, email_service_type, proxy, email_service_id, register_mode, browserbase_config_id: scheduled.append(
+                (task_uuid, email_service_type, proxy, email_service_id, register_mode, browserbase_config_id)
             )
         )
 
@@ -204,7 +215,7 @@ class RegistrationRecoveryTests(unittest.TestCase):
         self.assertEqual(summary["failed_running"], 1)
         self.assertEqual(
             scheduled,
-            [("pending-1", "temp_mail", "http://proxy", None)],
+            [("pending-1", "temp_mail", "http://proxy", None, "standard", None)],
         )
         self.assertTrue(
             any(task_uuid == "running-1" and kwargs.get("status") == "failed" for task_uuid, kwargs in updates)
@@ -218,17 +229,19 @@ class RegistrationRecoveryTests(unittest.TestCase):
 
     def test_resume_recovered_registration_tasks_limits_concurrency(self):
         task_specs = [
-            ("task-1", "temp_mail", None, None),
-            ("task-2", "temp_mail", None, None),
-            ("task-3", "temp_mail", None, None),
-            ("task-4", "temp_mail", None, None),
+            ("task-1", "temp_mail", None, None, "standard", None),
+            ("task-2", "temp_mail", None, None, "standard", None),
+            ("task-3", "temp_mail", None, None, "standard", None),
+            ("task-4", "temp_mail", None, None, "standard", None),
         ]
         active = 0
         max_active = 0
 
-        async def runner(task_uuid, email_service_type, proxy, email_service_id):
+        async def runner(task_uuid, email_service_type, proxy, email_service_id, register_mode, browserbase_config_id):
             nonlocal active, max_active
             self.assertEqual(email_service_type, "temp_mail")
+            self.assertEqual(register_mode, "standard")
+            self.assertIsNone(browserbase_config_id)
             active += 1
             max_active = max(max_active, active)
             await __import__("asyncio").sleep(0.01)

@@ -55,6 +55,8 @@ pub(crate) struct RegisterProxyItem {
 pub(crate) struct StartRegisterBatchInput<'a> {
     pub email_service_type: &'a str,
     pub email_service_id: Option<i64>,
+    pub register_mode: Option<&'a str>,
+    pub browserbase_config_id: Option<i64>,
     pub proxy: Option<String>,
     pub count: i64,
     pub interval_min: i64,
@@ -881,10 +883,16 @@ pub(crate) fn available_register_services() -> Result<Value, String> {
 pub(crate) fn start_register_task(
     email_service_type: &str,
     email_service_id: Option<i64>,
+    register_mode: Option<&str>,
+    browserbase_config_id: Option<i64>,
     proxy: Option<String>,
 ) -> Result<Value, String> {
     let service_type = email_service_type.trim();
-    if service_type.is_empty() {
+    let register_mode = register_mode
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("standard");
+    if service_type.is_empty() && register_mode != "browserbase_ddg" {
         return Err("emailServiceType is required".to_string());
     }
     register_post_json(
@@ -892,6 +900,8 @@ pub(crate) fn start_register_task(
         &json!({
             "email_service_type": service_type,
             "email_service_id": email_service_id,
+            "register_mode": register_mode,
+            "browserbase_config_id": browserbase_config_id,
             "proxy": proxy,
         }),
     )
@@ -901,6 +911,8 @@ pub(crate) fn start_register_batch(input: StartRegisterBatchInput<'_>) -> Result
     let StartRegisterBatchInput {
         email_service_type,
         email_service_id,
+        register_mode,
+        browserbase_config_id,
         proxy,
         count,
         interval_min,
@@ -909,7 +921,11 @@ pub(crate) fn start_register_batch(input: StartRegisterBatchInput<'_>) -> Result
         mode,
     } = input;
     let service_type = email_service_type.trim();
-    if service_type.is_empty() {
+    let register_mode = register_mode
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("standard");
+    if service_type.is_empty() && register_mode != "browserbase_ddg" {
         return Err("emailServiceType is required".to_string());
     }
     if count < 1 {
@@ -931,6 +947,8 @@ pub(crate) fn start_register_batch(input: StartRegisterBatchInput<'_>) -> Result
         &json!({
             "email_service_type": service_type,
             "email_service_id": email_service_id,
+            "register_mode": register_mode,
+            "browserbase_config_id": browserbase_config_id,
             "proxy": proxy,
             "count": count,
             "interval_min": interval_min,
@@ -1226,6 +1244,74 @@ pub(crate) fn list_register_email_services(
         query.push(("enabled_only".to_string(), "true".to_string()));
     }
     register_get_json_with_query("/api/email-services", &query)
+}
+
+pub(crate) fn list_register_browserbase_configs() -> Result<Value, String> {
+    register_get_json("/api/browserbase-configs")
+}
+
+pub(crate) fn read_register_browserbase_config_full(config_id: i64) -> Result<Value, String> {
+    if config_id < 1 {
+        return Err("configId is required".to_string());
+    }
+    register_get_json(&format!("/api/browserbase-configs/{config_id}/full"))
+}
+
+pub(crate) fn create_register_browserbase_config(
+    name: &str,
+    enabled: bool,
+    priority: i64,
+    config: Value,
+) -> Result<Value, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("name is required".to_string());
+    }
+    register_post_json(
+        "/api/browserbase-configs",
+        &json!({
+            "name": name,
+            "enabled": enabled,
+            "priority": priority.max(0),
+            "config": config,
+        }),
+    )
+}
+
+pub(crate) fn update_register_browserbase_config(
+    config_id: i64,
+    name: Option<&str>,
+    enabled: Option<bool>,
+    priority: Option<i64>,
+    config: Option<Value>,
+) -> Result<Value, String> {
+    if config_id < 1 {
+        return Err("configId is required".to_string());
+    }
+    let mut payload = serde_json::Map::new();
+    if let Some(name) = name.map(str::trim).filter(|value| !value.is_empty()) {
+        payload.insert("name".to_string(), Value::String(name.to_string()));
+    }
+    if let Some(enabled) = enabled {
+        payload.insert("enabled".to_string(), Value::Bool(enabled));
+    }
+    if let Some(priority) = priority {
+        payload.insert("priority".to_string(), Value::Number(priority.max(0).into()));
+    }
+    if let Some(config) = config {
+        payload.insert("config".to_string(), config);
+    }
+    register_post_json(
+        &format!("/api/browserbase-configs/{config_id}"),
+        &Value::Object(payload),
+    )
+}
+
+pub(crate) fn delete_register_browserbase_config(config_id: i64) -> Result<Value, String> {
+    if config_id < 1 {
+        return Err("configId is required".to_string());
+    }
+    register_delete_json(&format!("/api/browserbase-configs/{config_id}"))
 }
 
 pub(crate) fn register_email_service_stats() -> Result<Value, String> {

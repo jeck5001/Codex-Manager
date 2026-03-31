@@ -47,9 +47,16 @@ import {
   buildManualImportSummary,
   getRegisterSubmitLabel,
 } from "./register-auto-import";
+import {
+  canUseOutlookBatchRegisterMode,
+  getRegisterChannelLabel,
+  sanitizeRegisterModeForChannel,
+  type RegisterChannel,
+} from "./register-mode-options";
 import type {
   RegisterAvailableServicesResult,
   RegisterBatchSnapshot,
+  RegisterBrowserbaseConfig,
   RegisterOutlookAccount,
   RegisterOutlookAccountsResult,
   RegisterOutlookBatchSnapshot,
@@ -218,11 +225,15 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   const [bulkContent, setBulkContent] = useState("");
 
   const [registerMode, setRegisterMode] = useState<RegisterMode>("single");
+  const [registerChannel, setRegisterChannel] = useState<RegisterChannel>("standard");
   const [registerServices, setRegisterServices] =
     useState<RegisterAvailableServicesResult | null>(null);
+  const [registerBrowserbaseConfigs, setRegisterBrowserbaseConfigs] =
+    useState<RegisterBrowserbaseConfig[]>([]);
   const [registerOutlookAccounts, setRegisterOutlookAccounts] =
     useState<RegisterOutlookAccountsResult | null>(null);
   const [isRegisterLoading, setIsRegisterLoading] = useState(false);
+  const [isRegisterBrowserbaseLoading, setIsRegisterBrowserbaseLoading] = useState(false);
   const [isRegisterOutlookLoading, setIsRegisterOutlookLoading] = useState(false);
   const [isRegisterSubmitting, setIsRegisterSubmitting] = useState(false);
   const [isRegisterImporting, setIsRegisterImporting] = useState(false);
@@ -231,6 +242,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   const [registerImportSummary, setRegisterImportSummary] = useState("");
   const [registerServiceType, setRegisterServiceType] = useState("tempmail");
   const [registerServiceId, setRegisterServiceId] = useState("");
+  const [registerBrowserbaseConfigId, setRegisterBrowserbaseConfigId] = useState("");
   const [registerProxy, setRegisterProxy] = useState("");
   const [registerBatchCount, setRegisterBatchCount] = useState("3");
   const [registerIntervalMin, setRegisterIntervalMin] = useState("5");
@@ -261,9 +273,12 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setManualCallback("");
     setBulkContent("");
     setRegisterMode("single");
+    setRegisterChannel("standard");
     setRegisterServices(null);
+    setRegisterBrowserbaseConfigs([]);
     setRegisterOutlookAccounts(null);
     setIsRegisterLoading(false);
+    setIsRegisterBrowserbaseLoading(false);
     setIsRegisterOutlookLoading(false);
     setIsRegisterSubmitting(false);
     setIsRegisterImporting(false);
@@ -272,6 +287,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setRegisterImportSummary("");
     setRegisterServiceType("tempmail");
     setRegisterServiceId("");
+    setRegisterBrowserbaseConfigId("");
     setRegisterProxy("");
     setRegisterBatchCount("3");
     setRegisterIntervalMin("5");
@@ -414,8 +430,28 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     return Array.from(deduped);
   }, [selectedOutlookAccounts]);
 
+  const isBrowserbaseRegisterChannel = registerChannel === "browserbase_ddg";
+
+  const enabledRegisterBrowserbaseConfigs = useMemo(
+    () => registerBrowserbaseConfigs.filter((item) => item.enabled),
+    [registerBrowserbaseConfigs],
+  );
+
+  const selectedRegisterBrowserbaseConfig = useMemo(
+    () => enabledRegisterBrowserbaseConfigs.find((item) => String(item.id) === registerBrowserbaseConfigId) || null,
+    [enabledRegisterBrowserbaseConfigs, registerBrowserbaseConfigId],
+  );
+
   const registerBusy =
-    isRegisterLoading || isRegisterOutlookLoading || isRegisterSubmitting || isRegisterImporting;
+    isRegisterLoading ||
+    isRegisterBrowserbaseLoading ||
+    isRegisterOutlookLoading ||
+    isRegisterSubmitting ||
+    isRegisterImporting;
+
+  const hasAvailableRegisterSource = isBrowserbaseRegisterChannel
+    ? enabledRegisterBrowserbaseConfigs.length > 0
+    : selectedRegisterGroup?.available === true;
 
   const syncRegisterSelection = useCallback(
     (catalog: RegisterAvailableServicesResult) => {
@@ -454,6 +490,28 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     }
   }, [syncRegisterSelection]);
 
+  const loadRegisterBrowserbaseConfigs = useCallback(async () => {
+    setIsRegisterBrowserbaseLoading(true);
+    setRegisterError("");
+    try {
+      const result = await accountClient.listRegisterBrowserbaseConfigs();
+      const configs = result.configs || [];
+      const enabledConfigs = configs.filter((item) => item.enabled);
+      setRegisterBrowserbaseConfigs(configs);
+      setRegisterBrowserbaseConfigId((current) => {
+        if (enabledConfigs.some((item) => String(item.id) === current)) {
+          return current;
+        }
+        return enabledConfigs[0] ? String(enabledConfigs[0].id) : "";
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setRegisterError(message);
+    } finally {
+      setIsRegisterBrowserbaseLoading(false);
+    }
+  }, []);
+
   const loadRegisterOutlookAccounts = useCallback(async () => {
     setIsRegisterOutlookLoading(true);
     setRegisterError("");
@@ -476,11 +534,22 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   }, []);
 
   useEffect(() => {
+    setRegisterMode((current) => sanitizeRegisterModeForChannel(registerChannel, current));
+  }, [registerChannel]);
+
+  useEffect(() => {
     if (!open || activeTab !== "register" || registerServices || isRegisterLoading) {
       return;
     }
     void loadRegisterServices();
   }, [activeTab, isRegisterLoading, loadRegisterServices, open, registerServices]);
+
+  useEffect(() => {
+    if (!open || activeTab !== "register" || registerChannel !== "browserbase_ddg") {
+      return;
+    }
+    void loadRegisterBrowserbaseConfigs();
+  }, [activeTab, loadRegisterBrowserbaseConfigs, open, registerChannel]);
 
   useEffect(() => {
     if (
@@ -903,8 +972,12 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   };
 
   const handleStartRegister = async () => {
-    if (registerMode !== "outlook-batch" && !selectedRegisterGroup?.available) {
-      toast.error("当前没有可用的注册邮箱服务");
+    if (registerMode !== "outlook-batch" && !hasAvailableRegisterSource) {
+      toast.error(
+        isBrowserbaseRegisterChannel
+          ? "当前没有可用的 Browserbase-DDG 注册配置"
+          : "当前没有可用的注册邮箱服务",
+      );
       return;
     }
 
@@ -912,14 +985,28 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setIsRegisterSubmitting(true);
 
     try {
+      const resolvedRegisterMode = isBrowserbaseRegisterChannel ? "browserbase_ddg" : "standard";
+      const resolvedEmailServiceType = isBrowserbaseRegisterChannel ? "tempmail" : registerServiceType;
+      const resolvedBrowserbaseConfigId = isBrowserbaseRegisterChannel
+        ? normalizeRegisterServiceIdForSubmit(registerBrowserbaseConfigId)
+        : null;
+
+      if (isBrowserbaseRegisterChannel && !resolvedBrowserbaseConfigId) {
+        throw new Error("请选择一个可用的 Browserbase-DDG 配置");
+      }
+
       if (registerMode === "single") {
         const task = await accountClient.startRegisterTask({
-          emailServiceType: registerServiceType,
-          emailServiceId: normalizeRegisterServiceIdForSubmit(registerServiceId),
+          emailServiceType: resolvedEmailServiceType,
+          emailServiceId: isBrowserbaseRegisterChannel
+            ? null
+            : normalizeRegisterServiceIdForSubmit(registerServiceId),
+          registerMode: resolvedRegisterMode,
+          browserbaseConfigId: resolvedBrowserbaseConfigId,
           proxy: registerProxy || null,
         });
         setRegisterTask(task);
-        toast.success("注册任务已启动");
+        toast.success(`${getRegisterChannelLabel(registerChannel)}任务已启动`);
         void waitForRegisterTask(task.taskUuid);
         return;
       }
@@ -934,8 +1021,12 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
       if (registerMode === "batch") {
         const count = parseIntegerInput(registerBatchCount, "注册数量", 1);
         const started = await accountClient.startRegisterBatch({
-          emailServiceType: registerServiceType,
-          emailServiceId: normalizeRegisterServiceIdForSubmit(registerServiceId),
+          emailServiceType: resolvedEmailServiceType,
+          emailServiceId: isBrowserbaseRegisterChannel
+            ? null
+            : normalizeRegisterServiceIdForSubmit(registerServiceId),
+          registerMode: resolvedRegisterMode,
+          browserbaseConfigId: resolvedBrowserbaseConfigId,
           proxy: registerProxy || null,
           count,
           intervalMin,
@@ -956,7 +1047,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
           progress: `0/${started.count}`,
           logs: [],
         });
-        toast.success("批量注册已启动");
+        toast.success(`${getRegisterChannelLabel(registerChannel)}批量任务已启动`);
         void waitForRegisterBatch(started.batchId, started.taskUuids);
         return;
       }
@@ -1200,7 +1291,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
 
             <TabsContent value="register" className="mt-0 space-y-4">
               <div className="rounded-lg border border-primary/15 bg-primary/5 p-3 text-xs text-muted-foreground">
-                通过内置的 `codex-register` 服务自动创建账号。单个注册会直接轮询并导入；批量注册会在任务结束后自动把成功账号导入到当前列表。
+                通过内置的 `codex-register` 服务自动创建账号。支持标准邮箱注册与 Browserbase-DDG 注册两种通道；单个注册会直接轮询并导入，批量注册会在任务结束后自动把成功账号导入到当前列表。
               </div>
 
               <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3">
@@ -1216,6 +1307,9 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                   size="sm"
                   onClick={() => {
                     void loadRegisterServices();
+                    if (registerChannel === "browserbase_ddg") {
+                      void loadRegisterBrowserbaseConfigs();
+                    }
                     if (registerMode === "outlook-batch") {
                       void loadRegisterOutlookAccounts();
                     }
@@ -1228,7 +1322,34 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                 </Button>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>注册通道</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant={registerChannel === "standard" ? "default" : "outline"}
+                    disabled={registerBusy}
+                    onClick={() => setRegisterChannel("standard")}
+                  >
+                    标准注册
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={registerChannel === "browserbase_ddg" ? "default" : "outline"}
+                    disabled={registerBusy}
+                    onClick={() => setRegisterChannel("browserbase_ddg")}
+                  >
+                    Browserbase-DDG
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  当前通道：{getRegisterChannelLabel(registerChannel)}
+                </p>
+              </div>
+
+              <div
+                className={`grid gap-2 ${canUseOutlookBatchRegisterMode(registerChannel) ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
+              >
                 <Button
                   type="button"
                   variant={registerMode === "single" ? "default" : "outline"}
@@ -1245,14 +1366,16 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                 >
                   批量注册
                 </Button>
-                <Button
-                  type="button"
-                  variant={registerMode === "outlook-batch" ? "default" : "outline"}
-                  disabled={registerBusy}
-                  onClick={() => setRegisterMode("outlook-batch")}
-                >
-                  Outlook 批量
-                </Button>
+                {canUseOutlookBatchRegisterMode(registerChannel) ? (
+                  <Button
+                    type="button"
+                    variant={registerMode === "outlook-batch" ? "default" : "outline"}
+                    disabled={registerBusy}
+                    onClick={() => setRegisterMode("outlook-batch")}
+                  >
+                    Outlook 批量
+                  </Button>
+                ) : null}
               </div>
 
               {registerError ? (
@@ -1270,81 +1393,131 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
               ) : null}
 
               {registerMode !== "outlook-batch" ? (
-                <>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>邮箱服务类型</Label>
-                      <Select
-                        value={registerServiceType}
-                        onValueChange={(value) => {
-                          if (!value) return;
-                          setRegisterServiceType(value);
-                          const nextGroup = registerTypeOptions.find((item) => item.value === value)?.group;
-                          const nextId = (nextGroup?.services || []).some((item) => item.id != null)
-                            ? REGISTER_SERVICE_AUTO
-                            : "";
-                          setRegisterServiceId(nextId);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="选择邮箱服务" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {registerTypeOptions.map((item) => (
-                            <SelectItem key={item.value} value={item.value}>
-                              {item.label} ({item.group.count})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>代理 (可选)</Label>
-                      <Input
-                        placeholder="http://user:pass@host:port"
-                        value={registerProxy}
-                        onChange={(event) => setRegisterProxy(event.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  {selectedRegisterServiceHasChoices ? (
-                    <div className="space-y-2">
-                      <Label>具体服务</Label>
-                      <Select
-                        value={registerServiceId}
-                        onValueChange={(value) => setRegisterServiceId(value || REGISTER_SERVICE_AUTO)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="按当前类型自动轮询" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={REGISTER_SERVICE_AUTO}>
-                            按当前类型自动轮询
-                          </SelectItem>
-                          {(selectedRegisterGroup?.services || [])
-                            .filter((item) => item.id != null)
-                            .map((item) => (
-                              <SelectItem key={String(item.id)} value={String(item.id)}>
-                                {item.name}
+                isBrowserbaseRegisterChannel ? (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Browserbase-DDG 配置</Label>
+                        <Select
+                          value={registerBrowserbaseConfigId}
+                          onValueChange={(value) => setRegisterBrowserbaseConfigId(value || "")}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="选择 Browserbase-DDG 配置" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {enabledRegisterBrowserbaseConfigs.map((item) => (
+                              <SelectItem key={item.id} value={String(item.id)}>
+                                {item.name} (优先级 {item.priority})
                               </SelectItem>
                             ))}
-                        </SelectContent>
-                      </Select>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>代理 (可选)</Label>
+                        <Input
+                          placeholder="http://user:pass@host:port"
+                          value={registerProxy}
+                          onChange={(event) => setRegisterProxy(event.target.value)}
+                        />
+                      </div>
                     </div>
-                  ) : null}
 
-                  <div className="space-y-1">
-                    {selectedRegisterGroup?.services?.[0]?.description ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">总配置 {registerBrowserbaseConfigs.length}</Badge>
+                      <Badge variant="outline">启用中 {enabledRegisterBrowserbaseConfigs.length}</Badge>
+                      {selectedRegisterBrowserbaseConfig ? (
+                        <Badge variant="outline">当前：{selectedRegisterBrowserbaseConfig.name}</Badge>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-1">
                       <p className="text-xs text-muted-foreground">
-                        {selectedRegisterGroup.services[0].description}
+                        该模式会使用 Browserbase 会话 + DDG alias 邮箱自动完成注册。
                       </p>
+                      <p className="text-xs text-muted-foreground">
+                        详细 Token、回调端口、模型等参数请到“邮箱服务”页的 Browserbase-DDG 注册配置中维护。
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>邮箱服务类型</Label>
+                        <Select
+                          value={registerServiceType}
+                          onValueChange={(value) => {
+                            if (!value) return;
+                            setRegisterServiceType(value);
+                            const nextGroup = registerTypeOptions.find((item) => item.value === value)?.group;
+                            const nextId = (nextGroup?.services || []).some((item) => item.id != null)
+                              ? REGISTER_SERVICE_AUTO
+                              : "";
+                            setRegisterServiceId(nextId);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="选择邮箱服务" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {registerTypeOptions.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label} ({item.group.count})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>代理 (可选)</Label>
+                        <Input
+                          placeholder="http://user:pass@host:port"
+                          value={registerProxy}
+                          onChange={(event) => setRegisterProxy(event.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {selectedRegisterServiceHasChoices ? (
+                      <div className="space-y-2">
+                        <Label>具体服务</Label>
+                        <Select
+                          value={registerServiceId}
+                          onValueChange={(value) => setRegisterServiceId(value || REGISTER_SERVICE_AUTO)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="按当前类型自动轮询" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={REGISTER_SERVICE_AUTO}>
+                              按当前类型自动轮询
+                            </SelectItem>
+                            {(selectedRegisterGroup?.services || [])
+                              .filter((item) => item.id != null)
+                              .map((item) => (
+                                <SelectItem key={String(item.id)} value={String(item.id)}>
+                                  {item.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     ) : null}
-                    <p className="text-xs text-muted-foreground">
-                      具体服务留空时，会在当前类型的可用服务之间自动轮询；代理留空时会按代理池轮询。
-                    </p>
-                  </div>
-                </>
+
+                    <div className="space-y-1">
+                      {selectedRegisterGroup?.services?.[0]?.description ? (
+                        <p className="text-xs text-muted-foreground">
+                          {selectedRegisterGroup.services[0].description}
+                        </p>
+                      ) : null}
+                      <p className="text-xs text-muted-foreground">
+                        具体服务留空时，会在当前类型的可用服务之间自动轮询；代理留空时会按代理池轮询。
+                      </p>
+                    </div>
+                  </>
+                )
               ) : (
                 <>
                   <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
@@ -1553,7 +1726,9 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                   onClick={handleStartRegister}
                   disabled={
                     registerBusy ||
-                    (registerMode !== "outlook-batch" && !selectedRegisterGroup?.available) ||
+                    (registerMode !== "outlook-batch" &&
+                      (!hasAvailableRegisterSource ||
+                        (isBrowserbaseRegisterChannel && !registerBrowserbaseConfigId))) ||
                     (registerMode === "outlook-batch" && registerSelectedOutlookIds.length === 0)
                   }
                   className="flex-1 gap-2"

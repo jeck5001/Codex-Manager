@@ -85,6 +85,21 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_account_register_email_services_types: {
     rpcMethod: "account/register/emailServices/types",
   },
+  service_account_register_browserbase_configs_list: {
+    rpcMethod: "account/register/browserbaseConfigs/list",
+  },
+  service_account_register_browserbase_configs_read_full: {
+    rpcMethod: "account/register/browserbaseConfigs/readFull",
+  },
+  service_account_register_browserbase_configs_create: {
+    rpcMethod: "account/register/browserbaseConfigs/create",
+  },
+  service_account_register_browserbase_configs_update: {
+    rpcMethod: "account/register/browserbaseConfigs/update",
+  },
+  service_account_register_browserbase_configs_delete: {
+    rpcMethod: "account/register/browserbaseConfigs/delete",
+  },
   service_account_register_email_services_list: {
     rpcMethod: "account/register/emailServices/list",
   },
