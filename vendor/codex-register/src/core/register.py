@@ -53,6 +53,8 @@ class RegistrationResult:
     logs: list = None
     metadata: dict = None
     source: str = "register"  # 'register' 或 'login'，区分账号来源
+    account_status: str = "active"  # active / expired / banned / failed
+    is_usable: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -71,6 +73,8 @@ class RegistrationResult:
             "logs": self.logs or [],
             "metadata": self.metadata or {},
             "source": self.source,
+            "account_status": self.account_status,
+            "is_usable": self.is_usable,
         }
 
 
@@ -1852,6 +1856,36 @@ class RegistrationEngine:
             self._log(f"处理 OAuth 回调失败: {e}", "error")
             return None
 
+    def _post_registration_health_check(self, access_token: str) -> Tuple[str, bool, str]:
+        """注册完成后的账号健康检查，仅用于识别是否可用。"""
+        try:
+            token = self._clean_text(access_token)
+            if not token:
+                return "failed", False, "缺少 access_token"
+
+            session = cffi_requests.Session(
+                impersonate="chrome120",
+                proxy=self.proxy_url,
+            )
+            response = session.get(
+                "https://chatgpt.com/backend-api/me",
+                headers={
+                    "authorization": f"Bearer {token}",
+                    "accept": "application/json",
+                },
+                timeout=30,
+            )
+
+            if response.status_code == 200:
+                return "active", True, ""
+            if response.status_code == 403:
+                return "banned", False, "账号健康检查返回 403，疑似已受限或被封禁"
+            if response.status_code == 401:
+                return "failed", False, "账号健康检查返回 401，Token 无效或已失效"
+            return "failed", False, f"账号健康检查失败: HTTP {response.status_code}"
+        except Exception as e:
+            return "failed", False, f"账号健康检查异常: {e}"
+
     def run(self) -> RegistrationResult:
         """
         执行完整的注册流程
@@ -2042,9 +2076,24 @@ class RegistrationEngine:
             if result.cookies:
                 self._log(f"获取到 Cookies，长度: {len(result.cookies)}")
 
-            # 17. 完成
+            # 17. 健康检查：区分“注册完成”和“账号可用”
+            self._log("17. 执行账号健康检查...")
+            account_status, is_usable, health_error = self._post_registration_health_check(
+                result.access_token
+            )
+            result.account_status = account_status
+            result.is_usable = is_usable
+            if not is_usable:
+                result.error_message = health_error
+                self._log(f"账号健康检查失败: {health_error}", "warning")
+            else:
+                self._log("账号健康检查通过")
+
+            # 18. 完成
             self._log("=" * 60)
-            if self._is_existing_account:
+            if not result.is_usable:
+                self._log("注册链路完成，但账号当前不可用")
+            elif self._is_existing_account:
                 self._log("登录成功! (已注册账号)")
             else:
                 self._log("注册成功!")
@@ -2059,6 +2108,12 @@ class RegistrationEngine:
                 "proxy_used": self.proxy_url,
                 "registered_at": datetime.now().isoformat(),
                 "is_existing_account": self._is_existing_account,
+                "health_check": {
+                    "checked": True,
+                    "is_usable": result.is_usable,
+                    "account_status": result.account_status,
+                    "error": health_error if not result.is_usable else "",
+                },
             }
 
             return result
@@ -2103,6 +2158,7 @@ class RegistrationEngine:
                     id_token=result.id_token,
                     proxy_used=self.proxy_url,
                     extra_data=result.metadata,
+                    status=result.account_status,
                     source=result.source
                 )
 

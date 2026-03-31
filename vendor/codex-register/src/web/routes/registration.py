@@ -563,18 +563,32 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                     except Exception as cpa_err:
                         log_callback(f"[CPA] 上传异常: {cpa_err}")
 
-                # 更新任务状态
-                crud.update_registration_task(
-                    db, task_uuid,
-                    status="completed",
-                    completed_at=datetime.utcnow(),
-                    result=result.to_dict()
-                )
+                if result.is_usable:
+                    # 更新任务状态
+                    crud.update_registration_task(
+                        db, task_uuid,
+                        status="completed",
+                        completed_at=datetime.utcnow(),
+                        result=result.to_dict()
+                    )
 
-                # 更新 TaskManager 状态
-                task_manager.update_status(task_uuid, "completed", email=result.email)
+                    # 更新 TaskManager 状态
+                    task_manager.update_status(task_uuid, "completed", email=result.email)
 
-                logger.info(f"注册任务完成: {task_uuid}, 邮箱: {result.email}")
+                    logger.info(f"注册任务完成: {task_uuid}, 邮箱: {result.email}")
+                else:
+                    error_message = result.error_message or "账号已注册，但健康检查失败"
+                    crud.update_registration_task(
+                        db, task_uuid,
+                        status="failed",
+                        completed_at=datetime.utcnow(),
+                        result=result.to_dict(),
+                        error_message=error_message,
+                    )
+                    task_manager.update_status(task_uuid, "failed", error=error_message)
+                    logger.warning(
+                        f"注册任务完成但账号不可用: {task_uuid}, 邮箱: {result.email}, 原因: {error_message}"
+                    )
             else:
                 # 更新任务状态为失败
                 crud.update_registration_task(
