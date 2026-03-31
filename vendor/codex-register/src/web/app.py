@@ -160,6 +160,10 @@ def create_app() -> FastAPI:
     async def startup_event():
         """应用启动事件"""
         import asyncio
+        from .routes.registration import (
+            _recover_interrupted_registration_tasks,
+            run_registration_task,
+        )
 
         # 设置 TaskManager 的事件循环
         loop = asyncio.get_event_loop()
@@ -170,6 +174,25 @@ def create_app() -> FastAPI:
         logger.info(f"调试模式: {settings.debug}")
         logger.info(f"数据库: {settings.database_url}")
         logger.info("=" * 50)
+
+        recovery_summary = _recover_interrupted_registration_tasks(
+            lambda task_uuid, email_service_type, proxy, email_service_id: loop.create_task(
+                run_registration_task(
+                    task_uuid,
+                    email_service_type,
+                    proxy,
+                    None,
+                    email_service_id,
+                )
+            )
+        )
+        if any(recovery_summary.values()):
+            logger.info(
+                "注册任务恢复完成: resumed_pending=%s, failed_running=%s, failed_pending=%s",
+                recovery_summary["resumed_pending"],
+                recovery_summary["failed_running"],
+                recovery_summary["failed_pending"],
+            )
 
     @app.on_event("shutdown")
     async def shutdown_event():

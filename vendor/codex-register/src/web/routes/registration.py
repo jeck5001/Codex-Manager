@@ -406,6 +406,71 @@ def _delete_register_tasks(db, task_uuids: List[str]) -> Dict[str, object]:
     }
 
 
+def _recover_interrupted_registration_tasks(
+    schedule_task: Callable[[str, str, Optional[str], Optional[int]], None],
+) -> Dict[str, int]:
+    """服务启动时恢复中断的注册任务。
+
+    方案 B:
+    - pending: 自动恢复排队
+    - running: 标记失败，提示手动重试
+    """
+    summary = {
+        "resumed_pending": 0,
+        "failed_running": 0,
+        "failed_pending": 0,
+    }
+
+    with get_db() as db:
+        tasks = crud.get_registration_tasks_by_statuses(db, ["pending", "running"])
+
+        for task in tasks:
+            task_uuid = str(getattr(task, "task_uuid", "") or "").strip()
+            status = str(getattr(task, "status", "") or "").strip().lower()
+            if not task_uuid or status not in {"pending", "running"}:
+                continue
+
+            if status == "running":
+                error_message = "服务重启导致运行中的任务已中断，请手动重试"
+                crud.update_registration_task(
+                    db,
+                    task_uuid,
+                    status="failed",
+                    completed_at=datetime.utcnow(),
+                    error_message=error_message,
+                )
+                crud.append_task_log(db, task_uuid, f"[系统] {error_message}")
+                task_manager.update_status(task_uuid, "failed", error=error_message)
+                summary["failed_running"] += 1
+                continue
+
+            email_service_type = _infer_email_service_type_from_task(task)
+            try:
+                crud.append_task_log(db, task_uuid, "[系统] 服务重启后自动恢复排队")
+                task_manager.update_status(task_uuid, "pending")
+                schedule_task(
+                    task_uuid,
+                    email_service_type,
+                    getattr(task, "proxy", None),
+                    getattr(task, "email_service_id", None),
+                )
+                summary["resumed_pending"] += 1
+            except Exception as e:
+                error_message = f"服务重启后恢复排队失败: {e}"
+                crud.update_registration_task(
+                    db,
+                    task_uuid,
+                    status="failed",
+                    completed_at=datetime.utcnow(),
+                    error_message=error_message,
+                )
+                crud.append_task_log(db, task_uuid, f"[系统] {error_message}")
+                task_manager.update_status(task_uuid, "failed", error=error_message)
+                summary["failed_pending"] += 1
+
+    return summary
+
+
 def _build_retry_runtime_config(task: RegistrationTask, strategy: Optional[str]) -> dict:
     normalized = (strategy or "").strip().lower()
     if not normalized or normalized == "same":
