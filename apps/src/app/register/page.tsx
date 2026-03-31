@@ -25,6 +25,7 @@ import { ConfirmDialog } from "@/components/modals/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -60,6 +61,7 @@ import type { Account, RegisterTaskSnapshot } from "@/types";
 type PendingAction =
   | { kind: "cancel"; task: RegisterTaskSnapshot }
   | { kind: "delete"; task: RegisterTaskSnapshot }
+  | { kind: "batch-delete"; taskUuids: string[] }
   | null;
 
 const PAGE_SIZE = 20;
@@ -209,6 +211,7 @@ export default function RegisterPage() {
   const [detailTask, setDetailTask] = useState<RegisterTaskSnapshot | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [selectedTaskUuids, setSelectedTaskUuids] = useState<string[]>([]);
   const [monitorTaskUuid, setMonitorTaskUuid] = useState("");
   const [failureCodeFilter, setFailureCodeFilter] = useState("");
   const [importingTaskUuid, setImportingTaskUuid] = useState("");
@@ -223,9 +226,11 @@ export default function RegisterPage() {
     cancelTask,
     retryTask,
     deleteTask,
+    deleteTasks,
     isCancelling,
     isRetrying,
     isDeleting,
+    isDeletingMany,
   } = useRegisterTasks({
     page,
     pageSize: PAGE_SIZE,
@@ -309,6 +314,16 @@ export default function RegisterPage() {
     () => recommendedRetryStrategyForFailure(failureCodeFilter),
     [failureCodeFilter],
   );
+  const selectableTaskUuids = useMemo(
+    () =>
+      filteredTasks
+        .filter((task) => String(task.status || "").trim().toLowerCase() !== "running")
+        .map((task) => task.taskUuid),
+    [filteredTasks],
+  );
+  const allSelectableChecked =
+    selectableTaskUuids.length > 0 &&
+    selectableTaskUuids.every((taskUuid) => selectedTaskUuids.includes(taskUuid));
   const failedTaskStrategyGroups = useMemo(() => {
     const groups = new Map<
       string,
@@ -376,6 +391,12 @@ export default function RegisterPage() {
     setFailureCodeFilter((current) => (current === nextFailureCode ? current : nextFailureCode));
     setPage(1);
   }, []);
+
+  useEffect(() => {
+    setSelectedTaskUuids((current) =>
+      current.filter((taskUuid) => selectableTaskUuids.includes(taskUuid)),
+    );
+  }, [selectableTaskUuids]);
 
   useEffect(() => {
     const candidates = activeTasks.length > 0 ? activeTasks : latestTasks;
@@ -500,7 +521,25 @@ export default function RegisterPage() {
       await cancelTask(pendingAction.task.taskUuid);
       return;
     }
+    if (pendingAction.kind === "batch-delete") {
+      await deleteTasks(pendingAction.taskUuids);
+      setSelectedTaskUuids([]);
+      return;
+    }
     await deleteTask(pendingAction.task.taskUuid);
+  };
+
+  const toggleTaskSelection = (taskUuid: string, checked: boolean) => {
+    setSelectedTaskUuids((current) => {
+      if (checked) {
+        return current.includes(taskUuid) ? current : [...current, taskUuid];
+      }
+      return current.filter((item) => item !== taskUuid);
+    });
+  };
+
+  const toggleSelectAllCurrentPage = (checked: boolean) => {
+    setSelectedTaskUuids(checked ? selectableTaskUuids : []);
   };
 
   const handleImportTask = async (task: RegisterTaskSnapshot) => {
@@ -970,9 +1009,35 @@ export default function RegisterPage() {
           ) : null}
 
           <div className="min-w-0 overflow-x-auto rounded-xl border border-border/50">
+            {selectedTaskUuids.length > 0 ? (
+              <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-muted/30 px-4 py-3">
+                <div className="text-sm text-muted-foreground">
+                  已选中 <span className="font-medium text-foreground">{selectedTaskUuids.length}</span> 条任务
+                </div>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={isDeletingMany}
+                  onClick={() =>
+                    setPendingAction({ kind: "batch-delete", taskUuids: selectedTaskUuids })
+                  }
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  批量删除
+                </Button>
+              </div>
+            ) : null}
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={allSelectableChecked}
+                      disabled={selectableTaskUuids.length === 0}
+                      onCheckedChange={(checked) => toggleSelectAllCurrentPage(checked === true)}
+                      aria-label="全选当前页任务"
+                    />
+                  </TableHead>
                   <TableHead>创建时间</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>邮箱</TableHead>
@@ -985,14 +1050,14 @@ export default function RegisterPage() {
                 {isLoading ? (
                   Array.from({ length: 6 }).map((_, index) => (
                     <TableRow key={index}>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={7}>
                         <Skeleton className="h-8 w-full" />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : filteredTasks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-40 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="h-40 text-center text-muted-foreground">
                       当前筛选下暂无注册任务
                     </TableCell>
                   </TableRow>
@@ -1007,9 +1072,20 @@ export default function RegisterPage() {
                       normalizedStatus === "failed" &&
                       isRetryableRegisterFailure(task.failureCode);
                     const canDelete = normalizedStatus !== "running";
+                    const isSelected = selectedTaskUuids.includes(task.taskUuid);
                     const retryStrategy = recommendedRetryStrategyForFailure(task.failureCode);
                     return (
                       <TableRow key={task.taskUuid}>
+                        <TableCell>
+                          <Checkbox
+                            checked={isSelected}
+                            disabled={!canDelete}
+                            onCheckedChange={(checked) =>
+                              toggleTaskSelection(task.taskUuid, checked === true)
+                            }
+                            aria-label={`选择任务 ${task.taskUuid}`}
+                          />
+                        </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {formatTimestamp(task.createdAt)}
                         </TableCell>
@@ -1234,14 +1310,26 @@ export default function RegisterPage() {
         onOpenChange={(open) => {
           if (!open) setPendingAction(null);
         }}
-        title={pendingAction?.kind === "cancel" ? "取消注册任务" : "删除注册任务"}
+        title={
+          pendingAction?.kind === "cancel"
+            ? "取消注册任务"
+            : pendingAction?.kind === "batch-delete"
+              ? "批量删除注册任务"
+              : "删除注册任务"
+        }
         description={
           pendingAction?.kind === "cancel"
             ? "确认要取消这个注册任务吗？如果任务已经接近完成，仍可能产生部分结果。"
-            : "确认要删除这个注册任务吗？删除后将无法在列表中查看历史日志。"
+            : pendingAction?.kind === "batch-delete"
+              ? `确认要删除已选中的 ${pendingAction.taskUuids.length} 条注册任务吗？删除后将无法在列表中查看历史日志。`
+              : "确认要删除这个注册任务吗？删除后将无法在列表中查看历史日志。"
         }
         confirmText={pendingAction?.kind === "cancel" ? "确认取消" : "确认删除"}
-        confirmVariant={pendingAction?.kind === "delete" ? "destructive" : "default"}
+        confirmVariant={
+          pendingAction?.kind === "delete" || pendingAction?.kind === "batch-delete"
+            ? "destructive"
+            : "default"
+        }
         onConfirm={() => void handleConfirmAction()}
       />
 

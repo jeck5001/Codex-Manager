@@ -56,6 +56,7 @@ import {
   RegisterOutlookBatchImportResult,
   RegisterServiceGroup,
   RegisterStats,
+  RegisterTaskBatchDeleteResult,
   RegisterTaskListResult,
   RegisterTaskSnapshot,
   UsageAggregateSummary,
@@ -361,6 +362,43 @@ function normalizeRegisterTaskListResult(value: unknown): RegisterTaskListResult
     total:
       typeof source.total === "number" && Number.isFinite(source.total) ? source.total : tasks.length,
     tasks: tasks.map(normalizeRegisterTaskSnapshot).filter((task) => task.taskUuid),
+  };
+}
+
+function normalizeRegisterTaskBatchDeleteResult(
+  value: unknown,
+): RegisterTaskBatchDeleteResult {
+  const source = asRecord(value) ?? {};
+  const rawErrors = Array.isArray(source.errors) ? source.errors : [];
+  return {
+    success: source.success === true,
+    deletedCount:
+      typeof source.deletedCount === "number" && Number.isFinite(source.deletedCount)
+        ? source.deletedCount
+        : typeof source.deleted_count === "number" && Number.isFinite(source.deleted_count)
+          ? source.deleted_count
+          : 0,
+    failedCount:
+      typeof source.failedCount === "number" && Number.isFinite(source.failedCount)
+        ? source.failedCount
+        : typeof source.failed_count === "number" && Number.isFinite(source.failed_count)
+          ? source.failed_count
+          : 0,
+    errors: rawErrors
+      .map((item) => {
+        const error = asRecord(item) ?? {};
+        const taskUuid =
+          typeof error.taskUuid === "string"
+            ? error.taskUuid
+            : typeof error.task_uuid === "string"
+              ? error.task_uuid
+              : "";
+        return {
+          taskUuid,
+          error: typeof error.error === "string" ? error.error : "",
+        };
+      })
+      .filter((item) => item.taskUuid || item.error),
   };
 }
 
@@ -945,6 +983,13 @@ export const accountClient = {
     ),
   deleteRegisterTask: (taskUuid: string) =>
     invoke("service_account_register_task_delete", withAddr({ taskUuid })),
+  async deleteRegisterTasks(taskUuids: string[]): Promise<RegisterTaskBatchDeleteResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_tasks_delete_many",
+      withAddr({ taskUuids }),
+    );
+    return normalizeRegisterTaskBatchDeleteResult(result);
+  },
   async startRegisterOutlookBatch(
     params: RegisterOutlookBatchStartPayload
   ): Promise<RegisterOutlookBatchStartResult> {

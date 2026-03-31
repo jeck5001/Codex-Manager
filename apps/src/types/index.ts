@@ -838,6 +838,16 @@ export interface RegisterTaskListResult {
   tasks: RegisterTaskSnapshot[];
 }
 
+export interface RegisterTaskBatchDeleteResult {
+  success: boolean;
+  deletedCount: number;
+  failedCount: number;
+  errors: Array<{
+    taskUuid: string;
+    error: string;
+  }>;
+}
+
 export interface RegisterStats {
   byStatus: Record<string, number>;
   todayCount: number;

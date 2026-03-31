@@ -85,6 +85,21 @@ export function useRegisterTasks(filters: RegisterTaskListParams = {}) {
     },
   });
 
+  const deleteManyMutation = useMutation({
+    mutationFn: (taskUuids: string[]) => accountClient.deleteRegisterTasks(taskUuids),
+    onSuccess: async (result) => {
+      await invalidateAll();
+      if (result.failedCount > 0) {
+        toast.warning(`已删除 ${result.deletedCount} 条，${result.failedCount} 条删除失败`);
+        return;
+      }
+      toast.success(`已删除 ${result.deletedCount} 条任务`);
+    },
+    onError: (error: unknown) => {
+      toast.error(`批量删除失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   const retryMutation = useMutation({
     mutationFn: ({ taskUuid, strategy }: { taskUuid: string; strategy?: string | null }) =>
       accountClient.retryRegisterTask(taskUuid, strategy),
@@ -108,8 +123,10 @@ export function useRegisterTasks(filters: RegisterTaskListParams = {}) {
     retryTask: (taskUuid: string, strategy?: string | null) =>
       retryMutation.mutateAsync({ taskUuid, strategy }),
     deleteTask: deleteMutation.mutateAsync,
+    deleteTasks: deleteManyMutation.mutateAsync,
     isCancelling: cancelMutation.isPending,
     isRetrying: retryMutation.isPending,
     isDeleting: deleteMutation.isPending,
+    isDeletingMany: deleteManyMutation.isPending,
   };
 }

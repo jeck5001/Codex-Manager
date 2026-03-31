@@ -1048,6 +1048,23 @@ pub(crate) fn delete_register_task(task_uuid: &str) -> Result<Value, String> {
     register_delete_json(&format!("/api/registration/tasks/{task_uuid}"))
 }
 
+pub(crate) fn delete_register_tasks(task_uuids: Vec<String>) -> Result<Value, String> {
+    let task_uuids = task_uuids
+        .into_iter()
+        .map(|task_uuid| task_uuid.trim().to_string())
+        .filter(|task_uuid| !task_uuid.is_empty())
+        .collect::<Vec<_>>();
+    if task_uuids.is_empty() {
+        return Err("taskUuids is required".to_string());
+    }
+    register_post_json(
+        "/api/registration/tasks/batch-delete",
+        &json!({
+            "task_uuids": task_uuids,
+        }),
+    )
+}
+
 pub(crate) fn list_register_outlook_accounts() -> Result<Value, String> {
     register_get_json("/api/registration/outlook-accounts")
 }

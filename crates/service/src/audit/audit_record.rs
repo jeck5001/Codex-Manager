@@ -172,6 +172,7 @@ fn classify_auditable_method(method: &str) -> Option<(&'static str, &'static str
         }
         "account/register/task/cancel" => Some(("cancel", "register_task")),
         "account/register/task/delete" => Some(("delete", "register_task")),
+        "account/register/tasks/deleteMany" => Some(("delete_many", "register_task")),
         "account/register/task/retry" => Some(("retry", "register_task")),
         "account/register/emailServices/create" => Some(("create", "email_service")),
         "account/register/emailServices/update"
@@ -206,7 +207,8 @@ fn extract_object_id(method: &str, params: Option<&Value>) -> Option<String> {
         "account/delete" | "account/update" | "account/subscription/mark" => &["accountId", "id"],
         "account/register/task/cancel"
         | "account/register/task/delete"
-        | "account/register/task/retry" => &["taskUuid"],
+        | "account/register/tasks/deleteMany"
+        | "account/register/task/retry" => &["taskUuid", "taskUuids"],
         "account/register/batch/start"
         | "account/register/batch/cancel"
         | "account/register/outlookBatch/start"

@@ -355,6 +355,22 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let task_uuid = first_str_param(req, &["taskUuid", "task_uuid"]).unwrap_or("");
             super::value_or_error(account_register::delete_register_task(task_uuid))
         }
+        "account/register/tasks/deleteMany" => {
+            let task_uuids = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("taskUuids").or_else(|| params.get("task_uuids")))
+                .and_then(|value| value.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str())
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            super::value_or_error(account_register::delete_register_tasks(task_uuids))
+        }
         "account/register/outlookAccounts" => {
             super::value_or_error(account_register::list_register_outlook_accounts())
         }
