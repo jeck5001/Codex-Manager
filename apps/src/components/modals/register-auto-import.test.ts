@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+// @ts-ignore -- node:test 直接加载本地 ts 文件
 import {
   buildManualImportSummary,
   getRegisterSubmitLabel,

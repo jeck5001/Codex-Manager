@@ -15,6 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/modals/confirm-dialog";
+import { BrowserbaseConfigCard } from "@/components/register/browserbase-config-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -857,6 +858,8 @@ export default function EmailServicesPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <BrowserbaseConfigCard />
 
       <Dialog
         open={formOpen}

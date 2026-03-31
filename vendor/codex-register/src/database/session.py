@@ -111,6 +111,8 @@ class DatabaseSessionManager:
             ("accounts", "subscription_at", "DATETIME"),
             ("accounts", "cookies", "TEXT"),
             ("proxies", "is_default", "BOOLEAN DEFAULT 0"),
+            ("registration_tasks", "register_mode", "VARCHAR(50) DEFAULT 'standard'"),
+            ("registration_tasks", "browserbase_config_id", "INTEGER"),
         ]
 
         # 确保新表存在（create_tables 已处理，此处兜底）

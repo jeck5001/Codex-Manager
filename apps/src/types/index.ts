@@ -795,10 +795,28 @@ export interface RegisterAvailableServicesResult {
   tempMail: RegisterServiceGroup;
 }
 
+export interface RegisterBrowserbaseConfig {
+  id: number;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  config: Record<string, unknown>;
+  lastUsed: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegisterBrowserbaseConfigListResult {
+  total: number;
+  configs: RegisterBrowserbaseConfig[];
+}
+
 export interface RegisterTaskSnapshot {
   taskUuid: string;
   status: string;
+  registerMode: string;
   emailServiceId: number | null;
+  browserbaseConfigId: number | null;
   proxy: string;
   createdAt: string;
   startedAt: string;

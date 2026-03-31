@@ -7,7 +7,15 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc, func
 
-from .models import Account, EmailService, RegistrationTask, Setting, Proxy, CpaService
+from .models import (
+    Account,
+    EmailService,
+    RegistrationTask,
+    Setting,
+    Proxy,
+    CpaService,
+    BrowserbaseConfig,
+)
 
 
 # ============================================================================
@@ -258,12 +266,16 @@ def create_registration_task(
     db: Session,
     task_uuid: str,
     email_service_id: Optional[int] = None,
-    proxy: Optional[str] = None
+    proxy: Optional[str] = None,
+    register_mode: str = "standard",
+    browserbase_config_id: Optional[int] = None,
 ) -> RegistrationTask:
     """创建注册任务"""
     db_task = RegistrationTask(
         task_uuid=task_uuid,
         email_service_id=email_service_id,
+        register_mode=register_mode or "standard",
+        browserbase_config_id=browserbase_config_id,
         proxy=proxy,
         status='pending'
     )
@@ -378,6 +390,92 @@ def delete_registration_tasks(db: Session, task_uuids: List[str]) -> int:
 # 为 API 路由添加别名
 get_account = get_account_by_id
 get_registration_task = get_registration_task_by_uuid
+
+
+# ============================================================================
+# Browserbase 配置 CRUD
+# ============================================================================
+
+def create_browserbase_config(
+    db: Session,
+    name: str,
+    config: Dict[str, Any],
+    enabled: bool = True,
+    priority: int = 0,
+) -> BrowserbaseConfig:
+    db_config = BrowserbaseConfig(
+        name=name,
+        config=config,
+        enabled=enabled,
+        priority=priority,
+    )
+    db.add(db_config)
+    db.commit()
+    db.refresh(db_config)
+    return db_config
+
+
+def get_browserbase_config_by_id(db: Session, config_id: int) -> Optional[BrowserbaseConfig]:
+    return db.query(BrowserbaseConfig).filter(BrowserbaseConfig.id == config_id).first()
+
+
+def get_browserbase_configs(
+    db: Session,
+    enabled: Optional[bool] = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> List[BrowserbaseConfig]:
+    query = db.query(BrowserbaseConfig)
+    if enabled is not None:
+        query = query.filter(BrowserbaseConfig.enabled == enabled)
+    return (
+        query.order_by(
+            asc(BrowserbaseConfig.priority),
+            desc(BrowserbaseConfig.last_used),
+            asc(BrowserbaseConfig.id),
+        )
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+
+def update_browserbase_config(
+    db: Session,
+    config_id: int,
+    **kwargs,
+) -> Optional[BrowserbaseConfig]:
+    db_config = get_browserbase_config_by_id(db, config_id)
+    if not db_config:
+        return None
+
+    for key, value in kwargs.items():
+        if hasattr(db_config, key) and value is not None:
+            setattr(db_config, key, value)
+
+    db.commit()
+    db.refresh(db_config)
+    return db_config
+
+
+def update_browserbase_config_last_used(db: Session, config_id: int) -> bool:
+    db_config = get_browserbase_config_by_id(db, config_id)
+    if not db_config:
+        return False
+
+    db_config.last_used = datetime.utcnow()
+    db.commit()
+    return True
+
+
+def delete_browserbase_config(db: Session, config_id: int) -> bool:
+    db_config = get_browserbase_config_by_id(db, config_id)
+    if not db_config:
+        return False
+
+    db.delete(db_config)
+    db.commit()
+    return True
 
 
 # ============================================================================

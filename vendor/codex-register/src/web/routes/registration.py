@@ -14,8 +14,19 @@ from pydantic import BaseModel, Field
 
 from ...database import crud
 from ...database.session import get_db
-from ...database.models import RegistrationTask, Proxy, EmailService as EmailServiceModel, Account
+from ...database.models import (
+    RegistrationTask,
+    Proxy,
+    EmailService as EmailServiceModel,
+    Account,
+    BrowserbaseConfig as BrowserbaseConfigModel,
+)
 from ...core.register import RegistrationEngine, RegistrationResult
+from ...core.browserbase_ddg import (
+    BROWSERBASE_DDG_REGISTER_MODE,
+    DEFAULT_REGISTER_MODE,
+    BrowserbaseDDGRegistrationRunner,
+)
 from ...core.round_robin import build_round_robin_schedule, pick_round_robin_item
 from ...services import EmailServiceFactory, EmailServiceType
 from ...config.settings import get_settings
@@ -166,6 +177,8 @@ class RegistrationTaskCreate(BaseModel):
     proxy: Optional[str] = None
     email_service_config: Optional[dict] = None
     email_service_id: Optional[int] = None  # 使用数据库中已配置的邮箱服务 ID
+    register_mode: str = DEFAULT_REGISTER_MODE
+    browserbase_config_id: Optional[int] = None
     auto_upload_cpa: bool = False  # 注册成功后自动上传到 CPA
     cpa_service_id: Optional[int] = None  # 指定 CPA 服务 ID，不传则使用全局配置
 
@@ -177,6 +190,8 @@ class BatchRegistrationRequest(BaseModel):
     proxy: Optional[str] = None
     email_service_config: Optional[dict] = None
     email_service_id: Optional[int] = None  # 使用数据库中已配置的邮箱服务 ID
+    register_mode: str = DEFAULT_REGISTER_MODE
+    browserbase_config_id: Optional[int] = None
     interval_min: int = 5  # 最小间隔秒数
     interval_max: int = 30  # 最大间隔秒数
     concurrency: int = 1   # 并发线程数 (1-50)
@@ -190,7 +205,9 @@ class RegistrationTaskResponse(BaseModel):
     id: int
     task_uuid: str
     status: str
+    register_mode: str = DEFAULT_REGISTER_MODE
     email_service_id: Optional[int] = None
+    browserbase_config_id: Optional[int] = None
     proxy: Optional[str] = None
     logs: Optional[str] = None
     result: Optional[dict] = None
@@ -241,6 +258,17 @@ def _infer_email_service_type_from_task(task: RegistrationTask) -> Optional[str]
     return EmailServiceType.TEMPMAIL.value
 
 
+def _normalize_register_mode(value: Optional[str]) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized == BROWSERBASE_DDG_REGISTER_MODE:
+        return BROWSERBASE_DDG_REGISTER_MODE
+    return DEFAULT_REGISTER_MODE
+
+
+def _infer_register_mode_from_task(task: RegistrationTask) -> str:
+    return _normalize_register_mode(getattr(task, "register_mode", None))
+
+
 def _create_single_registration_task(
     db,
     background_tasks: BackgroundTasks,
@@ -248,6 +276,8 @@ def _create_single_registration_task(
     proxy: Optional[str] = None,
     email_service_config: Optional[dict] = None,
     email_service_id: Optional[int] = None,
+    register_mode: str = DEFAULT_REGISTER_MODE,
+    browserbase_config_id: Optional[int] = None,
     auto_upload_cpa: bool = False,
     cpa_service_id: Optional[int] = None,
 ) -> RegistrationTask:
@@ -258,6 +288,8 @@ def _create_single_registration_task(
         task_uuid=task_uuid,
         email_service_id=email_service_id,
         proxy=proxy,
+        register_mode=_normalize_register_mode(register_mode),
+        browserbase_config_id=browserbase_config_id,
     )
 
     background_tasks.add_task(
@@ -267,6 +299,8 @@ def _create_single_registration_task(
         proxy,
         email_service_config,
         email_service_id,
+        _normalize_register_mode(register_mode),
+        browserbase_config_id,
         "",
         "",
         auto_upload_cpa,
@@ -331,7 +365,9 @@ def task_to_response(task: RegistrationTask) -> RegistrationTaskResponse:
         id=task.id,
         task_uuid=task.task_uuid,
         status=task.status,
+        register_mode=_infer_register_mode_from_task(task),
         email_service_id=task.email_service_id,
+        browserbase_config_id=getattr(task, "browserbase_config_id", None),
         proxy=task.proxy,
         logs=task.logs,
         result=task.result,
@@ -408,7 +444,7 @@ def _delete_register_tasks(db, task_uuids: List[str]) -> Dict[str, object]:
 
 
 def _recover_interrupted_registration_tasks(
-    schedule_task: Callable[[str, str, Optional[str], Optional[int]], None],
+    schedule_task: Callable[[str, str, Optional[str], Optional[int], str, Optional[int]], None],
 ) -> Dict[str, int]:
     """服务启动时恢复中断的注册任务。
 
@@ -446,6 +482,7 @@ def _recover_interrupted_registration_tasks(
                 continue
 
             email_service_type = _infer_email_service_type_from_task(task)
+            register_mode = _infer_register_mode_from_task(task)
             try:
                 crud.append_task_log(db, task_uuid, "[系统] 服务重启后自动恢复排队")
                 task_manager.update_status(task_uuid, "pending")
@@ -454,6 +491,8 @@ def _recover_interrupted_registration_tasks(
                     email_service_type,
                     getattr(task, "proxy", None),
                     getattr(task, "email_service_id", None),
+                    register_mode,
+                    getattr(task, "browserbase_config_id", None),
                 )
                 summary["resumed_pending"] += 1
             except Exception as e:
@@ -473,8 +512,8 @@ def _recover_interrupted_registration_tasks(
 
 
 async def resume_recovered_registration_tasks(
-    task_specs: List[Tuple[str, str, Optional[str], Optional[int]]],
-    runner: Callable[[str, str, Optional[str], Optional[int]], Awaitable[None]],
+    task_specs: List[Tuple[str, str, Optional[str], Optional[int], str, Optional[int]]],
+    runner: Callable[[str, str, Optional[str], Optional[int], str, Optional[int]], Awaitable[None]],
     concurrency: int = RECOVERY_RESUME_CONCURRENCY,
 ) -> None:
     """按受控并发恢复启动后遗留的 pending 注册任务。"""
@@ -483,10 +522,10 @@ async def resume_recovered_registration_tasks(
 
     semaphore = asyncio.Semaphore(max(1, concurrency))
 
-    async def _run_one(task_spec: Tuple[str, str, Optional[str], Optional[int]]) -> None:
-        task_uuid, email_service_type, proxy, email_service_id = task_spec
+    async def _run_one(task_spec: Tuple[str, str, Optional[str], Optional[int], str, Optional[int]]) -> None:
+        task_uuid, email_service_type, proxy, email_service_id, register_mode, browserbase_config_id = task_spec
         async with semaphore:
-            await runner(task_uuid, email_service_type, proxy, email_service_id)
+            await runner(task_uuid, email_service_type, proxy, email_service_id, register_mode, browserbase_config_id)
 
     await asyncio.gather(*[_run_one(task_spec) for task_spec in task_specs], return_exceptions=True)
 
@@ -512,7 +551,7 @@ def _build_retry_runtime_config(task: RegistrationTask, strategy: Optional[str])
     raise HTTPException(status_code=400, detail="不支持的重试策略")
 
 
-def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: Optional[str], email_service_config: Optional[dict], email_service_id: Optional[int] = None, log_prefix: str = "", batch_id: str = "", auto_upload_cpa: bool = False, cpa_service_id: Optional[int] = None):
+def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: Optional[str], email_service_config: Optional[dict], email_service_id: Optional[int] = None, register_mode: str = DEFAULT_REGISTER_MODE, browserbase_config_id: Optional[int] = None, log_prefix: str = "", batch_id: str = "", auto_upload_cpa: bool = False, cpa_service_id: Optional[int] = None):
     """
     在线程池中执行的同步注册任务
 
@@ -529,7 +568,9 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
             task = crud.update_registration_task(
                 db, task_uuid,
                 status="running",
-                started_at=datetime.utcnow()
+                started_at=datetime.utcnow(),
+                register_mode=_normalize_register_mode(register_mode),
+                browserbase_config_id=browserbase_config_id,
             )
 
             if not task:
@@ -554,9 +595,57 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
             # 更新任务的代理记录
             crud.update_registration_task(db, task_uuid, proxy=actual_proxy_url)
 
+            normalized_register_mode = _normalize_register_mode(register_mode)
+            settings = get_settings()
+
+            if normalized_register_mode == BROWSERBASE_DDG_REGISTER_MODE:
+                profile_id = browserbase_config_id
+                if not profile_id:
+                    raise ValueError("Browserbase 注册模式缺少配置 ID")
+                profile = db.query(BrowserbaseConfigModel).filter(
+                    BrowserbaseConfigModel.id == profile_id,
+                    BrowserbaseConfigModel.enabled == True,
+                ).first()
+                if not profile:
+                    raise ValueError(f"Browserbase 配置不存在或已禁用: {profile_id}")
+                log_callback = task_manager.create_log_callback(task_uuid, prefix=log_prefix, batch_id=batch_id)
+                runner = BrowserbaseDDGRegistrationRunner(
+                    profile_id=profile.id,
+                    profile_name=profile.name,
+                    profile_config=profile.config or {},
+                    proxy_url=actual_proxy_url,
+                    callback_logger=log_callback,
+                )
+                result = runner.run()
+                if result.success:
+                    runner.save_to_database(result)
+                    crud.update_registration_task(
+                        db,
+                        task_uuid,
+                        status="completed" if result.is_usable else "failed",
+                        completed_at=datetime.utcnow(),
+                        result=result.to_dict(),
+                        error_message=None if result.is_usable else (result.error_message or "账号已注册，但健康检查失败"),
+                    )
+                    task_manager.update_status(
+                        task_uuid,
+                        "completed" if result.is_usable else "failed",
+                        email=result.email if result.is_usable else None,
+                        error=None if result.is_usable else (result.error_message or "账号已注册，但健康检查失败"),
+                    )
+                else:
+                    crud.update_registration_task(
+                        db,
+                        task_uuid,
+                        status="failed",
+                        completed_at=datetime.utcnow(),
+                        error_message=result.error_message,
+                    )
+                    task_manager.update_status(task_uuid, "failed", error=result.error_message)
+                return
+
             # 创建邮箱服务
             service_type = EmailServiceType(email_service_type)
-            settings = get_settings()
 
             # 优先使用数据库中配置的邮箱服务
             if email_service_id:
@@ -742,7 +831,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                 pass
 
 
-async def run_registration_task(task_uuid: str, email_service_type: str, proxy: Optional[str], email_service_config: Optional[dict], email_service_id: Optional[int] = None, log_prefix: str = "", batch_id: str = "", auto_upload_cpa: bool = False, cpa_service_id: Optional[int] = None):
+async def run_registration_task(task_uuid: str, email_service_type: str, proxy: Optional[str], email_service_config: Optional[dict], email_service_id: Optional[int] = None, register_mode: str = DEFAULT_REGISTER_MODE, browserbase_config_id: Optional[int] = None, log_prefix: str = "", batch_id: str = "", auto_upload_cpa: bool = False, cpa_service_id: Optional[int] = None):
     """
     异步执行注册任务
 
@@ -767,6 +856,8 @@ async def run_registration_task(task_uuid: str, email_service_type: str, proxy: 
             proxy,
             email_service_config,
             email_service_id,
+            register_mode,
+            browserbase_config_id,
             log_prefix,
             batch_id,
             auto_upload_cpa,
@@ -816,6 +907,8 @@ async def run_batch_parallel(
     proxy: Optional[str],
     email_service_config: Optional[dict],
     email_service_id: Optional[int],
+    register_mode: str,
+    browserbase_config_id: Optional[int],
     task_proxies: Optional[List[Optional[str]]],
     task_email_service_ids: Optional[List[Optional[int]]],
     concurrency: int,
@@ -842,6 +935,7 @@ async def run_batch_parallel(
         async with semaphore:
             await run_registration_task(
                 uuid, email_service_type, resolved_proxy, email_service_config, resolved_email_service_id,
+                register_mode, browserbase_config_id,
                 log_prefix=prefix, batch_id=batch_id, auto_upload_cpa=auto_upload_cpa,
                 cpa_service_id=cpa_service_id
             )
@@ -882,6 +976,8 @@ async def run_batch_pipeline(
     proxy: Optional[str],
     email_service_config: Optional[dict],
     email_service_id: Optional[int],
+    register_mode: str,
+    browserbase_config_id: Optional[int],
     task_proxies: Optional[List[Optional[str]]],
     task_email_service_ids: Optional[List[Optional[int]]],
     interval_min: int,
@@ -910,6 +1006,7 @@ async def run_batch_pipeline(
             )
             await run_registration_task(
                 uuid, email_service_type, resolved_proxy, email_service_config, resolved_email_service_id,
+                register_mode, browserbase_config_id,
                 log_prefix=pfx, batch_id=batch_id, auto_upload_cpa=auto_upload_cpa,
                 cpa_service_id=cpa_service_id
             )
@@ -973,6 +1070,8 @@ async def run_batch_registration(
     proxy: Optional[str],
     email_service_config: Optional[dict],
     email_service_id: Optional[int],
+    register_mode: str,
+    browserbase_config_id: Optional[int],
     task_proxies: Optional[List[Optional[str]]],
     task_email_service_ids: Optional[List[Optional[int]]],
     interval_min: int,
@@ -986,13 +1085,13 @@ async def run_batch_registration(
     if mode == "parallel":
         await run_batch_parallel(
             batch_id, task_uuids, email_service_type, proxy,
-            email_service_config, email_service_id, task_proxies, task_email_service_ids, concurrency,
+            email_service_config, email_service_id, register_mode, browserbase_config_id, task_proxies, task_email_service_ids, concurrency,
             auto_upload_cpa=auto_upload_cpa, cpa_service_id=cpa_service_id
         )
     else:
         await run_batch_pipeline(
             batch_id, task_uuids, email_service_type, proxy,
-            email_service_config, email_service_id, task_proxies, task_email_service_ids,
+            email_service_config, email_service_id, register_mode, browserbase_config_id, task_proxies, task_email_service_ids,
             interval_min, interval_max, concurrency,
             auto_upload_cpa=auto_upload_cpa, cpa_service_id=cpa_service_id
         )
@@ -1012,16 +1111,23 @@ async def start_registration(
     - proxy: 代理地址
     - email_service_config: 邮箱服务配置（outlook 需要提供账户信息）
     """
-    # 验证邮箱服务类型
-    try:
-        EmailServiceType(request.email_service_type)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"无效的邮箱服务类型: {request.email_service_type}"
-        )
+    register_mode = _normalize_register_mode(request.register_mode)
 
     with get_db() as db:
+        if register_mode == BROWSERBASE_DDG_REGISTER_MODE:
+            if not request.browserbase_config_id:
+                raise HTTPException(status_code=400, detail="browserbase_config_id 不能为空")
+            profile = crud.get_browserbase_config_by_id(db, request.browserbase_config_id)
+            if not profile or not profile.enabled:
+                raise HTTPException(status_code=400, detail="Browserbase 配置不存在或未启用")
+        else:
+            try:
+                EmailServiceType(request.email_service_type)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"无效的邮箱服务类型: {request.email_service_type}"
+                )
         task = _create_single_registration_task(
             db=db,
             background_tasks=background_tasks,
@@ -1029,6 +1135,8 @@ async def start_registration(
             proxy=request.proxy,
             email_service_config=request.email_service_config,
             email_service_id=request.email_service_id,
+            register_mode=register_mode,
+            browserbase_config_id=request.browserbase_config_id,
             auto_upload_cpa=request.auto_upload_cpa,
             cpa_service_id=request.cpa_service_id,
         )
@@ -1054,13 +1162,7 @@ async def start_batch_registration(
     if request.count < 1 or request.count > 100:
         raise HTTPException(status_code=400, detail="注册数量必须在 1-100 之间")
 
-    try:
-        EmailServiceType(request.email_service_type)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"无效的邮箱服务类型: {request.email_service_type}"
-        )
+    register_mode = _normalize_register_mode(request.register_mode)
 
     if request.interval_min < 0 or request.interval_max < request.interval_min:
         raise HTTPException(status_code=400, detail="间隔时间参数无效")
@@ -1076,13 +1178,27 @@ async def start_batch_registration(
     task_uuids = []
 
     with get_db() as db:
-        service_type = EmailServiceType(request.email_service_type)
-        task_email_service_ids = _build_batch_email_service_plan(
-            db,
-            service_type,
-            request.email_service_id,
-            request.count,
-        )
+        if register_mode == BROWSERBASE_DDG_REGISTER_MODE:
+            if not request.browserbase_config_id:
+                raise HTTPException(status_code=400, detail="browserbase_config_id 不能为空")
+            profile = crud.get_browserbase_config_by_id(db, request.browserbase_config_id)
+            if not profile or not profile.enabled:
+                raise HTTPException(status_code=400, detail="Browserbase 配置不存在或未启用")
+            task_email_service_ids = [None] * request.count
+        else:
+            try:
+                service_type = EmailServiceType(request.email_service_type)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"无效的邮箱服务类型: {request.email_service_type}"
+                )
+            task_email_service_ids = _build_batch_email_service_plan(
+                db,
+                service_type,
+                request.email_service_id,
+                request.count,
+            )
         task_proxies = _build_batch_proxy_plan(db, request.proxy, request.count)
 
         for index in range(request.count):
@@ -1093,9 +1209,11 @@ async def start_batch_registration(
                 db,
                 task_uuid=task_uuid,
                 email_service_id=resolved_email_service_id,
-                proxy=resolved_proxy
+                proxy=resolved_proxy,
+                register_mode=register_mode,
+                browserbase_config_id=request.browserbase_config_id,
             )
-            if resolved_email_service_id:
+            if register_mode != BROWSERBASE_DDG_REGISTER_MODE and resolved_email_service_id:
                 _mark_email_service_used(db, resolved_email_service_id)
             task_uuids.append(task_uuid)
 
@@ -1112,6 +1230,8 @@ async def start_batch_registration(
         request.proxy,
         request.email_service_config,
         request.email_service_id,
+        register_mode,
+        request.browserbase_config_id,
         task_proxies,
         task_email_service_ids,
         request.interval_min,
@@ -1260,6 +1380,8 @@ async def retry_task(
             proxy=retry_proxy,
             email_service_config=runtime_config or None,
             email_service_id=task.email_service_id,
+            register_mode=_infer_register_mode_from_task(task),
+            browserbase_config_id=getattr(task, "browserbase_config_id", None),
         )
         return task_to_response(retried_task)
 
@@ -1539,6 +1661,8 @@ async def run_outlook_batch_registration(
         proxy=proxy,
         email_service_config=None,
         email_service_id=None,   # 每个任务已绑定了独立的 email_service_id
+        register_mode=DEFAULT_REGISTER_MODE,
+        browserbase_config_id=None,
         interval_min=interval_min,
         interval_max=interval_max,
         concurrency=concurrency,

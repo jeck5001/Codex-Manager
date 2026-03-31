@@ -40,6 +40,8 @@ import {
   RegisterAvailableServicesResult,
   RegisterBatchSnapshot,
   RegisterBatchStartResult,
+  RegisterBrowserbaseConfig,
+  RegisterBrowserbaseConfigListResult,
   RegisterEmailServiceBatchDeleteResult,
   RegisterEmailService,
   RegisterEmailServiceField,
@@ -123,6 +125,8 @@ interface ApiKeyPayload {
 interface RegisterStartPayload {
   emailServiceType: string;
   emailServiceId?: number | null;
+  registerMode?: string | null;
+  browserbaseConfigId?: number | null;
   proxy?: string | null;
 }
 
@@ -244,11 +248,23 @@ function normalizeRegisterTaskSnapshot(value: unknown): RegisterTaskSnapshot {
         ? source.task_uuid
         : "",
     status: typeof source.status === "string" ? source.status : "",
+    registerMode: typeof source.registerMode === "string"
+      ? source.registerMode
+      : typeof source.register_mode === "string"
+        ? source.register_mode
+        : "standard",
     emailServiceId: typeof source.emailServiceId === "number" && Number.isFinite(source.emailServiceId)
       ? source.emailServiceId
       : typeof source.email_service_id === "number" && Number.isFinite(source.email_service_id)
         ? source.email_service_id
         : null,
+    browserbaseConfigId:
+      typeof source.browserbaseConfigId === "number" && Number.isFinite(source.browserbaseConfigId)
+        ? source.browserbaseConfigId
+        : typeof source.browserbase_config_id === "number" &&
+            Number.isFinite(source.browserbase_config_id)
+          ? source.browserbase_config_id
+          : null,
     proxy: typeof source.proxy === "string" ? source.proxy : "",
     createdAt: typeof source.createdAt === "string"
       ? source.createdAt
@@ -619,6 +635,45 @@ function normalizeRegisterEmailService(value: unknown): RegisterEmailService {
   };
 }
 
+function normalizeRegisterBrowserbaseConfig(value: unknown): RegisterBrowserbaseConfig {
+  const source = asRecord(value) ?? {};
+  return {
+    id: typeof source.id === "number" && Number.isFinite(source.id) ? source.id : 0,
+    name: typeof source.name === "string" ? source.name : "",
+    enabled: source.enabled === true,
+    priority: typeof source.priority === "number" && Number.isFinite(source.priority) ? source.priority : 0,
+    config: asRecord(source.config) ?? {},
+    lastUsed: typeof source.lastUsed === "string"
+      ? source.lastUsed
+      : typeof source.last_used === "string"
+        ? source.last_used
+        : "",
+    createdAt: typeof source.createdAt === "string"
+      ? source.createdAt
+      : typeof source.created_at === "string"
+        ? source.created_at
+        : "",
+    updatedAt: typeof source.updatedAt === "string"
+      ? source.updatedAt
+      : typeof source.updated_at === "string"
+        ? source.updated_at
+        : "",
+  };
+}
+
+function normalizeRegisterBrowserbaseConfigList(
+  value: unknown
+): RegisterBrowserbaseConfigListResult {
+  const source = asRecord(value) ?? {};
+  const configs = Array.isArray(source.configs) ? source.configs : [];
+  return {
+    total: typeof source.total === "number" && Number.isFinite(source.total) ? source.total : configs.length,
+    configs: configs
+      .map(normalizeRegisterBrowserbaseConfig)
+      .filter((item) => item.id > 0),
+  };
+}
+
 function normalizeRegisterEmailServiceList(value: unknown): RegisterEmailServiceListResult {
   const source = asRecord(value) ?? {};
   const services = Array.isArray(source.services) ? source.services : [];
@@ -824,6 +879,58 @@ export const accountClient = {
     );
     return normalizeRegisterEmailServiceList(result);
   },
+  async listRegisterBrowserbaseConfigs(): Promise<RegisterBrowserbaseConfigListResult> {
+    const result = await invoke<unknown>(
+      "service_account_register_browserbase_configs_list",
+      withAddr()
+    );
+    return normalizeRegisterBrowserbaseConfigList(result);
+  },
+  async readRegisterBrowserbaseConfigFull(configId: number): Promise<RegisterBrowserbaseConfig> {
+    const result = await invoke<unknown>(
+      "service_account_register_browserbase_configs_read_full",
+      withAddr({ configId })
+    );
+    return normalizeRegisterBrowserbaseConfig(result);
+  },
+  async createRegisterBrowserbaseConfig(params: {
+    name: string;
+    enabled?: boolean;
+    priority?: number;
+    config?: Record<string, unknown>;
+  }): Promise<RegisterBrowserbaseConfig> {
+    const result = await invoke<unknown>(
+      "service_account_register_browserbase_configs_create",
+      withAddr({
+        name: params.name,
+        enabled: params.enabled ?? true,
+        priority: params.priority ?? 0,
+        config: params.config ?? {},
+      })
+    );
+    return normalizeRegisterBrowserbaseConfig(result);
+  },
+  async updateRegisterBrowserbaseConfig(params: {
+    configId: number;
+    name?: string | null;
+    enabled?: boolean;
+    priority?: number | null;
+    config?: Record<string, unknown>;
+  }): Promise<RegisterBrowserbaseConfig> {
+    const result = await invoke<unknown>(
+      "service_account_register_browserbase_configs_update",
+      withAddr({
+        configId: params.configId,
+        name: params.name ?? null,
+        enabled: params.enabled,
+        priority: params.priority ?? null,
+        config: params.config ?? {},
+      })
+    );
+    return normalizeRegisterBrowserbaseConfig(result);
+  },
+  deleteRegisterBrowserbaseConfig: (configId: number) =>
+    invoke("service_account_register_browserbase_configs_delete", withAddr({ configId })),
   async getRegisterEmailServiceStats(): Promise<RegisterEmailServiceStats> {
     const result = await invoke<unknown>(
       "service_account_register_email_services_stats",
@@ -924,6 +1031,8 @@ export const accountClient = {
       withAddr({
         emailServiceType: params.emailServiceType,
         emailServiceId: params.emailServiceId ?? null,
+        registerMode: params.registerMode ?? "standard",
+        browserbaseConfigId: params.browserbaseConfigId ?? null,
         proxy: params.proxy ?? null,
       })
     );
@@ -937,6 +1046,8 @@ export const accountClient = {
       withAddr({
         emailServiceType: params.emailServiceType,
         emailServiceId: params.emailServiceId ?? null,
+        registerMode: params.registerMode ?? "standard",
+        browserbaseConfigId: params.browserbaseConfigId ?? null,
         proxy: params.proxy ?? null,
         count: params.count,
         intervalMin: params.intervalMin,
