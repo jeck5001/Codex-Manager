@@ -162,6 +162,7 @@ def create_app() -> FastAPI:
         import asyncio
         from .routes.registration import (
             _recover_interrupted_registration_tasks,
+            resume_recovered_registration_tasks,
             run_registration_task,
         )
 
@@ -175,15 +176,10 @@ def create_app() -> FastAPI:
         logger.info(f"数据库: {settings.database_url}")
         logger.info("=" * 50)
 
+        pending_recovery_tasks = []
         recovery_summary = _recover_interrupted_registration_tasks(
-            lambda task_uuid, email_service_type, proxy, email_service_id: loop.create_task(
-                run_registration_task(
-                    task_uuid,
-                    email_service_type,
-                    proxy,
-                    None,
-                    email_service_id,
-                )
+            lambda task_uuid, email_service_type, proxy, email_service_id: pending_recovery_tasks.append(
+                (task_uuid, email_service_type, proxy, email_service_id)
             )
         )
         if any(recovery_summary.values()):
@@ -192,6 +188,24 @@ def create_app() -> FastAPI:
                 recovery_summary["resumed_pending"],
                 recovery_summary["failed_running"],
                 recovery_summary["failed_pending"],
+            )
+        if pending_recovery_tasks:
+            logger.info(
+                "注册任务恢复调度启动: pending=%s, concurrency=%s",
+                len(pending_recovery_tasks),
+                3,
+            )
+            loop.create_task(
+                resume_recovered_registration_tasks(
+                    pending_recovery_tasks,
+                    lambda task_uuid, email_service_type, proxy, email_service_id: run_registration_task(
+                        task_uuid,
+                        email_service_type,
+                        proxy,
+                        None,
+                        email_service_id,
+                    ),
+                )
             )
 
     @app.on_event("shutdown")
