@@ -2,6 +2,7 @@ use super::{
     extract_token_payload, import_single_item, resolve_logical_account_id, ExistingAccountIndex,
     ImportTokenPayload,
 };
+use crate::account_payment::read_account_cookies;
 use crate::account_identity::build_account_storage_id;
 use codexmanager_core::storage::{now_ts, Account, Storage};
 use serde_json::json;
@@ -13,7 +14,9 @@ fn payload() -> ImportTokenPayload {
     ImportTokenPayload {
         access_token: "access".to_string(),
         id_token: "id".to_string(),
-        refresh_token: "refresh".to_string(),
+        refresh_token: Some("refresh".to_string()),
+        session_token: None,
+        cookies: None,
         account_id_hint: None,
         chatgpt_account_id_hint: None,
     }
@@ -121,7 +124,7 @@ fn extract_token_payload_supports_flat_codex_format() {
     let payload = extract_token_payload(&value).expect("parse flat payload");
     assert_eq!(payload.access_token, "access.flat");
     assert_eq!(payload.id_token, "id.flat");
-    assert_eq!(payload.refresh_token, "refresh.flat");
+    assert_eq!(payload.refresh_token.as_deref(), Some("refresh.flat"));
     assert_eq!(payload.account_id_hint.as_deref(), Some("acc-flat"));
     assert_eq!(payload.chatgpt_account_id_hint, None);
 }
@@ -141,11 +144,31 @@ fn extract_token_payload_supports_camel_case_fields() {
     let payload = extract_token_payload(&value).expect("parse camel payload");
     assert_eq!(payload.access_token, "access.camel");
     assert_eq!(payload.id_token, "id.camel");
-    assert_eq!(payload.refresh_token, "refresh.camel");
+    assert_eq!(payload.refresh_token.as_deref(), Some("refresh.camel"));
     assert_eq!(payload.account_id_hint.as_deref(), Some("acc-camel"));
     assert_eq!(
         payload.chatgpt_account_id_hint.as_deref(),
         Some("cgpt-camel")
+    );
+}
+
+#[test]
+fn extract_token_payload_allows_session_only_any_auto_payload() {
+    let value = json!({
+        "access_token": "access.session",
+        "session_token": "session.only",
+        "chatgpt_account_id": "cgpt-session"
+    });
+
+    let payload = extract_token_payload(&value).expect("parse session payload");
+    assert_eq!(payload.access_token, "access.session");
+    assert_eq!(payload.id_token, "access.session");
+    assert_eq!(payload.refresh_token, None);
+    assert_eq!(payload.session_token.as_deref(), Some("session.only"));
+    assert_eq!(payload.cookies, None);
+    assert_eq!(
+        payload.chatgpt_account_id_hint.as_deref(),
+        Some("cgpt-session")
     );
 }
 
@@ -193,6 +216,37 @@ fn import_single_item_reuses_existing_login_account_by_scope_identity() {
         .expect("find token")
         .expect("token");
     assert_eq!(token.account_id, accounts[0].id);
+}
+
+#[test]
+fn import_single_item_persists_session_token_as_cookie_fallback() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init");
+    let mut idx = ExistingAccountIndex::build(&storage).expect("build index");
+    let item = json!({
+        "access_token": TEST_ID_TOKEN_META,
+        "session_token": "session-import-token",
+        "chatgpt_account_id": "cgpt-meta"
+    });
+
+    let created = import_single_item(&storage, &mut idx, &item, 1).expect("import item");
+    assert!(created);
+
+    let accounts = storage.list_accounts().expect("list accounts");
+    assert_eq!(accounts.len(), 1);
+    let token = storage
+        .find_token_by_account_id(&accounts[0].id)
+        .expect("find token")
+        .expect("token");
+    assert_eq!(token.access_token, TEST_ID_TOKEN_META);
+    assert_eq!(token.id_token, TEST_ID_TOKEN_META);
+    assert_eq!(token.refresh_token, "");
+
+    let cookies = read_account_cookies(&accounts[0].id).expect("cookies");
+    assert_eq!(
+        cookies,
+        "__Secure-next-auth.session-token=session-import-token"
+    );
 }
 
 #[test]

@@ -38,7 +38,9 @@ struct AccountImportError {
 struct ImportTokenPayload {
     access_token: String,
     id_token: String,
-    refresh_token: String,
+    refresh_token: Option<String>,
+    session_token: Option<String>,
+    cookies: Option<String>,
     account_id_hint: Option<String>,
     chatgpt_account_id_hint: Option<String>,
 }
@@ -328,7 +330,7 @@ fn import_single_item(
             .or_else(|| extract_workspace_id(&payload.access_token))
             .or_else(|| chatgpt_account_id.clone()),
     );
-    let token_fingerprint = token_fingerprint(&payload.refresh_token);
+    let token_fingerprint = token_fingerprint(payload.refresh_token.as_deref().unwrap_or(""));
     let fallback_subject_key =
         build_fallback_subject_key(subject_account_id.as_deref(), None::<&str>);
     let account_id = index
@@ -441,11 +443,13 @@ fn import_single_item(
         account_id: account_id.clone(),
         id_token: payload.id_token,
         access_token: payload.access_token,
-        refresh_token: payload.refresh_token,
+        refresh_token: payload.refresh_token.unwrap_or_default(),
         api_key_access_token: None,
         last_refresh: now,
     };
     storage.insert_token(&token).map_err(|e| e.to_string())?;
+    let merged_cookies = merge_session_token_into_cookies(payload.cookies, payload.session_token);
+    crate::account_payment::store_account_cookies(&account_id, merged_cookies.as_deref())?;
     index.upsert_index(&account);
     Ok(created)
 }
@@ -461,24 +465,31 @@ fn extract_token_payload(item: &Value) -> Result<ImportTokenPayload, String> {
         ],
         "access_token/accessToken",
     )?;
-    let id_token = required_string_any(
-        &[
-            (tokens, "id_token"),
-            (tokens, "idToken"),
-            (item, "id_token"),
-            (item, "idToken"),
-        ],
-        "id_token/idToken",
-    )?;
-    let refresh_token = required_string_any(
-        &[
-            (tokens, "refresh_token"),
-            (tokens, "refreshToken"),
-            (item, "refresh_token"),
-            (item, "refreshToken"),
-        ],
-        "refresh_token/refreshToken",
-    )?;
+    let id_token = optional_string_any(&[
+        (tokens, "id_token"),
+        (tokens, "idToken"),
+        (item, "id_token"),
+        (item, "idToken"),
+    ])
+    .unwrap_or_else(|| access_token.clone());
+    let refresh_token = optional_string_any(&[
+        (tokens, "refresh_token"),
+        (tokens, "refreshToken"),
+        (item, "refresh_token"),
+        (item, "refreshToken"),
+    ]);
+    let session_token = optional_string_any(&[
+        (tokens, "session_token"),
+        (tokens, "sessionToken"),
+        (item, "session_token"),
+        (item, "sessionToken"),
+    ]);
+    let cookies = optional_string_any(&[
+        (tokens, "cookies"),
+        (tokens, "cookie"),
+        (item, "cookies"),
+        (item, "cookie"),
+    ]);
     let account_id_hint = optional_string_any(&[
         (tokens, "account_id"),
         (tokens, "accountId"),
@@ -495,6 +506,8 @@ fn extract_token_payload(item: &Value) -> Result<ImportTokenPayload, String> {
         access_token,
         id_token,
         refresh_token,
+        session_token,
+        cookies,
         account_id_hint,
         chatgpt_account_id_hint,
     })
@@ -572,6 +585,35 @@ fn token_fingerprint(refresh_token: &str) -> String {
         out.push_str(&format!("{:02x}", b));
     }
     out
+}
+
+fn merge_session_token_into_cookies(
+    cookies: Option<String>,
+    session_token: Option<String>,
+) -> Option<String> {
+    let normalized_cookies = cookies
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let normalized_session_token = session_token
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    match (normalized_cookies, normalized_session_token) {
+        (Some(existing), Some(_session_token))
+            if existing.contains("__Secure-next-auth.session-token=")
+                || existing.contains("next-auth.session-token=") =>
+        {
+            Some(existing)
+        }
+        (Some(existing), Some(session_token)) => {
+            Some(format!("{existing}; __Secure-next-auth.session-token={session_token}"))
+        }
+        (None, Some(session_token)) => {
+            Some(format!("__Secure-next-auth.session-token={session_token}"))
+        }
+        (Some(existing), None) => Some(existing),
+        (None, None) => None,
+    }
 }
 
 fn extract_account_meta(item: &Value) -> ImportAccountMeta {

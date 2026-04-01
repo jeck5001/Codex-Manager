@@ -47,6 +47,8 @@ struct ExportTokensPayload {
     id_token: String,
     refresh_token: String,
     account_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cookies: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -253,6 +255,7 @@ fn build_account_export_json(account: &Account, token: &Token) -> Result<Vec<u8>
             id_token: token.id_token.clone(),
             refresh_token: token.refresh_token.clone(),
             account_id: account.id.clone(),
+            cookies: crate::account_payment::read_account_cookies(&account.id),
         },
         meta: ExportMetaPayload {
             label: account.label.clone(),
@@ -332,7 +335,79 @@ fn with_resolved_export_label(mut account: Account, token: &Token) -> Account {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_file_stem;
+    use super::{build_account_export_json, sanitize_file_stem};
+    use codexmanager_core::storage::{now_ts, Account, Storage, Token};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::MutexGuard;
+
+    static TEST_DB_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    struct TestDbScope {
+        _env_lock: MutexGuard<'static, ()>,
+        _db_guard: EnvGuard,
+        db_path: PathBuf,
+    }
+
+    impl Drop for TestDbScope {
+        fn drop(&mut self) {
+            crate::storage_helpers::clear_storage_cache_for_tests();
+            let _ = fs::remove_file(&self.db_path);
+            let _ = fs::remove_file(format!("{}-shm", self.db_path.display()));
+            let _ = fs::remove_file(format!("{}-wal", self.db_path.display()));
+        }
+    }
+
+    fn new_test_db_path(prefix: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "{prefix}-{}-{}-{}.db",
+            std::process::id(),
+            now_ts(),
+            TEST_DB_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        path
+    }
+
+    fn setup_test_db(prefix: &str) -> (TestDbScope, Storage) {
+        let env_lock = crate::lock_utils::process_env_test_guard();
+        crate::storage_helpers::clear_storage_cache_for_tests();
+        let db_path = new_test_db_path(prefix);
+        let db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+        let storage = Storage::open(&db_path).expect("open db");
+        storage.init().expect("init schema");
+        (
+            TestDbScope {
+                _env_lock: env_lock,
+                _db_guard: db_guard,
+                db_path,
+            },
+            storage,
+        )
+    }
 
     #[test]
     fn sanitize_file_stem_replaces_windows_invalid_chars() {
@@ -344,5 +419,50 @@ mod tests {
     fn sanitize_file_stem_trims_tailing_space_and_dot() {
         let actual = sanitize_file_stem(" demo. ");
         assert_eq!(actual, "demo");
+    }
+
+    #[test]
+    fn build_account_export_json_includes_stored_cookies() {
+        let (_scope, storage) = setup_test_db("account-export-cookies");
+        let now = now_ts();
+        let account = Account {
+            id: "acc-export-cookie".to_string(),
+            label: "export-cookie@example.com".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("cgpt-export-cookie".to_string()),
+            workspace_id: Some("ws-export-cookie".to_string()),
+            group_name: Some("EXPORT".to_string()),
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        let token = Token {
+            account_id: account.id.clone(),
+            access_token: "access-export-cookie".to_string(),
+            id_token: "id-export-cookie".to_string(),
+            refresh_token: "".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        };
+        storage.insert_account(&account).expect("insert account");
+        storage.insert_token(&token).expect("insert token");
+        crate::account_payment::store_account_cookies(
+            &account.id,
+            Some("__Secure-next-auth.session-token=export-cookie-session; oai-did=export-cookie-device"),
+        )
+        .expect("store cookies");
+
+        let encoded = build_account_export_json(&account, &token).expect("build export");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&encoded).expect("parse export json");
+
+        assert_eq!(
+            payload
+                .get("tokens")
+                .and_then(|value| value.get("cookies"))
+                .and_then(|value| value.as_str()),
+            Some("__Secure-next-auth.session-token=export-cookie-session; oai-did=export-cookie-device")
+        );
     }
 }
