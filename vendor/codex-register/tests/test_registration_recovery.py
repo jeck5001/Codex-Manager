@@ -121,6 +121,15 @@ def load_registration_module():
     )
     sys.modules["src.core.browserbase_ddg"] = browserbase_module
 
+    any_auto_module = types.ModuleType("src.core.any_auto_register")
+    any_auto_module.ANY_AUTO_REGISTER_MODE = "any_auto"
+    any_auto_module.AnyAutoRegistrationRunner = type(
+        "AnyAutoRegistrationRunner",
+        (),
+        {},
+    )
+    sys.modules["src.core.any_auto_register"] = any_auto_module
+
     round_robin_module = types.ModuleType("src.core.round_robin")
     round_robin_module.build_round_robin_schedule = lambda items, count: []
     round_robin_module.pick_round_robin_item = lambda items: items[0] if items else None

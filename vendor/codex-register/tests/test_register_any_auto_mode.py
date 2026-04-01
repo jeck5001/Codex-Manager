@@ -57,7 +57,11 @@ def load_registration_module():
             return lambda fn: fn
 
     class BackgroundTasks:
-        pass
+        def __init__(self):
+            self.calls = []
+
+        def add_task(self, *args, **kwargs):
+            self.calls.append((args, kwargs))
 
     fastapi_module.APIRouter = APIRouter
     fastapi_module.HTTPException = HTTPException
@@ -77,11 +81,13 @@ def load_registration_module():
     sys.modules["pydantic"] = pydantic_module
 
     crud_module = types.ModuleType("src.database.crud")
-    crud_module.get_registration_task = lambda *_args, **_kwargs: None
-    crud_module.delete_registration_task = lambda *_args, **_kwargs: False
+    crud_module.create_registration_task = lambda *_args, **_kwargs: None
     crud_module.get_enabled_proxies = lambda *_args, **_kwargs: []
     crud_module.update_proxy_last_used = lambda *_args, **_kwargs: None
     crud_module.update_email_service_last_used = lambda *_args, **_kwargs: None
+    crud_module.get_registration_tasks_by_statuses = lambda *_args, **_kwargs: []
+    crud_module.append_task_log = lambda *_args, **_kwargs: None
+    crud_module.update_registration_task = lambda *_args, **_kwargs: None
     sys.modules["src.database.crud"] = crud_module
 
     session_module = types.ModuleType("src.database.session")
@@ -146,6 +152,9 @@ def load_registration_module():
         TEMP_MAIL = types.SimpleNamespace(value="temp_mail")
         CUSTOM_DOMAIN = types.SimpleNamespace(value="custom_domain")
 
+        def __init__(self, value):
+            self.value = value
+
     services_module.EmailServiceFactory = EmailServiceFactory
     services_module.EmailServiceType = EmailServiceType
     sys.modules["src.services"] = services_module
@@ -177,36 +186,49 @@ def load_registration_module():
 REGISTRATION_MODULE = load_registration_module()
 
 
-class RegistrationBatchDeleteTests(unittest.TestCase):
-    def test_delete_register_tasks_skips_running_and_missing(self):
+class RegisterAnyAutoModeTests(unittest.TestCase):
+    def test_normalize_register_mode_accepts_any_auto(self):
+        self.assertEqual(REGISTRATION_MODULE._normalize_register_mode("any_auto"), "any_auto")
+        self.assertEqual(REGISTRATION_MODULE._normalize_register_mode("ANY_AUTO"), "any_auto")
+
+    def test_create_single_task_persists_any_auto_mode(self):
+        background_tasks = REGISTRATION_MODULE.BackgroundTasks()
+        created_calls = []
+
         class Task:
-            def __init__(self, status):
-                self.status = status
+            def __init__(self):
+                self.id = 11
+                self.task_uuid = "task-any-auto-1"
+                self.status = "pending"
+                self.email_service_id = None
+                self.browserbase_config_id = None
+                self.register_mode = "any_auto"
+                self.proxy = None
+                self.logs = ""
+                self.result = None
+                self.error_message = None
+                self.created_at = None
+                self.started_at = None
+                self.completed_at = None
 
-        deleted = []
-        task_map = {
-            "done-task": Task("completed"),
-            "running-task": Task("running"),
-        }
-
-        REGISTRATION_MODULE.crud.get_registration_task = lambda _db, task_uuid: task_map.get(task_uuid)
-        REGISTRATION_MODULE.crud.delete_registration_task = lambda _db, task_uuid: deleted.append(task_uuid) or True
-
-        result = REGISTRATION_MODULE._delete_register_tasks(
-            object(),
-            ["done-task", "running-task", "missing-task"],
+        REGISTRATION_MODULE.crud.create_registration_task = (
+            lambda _db, **kwargs: created_calls.append(kwargs) or Task()
         )
 
-        self.assertEqual(result["deleted_count"], 1)
-        self.assertEqual(result["failed_count"], 2)
-        self.assertEqual(deleted, ["done-task"])
-        self.assertEqual(
-            result["errors"],
-            [
-                {"task_uuid": "running-task", "error": "无法删除运行中的任务"},
-                {"task_uuid": "missing-task", "error": "任务不存在"},
-            ],
+        task = REGISTRATION_MODULE._create_single_registration_task(
+            db=object(),
+            background_tasks=background_tasks,
+            email_service_type="tempmail",
+            proxy=None,
+            email_service_config=None,
+            email_service_id=None,
+            register_mode="any_auto",
+            browserbase_config_id=None,
         )
+
+        self.assertEqual(task.register_mode, "any_auto")
+        self.assertEqual(created_calls[0]["register_mode"], "any_auto")
+        self.assertEqual(background_tasks.calls[0][0][6], "any_auto")
 
 
 if __name__ == "__main__":

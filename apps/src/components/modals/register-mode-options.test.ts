@@ -16,8 +16,16 @@ test("browserbase 模式展示 Browserbase-DDG 标签", () => {
   assert.equal(getRegisterChannelLabel("browserbase_ddg"), "Browserbase-DDG 注册");
 });
 
+test("any_auto 模式展示 Any-Auto 标签", () => {
+  assert.equal(getRegisterChannelLabel("any_auto"), "Any-Auto 注册");
+});
+
 test("browserbase 模式不支持 outlook 批量", () => {
   assert.equal(canUseOutlookBatchRegisterMode("browserbase_ddg"), false);
+});
+
+test("any_auto 模式支持 outlook 批量", () => {
+  assert.equal(canUseOutlookBatchRegisterMode("any_auto"), true);
 });
 
 test("browserbase 通道下 outlook 批量会回退到单个注册", () => {
