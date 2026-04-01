@@ -333,6 +333,80 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertEqual(result.workspace_id, "ws-1")
         self.assertEqual(result.account_id, "acc-1")
 
+    def test_run_uses_authenticated_oauth_url_after_add_phone_fallback(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.logs = []
+        engine._log = lambda *_args, **_kwargs: None
+        engine._is_existing_account = False
+        engine._post_create_page_type = ""
+        engine._post_create_continue_url = ""
+        engine.password = "secret"
+        engine.proxy_url = None
+        engine.session = None
+        engine.email_service = types.SimpleNamespace(
+            service_type=types.SimpleNamespace(value="temp_mail")
+        )
+        engine.oauth_start = OAuthStart(
+            auth_url=(
+                "https://auth.openai.com/oauth/authorize"
+                "?client_id=test&response_type=code&prompt=login&state=state"
+            ),
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+
+        engine._check_ip_location = lambda: (True, "US")
+
+        def fake_create_email():
+            engine.email = "user@example.com"
+            return True
+
+        engine._create_email = fake_create_email
+        engine._init_session = lambda: True
+        engine._start_oauth = lambda: True
+        engine._get_device_id = lambda: "did"
+        engine._check_sentinel = lambda _did: "sentinel"
+
+        class SignupResult:
+            success = True
+            error_message = ""
+
+        engine._submit_signup_form = lambda _did, _sen: SignupResult()
+        engine._register_password = lambda: (True, "secret")
+        engine._send_verification_code = lambda: True
+        engine._wait_for_signup_verification_code = lambda: "123456"
+        engine._validate_signup_verification_code_with_retry = lambda code: True
+
+        def fake_create_user_account():
+            engine._post_create_page_type = "add_phone"
+            engine._post_create_continue_url = "https://auth.openai.com/add-phone"
+            return True
+
+        engine._create_user_account = fake_create_user_account
+        engine._attempt_add_phone_login_bypass = lambda _did, _sen: None
+        engine._get_workspace_id = lambda: None
+        followed_urls = []
+        engine._follow_redirects = lambda url: followed_urls.append(url) or "http://localhost/callback?code=ok&state=state"
+        engine._handle_oauth_callback = lambda callback_url: {
+            "account_id": "acc-1",
+            "access_token": "access",
+            "refresh_token": "refresh",
+            "id_token": "id",
+        }
+        engine._post_registration_health_check = lambda access_token: ("active", True, "")
+
+        result = engine.run()
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            followed_urls,
+            [
+                "https://auth.openai.com/oauth/authorize"
+                "?client_id=test&response_type=code&state=state"
+            ],
+        )
+
     def test_run_marks_account_unusable_when_health_check_fails(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
         engine.logs = []
@@ -555,6 +629,54 @@ class RegisterAddPhoneTests(unittest.TestCase):
             ["https://auth.openai.com/oauth/authorize?client_id=test"],
         )
         self.assertEqual(restart_calls, [])
+
+    def test_reuses_authenticated_oauth_url_without_prompt_login(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.password = "secret"
+        engine.oauth_start = OAuthStart(
+            auth_url=(
+                "https://auth.openai.com/oauth/authorize"
+                "?client_id=test&response_type=code&prompt=login&state=state"
+            ),
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+        engine._last_login_recovery_page_type = ""
+        engine.logs = []
+        engine._log = lambda *_args, **_kwargs: None
+
+        followed_urls = []
+
+        engine._submit_login_identifier = lambda did, sen: {"type": "login_password"}
+        engine._verify_login_password = lambda password: {"type": "email_otp_verification"}
+        engine._complete_login_email_otp_verification = lambda: AuthResolutionResult(
+            callback_url=None,
+            page_type="add_phone",
+            continue_url="https://auth.openai.com/add-phone",
+        )
+        engine._advance_workspace_authorization = lambda auth_target: None
+        engine._restart_oauth_session_for_login = lambda: ("new-did", "new-sentinel")
+        engine._resolve_callback_from_auth_page = lambda page, stage: None
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._follow_redirects = (
+            lambda url: followed_urls.append(url) or "http://localhost/callback?code=ok&state=state"
+        )
+
+        callback = engine._attempt_add_phone_login_bypass("did", "sentinel")
+
+        self.assertEqual(
+            callback,
+            "http://localhost/callback?code=ok&state=state",
+        )
+        self.assertEqual(
+            followed_urls,
+            [
+                "https://auth.openai.com/oauth/authorize"
+                "?client_id=test&response_type=code&state=state"
+            ],
+        )
 
     def test_attempt_add_phone_login_bypass_tries_workspace_authorization_before_oauth_retry(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
