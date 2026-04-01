@@ -4,6 +4,8 @@ WORKDIR /app
 
 COPY vendor/codex-register/ /app/
 
+RUN pip install --no-cache-dir -r requirements.txt
+
 RUN mkdir -p /app/data /app/logs
 
 EXPOSE 9000
