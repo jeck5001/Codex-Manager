@@ -1303,55 +1303,12 @@ class RegistrationEngine:
 
     def _complete_login_email_otp_verification(self) -> AuthResolutionResult:
         """完成登录后的邮箱验证码验证，并继续推进 OAuth"""
-        self._last_login_recovery_page_type = ""
-        self._log("登录后触发邮箱二次验证，开始获取验证码...", "warning")
-        self._otp_sent_at = time.time()
-
-        max_attempts = 3
-        code: Optional[str] = None
-        validate_payload: Optional[Dict[str, Any]] = None
-
-        for attempt in range(max_attempts):
-            if attempt == 0:
-                code = self._get_verification_code()
-                if code:
-                    validate_payload = self._validate_verification_code_with_payload(code)
-            else:
-                reason = "首次等待登录验证码超时" if not code else "登录验证码不是最新一封或已失效"
-                self._log(f"{reason}，尝试重发后重新获取...", "warning")
-                if not self._resend_email_verification_code():
-                    return AuthResolutionResult()
-                code = self._get_verification_code()
-                if not code:
-                    continue
-                validate_payload = self._validate_verification_code_with_payload(code)
-
-            if validate_payload:
-                break
-
-            if not self._is_wrong_email_otp_code_error() and code:
-                return AuthResolutionResult()
-        else:
-            return AuthResolutionResult()
-
-        resolution = self._resolve_callback_from_auth_response(
-            validate_payload,
-            "登录邮箱验证码校验",
+        flow_result = self.flow_runner.complete_login_email_otp_verification()
+        return AuthResolutionResult(
+            callback_url=flow_result.callback_url,
+            page_type=flow_result.page_type,
+            continue_url=flow_result.continue_url,
         )
-        self._last_login_recovery_page_type = resolution.page_type
-        if resolution.callback_url:
-            return resolution
-
-        if resolution.page_type == "add_phone":
-            return resolution
-
-        if self.oauth_start:
-            self._log("登录邮箱验证码校验后未拿到 continue_url，回退到 OAuth URL 重试跳转...", "warning")
-            retry_url = self._build_authenticated_oauth_url()
-            if retry_url:
-                resolution.callback_url = self._follow_redirects(retry_url)
-
-        return resolution
 
     def _resolve_callback_from_auth_page(self, page: Dict[str, Any], stage: str) -> Optional[str]:
         """根据页面类型推进到 OAuth 回调"""
