@@ -1,6 +1,7 @@
 import { invoke as tauriInvoke, isTauri as tauriIsTauri } from "@tauri-apps/api/core";
 import { fetchWithRetry, runWithControl, RequestOptions } from "../utils/request";
 import { useAppStore } from "../store/useAppStore";
+import { resolveWebCommandRequestOptions } from "./web-command-options";
 
 type InvokeParams = Record<string, unknown>;
 
@@ -390,8 +391,9 @@ async function invokeWebRpc<T>(
   if (!descriptor) {
     throw new Error("当前 Web / Docker 版暂不支持该操作");
   }
+  const resolvedOptions = resolveWebCommandRequestOptions(method, options);
   if (descriptor.direct) {
-    return (await descriptor.direct(params, options)) as T;
+    return (await descriptor.direct(params, resolvedOptions)) as T;
   }
   if (!descriptor.rpcMethod) {
     throw new Error("当前 Web / Docker 版暂不支持该操作");
@@ -399,7 +401,7 @@ async function invokeWebRpc<T>(
   return postWebRpc<T>(
     descriptor.rpcMethod,
     descriptor.mapParams ? descriptor.mapParams(params) : params ?? {},
-    options
+    resolvedOptions
   );
 }
 
