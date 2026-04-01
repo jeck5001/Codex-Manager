@@ -20,6 +20,14 @@ class FlowResolutionResult:
     continue_url: str = ""
 
 
+@dataclass
+class PostRegistrationRedirectResult:
+    callback_url: Optional[str] = None
+    workspace_id: str = ""
+    error_message: str = ""
+    metadata: dict[str, Any] | None = None
+
+
 class RegisterFlowRunner:
     def __init__(self, engine: Any):
         self.engine = engine
@@ -284,6 +292,56 @@ class RegisterFlowRunner:
                 resolution.callback_url = self.engine._follow_redirects(retry_url)
 
         return resolution
+
+    def resolve_post_registration_callback(
+        self,
+        did: Optional[str],
+        sen_token: Optional[str],
+    ) -> PostRegistrationRedirectResult:
+        result = PostRegistrationRedirectResult(metadata={})
+        callback_url: Optional[str] = None
+
+        if not getattr(self.engine, "_is_existing_account", False):
+            if (
+                getattr(self.engine, "_post_create_page_type", "") == "add_phone"
+                or "add-phone" in getattr(self.engine, "_post_create_continue_url", "")
+            ):
+                callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
+                if not callback_url:
+                    result.metadata = {
+                        "blocked_step": "add_phone",
+                        "continue_url": getattr(self.engine, "_post_create_continue_url", ""),
+                    }
+                    self.engine._log(
+                        "OpenAI 注册后进入手机号验证，登录回退未直接拿到 OAuth 回调；继续尝试从当前会话提取 Workspace",
+                        "warning",
+                    )
+
+        if callback_url:
+            self.engine._log("13. 已通过登录回退链路拿到 OAuth 回调，跳过 Workspace 预选择")
+            result.callback_url = callback_url
+            return result
+
+        self.engine._log("13. 获取 Workspace ID...")
+        workspace_id = self.engine._get_workspace_id()
+        continue_url = ""
+        if workspace_id:
+            result.workspace_id = workspace_id
+            self.engine._log("14. 选择 Workspace...")
+            continue_url = self.engine._select_workspace(workspace_id)
+            if not continue_url:
+                self.engine._log("workspace/select 失败，回退到原始 OAuth URL 继续流程", "warning")
+                continue_url = self.engine._build_authenticated_oauth_url()
+        else:
+            self.engine._log("未提前拿到 Workspace ID，回退到原始 OAuth URL 继续流程", "warning")
+            continue_url = self.engine._build_authenticated_oauth_url()
+
+        self.engine._log("15. 跟随重定向链...")
+        result.callback_url = self.engine._follow_redirects(continue_url)
+        if not result.callback_url:
+            result.error_message = "跟随重定向链失败"
+
+        return result
 
     def attempt_add_phone_login_bypass(self, did: Optional[str], sen_token: Optional[str]) -> Optional[str]:
         """注册后若进入 add_phone，尝试改走登录流继续完成 OAuth。"""

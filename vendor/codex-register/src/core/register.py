@@ -177,6 +177,13 @@ class RegistrationEngine:
         self._cached_workspace_id: str = ""
         self.flow_runner = RegisterFlowRunner(self)
 
+    def _get_flow_runner(self) -> RegisterFlowRunner:
+        runner = getattr(self, "flow_runner", None)
+        if runner is None:
+            runner = RegisterFlowRunner(self)
+            self.flow_runner = runner
+        return runner
+
     def _get_email_code_wait_settings(self) -> Tuple[int, int]:
         """获取验证码等待配置。"""
         settings = get_settings()
@@ -1259,9 +1266,7 @@ class RegistrationEngine:
     ) -> Optional[str]:
         """主动请求授权页，若命中 consent/workspace 则完成 workspace 选择并继续拿 callback。"""
         try:
-            runner = getattr(self, "flow_runner", None) or RegisterFlowRunner(self)
-            self.flow_runner = runner
-            return runner.advance_workspace_authorization(
+            return self._get_flow_runner().advance_workspace_authorization(
                 auth_target,
                 _visited=_visited,
             )
@@ -1283,7 +1288,7 @@ class RegistrationEngine:
     def _resolve_callback_from_continue_url(self, continue_url: str, stage: str) -> Optional[str]:
         """根据 continue_url 推进到 OAuth 回调"""
         try:
-            return self.flow_runner.resolve_callback_from_continue_url(continue_url, stage)
+            return self._get_flow_runner().resolve_callback_from_continue_url(continue_url, stage)
         except Exception as e:
             self._log(f"{stage} 解析 continue_url 失败: {e}", "error")
             return None
@@ -1294,7 +1299,7 @@ class RegistrationEngine:
         stage: str,
     ) -> AuthResolutionResult:
         """根据认证接口响应推进到 OAuth 回调"""
-        flow_result = self.flow_runner.resolve_auth_result(payload, stage)
+        flow_result = self._get_flow_runner().resolve_auth_result(payload, stage)
         return AuthResolutionResult(
             callback_url=flow_result.callback_url,
             page_type=flow_result.page_type,
@@ -1303,7 +1308,7 @@ class RegistrationEngine:
 
     def _complete_login_email_otp_verification(self) -> AuthResolutionResult:
         """完成登录后的邮箱验证码验证，并继续推进 OAuth"""
-        flow_result = self.flow_runner.complete_login_email_otp_verification()
+        flow_result = self._get_flow_runner().complete_login_email_otp_verification()
         return AuthResolutionResult(
             callback_url=flow_result.callback_url,
             page_type=flow_result.page_type,
@@ -1312,7 +1317,7 @@ class RegistrationEngine:
 
     def _resolve_callback_from_auth_page(self, page: Dict[str, Any], stage: str) -> Optional[str]:
         """根据页面类型推进到 OAuth 回调"""
-        return self.flow_runner.resolve_callback_from_auth_page(page, stage)
+        return self._get_flow_runner().resolve_callback_from_auth_page(page, stage)
 
     def _restart_oauth_session_for_login(self) -> Tuple[Optional[str], Optional[str]]:
         """新开 OAuth 会话，按已存在账号重新登录"""
@@ -1341,9 +1346,7 @@ class RegistrationEngine:
 
     def _attempt_add_phone_login_bypass(self, did: Optional[str], sen_token: Optional[str]) -> Optional[str]:
         """注册后若进入 add_phone，尝试改走登录流继续完成 OAuth"""
-        runner = getattr(self, "flow_runner", None) or RegisterFlowRunner(self)
-        self.flow_runner = runner
-        return runner.attempt_add_phone_login_bypass(did, sen_token)
+        return self._get_flow_runner().attempt_add_phone_login_bypass(did, sen_token)
 
     def _handle_oauth_callback(self, callback_url: str) -> Optional[Dict[str, Any]]:
         """处理 OAuth 回调"""
@@ -1510,44 +1513,15 @@ class RegistrationEngine:
                 if not self._create_user_account():
                     result.error_message = "创建用户账户失败"
                     return result
-                if (
-                    self._post_create_page_type == "add_phone"
-                    or "add-phone" in self._post_create_continue_url
-                ):
-                    callback_url = self._attempt_add_phone_login_bypass(did, sen_token)
-                    if not callback_url:
-                        result.metadata = {
-                            "blocked_step": "add_phone",
-                            "continue_url": self._post_create_continue_url,
-                        }
-                        self._log(
-                            "OpenAI 注册后进入手机号验证，登录回退未直接拿到 OAuth 回调；继续尝试从当前会话提取 Workspace",
-                            "warning",
-                        )
-
-            if callback_url:
-                self._log("13. 已通过登录回退链路拿到 OAuth 回调，跳过 Workspace 预选择")
-            else:
-                # 13. 获取 Workspace ID（新版流程可能不再提前下发）
-                self._log("13. 获取 Workspace ID...")
-                workspace_id = self._get_workspace_id()
-                if workspace_id:
-                    result.workspace_id = workspace_id
-                    self._log("14. 选择 Workspace...")
-                    continue_url = self._select_workspace(workspace_id)
-                    if not continue_url:
-                        self._log("workspace/select 失败，回退到原始 OAuth URL 继续流程", "warning")
-                        continue_url = self._build_authenticated_oauth_url()
-                else:
-                    self._log("未提前拿到 Workspace ID，回退到原始 OAuth URL 继续流程", "warning")
-                    continue_url = self._build_authenticated_oauth_url()
-
-                # 15. 跟随重定向链
-                self._log("15. 跟随重定向链...")
-                callback_url = self._follow_redirects(continue_url)
-                if not callback_url:
-                    result.error_message = "跟随重定向链失败"
-                    return result
+            redirect_result = self._get_flow_runner().resolve_post_registration_callback(did, sen_token)
+            callback_url = redirect_result.callback_url
+            if redirect_result.workspace_id:
+                result.workspace_id = redirect_result.workspace_id
+            if redirect_result.metadata:
+                result.metadata = redirect_result.metadata
+            if redirect_result.error_message:
+                result.error_message = redirect_result.error_message
+                return result
 
             # 16. 处理 OAuth 回调
             self._log("16. 处理 OAuth 回调...")

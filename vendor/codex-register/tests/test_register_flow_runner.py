@@ -38,6 +38,8 @@ class EngineStub:
         self.calls = []
         self._last_login_recovery_page_type = ""
         self._post_create_continue_url = ""
+        self._post_create_page_type = ""
+        self._is_existing_account = False
 
     def _build_callback_url_from_page(self, page):
         self.calls.append(("build_callback", page))
@@ -333,6 +335,63 @@ class RegisterFlowRunnerTests(unittest.TestCase):
         )
         self.assertEqual(followed_urls, [engine._build_authenticated_oauth_url()])
         self.assertEqual(engine._last_login_recovery_page_type, "")
+
+    def test_resolve_post_registration_callback_short_circuits_when_bypass_returns_callback(self):
+        engine = EngineStub()
+        engine._post_create_page_type = "add_phone"
+        engine._post_create_continue_url = "https://auth.openai.com/add-phone"
+        engine._attempt_add_phone_login_bypass = lambda did, sen: "http://localhost:1455/auth/callback?code=bypass&state=state"
+        engine._get_workspace_id = lambda: (_ for _ in ()).throw(AssertionError("should not fetch workspace"))
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+
+        result = runner.resolve_post_registration_callback("did", "sentinel")
+
+        self.assertEqual(
+            result.callback_url,
+            "http://localhost:1455/auth/callback?code=bypass&state=state",
+        )
+        self.assertEqual(result.workspace_id, "")
+        self.assertEqual(result.metadata, {})
+
+    def test_resolve_post_registration_callback_uses_workspace_selection(self):
+        engine = EngineStub()
+        engine._attempt_add_phone_login_bypass = lambda did, sen: None
+        engine._post_create_page_type = ""
+        engine._post_create_continue_url = ""
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+
+        result = runner.resolve_post_registration_callback("did", "sentinel")
+
+        self.assertEqual(
+            result.callback_url,
+            "http://localhost:1455/auth/callback?code=redir&state=state",
+        )
+        self.assertEqual(result.workspace_id, "ws_123")
+        self.assertEqual(
+            engine.calls,
+            [
+                ("get_workspace_id",),
+                ("select_workspace", "ws_123"),
+                ("follow_redirects", "https://auth.openai.com/workspace/continue"),
+            ],
+        )
+
+    def test_resolve_post_registration_callback_falls_back_to_authenticated_oauth_url(self):
+        engine = EngineStub()
+        engine._attempt_add_phone_login_bypass = lambda did, sen: None
+        engine._get_workspace_id = lambda: None
+        followed_urls = []
+        engine._follow_redirects = lambda url: followed_urls.append(url) or "http://localhost:1455/auth/callback?code=oauth&state=state"
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+
+        result = runner.resolve_post_registration_callback("did", "sentinel")
+
+        self.assertEqual(
+            result.callback_url,
+            "http://localhost:1455/auth/callback?code=oauth&state=state",
+        )
+        self.assertEqual(result.workspace_id, "")
+        self.assertEqual(followed_urls, [engine._build_authenticated_oauth_url()])
 
 
 if __name__ == "__main__":
