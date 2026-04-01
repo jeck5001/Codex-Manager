@@ -3,7 +3,6 @@
 从 main.py 中提取并重构的注册流程
 """
 
-import re
 import json
 import time
 import logging
@@ -1253,65 +1252,6 @@ class RegistrationEngine:
         except Exception as e:
             self._log(f"{stage} 跟进 continue_url 失败: {e}", "warning")
 
-    def _discover_auth_navigation_urls(
-        self,
-        response: Optional[Any],
-        fallback_url: str,
-    ) -> list[str]:
-        """从响应历史、Location 头和 HTML 中提取可能的授权下一跳 URL。"""
-        import urllib.parse
-
-        candidates: list[str] = []
-        seen: set[str] = set()
-
-        def add_candidate(raw_url: Any, base_url: str):
-            value = self._clean_text(raw_url)
-            if not value:
-                return
-
-            if (
-                "code=" not in value
-                and "consent" not in value
-                and "workspace" not in value
-                and "organization" not in value
-                and "/api/accounts/" not in value
-            ):
-                return
-
-            resolved = urllib.parse.urljoin(base_url or fallback_url, value)
-            normalized = self._clean_text(resolved)
-            if not normalized or normalized in seen:
-                return
-            seen.add(normalized)
-            candidates.append(normalized)
-
-        responses = []
-        history = getattr(response, "history", None)
-        if isinstance(history, list):
-            responses.extend(history)
-        if response is not None:
-            responses.append(response)
-
-        for item in responses:
-            current_url = self._clean_text(getattr(item, "url", "")) or fallback_url
-            add_candidate(current_url, current_url)
-
-            headers = getattr(item, "headers", None)
-            if headers and hasattr(headers, "get"):
-                add_candidate(headers.get("Location"), current_url)
-
-            body = str(getattr(item, "text", "") or "")
-            for pattern in (
-                r'action="([^"]+)"',
-                r"action='([^']+)'",
-                r'href="([^"]+)"',
-                r"href='([^']+)'",
-            ):
-                for match in re.finditer(pattern, body):
-                    add_candidate(match.group(1), current_url)
-
-        return candidates
-
     def _advance_workspace_authorization(
         self,
         auth_target: str,
@@ -1319,61 +1259,12 @@ class RegistrationEngine:
     ) -> Optional[str]:
         """主动请求授权页，若命中 consent/workspace 则完成 workspace 选择并继续拿 callback。"""
         try:
-            target_url = self._clean_text(auth_target)
-            if not target_url or not self.session:
-                return None
-
-            visited = _visited or set()
-            if target_url in visited:
-                return None
-            visited.add(target_url)
-
-            self._log(f"尝试推进 Workspace 授权: {target_url[:120]}...", "warning")
-            response = self.session.get(
-                target_url,
-                timeout=20,
+            runner = getattr(self, "flow_runner", None) or RegisterFlowRunner(self)
+            self.flow_runner = runner
+            return runner.advance_workspace_authorization(
+                auth_target,
+                _visited=_visited,
             )
-
-            current_url = self._clean_text(getattr(response, "url", ""))
-            html = str(getattr(response, "text", "") or "")
-
-            if "code=" in current_url and "state=" in current_url:
-                self._log(f"Workspace 授权页直接命中回调 URL: {current_url[:100]}...", "warning")
-                return current_url
-
-            workspace_id = self._extract_workspace_id_from_response(
-                response=response,
-                html=html,
-                url=current_url,
-            )
-            if workspace_id:
-                self._cached_workspace_id = workspace_id
-                self._log(f"Workspace 授权页提取到 Workspace ID: {workspace_id}", "warning")
-
-            consent_markers = (
-                "sign-in-with-chatgpt/codex/consent" in current_url
-                or 'action="/sign-in-with-chatgpt/codex/consent"' in html
-                or "/workspace" in current_url
-                or "/organization" in current_url
-            )
-
-            if consent_markers and workspace_id:
-                continue_url = self._select_workspace(workspace_id)
-                if not continue_url:
-                    return None
-                return self._follow_redirects(continue_url)
-
-            for next_url in self._discover_auth_navigation_urls(response, target_url):
-                if next_url == target_url:
-                    continue
-                callback_url = self._advance_workspace_authorization(
-                    next_url,
-                    _visited=visited,
-                )
-                if callback_url:
-                    return callback_url
-
-            return None
         except Exception as e:
             self._log(f"推进 Workspace 授权失败: {e}", "warning")
             return None
@@ -1493,86 +1384,9 @@ class RegistrationEngine:
 
     def _attempt_add_phone_login_bypass(self, did: Optional[str], sen_token: Optional[str]) -> Optional[str]:
         """注册后若进入 add_phone，尝试改走登录流继续完成 OAuth"""
-        if not self.email or not self.password:
-            self._log("缺少邮箱或密码，无法执行 add_phone 登录回退", "error")
-            return None
-
-        attempts = [
-            ("当前会话", did, sen_token, False),
-            ("新 OAuth 会话", None, None, True),
-        ]
-
-        for attempt_name, current_did, current_sentinel, recreate_session in attempts:
-            self._last_login_recovery_page_type = ""
-            if recreate_session:
-                self._log(f"add_phone 回退：切换到{attempt_name}重试登录链路...", "warning")
-                current_did, current_sentinel = self._restart_oauth_session_for_login()
-                if not current_did:
-                    continue
-            else:
-                self._log("检测到 add_phone，尝试改走登录链路继续 OAuth...", "warning")
-
-            login_page = self._submit_login_identifier(current_did, current_sentinel)
-            if not login_page:
-                continue
-
-            callback_url = self._resolve_callback_from_auth_page(login_page, f"{attempt_name}登录邮箱")
-            if callback_url:
-                return callback_url
-
-            page_type = self._clean_text(login_page.get("type"))
-            if page_type == "login_password":
-                password_page = self._verify_login_password(self.password)
-                if not password_page:
-                    continue
-
-                callback_url = self._resolve_callback_from_auth_page(password_page, f"{attempt_name}登录密码")
-                if callback_url:
-                    return callback_url
-
-                page_type = self._clean_text(password_page.get("type"))
-                if page_type == "email_otp_verification":
-                    otp_resolution = self._complete_login_email_otp_verification()
-                    if otp_resolution.callback_url:
-                        return otp_resolution.callback_url
-                    page_type = (
-                        otp_resolution.page_type
-                        or self._last_login_recovery_page_type
-                        or page_type
-                    )
-
-            if page_type == "add_phone":
-                auth_target = (
-                    otp_resolution.continue_url
-                    or self._post_create_continue_url
-                    or (self.oauth_start.auth_url if self.oauth_start else "")
-                )
-                callback_url = self._advance_workspace_authorization(auth_target)
-                if callback_url:
-                    return callback_url
-                if self.oauth_start:
-                    self._log(f"{attempt_name} 命中 add_phone，先复用当前已登录会话重新跟随 OAuth URL...", "warning")
-                    retry_url = self._build_authenticated_oauth_url()
-                    if retry_url:
-                        callback_url = self._follow_redirects(retry_url)
-                    if callback_url:
-                        return callback_url
-                if recreate_session:
-                    self._log("新 OAuth 会话登录后仍停留在 add_phone", "warning")
-                else:
-                    self._log("当前会话登录后仍停留在 add_phone，切换新 OAuth 会话重试", "warning")
-                continue
-
-            if self.oauth_start:
-                self._log(f"{attempt_name} 未直接拿到回调，尝试重新跟随 OAuth URL...", "warning")
-                retry_url = self._build_authenticated_oauth_url()
-                if not retry_url:
-                    continue
-                callback_url = self._follow_redirects(retry_url)
-                if callback_url:
-                    return callback_url
-
-        return None
+        runner = getattr(self, "flow_runner", None) or RegisterFlowRunner(self)
+        self.flow_runner = runner
+        return runner.attempt_add_phone_login_bypass(did, sen_token)
 
     def _handle_oauth_callback(self, callback_url: str) -> Optional[Dict[str, Any]]:
         """处理 OAuth 回调"""

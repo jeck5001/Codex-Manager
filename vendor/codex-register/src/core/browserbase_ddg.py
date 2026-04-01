@@ -114,7 +114,7 @@ class BrowserbaseDDGRegistrationRunner:
             },
             timeout=20,
         )
-        if response.status_code != 200:
+        if not 200 <= response.status_code < 300:
             raise RuntimeError(f"DDG 邮箱别名生成失败: HTTP {response.status_code}")
         payload = response.json()
         address = str((payload or {}).get("address") or "").strip()
