@@ -257,20 +257,27 @@ pub(crate) fn read_current_account(refresh_token: bool) -> Result<AccountReadRes
     };
 
     let mut token = token;
-    if refresh_token && !token.refresh_token.trim().is_empty() {
+    let auth_mode = resolve_current_auth_mode(&token);
+    if refresh_token {
         let issuer =
             std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
         let client_id = std::env::var("CODEXMANAGER_CLIENT_ID")
             .unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
-        if let Err(err) =
+        let refresh_result = if auth_mode == AUTH_MODE_CHATGPT_AUTH_TOKENS {
+            refresh_chatgpt_auth_tokens_with_fallback(
+                &storage, &account, &mut token, &issuer, &client_id,
+            )
+        } else if !token.refresh_token.trim().is_empty() {
             refresh_and_persist_access_token(&storage, &mut token, &issuer, &client_id)
-        {
+        } else {
+            Ok(())
+        };
+        if let Err(err) = refresh_result {
             let _ = mark_account_unavailable_for_refresh_token_error(&storage, &account.id, &err);
             return Err(err);
         }
     }
 
-    let auth_mode = resolve_current_auth_mode(&token);
     Ok(AccountReadResponse {
         account: Some(current_account_payload(
             &account,
