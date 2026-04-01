@@ -107,7 +107,7 @@ class RegistrationTask(Base):
     task_uuid = Column(String(36), unique=True, nullable=False, index=True)  # 任务唯一标识
     status = Column(String(20), default='pending')  # 'pending', 'running', 'completed', 'failed', 'cancelled'
     email_service_id = Column(Integer, ForeignKey('email_services.id'), index=True)  # 使用的邮箱服务
-    register_mode = Column(String(50), default='standard', nullable=False)  # 'standard', 'browserbase_ddg'
+    register_mode = Column(String(50), default='standard', nullable=False)  # 'standard', 'browserbase_ddg', 'any_auto'
     browserbase_config_id = Column(Integer, ForeignKey('browserbase_configs.id'), index=True)
     proxy = Column(String(255))  # 使用的代理
     logs = Column(Text)  # 注册过程日志

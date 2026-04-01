@@ -1,9 +1,13 @@
-export type RegisterChannel = "standard" | "browserbase_ddg";
+export type RegisterChannel = "standard" | "browserbase_ddg" | "any_auto";
 export type RegisterModeOption = "single" | "batch" | "outlook-batch";
 
 export function getRegisterChannelLabel(channel: string | null | undefined): string {
-  if (String(channel || "").trim().toLowerCase() === "browserbase_ddg") {
+  const normalized = String(channel || "").trim().toLowerCase();
+  if (normalized === "browserbase_ddg") {
     return "Browserbase-DDG 注册";
+  }
+  if (normalized === "any_auto") {
+    return "Any-Auto 注册";
   }
   return "标准注册";
 }

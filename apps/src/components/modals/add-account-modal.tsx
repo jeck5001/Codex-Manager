@@ -985,7 +985,11 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setIsRegisterSubmitting(true);
 
     try {
-      const resolvedRegisterMode = isBrowserbaseRegisterChannel ? "browserbase_ddg" : "standard";
+      const resolvedRegisterMode = isBrowserbaseRegisterChannel
+        ? "browserbase_ddg"
+        : registerChannel === "any_auto"
+          ? "any_auto"
+          : "standard";
       const resolvedEmailServiceType = isBrowserbaseRegisterChannel ? "tempmail" : registerServiceType;
       const resolvedBrowserbaseConfigId = isBrowserbaseRegisterChannel
         ? normalizeRegisterServiceIdForSubmit(registerBrowserbaseConfigId)
@@ -1291,7 +1295,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
 
             <TabsContent value="register" className="mt-0 space-y-4">
               <div className="rounded-lg border border-primary/15 bg-primary/5 p-3 text-xs text-muted-foreground">
-                通过内置的 `codex-register` 服务自动创建账号。支持标准邮箱注册与 Browserbase-DDG 注册两种通道；单个注册会直接轮询并导入，批量注册会在任务结束后自动把成功账号导入到当前列表。
+                通过内置的 `codex-register` 服务自动创建账号。支持标准注册、Any-Auto 注册与 Browserbase-DDG 注册三种通道；单个注册会直接轮询并导入，批量注册会在任务结束后自动把成功账号导入到当前列表。
               </div>
 
               <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3">
@@ -1324,7 +1328,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
 
               <div className="space-y-2">
                 <Label>注册通道</Label>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-3">
                   <Button
                     type="button"
                     variant={registerChannel === "standard" ? "default" : "outline"}
@@ -1332,6 +1336,14 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                     onClick={() => setRegisterChannel("standard")}
                   >
                     标准注册
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={registerChannel === "any_auto" ? "default" : "outline"}
+                    disabled={registerBusy}
+                    onClick={() => setRegisterChannel("any_auto")}
+                  >
+                    Any-Auto
                   </Button>
                   <Button
                     type="button"
@@ -1513,7 +1525,9 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                         </p>
                       ) : null}
                       <p className="text-xs text-muted-foreground">
-                        具体服务留空时，会在当前类型的可用服务之间自动轮询；代理留空时会按代理池轮询。
+                        {registerChannel === "any_auto"
+                          ? "该模式会优先尝试复用已登录会话，直接从 ChatGPT Session 提取 Access Token；若失败再回退到原有 OAuth 收敛链路。"
+                          : "具体服务留空时，会在当前类型的可用服务之间自动轮询；代理留空时会按代理池轮询。"}
                       </p>
                     </div>
                   </>

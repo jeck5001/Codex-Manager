@@ -27,6 +27,10 @@ from ...core.browserbase_ddg import (
     DEFAULT_REGISTER_MODE,
     BrowserbaseDDGRegistrationRunner,
 )
+from ...core.any_auto_register import (
+    ANY_AUTO_REGISTER_MODE,
+    AnyAutoRegistrationRunner,
+)
 from ...core.round_robin import build_round_robin_schedule, pick_round_robin_item
 from ...services import EmailServiceFactory, EmailServiceType
 from ...config.settings import get_settings
@@ -262,6 +266,8 @@ def _normalize_register_mode(value: Optional[str]) -> str:
     normalized = str(value or "").strip().lower()
     if normalized == BROWSERBASE_DDG_REGISTER_MODE:
         return BROWSERBASE_DDG_REGISTER_MODE
+    if normalized == ANY_AUTO_REGISTER_MODE:
+        return ANY_AUTO_REGISTER_MODE
     return DEFAULT_REGISTER_MODE
 
 
@@ -718,6 +724,45 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                     config = _merge_runtime_email_service_config({}, email_service_config)
 
             email_service = EmailServiceFactory.create(service_type, config)
+
+            if normalized_register_mode == ANY_AUTO_REGISTER_MODE:
+                log_callback = task_manager.create_log_callback(task_uuid, prefix=log_prefix, batch_id=batch_id)
+                runner = AnyAutoRegistrationRunner(
+                    email_service=email_service,
+                    proxy_url=actual_proxy_url,
+                    callback_logger=log_callback,
+                    task_uuid=task_uuid,
+                    email_code_timeout_override=config.get("email_code_timeout_override"),
+                    email_code_poll_interval_override=config.get("email_code_poll_interval_override"),
+                )
+                result = runner.run()
+
+                if result.success:
+                    runner.save_to_database(result)
+                    crud.update_registration_task(
+                        db,
+                        task_uuid,
+                        status="completed" if result.is_usable else "failed",
+                        completed_at=datetime.utcnow(),
+                        result=result.to_dict(),
+                        error_message=None if result.is_usable else (result.error_message or "账号已注册，但健康检查失败"),
+                    )
+                    task_manager.update_status(
+                        task_uuid,
+                        "completed" if result.is_usable else "failed",
+                        email=result.email if result.is_usable else None,
+                        error=None if result.is_usable else (result.error_message or "账号已注册，但健康检查失败"),
+                    )
+                else:
+                    crud.update_registration_task(
+                        db,
+                        task_uuid,
+                        status="failed",
+                        completed_at=datetime.utcnow(),
+                        error_message=result.error_message,
+                    )
+                    task_manager.update_status(task_uuid, "failed", error=result.error_message)
+                return
 
             # 创建注册引擎 - 使用 TaskManager 的日志回调
             log_callback = task_manager.create_log_callback(task_uuid, prefix=log_prefix, batch_id=batch_id)
