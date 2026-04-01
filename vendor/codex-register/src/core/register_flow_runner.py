@@ -35,6 +35,10 @@ class RegisterFlowRunner:
     def _clean_text(self, value: Any) -> str:
         return getattr(self.engine, "_clean_text", lambda raw: str(raw or "").strip())(value)
 
+    @staticmethod
+    def _blocked_by_add_phone_error() -> str:
+        return "注册流程已进入手机号验证（add_phone），当前无法自动完成，请先完成官方手机号验证后再继续授权"
+
     def discover_auth_navigation_urls(
         self,
         response: Optional[Any],
@@ -339,7 +343,10 @@ class RegisterFlowRunner:
         self.engine._log("15. 跟随重定向链...")
         result.callback_url = self.engine._follow_redirects(continue_url)
         if not result.callback_url:
-            result.error_message = "跟随重定向链失败"
+            if isinstance(result.metadata, dict) and result.metadata.get("blocked_step") == "add_phone":
+                result.error_message = self._blocked_by_add_phone_error()
+            else:
+                result.error_message = "跟随重定向链失败"
 
         return result
 

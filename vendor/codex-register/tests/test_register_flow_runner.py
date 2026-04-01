@@ -393,6 +393,31 @@ class RegisterFlowRunnerTests(unittest.TestCase):
         self.assertEqual(result.workspace_id, "")
         self.assertEqual(followed_urls, [engine._build_authenticated_oauth_url()])
 
+    def test_resolve_post_registration_callback_reports_add_phone_requirement_when_oauth_still_blocked(self):
+        engine = EngineStub()
+        engine._post_create_page_type = "add_phone"
+        engine._post_create_continue_url = "https://auth.openai.com/add-phone"
+        engine._attempt_add_phone_login_bypass = lambda did, sen: None
+        engine._get_workspace_id = lambda: None
+        engine._follow_redirects = lambda url: None
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+
+        result = runner.resolve_post_registration_callback("did", "sentinel")
+
+        self.assertIsNone(result.callback_url)
+        self.assertEqual(result.workspace_id, "")
+        self.assertEqual(
+            result.metadata,
+            {
+                "blocked_step": "add_phone",
+                "continue_url": "https://auth.openai.com/add-phone",
+            },
+        )
+        self.assertEqual(
+            result.error_message,
+            "注册流程已进入手机号验证（add_phone），当前无法自动完成，请先完成官方手机号验证后再继续授权",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
