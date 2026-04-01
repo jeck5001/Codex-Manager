@@ -343,6 +343,64 @@ fn start_mock_register_service_server(
     (addr, rx, handle)
 }
 
+fn start_mock_register_service_server_with_session_token_only(
+    expected_email: String,
+    imported_access_token: String,
+    session_token: String,
+) -> (
+    String,
+    std::sync::mpsc::Receiver<(String, String)>,
+    thread::JoinHandle<()>,
+) {
+    let server = Server::http("127.0.0.1:0").expect("start mock register session-token server");
+    let addr = format!("http://{}", server.server_addr());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = thread::spawn(move || {
+        for _ in 0..2 {
+            let request = server.recv().expect("receive register request");
+            let method = request.method().as_str().to_string();
+            let path = request.url().to_string();
+            tx.send((method.clone(), path.clone()))
+                .expect("send register request");
+
+            let response_body = if method == "GET" && path.starts_with("/api/accounts?") {
+                serde_json::json!({
+                    "accounts": [{
+                        "id": 777,
+                        "email": expected_email,
+                        "account_id": "chatgpt-session-import",
+                        "workspace_id": "workspace-session-import",
+                        "cookies": ""
+                    }]
+                })
+                .to_string()
+            } else if method == "GET" && path == "/api/accounts/777/tokens" {
+                serde_json::json!({
+                    "access_token": imported_access_token,
+                    "refresh_token": "",
+                    "id_token": "",
+                    "session_token": session_token
+                })
+                .to_string()
+            } else {
+                serde_json::json!({
+                    "error": format!("unexpected request: {method} {path}")
+                })
+                .to_string()
+            };
+
+            let response = Response::from_string(response_body)
+                .with_status_code(StatusCode(200))
+                .with_header(
+                    Header::from_bytes("Content-Type", "application/json")
+                        .expect("content-type header"),
+                );
+            request.respond(response).expect("respond register request");
+        }
+    });
+    (addr, rx, handle)
+}
+
 fn start_mock_register_service_server_email_miss_account_match(
     missed_email: String,
     account_search: String,
@@ -2070,6 +2128,107 @@ fn rpc_account_auth_recover_falls_back_to_session_cookies_when_refresh_token_reu
         build_access_token("subject-session-new", email, account_identity, "plus")
     );
     assert_eq!(updated_token.refresh_token, "refresh-token-reused");
+}
+
+#[test]
+fn rpc_register_import_by_email_uses_remote_session_token_as_cookie_fallback() {
+    let ctx = RpcTestContext::new("rpc-register-import-session-token-fallback");
+    let email = "import-session@example.com";
+    let account_identity = "workspace-session-import";
+    let imported_access_token =
+        build_access_token("subject-session-import-old", email, account_identity, "free");
+    let refreshed_access_token =
+        build_access_token("subject-session-import-new", email, account_identity, "plus");
+    let remote_session_token = "remote-session-token-777";
+
+    let (register_url, register_rx, register_join) =
+        start_mock_register_service_server_with_session_token_only(
+            email.to_string(),
+            imported_access_token.clone(),
+            remote_session_token.to_string(),
+        );
+    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
+
+    let import_req = JsonRpcRequest {
+        id: 62,
+        method: "account/register/importByEmail".to_string(),
+        params: Some(serde_json::json!({
+            "email": email
+        })),
+    };
+    let import_json = serde_json::to_string(&import_req).expect("serialize import request");
+    let import_server = codexmanager_service::start_one_shot_server().expect("start import server");
+    let import_resp = post_rpc(&import_server.addr, &import_json);
+    let import_result = import_resp.get("result").expect("import result");
+    let account_id = import_result
+        .get("accountId")
+        .and_then(|value| value.as_str())
+        .expect("imported account id")
+        .to_string();
+
+    let (session_url, session_rx, session_join) = start_mock_session_refresh_server(
+        serde_json::json!({
+            "accessToken": refreshed_access_token,
+            "expires": "2026-04-01T18:00:00Z"
+        })
+        .to_string(),
+    );
+    let _session_url_guard = EnvGuard::set("CODEX_SESSION_REFRESH_URL_OVERRIDE", &session_url);
+
+    let recover_req = JsonRpcRequest {
+        id: 63,
+        method: "account/auth/recover".to_string(),
+        params: Some(serde_json::json!({
+            "accountId": account_id,
+            "openBrowser": false
+        })),
+    };
+    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
+    let recover_server =
+        codexmanager_service::start_one_shot_server().expect("start recover server");
+    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
+    let recover_result = recover_resp.get("result").expect("recover result");
+    assert_eq!(
+        recover_result.get("status").and_then(|value| value.as_str()),
+        Some("recovered")
+    );
+
+    let register_requests = (0..2)
+        .map(|_| {
+            register_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("receive register request")
+        })
+        .collect::<Vec<_>>();
+    register_join.join().expect("join register server");
+    assert_eq!(
+        register_requests,
+        vec![
+            (
+                "GET".to_string(),
+                "/api/accounts?page=1&page_size=20&search=import-session%40example.com"
+                    .to_string(),
+            ),
+            ("GET".to_string(), "/api/accounts/777/tokens".to_string()),
+        ]
+    );
+
+    let cookie_header = session_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive session refresh cookie");
+    session_join.join().expect("join session server");
+    assert!(
+        cookie_header.contains("__Secure-next-auth.session-token=remote-session-token-777"),
+        "unexpected cookie header: {cookie_header}"
+    );
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    let updated_token = storage
+        .find_token_by_account_id(&account_id)
+        .expect("find token")
+        .expect("token exists");
+    assert_eq!(updated_token.access_token, refreshed_access_token);
+    assert_eq!(updated_token.refresh_token, "");
 }
 
 #[test]
