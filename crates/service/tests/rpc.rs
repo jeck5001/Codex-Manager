@@ -531,8 +531,7 @@ fn start_mock_recovery_manager_server(
     (addr, rx, handle)
 }
 
-fn start_mock_register_service_probe_server(
-) -> (
+fn start_mock_register_service_probe_server() -> (
     String,
     std::sync::mpsc::Receiver<(String, String)>,
     thread::JoinHandle<()>,
@@ -604,8 +603,7 @@ fn start_mock_register_service_server_auto_register_login(
                     == format!(
                         "/api/accounts?page=1&page_size=20&search={}",
                         urlencoding::encode(&old_email)
-                    )
-            {
+                    ) {
                 serde_json::json!({ "accounts": [] }).to_string()
             } else if method == "GET"
                 && path
@@ -1550,6 +1548,140 @@ fn rpc_account_auth_recover_silently_refreshes_and_reactivates_account() {
 }
 
 #[test]
+fn rpc_account_auth_recover_refreshes_target_account_instead_of_current_auth_account() {
+    let ctx = RpcTestContext::new("rpc-account-auth-recover-target-account");
+    let refreshed_access_token = build_access_token(
+        "sub-target-recover",
+        "target-recover@example.com",
+        "org-target-recover",
+        "plus",
+    );
+    let refresh_response = serde_json::json!({
+        "access_token": refreshed_access_token,
+        "refresh_token": "refresh-token-target-new"
+    });
+    let (issuer, refresh_rx, refresh_join) = start_mock_oauth_token_server(
+        200,
+        serde_json::to_string(&refresh_response).expect("serialize refresh response"),
+    );
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
+    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-target-recover");
+
+    let current_login_req = JsonRpcRequest {
+        id: 471,
+        method: "account/login/start".to_string(),
+        params: Some(serde_json::json!({
+            "type": "chatgptAuthTokens",
+            "accessToken": build_access_token(
+                "sub-current-auth",
+                "current-auth@example.com",
+                "org-current-auth",
+                "pro"
+            ),
+            "refreshToken": "refresh-token-current-old",
+            "chatgptAccountId": "org-current-auth"
+        })),
+    };
+    let current_login_json =
+        serde_json::to_string(&current_login_req).expect("serialize current login");
+    let current_login_server =
+        codexmanager_service::start_one_shot_server().expect("start current login server");
+    let current_login_resp = post_rpc(&current_login_server.addr, &current_login_json);
+    let current_account_id = current_login_resp
+        .get("result")
+        .and_then(|value| value.get("accountId"))
+        .and_then(|value| value.as_str())
+        .expect("current account id")
+        .to_string();
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    let now = now_ts();
+    storage
+        .insert_account(&Account {
+            id: "acc-target-recover".to_string(),
+            label: "target-recover@example.com".to_string(),
+            issuer: issuer.clone(),
+            chatgpt_account_id: Some("org-target-recover".to_string()),
+            workspace_id: Some("workspace-target-recover".to_string()),
+            group_name: Some("TEAM".to_string()),
+            sort: 1,
+            status: "unavailable".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert target account");
+    storage
+        .insert_token(&codexmanager_core::storage::Token {
+            account_id: "acc-target-recover".to_string(),
+            id_token: build_access_token(
+                "sub-target-recover",
+                "target-recover@example.com",
+                "org-target-recover",
+                "free",
+            ),
+            access_token: build_access_token(
+                "sub-target-recover",
+                "target-recover@example.com",
+                "org-target-recover",
+                "free",
+            ),
+            refresh_token: "refresh-token-target-old".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert target token");
+
+    let recover_req = JsonRpcRequest {
+        id: 472,
+        method: "account/auth/recover".to_string(),
+        params: Some(serde_json::json!({
+            "accountId": "acc-target-recover",
+            "openBrowser": false
+        })),
+    };
+    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
+    let recover_server =
+        codexmanager_service::start_one_shot_server().expect("start recover server");
+    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
+    let recover_result = recover_resp.get("result").expect("recover result");
+    assert_eq!(
+        recover_result
+            .get("status")
+            .and_then(|value| value.as_str()),
+        Some("recovered"),
+        "recover response: {recover_resp}"
+    );
+    assert_eq!(
+        recover_result
+            .get("accountId")
+            .and_then(|value| value.as_str()),
+        Some("acc-target-recover")
+    );
+
+    let refresh_body = refresh_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive refresh request");
+    refresh_join.join().expect("join mock oauth server");
+    assert!(
+        refresh_body.contains("refresh_token=refresh-token-target-old"),
+        "unexpected refresh body: {refresh_body}"
+    );
+
+    let target_token = storage
+        .find_token_by_account_id("acc-target-recover")
+        .expect("find target token")
+        .expect("target token exists");
+    assert_eq!(target_token.access_token, refreshed_access_token);
+    assert_eq!(target_token.refresh_token, "refresh-token-target-new");
+
+    let current_token = storage
+        .find_token_by_account_id(&current_account_id)
+        .expect("find current token")
+        .expect("current token exists");
+    assert_eq!(current_token.refresh_token, "refresh-token-current-old");
+}
+
+#[test]
 fn rpc_account_auth_recover_returns_error_when_no_noninteractive_recovery_available() {
     let ctx = RpcTestContext::new("rpc-account-auth-recover-login");
     let storage = Storage::open(ctx.db_path()).expect("open db");
@@ -2020,7 +2152,9 @@ fn rpc_account_auth_recover_uses_remote_manager_when_configured() {
     oauth_join.join().expect("join oauth server");
     register_join.join().expect("join register miss server");
     assert!(
-        register_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+        register_rx
+            .recv_timeout(Duration::from_millis(200))
+            .is_err(),
         "register service should not be used when remote recovery source is configured"
     );
 
@@ -2086,8 +2220,7 @@ fn rpc_account_auth_recover_prefers_remote_manager_when_configured() {
         "refresh-token-remote-new".to_string(),
         refreshed_id_token.clone(),
     );
-    let _recovery_guard =
-        EnvGuard::set("CODEXMANAGER_ACCOUNT_RECOVERY_SOURCE_URL", &recovery_url);
+    let _recovery_guard = EnvGuard::set("CODEXMANAGER_ACCOUNT_RECOVERY_SOURCE_URL", &recovery_url);
 
     let storage = Storage::open(ctx.db_path()).expect("open db");
     storage.init().expect("init schema");
@@ -2151,7 +2284,9 @@ fn rpc_account_auth_recover_prefers_remote_manager_when_configured() {
 
     register_join.join().expect("join register server");
     assert!(
-        register_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+        register_rx
+            .recv_timeout(Duration::from_millis(200))
+            .is_err(),
         "register service should not be used when remote recovery source is configured"
     );
 
@@ -2184,17 +2319,18 @@ fn rpc_account_auth_recover_auto_registers_new_account_when_all_existing_recover
     let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
     let _client_id_guard =
         EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-auto-register-login");
-    let (register_url, register_rx, register_join) = start_mock_register_service_server_auto_register_login(
-        old_email.to_string(),
-        old_chatgpt_account_id.to_string(),
-        old_workspace_id.to_string(),
-        new_email.to_string(),
-        new_chatgpt_account_id.to_string(),
-        new_workspace_id.to_string(),
-        refreshed_access_token.clone(),
-        "refresh-token-new".to_string(),
-        refreshed_id_token.clone(),
-    );
+    let (register_url, register_rx, register_join) =
+        start_mock_register_service_server_auto_register_login(
+            old_email.to_string(),
+            old_chatgpt_account_id.to_string(),
+            old_workspace_id.to_string(),
+            new_email.to_string(),
+            new_chatgpt_account_id.to_string(),
+            new_workspace_id.to_string(),
+            refreshed_access_token.clone(),
+            "refresh-token-new".to_string(),
+            refreshed_id_token.clone(),
+        );
     let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
 
     let storage = Storage::open(ctx.db_path()).expect("open db");
@@ -2274,12 +2410,27 @@ fn rpc_account_auth_recover_auto_registers_new_account_when_all_existing_recover
                 "GET".to_string(),
                 "/api/accounts?page=1&page_size=20&search=workspace-old-recovery".to_string(),
             ),
-            ("GET".to_string(), "/api/registration/available-services".to_string()),
+            (
+                "GET".to_string(),
+                "/api/registration/available-services".to_string()
+            ),
             ("POST".to_string(), "/api/registration/batch".to_string()),
-            ("GET".to_string(), "/api/registration/tasks/task-auto-1".to_string()),
-            ("GET".to_string(), "/api/registration/tasks/task-auto-1/logs".to_string()),
-            ("GET".to_string(), "/api/registration/tasks/task-auto-1".to_string()),
-            ("GET".to_string(), "/api/registration/tasks/task-auto-1/logs".to_string()),
+            (
+                "GET".to_string(),
+                "/api/registration/tasks/task-auto-1".to_string()
+            ),
+            (
+                "GET".to_string(),
+                "/api/registration/tasks/task-auto-1/logs".to_string()
+            ),
+            (
+                "GET".to_string(),
+                "/api/registration/tasks/task-auto-1".to_string()
+            ),
+            (
+                "GET".to_string(),
+                "/api/registration/tasks/task-auto-1/logs".to_string()
+            ),
             (
                 "GET".to_string(),
                 "/api/accounts?page=1&page_size=20&search=recover-new%40example.com".to_string(),

@@ -292,9 +292,62 @@ pub(crate) fn refresh_current_chatgpt_auth_tokens(
         std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
     let client_id =
         std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
-    if let Err(err) =
-        refresh_chatgpt_auth_tokens_with_fallback(&storage, &account, &mut token, &issuer, &client_id)
-    {
+    if let Err(err) = refresh_chatgpt_auth_tokens_with_fallback(
+        &storage, &account, &mut token, &issuer, &client_id,
+    ) {
+        let _ = mark_account_unavailable_for_refresh_token_error(&storage, &account.id, &err);
+        return Err(err);
+    }
+
+    let refreshed_account = storage
+        .find_account_by_id(&account.id)
+        .map_err(|err| err.to_string())?
+        .unwrap_or(account);
+    let chatgpt_account_id = refreshed_account
+        .chatgpt_account_id
+        .clone()
+        .or_else(|| refreshed_account.workspace_id.clone())
+        .or_else(|| extract_chatgpt_account_id(&token.access_token))
+        .or_else(|| extract_workspace_id(&token.access_token))
+        .ok_or_else(|| "refreshed token missing chatgptAccountId".to_string())?;
+    let access_claims = parse_id_token_claims(&token.access_token).ok();
+    let plan_type_resolution = resolve_plan_type_resolution(&token, access_claims.as_ref());
+
+    Ok(ChatgptAuthTokensRefreshResponse {
+        account_id: refreshed_account.id,
+        access_token: token.access_token,
+        chatgpt_account_id,
+        chatgpt_plan_type: plan_type_resolution
+            .as_ref()
+            .map(|plan| plan.normalized.clone()),
+        chatgpt_plan_type_raw: plan_type_resolution.and_then(|plan| plan.raw),
+    })
+}
+
+pub(crate) fn refresh_chatgpt_auth_tokens_for_account(
+    account_id: &str,
+) -> Result<ChatgptAuthTokensRefreshResponse, String> {
+    let normalized_account_id = account_id.trim();
+    if normalized_account_id.is_empty() {
+        return Err("missing accountId".to_string());
+    }
+
+    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let account = storage
+        .find_account_by_id(normalized_account_id)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| format!("account not found: {normalized_account_id}"))?;
+    let mut token = storage
+        .find_token_by_account_id(normalized_account_id)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| format!("token not found for account: {normalized_account_id}"))?;
+    let issuer =
+        std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
+    let client_id =
+        std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
+    if let Err(err) = refresh_chatgpt_auth_tokens_with_fallback(
+        &storage, &account, &mut token, &issuer, &client_id,
+    ) {
         let _ = mark_account_unavailable_for_refresh_token_error(&storage, &account.id, &err);
         return Err(err);
     }
