@@ -1524,6 +1524,98 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
 }
 
 #[test]
+fn rpc_account_read_refresh_token_uses_session_cookie_fallback_for_chatgpt_auth_tokens() {
+    let ctx = RpcTestContext::new("rpc-account-read-refresh-session-cookie");
+    let email = "read-refresh@example.com";
+    let account_identity = "workspace-read-refresh";
+    let expired_access_token =
+        build_access_token("subject-read-old", email, account_identity, "free");
+    let refreshed_access_token =
+        build_access_token("subject-read-new", email, account_identity, "plus");
+    let (issuer, _refresh_rx, oauth_join) =
+        start_mock_oauth_token_server(401, r#"{"error":"refresh_token_reused"}"#.to_string());
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
+    let _client_id_guard =
+        EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-read-session-cookie");
+    let (session_url, session_rx, session_join) = start_mock_session_refresh_server(
+        serde_json::json!({
+            "accessToken": refreshed_access_token,
+            "expires": "2026-04-01T18:00:00Z"
+        })
+        .to_string(),
+    );
+    let _session_url_guard = EnvGuard::set("CODEX_SESSION_REFRESH_URL_OVERRIDE", &session_url);
+
+    let login_req = JsonRpcRequest {
+        id: 445,
+        method: "account/login/start".to_string(),
+        params: Some(serde_json::json!({
+            "type": "chatgptAuthTokens",
+            "accessToken": expired_access_token,
+            "refreshToken": "refresh-token-reused",
+            "idToken": "",
+            "cookies": "__Secure-next-auth.session-token=session-read-refresh; oai-did=device-read-123",
+            "email": email,
+            "chatgptAccountId": account_identity,
+            "workspaceId": account_identity,
+        })),
+    };
+    let login_json = serde_json::to_string(&login_req).expect("serialize login");
+    let login_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let login_resp = post_rpc(&login_server.addr, &login_json);
+    let account_id = login_resp
+        .get("result")
+        .and_then(|value| value.get("accountId"))
+        .and_then(|value| value.as_str())
+        .expect("account id")
+        .to_string();
+
+    let read_req = JsonRpcRequest {
+        id: 446,
+        method: "account/read".to_string(),
+        params: Some(serde_json::json!({ "refreshToken": true })),
+    };
+    let read_json = serde_json::to_string(&read_req).expect("serialize read");
+    let read_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let read_resp = post_rpc(&read_server.addr, &read_json);
+    let read_result = read_resp.get("result").expect("read result");
+    let account = read_result.get("account").expect("current account");
+    assert_eq!(
+        read_result.get("authMode").and_then(|value| value.as_str()),
+        Some("chatgptAuthTokens"),
+        "read response: {read_resp}"
+    );
+    assert_eq!(
+        account.get("email").and_then(|value| value.as_str()),
+        Some(email),
+        "read response: {read_resp}"
+    );
+    assert_eq!(
+        account.get("planType").and_then(|value| value.as_str()),
+        Some("plus"),
+        "read response: {read_resp}"
+    );
+
+    oauth_join.join().expect("join oauth server");
+    let cookie_header = session_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive session refresh cookie");
+    session_join.join().expect("join session server");
+    assert!(
+        cookie_header.contains("__Secure-next-auth.session-token=session-read-refresh"),
+        "unexpected cookie header: {cookie_header}"
+    );
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    let updated_token = storage
+        .find_token_by_account_id(&account_id)
+        .expect("find token")
+        .expect("token exists");
+    assert_eq!(updated_token.access_token, refreshed_access_token);
+    assert_eq!(updated_token.refresh_token, "refresh-token-reused");
+}
+
+#[test]
 fn rpc_account_auth_recover_silently_refreshes_and_reactivates_account() {
     let ctx = RpcTestContext::new("rpc-account-auth-recover-silent");
     let refreshed_access_token =
