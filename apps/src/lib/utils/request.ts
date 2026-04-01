@@ -8,6 +8,18 @@ export interface RequestOptions {
   shouldRetryStatus?: (status: number) => boolean;
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function timeoutError(timeoutMs: number): Error {
+  return new Error(`请求超时（${timeoutMs}ms）`);
+}
+
+function canceledError(): Error {
+  return new Error("请求已取消");
+}
+
 export async function fetchWithRetry(
   url: string,
   init?: RequestInit,
@@ -24,9 +36,17 @@ export async function fetchWithRetry(
   let lastError: unknown;
   for (let i = 0; i <= retries; i++) {
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
+    let timedOut = false;
+    const id = setTimeout(() => {
+      timedOut = true;
+      controller.abort(timeoutError(timeoutMs));
+    }, timeoutMs);
     if (options.signal) {
-      options.signal.addEventListener("abort", () => controller.abort());
+      options.signal.addEventListener(
+        "abort",
+        () => controller.abort(options.signal?.reason ?? canceledError()),
+        { once: true }
+      );
     }
 
     try {
@@ -41,10 +61,18 @@ export async function fetchWithRetry(
       }
     } catch (err: unknown) {
       clearTimeout(id);
-      lastError = err;
-      if (err instanceof Error && err.name === "AbortError" && !options.signal?.aborted) {
-        // Timeout retry
-      } else if (i === retries) {
+      if (options.signal?.aborted) {
+        throw canceledError();
+      }
+      if (timedOut && isAbortLikeError(err)) {
+        lastError = timeoutError(timeoutMs);
+        if (i === retries) {
+          throw lastError;
+        }
+      } else {
+        lastError = err;
+      }
+      if (!timedOut && i === retries) {
         throw err;
       }
     }
