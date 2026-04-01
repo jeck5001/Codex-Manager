@@ -171,8 +171,7 @@ pub(crate) fn recover_account_auth(
         .map_err(|err| err.to_string())?
         .ok_or_else(|| format!("account not found: {normalized_account_id}"))?;
 
-    if crate::auth_account::refresh_current_chatgpt_auth_tokens(Some(normalized_account_id)).is_ok()
-    {
+    if crate::auth_account::refresh_chatgpt_auth_tokens_for_account(normalized_account_id).is_ok() {
         activate_recovered_account(&storage, &account.id);
         return Ok(recovered_account_result(account.id));
     }
