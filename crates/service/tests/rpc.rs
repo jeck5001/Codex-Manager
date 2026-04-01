@@ -643,14 +643,16 @@ fn start_mock_register_service_server_auto_register_login(
 ) -> (
     String,
     std::sync::mpsc::Receiver<(String, String)>,
+    std::sync::mpsc::Receiver<String>,
     thread::JoinHandle<()>,
 ) {
     let server = Server::http("127.0.0.1:0").expect("start mock auto register server");
     let addr = format!("http://{}", server.server_addr());
     let (tx, rx) = std::sync::mpsc::channel();
+    let (body_tx, body_rx) = std::sync::mpsc::channel();
     let handle = thread::spawn(move || {
         for _ in 0..11 {
-            let request = server.recv().expect("receive auto register request");
+            let mut request = server.recv().expect("receive auto register request");
             let method = request.method().as_str().to_string();
             let path = request.url().to_string();
             tx.send((method.clone(), path.clone()))
@@ -691,6 +693,14 @@ fn start_mock_register_service_server_auto_register_login(
                 })
                 .to_string()
             } else if method == "POST" && path == "/api/registration/batch" {
+                let mut request_body = String::new();
+                request
+                    .as_reader()
+                    .read_to_string(&mut request_body)
+                    .expect("read auto register batch body");
+                body_tx
+                    .send(request_body)
+                    .expect("send auto register batch body");
                 serde_json::json!({
                     "tasks": [{
                         "task_uuid": "task-auto-1"
@@ -754,7 +764,7 @@ fn start_mock_register_service_server_auto_register_login(
                 .expect("respond auto register request");
         }
     });
-    (addr, rx, handle)
+    (addr, rx, body_rx, handle)
 }
 
 #[test]
@@ -2478,7 +2488,7 @@ fn rpc_account_auth_recover_auto_registers_new_account_when_all_existing_recover
     let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
     let _client_id_guard =
         EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-auto-register-login");
-    let (register_url, register_rx, register_join) =
+    let (register_url, register_rx, register_body_rx, register_join) =
         start_mock_register_service_server_auto_register_login(
             old_email.to_string(),
             old_chatgpt_account_id.to_string(),
@@ -2546,6 +2556,9 @@ fn rpc_account_auth_recover_auto_registers_new_account_when_all_existing_recover
     assert_ne!(recovered_account_id, "acc-recover-auto-register");
 
     oauth_join.join().expect("join oauth server");
+    let register_batch_body = register_body_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive auto register batch body");
     let register_requests = (0..11)
         .map(|_| {
             register_rx
@@ -2596,6 +2609,14 @@ fn rpc_account_auth_recover_auto_registers_new_account_when_all_existing_recover
             ),
             ("GET".to_string(), "/api/accounts/900/tokens".to_string()),
         ]
+    );
+    assert!(
+        register_batch_body.contains("\"register_mode\":\"any_auto\""),
+        "unexpected register batch body: {register_batch_body}"
+    );
+    assert!(
+        register_batch_body.contains("\"email_service_type\":\"custom_domain\""),
+        "unexpected register batch body: {register_batch_body}"
     );
 
     let recovered_token = storage
