@@ -61,6 +61,24 @@ class AnyAutoRegistrationRunner:
         })
         return metadata
 
+    @staticmethod
+    def _inject_session_token_cookie(cookies: str, session_token: str) -> str:
+        cookies = (cookies or "").strip()
+        session_token = (session_token or "").strip()
+        if not session_token:
+            return cookies
+
+        if (
+            "__Secure-next-auth.session-token=" in cookies
+            or "next-auth.session-token=" in cookies
+        ):
+            return cookies
+
+        session_cookie = f"__Secure-next-auth.session-token={session_token}"
+        if not cookies:
+            return session_cookie
+        return f"{cookies}; {session_cookie}"
+
     def _complete_result(self, result: RegistrationResult) -> RegistrationResult:
         result.password = self.engine.password or ""
         result.cookies = self.engine._serialize_session_cookies()
@@ -72,6 +90,11 @@ class AnyAutoRegistrationRunner:
                 self.engine.session_token = session_cookie
                 result.session_token = session_cookie
                 self._log("获取到 Session Token")
+
+        result.cookies = self._inject_session_token_cookie(
+            result.cookies,
+            result.session_token,
+        )
 
         if not result.workspace_id:
             result.workspace_id = (
