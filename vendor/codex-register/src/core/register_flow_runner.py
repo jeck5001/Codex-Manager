@@ -289,7 +289,7 @@ class RegisterFlowRunner:
                     or getattr(self.engine, "_post_create_continue_url", "")
                     or self._clean_text(getattr(getattr(self.engine, "oauth_start", None), "auth_url", ""))
                 )
-                callback_url = self.engine._advance_workspace_authorization(auth_target)
+                callback_url = self.advance_workspace_authorization(auth_target)
                 if callback_url:
                     return callback_url
 
