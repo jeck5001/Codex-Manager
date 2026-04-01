@@ -5,7 +5,7 @@ import { resolveWebCommandRequestOptions } from './web-command-options.ts';
 
 test('account auth recovery uses extended timeout without retries in web runtime', () => {
   assert.deepEqual(resolveWebCommandRequestOptions('service_account_auth_recover'), {
-    timeoutMs: 120000,
+    timeoutMs: 1500000,
     retries: 0,
   });
 });
