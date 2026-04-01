@@ -64,6 +64,7 @@ class OAuthConfigTests(unittest.TestCase):
             query.get("scope"),
             ["openid profile email offline_access api.connectors.read api.connectors.invoke"],
         )
+        self.assertIsNone(query.get("prompt"))
 
 
 if __name__ == "__main__":
