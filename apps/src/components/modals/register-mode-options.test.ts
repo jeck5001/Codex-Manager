@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 // @ts-ignore -- node:test 直接加载本地 ts 文件
 import {
   canUseOutlookBatchRegisterMode,
+  getDefaultRegisterChannel,
   getRegisterChannelLabel,
   sanitizeRegisterModeForChannel,
 } from "./register-mode-options.ts";
@@ -34,4 +35,8 @@ test("browserbase 通道下 outlook 批量会回退到单个注册", () => {
 
 test("标准通道保留当前注册模式", () => {
   assert.equal(sanitizeRegisterModeForChannel("standard", "batch"), "batch");
+});
+
+test("默认注册通道使用 any_auto", () => {
+  assert.equal(getDefaultRegisterChannel(), "any_auto");
 });

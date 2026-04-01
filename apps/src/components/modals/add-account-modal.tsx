@@ -49,6 +49,7 @@ import {
 } from "./register-auto-import";
 import {
   canUseOutlookBatchRegisterMode,
+  getDefaultRegisterChannel,
   getRegisterChannelLabel,
   sanitizeRegisterModeForChannel,
   type RegisterChannel,
@@ -225,7 +226,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   const [bulkContent, setBulkContent] = useState("");
 
   const [registerMode, setRegisterMode] = useState<RegisterMode>("single");
-  const [registerChannel, setRegisterChannel] = useState<RegisterChannel>("standard");
+  const [registerChannel, setRegisterChannel] = useState<RegisterChannel>(getDefaultRegisterChannel);
   const [registerServices, setRegisterServices] =
     useState<RegisterAvailableServicesResult | null>(null);
   const [registerBrowserbaseConfigs, setRegisterBrowserbaseConfigs] =
@@ -273,7 +274,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setManualCallback("");
     setBulkContent("");
     setRegisterMode("single");
-    setRegisterChannel("standard");
+    setRegisterChannel(getDefaultRegisterChannel());
     setRegisterServices(null);
     setRegisterBrowserbaseConfigs([]);
     setRegisterOutlookAccounts(null);

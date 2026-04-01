@@ -1,6 +1,10 @@
 export type RegisterChannel = "standard" | "browserbase_ddg" | "any_auto";
 export type RegisterModeOption = "single" | "batch" | "outlook-batch";
 
+export function getDefaultRegisterChannel(): RegisterChannel {
+  return "any_auto";
+}
+
 export function getRegisterChannelLabel(channel: string | null | undefined): string {
   const normalized = String(channel || "").trim().toLowerCase();
   if (normalized === "browserbase_ddg") {
