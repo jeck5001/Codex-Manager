@@ -217,7 +217,6 @@ def generate_oauth_url(
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
-        "prompt": "login",
         "id_token_add_organizations": "true",
         "codex_cli_simplified_flow": "true",
     }

@@ -142,7 +142,7 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
     ),
     "openai_scope": SettingDefinition(
         db_key="openai.scope",
-        default_value="openid email profile offline_access",
+        default_value="openid profile email offline_access api.connectors.read api.connectors.invoke",
         category=SettingCategory.OPENAI,
         description="OpenAI OAuth 权限范围"
     ),
@@ -620,7 +620,7 @@ class Settings(BaseModel):
     openai_auth_url: str = "https://auth.openai.com/oauth/authorize"
     openai_token_url: str = "https://auth.openai.com/oauth/token"
     openai_redirect_uri: str = "http://localhost:1455/auth/callback"
-    openai_scope: str = "openid email profile offline_access"
+    openai_scope: str = "openid profile email offline_access api.connectors.read api.connectors.invoke"
 
     # 代理配置
     proxy_enabled: bool = False
