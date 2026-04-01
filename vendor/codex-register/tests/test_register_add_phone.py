@@ -8,6 +8,18 @@ from pathlib import Path
 
 
 def load_register_module():
+    base_dir = Path(__file__).resolve().parents[1] / "src" / "core"
+
+    def load_core_module(module_basename: str):
+        module_name = f"src.core.{module_basename}"
+        module_path = base_dir / f"{module_basename}.py"
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        return module
+
     module_name = "src.core.register"
     module_path = (
         Path(__file__).resolve().parents[1]
@@ -151,6 +163,11 @@ def load_register_module():
     curl_module.requests = curl_requests_module
     sys.modules["curl_cffi"] = curl_module
     sys.modules["curl_cffi.requests"] = curl_requests_module
+
+    load_core_module("register_flow_state")
+    load_core_module("register_retry_policy")
+    load_core_module("register_token_resolver")
+    load_core_module("register_flow_runner")
 
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     assert spec and spec.loader

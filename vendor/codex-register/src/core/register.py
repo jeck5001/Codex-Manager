@@ -16,6 +16,22 @@ from datetime import datetime
 
 from curl_cffi import requests as cffi_requests
 
+from .register_flow_runner import RegisterFlowRunner
+from .register_flow_state import (
+    clean_text as flow_clean_text,
+    extract_auth_continue_url,
+    extract_auth_page_type,
+    extract_workspace_id_from_response,
+    extract_workspace_id_from_response_payload,
+    extract_workspace_id_from_text,
+    extract_workspace_id_from_url,
+    workspace_id_from_mapping,
+)
+from .register_retry_policy import should_retry_signup_otp_validation
+from .register_token_resolver import (
+    build_callback_url_from_page,
+    extract_workspace_id_from_token,
+)
 from .oauth import OAuthManager, OAuthStart
 from .http_client import OpenAIHTTPClient, HTTPClientError
 from ..services import EmailServiceFactory, BaseEmailService, EmailServiceType
@@ -160,6 +176,7 @@ class RegistrationEngine:
         self._last_otp_error_code: str = ""
         self._last_otp_error_message: str = ""
         self._cached_workspace_id: str = ""
+        self.flow_runner = RegisterFlowRunner(self)
 
     def _get_email_code_wait_settings(self) -> Tuple[int, int]:
         """获取验证码等待配置。"""
@@ -216,34 +233,15 @@ class RegistrationEngine:
     @staticmethod
     def _clean_text(value: Any) -> str:
         """清洗文本值"""
-        if value is None:
-            return ""
-        return str(value).strip()
+        return flow_clean_text(value)
 
     def _extract_auth_page_type(self, payload: Any) -> str:
         """从认证响应或 page 对象中提取页面类型"""
-        if not isinstance(payload, dict):
-            return ""
-
-        page = payload.get("page")
-        if isinstance(page, dict):
-            page_type = self._clean_text(page.get("type"))
-            if page_type:
-                return page_type
-
-        return self._clean_text(payload.get("type"))
+        return extract_auth_page_type(payload)
 
     def _extract_auth_continue_url(self, payload: Any) -> str:
         """从认证响应中提取 continue_url"""
-        if not isinstance(payload, dict):
-            return ""
-
-        return self._clean_text(
-            payload.get("continue_url")
-            or payload.get("redirect_url")
-            or payload.get("callback_url")
-            or payload.get("next_url")
-        )
+        return extract_auth_continue_url(payload)
 
     def _build_authenticated_oauth_url(self) -> str:
         """构造适用于已登录会话的 OAuth URL，去掉 prompt=login 避免再次落到登录页。"""
@@ -294,141 +292,19 @@ class RegistrationEngine:
 
     def _workspace_id_from_mapping(self, data: Any) -> str:
         """从 auth/session 映射里提取 workspace / organization ID"""
-        if not isinstance(data, dict):
-            return ""
-
-        direct_keys = (
-            "workspace_id",
-            "organization_id",
-            "org_id",
-            "default_workspace_id",
-            "default_organization_id",
-            "chatgpt_account_id",
-        )
-        item_keys = ("id", "workspace_id", "organization_id", "org_id")
-        nested_keys = (
-            "default_workspace",
-            "default_organization",
-            "workspace",
-            "organization",
-        )
-
-        for key in direct_keys:
-            candidate = self._clean_text(data.get(key))
-            if candidate:
-                return candidate
-
-        for nested_key in nested_keys:
-            nested = data.get(nested_key)
-            if isinstance(nested, dict):
-                for key in item_keys:
-                    candidate = self._clean_text(nested.get(key))
-                    if candidate:
-                        return candidate
-
-        for list_key in ("workspaces", "organizations"):
-            items = data.get(list_key)
-            if not isinstance(items, list):
-                continue
-
-            ordered_items = []
-            default_item = next(
-                (
-                    item for item in items
-                    if isinstance(item, dict) and item.get("is_default") is True
-                ),
-                None,
-            )
-            if default_item is not None:
-                ordered_items.append(default_item)
-            ordered_items.extend(
-                item for item in items
-                if isinstance(item, dict) and item is not default_item
-            )
-
-            for item in ordered_items:
-                for key in item_keys:
-                    candidate = self._clean_text(item.get(key))
-                    if candidate:
-                        return candidate
-
-        for nested_key in ("auth", "https://api.openai.com/auth"):
-            nested = data.get(nested_key)
-            candidate = self._workspace_id_from_mapping(nested)
-            if candidate:
-                return candidate
-
-        return ""
+        return workspace_id_from_mapping(data)
 
     def _extract_workspace_id_from_text(self, text: str) -> Optional[str]:
         """从 HTML/脚本文本中提取 Workspace ID。"""
-        if not text:
-            return None
-
-        patterns = [
-            r'"workspace_id"\s*:\s*"([^"]+)"',
-            r'"workspaceId"\s*:\s*"([^"]+)"',
-            r'"default_workspace_id"\s*:\s*"([^"]+)"',
-            r'"defaultWorkspaceId"\s*:\s*"([^"]+)"',
-            r'"active_workspace_id"\s*:\s*"([^"]+)"',
-            r'"activeWorkspaceId"\s*:\s*"([^"]+)"',
-            r'"workspace"\s*:\s*\{[^{}]*"id"\s*:\s*"([^"]+)"',
-            r'"default_workspace"\s*:\s*\{[^{}]*"id"\s*:\s*"([^"]+)"',
-            r'"active_workspace"\s*:\s*\{[^{}]*"id"\s*:\s*"([^"]+)"',
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, text)
-            if match:
-                workspace_id = str(match.group(1) or "").strip()
-                if workspace_id:
-                    return workspace_id
-        return None
+        return extract_workspace_id_from_text(text)
 
     def _extract_workspace_id_from_url(self, url: str) -> Optional[str]:
         """从 URL 查询参数或片段中提取 Workspace ID。"""
-        if not url:
-            return None
-
-        import urllib.parse
-
-        parsed = urllib.parse.urlparse(url)
-        for raw_query in (parsed.query, parsed.fragment):
-            query = urllib.parse.parse_qs(raw_query)
-            for key in (
-                "workspace_id",
-                "workspaceId",
-                "default_workspace_id",
-                "active_workspace_id",
-            ):
-                values = query.get(key) or []
-                if values:
-                    workspace_id = str(values[0] or "").strip()
-                    if workspace_id:
-                        return workspace_id
-        return None
+        return extract_workspace_id_from_url(url)
 
     def _extract_workspace_id_from_response_payload(self, payload: Any, depth: int = 0) -> Optional[str]:
         """递归扫描响应载荷中的 Workspace ID。"""
-        if payload is None or depth > 5:
-            return None
-
-        if isinstance(payload, dict):
-            workspace_id = self._workspace_id_from_mapping(payload)
-            if workspace_id:
-                return workspace_id
-            for value in payload.values():
-                workspace_id = self._extract_workspace_id_from_response_payload(value, depth + 1)
-                if workspace_id:
-                    return workspace_id
-            return None
-
-        if isinstance(payload, list):
-            for item in payload:
-                workspace_id = self._extract_workspace_id_from_response_payload(item, depth + 1)
-                if workspace_id:
-                    return workspace_id
-
-        return None
+        return extract_workspace_id_from_response_payload(payload, depth)
 
     def _extract_workspace_id_from_response(
         self,
@@ -437,28 +313,7 @@ class RegistrationEngine:
         url: Optional[str] = None,
     ) -> Optional[str]:
         """统一从响应 JSON、HTML、脚本内容和 URL 中提取 Workspace ID。"""
-        response_url = str(getattr(response, "url", "") or "").strip()
-        response_text = html if html is not None else str(getattr(response, "text", "") or "")
-        candidate_url = url or response_url
-
-        if response is not None:
-            try:
-                payload = response.json()
-            except Exception:
-                payload = None
-            workspace_id = self._extract_workspace_id_from_response_payload(payload)
-            if workspace_id:
-                return workspace_id
-
-        for extractor in (
-            lambda: self._extract_workspace_id_from_text(response_text),
-            lambda: self._extract_workspace_id_from_url(candidate_url),
-        ):
-            workspace_id = extractor()
-            if workspace_id:
-                return workspace_id
-
-        return None
+        return extract_workspace_id_from_response(response=response, html=html, url=url)
 
     def _log_auth_response_preview(self, prefix: str, payload: Any):
         """记录认证接口响应摘要"""
@@ -977,7 +832,11 @@ class RegistrationEngine:
             if self._validate_verification_code(current_code):
                 return True
 
-            if not self._is_wrong_email_otp_code_error() or attempt >= 1:
+            if not should_retry_signup_otp_validation(
+                is_wrong_email_otp_code_error=self._is_wrong_email_otp_code_error(),
+                attempt=attempt,
+                max_attempts=2,
+            ):
                 return False
 
             self._log("注册阶段拿到的验证码不是最新一封，重发后再获取一次...", "warning")
@@ -1280,65 +1139,7 @@ class RegistrationEngine:
 
     def _extract_workspace_id_from_token(self, token: str) -> Optional[str]:
         """从 token 中提取 workspace / organization ID"""
-        try:
-            import base64
-            import json as json_module
-
-            raw = str(token or "").strip()
-            if not raw:
-                return None
-
-            parts = raw.split(".")
-            if len(parts) < 2:
-                return None
-
-            payload = parts[1]
-            pad = "=" * ((4 - (len(payload) % 4)) % 4)
-            decoded = base64.urlsafe_b64decode((payload + pad).encode("ascii"))
-            data = json_module.loads(decoded.decode("utf-8"))
-
-            def _find(mapping: Any) -> str:
-                if not isinstance(mapping, dict):
-                    return ""
-
-                for key in (
-                    "workspace_id",
-                    "organization_id",
-                    "org_id",
-                    "chatgpt_account_id",
-                ):
-                    value = self._clean_text(mapping.get(key))
-                    if value:
-                        return value
-
-                organizations = mapping.get("organizations")
-                if isinstance(organizations, list):
-                    default_org = next(
-                        (
-                            item for item in organizations
-                            if isinstance(item, dict) and item.get("is_default") is True
-                        ),
-                        None,
-                    )
-                    for item in ([default_org] if default_org else []) + [
-                        item for item in organizations if isinstance(item, dict) and item is not default_org
-                    ]:
-                        value = self._clean_text(item.get("id"))
-                        if value:
-                            return value
-
-                for nested_key in ("auth", "https://api.openai.com/auth"):
-                    nested = mapping.get(nested_key)
-                    value = _find(nested)
-                    if value:
-                        return value
-
-                return ""
-
-            workspace_id = _find(data)
-            return workspace_id or None
-        except Exception:
-            return None
+        return extract_workspace_id_from_token(token)
 
     def _submit_login_identifier(self, did: Optional[str], sen_token: Optional[str]) -> Optional[Dict[str, Any]]:
         """提交登录邮箱，进入登录密码页或后续 OAuth 页面"""
@@ -1579,47 +1380,14 @@ class RegistrationEngine:
 
     def _build_callback_url_from_page(self, page: Dict[str, Any]) -> Optional[str]:
         """从 token_exchange 页面构造 OAuth 回调 URL"""
-        try:
-            if self._clean_text(page.get("type")) != "token_exchange":
-                return None
+        callback_url = build_callback_url_from_page(page)
+        if callback_url:
+            self._log(f"从 token_exchange 页面构造回调 URL: {callback_url[:100]}...")
+            return callback_url
 
-            continue_url = self._clean_text(page.get("continue_url"))
-            payload = page.get("payload") if isinstance(page.get("payload"), dict) else {}
-
-            if not continue_url:
-                self._log("token_exchange 页面缺少 continue_url", "error")
-                return None
-
-            if "code=" in continue_url and "state=" in continue_url:
-                self._log(f"token_exchange 直接返回回调 URL: {continue_url[:100]}...")
-                return continue_url
-
-            import urllib.parse
-
-            parsed = urllib.parse.urlsplit(continue_url)
-            query = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
-            for key in ("code", "state", "error", "error_description"):
-                value = self._clean_text(payload.get(key))
-                if value:
-                    query[key] = value
-
-            callback_url = urllib.parse.urlunsplit((
-                parsed.scheme,
-                parsed.netloc,
-                parsed.path,
-                urllib.parse.urlencode(query),
-                parsed.fragment,
-            ))
-
-            if "code=" in callback_url and "state=" in callback_url:
-                self._log(f"从 token_exchange 页面构造回调 URL: {callback_url[:100]}...")
-                return callback_url
-
+        if self._clean_text((page or {}).get("type")) == "token_exchange":
             self._log("token_exchange 页面缺少 code/state", "error")
-            return None
-        except Exception as e:
-            self._log(f"构造 token_exchange 回调 URL 失败: {e}", "error")
-            return None
+        return None
 
     def _resolve_callback_from_continue_url(self, continue_url: str, stage: str) -> Optional[str]:
         """根据 continue_url 推进到 OAuth 回调"""
@@ -1670,29 +1438,12 @@ class RegistrationEngine:
         stage: str,
     ) -> AuthResolutionResult:
         """根据认证接口响应推进到 OAuth 回调"""
-        result = AuthResolutionResult()
-        if not isinstance(payload, dict):
-            return result
-
-        result.page_type = self._extract_auth_page_type(payload)
-        result.continue_url = self._extract_auth_continue_url(payload)
-
-        page = payload.get("page")
-        if isinstance(page, dict):
-            callback_url = self._resolve_callback_from_auth_page(page, stage)
-            if callback_url:
-                result.callback_url = callback_url
-                return result
-            if result.page_type == "add_phone":
-                return result
-
-        if result.continue_url:
-            result.callback_url = self._resolve_callback_from_continue_url(
-                result.continue_url,
-                stage,
-            )
-
-        return result
+        flow_result = self.flow_runner.resolve_auth_result(payload, stage)
+        return AuthResolutionResult(
+            callback_url=flow_result.callback_url,
+            page_type=flow_result.page_type,
+            continue_url=flow_result.continue_url,
+        )
 
     def _complete_login_email_otp_verification(self) -> AuthResolutionResult:
         """完成登录后的邮箱验证码验证，并继续推进 OAuth"""
