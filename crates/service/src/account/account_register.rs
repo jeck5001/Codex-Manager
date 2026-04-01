@@ -83,6 +83,20 @@ struct AutoRegisterRecoveryPlan {
     email_service_id: Option<i64>,
 }
 
+fn build_auto_register_batch_payload(plan: &AutoRegisterRecoveryPlan) -> Value {
+    json!({
+        "email_service_type": plan.service_type,
+        "email_service_id": plan.email_service_id,
+        "register_mode": "any_auto",
+        "proxy": Value::Null,
+        "count": 1,
+        "interval_min": 0,
+        "interval_max": 0,
+        "concurrency": 1,
+        "mode": "parallel",
+    })
+}
+
 impl RegisterTaskReadResponse {
     pub(crate) fn status(&self) -> &str {
         self.status.as_str()
@@ -858,19 +872,8 @@ pub(crate) fn refresh_and_import_register_account_by_email(
 
 pub(crate) fn auto_register_and_import_account() -> Result<Value, String> {
     let plan = resolve_auto_register_recovery_plan()?;
-    let started = register_post_json(
-        "/api/registration/batch",
-        &json!({
-            "email_service_type": plan.service_type,
-            "email_service_id": plan.email_service_id,
-            "proxy": Value::Null,
-            "count": 1,
-            "interval_min": 0,
-            "interval_max": 0,
-            "concurrency": 1,
-            "mode": "parallel",
-        }),
-    )?;
+    let started =
+        register_post_json("/api/registration/batch", &build_auto_register_batch_payload(&plan))?;
     let task_uuid = task_uuid_strings_from_payload(&started)
         .into_iter()
         .next()
@@ -1655,10 +1658,11 @@ fn first_recovery_service_id_from_group(payload: &Value, keys: &[&str]) -> Optio
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_register_failure_reason, normalized_register_service_url,
+        build_auto_register_batch_payload, classify_register_failure_reason,
+        normalized_register_service_url,
         pick_remote_account_by_email, resolve_existing_imported_account_id_from_accounts,
         task_result_string_field,
-        RegisterProxyItem,
+        AutoRegisterRecoveryPlan, RegisterProxyItem,
     };
     use codexmanager_core::storage::{now_ts, Account};
     use serde_json::json;
@@ -1732,6 +1736,27 @@ mod tests {
         assert_eq!(
             classify_register_failure_reason(Some("proxy authentication required"), ""),
             Some(("register_proxy_error", "注册代理异常"))
+        );
+    }
+
+    #[test]
+    fn auto_register_batch_payload_uses_any_auto_mode() {
+        let payload = build_auto_register_batch_payload(&AutoRegisterRecoveryPlan {
+            service_type: "custom_domain".to_string(),
+            email_service_id: Some(12),
+        });
+
+        assert_eq!(
+            payload.get("register_mode").and_then(|value| value.as_str()),
+            Some("any_auto")
+        );
+        assert_eq!(
+            payload.get("email_service_type").and_then(|value| value.as_str()),
+            Some("custom_domain")
+        );
+        assert_eq!(
+            payload.get("email_service_id").and_then(|value| value.as_i64()),
+            Some(12)
         );
     }
 
