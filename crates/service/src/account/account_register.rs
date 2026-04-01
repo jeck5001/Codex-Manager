@@ -1565,20 +1565,17 @@ pub(crate) fn import_register_task(task_uuid: &str) -> Result<Value, String> {
         .email
         .clone()
         .ok_or_else(|| "register task result missing email".to_string())?;
-    let chatgpt_account_id = task
-        .result
-        .get("account_id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string);
-    let workspace_id = task
-        .result
-        .get("workspace_id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string);
+    let chatgpt_account_id = task_result_string_field(
+        &task.result,
+        &[
+            "account_id",
+            "accountId",
+            "chatgpt_account_id",
+            "chatgptAccountId",
+        ],
+    );
+    let workspace_id =
+        task_result_string_field(&task.result, &["workspace_id", "workspaceId"]);
 
     let mut imported = import_remote_account_for_email(&email, chatgpt_account_id, workspace_id)?;
     if let Some(object) = imported.as_object_mut() {
@@ -1660,6 +1657,7 @@ mod tests {
     use super::{
         classify_register_failure_reason, normalized_register_service_url,
         pick_remote_account_by_email, resolve_existing_imported_account_id_from_accounts,
+        task_result_string_field,
         RegisterProxyItem,
     };
     use codexmanager_core::storage::{now_ts, Account};
@@ -1686,6 +1684,28 @@ mod tests {
         let picked = pick_remote_account_by_email(&items, "target@example.com")
             .expect("account should match");
         assert_eq!(picked.get("id").and_then(|value| value.as_i64()), Some(2));
+    }
+
+    #[test]
+    fn task_result_string_field_accepts_camel_case_aliases() {
+        let task_result = json!({
+            "accountId": "chatgpt-camel-id",
+            "workspaceId": "workspace-camel-id",
+            "chatgptAccountId": "chatgpt-account-camel-id"
+        });
+
+        assert_eq!(
+            task_result_string_field(
+                &task_result,
+                &["account_id", "accountId", "chatgpt_account_id", "chatgptAccountId"],
+            )
+            .as_deref(),
+            Some("chatgpt-camel-id")
+        );
+        assert_eq!(
+            task_result_string_field(&task_result, &["workspace_id", "workspaceId"]).as_deref(),
+            Some("workspace-camel-id")
+        );
     }
 
     #[test]
