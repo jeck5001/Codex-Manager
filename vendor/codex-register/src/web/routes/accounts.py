@@ -196,6 +196,7 @@ async def get_account_tokens(account_id: int):
             "access_token": account.access_token,
             "refresh_token": account.refresh_token,
             "id_token": account.id_token,
+            "session_token": account.session_token,
             "has_tokens": bool(account.access_token and account.refresh_token),
         }
 

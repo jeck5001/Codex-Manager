@@ -570,6 +570,39 @@ fn remote_account_string_field(account: &Value, key: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn merge_session_token_into_cookies(
+    cookies: Option<String>,
+    session_token: Option<String>,
+) -> Option<String> {
+    let normalized_cookies = cookies
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let normalized_session_token = session_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+
+    match (normalized_cookies, normalized_session_token) {
+        (Some(existing), Some(_session_token))
+            if existing.contains("__Secure-next-auth.session-token=")
+                || existing.contains("next-auth.session-token=") =>
+        {
+            Some(existing)
+        }
+        (Some(existing), Some(session_token)) => {
+            Some(format!("{existing}; __Secure-next-auth.session-token={session_token}"))
+        }
+        (Some(existing), None) => Some(existing),
+        (None, Some(session_token)) => {
+            Some(format!("__Secure-next-auth.session-token={session_token}"))
+        }
+        (None, None) => None,
+    }
+}
+
 fn resolve_remote_account_for_email(email: &str) -> Result<Value, String> {
     let payload = register_get_json_with_query(
         "/api/accounts",
@@ -717,12 +750,19 @@ fn import_remote_account(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
+    let session_token = remote_tokens
+        .get("session_token")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
     let cookies = remote_account
         .get("cookies")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
+    let cookies = merge_session_token_into_cookies(cookies, session_token);
     let chatgpt_account_id =
         remote_account_string_field(&remote_account, "account_id").or(chatgpt_account_id_hint);
     let workspace_id =
@@ -863,10 +903,7 @@ pub(crate) fn auto_register_and_import_account() -> Result<Value, String> {
         ));
     }
 
-    Err(format!(
-        "register auto login task timed out: {}",
-        task_uuid
-    ))
+    Err(format!("register auto login task timed out: {}", task_uuid))
 }
 
 pub(crate) fn available_register_services() -> Result<Value, String> {
@@ -1296,7 +1333,10 @@ pub(crate) fn update_register_browserbase_config(
         payload.insert("enabled".to_string(), Value::Bool(enabled));
     }
     if let Some(priority) = priority {
-        payload.insert("priority".to_string(), Value::Number(priority.max(0).into()));
+        payload.insert(
+            "priority".to_string(),
+            Value::Number(priority.max(0).into()),
+        );
     }
     if let Some(config) = config {
         payload.insert("config".to_string(), config);
@@ -1578,9 +1618,7 @@ fn resolve_auto_register_recovery_plan() -> Result<AutoRegisterRecoveryPlan, Str
             email_service_id: Some(id),
         });
     }
-    if let Some(id) =
-        first_recovery_service_id_from_group(&payload, &["tempMail", "temp_mail"])
-    {
+    if let Some(id) = first_recovery_service_id_from_group(&payload, &["tempMail", "temp_mail"]) {
         return Ok(AutoRegisterRecoveryPlan {
             service_type: "temp_mail".to_string(),
             email_service_id: Some(id),
