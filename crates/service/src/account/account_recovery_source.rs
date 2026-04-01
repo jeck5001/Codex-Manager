@@ -46,6 +46,8 @@ struct RemoteExportTokens {
     refresh_token: String,
     #[serde(default)]
     id_token: String,
+    #[serde(default)]
+    cookies: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,7 +98,11 @@ pub(crate) fn import_remote_recovery_account(
             refresh_token: Some(export.tokens.refresh_token.clone())
                 .filter(|value| !value.trim().is_empty()),
             id_token: Some(export.tokens.id_token.clone()).filter(|value| !value.trim().is_empty()),
-            cookies: None,
+            cookies: export
+                .tokens
+                .cookies
+                .clone()
+                .filter(|value| !value.trim().is_empty()),
             email_hint: Some(export.meta.label.clone()),
             chatgpt_account_id: export.meta.chatgpt_account_id.clone(),
             workspace_id: export.meta.workspace_id.clone(),

@@ -589,6 +589,115 @@ fn start_mock_recovery_manager_server(
     (addr, rx, handle)
 }
 
+fn start_mock_recovery_manager_server_with_cookies(
+    email: String,
+    remote_account_id: String,
+    chatgpt_account_id: String,
+    workspace_id: String,
+    imported_access_token: String,
+    imported_id_token: String,
+    cookies: String,
+) -> (
+    String,
+    std::sync::mpsc::Receiver<(String, serde_json::Value)>,
+    thread::JoinHandle<()>,
+) {
+    let server = Server::http("127.0.0.1:0").expect("start mock recovery manager cookie server");
+    let addr = format!("http://{}", server.server_addr());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = thread::spawn(move || {
+        for _ in 0..2 {
+            let mut request = server.recv().expect("receive recovery manager request");
+            let mut body = String::new();
+            request
+                .as_reader()
+                .read_to_string(&mut body)
+                .expect("read recovery manager body");
+            let payload: serde_json::Value =
+                serde_json::from_str(&body).expect("parse recovery manager body");
+            let method = payload
+                .get("method")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string();
+            tx.send((method.clone(), payload.clone()))
+                .expect("send recovery manager request");
+
+            let response_body = if method == "account/list" {
+                serde_json::json!({
+                    "id": payload.get("id").cloned().unwrap_or(serde_json::json!(1)),
+                    "result": {
+                        "items": [{
+                            "id": remote_account_id,
+                            "label": email,
+                            "groupName": "REMOTE",
+                            "tags": [],
+                            "sort": 0,
+                            "status": "active",
+                            "healthScore": 100
+                        }],
+                        "total": 1,
+                        "page": 1,
+                        "pageSize": 500
+                    }
+                })
+                .to_string()
+            } else if method == "account/exportData" {
+                serde_json::json!({
+                    "id": payload.get("id").cloned().unwrap_or(serde_json::json!(2)),
+                    "result": {
+                        "totalAccounts": 1,
+                        "exported": 1,
+                        "skippedMissingToken": 0,
+                        "files": [{
+                            "fileName": "remote-account-cookie.json",
+                            "content": serde_json::json!({
+                                "tokens": {
+                                    "access_token": imported_access_token,
+                                    "refresh_token": "",
+                                    "id_token": imported_id_token,
+                                    "account_id": remote_account_id,
+                                    "cookies": cookies,
+                                },
+                                "meta": {
+                                    "label": email,
+                                    "issuer": "https://auth.openai.com",
+                                    "groupName": "REMOTE",
+                                    "status": "active",
+                                    "workspaceId": workspace_id,
+                                    "chatgptAccountId": chatgpt_account_id,
+                                    "exportedAt": 1
+                                }
+                            })
+                            .to_string()
+                        }]
+                    }
+                })
+                .to_string()
+            } else {
+                serde_json::json!({
+                    "id": payload.get("id").cloned().unwrap_or(serde_json::json!(999)),
+                    "result": {
+                        "error": format!("unexpected method: {method}")
+                    }
+                })
+                .to_string()
+            };
+
+            let response = Response::from_string(response_body)
+                .with_status_code(StatusCode(200))
+                .with_header(
+                    Header::from_bytes("Content-Type", "application/json")
+                        .expect("content-type header"),
+                );
+            request
+                .respond(response)
+                .expect("respond recovery manager request");
+        }
+    });
+    (addr, rx, handle)
+}
+
 fn start_mock_register_service_probe_server() -> (
     String,
     std::sync::mpsc::Receiver<(String, String)>,
@@ -2558,6 +2667,144 @@ fn rpc_account_auth_recover_prefers_remote_manager_when_configured() {
     assert_eq!(updated_token.access_token, refreshed_access_token);
     assert_eq!(updated_token.refresh_token, "refresh-token-remote-new");
     assert_eq!(updated_token.id_token, refreshed_id_token);
+}
+
+#[test]
+fn rpc_account_auth_recover_remote_manager_preserves_cookie_only_session_for_followup_refresh() {
+    let ctx = RpcTestContext::new("rpc-account-auth-recover-remote-manager-cookie");
+    let email = "recover-remote-cookie@example.com";
+    let chatgpt_account_id = "chatgpt-remote-cookie";
+    let workspace_id = "workspace-remote-cookie";
+    let expired_access_token =
+        build_access_token("subject-remote-cookie-old", email, chatgpt_account_id, "free");
+    let imported_access_token =
+        build_access_token("subject-remote-cookie-imported", email, chatgpt_account_id, "free");
+    let refreshed_access_token =
+        build_access_token("subject-remote-cookie-new", email, chatgpt_account_id, "plus");
+    let (issuer, _refresh_rx, oauth_join) =
+        start_mock_oauth_token_server(401, r#"{"error":"refresh_token_reused"}"#.to_string());
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
+    let _client_id_guard =
+        EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-remote-cookie");
+    let (register_url, register_rx, register_join) = start_mock_register_service_probe_server();
+    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
+    let (recovery_url, recovery_rx, recovery_join) = start_mock_recovery_manager_server_with_cookies(
+        email.to_string(),
+        "remote-account-cookie-1".to_string(),
+        chatgpt_account_id.to_string(),
+        workspace_id.to_string(),
+        imported_access_token.clone(),
+        "".to_string(),
+        "__Secure-next-auth.session-token=remote-cookie-session; oai-did=remote-cookie-device".to_string(),
+    );
+    let _recovery_guard = EnvGuard::set("CODEXMANAGER_ACCOUNT_RECOVERY_SOURCE_URL", &recovery_url);
+    let (session_url, session_rx, session_join) = start_mock_session_refresh_server(
+        serde_json::json!({
+            "accessToken": refreshed_access_token,
+            "expires": "2026-04-01T18:00:00Z"
+        })
+        .to_string(),
+    );
+    let _session_url_guard = EnvGuard::set("CODEX_SESSION_REFRESH_URL_OVERRIDE", &session_url);
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let now = now_ts();
+    storage
+        .insert_account(&Account {
+            id: "acc-recover-remote-cookie".to_string(),
+            label: email.to_string(),
+            issuer: issuer.clone(),
+            chatgpt_account_id: Some(chatgpt_account_id.to_string()),
+            workspace_id: Some(workspace_id.to_string()),
+            group_name: Some("TEAM".to_string()),
+            sort: 0,
+            status: "unavailable".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&codexmanager_core::storage::Token {
+            account_id: "acc-recover-remote-cookie".to_string(),
+            id_token: expired_access_token.clone(),
+            access_token: expired_access_token,
+            refresh_token: "refresh-token-reused".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let recover_req = JsonRpcRequest {
+        id: 631,
+        method: "account/auth/recover".to_string(),
+        params: Some(serde_json::json!({
+            "accountId": "acc-recover-remote-cookie",
+            "openBrowser": false
+        })),
+    };
+    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
+    let recover_server =
+        codexmanager_service::start_one_shot_server().expect("start recover server");
+    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
+    let recover_result = recover_resp.get("result").expect("recover result");
+    assert_eq!(
+        recover_result.get("status").and_then(|value| value.as_str()),
+        Some("recovered"),
+        "recover response: {recover_resp}"
+    );
+
+    let read_req = JsonRpcRequest {
+        id: 632,
+        method: "account/read".to_string(),
+        params: Some(serde_json::json!({ "refreshToken": true })),
+    };
+    let read_json = serde_json::to_string(&read_req).expect("serialize read");
+    let read_server = codexmanager_service::start_one_shot_server().expect("start read server");
+    let read_resp = post_rpc(&read_server.addr, &read_json);
+    let read_result = read_resp.get("result").expect("read result");
+    let account = read_result.get("account").expect("current account");
+    assert_eq!(
+        account.get("planType").and_then(|value| value.as_str()),
+        Some("plus"),
+        "read response: {read_resp}"
+    );
+
+    oauth_join.join().expect("join oauth server");
+    register_join.join().expect("join register server");
+    assert!(
+        register_rx
+            .recv_timeout(Duration::from_millis(200))
+            .is_err(),
+        "register service should not be used when remote recovery source is configured"
+    );
+
+    let recovery_requests = (0..2)
+        .map(|_| {
+            recovery_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("receive recovery manager request")
+        })
+        .collect::<Vec<_>>();
+    recovery_join.join().expect("join recovery manager server");
+    assert_eq!(recovery_requests[0].0, "account/list");
+    assert_eq!(recovery_requests[1].0, "account/exportData");
+
+    let cookie_header = session_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive session refresh cookie");
+    session_join.join().expect("join session server");
+    assert!(
+        cookie_header.contains("__Secure-next-auth.session-token=remote-cookie-session"),
+        "unexpected cookie header: {cookie_header}"
+    );
+
+    let updated_token = storage
+        .find_token_by_account_id("acc-recover-remote-cookie")
+        .expect("find token")
+        .expect("token exists");
+    assert_eq!(updated_token.access_token, refreshed_access_token);
+    assert_eq!(updated_token.refresh_token, "");
 }
 
 #[test]
