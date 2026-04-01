@@ -127,6 +127,10 @@ class RegisterFlowRunnerTests(unittest.TestCase):
     def test_resolve_callback_from_continue_url_advances_add_phone(self):
         engine = EngineStub()
         runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+        runner.advance_workspace_authorization = lambda auth_target, _visited=None: (
+            engine.calls.append(("advance_workspace", auth_target))
+            or "http://localhost:1455/auth/callback?code=phone&state=state"
+        )
         callback = runner.resolve_callback_from_continue_url(
             "https://auth.openai.com/add-phone",
             "测试阶段",
@@ -297,6 +301,169 @@ class RegisterFlowRunnerTests(unittest.TestCase):
                 "?client_id=test&response_type=code&state=state"
             ],
         )
+
+
+    def test_advance_workspace_authorization_uses_consent_response(self):
+        class FakeResponse:
+            url = "https://auth.openai.com/sign-in-with-chatgpt/codex/consent"
+            text = '<script>window.__NEXT_DATA__={"activeWorkspaceId":"ws-consent"}</script>'
+            history = []
+
+            def json(self):
+                raise ValueError("not json")
+
+        class FakeSession:
+            def get(self, url, **_kwargs):
+                return FakeResponse()
+
+        engine = EngineStub()
+        engine.session = FakeSession()
+        engine._cached_workspace_id = ""
+        engine._extract_workspace_id_from_response = lambda **_kwargs: "ws-consent"
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+
+        callback = runner.advance_workspace_authorization("https://auth.openai.com/add-phone")
+
+        self.assertEqual(
+            callback,
+            "http://localhost:1455/auth/callback?code=redir&state=state",
+        )
+        self.assertEqual(engine._cached_workspace_id, "ws-consent")
+        self.assertEqual(
+            engine.calls,
+            [
+                ("select_workspace", "ws-consent"),
+                ("follow_redirects", "https://auth.openai.com/workspace/continue"),
+            ],
+        )
+
+    def test_advance_workspace_authorization_follows_discovered_consent_link(self):
+        class AddPhoneResponse:
+            url = "https://auth.openai.com/add-phone"
+            text = '<a href="/sign-in-with-chatgpt/codex/consent?step=1">continue</a>'
+            history = []
+
+            def json(self):
+                raise ValueError("not json")
+
+        class ConsentResponse:
+            url = "https://auth.openai.com/sign-in-with-chatgpt/codex/consent?step=1"
+            text = '<script>window.__NEXT_DATA__={"activeWorkspaceId":"ws-linked"}</script>'
+            history = []
+
+            def json(self):
+                raise ValueError("not json")
+
+        class FakeSession:
+            def __init__(self):
+                self.urls = []
+
+            def get(self, url, **_kwargs):
+                self.urls.append(url)
+                if "sign-in-with-chatgpt/codex/consent" in url:
+                    return ConsentResponse()
+                return AddPhoneResponse()
+
+        engine = EngineStub()
+        engine.session = FakeSession()
+        engine._cached_workspace_id = ""
+        engine._extract_workspace_id_from_response = lambda **_kwargs: (
+            "ws-linked" if _kwargs.get("url", "").endswith("step=1") else None
+        )
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+
+        callback = runner.advance_workspace_authorization("https://auth.openai.com/add-phone")
+
+        self.assertEqual(
+            callback,
+            "http://localhost:1455/auth/callback?code=redir&state=state",
+        )
+        self.assertEqual(engine._cached_workspace_id, "ws-linked")
+        self.assertEqual(
+            engine.session.urls,
+            [
+                "https://auth.openai.com/add-phone",
+                "https://auth.openai.com/sign-in-with-chatgpt/codex/consent?step=1",
+            ],
+        )
+
+    def test_attempt_add_phone_login_bypass_tries_workspace_authorization_before_oauth_retry(self):
+        engine = EngineStub()
+        engine.email = "user@example.com"
+        engine.password = "secret"
+        engine.oauth_start = types.SimpleNamespace(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+        )
+        engine._post_create_continue_url = ""
+        engine._last_login_recovery_page_type = ""
+        engine._submit_login_identifier = lambda did, sen: {"type": "login_password"}
+        engine._verify_login_password = lambda password: {"type": "email_otp_verification"}
+        engine._complete_login_email_otp_verification = lambda: types.SimpleNamespace(
+            callback_url=None,
+            page_type="add_phone",
+            continue_url="https://auth.openai.com/add-phone",
+        )
+        engine._restart_oauth_session_for_login = lambda: (_ for _ in ()).throw(AssertionError("should not restart"))
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+        advanced_targets = []
+        followed_urls = []
+
+        runner.advance_workspace_authorization = lambda auth_target, _visited=None: (
+            advanced_targets.append(auth_target)
+            or "http://localhost:1455/auth/callback?code=phone&state=state"
+        )
+        engine._follow_redirects = lambda url: followed_urls.append(url) or None
+
+        callback = runner.attempt_add_phone_login_bypass("did", "sentinel")
+
+        self.assertEqual(
+            callback,
+            "http://localhost:1455/auth/callback?code=phone&state=state",
+        )
+        self.assertEqual(advanced_targets, ["https://auth.openai.com/add-phone"])
+        self.assertEqual(followed_urls, [])
+
+    def test_attempt_add_phone_login_bypass_reuses_authenticated_oauth_url_without_prompt_login(self):
+        engine = EngineStub()
+        engine.email = "user@example.com"
+        engine.password = "secret"
+        engine.oauth_start = types.SimpleNamespace(
+            auth_url=(
+                "https://auth.openai.com/oauth/authorize"
+                "?client_id=test&response_type=code&prompt=login&state=state"
+            ),
+        )
+        engine._post_create_continue_url = ""
+        engine._last_login_recovery_page_type = ""
+        engine._submit_login_identifier = lambda did, sen: {"type": "login_password"}
+        engine._verify_login_password = lambda password: {"type": "email_otp_verification"}
+        engine._complete_login_email_otp_verification = lambda: types.SimpleNamespace(
+            callback_url=None,
+            page_type="add_phone",
+            continue_url="https://auth.openai.com/add-phone",
+        )
+        restart_calls = []
+        engine._restart_oauth_session_for_login = lambda: restart_calls.append(True) or ("new-did", "new-sentinel")
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+        followed_urls = []
+
+        runner.advance_workspace_authorization = lambda auth_target, _visited=None: None
+        engine._follow_redirects = lambda url: followed_urls.append(url) or "http://localhost:1455/auth/callback?code=redir&state=state"
+
+        callback = runner.attempt_add_phone_login_bypass("did", "sentinel")
+
+        self.assertEqual(
+            callback,
+            "http://localhost:1455/auth/callback?code=redir&state=state",
+        )
+        self.assertEqual(
+            followed_urls,
+            [
+                "https://auth.openai.com/oauth/authorize"
+                "?client_id=test&response_type=code&state=state"
+            ],
+        )
+        self.assertEqual(restart_calls, [])
 
 
 if __name__ == "__main__":
