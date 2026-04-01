@@ -9,6 +9,7 @@ import time
 import logging
 import secrets
 import string
+import urllib.parse
 from typing import Optional, Dict, Any, Tuple, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -243,6 +244,31 @@ class RegistrationEngine:
             or payload.get("callback_url")
             or payload.get("next_url")
         )
+
+    def _build_authenticated_oauth_url(self) -> str:
+        """构造适用于已登录会话的 OAuth URL，去掉 prompt=login 避免再次落到登录页。"""
+        raw_url = self._clean_text(self.oauth_start.auth_url if self.oauth_start else "")
+        if not raw_url:
+            return ""
+
+        parsed = urllib.parse.urlsplit(raw_url)
+        query_items = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+        filtered_items = []
+        for key, value in query_items:
+            normalized_key = self._clean_text(key)
+            normalized_value = self._clean_text(value)
+            if normalized_key == "prompt" and normalized_value.lower() == "login":
+                continue
+            filtered_items.append((key, value))
+
+        rebuilt_query = urllib.parse.urlencode(filtered_items, doseq=True)
+        return urllib.parse.urlunsplit((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            rebuilt_query,
+            parsed.fragment,
+        ))
 
     def _clear_otp_error_state(self):
         """清空最近一次 OTP 校验错误状态"""
@@ -1714,7 +1740,9 @@ class RegistrationEngine:
 
         if self.oauth_start:
             self._log("登录邮箱验证码校验后未拿到 continue_url，回退到 OAuth URL 重试跳转...", "warning")
-            resolution.callback_url = self._follow_redirects(self.oauth_start.auth_url)
+            retry_url = self._build_authenticated_oauth_url()
+            if retry_url:
+                resolution.callback_url = self._follow_redirects(retry_url)
 
         return resolution
 
@@ -1842,7 +1870,9 @@ class RegistrationEngine:
                     return callback_url
                 if self.oauth_start:
                     self._log(f"{attempt_name} 命中 add_phone，先复用当前已登录会话重新跟随 OAuth URL...", "warning")
-                    callback_url = self._follow_redirects(self.oauth_start.auth_url)
+                    retry_url = self._build_authenticated_oauth_url()
+                    if retry_url:
+                        callback_url = self._follow_redirects(retry_url)
                     if callback_url:
                         return callback_url
                 if recreate_session:
@@ -1853,7 +1883,10 @@ class RegistrationEngine:
 
             if self.oauth_start:
                 self._log(f"{attempt_name} 未直接拿到回调，尝试重新跟随 OAuth URL...", "warning")
-                callback_url = self._follow_redirects(self.oauth_start.auth_url)
+                retry_url = self._build_authenticated_oauth_url()
+                if not retry_url:
+                    continue
+                callback_url = self._follow_redirects(retry_url)
                 if callback_url:
                     return callback_url
 
@@ -2051,10 +2084,10 @@ class RegistrationEngine:
                     continue_url = self._select_workspace(workspace_id)
                     if not continue_url:
                         self._log("workspace/select 失败，回退到原始 OAuth URL 继续流程", "warning")
-                        continue_url = self.oauth_start.auth_url
+                        continue_url = self._build_authenticated_oauth_url()
                 else:
                     self._log("未提前拿到 Workspace ID，回退到原始 OAuth URL 继续流程", "warning")
-                    continue_url = self.oauth_start.auth_url
+                    continue_url = self._build_authenticated_oauth_url()
 
                 # 15. 跟随重定向链
                 self._log("15. 跟随重定向链...")
