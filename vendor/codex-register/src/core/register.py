@@ -1392,42 +1392,7 @@ class RegistrationEngine:
     def _resolve_callback_from_continue_url(self, continue_url: str, stage: str) -> Optional[str]:
         """根据 continue_url 推进到 OAuth 回调"""
         try:
-            target_url = self._clean_text(continue_url)
-            if not target_url:
-                return None
-
-            if "code=" in target_url and "state=" in target_url:
-                self._log(f"{stage} 直接拿到回调 URL: {target_url[:100]}...")
-                return target_url
-
-            import urllib.parse
-
-            parsed = urllib.parse.urlsplit(target_url)
-            path = self._clean_text(parsed.path)
-
-            if path in (
-                "/workspace",
-                "/sign-in-with-chatgpt/codex/consent",
-                "/sign-in-with-chatgpt/codex/organization",
-            ):
-                workspace_id = self._get_workspace_id()
-                if not workspace_id:
-                    self._log(f"{stage} 需要 workspace，但当前还没拿到 workspace_id", "warning")
-                    return None
-
-                continue_after_select = self._select_workspace(workspace_id)
-                if not continue_after_select:
-                    return None
-                return self._follow_redirects(continue_after_select)
-
-            if path == "/add-phone":
-                callback_url = self._advance_workspace_authorization(target_url)
-                if callback_url:
-                    return callback_url
-                self._log(f"{stage} 仍然指向 add_phone", "warning")
-                return None
-
-            return self._follow_redirects(target_url)
+            return self.flow_runner.resolve_callback_from_continue_url(continue_url, stage)
         except Exception as e:
             self._log(f"{stage} 解析 continue_url 失败: {e}", "error")
             return None
@@ -1499,41 +1464,7 @@ class RegistrationEngine:
 
     def _resolve_callback_from_auth_page(self, page: Dict[str, Any], stage: str) -> Optional[str]:
         """根据页面类型推进到 OAuth 回调"""
-        page_type = self._clean_text((page or {}).get("type"))
-        if not page_type:
-            self._log(f"{stage} 缺少 page.type", "warning")
-            return None
-
-        if page_type == "token_exchange":
-            return self._build_callback_url_from_page(page)
-
-        if page_type in (
-            "workspace",
-            "sign_in_with_chatgpt_codex_consent",
-            "sign_in_with_chatgpt_codex_org",
-        ):
-            workspace_id = self._get_workspace_id()
-            if not workspace_id:
-                self._log(f"{stage} 需要选择 Workspace，但暂未拿到 workspace_id", "warning")
-                return None
-
-            continue_url = self._select_workspace(workspace_id)
-            if not continue_url:
-                return None
-            return self._follow_redirects(continue_url)
-
-        if page_type == "external_url":
-            payload = page.get("payload") if isinstance(page.get("payload"), dict) else {}
-            external_url = self._clean_text(payload.get("url"))
-            if external_url:
-                self._log(f"{stage} 返回 external_url，继续跟随跳转...", "warning")
-                return self._follow_redirects(external_url)
-            return None
-
-        if page_type == "add_phone":
-            return None
-
-        return None
+        return self.flow_runner.resolve_callback_from_auth_page(page, stage)
 
     def _restart_oauth_session_for_login(self) -> Tuple[Optional[str], Optional[str]]:
         """新开 OAuth 会话，按已存在账号重新登录"""
