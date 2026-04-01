@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+import time
 import urllib.parse
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -232,6 +233,58 @@ class RegisterFlowRunner:
 
         return self.engine._follow_redirects(target_url)
 
+    def complete_login_email_otp_verification(self) -> FlowResolutionResult:
+        """完成登录后的邮箱验证码验证，并继续推进 OAuth。"""
+        self.engine._last_login_recovery_page_type = ""
+        self.engine._log("登录后触发邮箱二次验证，开始获取验证码...", "warning")
+        self.engine._otp_sent_at = time.time()
+
+        max_attempts = 3
+        code: Optional[str] = None
+        validate_payload: Optional[dict[str, Any]] = None
+
+        for attempt in range(max_attempts):
+            if attempt == 0:
+                code = self.engine._get_verification_code()
+                if code:
+                    validate_payload = self.engine._validate_verification_code_with_payload(code)
+            else:
+                reason = "首次等待登录验证码超时" if not code else "登录验证码不是最新一封或已失效"
+                self.engine._log(f"{reason}，尝试重发后重新获取...", "warning")
+                if not self.engine._resend_email_verification_code():
+                    return FlowResolutionResult()
+                code = self.engine._get_verification_code()
+                if not code:
+                    continue
+                validate_payload = self.engine._validate_verification_code_with_payload(code)
+
+            if validate_payload:
+                break
+
+            if not self.engine._is_wrong_email_otp_code_error() and code:
+                return FlowResolutionResult()
+        else:
+            return FlowResolutionResult()
+
+        resolution = self.resolve_auth_result(
+            validate_payload,
+            "登录邮箱验证码校验",
+        )
+        self.engine._last_login_recovery_page_type = resolution.page_type
+        if resolution.callback_url:
+            return resolution
+
+        if resolution.page_type == "add_phone":
+            return resolution
+
+        if getattr(self.engine, "oauth_start", None):
+            self.engine._log("登录邮箱验证码校验后未拿到 continue_url，回退到 OAuth URL 重试跳转...", "warning")
+            retry_url = self.engine._build_authenticated_oauth_url()
+            if retry_url:
+                resolution.callback_url = self.engine._follow_redirects(retry_url)
+
+        return resolution
+
     def attempt_add_phone_login_bypass(self, did: Optional[str], sen_token: Optional[str]) -> Optional[str]:
         """注册后若进入 add_phone，尝试改走登录流继续完成 OAuth。"""
         if not getattr(self.engine, "email", None) or not getattr(self.engine, "password", None):
@@ -289,7 +342,7 @@ class RegisterFlowRunner:
                     or getattr(self.engine, "_post_create_continue_url", "")
                     or self._clean_text(getattr(getattr(self.engine, "oauth_start", None), "auth_url", ""))
                 )
-                callback_url = self.advance_workspace_authorization(auth_target)
+                callback_url = self.engine._advance_workspace_authorization(auth_target)
                 if callback_url:
                     return callback_url
 
