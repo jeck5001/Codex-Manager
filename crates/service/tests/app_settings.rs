@@ -256,7 +256,10 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             snapshot
                 .get("visibleMenuItems")
                 .and_then(|value| value.as_array())
-                .map(|items| items.iter().filter_map(|item| item.as_str()).collect::<Vec<_>>()),
+                .map(|items| items
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .collect::<Vec<_>>()),
             Some(vec!["dashboard", "accounts", "logs", "settings"])
         );
         assert_eq!(
@@ -856,7 +859,10 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             snapshot
                 .get("visibleMenuItems")
                 .and_then(|value| value.as_array())
-                .map(|items| items.iter().filter_map(|item| item.as_str()).collect::<Vec<_>>()),
+                .map(|items| items
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .collect::<Vec<_>>()),
             Some(vec!["dashboard", "logs", "analytics", "settings"])
         );
         assert_eq!(

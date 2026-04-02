@@ -9,9 +9,8 @@ use std::thread;
 
 use super::{
     mark_usage_unreachable_if_needed, maybe_trigger_auto_account_governance, open_storage,
-    record_usage_refresh_failure,
-    SESSION_PROBE_CURSOR, SESSION_PROBE_INTERVAL_SECS, SESSION_PROBE_POLLING_ENABLED,
-    SESSION_PROBE_SAMPLE_SIZE,
+    record_usage_refresh_failure, SESSION_PROBE_CURSOR, SESSION_PROBE_INTERVAL_SECS,
+    SESSION_PROBE_POLLING_ENABLED, SESSION_PROBE_SAMPLE_SIZE,
 };
 
 static LAST_SESSION_PROBE_RESULT: OnceLock<Mutex<Option<HealthcheckRunResult>>> = OnceLock::new();
@@ -69,7 +68,10 @@ pub(crate) fn run_session_probe_batch() -> Result<HealthcheckRunResult, String> 
         };
         store_last_session_probe_result(&summary);
         if let Err(err) = maybe_trigger_auto_account_governance() {
-            log::warn!("session probe follow-up governance evaluation failed: {}", err);
+            log::warn!(
+                "session probe follow-up governance evaluation failed: {}",
+                err
+            );
         }
         if let Err(err) = crate::alert_engine::run_alert_checks_once() {
             log::warn!("session probe follow-up alert evaluation failed: {}", err);
@@ -117,7 +119,10 @@ pub(crate) fn run_session_probe_batch() -> Result<HealthcheckRunResult, String> 
     };
     store_last_session_probe_result(&summary);
     if let Err(err) = maybe_trigger_auto_account_governance() {
-        log::warn!("session probe follow-up governance evaluation failed: {}", err);
+        log::warn!(
+            "session probe follow-up governance evaluation failed: {}",
+            err
+        );
     }
     if let Err(err) = crate::alert_engine::run_alert_checks_once() {
         log::warn!("session probe follow-up alert evaluation failed: {}", err);
