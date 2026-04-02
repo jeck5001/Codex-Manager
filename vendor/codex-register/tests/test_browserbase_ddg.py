@@ -357,3 +357,27 @@ class BrowserbaseDDGRunnerGoalTests(unittest.TestCase):
         )
 
         self.assertIn("不要使用 Google、DuckDuckGo 或任何搜索引擎", goal)
+
+
+class BrowserbaseDDGRunnerNavigationTests(unittest.TestCase):
+    def test_open_target_url_creates_page_target(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={},
+        )
+        conn = DummyWebSocketConnection([
+            '{"id": 1, "result": {"targetId": "target-1"}}'
+        ])
+        original_create_connection = BROWSERBASE_DDG_MODULE.websocket.create_connection
+        try:
+            BROWSERBASE_DDG_MODULE.websocket.create_connection = lambda *_args, **_kwargs: conn
+            target_id = runner._open_target_url("wss://example", "https://auth.openai.com/test")
+        finally:
+            BROWSERBASE_DDG_MODULE.websocket.create_connection = original_create_connection
+
+        self.assertEqual(target_id, "target-1")
+        sent_payload = ''.join(conn.sent)
+        self.assertIn('Target.createTarget', sent_payload)
+        self.assertIn('https://auth.openai.com/test', sent_payload)
+        self.assertTrue(conn.closed)
