@@ -48,6 +48,11 @@ fn try_refresh_chatgpt_access_token(
     Ok(Some(refreshed.to_string()))
 }
 
+fn is_session_cookie_refresh_auth_error(err: &str) -> bool {
+    err.contains("session cookie refresh failed: usage endpoint failed: status=401")
+        || err.contains("session cookie refresh failed: usage endpoint failed: status=403")
+}
+
 pub(super) enum PostRetryFlowDecision {
     Failover,
     Terminal { status_code: u16, message: String },
@@ -144,16 +149,21 @@ where
                         &account.id,
                         &err,
                     );
+                    let session_cookie_auth_invalid = is_session_cookie_refresh_auth_error(&err);
                     log::warn!(
                         "event=gateway_upstream_unauthorized_refresh_failed path={} account_id={} err={}",
                         path,
                         account.id,
                         err
                     );
-                    if refresh_token_invalid && has_more_candidates {
-                        // Refresh token invalidates the account itself. This should fail over to the
-                        // next candidate even when generic upstream 401 retries are disabled.
-                        log_gateway_result(Some(url), 401, Some("refresh token invalid failover"));
+                    if (refresh_token_invalid || session_cookie_auth_invalid) && has_more_candidates
+                    {
+                        let failover_reason = if refresh_token_invalid {
+                            "refresh token invalid failover"
+                        } else {
+                            "session cookie invalid failover"
+                        };
+                        log_gateway_result(Some(url), 401, Some(failover_reason));
                         return PostRetryFlowDecision::Failover;
                     }
                 }
