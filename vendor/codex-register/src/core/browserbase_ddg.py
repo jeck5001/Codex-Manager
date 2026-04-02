@@ -29,6 +29,7 @@ BROWSERBASE_DDG_REGISTER_MODE = "browserbase_ddg"
 DEFAULT_BROWSERBASE_API_BASE = "https://gemini.browserbase.com"
 DEFAULT_BROWSERBASE_AGENT_MODEL = "google/gemini-2.5-computer-use-preview-10-2025"
 MIN_BROWSERBASE_PHASE_TIMEOUT_SECONDS = 900
+MAX_BROWSERBASE_AUTH_RECOVERY_ATTEMPTS = 3
 BROWSERBASE_FALLBACK_LAST_NAMES = (
     "Stone",
     "Reed",
@@ -354,6 +355,16 @@ class BrowserbaseDDGRegistrationRunner:
             "age": max(age, 18),
         }
 
+    @staticmethod
+    def _is_openai_auth_error_url(current_url: str) -> bool:
+        if not current_url:
+            return False
+        try:
+            parsed = urlsplit(current_url)
+        except Exception:
+            return current_url.startswith("https://auth.openai.com/error")
+        return parsed.netloc == "auth.openai.com" and parsed.path == "/error"
+
     def _wait_for_target_url(self, ws_url: str, target_keyword: str, timeout_seconds: int) -> str:
         normalized_ws_url = ws_url if ws_url.startswith("ws") else f"wss://{ws_url}"
         deadline = time.time() + timeout_seconds
@@ -432,6 +443,9 @@ class BrowserbaseDDGRegistrationRunner:
                         if current_url not in seen_urls:
                             seen_urls.add(current_url)
                             self._log(f"监控到页面 URL: {current_url}")
+                        if self._is_openai_auth_error_url(current_url):
+                            self._log(f"监控到 OpenAI Auth 错误页，当前会话将重试: {current_url}")
+                            raise RuntimeError(f"OpenAI Auth 错误页: {current_url}")
                         if current_title and target_keyword in current_title:
                             self._log(f"监控到页面标题命中目标: {current_title}")
                             return current_url
@@ -497,36 +511,54 @@ class BrowserbaseDDGRegistrationRunner:
             scope=settings.openai_scope,
         )
 
-        phase1_session = self._create_browserbase_session()
-        self._open_target_url(phase1_session.ws_url, oauth_start.auth_url)
-        self._open_target_url(
-            phase1_session.ws_url,
-            self._config_str("mail_inbox_url", "mailInboxUrl"),
-        )
-        phase1_stream = self._send_agent_goal(
-            phase1_session.session_id,
-            self._build_phase1_goal(
-                auth_url=oauth_start.auth_url,
-                email=email,
-                password=password,
-                first_name=identity["first_name"],
-                last_name=identity["last_name"],
-                full_name=identity["full_name"],
-                birthdate=identity["birthdate"],
-                birth_year=identity["birth_year"],
-                birth_month=identity["birth_month"],
-                birth_day=identity["birth_day"],
-                age=identity["age"],
-            ),
-        )
         timeout_seconds = self._phase_timeout_seconds()
-        try:
-            callback_url = self._wait_for_target_url(phase1_session.ws_url, "localhost", timeout_seconds)
-        finally:
+
+        callback_url = ""
+        auth_error: Optional[Exception] = None
+        for attempt in range(1, MAX_BROWSERBASE_AUTH_RECOVERY_ATTEMPTS + 1):
+            phase1_session = self._create_browserbase_session()
+            self._open_target_url(phase1_session.ws_url, oauth_start.auth_url)
+            self._open_target_url(
+                phase1_session.ws_url,
+                self._config_str("mail_inbox_url", "mailInboxUrl"),
+            )
+            phase1_stream = self._send_agent_goal(
+                phase1_session.session_id,
+                self._build_phase1_goal(
+                    auth_url=oauth_start.auth_url,
+                    email=email,
+                    password=password,
+                    first_name=identity["first_name"],
+                    last_name=identity["last_name"],
+                    full_name=identity["full_name"],
+                    birthdate=identity["birthdate"],
+                    birth_year=identity["birth_year"],
+                    birth_month=identity["birth_month"],
+                    birth_day=identity["birth_day"],
+                    age=identity["age"],
+                ),
+            )
             try:
-                phase1_stream.close()
-            except Exception:
-                pass
+                callback_url = self._wait_for_target_url(phase1_session.ws_url, "localhost", timeout_seconds)
+                auth_error = None
+                break
+            except RuntimeError as exc:
+                if "OpenAI Auth 错误页:" not in str(exc):
+                    raise
+                auth_error = exc
+                if attempt >= MAX_BROWSERBASE_AUTH_RECOVERY_ATTEMPTS:
+                    raise
+                self._log(
+                    "命中 OpenAI Auth 错误页，准备重建 Browserbase 会话后重试授权流程"
+                    f"（第 {attempt + 1}/{MAX_BROWSERBASE_AUTH_RECOVERY_ATTEMPTS} 次）"
+                )
+            finally:
+                try:
+                    phase1_stream.close()
+                except Exception:
+                    pass
+        if auth_error is not None:
+            raise auth_error
         self._log("Browserbase 单会话注册授权阶段完成")
         self._log(f"捕获 OAuth 回调 URL: {callback_url}")
 
