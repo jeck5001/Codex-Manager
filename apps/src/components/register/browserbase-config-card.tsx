@@ -72,7 +72,7 @@ const EMPTY_FORM: BrowserbaseFormState = {
   priority: "0",
   ddgToken: "",
   mailInboxUrl: "",
-  browserbaseApiBase: "https://www.browserbase.com/v1",
+  browserbaseApiBase: "https://gemini.browserbase.com",
   browserTimezone: "Asia/Shanghai",
   oauthClientId: "",
   oauthRedirectPort: "8787",
@@ -478,7 +478,7 @@ export function BrowserbaseConfigCard() {
                 onChange={(event) =>
                   setFormState((current) => ({ ...current, browserbaseApiBase: event.target.value }))
                 }
-                placeholder="https://www.browserbase.com/v1"
+                placeholder="https://gemini.browserbase.com"
                 className="h-10 rounded-xl"
               />
             </div>

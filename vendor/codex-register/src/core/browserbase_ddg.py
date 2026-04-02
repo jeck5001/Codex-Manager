@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Optional
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlsplit
 
 import websocket
 from curl_cffi import requests as cffi_requests
@@ -26,6 +26,7 @@ from .register import RegistrationResult
 
 DEFAULT_REGISTER_MODE = "standard"
 BROWSERBASE_DDG_REGISTER_MODE = "browserbase_ddg"
+DEFAULT_BROWSERBASE_API_BASE = "https://gemini.browserbase.com"
 
 
 @dataclass
@@ -116,6 +117,33 @@ class BrowserbaseDDGRegistrationRunner:
         except (TypeError, ValueError):
             return default
 
+    def _browserbase_api_base(self) -> str:
+        raw = self._config_str(
+            "browserbase_api_base",
+            "browserbaseApiBase",
+            default=DEFAULT_BROWSERBASE_API_BASE,
+        ).rstrip("/")
+        if not raw:
+            return DEFAULT_BROWSERBASE_API_BASE
+
+        try:
+            parsed = urlsplit(raw)
+        except Exception:
+            return DEFAULT_BROWSERBASE_API_BASE
+
+        host = (parsed.netloc or "").strip().lower()
+        path = (parsed.path or "").strip().lower()
+        if host in {"www.browserbase.com", "browserbase.com"}:
+            self._log(
+                f"检测到 Browserbase 官网地址配置 {raw}，自动改用 Gemini API 地址 {DEFAULT_BROWSERBASE_API_BASE}"
+            )
+            return DEFAULT_BROWSERBASE_API_BASE
+
+        if host == "gemini.browserbase.com" and path in {"", "/"}:
+            return DEFAULT_BROWSERBASE_API_BASE
+
+        return raw
+
     def _generate_password(self, length: int = 16) -> str:
         return "".join(random.choice(PASSWORD_CHARSET) for _ in range(length)) + "A1!"
 
@@ -153,11 +181,7 @@ class BrowserbaseDDGRegistrationRunner:
         return email
 
     def _create_browserbase_session(self) -> BrowserbaseSession:
-        api_base = self._config_str(
-            "browserbase_api_base",
-            "browserbaseApiBase",
-            default="https://gemini.browserbase.com",
-        ).rstrip("/")
+        api_base = self._browserbase_api_base()
         timezone = self._config_str("browser_timezone", "browserTimezone", default="HKT")
         self._log(f"正在创建 Browserbase 会话，时区: {timezone}")
         response = self._http(
@@ -182,11 +206,7 @@ class BrowserbaseDDGRegistrationRunner:
         return BrowserbaseSession(session_id=session_id, session_url=session_url, ws_url=ws_url)
 
     def _send_agent_goal(self, session_id: str, goal: str) -> None:
-        api_base = self._config_str(
-            "browserbase_api_base",
-            "browserbaseApiBase",
-            default="https://gemini.browserbase.com",
-        ).rstrip("/")
+        api_base = self._browserbase_api_base()
         model = self._config_str(
             "agent_model",
             "agentModel",
