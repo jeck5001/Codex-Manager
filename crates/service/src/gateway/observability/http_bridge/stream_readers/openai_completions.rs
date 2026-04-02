@@ -5,9 +5,10 @@ use super::{
     extract_sse_frame_payload, inspect_sse_frame, is_response_completed_event_name,
     map_chunk_has_completion_text, mark_collector_terminal_success, merge_usage,
     parse_sse_frame_json, should_skip_completion_live_text_event, sse_keepalive_interval,
-    stream_incomplete_message, stream_reader_disconnected_message, update_openai_stream_meta, Arc,
-    Cursor, Mutex, OpenAIStreamMeta, PassthroughSseCollector, Read, SseKeepAliveFrame, SseTerminal,
-    UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
+    stream_reader_disconnected_message, update_openai_stream_meta,
+    upstream_hint_or_stream_incomplete_message, Arc, Cursor, Mutex, OpenAIStreamMeta,
+    PassthroughSseCollector, Read, SseKeepAliveFrame, SseTerminal, UpstreamSseFramePump,
+    UpstreamSseFramePumpItem, Value,
 };
 
 pub(crate) struct OpenAICompletionsSseReader {
@@ -209,9 +210,10 @@ impl OpenAICompletionsSseReader {
                         if !collector.saw_terminal {
                             // 中文注释：对齐最新 Codex SSE 语义：
                             // 仅凭已收到文本不足以判定成功，必须等到真正 terminal 事件。
-                            collector
-                                .terminal_error
-                                .get_or_insert_with(stream_incomplete_message);
+                            let hint = collector.upstream_error_hint.clone();
+                            collector.terminal_error.get_or_insert_with(|| {
+                                upstream_hint_or_stream_incomplete_message(hint.as_deref())
+                            });
                         }
                     }
                     self.finished = true;
@@ -231,9 +233,10 @@ impl OpenAICompletionsSseReader {
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                     if let Ok(mut collector) = self.usage_collector.lock() {
-                        collector
-                            .terminal_error
-                            .get_or_insert_with(stream_reader_disconnected_message);
+                        let hint = collector.upstream_error_hint.clone();
+                        collector.terminal_error.get_or_insert_with(|| {
+                            hint.unwrap_or_else(stream_reader_disconnected_message)
+                        });
                     }
                     self.finished = true;
                     return Ok(Vec::new());

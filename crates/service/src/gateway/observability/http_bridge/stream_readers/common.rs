@@ -9,6 +9,8 @@ const DEFAULT_SSE_KEEPALIVE_INTERVAL_MS: u64 = 15_000;
 const ENV_SSE_KEEPALIVE_INTERVAL_MS: &str = "CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS";
 
 static SSE_KEEPALIVE_INTERVAL_MS: AtomicU64 = AtomicU64::new(DEFAULT_SSE_KEEPALIVE_INTERVAL_MS);
+const STREAM_INCOMPLETE_FALLBACK_MESSAGE: &str = "stream disconnected before completion";
+const STREAM_READ_FAILED_FALLBACK_MESSAGE: &str = "stream read failed";
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PassthroughSseCollector {
@@ -264,7 +266,7 @@ pub(super) fn mark_collector_terminal_success(
 /// # 返回
 /// 返回函数执行结果
 pub(super) fn stream_incomplete_message() -> String {
-    "上游流中途中断（未正常结束）".to_string()
+    STREAM_INCOMPLETE_FALLBACK_MESSAGE.to_string()
 }
 
 /// 函数 `stream_reader_disconnected_message`
@@ -279,7 +281,17 @@ pub(super) fn stream_incomplete_message() -> String {
 /// # 返回
 /// 返回函数执行结果
 pub(super) fn stream_reader_disconnected_message() -> String {
-    "上游流读取失败（连接中断）".to_string()
+    STREAM_INCOMPLETE_FALLBACK_MESSAGE.to_string()
+}
+
+pub(super) fn upstream_hint_or_stream_incomplete_message(
+    upstream_error_hint: Option<&str>,
+) -> String {
+    upstream_error_hint
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(stream_incomplete_message)
 }
 
 /// 函数 `classify_upstream_stream_read_error`
@@ -294,30 +306,11 @@ pub(super) fn stream_reader_disconnected_message() -> String {
 /// # 返回
 /// 返回函数执行结果
 pub(super) fn classify_upstream_stream_read_error(raw: &str) -> String {
-    let normalized = raw.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
-        return "上游流读取失败".to_string();
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return STREAM_READ_FAILED_FALLBACK_MESSAGE.to_string();
     }
-    if normalized.contains("timed out") || normalized.contains("timeout") {
-        return "上游请求超时".to_string();
-    }
-    if normalized.contains("broken pipe")
-        || normalized.contains("connection reset")
-        || normalized.contains("connection aborted")
-        || normalized.contains("forcibly closed")
-        || normalized.contains("unexpected eof")
-        || normalized.contains("early eof")
-    {
-        return "上游流读取失败（连接中断）".to_string();
-    }
-    if normalized.contains("request or response body error")
-        || normalized.contains("response body")
-        || normalized.contains("error decoding response body")
-        || normalized.contains("body error")
-    {
-        return "上游返回的不是正常接口数据，可能是验证页、拦截页或错误页".to_string();
-    }
-    "上游流读取失败".to_string()
+    trimmed.to_string()
 }
 
 #[cfg(test)]
@@ -342,7 +335,7 @@ mod tests {
     fn classify_upstream_stream_read_error_maps_body_error() {
         assert_eq!(
             classify_upstream_stream_read_error("request or response body error"),
-            "上游返回的不是正常接口数据，可能是验证页、拦截页或错误页"
+            "request or response body error"
         );
     }
 
@@ -361,7 +354,7 @@ mod tests {
     fn classify_upstream_stream_read_error_maps_disconnect() {
         assert_eq!(
             classify_upstream_stream_read_error("connection reset by peer"),
-            "上游流读取失败（连接中断）"
+            "connection reset by peer"
         );
     }
 
@@ -380,7 +373,7 @@ mod tests {
     fn classify_upstream_stream_read_error_maps_timeout() {
         assert_eq!(
             classify_upstream_stream_read_error("operation timed out"),
-            "上游请求超时"
+            "operation timed out"
         );
     }
 
@@ -397,10 +390,10 @@ mod tests {
     /// 无
     #[test]
     fn stream_terminal_messages_are_user_friendly() {
-        assert_eq!(stream_incomplete_message(), "上游流中途中断（未正常结束）");
+        assert_eq!(stream_incomplete_message(), "stream disconnected before completion");
         assert_eq!(
             stream_reader_disconnected_message(),
-            "上游流读取失败（连接中断）"
+            "stream disconnected before completion"
         );
     }
 }

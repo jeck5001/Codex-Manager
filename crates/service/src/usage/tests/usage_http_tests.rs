@@ -540,5 +540,5 @@ fn summarize_usage_error_response_accepts_raw_error_json_header() {
 
     assert!(summary.contains("request id: req_usage_raw_123"));
     assert!(summary.contains("identity error code: proxy_auth_required"));
-    assert!(summary.contains("上游返回 HTML 错误页（title=502 Bad Gateway）"));
+    assert!(summary.contains("<html><head><title>502 Bad Gateway</title></head></html>"));
 }

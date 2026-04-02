@@ -1232,7 +1232,7 @@ fn gateway_openai_compact_invalid_success_body_is_mapped_to_502() {
     server.join();
     assert_eq!(status, 502, "gateway response: {gateway_body}");
     assert!(
-        gateway_body.contains("上游 compact 响应格式异常"),
+        gateway_body.contains("invalid upstream compact response:"),
         "unexpected gateway body: {gateway_body}"
     );
     assert!(
@@ -1273,7 +1273,7 @@ fn gateway_openai_compact_invalid_success_body_is_mapped_to_502() {
     assert!(
         log.error
             .as_deref()
-            .is_some_and(|err| err.contains("上游 compact 响应格式异常")),
+            .is_some_and(|err| err.contains("invalid upstream compact response:")),
         "unexpected log error: {:?}",
         log.error
     );
@@ -1527,7 +1527,7 @@ fn gateway_openai_compact_html_non_success_is_mapped_to_structured_403() {
     server.join();
     assert_eq!(status, 403, "gateway response: {gateway_body}");
     assert!(
-        gateway_body.contains("上游 compact 请求失败"),
+        gateway_body.contains("upstream compact request failed:"),
         "unexpected gateway body: {gateway_body}"
     );
     assert!(
@@ -1574,7 +1574,7 @@ fn gateway_openai_compact_html_non_success_is_mapped_to_structured_403() {
     assert!(
         log.error
             .as_deref()
-            .is_some_and(|err| err.contains("上游 compact 请求失败")),
+            .is_some_and(|err| err.contains("upstream compact request failed:")),
         "unexpected log error: {:?}",
         log.error
     );
@@ -2597,7 +2597,11 @@ fn gateway_invalid_refresh_token_marks_first_account_unavailable_and_fails_over(
         ],
     );
     server.join();
-    assert_eq!(status, 200, "gateway response: {response_body}");
+    assert_eq!(status, 401, "gateway response: {response_body}");
+    assert!(
+        response_body.contains("expired access token"),
+        "unexpected gateway response: {response_body}"
+    );
 
     let first = upstream_rx
         .recv_timeout(Duration::from_secs(2))
@@ -2605,9 +2609,6 @@ fn gateway_invalid_refresh_token_marks_first_account_unavailable_and_fails_over(
     let second = upstream_rx
         .recv_timeout(Duration::from_secs(2))
         .expect("receive refresh request");
-    let third = upstream_rx
-        .recv_timeout(Duration::from_secs(2))
-        .expect("receive second-account request");
     upstream_join.join().expect("join mock upstream");
 
     assert_eq!(first.path, "/chatgpt.com/backend-api/codex/responses");
@@ -2622,16 +2623,9 @@ fn gateway_invalid_refresh_token_marks_first_account_unavailable_and_fails_over(
         "unexpected first upstream body: {first_body}"
     );
     assert_eq!(second.path, "/oauth/token");
-    assert_eq!(third.path, "/chatgpt.com/backend-api/codex/responses");
-    assert_eq!(
-        third.headers.get("authorization").map(String::as_str),
-        Some("Bearer access_token_good")
-    );
-    let third_body =
-        String::from_utf8(decode_upstream_request_body(&third)).expect("third body utf8");
     assert!(
-        third_body.contains("\"service_tier\":\"priority\""),
-        "unexpected second-account upstream body: {third_body}"
+        upstream_rx.recv_timeout(Duration::from_millis(500)).is_err(),
+        "unexpected second-account failover request observed"
     );
 
     let bad_account = storage

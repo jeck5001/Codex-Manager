@@ -1111,7 +1111,7 @@ fn openai_chat_sse_reader_requires_terminal_event_before_success() {
     assert!(!collector.saw_terminal);
     assert_eq!(
         collector.terminal_error.as_deref(),
-        Some("上游流中途中断（未正常结束）")
+        Some("stream disconnected before completion")
     );
 }
 
@@ -1150,7 +1150,7 @@ fn openai_completions_sse_reader_requires_terminal_event_before_success() {
     assert!(!collector.saw_terminal);
     assert_eq!(
         collector.terminal_error.as_deref(),
-        Some("上游流中途中断（未正常结束）")
+        Some("stream disconnected before completion")
     );
 }
 
@@ -1242,7 +1242,7 @@ fn passthrough_sse_reader_captures_raw_html_error_body() {
     );
     assert_eq!(
         collector.terminal_error.as_deref(),
-        Some("上游流中途中断（未正常结束）")
+        Some("Cloudflare 安全验证页（title=Just a moment...）")
     );
 }
 

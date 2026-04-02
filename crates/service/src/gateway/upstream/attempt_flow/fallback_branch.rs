@@ -74,6 +74,40 @@ fn looks_like_blocked_marker(value: &str) -> bool {
         || normalized.contains("region_restricted")
 }
 
+fn body_as_trimmed_text(body: &[u8]) -> Option<&str> {
+    std::str::from_utf8(body)
+        .ok()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn text_looks_like_html(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    normalized.contains("<html")
+        || normalized.contains("<!doctype html")
+        || normalized.contains("<body")
+        || normalized.contains("</html>")
+}
+
+fn body_looks_like_html(body: &[u8]) -> bool {
+    body_as_trimmed_text(body).is_some_and(text_looks_like_html)
+}
+
+fn body_looks_like_cloudflare_challenge(status_code: u16, body: &[u8]) -> bool {
+    body_as_trimmed_text(body).is_some_and(|text| {
+        let normalized = text.to_ascii_lowercase();
+        let looks_like_challenge = normalized.contains("cloudflare")
+            || normalized.contains("cf-chl")
+            || normalized.contains("just a moment")
+            || normalized.contains("attention required")
+            || normalized.contains("captcha")
+            || normalized.contains("security check")
+            || normalized.contains("access denied")
+            || normalized.contains("waf");
+        looks_like_challenge || (text_looks_like_html(text) && matches!(status_code, 401 | 403))
+    })
+}
+
 /// 函数 `classify_fallback_non_success_kind`
 ///
 /// 作者: gaohongshun
@@ -109,15 +143,11 @@ fn classify_fallback_non_success_kind(
     {
         return "cloudflare_blocked";
     }
-    if let Some(hint) =
-        crate::gateway::summarize_upstream_error_hint_from_body(fallback_status, body)
-    {
-        if hint.contains("Cloudflare") {
-            return "cloudflare_challenge";
-        }
-        if hint.contains("HTML 错误页") {
-            return "html";
-        }
+    if body_looks_like_cloudflare_challenge(fallback_status, body) {
+        return "cloudflare_challenge";
+    }
+    if body_looks_like_html(body) {
+        return "html";
     }
     if content_type
         .map(crate::gateway::is_html_content_type)

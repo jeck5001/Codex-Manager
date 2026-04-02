@@ -25,7 +25,9 @@ fn should_retry_models_with_openai_fallback(err: &str) -> bool {
     let normalized = err.to_ascii_lowercase();
     normalized.contains("cloudflare")
         || normalized.contains("text/html")
-        || normalized.contains("html 错误页")
+        || normalized.contains("<html")
+        || normalized.contains("<!doctype html")
+        || normalized.contains("body=<html")
         || normalized.contains("challenge")
 }
 
@@ -430,7 +432,7 @@ mod tests {
             "models upstream failed: status=403 body=Cloudflare 安全验证页（title=Just a moment...）"
         ));
         assert!(should_retry_models_with_openai_fallback(
-            "models upstream failed: status=502 body=上游返回 HTML 错误页（title=502 Bad Gateway）"
+            "models upstream failed: status=502 body=<html><head><title>502 Bad Gateway</title></head></html>"
         ));
         assert!(!should_retry_models_with_openai_fallback(
             "models upstream failed: status=401 body=missing_authorization_header"

@@ -81,7 +81,9 @@ pub(crate) fn classify_message(message: &str) -> ErrorCode {
     if normalized.starts_with("build response failed:") {
         return ErrorCode::BuildResponseFailed;
     }
-    if normalized == "upstream total timeout exceeded" {
+    if normalized == "upstream total timeout exceeded"
+        || normalized == "upstream request timed out"
+    {
         return ErrorCode::UpstreamTimeout;
     }
     if normalized == "上游请求超时" || normalized.contains("连接超时") {
@@ -119,14 +121,30 @@ pub(crate) fn classify_message(message: &str) -> ErrorCode {
     if normalized == "stream disconnected before completion" {
         return ErrorCode::StreamInterrupted;
     }
+    if normalized.starts_with("upstream stream terminated unexpectedly")
+        || normalized.starts_with("upstream stream read failed: connection interrupted")
+    {
+        return ErrorCode::StreamInterrupted;
+    }
     if normalized.starts_with("上游流中途中断")
         || normalized.starts_with("上游流读取失败（连接中断）")
         || normalized.contains("上游连接中断")
     {
         return ErrorCode::StreamInterrupted;
     }
+    if normalized.starts_with("upstream returned non-api content") {
+        return ErrorCode::UpstreamNonSuccess;
+    }
     if normalized.starts_with("上游返回的不是正常接口数据")
         || normalized.starts_with("上游返回了网页内容而不是接口数据")
+    {
+        return ErrorCode::UpstreamNonSuccess;
+    }
+    if normalized.contains("model_not_found")
+        || normalized.contains("model not found")
+        || normalized.contains("unsupported model")
+        || normalized.contains("not supported")
+        || normalized.contains("does not exist")
     {
         return ErrorCode::UpstreamNonSuccess;
     }
@@ -267,15 +285,19 @@ mod tests {
         );
         assert_eq!(classify_message("上游请求超时"), ErrorCode::UpstreamTimeout);
         assert_eq!(
+            classify_message("upstream request timed out"),
+            ErrorCode::UpstreamTimeout
+        );
+        assert_eq!(
             classify_message("上游被安全验证拦截（Cloudflare/WAF）"),
             ErrorCode::UpstreamChallengeBlocked
         );
         assert_eq!(
-            classify_message("上游流中途中断（未正常结束）"),
+            classify_message("stream disconnected before completion"),
             ErrorCode::StreamInterrupted
         );
         assert_eq!(
-            classify_message("模型不支持（gpt-5.4）"),
+            classify_message("code=model_not_found type=invalid_request_error The model 'gpt-5.4' does not exist"),
             ErrorCode::UpstreamNonSuccess
         );
     }
