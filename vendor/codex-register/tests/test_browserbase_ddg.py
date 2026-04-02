@@ -149,3 +149,29 @@ class BrowserbaseDDGRunnerJsonErrorTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "Browserbase 会话创建失败: 返回了空响应或非 JSON 响应"):
             runner._create_browserbase_session()
+
+
+class BrowserbaseDDGRunnerApiBaseTests(unittest.TestCase):
+    def test_browserbase_api_base_normalizes_marketing_site_v1(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={"browserbase_api_base": "https://www.browserbase.com/v1"},
+        )
+
+        self.assertEqual(
+            runner._browserbase_api_base(),
+            "https://gemini.browserbase.com",
+        )
+
+    def test_browserbase_api_base_defaults_to_gemini_endpoint(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={},
+        )
+
+        self.assertEqual(
+            runner._browserbase_api_base(),
+            "https://gemini.browserbase.com",
+        )
