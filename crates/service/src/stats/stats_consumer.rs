@@ -16,11 +16,8 @@ pub(crate) fn read_consumer_overview(
         return Err("keyId is required".to_string());
     }
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let (preset, range_start, range_end) = resolve_cost_range(
-        params.preset,
-        params.start_ts,
-        params.end_ts,
-    )?;
+    let (preset, range_start, range_end) =
+        resolve_cost_range(params.preset, params.start_ts, params.end_ts)?;
     let overview = storage
         .summarize_consumer_overview_between(&key_id, range_start, range_end)
         .map_err(|err| err.to_string())?;
@@ -55,11 +52,8 @@ pub(crate) fn read_consumer_trend(
         return Err("keyId is required".to_string());
     }
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let (preset, range_start, range_end) = resolve_cost_range(
-        params.preset,
-        params.start_ts,
-        params.end_ts,
-    )?;
+    let (preset, range_start, range_end) =
+        resolve_cost_range(params.preset, params.start_ts, params.end_ts)?;
     let items = storage
         .summarize_consumer_trend_between(&key_id, range_start, range_end)
         .map_err(|err| err.to_string())?;
@@ -90,11 +84,8 @@ pub(crate) fn read_consumer_model_breakdown(
         return Err("keyId is required".to_string());
     }
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let (preset, range_start, range_end) = resolve_cost_range(
-        params.preset,
-        params.start_ts,
-        params.end_ts,
-    )?;
+    let (preset, range_start, range_end) =
+        resolve_cost_range(params.preset, params.start_ts, params.end_ts)?;
     let items = storage
         .summarize_consumer_model_breakdown_between(&key_id, range_start, range_end)
         .map_err(|err| err.to_string())?;
@@ -122,11 +113,8 @@ pub(crate) fn read_consumer_ranking(
     params: ConsumerRankingParams,
 ) -> Result<ConsumerRankingResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let (preset, range_start, range_end) = resolve_cost_range(
-        params.preset,
-        params.start_ts,
-        params.end_ts,
-    )?;
+    let (preset, range_start, range_end) =
+        resolve_cost_range(params.preset, params.start_ts, params.end_ts)?;
     let limit = params.limit.unwrap_or(20).max(1).min(100);
     let items = storage
         .summarize_consumer_ranking_between(range_start, range_end, limit)

@@ -78,7 +78,11 @@ fn account_ids(candidates: &[(Account, Token)]) -> Vec<String> {
         .collect()
 }
 
-fn set_candidate_created_at(candidates: &mut [(Account, Token)], account_id: &str, created_at: i64) {
+fn set_candidate_created_at(
+    candidates: &mut [(Account, Token)],
+    account_id: &str,
+    created_at: i64,
+) {
     let entry = candidates
         .iter_mut()
         .find(|(account, _)| account.id == account_id)

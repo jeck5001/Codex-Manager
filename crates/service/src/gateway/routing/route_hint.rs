@@ -194,8 +194,12 @@ fn apply_new_account_protection_order(candidates: &mut [(Account, Token)]) {
     }
 
     candidates.sort_by_key(|(account, _)| {
-        crate::account_risk::derive_new_account_protection_state_with_window(account, now, window_secs)
-            .is_some()
+        crate::account_risk::derive_new_account_protection_state_with_window(
+            account,
+            now,
+            window_secs,
+        )
+        .is_some()
     });
 }
 

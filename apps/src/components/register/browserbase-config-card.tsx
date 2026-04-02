@@ -77,7 +77,7 @@ const EMPTY_FORM: BrowserbaseFormState = {
   oauthClientId: "",
   oauthRedirectPort: "8787",
   agentModel: "google/gemini-2.5-computer-use-preview-10-2025",
-  maxWaitSeconds: "300",
+  maxWaitSeconds: "900",
 };
 
 function formatTimestamp(value: string) {

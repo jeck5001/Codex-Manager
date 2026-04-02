@@ -1905,6 +1905,165 @@ fn gateway_unauthorized_refreshes_access_token_and_retries_once() {
 }
 
 #[test]
+fn gateway_unauthorized_uses_session_cookie_fallback_without_refresh_token() {
+    let _lock = lock_env();
+    let dir = new_test_dir("codexmanager-gateway-openai-session-cookie-refresh");
+    let db_path: PathBuf = dir.join("codexmanager.db");
+
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let _no_proxy_guard = EnvGuard::set("NO_PROXY", "127.0.0.1,localhost");
+    let _no_proxy_lower_guard = EnvGuard::set("no_proxy", "127.0.0.1,localhost");
+
+    let first_response = serde_json::json!({
+        "error": {
+            "message": "expired access token",
+            "type": "authentication_error"
+        }
+    });
+    let session_refresh_response = serde_json::json!({
+        "accessToken": "access_token_session_refreshed"
+    });
+    let second_response = serde_json::json!({
+        "id": "resp_after_session_refresh",
+        "model": "gpt-5.3-codex",
+        "output": [{
+            "type": "message",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "text": "ok after session refresh" }]
+        }],
+        "usage": { "input_tokens": 4, "output_tokens": 3, "total_tokens": 7 }
+    });
+    let body_401 = serde_json::to_string(&first_response).expect("serialize first response");
+    let body_session_refresh = serde_json::to_string(&session_refresh_response)
+        .expect("serialize session refresh response");
+    let body_200 = serde_json::to_string(&second_response).expect("serialize second response");
+    let (upstream_addr, upstream_rx, upstream_join) = start_mock_upstream_sequence(vec![
+        (401, body_401),
+        (200, body_session_refresh),
+        (200, body_200),
+    ]);
+
+    let upstream_base = format!("http://{upstream_addr}/chatgpt.com/backend-api/codex");
+    let session_refresh_url = format!("http://{upstream_addr}/chatgpt.com/api/auth/session");
+    let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
+    let _session_refresh_guard =
+        EnvGuard::set("CODEX_SESSION_REFRESH_URL_OVERRIDE", &session_refresh_url);
+
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init db");
+    let now = now_ts();
+
+    storage
+        .insert_account(&Account {
+            id: "acc_session_refresh".to_string(),
+            label: "session-refresh".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_session_refresh".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 1,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_session_refresh".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_session_old".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert token");
+    storage
+        .set_app_setting(
+            "account.session_state",
+            &serde_json::json!({
+                "acc_session_refresh": {
+                    "cookies": "__Secure-next-auth.session-token=session-gateway-refresh; oai-did=device-gateway-refresh"
+                }
+            })
+            .to_string(),
+            now,
+        )
+        .expect("store session cookies");
+
+    let platform_key = "pk_openai_session_cookie_refresh";
+    storage
+        .insert_api_key(&ApiKey {
+            id: "gk_openai_session_cookie_refresh".to_string(),
+            name: Some("openai-session-cookie-refresh".to_string()),
+            model_slug: Some("gpt-5.3-codex".to_string()),
+            reasoning_effort: None,
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: hash_platform_key_for_test(platform_key),
+            status: "active".to_string(),
+            created_at: now,
+            last_used_at: None,
+            expires_at: None,
+        })
+        .expect("insert api key");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req_body = r#"{"model":"gpt-5.3-codex","input":"hello","stream":false}"#;
+    let (status, response_body) = post_http_raw(
+        &server.addr,
+        "/v1/responses",
+        req_body,
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", &format!("Bearer {platform_key}")),
+        ],
+    );
+    server.join();
+    assert_eq!(status, 200, "gateway response: {response_body}");
+
+    let first = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive first upstream request");
+    let second = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive session refresh request");
+    let third = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive retried upstream request");
+    upstream_join.join().expect("join mock upstream");
+
+    assert_eq!(first.path, "/chatgpt.com/backend-api/codex/responses");
+    assert_eq!(
+        first.headers.get("authorization").map(String::as_str),
+        Some("Bearer access_token_session_old")
+    );
+    assert_eq!(second.path, "/chatgpt.com/api/auth/session");
+    assert!(
+        second
+            .headers
+            .get("cookie")
+            .is_some_and(|value| value.contains("__Secure-next-auth.session-token=session-gateway-refresh")),
+        "unexpected cookie header: {:?}",
+        second.headers.get("cookie")
+    );
+    assert_eq!(third.path, "/chatgpt.com/backend-api/codex/responses");
+    assert_eq!(
+        third.headers.get("authorization").map(String::as_str),
+        Some("Bearer access_token_session_refreshed")
+    );
+
+    let updated_token = storage
+        .find_token_by_account_id("acc_session_refresh")
+        .expect("find token")
+        .expect("token present");
+    assert_eq!(updated_token.access_token, "access_token_session_refreshed");
+    assert_eq!(updated_token.refresh_token, "");
+}
+
+#[test]
 fn gateway_invalid_refresh_token_marks_first_account_unavailable_and_fails_over() {
     let _lock = lock_env();
     let dir = new_test_dir("codexmanager-gateway-invalid-refresh-failover");
