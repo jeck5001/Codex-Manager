@@ -106,8 +106,9 @@ where
     }
 
     if !compact_no_cookie_mode {
+        let allow_unauthorized_stateless_retry =
+            status.as_u16() == 401 && !has_chatgpt_recovery_credentials(account, token);
         if status.as_u16() == 401 {
-            let has_recovery_credentials = has_chatgpt_recovery_credentials(account, token);
             match try_refresh_chatgpt_access_token(storage, upstream_base, account, token) {
                 Ok(Some(refreshed_auth_token)) => {
                     current_auth_token = refreshed_auth_token;
@@ -146,16 +147,7 @@ where
                         }
                     }
                 }
-                Ok(None) => {
-                    if !has_recovery_credentials && has_more_candidates {
-                        log_gateway_result(
-                            Some(url),
-                            401,
-                            Some("access token only failover"),
-                        );
-                        return PostRetryFlowDecision::Failover;
-                    }
-                }
+                Ok(None) => {}
                 Err(err) => {
                     let refresh_token_invalid = mark_account_unavailable_for_refresh_token_error(
                         storage,
@@ -220,6 +212,7 @@ where
                 }
             }
         }
+        let mut attempted_unauthorized_stateless_retry = false;
         match retry_stateless_then_optional_alt(
             client,
             method,
@@ -237,11 +230,13 @@ where
             status,
             debug,
             disable_challenge_stateless_retry,
+            allow_unauthorized_stateless_retry,
         ) {
             StatelessRetryResult::NotTriggered => {}
             StatelessRetryResult::Upstream(resp) => {
                 upstream = resp;
                 status = upstream.status();
+                attempted_unauthorized_stateless_retry = allow_unauthorized_stateless_retry;
             }
             StatelessRetryResult::Terminal {
                 status_code,
@@ -252,6 +247,10 @@ where
                     message,
                 };
             }
+        }
+        if attempted_unauthorized_stateless_retry && status.as_u16() == 401 && has_more_candidates {
+            log_gateway_result(Some(url), 401, Some("access token only stateless retry failover"));
+            return PostRetryFlowDecision::Failover;
         }
     }
 

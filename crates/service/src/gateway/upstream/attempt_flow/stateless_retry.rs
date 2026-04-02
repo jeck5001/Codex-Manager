@@ -16,9 +16,13 @@ fn should_trigger_stateless_retry(
     status: u16,
     strip_session_affinity: bool,
     disable_challenge_stateless_retry: bool,
+    allow_unauthorized_retry: bool,
 ) -> bool {
     if strip_session_affinity {
         return !disable_challenge_stateless_retry && matches!(status, 403 | 429);
+    }
+    if allow_unauthorized_retry && status == 401 {
+        return true;
     }
     if disable_challenge_stateless_retry {
         return matches!(status, 404);
@@ -44,6 +48,7 @@ pub(super) fn retry_stateless_then_optional_alt(
     status: StatusCode,
     debug: bool,
     disable_challenge_stateless_retry: bool,
+    allow_unauthorized_retry: bool,
 ) -> StatelessRetryResult {
     if deadline::is_expired(request_deadline) {
         return StatelessRetryResult::Terminal {
@@ -55,6 +60,7 @@ pub(super) fn retry_stateless_then_optional_alt(
         status.as_u16(),
         strip_session_affinity,
         disable_challenge_stateless_retry,
+        allow_unauthorized_retry,
     ) {
         return StatelessRetryResult::NotTriggered;
     }
