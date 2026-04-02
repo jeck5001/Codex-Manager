@@ -572,3 +572,97 @@ class BrowserbaseDDGRunnerRunTests(unittest.TestCase):
             ],
         )
         self.assertEqual(sent_goals[0][0], "session-1")
+
+    def test_run_retries_with_new_session_after_auth_error_page(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={
+                "ddg_token": "token",
+                "mail_inbox_url": "https://mail.example/inbox",
+            },
+        )
+
+        sessions = iter([
+            BROWSERBASE_DDG_MODULE.BrowserbaseSession(
+                session_id="session-1",
+                session_url="https://session-1.example",
+                ws_url="wss://browser-1.example",
+            ),
+            BROWSERBASE_DDG_MODULE.BrowserbaseSession(
+                session_id="session-2",
+                session_url="https://session-2.example",
+                ws_url="wss://browser-2.example",
+            ),
+        ])
+        wait_attempts = []
+        opened_targets = []
+        sent_goals = []
+
+        runner._generate_alias = lambda: "alias@duck.com"
+        runner._generate_password = lambda: "Pass123!"
+        runner._create_browserbase_session = lambda: next(sessions)
+        runner._open_target_url = lambda ws_url, target_url: opened_targets.append((ws_url, target_url)) or "target-1"
+        runner._send_agent_goal = lambda session_id, goal: sent_goals.append((session_id, goal)) or DummyStreamingResponse()
+        runner._phase_timeout_seconds = lambda: 900
+
+        def fake_wait_for_target_url(ws_url, *_args, **_kwargs):
+            wait_attempts.append(ws_url)
+            if len(wait_attempts) == 1:
+                raise RuntimeError("OpenAI Auth 错误页: https://auth.openai.com/error?payload=test")
+            return "http://localhost:8787/auth/callback?code=real-code&state=test"
+
+        runner._wait_for_target_url = fake_wait_for_target_url
+
+        original_generate_random_user_info = BROWSERBASE_DDG_MODULE.generate_random_user_info
+        original_generate_oauth_url = BROWSERBASE_DDG_MODULE.generate_oauth_url
+        original_submit_callback_url = BROWSERBASE_DDG_MODULE.submit_callback_url
+        original_registration_result = BROWSERBASE_DDG_MODULE.RegistrationResult
+        original_get_settings = BROWSERBASE_DDG_MODULE.get_settings
+        try:
+            BROWSERBASE_DDG_MODULE.generate_random_user_info = lambda: {
+                "name": "Nora",
+                "birthdate": "1985-07-08",
+            }
+            BROWSERBASE_DDG_MODULE.generate_oauth_url = lambda **_kwargs: types.SimpleNamespace(
+                auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+                state="state-1",
+                code_verifier="verifier-1",
+            )
+            BROWSERBASE_DDG_MODULE.submit_callback_url = lambda **_kwargs: json.dumps({
+                "account_id": "acct-1",
+                "workspace_id": "ws-1",
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "id_token": "id",
+                "expired": "",
+            })
+            BROWSERBASE_DDG_MODULE.RegistrationResult = lambda **kwargs: types.SimpleNamespace(**kwargs)
+            BROWSERBASE_DDG_MODULE.get_settings = lambda: types.SimpleNamespace(
+                openai_redirect_uri="http://localhost:8787/auth/callback",
+                openai_client_id="client-id",
+                openai_scope="openid profile email",
+                openai_token_url="https://auth.openai.com/oauth/token",
+            )
+
+            result = runner.run()
+        finally:
+            BROWSERBASE_DDG_MODULE.generate_random_user_info = original_generate_random_user_info
+            BROWSERBASE_DDG_MODULE.generate_oauth_url = original_generate_oauth_url
+            BROWSERBASE_DDG_MODULE.submit_callback_url = original_submit_callback_url
+            BROWSERBASE_DDG_MODULE.RegistrationResult = original_registration_result
+            BROWSERBASE_DDG_MODULE.get_settings = original_get_settings
+
+        self.assertTrue(result.success)
+        self.assertEqual(wait_attempts, ["wss://browser-1.example", "wss://browser-2.example"])
+        self.assertEqual(
+            opened_targets,
+            [
+                ("wss://browser-1.example", "https://auth.openai.com/oauth/authorize?client_id=test"),
+                ("wss://browser-1.example", "https://mail.example/inbox"),
+                ("wss://browser-2.example", "https://auth.openai.com/oauth/authorize?client_id=test"),
+                ("wss://browser-2.example", "https://mail.example/inbox"),
+            ],
+        )
+        self.assertEqual([session_id for session_id, _goal in sent_goals], ["session-1", "session-2"])
+        self.assertTrue(any("重试授权流程" in log for log in runner.logs))
