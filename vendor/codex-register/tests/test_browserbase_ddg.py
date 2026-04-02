@@ -290,3 +290,70 @@ class BrowserbaseDDGRunnerAgentTests(unittest.TestCase):
         self.assertIs(returned, response)
         self.assertFalse(response.closed)
         self.assertIn("google/gemini-2.5-computer-use-preview-10-2025", captured["url"])
+
+
+class BrowserbaseDDGRunnerPromptTests(unittest.TestCase):
+    def test_build_phase1_goal_requires_direct_chatgpt_navigation(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={"mail_inbox_url": "https://mail.example.com"},
+        )
+
+        goal = runner._build_phase1_goal(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            email="user@example.com",
+            password="pass123",
+            full_name="Test User",
+            birthdate="1990-01-01",
+        )
+
+        self.assertIn("https://auth.openai.com/oauth/authorize?client_id=test", goal)
+        self.assertIn("不要使用 Google、DuckDuckGo 或任何搜索引擎", goal)
+
+    def test_phase_timeout_seconds_upgrades_legacy_short_timeout(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={"max_wait_seconds": "300"},
+        )
+
+        self.assertEqual(runner._phase_timeout_seconds(), 900)
+
+
+class BrowserbaseDDGRunnerGoalTests(unittest.TestCase):
+    def test_build_phase1_goal_starts_from_oauth_auth_url_and_targets_localhost_callback(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={"mail_inbox_url": "https://mail.example/inbox"},
+        )
+
+        goal = runner._build_phase1_goal(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            email="user@duck.com",
+            password="pass123",
+            full_name="Test User",
+            birthdate="1990-01-01",
+        )
+
+        self.assertIn("https://auth.openai.com/oauth/authorize?client_id=test", goal)
+        self.assertIn("localhost", goal)
+        self.assertNotIn("MISSION_ACCOMPLISHED", goal)
+
+    def test_build_phase1_goal_forbids_search_engines(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={"mail_inbox_url": "https://mail.example/inbox"},
+        )
+
+        goal = runner._build_phase1_goal(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            email="user@duck.com",
+            password="pass123",
+            full_name="Test User",
+            birthdate="1990-01-01",
+        )
+
+        self.assertIn("不要使用 Google、DuckDuckGo 或任何搜索引擎", goal)

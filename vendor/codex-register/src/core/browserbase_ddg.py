@@ -28,6 +28,7 @@ DEFAULT_REGISTER_MODE = "standard"
 BROWSERBASE_DDG_REGISTER_MODE = "browserbase_ddg"
 DEFAULT_BROWSERBASE_API_BASE = "https://gemini.browserbase.com"
 DEFAULT_BROWSERBASE_AGENT_MODEL = "google/gemini-2.5-computer-use-preview-10-2025"
+MIN_BROWSERBASE_PHASE_TIMEOUT_SECONDS = 900
 
 
 @dataclass
@@ -172,6 +173,15 @@ class BrowserbaseDDGRegistrationRunner:
             return DEFAULT_BROWSERBASE_AGENT_MODEL
         return normalized
 
+    def _phase_timeout_seconds(self) -> int:
+        configured = self._config_int("max_wait_seconds", "maxWaitSeconds", default=1800)
+        if configured < MIN_BROWSERBASE_PHASE_TIMEOUT_SECONDS:
+            self._log(
+                f"检测到过短的 Browserbase 等待时间 {configured}s，自动提升到 {MIN_BROWSERBASE_PHASE_TIMEOUT_SECONDS}s"
+            )
+            return MIN_BROWSERBASE_PHASE_TIMEOUT_SECONDS
+        return configured
+
     def _resolve_redirect_uri(self, default_redirect_uri: str) -> str:
         explicit = self._config_str("oauth_redirect_uri", "oauthRedirectUri")
         if explicit:
@@ -304,19 +314,25 @@ class BrowserbaseDDGRegistrationRunner:
             conn.close()
         raise RuntimeError(f"等待目标页面超时: {target_keyword}")
 
-    def _build_phase1_goal(self, email: str, password: str, full_name: str, birthdate: str) -> str:
+    def _build_phase1_goal(
+        self,
+        auth_url: str,
+        email: str,
+        password: str,
+        full_name: str,
+        birthdate: str,
+    ) -> str:
         mail_inbox_url = self._config_str("mail_inbox_url", "mailInboxUrl")
         if not mail_inbox_url:
             raise RuntimeError("browserbase 配置缺少 mail_inbox_url")
         return (
-            f"请打开 chatgpt 的对话页面，然后点击创建一个账户，使用 {email} 作为邮箱，"
-            f"{password} 作为密码，然后在显示验证码发送后在 {mail_inbox_url} 上接收自己的邮箱验证码，"
+            f"请直接在地址栏打开 {auth_url}，不要使用 Google、DuckDuckGo 或任何搜索引擎，也不要先搜索 ChatGPT。"
+            "如果页面显示登录入口，请点击 Sign up / Create account 进入注册流程，并继续完成 Codex 授权流程。"
+            f"使用 {email} 作为邮箱，{password} 作为密码，然后在显示验证码发送后立即前往 {mail_inbox_url} 接收自己的邮箱验证码。"
             f"接下来使用 {full_name} 作为全名，{birthdate} 作为出生日期（如果表单要求年龄则换算成年龄）。"
-            "创建账户后导航到 "
-            "`data:text/html,<html><head><title>MISSION_ACCOMPLISHED</title></head>"
-            "<body style=\"background:black;color:lime;display:flex;justify-content:center;align-items:center;"
-            "height:100vh;font-family:monospace;\"><h1>> TASK COMPLETED SUCCESSFULLY _</h1></body></html>`"
-            "，等待 3 秒并结束。每次等待时间不得超过 3 秒。"
+            "如果流程要求确认继续授权、选择 workspace、或者继续跳转到 Codex，请继续完成。"
+            "最终目标是让页面跳转到 localhost 回调链接；当出现 localhost 回调页或浏览器地址栏变成 localhost 回调地址后立即停止。"
+            "每次等待时间不得超过 3 秒；如果页面卡住，优先刷新当前页面或重新打开上面的授权链接，而不是重新搜索。"
         )
 
     def _build_phase2_goal(self, auth_url: str, email: str, password: str) -> str:
@@ -346,38 +362,22 @@ class BrowserbaseDDGRegistrationRunner:
         phase1_stream = self._send_agent_goal(
             phase1_session.session_id,
             self._build_phase1_goal(
+                auth_url=oauth_start.auth_url,
                 email=email,
                 password=password,
                 full_name=user_info["name"],
                 birthdate=user_info["birthdate"],
             ),
         )
-        timeout_seconds = self._config_int("max_wait_seconds", "maxWaitSeconds", default=1800)
+        timeout_seconds = self._phase_timeout_seconds()
         try:
-            self._wait_for_target_url(phase1_session.ws_url, "MISSION_ACCOMPLISHED", timeout_seconds)
+            callback_url = self._wait_for_target_url(phase1_session.ws_url, "localhost", timeout_seconds)
         finally:
             try:
                 phase1_stream.close()
             except Exception:
                 pass
-        self._log("Browserbase 注册阶段完成")
-
-        phase2_session = self._create_browserbase_session()
-        phase2_stream = self._send_agent_goal(
-            phase2_session.session_id,
-            self._build_phase2_goal(
-                auth_url=oauth_start.auth_url,
-                email=email,
-                password=password,
-            ),
-        )
-        try:
-            callback_url = self._wait_for_target_url(phase2_session.ws_url, "localhost", timeout_seconds)
-        finally:
-            try:
-                phase2_stream.close()
-            except Exception:
-                pass
+        self._log("Browserbase 单会话注册授权阶段完成")
         self._log(f"捕获 OAuth 回调 URL: {callback_url}")
 
         token_json = submit_callback_url(
