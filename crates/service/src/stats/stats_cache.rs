@@ -19,11 +19,8 @@ pub(crate) fn read_cache_summary(
     params: CostSummaryParams,
 ) -> Result<CacheAnalyticsSummaryResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let (preset, range_start, range_end) = resolve_cost_range(
-        params.preset,
-        params.start_ts,
-        params.end_ts,
-    )?;
+    let (preset, range_start, range_end) =
+        resolve_cost_range(params.preset, params.start_ts, params.end_ts)?;
     let summary = storage
         .summarize_cache_analytics_between(range_start, range_end)
         .map_err(|err| err.to_string())?;
@@ -52,11 +49,8 @@ pub(crate) fn read_cache_trend(
     params: CostSummaryParams,
 ) -> Result<CacheAnalyticsTrendResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let (preset, range_start, range_end) = resolve_cost_range(
-        params.preset,
-        params.start_ts,
-        params.end_ts,
-    )?;
+    let (preset, range_start, range_end) =
+        resolve_cost_range(params.preset, params.start_ts, params.end_ts)?;
     let items = storage
         .summarize_cache_analytics_trend_between(range_start, range_end)
         .map_err(|err| err.to_string())?;
@@ -83,11 +77,8 @@ pub(crate) fn read_cache_by_model(
     params: CostSummaryParams,
 ) -> Result<CacheAnalyticsByModelResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let (preset, range_start, range_end) = resolve_cost_range(
-        params.preset,
-        params.start_ts,
-        params.end_ts,
-    )?;
+    let (preset, range_start, range_end) =
+        resolve_cost_range(params.preset, params.start_ts, params.end_ts)?;
     let items = storage
         .summarize_cache_analytics_by_model_between(range_start, range_end)
         .map_err(|err| err.to_string())?;
@@ -115,11 +106,8 @@ pub(crate) fn read_cache_by_key(
     params: CostSummaryParams,
 ) -> Result<CacheAnalyticsByKeyResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let (preset, range_start, range_end) = resolve_cost_range(
-        params.preset,
-        params.start_ts,
-        params.end_ts,
-    )?;
+    let (preset, range_start, range_end) =
+        resolve_cost_range(params.preset, params.start_ts, params.end_ts)?;
     let items = storage
         .summarize_cache_analytics_by_key_between(range_start, range_end)
         .map_err(|err| err.to_string())?;

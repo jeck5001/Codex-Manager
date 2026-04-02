@@ -177,7 +177,11 @@ fn mark_usage_unreachable_marks_rate_limited_cooldown_for_429() {
     let storage = crate::storage_helpers::open_storage().expect("open storage");
     insert_account(&storage, "acc-429", "active");
 
-    mark_usage_unreachable_if_needed(&storage, "acc-429", "usage endpoint status 429 Too Many Requests");
+    mark_usage_unreachable_if_needed(
+        &storage,
+        "acc-429",
+        "usage endpoint status 429 Too Many Requests",
+    );
 
     let cooldowns = crate::gateway::list_account_cooldowns();
     let snapshot = cooldowns.get("acc-429").expect("429 cooldown snapshot");
@@ -222,7 +226,9 @@ fn mark_usage_unreachable_marks_network_cooldown_for_timeout() {
     );
 
     let cooldowns = crate::gateway::list_account_cooldowns();
-    let snapshot = cooldowns.get("acc-timeout").expect("network cooldown snapshot");
+    let snapshot = cooldowns
+        .get("acc-timeout")
+        .expect("network cooldown snapshot");
     assert_eq!(snapshot.reason_code, "network");
     assert_eq!(snapshot.reason_label, "网络异常");
 }

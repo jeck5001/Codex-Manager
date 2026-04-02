@@ -16,12 +16,12 @@ pub(crate) mod list;
 pub(crate) mod payment;
 #[path = "account_plan.rs"]
 pub(crate) mod plan;
-#[path = "account_risk.rs"]
-pub(crate) mod risk;
 #[path = "account_recovery_source.rs"]
 pub(crate) mod recovery_source;
 #[path = "account_register.rs"]
 pub(crate) mod register;
+#[path = "account_risk.rs"]
+pub(crate) mod risk;
 #[path = "account_status.rs"]
 pub(crate) mod status;
 #[path = "account_update.rs"]
