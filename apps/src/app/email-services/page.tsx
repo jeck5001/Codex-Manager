@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
-  Clipboard,
+  Copy,
   Mail,
   MoreVertical,
   PlayCircle,
@@ -56,11 +56,9 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useRegisterEmailServices } from "@/hooks/useRegisterEmailServices";
-import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { formatApiDateTime } from "@/lib/utils/datetime";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { buildEmailServiceCopyConfigJson } from "./copy-config";
 import type {
   RegisterEmailService,
   RegisterEmailServiceField,
@@ -393,6 +391,25 @@ export default function EmailServicesPage() {
     }
   };
 
+  const openDuplicateDialog = async (serviceId: number) => {
+    setIsOpeningEdit(true);
+    try {
+      const fullService = await readEmailServiceFull(serviceId);
+      const typeMeta = serviceTypeMap.get(fullService.serviceType);
+      setFormState({
+        ...createFormState("create", typeMeta, fullService),
+        mode: "create",
+        serviceId: null,
+        name: `${fullService.name}-副本`,
+      });
+      setFormOpen(true);
+    } catch {
+      // mutation 已统一 toast
+    } finally {
+      setIsOpeningEdit(false);
+    }
+  };
+
   const handleServiceTypeChange = (value: string | null) => {
     const nextValue = value || "";
     if (!nextValue) {
@@ -559,24 +576,6 @@ export default function EmailServicesPage() {
       setTempmailTestOpen(false);
     } catch {
       // mutation 已统一 toast
-    }
-  };
-
-  const handleCopyConfig = async (serviceId: number) => {
-    let fullService: RegisterEmailService;
-    try {
-      fullService = await readEmailServiceFull(serviceId);
-    } catch {
-      return;
-    }
-
-    try {
-      await copyTextToClipboard(buildEmailServiceCopyConfigJson(fullService));
-      toast.success("已复制邮箱服务配置");
-    } catch (error: unknown) {
-      toast.error(
-        `复制配置失败: ${error instanceof Error ? error.message : String(error)}`
-      );
     }
   };
 
@@ -847,9 +846,9 @@ export default function EmailServicesPage() {
                               <PlayCircle className="mr-2 h-4 w-4" />
                               测试连接
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => void handleCopyConfig(service.id)}>
-                              <Clipboard className="mr-2 h-4 w-4" />
-                              复制配置
+                            <DropdownMenuItem onClick={() => void openDuplicateDialog(service.id)}>
+                              <Copy className="mr-2 h-4 w-4" />
+                              复制为新建
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>
