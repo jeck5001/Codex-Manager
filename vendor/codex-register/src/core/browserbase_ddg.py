@@ -429,7 +429,9 @@ class BrowserbaseDDGRegistrationRunner:
         return (
             f"请直接在地址栏打开 {auth_url}，不要使用 Google、DuckDuckGo 或任何搜索引擎，也不要先搜索 ChatGPT。"
             "如果页面显示登录入口，请点击 Sign up / Create account 进入注册流程，并继续完成 Codex 授权流程。"
-            f"使用 {email} 作为邮箱，{password} 作为密码，然后在显示验证码发送后立即前往 {mail_inbox_url} 接收自己的邮箱验证码。"
+            f"使用 {email} 作为邮箱，{password} 作为密码；收件箱地址 {mail_inbox_url} 会作为单独标签页预先打开。"
+            "一旦进入 email-verification 或任何要求输入邮箱验证码的页面，必须立刻切到已经打开的收件箱标签页，刷新收件箱，"
+            "找到发给当前邮箱的最新一封 OpenAI 验证邮件，抄下最新 6 位验证码，再切回验证码页填写；不要停留在验证码页空等。"
             f"接下来使用 {full_name} 作为全名；如果页面把姓名拆成 first name / last name，则 first name 填 {first_name}，last name 填 {last_name}。"
             f"出生日期使用 {birthdate}；如果页面拆成年/月/日，则 year={birth_year}，month={birth_month}，day={birth_day}；如果只要求年龄，则填写 {age}。"
             "如果流程要求确认继续授权、选择 workspace、或者继续跳转到 Codex，请继续完成。"
@@ -463,6 +465,10 @@ class BrowserbaseDDGRegistrationRunner:
 
         phase1_session = self._create_browserbase_session()
         self._open_target_url(phase1_session.ws_url, oauth_start.auth_url)
+        self._open_target_url(
+            phase1_session.ws_url,
+            self._config_str("mail_inbox_url", "mailInboxUrl"),
+        )
         phase1_stream = self._send_agent_goal(
             phase1_session.session_id,
             self._build_phase1_goal(
