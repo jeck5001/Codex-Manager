@@ -289,6 +289,18 @@ class BrowserbaseDDGRegistrationRunner:
         finally:
             conn.close()
 
+    @staticmethod
+    def _url_matches_target_keyword(current_url: str, target_keyword: str) -> bool:
+        if not current_url or not target_keyword:
+            return False
+        try:
+            parsed = urlsplit(current_url)
+        except Exception:
+            return target_keyword in current_url
+
+        searchable_parts = [parsed.scheme, parsed.netloc, parsed.path]
+        return any(target_keyword in part for part in searchable_parts if part)
+
     def _wait_for_target_url(self, ws_url: str, target_keyword: str, timeout_seconds: int) -> str:
         normalized_ws_url = ws_url if ws_url.startswith("ws") else f"wss://{ws_url}"
         deadline = time.time() + timeout_seconds
@@ -336,7 +348,7 @@ class BrowserbaseDDGRegistrationRunner:
                         if current_title and target_keyword in current_title:
                             self._log(f"监控到页面标题命中目标: {current_title}")
                             return current_url
-                        if target_keyword in current_url:
+                        if self._url_matches_target_keyword(current_url, target_keyword):
                             return current_url
                     break
                 time.sleep(3)

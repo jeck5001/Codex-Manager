@@ -244,6 +244,34 @@ class BrowserbaseDDGRunnerWaitTests(unittest.TestCase):
         self.assertEqual(matched, "https://chatgpt.com/")
         self.assertTrue(conn.closed)
 
+    def test_wait_for_target_url_does_not_treat_localhost_query_param_as_callback(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={},
+        )
+        conn = DummyWebSocketConnection([
+            '{"id": 2, "result": {"targetInfos": ['
+            '{"type": "page", "url": "https://auth.openai.com/oauth/authorize?redirect_uri=http%3A%2F%2Flocalhost%3A8787%2Fauth%2Fcallback&state=test", "title": "Authorize"},'
+            '{"type": "page", "url": "http://localhost:8787/auth/callback?code=real-code&state=test", "title": "Callback"}'
+            ']}}'
+        ])
+        original_create_connection = BROWSERBASE_DDG_MODULE.websocket.create_connection
+        original_sleep = BROWSERBASE_DDG_MODULE.time.sleep
+        try:
+            BROWSERBASE_DDG_MODULE.websocket.create_connection = lambda *_args, **_kwargs: conn
+            BROWSERBASE_DDG_MODULE.time.sleep = lambda *_args, **_kwargs: None
+            matched = runner._wait_for_target_url("wss://example", "localhost", 1)
+        finally:
+            BROWSERBASE_DDG_MODULE.websocket.create_connection = original_create_connection
+            BROWSERBASE_DDG_MODULE.time.sleep = original_sleep
+
+        self.assertEqual(
+            matched,
+            "http://localhost:8787/auth/callback?code=real-code&state=test",
+        )
+        self.assertTrue(conn.closed)
+
 
 class DummyStreamingResponse:
     def __init__(self, status_code=200, text=""):
