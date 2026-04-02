@@ -2325,13 +2325,18 @@ fn healthcheck_run_triggers_auto_governance_after_probe_failures() {
 
     let _auto_disable_enabled =
         EnvGuard::set("CODEXMANAGER_AUTO_DISABLE_RISKY_ACCOUNTS_ENABLED", "1");
-    let _failure_threshold =
-        EnvGuard::set("CODEXMANAGER_AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD", "1");
+    let _failure_threshold = EnvGuard::set(
+        "CODEXMANAGER_AUTO_DISABLE_RISKY_ACCOUNTS_FAILURE_THRESHOLD",
+        "1",
+    );
     let _health_threshold = EnvGuard::set(
         "CODEXMANAGER_AUTO_DISABLE_RISKY_ACCOUNTS_HEALTH_SCORE_THRESHOLD",
         "200",
     );
-    let _lookback = EnvGuard::set("CODEXMANAGER_AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS", "60");
+    let _lookback = EnvGuard::set(
+        "CODEXMANAGER_AUTO_DISABLE_RISKY_ACCOUNTS_LOOKBACK_MINS",
+        "60",
+    );
     crate::usage_refresh::reload_background_tasks_runtime_from_env();
     crate::gateway::set_probe_models_override_for_tests(Err(
         "usage endpoint status 401: token expired".to_string(),

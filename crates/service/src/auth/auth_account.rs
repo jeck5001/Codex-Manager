@@ -384,7 +384,7 @@ pub(crate) fn refresh_chatgpt_auth_tokens_for_account(
     })
 }
 
-fn refresh_chatgpt_auth_tokens_with_fallback(
+pub(crate) fn refresh_chatgpt_auth_tokens_with_fallback(
     storage: &Storage,
     account: &Account,
     token: &mut Token,

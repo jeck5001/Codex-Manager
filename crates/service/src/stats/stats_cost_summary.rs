@@ -57,8 +57,7 @@ pub(crate) fn resolve_cost_range(
             ))
         }
         "custom" => {
-            let start = start_ts
-                .ok_or_else(|| "startTs required".to_string())?;
+            let start = start_ts.ok_or_else(|| "startTs required".to_string())?;
             let end = end_ts.ok_or_else(|| "endTs required".to_string())?;
             if end <= start {
                 return Err("endTs must be greater than startTs".to_string());

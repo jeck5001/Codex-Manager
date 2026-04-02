@@ -1,7 +1,6 @@
 use codexmanager_core::storage::{now_ts, Account};
 
-pub(crate) const ENV_NEW_ACCOUNT_PROTECTION_DAYS: &str =
-    "CODEXMANAGER_NEW_ACCOUNT_PROTECTION_DAYS";
+pub(crate) const ENV_NEW_ACCOUNT_PROTECTION_DAYS: &str = "CODEXMANAGER_NEW_ACCOUNT_PROTECTION_DAYS";
 const DEFAULT_NEW_ACCOUNT_PROTECTION_DAYS: u64 = 3;
 const MAX_NEW_ACCOUNT_PROTECTION_DAYS: u64 = 30;
 const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
@@ -58,8 +57,8 @@ pub(crate) fn derive_new_account_protection_state_with_window(
 #[cfg(test)]
 mod tests {
     use super::{
-        current_new_account_protection_window_secs, derive_new_account_protection_state_with_window,
-        Account, ENV_NEW_ACCOUNT_PROTECTION_DAYS,
+        current_new_account_protection_window_secs,
+        derive_new_account_protection_state_with_window, Account, ENV_NEW_ACCOUNT_PROTECTION_DAYS,
     };
 
     fn sample_account(created_at: i64) -> Account {
@@ -82,7 +81,10 @@ mod tests {
         let previous = std::env::var(ENV_NEW_ACCOUNT_PROTECTION_DAYS).ok();
         std::env::remove_var(ENV_NEW_ACCOUNT_PROTECTION_DAYS);
 
-        assert_eq!(current_new_account_protection_window_secs(), 3 * 24 * 60 * 60);
+        assert_eq!(
+            current_new_account_protection_window_secs(),
+            3 * 24 * 60 * 60
+        );
 
         if let Some(value) = previous {
             std::env::set_var(ENV_NEW_ACCOUNT_PROTECTION_DAYS, value);
@@ -93,8 +95,9 @@ mod tests {
     fn derive_new_account_protection_state_marks_recent_account() {
         let now = 1_700_000_000;
         let account = sample_account(now - 3600);
-        let state = derive_new_account_protection_state_with_window(&account, now, 2 * 24 * 60 * 60)
-            .expect("recent account should be protected");
+        let state =
+            derive_new_account_protection_state_with_window(&account, now, 2 * 24 * 60 * 60)
+                .expect("recent account should be protected");
 
         assert_eq!(state.until, account.created_at + 2 * 24 * 60 * 60);
     }

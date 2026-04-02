@@ -19,7 +19,13 @@ fn try_refresh_chatgpt_access_token(
     if super::super::super::is_openai_api_base(upstream_base) {
         return Ok(None);
     }
-    if token.refresh_token.trim().is_empty() {
+    let has_refresh_token = !token.refresh_token.trim().is_empty();
+    let has_session_cookies = crate::account_payment::read_account_cookies(&account.id)
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some();
+    if !has_refresh_token && !has_session_cookies {
         return Ok(None);
     }
     let issuer = if account.issuer.trim().is_empty() {
@@ -28,8 +34,9 @@ fn try_refresh_chatgpt_access_token(
         account.issuer.clone()
     };
     let client_id = super::super::super::runtime_config::token_exchange_client_id();
-    crate::usage_token_refresh::refresh_and_persist_access_token(
+    crate::auth_account::refresh_chatgpt_auth_tokens_with_fallback(
         storage,
+        account,
         token,
         issuer.as_str(),
         client_id.as_str(),
