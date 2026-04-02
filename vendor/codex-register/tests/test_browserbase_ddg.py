@@ -201,3 +201,45 @@ class BrowserbaseDDGRunnerLogTests(unittest.TestCase):
         task_uuid, log_message = BROWSERBASE_DDG_MODULE.crud.appended_logs[0]
         self.assertEqual(task_uuid, "task-123")
         self.assertIn("hello", log_message)
+
+
+class DummyWebSocketConnection:
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.sent = []
+        self.closed = False
+
+    def send(self, payload):
+        self.sent.append(payload)
+
+    def recv(self):
+        if not self._responses:
+            raise RuntimeError("no more websocket responses")
+        return self._responses.pop(0)
+
+    def close(self):
+        self.closed = True
+
+
+class BrowserbaseDDGRunnerWaitTests(unittest.TestCase):
+    def test_wait_for_target_url_accepts_target_title_keyword(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={},
+        )
+        conn = DummyWebSocketConnection([
+            '{"id": 2, "result": {"targetInfos": [{"type": "page", "url": "https://chatgpt.com/", "title": "MISSION_ACCOMPLISHED"}]}}'
+        ])
+        original_create_connection = BROWSERBASE_DDG_MODULE.websocket.create_connection
+        original_sleep = BROWSERBASE_DDG_MODULE.time.sleep
+        try:
+            BROWSERBASE_DDG_MODULE.websocket.create_connection = lambda *_args, **_kwargs: conn
+            BROWSERBASE_DDG_MODULE.time.sleep = lambda *_args, **_kwargs: None
+            matched = runner._wait_for_target_url("wss://example", "MISSION_ACCOMPLISHED", 1)
+        finally:
+            BROWSERBASE_DDG_MODULE.websocket.create_connection = original_create_connection
+            BROWSERBASE_DDG_MODULE.time.sleep = original_sleep
+
+        self.assertEqual(matched, "https://chatgpt.com/")
+        self.assertTrue(conn.closed)

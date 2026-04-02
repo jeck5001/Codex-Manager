@@ -263,11 +263,18 @@ class BrowserbaseDDGRegistrationRunner:
                         if target.get("type") not in (None, "", "page"):
                             continue
                         current_url = str(target.get("url") or "").strip()
+                        current_title = str(target.get("title") or "").strip()
                         if not current_url or current_url == "about:blank":
+                            if target_keyword and current_title and target_keyword in current_title:
+                                self._log(f"监控到页面标题命中目标: {current_title}")
+                                return current_url or current_title
                             continue
                         if current_url not in seen_urls:
                             seen_urls.add(current_url)
                             self._log(f"监控到页面 URL: {current_url}")
+                        if current_title and target_keyword in current_title:
+                            self._log(f"监控到页面标题命中目标: {current_title}")
+                            return current_url
                         if target_keyword in current_url:
                             return current_url
                     break
