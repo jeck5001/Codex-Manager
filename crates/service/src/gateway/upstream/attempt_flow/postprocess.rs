@@ -19,13 +19,7 @@ fn try_refresh_chatgpt_access_token(
     if super::super::super::is_openai_api_base(upstream_base) {
         return Ok(None);
     }
-    let has_refresh_token = !token.refresh_token.trim().is_empty();
-    let has_session_cookies = crate::account_payment::read_account_cookies(&account.id)
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .is_some();
-    if !has_refresh_token && !has_session_cookies {
+    if !has_chatgpt_recovery_credentials(account, token) {
         return Ok(None);
     }
     let issuer = if account.issuer.trim().is_empty() {
@@ -46,6 +40,15 @@ fn try_refresh_chatgpt_access_token(
         return Err("refreshed chatgpt access token is empty".to_string());
     }
     Ok(Some(refreshed.to_string()))
+}
+
+fn has_chatgpt_recovery_credentials(account: &Account, token: &Token) -> bool {
+    !token.refresh_token.trim().is_empty()
+        || crate::account_payment::read_account_cookies(&account.id)
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some()
 }
 
 fn is_session_cookie_refresh_auth_error(err: &str) -> bool {
@@ -104,6 +107,7 @@ where
 
     if !compact_no_cookie_mode {
         if status.as_u16() == 401 {
+            let has_recovery_credentials = has_chatgpt_recovery_credentials(account, token);
             match try_refresh_chatgpt_access_token(storage, upstream_base, account, token) {
                 Ok(Some(refreshed_auth_token)) => {
                     current_auth_token = refreshed_auth_token;
@@ -142,7 +146,16 @@ where
                         }
                     }
                 }
-                Ok(None) => {}
+                Ok(None) => {
+                    if !has_recovery_credentials && has_more_candidates {
+                        log_gateway_result(
+                            Some(url),
+                            401,
+                            Some("access token only failover"),
+                        );
+                        return PostRetryFlowDecision::Failover;
+                    }
+                }
                 Err(err) => {
                     let refresh_token_invalid = mark_account_unavailable_for_refresh_token_error(
                         storage,
