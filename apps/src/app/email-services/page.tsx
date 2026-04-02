@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
+  Clipboard,
   Mail,
   MoreVertical,
   PlayCircle,
@@ -55,9 +56,11 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useRegisterEmailServices } from "@/hooks/useRegisterEmailServices";
+import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { formatApiDateTime } from "@/lib/utils/datetime";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { buildEmailServiceCopyConfigJson } from "./copy-config";
 import type {
   RegisterEmailService,
   RegisterEmailServiceField,
@@ -559,6 +562,24 @@ export default function EmailServicesPage() {
     }
   };
 
+  const handleCopyConfig = async (serviceId: number) => {
+    let fullService: RegisterEmailService;
+    try {
+      fullService = await readEmailServiceFull(serviceId);
+    } catch {
+      return;
+    }
+
+    try {
+      await copyTextToClipboard(buildEmailServiceCopyConfigJson(fullService));
+      toast.success("已复制邮箱服务配置");
+    } catch (error: unknown) {
+      toast.error(
+        `复制配置失败: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -825,6 +846,10 @@ export default function EmailServicesPage() {
                             <DropdownMenuItem onClick={() => void testEmailService(service.id)}>
                               <PlayCircle className="mr-2 h-4 w-4" />
                               测试连接
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void handleCopyConfig(service.id)}>
+                              <Clipboard className="mr-2 h-4 w-4" />
+                              复制配置
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>
