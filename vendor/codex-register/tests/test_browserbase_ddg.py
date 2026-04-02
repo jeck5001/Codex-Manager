@@ -321,6 +321,26 @@ class BrowserbaseDDGRunnerAgentTests(unittest.TestCase):
 
 
 class BrowserbaseDDGRunnerPromptTests(unittest.TestCase):
+    def test_browserbase_identity_expands_single_name_for_split_name_forms(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={"mail_inbox_url": "https://mail.example.com"},
+        )
+
+        identity = runner._build_browserbase_identity({
+            "name": "Sebastian",
+            "birthdate": "1981-05-15",
+        })
+
+        self.assertEqual(identity["first_name"], "Sebastian")
+        self.assertTrue(identity["last_name"])
+        self.assertTrue(identity["full_name"].startswith("Sebastian "))
+        self.assertEqual(identity["birth_year"], 1981)
+        self.assertEqual(identity["birth_month"], 5)
+        self.assertEqual(identity["birth_day"], 15)
+        self.assertTrue(identity["age"] >= 18)
+
     def test_build_phase1_goal_requires_direct_chatgpt_navigation(self):
         runner = BrowserbaseDDGRegistrationRunner(
             profile_id=1,
@@ -332,12 +352,24 @@ class BrowserbaseDDGRunnerPromptTests(unittest.TestCase):
             auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
             email="user@example.com",
             password="pass123",
+            first_name="Test",
+            last_name="User",
             full_name="Test User",
             birthdate="1990-01-01",
+            birth_year=1990,
+            birth_month=1,
+            birth_day=1,
+            age=35,
         )
 
         self.assertIn("https://auth.openai.com/oauth/authorize?client_id=test", goal)
         self.assertIn("不要使用 Google、DuckDuckGo 或任何搜索引擎", goal)
+        self.assertIn("first name 填 Test", goal)
+        self.assertIn("last name 填 User", goal)
+        self.assertIn("year=1990", goal)
+        self.assertIn("month=1", goal)
+        self.assertIn("day=1", goal)
+        self.assertIn("年龄，则填写 35", goal)
 
     def test_phase_timeout_seconds_upgrades_legacy_short_timeout(self):
         runner = BrowserbaseDDGRegistrationRunner(
@@ -361,8 +393,14 @@ class BrowserbaseDDGRunnerGoalTests(unittest.TestCase):
             auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
             email="user@duck.com",
             password="pass123",
+            first_name="Test",
+            last_name="User",
             full_name="Test User",
             birthdate="1990-01-01",
+            birth_year=1990,
+            birth_month=1,
+            birth_day=1,
+            age=35,
         )
 
         self.assertIn("https://auth.openai.com/oauth/authorize?client_id=test", goal)
@@ -380,8 +418,14 @@ class BrowserbaseDDGRunnerGoalTests(unittest.TestCase):
             auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
             email="user@duck.com",
             password="pass123",
+            first_name="Test",
+            last_name="User",
             full_name="Test User",
             birthdate="1990-01-01",
+            birth_year=1990,
+            birth_month=1,
+            birth_day=1,
+            age=35,
         )
 
         self.assertIn("不要使用 Google、DuckDuckGo 或任何搜索引擎", goal)

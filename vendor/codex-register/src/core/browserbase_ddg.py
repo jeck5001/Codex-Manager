@@ -29,6 +29,16 @@ BROWSERBASE_DDG_REGISTER_MODE = "browserbase_ddg"
 DEFAULT_BROWSERBASE_API_BASE = "https://gemini.browserbase.com"
 DEFAULT_BROWSERBASE_AGENT_MODEL = "google/gemini-2.5-computer-use-preview-10-2025"
 MIN_BROWSERBASE_PHASE_TIMEOUT_SECONDS = 900
+BROWSERBASE_FALLBACK_LAST_NAMES = (
+    "Stone",
+    "Reed",
+    "Hayes",
+    "Brooks",
+    "Bennett",
+    "Foster",
+    "Cole",
+    "Price",
+)
 
 
 @dataclass
@@ -301,6 +311,49 @@ class BrowserbaseDDGRegistrationRunner:
         searchable_parts = [parsed.scheme, parsed.netloc, parsed.path]
         return any(target_keyword in part for part in searchable_parts if part)
 
+    def _build_browserbase_identity(self, user_info: Dict[str, Any]) -> Dict[str, Any]:
+        raw_full_name = str(
+            user_info.get("full_name")
+            or user_info.get("name")
+            or ""
+        ).strip()
+        raw_first_name = str(user_info.get("first_name") or "").strip()
+        raw_last_name = str(user_info.get("last_name") or "").strip()
+
+        parts = [part for part in raw_full_name.split() if part]
+        first_name = raw_first_name or (parts[0] if parts else "")
+        last_name = raw_last_name or (" ".join(parts[1:]).strip() if len(parts) > 1 else "")
+
+        if not first_name:
+            first_name = "Alex"
+        if not last_name:
+            last_name = random.choice(BROWSERBASE_FALLBACK_LAST_NAMES)
+
+        full_name = raw_full_name if len(parts) > 1 else f"{first_name} {last_name}".strip()
+        birthdate = str(user_info.get("birthdate") or "").strip()
+        birth_year, birth_month, birth_day = 2000, 1, 1
+        try:
+            birth_year_str, birth_month_str, birth_day_str = birthdate.split("-", 2)
+            birth_year = int(birth_year_str)
+            birth_month = int(birth_month_str)
+            birth_day = int(birth_day_str)
+        except Exception:
+            birthdate = "2000-01-01"
+
+        current_year = datetime.now().year
+        age = current_year - birth_year
+
+        return {
+            "first_name": first_name,
+            "last_name": last_name,
+            "full_name": full_name,
+            "birthdate": birthdate,
+            "birth_year": birth_year,
+            "birth_month": birth_month,
+            "birth_day": birth_day,
+            "age": max(age, 18),
+        }
+
     def _wait_for_target_url(self, ws_url: str, target_keyword: str, timeout_seconds: int) -> str:
         normalized_ws_url = ws_url if ws_url.startswith("ws") else f"wss://{ws_url}"
         deadline = time.time() + timeout_seconds
@@ -361,8 +414,14 @@ class BrowserbaseDDGRegistrationRunner:
         auth_url: str,
         email: str,
         password: str,
+        first_name: str,
+        last_name: str,
         full_name: str,
         birthdate: str,
+        birth_year: int,
+        birth_month: int,
+        birth_day: int,
+        age: int,
     ) -> str:
         mail_inbox_url = self._config_str("mail_inbox_url", "mailInboxUrl")
         if not mail_inbox_url:
@@ -371,7 +430,8 @@ class BrowserbaseDDGRegistrationRunner:
             f"请直接在地址栏打开 {auth_url}，不要使用 Google、DuckDuckGo 或任何搜索引擎，也不要先搜索 ChatGPT。"
             "如果页面显示登录入口，请点击 Sign up / Create account 进入注册流程，并继续完成 Codex 授权流程。"
             f"使用 {email} 作为邮箱，{password} 作为密码，然后在显示验证码发送后立即前往 {mail_inbox_url} 接收自己的邮箱验证码。"
-            f"接下来使用 {full_name} 作为全名，{birthdate} 作为出生日期（如果表单要求年龄则换算成年龄）。"
+            f"接下来使用 {full_name} 作为全名；如果页面把姓名拆成 first name / last name，则 first name 填 {first_name}，last name 填 {last_name}。"
+            f"出生日期使用 {birthdate}；如果页面拆成年/月/日，则 year={birth_year}，month={birth_month}，day={birth_day}；如果只要求年龄，则填写 {age}。"
             "如果流程要求确认继续授权、选择 workspace、或者继续跳转到 Codex，请继续完成。"
             "最终目标是让页面跳转到 localhost 回调链接；当出现 localhost 回调页或浏览器地址栏变成 localhost 回调地址后立即停止。"
             "每次等待时间不得超过 3 秒；如果页面卡住，优先刷新当前页面或重新打开上面的授权链接，而不是重新搜索。"
@@ -390,7 +450,8 @@ class BrowserbaseDDGRegistrationRunner:
         email = self._generate_alias()
         password = self._generate_password()
         user_info = generate_random_user_info()
-        self._log(f"已生成注册身份: {user_info['name']} / {user_info['birthdate']}")
+        identity = self._build_browserbase_identity(user_info)
+        self._log(f"已生成注册身份: {identity['full_name']} / {identity['birthdate']}")
 
         settings = get_settings()
         redirect_uri = self._resolve_redirect_uri(settings.openai_redirect_uri)
@@ -408,8 +469,14 @@ class BrowserbaseDDGRegistrationRunner:
                 auth_url=oauth_start.auth_url,
                 email=email,
                 password=password,
-                full_name=user_info["name"],
-                birthdate=user_info["birthdate"],
+                first_name=identity["first_name"],
+                last_name=identity["last_name"],
+                full_name=identity["full_name"],
+                birthdate=identity["birthdate"],
+                birth_year=identity["birth_year"],
+                birth_month=identity["birth_month"],
+                birth_day=identity["birth_day"],
+                age=identity["age"],
             ),
         )
         timeout_seconds = self._phase_timeout_seconds()
