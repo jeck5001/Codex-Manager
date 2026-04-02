@@ -44,12 +44,14 @@ class BrowserbaseDDGRegistrationRunner:
         profile_config: Dict[str, Any],
         proxy_url: Optional[str] = None,
         callback_logger: Optional[Callable[[str], None]] = None,
+        task_uuid: Optional[str] = None,
     ):
         self.profile_id = profile_id
         self.profile_name = profile_name
         self.profile_config = profile_config or {}
         self.proxy_url = proxy_url
         self.callback_logger = callback_logger or (lambda *_args, **_kwargs: None)
+        self.task_uuid = task_uuid
         self.logs: list[str] = []
 
     def _log(self, message: str) -> None:
@@ -57,6 +59,12 @@ class BrowserbaseDDGRegistrationRunner:
         entry = f"[{timestamp}] {message}"
         self.logs.append(entry)
         self.callback_logger(entry)
+        if self.task_uuid:
+            try:
+                with get_db() as db:
+                    crud.append_task_log(db, self.task_uuid, entry)
+            except Exception as exc:
+                logger.warning(f"记录 Browserbase-DDG 任务日志失败: {exc}")
 
     @staticmethod
     def _response_text_snippet(response: Any, limit: int = 200) -> str:
