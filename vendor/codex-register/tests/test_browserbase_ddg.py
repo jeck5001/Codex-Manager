@@ -273,6 +273,46 @@ class BrowserbaseDDGRunnerWaitTests(unittest.TestCase):
         )
         self.assertTrue(conn.closed)
 
+    def test_wait_for_target_url_reconnects_after_websocket_disconnect(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={},
+        )
+        broken_conn = DummyWebSocketConnection([])
+        healthy_conn = DummyWebSocketConnection([
+            '{"id": 2, "result": {"targetInfos": [{"type": "page", "url": "http://localhost:8787/auth/callback?code=real-code&state=test", "title": "Callback"}]}}'
+        ])
+        original_create_connection = BROWSERBASE_DDG_MODULE.websocket.create_connection
+        original_sleep = BROWSERBASE_DDG_MODULE.time.sleep
+        calls = []
+
+        def fake_create_connection(*_args, **_kwargs):
+            calls.append("connect")
+            if len(calls) == 1:
+                def broken_recv():
+                    raise RuntimeError("Connection to remote host was lost")
+                broken_conn.recv = broken_recv
+                return broken_conn
+            return healthy_conn
+
+        try:
+            BROWSERBASE_DDG_MODULE.websocket.create_connection = fake_create_connection
+            BROWSERBASE_DDG_MODULE.time.sleep = lambda *_args, **_kwargs: None
+            matched = runner._wait_for_target_url("wss://example", "localhost", 1)
+        finally:
+            BROWSERBASE_DDG_MODULE.websocket.create_connection = original_create_connection
+            BROWSERBASE_DDG_MODULE.time.sleep = original_sleep
+
+        self.assertEqual(
+            matched,
+            "http://localhost:8787/auth/callback?code=real-code&state=test",
+        )
+        self.assertTrue(broken_conn.closed)
+        self.assertTrue(healthy_conn.closed)
+        self.assertGreaterEqual(len(calls), 2)
+        self.assertTrue(any("重连" in log for log in runner.logs))
+
 
 class DummyStreamingResponse:
     def __init__(self, status_code=200, text=""):
