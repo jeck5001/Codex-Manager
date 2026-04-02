@@ -17,6 +17,17 @@ enum AccountFilter {
     Low,
 }
 
+/// 函数 `read_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_accounts(
     params: AccountListParams,
     pagination_requested: bool,
@@ -115,6 +126,17 @@ pub(crate) fn read_accounts(
     })
 }
 
+/// 函数 `normalize_optional_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
     let trimmed = value.unwrap_or_default().trim().to_string();
     if trimmed.is_empty() || trimmed == "all" {
@@ -123,6 +145,17 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
     Some(trimmed)
 }
 
+/// 函数 `normalize_filter`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_filter(value: Option<String>) -> AccountFilter {
     match value
         .unwrap_or_default()
@@ -136,10 +169,34 @@ fn normalize_filter(value: Option<String>) -> AccountFilter {
     }
 }
 
+/// 函数 `normalize_page_size`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_page_size(value: i64) -> i64 {
     value.clamp(1, MAX_ACCOUNT_PAGE_SIZE)
 }
 
+/// 函数 `clamp_page`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - page: 参数 page
+/// - total: 参数 total
+/// - page_size: 参数 page_size
+///
+/// # 返回
+/// 返回函数执行结果
 fn clamp_page(page: i64, total: i64, page_size: i64) -> i64 {
     let normalized_page = page.max(1);
     let total_pages = if total <= 0 {
@@ -150,6 +207,20 @@ fn clamp_page(page: i64, total: i64, page_size: i64) -> i64 {
     normalized_page.min(total_pages)
 }
 
+/// 函数 `filtered_account_count`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - filter: 参数 filter
+/// - query: 参数 query
+/// - group_filter: 参数 group_filter
+///
+/// # 返回
+/// 返回函数执行结果
 fn filtered_account_count(
     storage: &codexmanager_core::storage::Storage,
     filter: AccountFilter,
@@ -169,6 +240,21 @@ fn filtered_account_count(
     }
 }
 
+/// 函数 `filtered_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - filter: 参数 filter
+/// - query: 参数 query
+/// - group_filter: 参数 group_filter
+/// - pagination: 参数 pagination
+///
+/// # 返回
+/// 返回函数执行结果
 fn filtered_accounts(
     storage: &codexmanager_core::storage::Storage,
     filter: AccountFilter,
@@ -194,6 +280,22 @@ fn filtered_accounts(
     }
 }
 
+/// 函数 `to_account_summary_with_reason`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - acc: 参数 acc
+/// - status_reason: 参数 status_reason
+/// - plan_type: 参数 plan_type
+/// - plan_type_raw: 参数 plan_type_raw
+/// - note: 参数 note
+/// - tags: 参数 tags
+///
+/// # 返回
+/// 返回函数执行结果
 fn to_account_summary_with_reason(
     acc: Account,
     status_reason: Option<String>,
@@ -216,6 +318,18 @@ fn to_account_summary_with_reason(
     }
 }
 
+/// 函数 `to_account_summaries`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - accounts: 参数 accounts
+///
+/// # 返回
+/// 返回函数执行结果
 fn to_account_summaries(
     storage: &codexmanager_core::storage::Storage,
     accounts: Vec<Account>,
@@ -251,6 +365,21 @@ fn to_account_summaries(
         .collect())
 }
 
+/// 函数 `map_account_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account: 参数 account
+/// - status_reasons: 参数 status_reasons
+/// - tokens: 参数 tokens
+/// - usages: 参数 usages
+/// - metadata: 参数 metadata
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_account_summary(
     account: Account,
     status_reasons: &HashMap<String, String>,

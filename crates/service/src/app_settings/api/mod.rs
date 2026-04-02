@@ -48,10 +48,33 @@ pub(super) use super::{
     APP_SETTING_UI_THEME_KEY, APP_SETTING_UPDATE_AUTO_CHECK_KEY,
 };
 
+/// 函数 `app_settings_get`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn app_settings_get() -> Result<Value, String> {
     current::current_app_settings_value(None, None, None)
 }
 
+/// 函数 `app_settings_get_with_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - close_to_tray_on_close: 参数 close_to_tray_on_close
+/// - close_to_tray_supported: 参数 close_to_tray_supported
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn app_settings_get_with_overrides(
     close_to_tray_on_close: Option<bool>,
     close_to_tray_supported: Option<bool>,
@@ -59,6 +82,17 @@ pub fn app_settings_get_with_overrides(
     current::current_app_settings_value(close_to_tray_on_close, close_to_tray_supported, None)
 }
 
+/// 函数 `app_settings_set`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - params: 参数 params
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn app_settings_set(params: Option<&Value>) -> Result<Value, String> {
     initialize_storage_if_needed()?;
     let patch = patch::parse_app_settings_patch(params)?;

@@ -8,12 +8,34 @@ use crate::storage_helpers::open_storage;
 const DEFAULT_REQUEST_LOG_PAGE_SIZE: i64 = 20;
 const MAX_REQUEST_LOG_PAGE_SIZE: i64 = 500;
 
+/// 函数 `normalize_upstream_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_upstream_url(raw: Option<&str>) -> Option<String> {
     raw.map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
 }
 
+/// 函数 `read_request_logs`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_request_logs(
     query: Option<String>,
     limit: Option<i64>,
@@ -25,6 +47,17 @@ pub(crate) fn read_request_logs(
     Ok(logs.into_iter().map(to_request_log_summary).collect())
 }
 
+/// 函数 `read_request_log_page`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_request_log_page(
     params: RequestLogListParams,
 ) -> Result<RequestLogListResult, String> {
@@ -55,6 +88,17 @@ pub(crate) fn read_request_log_page(
     })
 }
 
+/// 函数 `normalize_optional_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_optional_text(value: Option<String>) -> Option<String> {
     let trimmed = value.unwrap_or_default().trim().to_string();
     if trimmed.is_empty() || trimmed == "all" {
@@ -63,6 +107,17 @@ pub(crate) fn normalize_optional_text(value: Option<String>) -> Option<String> {
     Some(trimmed)
 }
 
+/// 函数 `normalize_status_filter`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_status_filter(value: Option<String>) -> Option<String> {
     let normalized = value.unwrap_or_default().trim().to_ascii_lowercase();
     match normalized.as_str() {
@@ -72,6 +127,17 @@ pub(crate) fn normalize_status_filter(value: Option<String>) -> Option<String> {
     }
 }
 
+/// 函数 `normalize_page_size`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_page_size(value: i64) -> i64 {
     if value < 1 {
         DEFAULT_REQUEST_LOG_PAGE_SIZE
@@ -80,6 +146,19 @@ fn normalize_page_size(value: i64) -> i64 {
     }
 }
 
+/// 函数 `clamp_page`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - page: 参数 page
+/// - total: 参数 total
+/// - page_size: 参数 page_size
+///
+/// # 返回
+/// 返回函数执行结果
 fn clamp_page(page: i64, total: i64, page_size: i64) -> i64 {
     let normalized_page = page.max(1);
     let total_pages = if total <= 0 {
@@ -90,6 +169,17 @@ fn clamp_page(page: i64, total: i64, page_size: i64) -> i64 {
     normalized_page.min(total_pages)
 }
 
+/// 函数 `to_request_log_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item: 参数 item
+///
+/// # 返回
+/// 返回函数执行结果
 fn to_request_log_summary(item: RequestLog) -> RequestLogSummary {
     let attempted_account_ids = item
         .attempted_account_ids_json
@@ -139,6 +229,17 @@ mod tests {
         RequestLogListParams, DEFAULT_REQUEST_LOG_PAGE_SIZE,
     };
 
+    /// 函数 `normalize_upstream_url_keeps_official_domains`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normalize_upstream_url_keeps_official_domains() {
         assert_eq!(
@@ -152,6 +253,17 @@ mod tests {
         );
     }
 
+    /// 函数 `normalize_upstream_url_keeps_local_addresses`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normalize_upstream_url_keeps_local_addresses() {
         assert_eq!(
@@ -164,6 +276,17 @@ mod tests {
         );
     }
 
+    /// 函数 `normalize_upstream_url_keeps_custom_addresses`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normalize_upstream_url_keeps_custom_addresses() {
         assert_eq!(
@@ -172,6 +295,17 @@ mod tests {
         );
     }
 
+    /// 函数 `normalize_upstream_url_trims_empty_values`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normalize_upstream_url_trims_empty_values() {
         assert_eq!(normalize_upstream_url(None), None);
@@ -182,6 +316,17 @@ mod tests {
         );
     }
 
+    /// 函数 `request_log_list_params_default_to_first_page_with_twenty_items`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn request_log_list_params_default_to_first_page_with_twenty_items() {
         let params: RequestLogListParams =
@@ -192,6 +337,17 @@ mod tests {
         assert_eq!(normalized.page_size, DEFAULT_REQUEST_LOG_PAGE_SIZE);
     }
 
+    /// 函数 `normalize_status_filter_accepts_known_values`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normalize_status_filter_accepts_known_values() {
         assert_eq!(
@@ -202,6 +358,17 @@ mod tests {
         assert_eq!(normalize_status_filter(Some("unknown".to_string())), None);
     }
 
+    /// 函数 `normalize_optional_text_trims_blank_values`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normalize_optional_text_trims_blank_values() {
         assert_eq!(normalize_optional_text(Some("  ".to_string())), None);

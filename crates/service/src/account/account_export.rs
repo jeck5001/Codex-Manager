@@ -58,6 +58,17 @@ struct ExportMetaPayload {
     exported_at: i64,
 }
 
+/// 函数 `export_accounts_to_directory`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn export_accounts_to_directory(
     output_dir: &str,
 ) -> Result<AccountExportResult, String> {
@@ -116,6 +127,17 @@ pub(crate) fn export_accounts_to_directory(
     })
 }
 
+/// 函数 `export_accounts_data`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn export_accounts_data() -> Result<AccountExportDataResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
@@ -162,6 +184,19 @@ pub(crate) fn export_accounts_data() -> Result<AccountExportDataResult, String> 
     })
 }
 
+/// 函数 `build_account_export_file_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - output_dir: 参数 output_dir
+/// - account: 参数 account
+/// - file_name_counter: 参数 file_name_counter
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_account_export_file_path(
     output_dir: &Path,
     account: &Account,
@@ -191,6 +226,19 @@ fn build_account_export_file_path(
     output_dir.join(format!("{file_stem}.json"))
 }
 
+/// 函数 `build_account_export_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account: 参数 account
+/// - token: 参数 token
+/// - metadata: 参数 metadata
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_account_export_json(
     account: &Account,
     token: &Token,
@@ -217,6 +265,17 @@ fn build_account_export_json(
     serde_json::to_vec_pretty(&payload).map_err(|err| format!("encode export json failed: {err}"))
 }
 
+/// 函数 `sanitize_file_stem`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn sanitize_file_stem(value: &str) -> String {
     let mut out = String::with_capacity(value.len().min(96));
     for ch in value.trim().chars() {
@@ -241,12 +300,34 @@ fn sanitize_file_stem(value: &str) -> String {
 mod tests {
     use super::sanitize_file_stem;
 
+    /// 函数 `sanitize_file_stem_replaces_windows_invalid_chars`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn sanitize_file_stem_replaces_windows_invalid_chars() {
         let actual = sanitize_file_stem(r#"a<b>c:d"e/f\g|h?i*j"#);
         assert_eq!(actual, "a_b_c_d_e_f_g_h_i_j");
     }
 
+    /// 函数 `sanitize_file_stem_trims_tailing_space_and_dot`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn sanitize_file_stem_trims_tailing_space_and_dot() {
         let actual = sanitize_file_stem(" demo. ");

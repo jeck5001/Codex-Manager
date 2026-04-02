@@ -12,6 +12,19 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+<#
+函数 `Resolve-OutDir`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- InputOutDir: 参数 InputOutDir
+
+# 返回
+返回函数执行结果
+#>
 function Resolve-OutDir {
     param([string]$InputOutDir)
 
@@ -26,6 +39,19 @@ function Resolve-OutDir {
     return $dir
 }
 
+<#
+函数 `Resolve-ApiKey`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- ExplicitApiKey: 参数 ExplicitApiKey
+
+# 返回
+返回函数执行结果
+#>
 function Resolve-ApiKey {
     param([string]$ExplicitApiKey)
 
@@ -41,6 +67,19 @@ function Resolve-ApiKey {
     throw "ApiKey is empty. Pass -ApiKey or set CODEX_API_KEY/OPENAI_API_KEY."
 }
 
+<#
+函数 `Join-ArgLine`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Args: 参数 Args
+
+# 返回
+返回函数执行结果
+#>
 function Join-ArgLine {
     param([string[]]$Args)
     return ($Args | ForEach-Object {
@@ -48,6 +87,23 @@ function Join-ArgLine {
     }) -join " "
 }
 
+<#
+函数 `Invoke-Probe`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Name: 参数 Name
+- ScriptPath: 参数 ScriptPath
+- Args: 参数 Args
+- LogPath: 参数 LogPath
+- EnableDryRun: 参数 EnableDryRun
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-Probe {
     param(
         [string]$Name,

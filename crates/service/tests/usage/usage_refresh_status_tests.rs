@@ -11,6 +11,17 @@ use crate::usage_snapshot_store::apply_status_from_snapshot;
 use codexmanager_core::storage::{now_ts, Account, Storage, UsageSnapshotRecord};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// 函数 `unique_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - prefix: 参数 prefix
+///
+/// # 返回
+/// 返回函数执行结果
 fn unique_id(prefix: &str) -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -19,6 +30,17 @@ fn unique_id(prefix: &str) -> String {
     format!("{prefix}-{nanos}")
 }
 
+/// 函数 `apply_status_missing_snapshot_keeps_account_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn apply_status_missing_snapshot_keeps_account_status() {
     let storage = Storage::open_in_memory().expect("open");
@@ -60,6 +82,17 @@ fn apply_status_missing_snapshot_keeps_account_status() {
     assert_eq!(loaded.status, "active");
 }
 
+/// 函数 `apply_status_skips_db_and_event_when_status_unchanged`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn apply_status_skips_db_and_event_when_status_unchanged() {
     let storage = Storage::open_in_memory().expect("open");
@@ -124,6 +157,17 @@ fn apply_status_skips_db_and_event_when_status_unchanged() {
     assert_eq!(storage.event_count().expect("count events"), 1);
 }
 
+/// 函数 `mark_usage_unreachable_marks_401_403_429_as_unavailable`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn mark_usage_unreachable_marks_401_403_429_as_unavailable() {
     let storage = Storage::open_in_memory().expect("open");
@@ -228,6 +272,17 @@ fn mark_usage_unreachable_marks_401_403_429_as_unavailable() {
     );
 }
 
+/// 函数 `mark_usage_unreachable_does_not_override_manual_disabled_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn mark_usage_unreachable_does_not_override_manual_disabled_status() {
     let storage = Storage::open_in_memory().expect("open");
@@ -259,6 +314,17 @@ fn mark_usage_unreachable_does_not_override_manual_disabled_status() {
     assert_eq!(disabled.status, "disabled");
 }
 
+/// 函数 `apply_status_available_preserves_manual_disabled_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn apply_status_available_preserves_manual_disabled_status() {
     let storage = Storage::open_in_memory().expect("open");
@@ -303,6 +369,17 @@ fn apply_status_available_preserves_manual_disabled_status() {
     assert_eq!(storage.event_count().expect("count events"), 0);
 }
 
+/// 函数 `refresh_token_auth_error_marks_account_unavailable`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_auth_error_marks_account_unavailable() {
     let storage = Storage::open_in_memory().expect("open");
@@ -333,6 +410,17 @@ fn refresh_token_auth_error_marks_account_unavailable() {
     assert_eq!(unavailable.status, "unavailable");
 }
 
+/// 函数 `refresh_token_forbidden_without_invalid_grant_keeps_account_active`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_forbidden_without_invalid_grant_keeps_account_active() {
     let storage = Storage::open_in_memory().expect("open");
@@ -363,6 +451,17 @@ fn refresh_token_forbidden_without_invalid_grant_keeps_account_active() {
     assert_eq!(active.status, "active");
 }
 
+/// 函数 `refresh_token_invalid_grant_on_forbidden_keeps_account_active`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_invalid_grant_on_forbidden_keeps_account_active() {
     let storage = Storage::open_in_memory().expect("open");
@@ -393,6 +492,17 @@ fn refresh_token_invalid_grant_on_forbidden_keeps_account_active() {
     assert_eq!(active.status, "active");
 }
 
+/// 函数 `refresh_token_unknown_401_marks_account_unavailable`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_unknown_401_marks_account_unavailable() {
     let storage = Storage::open_in_memory().expect("open");
@@ -423,6 +533,17 @@ fn refresh_token_unknown_401_marks_account_unavailable() {
     assert_eq!(unavailable.status, "unavailable");
 }
 
+/// 函数 `deactivation_reason_detects_workspace_and_account_scope`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn deactivation_reason_detects_workspace_and_account_scope() {
     assert_eq!(
@@ -451,6 +572,17 @@ fn deactivation_reason_detects_workspace_and_account_scope() {
     );
 }
 
+/// 函数 `deactivation_error_marks_account_banned`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn deactivation_error_marks_account_banned() {
     let storage = Storage::open_in_memory().expect("open");
@@ -481,6 +613,17 @@ fn deactivation_error_marks_account_banned() {
     assert_eq!(banned.status, "banned");
 }
 
+/// 函数 `generic_deactivated_error_marks_account_banned`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn generic_deactivated_error_marks_account_banned() {
     let storage = Storage::open_in_memory().expect("open");
@@ -519,6 +662,17 @@ fn generic_deactivated_error_marks_account_banned() {
     );
 }
 
+/// 函数 `auth_error_deactivated_marks_account_banned`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn auth_error_deactivated_marks_account_banned() {
     let storage = Storage::open_in_memory().expect("open");
@@ -559,6 +713,17 @@ fn auth_error_deactivated_marks_account_banned() {
     );
 }
 
+/// 函数 `deactivation_error_updates_reason_for_existing_unavailable_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn deactivation_error_updates_reason_for_existing_unavailable_account() {
     let storage = Storage::open_in_memory().expect("open");
@@ -606,6 +771,17 @@ fn deactivation_error_updates_reason_for_existing_unavailable_account() {
     assert_eq!(storage.event_count().expect("count events"), 2);
 }
 
+/// 函数 `deactivation_error_preserves_manual_disabled_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn deactivation_error_preserves_manual_disabled_status() {
     let storage = Storage::open_in_memory().expect("open");
@@ -637,6 +813,17 @@ fn deactivation_error_preserves_manual_disabled_status() {
     assert_eq!(disabled.status, "disabled");
 }
 
+/// 函数 `refresh_retry_filter_matches_auth_failures`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_retry_filter_matches_auth_failures() {
     assert!(should_retry_with_refresh("usage endpoint status 401"));
@@ -644,6 +831,17 @@ fn refresh_retry_filter_matches_auth_failures() {
     assert!(!should_retry_with_refresh("usage endpoint status 429"));
 }
 
+/// 函数 `usage_refresh_failure_events_are_throttled_by_error_class`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_refresh_failure_events_are_throttled_by_error_class() {
     let storage = Storage::open_in_memory().expect("open");
@@ -670,6 +868,17 @@ fn usage_refresh_failure_events_are_throttled_by_error_class() {
     assert_eq!(storage.event_count().expect("count events"), 2);
 }
 
+/// 函数 `usage_refresh_failure_throttle_splits_401_reason_classes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_refresh_failure_throttle_splits_401_reason_classes() {
     let storage = Storage::open_in_memory().expect("open");

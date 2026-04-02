@@ -5,6 +5,18 @@ use crate::app_shell::{
     TRAY_AVAILABLE,
 };
 
+/// 函数 `effective_lightweight_mode_on_close_to_tray`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - requested: 参数 requested
+/// - close_to_tray_effective: 参数 close_to_tray_effective
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn effective_lightweight_mode_on_close_to_tray(
     requested: bool,
     close_to_tray_effective: bool,
@@ -12,14 +24,47 @@ pub fn effective_lightweight_mode_on_close_to_tray(
     requested && close_to_tray_effective
 }
 
+/// 函数 `tray_available`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn tray_available() -> bool {
     TRAY_AVAILABLE.load(Ordering::Relaxed)
 }
 
+/// 函数 `effective_close_to_tray_requested`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn effective_close_to_tray_requested() -> bool {
     codexmanager_service::current_close_to_tray_on_close_setting() && tray_available()
 }
 
+/// 函数 `sync_window_runtime_state_from_settings`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - settings: 参数 settings
+///
+/// # 返回
+/// 无
 pub fn sync_window_runtime_state_from_settings(settings: &mut serde_json::Value) {
     let requested_close_to_tray = settings
         .get("closeToTrayOnClose")

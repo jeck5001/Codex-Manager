@@ -7,6 +7,17 @@ const DEFAULT_USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT: usize = 200;
 const USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT_ENV: &str =
     "CODEXMANAGER_USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT";
 
+/// 函数 `usage_snapshots_retain_per_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn usage_snapshots_retain_per_account() -> usize {
     std::env::var(USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT_ENV)
         .ok()
@@ -14,6 +25,17 @@ fn usage_snapshots_retain_per_account() -> usize {
         .unwrap_or(DEFAULT_USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT)
 }
 
+/// 函数 `apply_status_from_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn apply_status_from_snapshot(
     storage: &Storage,
     record: &UsageSnapshotRecord,
@@ -33,6 +55,17 @@ pub(crate) fn apply_status_from_snapshot(
     availability
 }
 
+/// 函数 `store_usage_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn store_usage_snapshot(
     storage: &Storage,
     account_id: &str,

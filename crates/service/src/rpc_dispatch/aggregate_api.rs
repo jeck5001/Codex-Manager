@@ -5,10 +5,32 @@ use crate::{
     test_aggregate_api_connection, update_aggregate_api,
 };
 
+/// 函数 `api_id_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+///
+/// # 返回
+/// 返回函数执行结果
 fn api_id_param(req: &JsonRpcRequest) -> Option<&str> {
     super::str_param(req, "id").or_else(|| super::str_param(req, "apiId"))
 }
 
+/// 函数 `try_handle`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     let result = match req.method.as_str() {
         "aggregateApi/list" => super::value_or_error(
@@ -67,6 +89,18 @@ mod tests {
     use super::try_handle;
     use codexmanager_core::rpc::types::JsonRpcRequest;
 
+    /// 函数 `rpc_request`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - method: 参数 method
+    /// - params: 参数 params
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn rpc_request(method: &str, params: serde_json::Value) -> JsonRpcRequest {
         JsonRpcRequest {
             id: 1.into(),
@@ -76,6 +110,17 @@ mod tests {
         }
     }
 
+    /// 函数 `error_message`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - resp: 参数 resp
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn error_message(resp: &codexmanager_core::rpc::types::JsonRpcResponse) -> String {
         resp.result
             .get("error")
@@ -84,6 +129,17 @@ mod tests {
             .to_string()
     }
 
+    /// 函数 `aggregate_api_update_accepts_id_and_api_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn aggregate_api_update_accepts_id_and_api_id() {
         let missing = try_handle(&rpc_request(
@@ -108,6 +164,17 @@ mod tests {
         assert_ne!(error_message(&with_api_id), "aggregate api id required");
     }
 
+    /// 函数 `aggregate_api_test_connection_accepts_id_and_api_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn aggregate_api_test_connection_accepts_id_and_api_id() {
         let missing = try_handle(&rpc_request(

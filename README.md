@@ -68,10 +68,15 @@
   </tr>
 </table>
 
-## Star 曲线
-<p align="center">
-  <img src="assets/images/star-history.png" alt="Star 曲线" width="900" />
-</p>
+## Star History
+
+<a href="https://www.star-history.com/?repos=qxcnm%2FCodex-Manager&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=qxcnm/Codex-Manager&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=qxcnm/Codex-Manager&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=qxcnm/Codex-Manager&type=date&legend=top-left" />
+ </picture>
+</a>
 
 ## 首页导览
 | 你要做什么 | 直接进入 |

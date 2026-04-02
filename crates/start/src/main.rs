@@ -29,6 +29,17 @@ mod windows_job {
     }
 
     impl ChildJob {
+        /// 函数 `new`
+        ///
+        /// 作者: gaohongshun
+        ///
+        /// 时间: 2026-04-02
+        ///
+        /// # 参数
+        /// - super: 参数 super
+        ///
+        /// # 返回
+        /// 返回函数执行结果
         pub(super) fn new() -> io::Result<Self> {
             let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
             if handle.is_null() {
@@ -55,6 +66,17 @@ mod windows_job {
             Ok(Self { handle })
         }
 
+        /// 函数 `assign`
+        ///
+        /// 作者: gaohongshun
+        ///
+        /// 时间: 2026-04-02
+        ///
+        /// # 参数
+        /// - super: 参数 super
+        ///
+        /// # 返回
+        /// 返回函数执行结果
         pub(super) fn assign(&self, child: &Child) -> io::Result<()> {
             let process_handle = child.as_raw_handle() as HANDLE;
             let ok = unsafe { AssignProcessToJobObject(self.handle, process_handle) };
@@ -66,6 +88,17 @@ mod windows_job {
     }
 
     impl Drop for ChildJob {
+        /// 函数 `drop`
+        ///
+        /// 作者: gaohongshun
+        ///
+        /// 时间: 2026-04-02
+        ///
+        /// # 参数
+        /// - self: 参数 self
+        ///
+        /// # 返回
+        /// 无
         fn drop(&mut self) {
             if !self.handle.is_null() {
                 unsafe {
@@ -76,6 +109,17 @@ mod windows_job {
     }
 }
 
+/// 函数 `exe_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn exe_dir() -> PathBuf {
     std::env::current_exe()
         .ok()
@@ -84,6 +128,17 @@ fn exe_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// 函数 `strip_inline_comment`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn strip_inline_comment(value: &str) -> &str {
     // 仅把 ` #` 视为注释起点，保持与常见 dotenv 行为一致
     let Some(pos) = value.find(" #") else {
@@ -92,6 +147,17 @@ fn strip_inline_comment(value: &str) -> &str {
     value[..pos].trim_end()
 }
 
+/// 函数 `parse_dotenv_kv`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - line: 参数 line
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_dotenv_kv(line: &str) -> Option<(String, String)> {
     let mut line = line.trim();
     if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
@@ -116,6 +182,17 @@ fn parse_dotenv_kv(line: &str) -> Option<(String, String)> {
     Some((key.to_string(), value.to_string()))
 }
 
+/// 函数 `find_env_file_in_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - dir: 参数 dir
+///
+/// # 返回
+/// 返回函数执行结果
 fn find_env_file_in_dir(dir: &Path) -> Option<PathBuf> {
     for name in ENV_CANDIDATES {
         let candidate = dir.join(name);
@@ -126,6 +203,17 @@ fn find_env_file_in_dir(dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// 函数 `load_env_from_exe_dir_best_effort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn load_env_from_exe_dir_best_effort() {
     let dir = exe_dir();
     let Some(path) = find_env_file_in_dir(&dir) else {
@@ -147,6 +235,17 @@ fn load_env_from_exe_dir_best_effort() {
     }
 }
 
+/// 函数 `normalize_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_addr(raw: &str) -> Option<String> {
     let mut value = raw.trim();
     if value.is_empty() {
@@ -168,6 +267,18 @@ fn normalize_addr(raw: &str) -> Option<String> {
     Some(value.to_string())
 }
 
+/// 函数 `resolve_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - var: 参数 var
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_addr(var: &str, default: &str) -> String {
     std::env::var(var)
         .ok()
@@ -175,6 +286,17 @@ fn resolve_addr(var: &str, default: &str) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
+/// 函数 `resolve_web_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_web_addr() -> String {
     std::env::var("CODEXMANAGER_WEB_ADDR")
         .ok()
@@ -182,6 +304,17 @@ fn resolve_web_addr() -> String {
         .unwrap_or_else(codexmanager_service::default_web_listener_addr)
 }
 
+/// 函数 `normalize_connect_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_connect_addr(raw: &str) -> String {
     let normalized = normalize_addr(raw).unwrap_or_else(|| raw.trim().to_string());
     let Some((host, port)) = normalized.rsplit_once(':') else {
@@ -193,6 +326,17 @@ fn normalize_connect_addr(raw: &str) -> String {
     }
 }
 
+/// 函数 `browser_open_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn browser_open_addr(raw: &str) -> String {
     let normalized = normalize_addr(raw).unwrap_or_else(|| raw.trim().to_string());
     let Some((host, port)) = normalized.rsplit_once(':') else {
@@ -204,6 +348,17 @@ fn browser_open_addr(raw: &str) -> String {
     }
 }
 
+/// 函数 `resolve_socket_addrs_best_effort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - host_port: 参数 host_port
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_socket_addrs_best_effort(host_port: &str) -> Vec<SocketAddr> {
     // 优先处理 localhost（避免 DNS 差异/大小写问题）
     let trimmed = host_port.trim();
@@ -227,6 +382,17 @@ fn resolve_socket_addrs_best_effort(host_port: &str) -> Vec<SocketAddr> {
         .collect()
 }
 
+/// 函数 `tcp_probe`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn tcp_probe(addr: &str) -> bool {
     let addr = addr.trim();
     if addr.is_empty() {
@@ -244,6 +410,18 @@ fn tcp_probe(addr: &str) -> bool {
     false
 }
 
+/// 函数 `simple_get_best_effort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - path: 参数 path
+///
+/// # 返回
+/// 无
 fn simple_get_best_effort(addr: &str, path: &str) {
     let addr_trimmed = addr.trim();
     if addr_trimmed.is_empty() {
@@ -269,6 +447,18 @@ fn simple_get_best_effort(addr: &str, path: &str) {
     let _ = stream.write_all(req.as_bytes());
 }
 
+/// 函数 `wait_for_port_closed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - attempts: 参数 attempts
+///
+/// # 返回
+/// 返回函数执行结果
 fn wait_for_port_closed(addr: &str, attempts: usize) -> bool {
     for _ in 0..attempts {
         if !tcp_probe(addr) {
@@ -279,11 +469,34 @@ fn wait_for_port_closed(addr: &str, attempts: usize) -> bool {
     !tcp_probe(addr)
 }
 
+/// 函数 `stop_existing_service_best_effort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn stop_existing_service_best_effort(addr: &str) -> bool {
     codexmanager_service::request_shutdown(addr);
     wait_for_port_closed(addr, 30)
 }
 
+/// 函数 `stop_existing_web_best_effort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - bind_addr: 参数 bind_addr
+/// - open_addr: 参数 open_addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn stop_existing_web_best_effort(bind_addr: &str, open_addr: &str) -> bool {
     simple_get_best_effort(open_addr, "/__quit");
     if !open_addr.eq_ignore_ascii_case(bind_addr) {
@@ -292,6 +505,18 @@ fn stop_existing_web_best_effort(bind_addr: &str, open_addr: &str) -> bool {
     wait_for_port_closed(open_addr, 30)
 }
 
+/// 函数 `bin_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - dir: 参数 dir
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn bin_path(dir: &Path, name: &str) -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -303,6 +528,18 @@ fn bin_path(dir: &Path, name: &str) -> PathBuf {
     }
 }
 
+/// 函数 `spawn_child`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - bin: 参数 bin
+/// - service_bind_addr: 参数 service_bind_addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn spawn_child(bin: &Path, service_bind_addr: Option<&str>) -> std::io::Result<Child> {
     let mut cmd = Command::new(bin);
     if let Some(bind_addr) = service_bind_addr {
@@ -311,6 +548,17 @@ fn spawn_child(bin: &Path, service_bind_addr: Option<&str>) -> std::io::Result<C
     cmd.spawn()
 }
 
+/// 函数 `main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn main() {
     // 让 start.exe 也支持同目录 env 文件，保持与 service/web 一致。
     load_env_from_exe_dir_best_effort();
@@ -465,6 +713,17 @@ fn main() {
 mod tests {
     use super::*;
 
+    /// 函数 `normalize_connect_addr_maps_all_interfaces_to_localhost`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normalize_connect_addr_maps_all_interfaces_to_localhost() {
         assert_eq!(normalize_connect_addr("0.0.0.0:48760"), "localhost:48760");
@@ -475,6 +734,17 @@ mod tests {
         );
     }
 
+    /// 函数 `browser_open_addr_maps_all_interfaces_to_loopback`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn browser_open_addr_maps_all_interfaces_to_loopback() {
         assert_eq!(browser_open_addr("0.0.0.0:48761"), "127.0.0.1:48761");

@@ -20,6 +20,17 @@ pub(super) use std::time::{Duration, Instant};
 pub(super) static TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
 pub(super) static TEST_PORT_SEQ: AtomicUsize = AtomicUsize::new(41000);
 
+/// 函数 `new_test_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn new_test_dir(prefix: &str) -> PathBuf {
     // 中文注释：Windows 进程 ID 可能被复用；增加递增序号避免复用旧目录/旧 db 文件导致用例不稳定。
     let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -29,6 +40,17 @@ pub(super) fn new_test_dir(prefix: &str) -> PathBuf {
     dir
 }
 
+/// 函数 `bind_test_listener`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn bind_test_listener(label: &str) -> TcpListener {
     for _ in 0..1024 {
         let port = TEST_PORT_SEQ.fetch_add(1, Ordering::Relaxed) as u16;
@@ -41,6 +63,17 @@ pub(super) fn bind_test_listener(label: &str) -> TcpListener {
     panic!("exhausted test ports for {label}");
 }
 
+/// 函数 `decode_chunked_body_if_needed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn decode_chunked_body_if_needed(body: &str) -> String {
     let normalized = body.replace("\r\n", "\n");
     let bytes = normalized.as_bytes();
@@ -88,6 +121,17 @@ fn decode_chunked_body_if_needed(body: &str) -> String {
     String::from_utf8(out).unwrap_or(normalized)
 }
 
+/// 函数 `post_http_raw`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn post_http_raw(
     addr: &str,
     path: &str,
@@ -126,6 +170,17 @@ pub(super) fn post_http_raw(
     panic!("status parse failed, raw response: {last_raw:?}");
 }
 
+/// 函数 `get_http_raw`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn get_http_raw(addr: &str, path: &str, headers: &[(&str, &str)]) -> (u16, String) {
     let mut last_raw = String::new();
     for _ in 0..20 {
@@ -159,6 +214,17 @@ pub(super) fn get_http_raw(addr: &str, path: &str, headers: &[(&str, &str)]) -> 
     panic!("status parse failed, raw response: {last_raw:?}");
 }
 
+/// 函数 `hash_platform_key_for_test`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn hash_platform_key_for_test(key: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(key.as_bytes());
@@ -170,6 +236,17 @@ pub(super) fn hash_platform_key_for_test(key: &str) -> String {
     out
 }
 
+/// 函数 `seed_model_options_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn seed_model_options_cache(storage: &Storage, models: &[&str]) {
     let items = models
         .iter()
@@ -184,6 +261,17 @@ pub(super) fn seed_model_options_cache(storage: &Storage, models: &[&str]) {
         .expect("upsert model options cache");
 }
 
+/// 函数 `decode_upstream_request_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn decode_upstream_request_body(captured: &CapturedUpstreamRequest) -> Vec<u8> {
     if captured
         .headers
@@ -204,6 +292,17 @@ pub(super) struct CapturedUpstreamRequest {
     pub(super) body: Vec<u8>,
 }
 
+/// 函数 `try_read_http_request_once`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - stream: 参数 stream
+///
+/// # 返回
+/// 返回函数执行结果
 fn try_read_http_request_once(stream: &mut TcpStream) -> Option<CapturedUpstreamRequest> {
     // 中文注释：部分测试会命中 reqwest keep-alive 复用，下一轮 mock listener 可能先收到
     // 一个“已建立但没有发任何 HTTP 头”的残留连接；这里把它视作噪声并忽略。
@@ -285,6 +384,18 @@ fn try_read_http_request_once(stream: &mut TcpStream) -> Option<CapturedUpstream
     })
 }
 
+/// 函数 `accept_http_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - listener: 参数 listener
+/// - idle_timeout: 参数 idle_timeout
+///
+/// # 返回
+/// 返回函数执行结果
 fn accept_http_request(
     listener: &TcpListener,
     idle_timeout: Duration,
@@ -312,6 +423,17 @@ fn accept_http_request(
     }
 }
 
+/// 函数 `start_mock_upstream_once`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn start_mock_upstream_once(
     response_json: &str,
 ) -> (
@@ -322,6 +444,17 @@ pub(super) fn start_mock_upstream_once(
     start_mock_upstream_once_with_content_type(response_json, "application/json")
 }
 
+/// 函数 `start_mock_upstream_once_with_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn start_mock_upstream_once_with_content_type(
     response_body: &str,
     content_type: &str,
@@ -355,6 +488,17 @@ pub(super) fn start_mock_upstream_once_with_content_type(
     (addr.to_string(), rx, join)
 }
 
+/// 函数 `start_mock_upstream_once_with_status_content_type_and_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn start_mock_upstream_once_with_status_content_type_and_headers(
     status: u16,
     response_body: &str,
@@ -398,6 +542,17 @@ pub(super) fn start_mock_upstream_once_with_status_content_type_and_headers(
     (addr.to_string(), rx, join)
 }
 
+/// 函数 `start_mock_upstream_sequence`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn start_mock_upstream_sequence(
     responses: Vec<(u16, String)>,
 ) -> (
@@ -408,6 +563,17 @@ pub(super) fn start_mock_upstream_sequence(
     start_mock_upstream_sequence_lenient(responses, Duration::from_secs(3))
 }
 
+/// 函数 `start_mock_upstream_sequence_lenient`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn start_mock_upstream_sequence_lenient(
     responses: Vec<(u16, String)>,
     idle_timeout: Duration,
@@ -460,6 +626,17 @@ pub(super) struct TestServer {
     join: Option<thread::JoinHandle<()>>,
 }
 
+/// 函数 `check_health`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn check_health(addr: &str) -> bool {
     let Ok(mut stream) = TcpStream::connect(addr) else {
         return false;
@@ -477,6 +654,17 @@ fn check_health(addr: &str) -> bool {
 }
 
 impl TestServer {
+    /// 函数 `start`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn start() -> Self {
         codexmanager_service::clear_shutdown_flag();
         for _ in 0..10 {
@@ -510,6 +698,17 @@ impl TestServer {
 }
 
 impl Drop for TestServer {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         codexmanager_service::request_shutdown(&self.addr);
         if let Some(join) = self.join.take() {

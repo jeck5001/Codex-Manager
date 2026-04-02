@@ -18,20 +18,73 @@ export type RuntimeCapabilityView = {
   canUseBrowserDownloadExport: boolean;
 };
 
+/**
+ * 函数 `asRecord`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
 
+/**
+ * 函数 `asString`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/**
+ * 函数 `asBoolean`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ * - fallback: 参数 fallback
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asBoolean(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+/**
+ * 函数 `normalizeRpcBaseUrl`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeRpcBaseUrl(value: string | null | undefined): string {
   const normalized = String(value || "").trim();
   if (!normalized) {
@@ -42,6 +95,19 @@ export function normalizeRpcBaseUrl(value: string | null | undefined): string {
     : normalized;
 }
 
+/**
+ * 函数 `isRuntimeMode`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function isRuntimeMode(value: string): value is RuntimeMode {
   return (
     value === "desktop-tauri" ||
@@ -50,6 +116,19 @@ export function isRuntimeMode(value: string): value is RuntimeMode {
   );
 }
 
+/**
+ * 函数 `buildDesktopRuntimeCapabilities`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function buildDesktopRuntimeCapabilities(): RuntimeCapabilities {
   return {
     mode: "desktop-tauri",
@@ -64,6 +143,19 @@ export function buildDesktopRuntimeCapabilities(): RuntimeCapabilities {
   };
 }
 
+/**
+ * 函数 `buildWebGatewayRuntimeCapabilities`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - rpcBaseUrl: 参数 rpcBaseUrl
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function buildWebGatewayRuntimeCapabilities(
   rpcBaseUrl = DEFAULT_WEB_RPC_BASE_URL
 ): RuntimeCapabilities {
@@ -80,6 +172,20 @@ export function buildWebGatewayRuntimeCapabilities(
   };
 }
 
+/**
+ * 函数 `buildUnsupportedWebCapabilities`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - reason: 参数 reason
+ * - rpcBaseUrl: 参数 rpcBaseUrl
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function buildUnsupportedWebCapabilities(
   reason = DEFAULT_UNSUPPORTED_WEB_REASON,
   rpcBaseUrl = DEFAULT_WEB_RPC_BASE_URL
@@ -97,6 +203,20 @@ export function buildUnsupportedWebCapabilities(
   };
 }
 
+/**
+ * 函数 `normalizeRuntimeCapabilities`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ * - fallbackRpcBaseUrl: 参数 fallbackRpcBaseUrl
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeRuntimeCapabilities(
   payload: unknown,
   fallbackRpcBaseUrl = DEFAULT_WEB_RPC_BASE_URL
@@ -145,6 +265,20 @@ export function normalizeRuntimeCapabilities(
   };
 }
 
+/**
+ * 函数 `resolveRuntimeCapabilityView`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - runtimeCapabilities: 参数 runtimeCapabilities
+ * - desktopFallback: 参数 desktopFallback
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function resolveRuntimeCapabilityView(
   runtimeCapabilities: RuntimeCapabilities | null,
   desktopFallback: boolean

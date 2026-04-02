@@ -7,18 +7,62 @@ use super::request_rewrite_shared::{
     path_matches_template, retain_fields_by_templates, TemplateAllowlist,
 };
 
+/// 函数 `is_compact_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn is_compact_path(path: &str) -> bool {
     path_matches_template(path, "/v1/responses/compact")
 }
 
+/// 函数 `is_standard_responses_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_standard_responses_path(path: &str) -> bool {
     path_matches_template(path, "/v1/responses")
 }
 
+/// 函数 `is_responses_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn is_responses_path(path: &str) -> bool {
     is_standard_responses_path(path) || is_compact_path(path)
 }
 
+/// 函数 `ensure_instructions`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_instructions(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {
     if !is_responses_path(path) {
         return false;
@@ -32,6 +76,17 @@ pub(super) fn ensure_instructions(path: &str, obj: &mut serde_json::Map<String, 
     true
 }
 
+/// 函数 `ensure_input_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_input_list(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {
     if !is_responses_path(path) {
         return false;
@@ -63,6 +118,17 @@ pub(super) fn ensure_input_list(path: &str, obj: &mut serde_json::Map<String, Va
     }
 }
 
+/// 函数 `ensure_stream_true`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_stream_true(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {
     if !is_standard_responses_path(path) {
         return false;
@@ -79,6 +145,17 @@ pub(super) fn ensure_stream_true(path: &str, obj: &mut serde_json::Map<String, V
     true
 }
 
+/// 函数 `take_stream_passthrough_flag`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn take_stream_passthrough_flag(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -91,6 +168,17 @@ pub(super) fn take_stream_passthrough_flag(
         .unwrap_or(false)
 }
 
+/// 函数 `ensure_store_false`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_store_false(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {
     if !is_standard_responses_path(path) {
         return false;
@@ -105,6 +193,17 @@ pub(super) fn ensure_store_false(path: &str, obj: &mut serde_json::Map<String, V
     true
 }
 
+/// 函数 `ensure_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_prompt_cache_key(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -154,6 +253,17 @@ pub(super) fn ensure_prompt_cache_key(
     true
 }
 
+/// 函数 `ensure_tool_choice_auto`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_tool_choice_auto(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -171,6 +281,17 @@ pub(super) fn ensure_tool_choice_auto(
     true
 }
 
+/// 函数 `ensure_tools_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_tools_list(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {
     if !is_responses_path(path) {
         return false;
@@ -185,6 +306,17 @@ pub(super) fn ensure_tools_list(path: &str, obj: &mut serde_json::Map<String, Va
     true
 }
 
+/// 函数 `ensure_parallel_tool_calls_bool`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_parallel_tool_calls_bool(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -210,6 +342,17 @@ pub(super) fn ensure_parallel_tool_calls_bool(
     true
 }
 
+/// 函数 `ensure_include_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_include_list(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {
     if !is_standard_responses_path(path) {
         return false;
@@ -217,6 +360,17 @@ pub(super) fn ensure_include_list(path: &str, obj: &mut serde_json::Map<String, 
     obj.contains_key("include")
 }
 
+/// 函数 `ensure_reasoning_include`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_reasoning_include(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -248,6 +402,17 @@ pub(super) fn ensure_reasoning_include(
     true
 }
 
+/// 函数 `normalize_service_tier`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn normalize_service_tier(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {
     if !is_standard_responses_path(path) {
         return false;
@@ -266,6 +431,17 @@ pub(super) fn normalize_service_tier(path: &str, obj: &mut serde_json::Map<Strin
     true
 }
 
+/// 函数 `normalize_dynamic_tools_to_tools`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn normalize_dynamic_tools_to_tools(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -330,6 +506,17 @@ pub(super) fn normalize_dynamic_tools_to_tools(
     true
 }
 
+/// 函数 `apply_reasoning_override`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn apply_reasoning_override(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -355,6 +542,17 @@ pub(super) fn apply_reasoning_override(
     false
 }
 
+/// 函数 `is_supported_openai_responses_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_supported_openai_responses_key(key: &str) -> bool {
     matches!(
         key,
@@ -381,6 +579,17 @@ fn is_supported_openai_responses_key(key: &str) -> bool {
     )
 }
 
+/// 函数 `is_supported_openai_compact_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_supported_openai_compact_key(key: &str) -> bool {
     matches!(
         key,
@@ -395,6 +604,17 @@ fn is_supported_openai_compact_key(key: &str) -> bool {
     )
 }
 
+/// 函数 `retain_official_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn retain_official_fields(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -415,6 +635,17 @@ pub(super) fn retain_official_fields(
     )
 }
 
+/// 函数 `is_supported_codex_responses_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_supported_codex_responses_key(key: &str) -> bool {
     matches!(
         key,
@@ -434,6 +665,17 @@ fn is_supported_codex_responses_key(key: &str) -> bool {
     )
 }
 
+/// 函数 `is_supported_codex_compact_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_supported_codex_compact_key(key: &str) -> bool {
     matches!(
         key,
@@ -441,6 +683,17 @@ fn is_supported_codex_compact_key(key: &str) -> bool {
     )
 }
 
+/// 函数 `retain_codex_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn retain_codex_fields(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,

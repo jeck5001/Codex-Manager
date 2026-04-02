@@ -11,6 +11,20 @@ use super::fallback_branch::{handle_openai_fallback_branch, FallbackBranchResult
 use super::stateless_retry::{retry_stateless_then_optional_alt, StatelessRetryResult};
 use super::transport::UpstreamRequestContext;
 
+/// 函数 `try_refresh_chatgpt_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - upstream_base: 参数 upstream_base
+/// - account: 参数 account
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 fn try_refresh_chatgpt_access_token(
     storage: &Storage,
     upstream_base: &str,
@@ -42,6 +56,29 @@ fn try_refresh_chatgpt_access_token(
     Ok(Some(refreshed.to_string()))
 }
 
+/// 函数 `retry_upstream_server_error_once`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - client: 参数 client
+/// - method: 参数 method
+/// - url: 参数 url
+/// - request_deadline: 参数 request_deadline
+/// - request_ctx: 参数 request_ctx
+/// - incoming_headers: 参数 incoming_headers
+/// - body: 参数 body
+/// - is_stream: 参数 is_stream
+/// - auth_token: 参数 auth_token
+/// - account: 参数 account
+/// - strip_session_affinity: 参数 strip_session_affinity
+/// - debug: 参数 debug
+/// - status: 参数 status
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 fn retry_upstream_server_error_once(
     client: &reqwest::blocking::Client,
@@ -110,6 +147,17 @@ pub(super) enum PostRetryFlowDecision {
     RespondUpstream(reqwest::blocking::Response),
 }
 
+/// 函数 `process_upstream_post_retry_flow`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(super) fn process_upstream_post_retry_flow<F>(
     client: &reqwest::blocking::Client,
@@ -370,6 +418,18 @@ mod tests {
     use std::time::Duration;
     use tiny_http::{Response, Server, StatusCode};
 
+    /// 函数 `build_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - id: 参数 id
+    /// - now: 参数 now
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn build_account(id: &str, now: i64) -> Account {
         Account {
             id: id.to_string(),
@@ -385,6 +445,18 @@ mod tests {
         }
     }
 
+    /// 函数 `build_token`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - account_id: 参数 account_id
+    /// - now: 参数 now
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn build_token(account_id: &str, now: i64) -> Token {
         Token {
             account_id: account_id.to_string(),
@@ -396,6 +468,17 @@ mod tests {
         }
     }
 
+    /// 函数 `retries_server_error_once_before_final_decision`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn retries_server_error_once_before_final_decision() {
         let storage = Storage::open_in_memory().expect("open storage");

@@ -5,12 +5,34 @@ use super::{
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 
+/// 函数 `fallback_non_success_5xx_does_not_failover_even_with_more_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn fallback_non_success_5xx_does_not_failover_even_with_more_candidates() {
     assert!(!should_failover_after_fallback_non_success(500, true));
     assert!(!should_failover_after_fallback_non_success(503, true));
 }
 
+/// 函数 `fallback_non_success_auth_and_rate_limit_can_failover_when_candidates_remain`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn fallback_non_success_auth_and_rate_limit_can_failover_when_candidates_remain() {
     assert!(should_failover_after_fallback_non_success(401, true));
@@ -19,6 +41,17 @@ fn fallback_non_success_auth_and_rate_limit_can_failover_when_candidates_remain(
     assert!(should_failover_after_fallback_non_success(429, true));
 }
 
+/// 函数 `fallback_non_success_never_failover_without_more_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn fallback_non_success_never_failover_without_more_candidates() {
     assert!(!should_failover_after_fallback_non_success(401, false));
@@ -26,6 +59,17 @@ fn fallback_non_success_never_failover_without_more_candidates() {
     assert!(!should_failover_after_fallback_non_success(500, false));
 }
 
+/// 函数 `fallback_non_success_summary_includes_debug_headers_and_body_hint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn fallback_non_success_summary_includes_debug_headers_and_body_hint() {
     let mut headers = HeaderMap::new();
@@ -81,6 +125,17 @@ fn fallback_non_success_summary_includes_debug_headers_and_body_hint() {
     );
 }
 
+/// 函数 `fallback_non_success_summary_uses_plain_body_when_no_structured_hint_exists`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn fallback_non_success_summary_uses_plain_body_when_no_structured_hint_exists() {
     let headers = HeaderMap::new();
@@ -92,6 +147,17 @@ fn fallback_non_success_summary_uses_plain_body_when_no_structured_hint_exists()
     );
 }
 
+/// 函数 `fallback_non_success_headers_only_summary_includes_debug_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn fallback_non_success_headers_only_summary_includes_debug_headers() {
     let mut headers = HeaderMap::new();
@@ -149,6 +215,17 @@ fn fallback_non_success_headers_only_summary_includes_debug_headers() {
     );
 }
 
+/// 函数 `fallback_non_success_headers_only_summary_marks_server_error_without_debug_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn fallback_non_success_headers_only_summary_marks_server_error_without_debug_headers() {
     let headers = HeaderMap::new();

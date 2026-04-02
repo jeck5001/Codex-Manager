@@ -24,6 +24,19 @@ const PAGE_COMPONENTS: Record<RootPagePath, ComponentType> = {
   "/settings": SettingsPage,
 };
 
+/**
+ * 函数 `DesktopPageViewport`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function DesktopPageViewport({ children }: { children: React.ReactNode }) {
   const pathname = normalizeRoutePath(usePathname());
   const pendingRoutePath = useAppStore((state) => state.pendingRoutePath);

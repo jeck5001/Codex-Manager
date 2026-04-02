@@ -4,6 +4,17 @@ use super::{
 };
 use serde_json::json;
 
+/// 函数 `chat_completions_stream_enforces_include_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn chat_completions_stream_enforces_include_usage() {
     let body = json!({
@@ -28,6 +39,17 @@ fn chat_completions_stream_enforces_include_usage() {
     );
 }
 
+/// 函数 `chat_completions_stream_preserves_options_while_enabling_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn chat_completions_stream_preserves_options_while_enabling_usage() {
     let body = json!({
@@ -60,6 +82,17 @@ fn chat_completions_stream_preserves_options_while_enabling_usage() {
     );
 }
 
+/// 函数 `chat_completions_uses_reasoning_effort_and_drops_non_official_keys`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn chat_completions_uses_reasoning_effort_and_drops_non_official_keys() {
     let body = json!({
@@ -88,6 +121,17 @@ fn chat_completions_uses_reasoning_effort_and_drops_non_official_keys() {
     assert!(value.get("metadata").is_some());
 }
 
+/// 函数 `chat_completions_accepts_responses_style_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn chat_completions_accepts_responses_style_payload() {
     let body = json!({
@@ -146,6 +190,17 @@ fn chat_completions_accepts_responses_style_payload() {
     );
 }
 
+/// 函数 `chat_completions_normalizes_responses_function_tools`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn chat_completions_normalizes_responses_function_tools() {
     let body = json!({
@@ -192,6 +247,17 @@ fn chat_completions_normalizes_responses_function_tools() {
     );
 }
 
+/// 函数 `responses_overrides_model_and_reasoning_effort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_overrides_model_and_reasoning_effort() {
     let body = json!({
@@ -226,6 +292,17 @@ fn responses_overrides_model_and_reasoning_effort() {
     );
 }
 
+/// 函数 `responses_input_string_normalized_to_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_input_string_normalized_to_list() {
     let body = json!({
@@ -250,6 +327,17 @@ fn responses_input_string_normalized_to_list() {
     );
 }
 
+/// 函数 `responses_stream_and_store_are_forced_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_stream_and_store_are_forced_for_codex_backend() {
     let body = json!({
@@ -276,6 +364,17 @@ fn responses_stream_and_store_are_forced_for_codex_backend() {
     );
 }
 
+/// 函数 `responses_infers_prompt_cache_key_from_conversation_id_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_infers_prompt_cache_key_from_conversation_id_for_codex_backend() {
     let body = json!({
@@ -299,6 +398,17 @@ fn responses_infers_prompt_cache_key_from_conversation_id_for_codex_backend() {
     );
 }
 
+/// 函数 `responses_forced_prompt_cache_key_overrides_existing_value_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_forced_prompt_cache_key_overrides_existing_value_for_codex_backend() {
     let body = json!({
@@ -323,6 +433,17 @@ fn responses_forced_prompt_cache_key_overrides_existing_value_for_codex_backend(
     );
 }
 
+/// 函数 `responses_stream_passthrough_keeps_client_stream_flag_when_enabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_stream_passthrough_keeps_client_stream_flag_when_enabled() {
     let body = json!({
@@ -351,6 +472,17 @@ fn responses_stream_passthrough_keeps_client_stream_flag_when_enabled() {
     assert!(value.get("stream_passthrough").is_none());
 }
 
+/// 函数 `responses_dynamic_tools_are_mapped_to_tools_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_dynamic_tools_are_mapped_to_tools_for_codex_backend() {
     let body = json!({
@@ -408,6 +540,17 @@ fn responses_dynamic_tools_are_mapped_to_tools_for_codex_backend() {
     );
 }
 
+/// 函数 `responses_retains_service_tier_for_codex_supported_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_retains_service_tier_for_codex_supported_fields() {
     let body = json!({
@@ -459,6 +602,17 @@ fn responses_retains_service_tier_for_codex_supported_fields() {
     assert!(value.get("user").is_none());
 }
 
+/// 函数 `responses_defaults_tool_choice_and_reasoning_include_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_defaults_tool_choice_and_reasoning_include_for_codex_backend() {
     let body = json!({
@@ -499,6 +653,17 @@ fn responses_defaults_tool_choice_and_reasoning_include_for_codex_backend() {
     }));
 }
 
+/// 函数 `responses_defaults_empty_include_without_reasoning_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_defaults_empty_include_without_reasoning_for_codex_backend() {
     let body = json!({
@@ -520,6 +685,17 @@ fn responses_defaults_empty_include_without_reasoning_for_codex_backend() {
     assert!(value.get("include").is_none());
 }
 
+/// 函数 `responses_normalizes_fast_service_tier_to_priority_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_normalizes_fast_service_tier_to_priority_for_codex_backend() {
     let body = json!({
@@ -543,6 +719,17 @@ fn responses_normalizes_fast_service_tier_to_priority_for_codex_backend() {
     );
 }
 
+/// 函数 `responses_applies_fast_service_tier_override_as_priority_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_applies_fast_service_tier_override_as_priority_for_codex_backend() {
     let body = json!({
@@ -566,6 +753,17 @@ fn responses_applies_fast_service_tier_override_as_priority_for_codex_backend() 
     );
 }
 
+/// 函数 `responses_applies_flex_service_tier_override_as_flex_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_applies_flex_service_tier_override_as_flex_for_codex_backend() {
     let body = json!({
@@ -589,6 +787,17 @@ fn responses_applies_flex_service_tier_override_as_flex_for_codex_backend() {
     );
 }
 
+/// 函数 `responses_compact_uses_codex_compat_rewrite`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_compact_uses_codex_compat_rewrite() {
     let body = json!({
@@ -642,6 +851,17 @@ fn responses_compact_uses_codex_compat_rewrite() {
         .is_some());
 }
 
+/// 函数 `responses_compact_defaults_parallel_tool_calls_to_false_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_compact_defaults_parallel_tool_calls_to_false_for_codex_backend() {
     let body = json!({
@@ -669,6 +889,17 @@ fn responses_compact_defaults_parallel_tool_calls_to_false_for_codex_backend() {
         .is_some());
 }
 
+/// 函数 `responses_omits_include_when_reasoning_missing_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_omits_include_when_reasoning_missing_for_codex_backend() {
     let body = json!({
@@ -686,6 +917,17 @@ fn responses_omits_include_when_reasoning_missing_for_codex_backend() {
     assert!(value.get("include").is_none());
 }
 
+/// 函数 `responses_keeps_parallel_tool_calls_missing_when_tools_are_present`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_keeps_parallel_tool_calls_missing_when_tools_are_present() {
     let body = json!({
@@ -704,6 +946,17 @@ fn responses_keeps_parallel_tool_calls_missing_when_tools_are_present() {
     assert!(value.get("parallel_tool_calls").is_none());
 }
 
+/// 函数 `responses_passthrough_for_non_codex_upstream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn responses_passthrough_for_non_codex_upstream() {
     let body = json!({
@@ -742,6 +995,17 @@ fn responses_passthrough_for_non_codex_upstream() {
     assert!(value.get("unknown_field").is_none());
 }
 
+/// 函数 `non_matching_endpoint_keeps_non_json_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn non_matching_endpoint_keeps_non_json_body() {
     let body = b"foo=1&bar=2".to_vec();

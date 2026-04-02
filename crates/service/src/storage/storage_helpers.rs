@@ -22,6 +22,18 @@ pub(crate) struct StorageHandle {
 }
 
 impl StorageHandle {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - path: 参数 path
+    /// - storage: 参数 storage
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new(path: String, storage: Storage) -> Self {
         Self {
             path,
@@ -33,18 +45,51 @@ impl StorageHandle {
 impl Deref for StorageHandle {
     type Target = Storage;
 
+    /// 函数 `deref`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn deref(&self) -> &Self::Target {
         self.storage.as_ref().expect("storage handle should exist")
     }
 }
 
 impl DerefMut for StorageHandle {
+    /// 函数 `deref_mut`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage.as_mut().expect("storage handle should exist")
     }
 }
 
 impl Drop for StorageHandle {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         let Some(storage) = self.storage.take() else {
             return;
@@ -57,6 +102,17 @@ impl Drop for StorageHandle {
     }
 }
 
+/// 函数 `normalize_key_part`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_key_part(value: Option<&str>) -> Option<String> {
     // 规范化 key 片段，去除空白并避免分隔符冲突
     let value = value?.trim();
@@ -66,6 +122,17 @@ fn normalize_key_part(value: Option<&str>) -> Option<String> {
     Some(value.replace("::", "_"))
 }
 
+/// 函数 `compact_key_part`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn compact_key_part(value: &str) -> String {
     // 对过长/复杂后缀做短哈希，避免账号ID过长且保留稳定唯一性。
     let trimmed = value.trim();
@@ -89,6 +156,17 @@ fn compact_key_part(value: &str) -> String {
     out
 }
 
+/// 函数 `account_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn account_key(account_id: &str, tags: Option<&str>) -> String {
     // 组合账号与标签，生成稳定的账户唯一标识
     let mut parts = Vec::new();
@@ -102,6 +180,17 @@ pub(crate) fn account_key(account_id: &str, tags: Option<&str>) -> String {
     parts.join("::")
 }
 
+/// 函数 `hash_platform_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn hash_platform_key(key: &str) -> String {
     // 对平台 Key 做不可逆哈希，避免明文存储
     let mut hasher = Sha256::new();
@@ -114,6 +203,17 @@ pub(crate) fn hash_platform_key(key: &str) -> String {
     out
 }
 
+/// 函数 `generate_platform_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn generate_platform_key() -> String {
     // 生成随机平台 Key（十六进制）
     let mut buf = [0u8; 32];
@@ -125,6 +225,17 @@ pub(crate) fn generate_platform_key() -> String {
     out
 }
 
+/// 函数 `generate_key_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn generate_key_id() -> String {
     // 生成短 ID 作为平台 Key 的展示标识
     let mut buf = [0u8; 6];
@@ -136,6 +247,17 @@ pub(crate) fn generate_key_id() -> String {
     out
 }
 
+/// 函数 `generate_aggregate_api_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn generate_aggregate_api_id() -> String {
     let mut buf = [0u8; 6];
     rand::rngs::OsRng.fill_bytes(&mut buf);
@@ -150,6 +272,17 @@ pub(crate) fn generate_aggregate_api_id() -> String {
 static STORAGE_OPEN_COUNTS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, usize>>> =
     std::sync::OnceLock::new();
 
+/// 函数 `open_storage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn open_storage() -> Option<StorageHandle> {
     // 读取数据库路径并打开存储
     let path = match std::env::var("CODEXMANAGER_DB_PATH") {
@@ -162,6 +295,17 @@ pub(crate) fn open_storage() -> Option<StorageHandle> {
     open_storage_at_path(&path)
 }
 
+/// 函数 `open_storage_at_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn open_storage_at_path(path: &str) -> Option<StorageHandle> {
     if let Some(storage) = take_cached_storage(&path) {
         return Some(StorageHandle::new(path.to_string(), storage));
@@ -182,6 +326,17 @@ fn open_storage_at_path(path: &str) -> Option<StorageHandle> {
     Some(StorageHandle::new(path.to_string(), storage))
 }
 
+/// 函数 `initialize_storage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn initialize_storage() -> Result<(), String> {
     let path = std::env::var("CODEXMANAGER_DB_PATH")
         .map_err(|_| "CODEXMANAGER_DB_PATH not set".to_string())?;
@@ -196,6 +351,17 @@ pub(crate) fn initialize_storage() -> Result<(), String> {
     Ok(())
 }
 
+/// 函数 `take_cached_storage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn take_cached_storage(path: &str) -> Option<Storage> {
     STORAGE_CACHE.with(|cell| {
         let mut cache = cell.borrow_mut();
@@ -213,6 +379,17 @@ fn take_cached_storage(path: &str) -> Option<Storage> {
     })
 }
 
+/// 函数 `clear_storage_cache_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn clear_storage_cache_for_tests() {
     STORAGE_CACHE.with(|cell| {
@@ -220,6 +397,17 @@ fn clear_storage_cache_for_tests() {
     });
 }
 
+/// 函数 `record_storage_open_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn record_storage_open_for_tests(path: &str) {
     let mutex = STORAGE_OPEN_COUNTS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
@@ -231,6 +419,17 @@ fn record_storage_open_for_tests(path: &str) {
     *entry += 1;
 }
 
+/// 函数 `storage_open_count_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 fn storage_open_count_for_tests(path: &str) -> usize {
     let Some(mutex) = STORAGE_OPEN_COUNTS.get() else {
@@ -243,6 +442,17 @@ fn storage_open_count_for_tests(path: &str) -> usize {
     counts.get(path).copied().unwrap_or(0)
 }
 
+/// 函数 `clear_storage_open_count_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn clear_storage_open_count_for_tests(path: &str) {
     let Some(mutex) = STORAGE_OPEN_COUNTS.get() else {

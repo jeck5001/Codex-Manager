@@ -1,5 +1,16 @@
 use crate::rpc_client::rpc_call;
 
+/// 函数 `rpc_call_in_background`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) async fn rpc_call_in_background(
     method: &'static str,
     addr: Option<String>,
@@ -12,6 +23,17 @@ pub(crate) async fn rpc_call_in_background(
         .map_err(|err| format!("{method_name} task failed: {err}"))?
 }
 
+/// 函数 `open_in_browser_blocking`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn open_in_browser_blocking(url: &str) -> Result<(), String> {
     if cfg!(target_os = "windows") {
         let status = std::process::Command::new("rundll32.exe")
@@ -28,6 +50,18 @@ pub(crate) fn open_in_browser_blocking(url: &str) -> Result<(), String> {
     }
 }
 
+/// 函数 `spawn_background_command`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - command: 参数 command
+/// - launch_failure_message: 参数 launch_failure_message
+///
+/// # 返回
+/// 返回函数执行结果
 fn spawn_background_command(
     mut command: std::process::Command,
     launch_failure_message: &str,
@@ -41,6 +75,17 @@ fn spawn_background_command(
     Ok(())
 }
 
+/// 函数 `open_in_file_manager_blocking`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn open_in_file_manager_blocking(path: &str) -> Result<(), String> {
     let normalized = path.trim();
     if normalized.is_empty() {

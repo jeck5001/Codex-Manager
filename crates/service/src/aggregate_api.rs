@@ -14,6 +14,17 @@ use crate::storage_helpers::{generate_aggregate_api_id, open_storage};
 pub(crate) const AGGREGATE_API_PROVIDER_CODEX: &str = "codex";
 pub(crate) const AGGREGATE_API_PROVIDER_CLAUDE: &str = "claude";
 
+/// 函数 `normalize_secret`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_secret(value: Option<String>) -> Option<String> {
     value
         .as_deref()
@@ -22,6 +33,17 @@ fn normalize_secret(value: Option<String>) -> Option<String> {
         .map(str::to_string)
 }
 
+/// 函数 `normalize_supplier_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_supplier_name(value: Option<String>) -> Result<String, String> {
     let normalized = value
         .as_deref()
@@ -32,10 +54,32 @@ fn normalize_supplier_name(value: Option<String>) -> Result<String, String> {
     Ok(normalized)
 }
 
+/// 函数 `normalize_sort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_sort(value: Option<i64>) -> i64 {
     value.unwrap_or(0)
 }
 
+/// 函数 `normalize_provider_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_provider_type(value: Option<String>) -> Result<String, String> {
     match value {
         Some(raw) => {
@@ -54,6 +98,17 @@ fn normalize_provider_type(value: Option<String>) -> Result<String, String> {
     }
 }
 
+/// 函数 `normalize_provider_type_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_provider_type_value(value: &str) -> String {
     let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
     match normalized.as_str() {
@@ -64,6 +119,17 @@ fn normalize_provider_type_value(value: &str) -> String {
     }
 }
 
+/// 函数 `provider_default_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - provider_type: 参数 provider_type
+///
+/// # 返回
+/// 返回函数执行结果
 fn provider_default_url(provider_type: &str) -> &'static str {
     match provider_type {
         AGGREGATE_API_PROVIDER_CLAUDE => "https://api.anthropic.com/v1",
@@ -71,6 +137,18 @@ fn provider_default_url(provider_type: &str) -> &'static str {
     }
 }
 
+/// 函数 `normalize_probe_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - base_url: 参数 base_url
+/// - suffix: 参数 suffix
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_probe_url(base_url: &str, suffix: &str) -> String {
     let base = base_url.trim().trim_end_matches('/');
     if base.ends_with("/v1") {
@@ -80,6 +158,17 @@ fn normalize_probe_url(base_url: &str, suffix: &str) -> String {
     }
 }
 
+/// 函数 `read_first_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - response: 参数 response
+///
+/// # 返回
+/// 返回函数执行结果
 fn read_first_chunk(mut response: reqwest::blocking::Response) -> Result<(), String> {
     let mut buf = [0u8; 16];
     let read = response.read(&mut buf).map_err(|err| err.to_string())?;
@@ -90,6 +179,17 @@ fn read_first_chunk(mut response: reqwest::blocking::Response) -> Result<(), Str
     }
 }
 
+/// 函数 `build_claude_probe_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_claude_probe_body() -> serde_json::Value {
     json!({
         "model": "claude-haiku-4-5-20251001",
@@ -102,6 +202,17 @@ fn build_claude_probe_body() -> serde_json::Value {
     })
 }
 
+/// 函数 `build_codex_probe_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_codex_probe_body() -> serde_json::Value {
     json!({
         "model": "gpt-5.1-codex",
@@ -116,6 +227,17 @@ fn build_codex_probe_body() -> serde_json::Value {
     })
 }
 
+/// 函数 `append_client_version_query`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - url: 参数 url
+///
+/// # 返回
+/// 返回函数执行结果
 fn append_client_version_query(url: &str) -> String {
     if url.contains("client_version=") {
         return url.to_string();
@@ -127,10 +249,33 @@ fn append_client_version_query(url: &str) -> String {
     )
 }
 
+/// 函数 `probe_codex_only_for_provider`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - provider_type: 参数 provider_type
+///
+/// # 返回
+/// 返回函数执行结果
 fn probe_codex_only_for_provider(provider_type: &str) -> bool {
     provider_type != AGGREGATE_API_PROVIDER_CLAUDE
 }
 
+/// 函数 `add_codex_probe_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - builder: 参数 builder
+/// - secret: 参数 secret
+///
+/// # 返回
+/// 返回函数执行结果
 fn add_codex_probe_headers(
     builder: reqwest::blocking::RequestBuilder,
     secret: &str,
@@ -150,6 +295,19 @@ fn add_codex_probe_headers(
         .header("accept-encoding", "identity"))
 }
 
+/// 函数 `probe_codex_models_endpoint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - client: 参数 client
+/// - base_url: 参数 base_url
+/// - secret: 参数 secret
+///
+/// # 返回
+/// 返回函数执行结果
 fn probe_codex_models_endpoint(
     client: &reqwest::blocking::Client,
     base_url: &str,
@@ -168,6 +326,19 @@ fn probe_codex_models_endpoint(
     Ok(status_code)
 }
 
+/// 函数 `probe_codex_responses_endpoint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - client: 参数 client
+/// - base_url: 参数 base_url
+/// - secret: 参数 secret
+///
+/// # 返回
+/// 返回函数执行结果
 fn probe_codex_responses_endpoint(
     client: &reqwest::blocking::Client,
     base_url: &str,
@@ -189,6 +360,19 @@ fn probe_codex_responses_endpoint(
     Ok(status_code)
 }
 
+/// 函数 `probe_codex_endpoint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - client: 参数 client
+/// - base_url: 参数 base_url
+/// - secret: 参数 secret
+///
+/// # 返回
+/// 返回函数执行结果
 fn probe_codex_endpoint(
     client: &reqwest::blocking::Client,
     base_url: &str,
@@ -213,6 +397,19 @@ fn probe_codex_endpoint(
     Err(format!("{models_err}; {responses_err}"))
 }
 
+/// 函数 `probe_claude_endpoint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - client: 参数 client
+/// - base_url: 参数 base_url
+/// - secret: 参数 secret
+///
+/// # 返回
+/// 返回函数执行结果
 fn probe_claude_endpoint(
     client: &reqwest::blocking::Client,
     base_url: &str,
@@ -250,6 +447,17 @@ fn probe_claude_endpoint(
     Ok(status_code)
 }
 
+/// 函数 `list_aggregate_apis`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn list_aggregate_apis() -> Result<Vec<AggregateApiSummary>, String> {
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
     let items = storage
@@ -273,6 +481,17 @@ pub(crate) fn list_aggregate_apis() -> Result<Vec<AggregateApiSummary>, String> 
         .collect())
 }
 
+/// 函数 `create_aggregate_api`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn create_aggregate_api(
     url: Option<String>,
     key: Option<String>,
@@ -315,6 +534,17 @@ pub(crate) fn create_aggregate_api(
     })
 }
 
+/// 函数 `update_aggregate_api`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn update_aggregate_api(
     api_id: &str,
     url: Option<String>,
@@ -357,6 +587,17 @@ pub(crate) fn update_aggregate_api(
     Ok(())
 }
 
+/// 函数 `delete_aggregate_api`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn delete_aggregate_api(api_id: &str) -> Result<(), String> {
     if api_id.is_empty() {
         return Err("aggregate api id required".to_string());
@@ -367,6 +608,17 @@ pub(crate) fn delete_aggregate_api(api_id: &str) -> Result<(), String> {
         .map_err(|err| err.to_string())
 }
 
+/// 函数 `read_aggregate_api_secret`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_aggregate_api_secret(api_id: &str) -> Result<AggregateApiSecretResult, String> {
     if api_id.is_empty() {
         return Err("aggregate api id required".to_string());
@@ -382,6 +634,17 @@ pub(crate) fn read_aggregate_api_secret(api_id: &str) -> Result<AggregateApiSecr
     })
 }
 
+/// 函数 `test_aggregate_api_connection`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn test_aggregate_api_connection(
     api_id: &str,
 ) -> Result<AggregateApiTestResult, String> {

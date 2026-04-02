@@ -1,3 +1,14 @@
+/// 函数 `split_http_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - buf: 参数 buf
+///
+/// # 返回
+/// 返回函数执行结果
 fn split_http_response(buf: &str) -> Option<(&str, &str)> {
     if let Some((headers, body)) = buf.split_once("\r\n\r\n") {
         return Some((headers, body));
@@ -8,6 +19,17 @@ fn split_http_response(buf: &str) -> Option<(&str, &str)> {
     None
 }
 
+/// 函数 `response_uses_chunked`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn response_uses_chunked(headers: &str) -> bool {
     headers.lines().any(|line| {
         let Some((name, value)) = line.split_once(':') else {
@@ -18,6 +40,17 @@ fn response_uses_chunked(headers: &str) -> bool {
     })
 }
 
+/// 函数 `decode_chunked_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn decode_chunked_body(raw: &str) -> Result<String, String> {
     let bytes = raw.as_bytes();
     let mut cursor = 0usize;
@@ -51,6 +84,17 @@ fn decode_chunked_body(raw: &str) -> Result<String, String> {
     String::from_utf8(out).map_err(|err| format!("Invalid chunked body utf8 payload: {err}"))
 }
 
+/// 函数 `parse_http_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn parse_http_body(buf: &str) -> Result<String, String> {
     let Some((headers, body_raw)) = split_http_response(buf) else {
         return Ok(buf.to_string());

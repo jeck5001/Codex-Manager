@@ -22,10 +22,36 @@ type ExportResult = Awaited<ReturnType<typeof accountClient.export>>;
 type DeleteUnavailableFreeResult = { deleted?: number };
 type AccountSortUpdate = { accountId: string; sort: number };
 
+/**
+ * 函数 `isAccountRefreshBlocked`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - status: 参数 status
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function isAccountRefreshBlocked(status: string | null | undefined): boolean {
   return String(status || "").trim().toLowerCase() === "disabled";
 }
 
+/**
+ * 函数 `buildImportSummaryMessage`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - result: 参数 result
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function buildImportSummaryMessage(result: ImportByDirectoryResult): string {
   const total = Number(result?.total || 0);
   const created = Number(result?.created || 0);
@@ -34,6 +60,19 @@ function buildImportSummaryMessage(result: ImportByDirectoryResult): string {
   return `导入完成：共${total}，新增${created}，更新${updated}，失败${failed}`;
 }
 
+/**
+ * 函数 `formatUsageRefreshErrorMessage`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - error: 参数 error
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatUsageRefreshErrorMessage(error: unknown): string {
   const message = getAppErrorMessage(error);
   if (message.toLowerCase().includes("refresh token failed with status 401")) {
@@ -42,6 +81,19 @@ function formatUsageRefreshErrorMessage(error: unknown): string {
   return message;
 }
 
+/**
+ * 函数 `useAccounts`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function useAccounts() {
   const queryClient = useQueryClient();
   const serviceStatus = useAppStore((state) => state.serviceStatus);
@@ -59,6 +111,19 @@ export function useAccounts() {
   const startupManualPreferredAccountId = startupSnapshot?.manualPreferredAccountId || "";
   const hasStartupAccountSnapshot = startupAccounts.length > 0;
 
+  /**
+   * 函数 `ensureServiceReady`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - actionLabel: 参数 actionLabel
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const ensureServiceReady = (actionLabel: string): boolean => {
     if (isServiceReady) {
       return true;
@@ -122,6 +187,19 @@ export function useAccounts() {
       "edu",
       "unknown",
     ];
+    /**
+     * 函数 `getSortIndex`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * - value: 参数 value
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const getSortIndex = (value: string) => {
       const index = sortOrder.indexOf(value);
       return index === -1 ? sortOrder.length : index;
@@ -143,6 +221,19 @@ export function useAccounts() {
       .map(([value, count]) => ({ value, count }));
   }, [accounts]);
 
+  /**
+   * 函数 `invalidateAll`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const invalidateAll = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["accounts"] }),
@@ -155,6 +246,19 @@ export function useAccounts() {
     ]);
   };
 
+  /**
+   * 函数 `invalidateManualPreferred`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const invalidateManualPreferred = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["gateway", "manual-account"] }),

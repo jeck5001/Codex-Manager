@@ -13,6 +13,17 @@ const BUILTIN_UNAVAILABLE_FREE_CLEANUP_TASK_INTERVAL_SECS: i64 = 60;
 const BUILTIN_MARKET_MODE: &str = "builtin";
 const CUSTOM_MARKET_MODE: &str = "custom";
 
+/// 函数 `handle_catalog_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_catalog_list(req: &JsonRpcRequest) -> JsonRpcResponse {
     match catalog_list_result(req) {
         Ok(value) => super::json_response(req, value),
@@ -20,6 +31,17 @@ pub(crate) fn handle_catalog_list(req: &JsonRpcRequest) -> JsonRpcResponse {
     }
 }
 
+/// 函数 `handle_install`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_install(req: &JsonRpcRequest) -> JsonRpcResponse {
     match install_or_update_plugin(req, false) {
         Ok(value) => super::json_response(req, value),
@@ -27,6 +49,17 @@ pub(crate) fn handle_install(req: &JsonRpcRequest) -> JsonRpcResponse {
     }
 }
 
+/// 函数 `handle_update`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_update(req: &JsonRpcRequest) -> JsonRpcResponse {
     match install_or_update_plugin(req, true) {
         Ok(value) => super::json_response(req, value),
@@ -34,6 +67,17 @@ pub(crate) fn handle_update(req: &JsonRpcRequest) -> JsonRpcResponse {
     }
 }
 
+/// 函数 `handle_uninstall`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_uninstall(req: &JsonRpcRequest) -> JsonRpcResponse {
     let Some(plugin_id) = string_param(req, "pluginId").or_else(|| string_param(req, "plugin_id"))
     else {
@@ -49,10 +93,33 @@ pub(crate) fn handle_uninstall(req: &JsonRpcRequest) -> JsonRpcResponse {
     super::json_response(req, serde_json::json!({ "ok": true }))
 }
 
+/// 函数 `error_result`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
 fn error_result(message: impl Into<String>) -> Value {
     crate::error_codes::rpc_error_payload(message.into())
 }
 
+/// 函数 `string_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn string_param(req: &JsonRpcRequest, key: &str) -> Option<String> {
     req.params
         .as_ref()
@@ -62,6 +129,17 @@ fn string_param(req: &JsonRpcRequest, key: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+/// 函数 `catalog_list_result`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+///
+/// # 返回
+/// 返回函数执行结果
 fn catalog_list_result(req: &JsonRpcRequest) -> Result<Value, String> {
     let market_mode = market_source_mode_for_request(req);
     let source_url = source_url_from_request(req);
@@ -86,6 +164,17 @@ fn catalog_list_result(req: &JsonRpcRequest) -> Result<Value, String> {
     }))
 }
 
+/// 函数 `requested_market_source_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+///
+/// # 返回
+/// 返回函数执行结果
 fn requested_market_source_mode(req: &JsonRpcRequest) -> Option<String> {
     string_param(req, "marketMode")
         .or_else(|| string_param(req, "market_mode"))
@@ -95,10 +184,32 @@ fn requested_market_source_mode(req: &JsonRpcRequest) -> Option<String> {
         })
 }
 
+/// 函数 `market_source_mode_for_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+///
+/// # 返回
+/// 返回函数执行结果
 fn market_source_mode_for_request(req: &JsonRpcRequest) -> String {
     requested_market_source_mode(req).unwrap_or_else(current_market_source_mode)
 }
 
+/// 函数 `source_url_from_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+///
+/// # 返回
+/// 返回函数执行结果
 fn source_url_from_request(req: &JsonRpcRequest) -> Option<String> {
     let market_mode = market_source_mode_for_request(req);
     if market_mode == BUILTIN_MARKET_MODE {
@@ -109,6 +220,17 @@ fn source_url_from_request(req: &JsonRpcRequest) -> Option<String> {
         .or_else(current_market_source_url)
 }
 
+/// 函数 `current_market_source_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_market_source_url() -> Option<String> {
     crate::app_settings::list_app_settings_map()
         .get(crate::app_settings::APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY)
@@ -116,6 +238,17 @@ pub(crate) fn current_market_source_url() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+/// 函数 `current_market_source_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_market_source_mode() -> String {
     let settings = crate::app_settings::list_app_settings_map();
     if let Some(value) = settings.get(crate::app_settings::APP_SETTING_PLUGIN_MARKET_MODE_KEY) {
@@ -135,6 +268,17 @@ pub(crate) fn current_market_source_mode() -> String {
     BUILTIN_MARKET_MODE.to_string()
 }
 
+/// 函数 `fetch_catalog_entries`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn fetch_catalog_entries(
     source_url: Option<&str>,
 ) -> Result<Vec<PluginCatalogEntry>, String> {
@@ -169,6 +313,17 @@ pub(crate) fn fetch_catalog_entries(
     Ok(builtin_catalog_entries())
 }
 
+/// 函数 `builtin_catalog_entries`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn builtin_catalog_entries() -> Vec<PluginCatalogEntry> {
     vec![
         build_builtin_cleanup_plugin(
@@ -194,6 +349,24 @@ fn builtin_catalog_entries() -> Vec<PluginCatalogEntry> {
     ]
 }
 
+/// 函数 `build_builtin_cleanup_plugin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - id: 参数 id
+/// - name: 参数 name
+/// - description: 参数 description
+/// - start_message: 参数 start_message
+/// - cleanup_call: 参数 cleanup_call
+/// - finish_prefix: 参数 finish_prefix
+/// - task_subject: 参数 task_subject
+/// - interval_seconds: 参数 interval_seconds
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_builtin_cleanup_plugin(
     id: &str,
     name: &str,
@@ -214,6 +387,17 @@ fn build_builtin_cleanup_plugin(
         script_url: None,
         script_body: Some(format!(
             r#"
+/// 函数 `run`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - context: 参数 context
+///
+/// # 返回
+/// 无
 fn run(context) {{
     log("{}" + context["plugin"]["name"]);
     let result = {};
@@ -248,6 +432,17 @@ fn run(context) {{
     }
 }
 
+/// 函数 `sync_builtin_cleanup_task_schedule`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn sync_builtin_cleanup_task_schedule() {
     let Some(storage) = open_storage() else {
         return;
@@ -302,6 +497,17 @@ pub(crate) fn sync_builtin_cleanup_task_schedule() {
     );
 }
 
+/// 函数 `parse_catalog_entry_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn parse_catalog_entry_value(
     value: &Value,
     source_url: Option<&str>,
@@ -436,6 +642,17 @@ mod tests {
     use super::{builtin_catalog_entries, catalog_list_result, market_source_mode_for_request};
     use codexmanager_core::rpc::types::{JsonRpcRequest, RequestId};
 
+    /// 函数 `catalog_request`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - params: 参数 params
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn catalog_request(params: serde_json::Value) -> JsonRpcRequest {
         JsonRpcRequest {
             id: RequestId::from(1),
@@ -445,6 +662,17 @@ mod tests {
         }
     }
 
+    /// 函数 `builtin_catalog_exposes_cleanup_plugins`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn builtin_catalog_exposes_cleanup_plugins() {
         let items = builtin_catalog_entries();
@@ -490,6 +718,17 @@ mod tests {
         );
     }
 
+    /// 函数 `request_market_mode_normalizes_private_to_custom`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn request_market_mode_normalizes_private_to_custom() {
         let request = catalog_request(serde_json::json!({
@@ -498,6 +737,17 @@ mod tests {
         assert_eq!(market_source_mode_for_request(&request), "custom");
     }
 
+    /// 函数 `custom_market_with_unreachable_source_returns_empty_items`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn custom_market_with_unreachable_source_returns_empty_items() {
         let request = catalog_request(serde_json::json!({
@@ -519,6 +769,17 @@ mod tests {
         );
     }
 
+    /// 函数 `custom_market_without_source_returns_empty_items`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn custom_market_without_source_returns_empty_items() {
         let request = catalog_request(serde_json::json!({
@@ -539,6 +800,17 @@ mod tests {
         );
     }
 
+    /// 函数 `builtin_market_never_uses_custom_source`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn builtin_market_never_uses_custom_source() {
         let request = catalog_request(serde_json::json!({
@@ -561,6 +833,17 @@ mod tests {
     }
 }
 
+/// 函数 `parse_catalog_task_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_catalog_task_value(value: &Value) -> Result<PluginCatalogTask, String> {
     let obj = value
         .as_object()
@@ -608,6 +891,18 @@ fn parse_catalog_task_value(value: &Value) -> Result<PluginCatalogTask, String> 
     })
 }
 
+/// 函数 `build_plugin_tasks`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - entry: 参数 entry
+/// - now: 参数 now
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_plugin_tasks(entry: &PluginCatalogEntry, now: i64) -> Result<Vec<PluginTask>, String> {
     entry
         .tasks
@@ -647,6 +942,18 @@ fn build_plugin_tasks(entry: &PluginCatalogEntry, now: i64) -> Result<Vec<Plugin
         .collect()
 }
 
+/// 函数 `install_or_update_plugin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - is_update: 参数 is_update
+///
+/// # 返回
+/// 返回函数执行结果
 fn install_or_update_plugin(req: &JsonRpcRequest, is_update: bool) -> Result<Value, String> {
     let entry_value = req
         .params
@@ -750,6 +1057,18 @@ fn install_or_update_plugin(req: &JsonRpcRequest, is_update: bool) -> Result<Val
     }))
 }
 
+/// 函数 `to_installed_plugin_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - plugin: 参数 plugin
+/// - tasks: 参数 tasks
+///
+/// # 返回
+/// 返回函数执行结果
 fn to_installed_plugin_summary(
     plugin: &PluginInstall,
     tasks: &[PluginTask],
@@ -799,6 +1118,18 @@ fn to_installed_plugin_summary(
     }
 }
 
+/// 函数 `tasks_to_summaries`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - plugin: 参数 plugin
+/// - tasks: 参数 tasks
+///
+/// # 返回
+/// 返回函数执行结果
 fn tasks_to_summaries(plugin: &PluginInstall, tasks: &[PluginTask]) -> Vec<PluginTaskSummary> {
     tasks
         .iter()

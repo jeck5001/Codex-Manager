@@ -5,6 +5,17 @@ pub(crate) enum Availability {
     Unavailable(&'static str),
 }
 
+/// 函数 `evaluate_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn evaluate_snapshot(snap: &UsageSnapshotRecord) -> Availability {
     let primary_missing = snap.used_percent.is_none() || snap.window_minutes.is_none();
     let secondary_present =

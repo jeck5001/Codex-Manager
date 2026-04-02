@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `gateway_openai_chat_completions_stabilizes_prompt_cache_key_without_conversation_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_chat_completions_stabilizes_prompt_cache_key_without_conversation_id() {
     let _lock = test_env_guard();
@@ -150,6 +161,17 @@ fn gateway_openai_chat_completions_stabilizes_prompt_cache_key_without_conversat
     );
 }
 
+/// 函数 `gateway_openai_chat_completions_logs_anthropic_style_cached_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_chat_completions_logs_anthropic_style_cached_tokens() {
     let _lock = test_env_guard();
@@ -290,6 +312,17 @@ fn gateway_openai_chat_completions_logs_anthropic_style_cached_tokens() {
     assert_eq!(log.total_tokens, Some(29));
 }
 
+/// 函数 `gateway_openai_stream_logs_cached_and_reasoning_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_stream_logs_cached_and_reasoning_tokens() {
     let _lock = test_env_guard();
@@ -408,6 +441,17 @@ fn gateway_openai_stream_logs_cached_and_reasoning_tokens() {
     assert_eq!(log.reasoning_output_tokens, Some(7));
 }
 
+/// 函数 `gateway_openai_api_base_suppresses_cookie_and_account_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_api_base_suppresses_cookie_and_account_headers() {
     let _lock = test_env_guard();
@@ -517,6 +561,17 @@ fn gateway_openai_api_base_suppresses_cookie_and_account_headers() {
     );
 }
 
+/// 函数 `gateway_openai_stream_usage_with_plain_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_stream_usage_with_plain_content_type() {
     let _lock = test_env_guard();
@@ -635,6 +690,17 @@ fn gateway_openai_stream_usage_with_plain_content_type() {
     assert_eq!(log.reasoning_output_tokens, Some(5));
 }
 
+/// 函数 `gateway_openai_non_stream_sse_with_plain_content_type_is_collapsed_to_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_non_stream_sse_with_plain_content_type_is_collapsed_to_json() {
     let _lock = test_env_guard();
@@ -735,6 +801,17 @@ fn gateway_openai_non_stream_sse_with_plain_content_type_is_collapsed_to_json() 
     assert_eq!(captured.path, "/backend-api/codex/responses");
 }
 
+/// 函数 `gateway_openai_non_stream_without_usage_keeps_tokens_null`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_non_stream_without_usage_keeps_tokens_null() {
     let _lock = test_env_guard();
@@ -861,6 +938,17 @@ fn gateway_openai_non_stream_without_usage_keeps_tokens_null() {
     assert_eq!(log.reasoning_output_tokens, None);
 }
 
+/// 函数 `gateway_openai_compact_route_aligns_with_codex_remote_compact_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_compact_route_aligns_with_codex_remote_compact_request() {
     let _lock = test_env_guard();
@@ -1039,6 +1127,17 @@ fn gateway_openai_compact_route_aligns_with_codex_remote_compact_request() {
     );
 }
 
+/// 函数 `gateway_openai_compact_invalid_success_body_is_mapped_to_502`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_compact_invalid_success_body_is_mapped_to_502() {
     let _lock = test_env_guard();
@@ -1173,6 +1272,17 @@ fn gateway_openai_compact_invalid_success_body_is_mapped_to_502() {
     );
 }
 
+/// 函数 `gateway_openai_compact_uses_conversation_id_as_session_anchor`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_compact_uses_conversation_id_as_session_anchor() {
     let _lock = test_env_guard();
@@ -1295,6 +1405,17 @@ fn gateway_openai_compact_uses_conversation_id_as_session_anchor() {
     );
 }
 
+/// 函数 `gateway_openai_compact_html_non_success_is_mapped_to_structured_403`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_compact_html_non_success_is_mapped_to_structured_403() {
     let _lock = test_env_guard();
@@ -1463,6 +1584,17 @@ fn gateway_openai_compact_html_non_success_is_mapped_to_structured_403() {
     );
 }
 
+/// 函数 `gateway_openai_html_non_success_logs_debug_ids_for_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_openai_html_non_success_logs_debug_ids_for_responses() {
     let _lock = test_env_guard();
@@ -1596,6 +1728,17 @@ fn gateway_openai_html_non_success_logs_debug_ids_for_responses() {
     );
 }
 
+/// 函数 `gateway_models_returns_cached_without_upstream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_models_returns_cached_without_upstream() {
     let _lock = test_env_guard();
@@ -1666,6 +1809,17 @@ fn gateway_models_returns_cached_without_upstream() {
     );
 }
 
+/// 函数 `apikey_models_refresh_includes_client_version_query`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn apikey_models_refresh_includes_client_version_query() {
     let _lock = test_env_guard();
@@ -1760,6 +1914,17 @@ fn apikey_models_refresh_includes_client_version_query() {
     );
 }
 
+/// 函数 `gateway_chatgpt_primary_preserves_turn_state_headers_without_openai_fallback`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_chatgpt_primary_preserves_turn_state_headers_without_openai_fallback() {
     let _lock = test_env_guard();
@@ -1882,6 +2047,17 @@ fn gateway_chatgpt_primary_preserves_turn_state_headers_without_openai_fallback(
     );
 }
 
+/// 函数 `gateway_chatgpt_primary_drops_turn_state_without_thread_anchor`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_chatgpt_primary_drops_turn_state_without_thread_anchor() {
     let _lock = test_env_guard();
@@ -1986,6 +2162,17 @@ fn gateway_chatgpt_primary_drops_turn_state_without_thread_anchor() {
     );
 }
 
+/// 函数 `gateway_chatgpt_primary_uses_prompt_cache_anchor_for_session_without_inventing_request_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_chatgpt_primary_uses_prompt_cache_anchor_for_session_without_inventing_request_id() {
     let _lock = test_env_guard();
@@ -2111,6 +2298,17 @@ fn gateway_chatgpt_primary_uses_prompt_cache_anchor_for_session_without_inventin
     assert_eq!(upstream_payload["prompt_cache_key"], "conv_anchor_primary");
 }
 
+/// 函数 `gateway_unauthorized_refreshes_access_token_and_retries_once`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_unauthorized_refreshes_access_token_and_retries_once() {
     let _lock = test_env_guard();
@@ -2251,6 +2449,17 @@ fn gateway_unauthorized_refreshes_access_token_and_retries_once() {
     );
 }
 
+/// 函数 `gateway_invalid_refresh_token_marks_first_account_unavailable_and_fails_over`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_invalid_refresh_token_marks_first_account_unavailable_and_fails_over() {
     let _lock = test_env_guard();

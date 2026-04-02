@@ -4,6 +4,17 @@ use super::{
     convert_openai_completions_stream_chunk, ResponseAdapter,
 };
 
+/// 函数 `openai_chat_response_is_converted_from_responses_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_response_is_converted_from_responses_json() {
     let upstream = br#"{
@@ -37,6 +48,17 @@ fn openai_chat_response_is_converted_from_responses_json() {
     );
 }
 
+/// 函数 `openai_chat_response_is_converted_from_output_text_item`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_response_is_converted_from_output_text_item() {
     let upstream = br#"{
@@ -66,6 +88,17 @@ fn openai_chat_response_is_converted_from_output_text_item() {
     );
 }
 
+/// 函数 `openai_chat_response_is_converted_from_openclaw_tool_call_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_response_is_converted_from_openclaw_tool_call_json() {
     let upstream = br#"{
@@ -134,6 +167,17 @@ fn openai_chat_response_is_converted_from_openclaw_tool_call_json() {
     );
 }
 
+/// 函数 `openai_chat_response_is_converted_from_custom_tool_call_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_response_is_converted_from_custom_tool_call_json() {
     let upstream = br#"{
@@ -167,6 +211,17 @@ fn openai_chat_response_is_converted_from_custom_tool_call_json() {
     assert_eq!(value["choices"][0]["finish_reason"], "tool_calls");
 }
 
+/// 函数 `openai_chat_response_is_converted_from_web_search_call_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_response_is_converted_from_web_search_call_json() {
     let upstream = br#"{
@@ -191,6 +246,17 @@ fn openai_chat_response_is_converted_from_web_search_call_json() {
     );
 }
 
+/// 函数 `openai_chat_response_is_converted_from_image_generation_call_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_response_is_converted_from_image_generation_call_json() {
     let upstream = br#"{
@@ -215,6 +281,17 @@ fn openai_chat_response_is_converted_from_image_generation_call_json() {
     );
 }
 
+/// 函数 `openai_chat_response_is_converted_from_local_shell_call_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_response_is_converted_from_local_shell_call_json() {
     let upstream = br#"{
@@ -239,6 +316,17 @@ fn openai_chat_response_is_converted_from_local_shell_call_json() {
     );
 }
 
+/// 函数 `openai_chat_response_is_converted_from_custom_tool_call_output_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_response_is_converted_from_custom_tool_call_output_json() {
     let upstream = br#"{
@@ -263,6 +351,17 @@ fn openai_chat_response_is_converted_from_custom_tool_call_output_json() {
     );
 }
 
+/// 函数 `openai_chat_stream_response_is_collapsed_to_chat_completion_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_response_is_collapsed_to_chat_completion_json() {
     let upstream = br#"data: {"type":"response.output_text.delta","response_id":"resp_1","created":1700000001,"model":"gpt-5.3-codex","delta":"hello "}
@@ -293,6 +392,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_chat_stream_collapse_avoids_done_and_item_text_duplication`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_collapse_avoids_done_and_item_text_duplication() {
     let upstream = br#"data: {"type":"response.output_text.delta","response_id":"resp_dup_1","created":1700000010,"model":"gpt-5.3-codex","delta":"hello "}
@@ -329,6 +439,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_chat_stream_response_accepts_output_item_done_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_response_accepts_output_item_done_text() {
     let upstream = br#"data: {"type":"response.output_item.done","response_id":"resp_2","created":1700000002,"model":"gpt-5.3-codex","item":{"type":"message","content":[{"type":"output_text","text":"from output item"}]}}
@@ -357,6 +478,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_chat_stream_response_accepts_output_item_added_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_response_accepts_output_item_added_text() {
     let upstream = br#"data: {"type":"response.output_item.added","response_id":"resp_2b","created":1700000002,"model":"gpt-5.3-codex","item":{"type":"message","content":[{"type":"output_text","text":"from output item added"}]}}
@@ -385,6 +517,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_chat_stream_response_completed_only_preserves_tool_calls`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_response_completed_only_preserves_tool_calls() {
     let upstream = br#"data: {"type":"response.completed","response":{"id":"resp_tool_only","created":1700000005,"model":"gpt-5.3-codex","output":[{"type":"function_call","call_id":"call_tool_only","name":"read_file","arguments":"{\"path\":\"README.md\"}"}],"usage":{"input_tokens":7,"output_tokens":3,"total_tokens":10}}}
@@ -453,6 +596,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_chat_stream_response_delta_only_preserves_tool_calls`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_response_delta_only_preserves_tool_calls() {
     let upstream = br#"data: {"type":"response.output_item.added","response_id":"resp_tool_delta","created":1700000006,"model":"gpt-5.3-codex","output_index":0,"item":{"type":"function_call","call_id":"call_tool_delta","name":"read_file"}}
@@ -507,6 +661,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_chat_stream_response_delta_only_preserves_custom_tool_calls`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_response_delta_only_preserves_custom_tool_calls() {
     let upstream = br#"data: {"type":"response.output_item.added","response_id":"resp_custom_tool_delta","created":1700000007,"model":"gpt-5.3-codex","output_index":0,"item":{"type":"custom_tool_call","call_id":"call_exec_delta","name":"exec"}}
@@ -541,6 +706,17 @@ data: [DONE]
     assert_eq!(value["choices"][0]["finish_reason"], "tool_calls");
 }
 
+/// 函数 `openai_chat_stream_response_outputs_web_search_summary_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_response_outputs_web_search_summary_text() {
     let upstream = br#"data: {"type":"response.output_item.done","response_id":"resp_web_search_stream","created":1700000008,"model":"gpt-5.3-codex","output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"weather seattle"}}}
@@ -564,6 +740,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_chat_stream_chunk_maps_function_call_argument_delta`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_chunk_maps_function_call_argument_delta() {
     let value = serde_json::json!({
@@ -594,6 +781,17 @@ fn openai_chat_stream_chunk_maps_function_call_argument_delta() {
     );
 }
 
+/// 函数 `openai_chat_stream_chunk_fallback_maps_unknown_text_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_chunk_fallback_maps_unknown_text_event() {
     let value = serde_json::json!({
@@ -615,6 +813,17 @@ fn openai_chat_stream_chunk_fallback_maps_unknown_text_event() {
     );
 }
 
+/// 函数 `openai_completions_stream_chunk_fallback_maps_unknown_text_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_completions_stream_chunk_fallback_maps_unknown_text_event() {
     let value = serde_json::json!({
@@ -635,6 +844,17 @@ fn openai_completions_stream_chunk_fallback_maps_unknown_text_event() {
     );
 }
 
+/// 函数 `openai_chat_stream_response_completed_only_still_outputs_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_response_completed_only_still_outputs_text() {
     let upstream = br#"data: {"type":"response.completed","response":{"id":"resp_3","created":1700000003,"model":"gpt-5.3-codex","output":[{"type":"message","content":[{"type":"output_text","text":"completed only text"}]}],"usage":{"input_tokens":8,"output_tokens":3,"total_tokens":11}}}
@@ -661,6 +881,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_chat_stream_event_only_completed_still_outputs_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_event_only_completed_still_outputs_text() {
     let upstream = br#"event: response.completed
@@ -688,6 +919,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_chat_stream_response_done_only_still_outputs_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_response_done_only_still_outputs_text() {
     let upstream = br#"data: {"type":"response.done","response":{"id":"resp_3_done","created":1700000003,"model":"gpt-5.3-codex","output":[{"type":"message","content":[{"type":"output_text","text":"done only text"}]}],"usage":{"input_tokens":8,"output_tokens":3,"total_tokens":11}}}
@@ -714,6 +956,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_completions_response_is_converted_from_responses_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_completions_response_is_converted_from_responses_json() {
     let upstream = br#"{
@@ -746,6 +999,17 @@ fn openai_completions_response_is_converted_from_responses_json() {
     );
 }
 
+/// 函数 `openai_completions_stream_completed_only_still_outputs_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_completions_stream_completed_only_still_outputs_text() {
     let upstream = br#"data: {"type":"response.completed","response":{"id":"resp_4","created":1700000004,"model":"gpt-5.3-codex","output":[{"type":"message","content":[{"type":"output_text","text":"completed only completion text"}]}],"usage":{"input_tokens":9,"output_tokens":4,"total_tokens":13}}}
@@ -771,6 +1035,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_completions_stream_event_only_done_still_outputs_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_completions_stream_event_only_done_still_outputs_text() {
     let upstream = br#"event: response.done
@@ -797,6 +1072,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `openai_completions_stream_done_only_still_outputs_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_completions_stream_done_only_still_outputs_text() {
     let upstream = br#"data: {"type":"response.done","response":{"id":"resp_4_done","created":1700000004,"model":"gpt-5.3-codex","output":[{"type":"message","content":[{"type":"output_text","text":"done only completion text"}]}],"usage":{"input_tokens":9,"output_tokens":4,"total_tokens":13}}}

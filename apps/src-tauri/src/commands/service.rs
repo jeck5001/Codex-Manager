@@ -7,6 +7,18 @@ use crate::service_runtime::{
 const SERVICE_READY_RETRIES: usize = 40;
 const SERVICE_READY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(250);
 
+/// 函数 `service_initialize`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - app: 参数 app
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_initialize(
     app: tauri::AppHandle,
@@ -20,6 +32,18 @@ pub async fn service_initialize(
     Ok(v)
 }
 
+/// 函数 `service_start`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - app: 参数 app
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_start(app: tauri::AppHandle, addr: String) -> Result<(), String> {
     let connect_addr = normalize_addr(&addr)?;
@@ -51,6 +75,17 @@ pub async fn service_start(app: tauri::AppHandle, addr: String) -> Result<(), St
     .map_err(|err| format!("service_start task failed: {err}"))?
 }
 
+/// 函数 `service_stop`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_stop() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -61,6 +96,17 @@ pub async fn service_stop() -> Result<(), String> {
     .map_err(|err| format!("service_stop task failed: {err}"))?
 }
 
+/// 函数 `service_rpc_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_rpc_token() -> Result<String, String> {
     Ok(codexmanager_service::rpc_auth_token().to_string())

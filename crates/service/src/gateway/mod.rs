@@ -93,14 +93,47 @@ pub(crate) fn record_http_queue_capacity(normal_capacity: usize, stream_capacity
     metrics::record_http_queue_capacity(normal_capacity, stream_capacity);
 }
 
+/// 函数 `record_http_queue_enqueue`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_http_queue_enqueue(is_stream_queue: bool) {
     metrics::record_http_queue_enqueue(is_stream_queue);
 }
 
+/// 函数 `record_http_queue_dequeue`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_http_queue_dequeue(is_stream_queue: bool) {
     metrics::record_http_queue_dequeue(is_stream_queue);
 }
 
+/// 函数 `record_http_queue_enqueue_failure`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_http_queue_enqueue_failure() {
     metrics::record_http_queue_enqueue_failure();
 }
@@ -115,6 +148,17 @@ pub(super) use failover::should_failover_after_refresh;
 use failover::should_failover_from_cached_snapshot;
 use http_bridge::respond_with_upstream;
 pub(crate) use http_bridge::summarize_upstream_error_hint_from_body;
+/// 函数 `extract_identity_error_code_from_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn extract_identity_error_code_from_headers(
     headers: &reqwest::header::HeaderMap,
 ) -> Option<String> {
@@ -124,6 +168,17 @@ pub(crate) fn extract_identity_error_code_from_headers(
         .and_then(extract_identity_error_code_from_header_value)
 }
 
+/// 函数 `extract_identity_error_code_from_header_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_identity_error_code_from_header_value(raw: &str) -> Option<String> {
     if let Some(code) = extract_identity_error_code_from_error_json(raw) {
         return Some(code);
@@ -134,6 +189,17 @@ fn extract_identity_error_code_from_header_value(raw: &str) -> Option<String> {
     extract_identity_error_code_from_error_json(&decoded)
 }
 
+/// 函数 `extract_identity_error_code_from_error_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_identity_error_code_from_error_json(raw: &str) -> Option<String> {
     let value = serde_json::from_str::<serde_json::Value>(raw).ok()?;
     value
@@ -165,7 +231,29 @@ fn extract_identity_error_code_from_error_json(raw: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+/// 函数 `decode_base64_header_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - input: 参数 input
+///
+/// # 返回
+/// 返回函数执行结果
 fn decode_base64_header_value(input: &[u8]) -> Option<Vec<u8>> {
+    /// 函数 `decode_char`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - byte: 参数 byte
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn decode_char(byte: u8) -> Option<u8> {
         match byte {
             b'A'..=b'Z' => Some(byte - b'A'),
@@ -230,6 +318,17 @@ use token_exchange::account_token_exchange_lock;
 use token_exchange::resolve_openai_bearer_token;
 use upstream::proxy::proxy_validated_request;
 
+/// 函数 `reload_runtime_config_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn reload_runtime_config_from_env() {
     runtime_config::reload_from_env();
     selection::reload_from_env();
@@ -243,72 +342,259 @@ pub(crate) fn reload_runtime_config_from_env() {
     protocol_adapter::prompt_cache::reload_runtime_state();
 }
 
+/// 函数 `current_route_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_route_strategy() -> &'static str {
     route_hint::current_route_strategy()
 }
 
+/// 函数 `set_route_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_route_strategy(strategy: &str) -> Result<&'static str, String> {
     let applied = route_hint::set_route_strategy(strategy)?;
     std::env::set_var("CODEXMANAGER_ROUTE_STRATEGY", applied);
     Ok(applied)
 }
 
+/// 函数 `current_free_account_max_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_free_account_max_model() -> String {
     runtime_config::current_free_account_max_model()
 }
 
+/// 函数 `request_compression_enabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn request_compression_enabled() -> bool {
     runtime_config::request_compression_enabled()
 }
 
+/// 函数 `current_originator`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_originator() -> String {
     runtime_config::current_originator()
 }
 
+/// 函数 `current_wire_originator`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_wire_originator() -> String {
     runtime_config::current_wire_originator()
 }
 
+/// 函数 `current_codex_user_agent_version`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_codex_user_agent_version() -> String {
     runtime_config::current_codex_user_agent_version()
 }
 
+/// 函数 `set_originator`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_originator(originator: &str) -> Result<String, String> {
     runtime_config::set_originator(originator)
 }
 
+/// 函数 `set_codex_user_agent_version`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_codex_user_agent_version(version: &str) -> Result<String, String> {
     runtime_config::set_codex_user_agent_version(version)
 }
 
+/// 函数 `current_residency_requirement`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_residency_requirement() -> Option<String> {
     runtime_config::current_residency_requirement()
 }
 
+/// 函数 `set_residency_requirement`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_residency_requirement(value: Option<&str>) -> Result<Option<String>, String> {
     runtime_config::set_residency_requirement(value)
 }
 
+/// 函数 `current_codex_user_agent`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_codex_user_agent() -> String {
     runtime_config::current_codex_user_agent()
 }
 
+/// 函数 `set_free_account_max_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_free_account_max_model(model: &str) -> Result<String, String> {
     runtime_config::set_free_account_max_model(model)
 }
 
+/// 函数 `set_request_compression_enabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_request_compression_enabled(enabled: bool) -> bool {
     runtime_config::set_request_compression_enabled(enabled)
 }
 
+/// 函数 `strict_request_param_allowlist_enabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn strict_request_param_allowlist_enabled() -> bool {
     runtime_config::strict_request_param_allowlist_enabled()
 }
 
+/// 函数 `current_upstream_proxy_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_upstream_proxy_url() -> Option<String> {
     runtime_config::upstream_proxy_url()
 }
 
+/// 函数 `set_upstream_proxy_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_upstream_proxy_url(proxy_url: Option<&str>) -> Result<Option<String>, String> {
     let applied = runtime_config::set_upstream_proxy_url(proxy_url)?;
     // 中文注释：用量轮询和 token 刷新复用独立 HTTP client，代理变更后同步重建，避免继续走旧网络路径。
@@ -316,26 +602,92 @@ pub(crate) fn set_upstream_proxy_url(proxy_url: Option<&str>) -> Result<Option<S
     Ok(applied)
 }
 
+/// 函数 `current_upstream_stream_timeout_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_upstream_stream_timeout_ms() -> u64 {
     runtime_config::current_upstream_stream_timeout_ms()
 }
 
+/// 函数 `set_upstream_stream_timeout_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_upstream_stream_timeout_ms(timeout_ms: u64) -> u64 {
     runtime_config::set_upstream_stream_timeout_ms(timeout_ms)
 }
 
+/// 函数 `current_sse_keepalive_interval_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_sse_keepalive_interval_ms() -> u64 {
     http_bridge::current_sse_keepalive_interval_ms()
 }
 
+/// 函数 `set_sse_keepalive_interval_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_sse_keepalive_interval_ms(interval_ms: u64) -> Result<u64, String> {
     http_bridge::set_sse_keepalive_interval_ms(interval_ms)
 }
 
+/// 函数 `manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn manual_preferred_account() -> Option<String> {
     route_hint::get_manual_preferred_account()
 }
 
+/// 函数 `set_manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_manual_preferred_account(account_id: &str) -> Result<(), String> {
     let id = account_id.trim();
     if id.is_empty() {
@@ -350,10 +702,32 @@ pub(crate) fn set_manual_preferred_account(account_id: &str) -> Result<(), Strin
     route_hint::set_manual_preferred_account(id)
 }
 
+/// 函数 `clear_manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn clear_manual_preferred_account() {
     route_hint::clear_manual_preferred_account();
 }
 
+/// 函数 `clear_manual_preferred_account_if`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn clear_manual_preferred_account_if(account_id: &str) -> bool {
     route_hint::clear_manual_preferred_account_if(account_id)
 }

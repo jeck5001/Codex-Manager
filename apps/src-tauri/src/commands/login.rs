@@ -1,5 +1,22 @@
 use crate::commands::shared::rpc_call_in_background;
 
+/// 函数 `service_login_start`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - login_type: 参数 login_type
+/// - open_browser: 参数 open_browser
+/// - note: 参数 note
+/// - tags: 参数 tags
+/// - group_name: 参数 group_name
+/// - workspace_id: 参数 workspace_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_login_start(
     addr: Option<String>,
@@ -21,6 +38,18 @@ pub async fn service_login_start(
     rpc_call_in_background("account/login/start", addr, Some(params)).await
 }
 
+/// 函数 `service_login_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - login_id: 参数 login_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_login_status(
     addr: Option<String>,
@@ -32,6 +61,20 @@ pub async fn service_login_status(
     rpc_call_in_background("account/login/status", addr, Some(params)).await
 }
 
+/// 函数 `service_login_complete`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - state: 参数 state
+/// - code: 参数 code
+/// - redirect_uri: 参数 redirect_uri
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_login_complete(
     addr: Option<String>,
@@ -47,6 +90,23 @@ pub async fn service_login_complete(
     rpc_call_in_background("account/login/complete", addr, Some(params)).await
 }
 
+/// 函数 `service_login_chatgpt_auth_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - access_token: 参数 access_token
+/// - refresh_token: 参数 refresh_token
+/// - id_token: 参数 id_token
+/// - chatgpt_account_id: 参数 chatgpt_account_id
+/// - workspace_id: 参数 workspace_id
+/// - chatgpt_plan_type: 参数 chatgpt_plan_type
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_login_chatgpt_auth_tokens(
     addr: Option<String>,
@@ -69,6 +129,18 @@ pub async fn service_login_chatgpt_auth_tokens(
     rpc_call_in_background("account/login/start", addr, Some(params)).await
 }
 
+/// 函数 `service_account_read`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - refresh_token: 参数 refresh_token
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_read(
     addr: Option<String>,
@@ -80,11 +152,35 @@ pub async fn service_account_read(
     rpc_call_in_background("account/read", addr, Some(params)).await
 }
 
+/// 函数 `service_account_logout`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_logout(addr: Option<String>) -> Result<serde_json::Value, String> {
     rpc_call_in_background("account/logout", addr, None).await
 }
 
+/// 函数 `service_chatgpt_auth_tokens_refresh`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - reason: 参数 reason
+/// - previous_account_id: 参数 previous_account_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_chatgpt_auth_tokens_refresh(
     addr: Option<String>,

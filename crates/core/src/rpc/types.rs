@@ -9,6 +9,18 @@ pub enum RequestId {
 }
 
 impl fmt::Display for RequestId {
+    /// 函数 `fmt`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - f: 参数 f
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::String(value) => f.write_str(value),
@@ -18,30 +30,85 @@ impl fmt::Display for RequestId {
 }
 
 impl From<i64> for RequestId {
+    /// 函数 `from`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn from(value: i64) -> Self {
         Self::Integer(value)
     }
 }
 
 impl From<i32> for RequestId {
+    /// 函数 `from`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn from(value: i32) -> Self {
         Self::Integer(value as i64)
     }
 }
 
 impl From<u64> for RequestId {
+    /// 函数 `from`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn from(value: u64) -> Self {
         Self::Integer(value as i64)
     }
 }
 
 impl From<u32> for RequestId {
+    /// 函数 `from`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn from(value: u32) -> Self {
         Self::Integer(value as i64)
     }
 }
 
 impl From<usize> for RequestId {
+    /// 函数 `from`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn from(value: usize) -> Self {
         Self::Integer(value as i64)
     }
@@ -129,6 +196,17 @@ pub struct AccountListParams {
 }
 
 impl Default for AccountListParams {
+    /// 函数 `default`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn default() -> Self {
         Self {
             page: 1,
@@ -141,6 +219,17 @@ impl Default for AccountListParams {
 }
 
 impl AccountListParams {
+    /// 函数 `normalized`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn normalized(self) -> Self {
         // 中文注释：分页参数小于 1 时回退到默认值，避免出现负偏移或零页大小。
         Self {
@@ -504,6 +593,17 @@ pub struct RequestLogListParams {
 }
 
 impl Default for RequestLogListParams {
+    /// 函数 `default`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn default() -> Self {
         Self {
             page: 1,
@@ -515,6 +615,17 @@ impl Default for RequestLogListParams {
 }
 
 impl RequestLogListParams {
+    /// 函数 `normalized`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn normalized(self) -> Self {
         Self {
             page: if self.page < 1 { 1 } else { self.page },

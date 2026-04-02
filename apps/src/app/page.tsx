@@ -44,10 +44,36 @@ interface AccountHighlightCardProps {
   progressValue?: number | null | undefined;
 }
 
+/**
+ * 函数 `formatPercent`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatPercent(value: number | null | undefined): string {
   return value == null ? "--" : `${Math.max(0, Math.round(value))}%`;
 }
 
+/**
+ * 函数 `PercentBar`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function PercentBar({ label, value, tone = "default" }: PercentBarProps) {
   const normalized = value == null ? 0 : Math.max(0, Math.min(100, Math.round(value)));
   const colorClass =
@@ -73,14 +99,53 @@ function PercentBar({ label, value, tone = "default" }: PercentBarProps) {
   );
 }
 
+/**
+ * 函数 `quotaTrackClass`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - tone: 参数 tone
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function quotaTrackClass(tone: "green" | "blue") {
   return tone === "blue" ? "bg-blue-500/20" : "bg-green-500/20";
 }
 
+/**
+ * 函数 `quotaIndicatorClass`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - tone: 参数 tone
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function quotaIndicatorClass(tone: "green" | "blue") {
   return tone === "blue" ? "bg-blue-500" : "bg-green-500";
 }
 
+/**
+ * 函数 `AccountHighlightCard`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function AccountHighlightCard({
   title,
   name,
@@ -120,6 +185,19 @@ function AccountHighlightCard({
   );
 }
 
+/**
+ * 函数 `StatProgressCard`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function StatProgressCard({
   title,
   value,

@@ -20,6 +20,17 @@ pub(super) enum PrimaryFlowDecision {
     },
 }
 
+/// 函数 `resolve_chatgpt_primary_bearer`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_chatgpt_primary_bearer(token: &Token) -> Option<String> {
     let access = token.access_token.trim();
     if access.is_empty() {
@@ -29,6 +40,17 @@ fn resolve_chatgpt_primary_bearer(token: &Token) -> Option<String> {
     }
 }
 
+/// 函数 `run_primary_upstream_flow`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_primary_upstream_flow<F>(
     client: &reqwest::blocking::Client,

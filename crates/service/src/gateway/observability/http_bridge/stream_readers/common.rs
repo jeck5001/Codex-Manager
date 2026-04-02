@@ -29,6 +29,17 @@ pub(crate) enum SseKeepAliveFrame {
 }
 
 impl SseKeepAliveFrame {
+    /// 函数 `bytes`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn bytes(self) -> &'static [u8] {
         match self {
             Self::Comment => b": keep-alive\n\n",
@@ -58,6 +69,17 @@ pub(crate) struct UpstreamSseFramePump {
 }
 
 impl UpstreamSseFramePump {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn new(upstream: reqwest::blocking::Response) -> Self {
         let (tx, rx) = mpsc::sync_channel::<UpstreamSseFramePumpItem>(32);
         thread::spawn(move || {
@@ -97,6 +119,17 @@ impl UpstreamSseFramePump {
         Self { rx }
     }
 
+    /// 函数 `recv_timeout`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn recv_timeout(
         &self,
         timeout: Duration,
@@ -105,6 +138,17 @@ impl UpstreamSseFramePump {
     }
 }
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn reload_from_env() {
     SSE_KEEPALIVE_INTERVAL_MS.store(
         std::env::var(ENV_SSE_KEEPALIVE_INTERVAL_MS)
@@ -115,15 +159,48 @@ pub(super) fn reload_from_env() {
     );
 }
 
+/// 函数 `sse_keepalive_interval`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn sse_keepalive_interval() -> Duration {
     let interval_ms = SSE_KEEPALIVE_INTERVAL_MS.load(Ordering::Relaxed);
     Duration::from_millis(interval_ms.max(1))
 }
 
+/// 函数 `current_sse_keepalive_interval_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn current_sse_keepalive_interval_ms() -> u64 {
     SSE_KEEPALIVE_INTERVAL_MS.load(Ordering::Relaxed).max(1)
 }
 
+/// 函数 `set_sse_keepalive_interval_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn set_sse_keepalive_interval_ms(interval_ms: u64) -> Result<u64, String> {
     if interval_ms == 0 {
         return Err("SSE keepalive interval must be greater than 0".to_string());
@@ -133,6 +210,17 @@ pub(super) fn set_sse_keepalive_interval_ms(interval_ms: u64) -> Result<u64, Str
     Ok(interval_ms)
 }
 
+/// 函数 `collector_output_text_trimmed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn collector_output_text_trimmed(
     usage_collector: &Arc<Mutex<PassthroughSseCollector>>,
 ) -> Option<String> {
@@ -144,6 +232,17 @@ pub(super) fn collector_output_text_trimmed(
         .filter(|text| !text.is_empty())
 }
 
+/// 函数 `mark_collector_terminal_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn mark_collector_terminal_success(
     usage_collector: &Arc<Mutex<PassthroughSseCollector>>,
 ) {
@@ -153,14 +252,47 @@ pub(super) fn mark_collector_terminal_success(
     }
 }
 
+/// 函数 `stream_incomplete_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn stream_incomplete_message() -> String {
     "上游流中途中断（未正常结束）".to_string()
 }
 
+/// 函数 `stream_reader_disconnected_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn stream_reader_disconnected_message() -> String {
     "上游流读取失败（连接中断）".to_string()
 }
 
+/// 函数 `classify_upstream_stream_read_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn classify_upstream_stream_read_error(raw: &str) -> String {
     let normalized = raw.trim().to_ascii_lowercase();
     if normalized.is_empty() {
@@ -195,6 +327,17 @@ mod tests {
         stream_reader_disconnected_message,
     };
 
+    /// 函数 `classify_upstream_stream_read_error_maps_body_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn classify_upstream_stream_read_error_maps_body_error() {
         assert_eq!(
@@ -203,6 +346,17 @@ mod tests {
         );
     }
 
+    /// 函数 `classify_upstream_stream_read_error_maps_disconnect`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn classify_upstream_stream_read_error_maps_disconnect() {
         assert_eq!(
@@ -211,6 +365,17 @@ mod tests {
         );
     }
 
+    /// 函数 `classify_upstream_stream_read_error_maps_timeout`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn classify_upstream_stream_read_error_maps_timeout() {
         assert_eq!(
@@ -219,6 +384,17 @@ mod tests {
         );
     }
 
+    /// 函数 `stream_terminal_messages_are_user_friendly`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn stream_terminal_messages_are_user_friendly() {
         assert_eq!(stream_incomplete_message(), "上游流中途中断（未正常结束）");

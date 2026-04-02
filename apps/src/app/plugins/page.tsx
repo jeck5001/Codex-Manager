@@ -81,6 +81,19 @@ const PLUGIN_VIEW_FILTER_OPTIONS: Array<{
 const EMPTY_PLUGIN_CATALOG_ITEMS: PluginCatalogEntry[] = [];
 const EMPTY_INSTALLED_PLUGIN_ITEMS: InstalledPluginSummary[] = [];
 
+/**
+ * 函数 `normalizeMarketMode`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizeMarketMode(value: string | null | undefined) {
   return String(value || "")
     .trim()
@@ -89,6 +102,19 @@ function normalizeMarketMode(value: string | null | undefined) {
     : "builtin";
 }
 
+/**
+ * 函数 `formatPermissionLabel`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - permission: 参数 permission
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatPermissionLabel(permission: string) {
   switch (permission) {
     case "accounts:cleanup":
@@ -102,6 +128,19 @@ function formatPermissionLabel(permission: string) {
   }
 }
 
+/**
+ * 函数 `formatMarketCategory`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - category: 参数 category
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatMarketCategory(category: string | null | undefined) {
   switch (category) {
     case "official":
@@ -115,6 +154,19 @@ function formatMarketCategory(category: string | null | undefined) {
   }
 }
 
+/**
+ * 函数 `formatRuntimeKind`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - runtimeKind: 参数 runtimeKind
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatRuntimeKind(runtimeKind: string | null | undefined) {
   switch (runtimeKind) {
     case "rhai":
@@ -126,6 +178,20 @@ function formatRuntimeKind(runtimeKind: string | null | undefined) {
   }
 }
 
+/**
+ * 函数 `compareVersionStrings`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - left: 参数 left
+ * - right: 参数 right
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function compareVersionStrings(left: string, right: string) {
   const leftParts = left
     .split(/[^0-9]+/)
@@ -149,6 +215,19 @@ function compareVersionStrings(left: string, right: string) {
   });
 }
 
+/**
+ * 函数 `PermissionBadge`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function PermissionBadge({ permission }: { permission: string }) {
   return (
     <Badge variant="secondary" className="mr-1.5 mb-1">
@@ -157,6 +236,19 @@ function PermissionBadge({ permission }: { permission: string }) {
   );
 }
 
+/**
+ * 函数 `StatusBadge`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function StatusBadge({ status }: { status: string }) {
   const normalized = status.toLowerCase();
   const label =
@@ -174,6 +266,19 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge className={toneClass}>{label}</Badge>;
 }
 
+/**
+ * 函数 `formatDuration`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatDuration(value: number | null): string {
   if (value == null) return "-";
   if (value >= 10_000) return `${Math.round(value / 1000)}s`;
@@ -181,6 +286,19 @@ function formatDuration(value: number | null): string {
   return `${Math.round(value)}ms`;
 }
 
+/**
+ * 函数 `formatTimestamp`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatTimestamp(value: number | null): string {
   if (value == null) return "-";
   const date = new Date(value * 1000);
@@ -196,6 +314,19 @@ function formatTimestamp(value: number | null): string {
   }).format(date);
 }
 
+/**
+ * 函数 `PluginCard`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function PluginCard({
   item,
   onOpenDetails,
@@ -258,6 +389,19 @@ function PluginCard({
   );
 }
 
+/**
+ * 函数 `InstalledPluginCard`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function InstalledPluginCard({
   item,
   updateVersion,

@@ -67,9 +67,14 @@ If this project has been helpful to you, you are welcome to support the author.
 </table>
 
 ## Star History
-<p align="center">
-  <img src="assets/images/star-history.png" alt="Star History" width="900" />
-</p>
+
+<a href="https://www.star-history.com/?repos=qxcnm%2FCodex-Manager&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=qxcnm/Codex-Manager&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=qxcnm/Codex-Manager&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=qxcnm/Codex-Manager&type=date&legend=top-left" />
+ </picture>
+</a>
 
 ## Navigation
 | What You Want To Do | Go Directly To |

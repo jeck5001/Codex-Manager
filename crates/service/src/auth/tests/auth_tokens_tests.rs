@@ -10,6 +10,19 @@ use codexmanager_core::storage::{now_ts, Account, Storage};
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::Client;
 
+/// 函数 `build_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - id: 参数 id
+/// - chatgpt_account_id: 参数 chatgpt_account_id
+/// - workspace_id: 参数 workspace_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_account(
     id: &str,
     chatgpt_account_id: Option<&str>,
@@ -30,6 +43,17 @@ fn build_account(
     }
 }
 
+/// 函数 `pick_existing_account_requires_exact_scope_when_workspace_present`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn pick_existing_account_requires_exact_scope_when_workspace_present() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -49,6 +73,17 @@ fn pick_existing_account_requires_exact_scope_when_workspace_present() {
     assert_eq!(found, None);
 }
 
+/// 函数 `pick_existing_account_matches_exact_workspace_scope`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn pick_existing_account_matches_exact_workspace_scope() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -71,12 +106,34 @@ fn pick_existing_account_matches_exact_workspace_scope() {
     assert_eq!(found.as_deref(), Some("acc-ws-b"));
 }
 
+/// 函数 `build_account_storage_id_keeps_login_scope_shape`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn build_account_storage_id_keeps_login_scope_shape() {
     let account_id = build_account_storage_id("sub-1", Some("cgpt-1"), Some("ws-a"), None);
     assert_eq!(account_id, "sub-1::cgpt=cgpt-1|ws=ws-a");
 }
 
+/// 函数 `next_account_sort_uses_step_five`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn next_account_sort_uses_step_five() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -97,10 +154,32 @@ fn next_account_sort_uses_step_five() {
     assert_eq!(next_account_sort(&storage), 12);
 }
 
+/// 函数 `jwt_with_claims`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - payload: 参数 payload
+///
+/// # 返回
+/// 返回函数执行结果
 fn jwt_with_claims(payload: &str) -> String {
     format!("eyJhbGciOiJIUzI1NiJ9.{payload}.sig")
 }
 
+/// 函数 `ensure_workspace_allowed_accepts_matching_auth_chatgpt_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn ensure_workspace_allowed_accepts_matching_auth_chatgpt_account_id() {
     let token = jwt_with_claims(
@@ -113,6 +192,17 @@ fn ensure_workspace_allowed_accepts_matching_auth_chatgpt_account_id() {
     assert!(result.is_ok(), "workspace should match: {:?}", result);
 }
 
+/// 函数 `ensure_workspace_allowed_rejects_mismatched_workspace`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn ensure_workspace_allowed_rejects_mismatched_workspace() {
     let token = jwt_with_claims("eyJzdWIiOiJ1c2VyLTEiLCJ3b3Jrc3BhY2VfaWQiOiJvcmdfYWJjIn0");
@@ -126,6 +216,17 @@ fn ensure_workspace_allowed_rejects_mismatched_workspace() {
     );
 }
 
+/// 函数 `parse_token_endpoint_error_prefers_error_description`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_token_endpoint_error_prefers_error_description() {
     let detail = parse_token_endpoint_error(
@@ -135,6 +236,17 @@ fn parse_token_endpoint_error_prefers_error_description() {
     assert_eq!(detail.to_string(), "refresh token expired");
 }
 
+/// 函数 `parse_token_endpoint_error_reads_nested_error_message_and_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_token_endpoint_error_reads_nested_error_message_and_code() {
     let detail = parse_token_endpoint_error(
@@ -144,6 +256,17 @@ fn parse_token_endpoint_error_reads_nested_error_message_and_code() {
     assert_eq!(detail.to_string(), "proxy authentication required");
 }
 
+/// 函数 `parse_token_endpoint_error_preserves_plain_text_for_display`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_token_endpoint_error_preserves_plain_text_for_display() {
     let detail = parse_token_endpoint_error("service unavailable");
@@ -151,6 +274,17 @@ fn parse_token_endpoint_error_preserves_plain_text_for_display() {
     assert_eq!(detail.to_string(), "service unavailable");
 }
 
+/// 函数 `parse_token_endpoint_error_summarizes_challenge_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_token_endpoint_error_summarizes_challenge_html() {
     let detail =
@@ -162,6 +296,17 @@ fn parse_token_endpoint_error_summarizes_challenge_html() {
     );
 }
 
+/// 函数 `parse_token_endpoint_error_summarizes_blocked_cloudflare_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_token_endpoint_error_summarizes_blocked_cloudflare_html() {
     let detail = parse_token_endpoint_error(
@@ -174,6 +319,17 @@ fn parse_token_endpoint_error_summarizes_blocked_cloudflare_html() {
     );
 }
 
+/// 函数 `parse_token_endpoint_error_summarizes_generic_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_token_endpoint_error_summarizes_generic_html() {
     let detail = parse_token_endpoint_error("<html><title>502 Bad Gateway</title></html>");
@@ -184,6 +340,17 @@ fn parse_token_endpoint_error_summarizes_generic_html() {
     );
 }
 
+/// 函数 `format_token_endpoint_status_error_appends_debug_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn format_token_endpoint_status_error_appends_debug_headers() {
     let mut headers = HeaderMap::new();
@@ -216,6 +383,17 @@ fn format_token_endpoint_status_error_appends_debug_headers() {
     assert!(message.contains("kind=cloudflare_challenge"));
 }
 
+/// 函数 `format_token_endpoint_status_error_marks_cloudflare_blocked_kind`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn format_token_endpoint_status_error_marks_cloudflare_blocked_kind() {
     let mut headers = HeaderMap::new();
@@ -240,6 +418,17 @@ fn format_token_endpoint_status_error_marks_cloudflare_blocked_kind() {
     assert!(message.contains("kind=cloudflare_blocked"));
 }
 
+/// 函数 `format_api_key_exchange_status_error_appends_debug_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn format_api_key_exchange_status_error_appends_debug_headers() {
     let mut headers = HeaderMap::new();
@@ -264,6 +453,17 @@ fn format_api_key_exchange_status_error_appends_debug_headers() {
     assert!(message.contains("kind=html"));
 }
 
+/// 函数 `format_token_endpoint_status_error_accepts_raw_error_json_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn format_token_endpoint_status_error_accepts_raw_error_json_header() {
     let mut headers = HeaderMap::new();
@@ -287,6 +487,17 @@ fn format_token_endpoint_status_error_accepts_raw_error_json_header() {
     assert!(message.contains("kind=cloudflare_challenge"));
 }
 
+/// 函数 `format_token_endpoint_status_error_uses_header_only_blocked_signal`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn format_token_endpoint_status_error_uses_header_only_blocked_signal() {
     let mut headers = HeaderMap::new();
@@ -309,6 +520,17 @@ fn format_token_endpoint_status_error_uses_header_only_blocked_signal() {
     assert!(message.contains("kind=cloudflare_blocked"));
 }
 
+/// 函数 `format_api_key_exchange_status_error_uses_identity_header_when_body_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn format_api_key_exchange_status_error_uses_identity_header_when_body_empty() {
     let mut headers = HeaderMap::new();
@@ -326,6 +548,17 @@ fn format_api_key_exchange_status_error_uses_identity_header_when_body_empty() {
     assert!(message.contains("kind=identity_error"));
 }
 
+/// 函数 `format_token_endpoint_status_error_uses_cloudflare_edge_kind_when_only_cf_ray_exists`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn format_token_endpoint_status_error_uses_cloudflare_edge_kind_when_only_cf_ray_exists() {
     let mut headers = HeaderMap::new();
@@ -339,17 +572,50 @@ fn format_token_endpoint_status_error_uses_cloudflare_edge_kind_when_only_cf_ray
     assert!(message.contains("kind=cloudflare_edge"));
 }
 
+/// 函数 `issuer_uses_loopback_host_accepts_local_test_issuers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn issuer_uses_loopback_host_accepts_local_test_issuers() {
     assert!(issuer_uses_loopback_host("http://127.0.0.1:1455"));
     assert!(issuer_uses_loopback_host("http://localhost:1455"));
 }
 
+/// 函数 `issuer_uses_loopback_host_rejects_remote_issuers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn issuer_uses_loopback_host_rejects_remote_issuers() {
     assert!(!issuer_uses_loopback_host("https://auth.openai.com"));
 }
 
+/// 函数 `exchange_code_for_tokens_matches_official_login_server_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn exchange_code_for_tokens_matches_official_login_server_headers() {
     let client = Client::builder().no_proxy().build().expect("build client");
@@ -388,6 +654,17 @@ fn exchange_code_for_tokens_matches_official_login_server_headers() {
     assert!(body.contains("code_verifier=verifier-test"));
 }
 
+/// 函数 `obtain_api_key_matches_official_login_server_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn obtain_api_key_matches_official_login_server_headers() {
     let client = Client::builder().no_proxy().build().expect("build client");

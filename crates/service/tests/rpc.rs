@@ -16,6 +16,17 @@ mod support;
 use support::{test_env_guard, EnvGuard};
 static RPC_TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
 
+/// 函数 `new_test_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - prefix: 参数 prefix
+///
+/// # 返回
+/// 返回函数执行结果
 fn new_test_dir(prefix: &str) -> PathBuf {
     // 中文注释：用进程号 + 自增序号构造临时目录，避免 Windows 复用旧目录导致脏数据串用。
     let seq = RPC_TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -32,6 +43,17 @@ struct RpcTestContext {
 }
 
 impl RpcTestContext {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - prefix: 参数 prefix
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new(prefix: &str) -> Self {
         let env_lock = test_env_guard();
         let dir = new_test_dir(prefix);
@@ -45,10 +67,33 @@ impl RpcTestContext {
         }
     }
 
+    /// 函数 `db_path`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn db_path(&self) -> PathBuf {
         self.dir.join("codexmanager.db")
     }
 
+    /// 函数 `seed_accounts`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - count: 参数 count
+    ///
+    /// # 返回
+    /// 无
     fn seed_accounts(&self, count: usize) {
         let storage = Storage::open(self.db_path()).expect("open db");
         storage.init().expect("init schema");
@@ -74,11 +119,35 @@ impl RpcTestContext {
 }
 
 impl Drop for RpcTestContext {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.dir);
     }
 }
 
+/// 函数 `post_rpc_raw`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - body: 参数 body
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn post_rpc_raw(addr: &str, body: &str, headers: &[(&str, &str)]) -> (u16, String) {
     let mut stream = TcpStream::connect(addr).expect("connect server");
     let mut request = format!("POST /rpc HTTP/1.1\r\nHost: {addr}\r\n");
@@ -104,6 +173,18 @@ fn post_rpc_raw(addr: &str, body: &str, headers: &[(&str, &str)]) -> (u16, Strin
     (status, body)
 }
 
+/// 函数 `post_rpc`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn post_rpc(addr: &str, body: &str) -> serde_json::Value {
     let token = codexmanager_service::rpc_auth_token().to_string();
     let (status, body) = post_rpc_raw(
@@ -118,6 +199,17 @@ fn post_rpc(addr: &str, body: &str) -> serde_json::Value {
     serde_json::from_str(&body).expect("parse response")
 }
 
+/// 函数 `encode_base64url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - bytes: 参数 bytes
+///
+/// # 返回
+/// 返回函数执行结果
 fn encode_base64url(bytes: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut out = String::new();
@@ -149,6 +241,20 @@ fn encode_base64url(bytes: &[u8]) -> String {
     out
 }
 
+/// 函数 `build_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - subject: 参数 subject
+/// - email: 参数 email
+/// - chatgpt_account_id: 参数 chatgpt_account_id
+/// - plan_type: 参数 plan_type
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_access_token(
     subject: &str,
     email: &str,
@@ -173,6 +279,18 @@ fn build_access_token(
     format!("{header}.{payload}.sig")
 }
 
+/// 函数 `start_mock_oauth_token_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - response_body: 参数 response_body
+///
+/// # 返回
+/// 返回函数执行结果
 fn start_mock_oauth_token_server(
     status: u16,
     response_body: String,
@@ -209,6 +327,17 @@ struct RecordedRequest {
     body: String,
 }
 
+/// 函数 `start_mock_device_login_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn start_mock_device_login_server() -> (
     String,
     std::sync::mpsc::Receiver<RecordedRequest>,
@@ -296,6 +425,17 @@ fn start_mock_device_login_server() -> (
     (addr, rx, handle)
 }
 
+/// 函数 `rpc_initialize_roundtrip`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_initialize_roundtrip() {
     let _ctx = RpcTestContext::new("rpc-initialize");
@@ -329,6 +469,17 @@ fn rpc_initialize_roundtrip() {
         .is_some());
 }
 
+/// 函数 `rpc_account_list_empty_uses_default_pagination`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_list_empty_uses_default_pagination() {
     let _ctx = RpcTestContext::new("rpc-account-list-empty");
@@ -360,6 +511,17 @@ fn rpc_account_list_empty_uses_default_pagination() {
     );
 }
 
+/// 函数 `rpc_account_list_supports_pagination`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_list_supports_pagination() {
     let ctx = RpcTestContext::new("rpc-account-list-page");
@@ -411,6 +573,17 @@ fn rpc_account_list_supports_pagination() {
     );
 }
 
+/// 函数 `rpc_account_list_includes_account_plan_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_list_includes_account_plan_type() {
     let ctx = RpcTestContext::new("rpc-account-list-plan-type");
@@ -479,6 +652,17 @@ fn rpc_account_list_includes_account_plan_type() {
     );
 }
 
+/// 函数 `rpc_account_update_profile_updates_label_note_tags_and_sort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_update_profile_updates_label_note_tags_and_sort() {
     let ctx = RpcTestContext::new("rpc-account-update-profile");
@@ -521,6 +705,17 @@ fn rpc_account_update_profile_updates_label_note_tags_and_sort() {
     assert_eq!(metadata.tags.as_deref(), Some("高频,团队A"));
 }
 
+/// 函数 `rpc_app_settings_set_invalid_payload_returns_structured_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_app_settings_set_invalid_payload_returns_structured_error() {
     let _ctx = RpcTestContext::new("rpc-app-settings-invalid-payload");
@@ -559,6 +754,17 @@ fn rpc_app_settings_set_invalid_payload_returns_structured_error() {
     );
 }
 
+/// 函数 `rpc_app_settings_can_roundtrip_free_account_max_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_app_settings_can_roundtrip_free_account_max_model() {
     let _ctx = RpcTestContext::new("rpc-app-settings-free-max-model");
@@ -600,6 +806,17 @@ fn rpc_app_settings_can_roundtrip_free_account_max_model() {
     );
 }
 
+/// 函数 `rpc_account_list_active_filter_uses_backend_filtered_pagination`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
     let ctx = RpcTestContext::new("rpc-account-list-active-filter");
@@ -682,6 +899,17 @@ fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
     assert_eq!(ids, vec!["acc-active-1", "acc-active-2"]);
 }
 
+/// 函数 `rpc_account_delete_many_deletes_requested_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_delete_many_deletes_requested_accounts() {
     let ctx = RpcTestContext::new("rpc-account-delete-many");
@@ -727,6 +955,17 @@ fn rpc_account_delete_many_deletes_requested_accounts() {
     assert_eq!(ids, vec!["acc-0", "acc-2"]);
 }
 
+/// 函数 `rpc_account_delete_unavailable_free_removes_refresh_invalid_free_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_delete_unavailable_free_removes_refresh_invalid_free_accounts() {
     let ctx = RpcTestContext::new("rpc-account-delete-unavailable-free");
@@ -877,6 +1116,17 @@ fn rpc_account_delete_unavailable_free_removes_refresh_invalid_free_accounts() {
     assert_eq!(remaining_ids, vec!["acc-pro-invalid"]);
 }
 
+/// 函数 `rpc_account_update_status_toggles_manual_enable_disable`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_update_status_toggles_manual_enable_disable() {
     let ctx = RpcTestContext::new("rpc-account-update-status");
@@ -932,6 +1182,17 @@ fn rpc_account_update_status_toggles_manual_enable_disable() {
     assert_eq!(active.status, "active");
 }
 
+/// 函数 `rpc_login_start_returns_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_login_start_returns_url() {
     let _ctx = RpcTestContext::new("rpc-login-start");
@@ -954,6 +1215,17 @@ fn rpc_login_start_returns_url() {
     assert!(!login_id.is_empty());
 }
 
+/// 函数 `rpc_login_start_returns_api_key_variant`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_login_start_returns_api_key_variant() {
     let _ctx = RpcTestContext::new("rpc-login-api-key");
@@ -974,6 +1246,17 @@ fn rpc_login_start_returns_api_key_variant() {
     );
 }
 
+/// 函数 `rpc_login_start_chatgpt_device_code_returns_user_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_login_start_chatgpt_device_code_returns_user_code() {
     let _ctx = RpcTestContext::new("rpc-login-device-code");
@@ -1060,6 +1343,17 @@ fn rpc_login_start_chatgpt_device_code_returns_user_code() {
     );
 }
 
+/// 函数 `rpc_chatgpt_auth_tokens_login_read_logout_roundtrip`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     let ctx = RpcTestContext::new("rpc-chatgpt-auth-tokens-roundtrip");
@@ -1152,6 +1446,17 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     assert_eq!(account.status, "inactive");
 }
 
+/// 函数 `rpc_chatgpt_auth_tokens_refresh_updates_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
     let _ctx = RpcTestContext::new("rpc-chatgpt-auth-tokens-refresh");
@@ -1243,6 +1548,17 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
     assert_eq!(token.refresh_token, "refresh-token-new");
 }
 
+/// 函数 `rpc_usage_read_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_usage_read_empty() {
     let _ctx = RpcTestContext::new("rpc-usage-read");
@@ -1260,6 +1576,17 @@ fn rpc_usage_read_empty() {
     assert!(result.get("snapshot").is_some());
 }
 
+/// 函数 `rpc_login_status_pending`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_login_status_pending() {
     let _ctx = RpcTestContext::new("rpc-login-status");
@@ -1277,6 +1604,17 @@ fn rpc_login_status_pending() {
     assert!(result.get("status").is_some());
 }
 
+/// 函数 `rpc_usage_list_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_usage_list_empty() {
     let _ctx = RpcTestContext::new("rpc-usage-list");
@@ -1301,6 +1639,17 @@ fn rpc_usage_list_empty() {
     );
 }
 
+/// 函数 `rpc_usage_aggregate_returns_backend_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_usage_aggregate_returns_backend_summary() {
     let ctx = RpcTestContext::new("rpc-usage-aggregate");
@@ -1401,6 +1750,17 @@ fn rpc_usage_aggregate_returns_backend_summary() {
     );
 }
 
+/// 函数 `rpc_requestlog_list_and_summary_support_pagination`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_requestlog_list_and_summary_support_pagination() {
     let ctx = RpcTestContext::new("rpc-requestlog-page");
@@ -1550,6 +1910,17 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
     );
 }
 
+/// 函数 `rpc_apikey_update_model_updates_name_with_chinese`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_apikey_update_model_updates_name_with_chinese() {
     let ctx = RpcTestContext::new("rpc-apikey-update-name");
@@ -1629,6 +2000,17 @@ fn rpc_apikey_update_model_updates_name_with_chinese() {
     );
 }
 
+/// 函数 `rpc_rejects_missing_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_rejects_missing_token() {
     let _ctx = RpcTestContext::new("rpc-missing-token");
@@ -1645,6 +2027,17 @@ fn rpc_rejects_missing_token() {
     assert_eq!(status, 401);
 }
 
+/// 函数 `rpc_rejects_cross_site_origin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_rejects_cross_site_origin() {
     let _ctx = RpcTestContext::new("rpc-cross-site-origin");
@@ -1671,6 +2064,17 @@ fn rpc_rejects_cross_site_origin() {
     assert_eq!(status, 403);
 }
 
+/// 函数 `rpc_accepts_loopback_origin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_accepts_loopback_origin() {
     let _ctx = RpcTestContext::new("rpc-loopback-origin");

@@ -2,6 +2,17 @@ use super::*;
 use crate::gateway::{build_codex_compact_upstream_headers, CodexCompactUpstreamHeaderInput};
 use std::sync::MutexGuard;
 
+/// 函数 `header_runtime_scope`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn header_runtime_scope() -> (MutexGuard<'static, ()>, GatewayHeaderRuntimeRestore) {
     let guard = crate::test_env_guard();
     let restore = GatewayHeaderRuntimeRestore::capture();
@@ -16,6 +27,17 @@ struct GatewayHeaderRuntimeRestore {
 }
 
 impl GatewayHeaderRuntimeRestore {
+    /// 函数 `capture`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn capture() -> Self {
         Self {
             originator: crate::current_gateway_originator(),
@@ -25,12 +47,35 @@ impl GatewayHeaderRuntimeRestore {
 }
 
 impl Drop for GatewayHeaderRuntimeRestore {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         let _ = crate::set_gateway_originator(&self.originator);
         let _ = crate::set_gateway_residency_requirement(self.residency_requirement.as_deref());
     }
 }
 
+/// 函数 `find_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn find_header(headers: &[(String, String)], name: &str) -> Option<String> {
     headers
         .iter()
@@ -38,6 +83,17 @@ fn find_header(headers: &[(String, String)], name: &str) -> Option<String> {
         .map(|(_, value)| value.clone())
 }
 
+/// 函数 `codex_header_profile_sets_required_headers_for_stream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_header_profile_sets_required_headers_for_stream() {
     let (_guard, _restore) = header_runtime_scope();
@@ -107,6 +163,17 @@ fn codex_header_profile_sets_required_headers_for_stream() {
     assert!(find_header(&headers, "session_id").is_none());
 }
 
+/// 函数 `codex_header_profile_uses_json_accept_for_non_stream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_header_profile_uses_json_accept_for_non_stream() {
     let (_guard, _restore) = header_runtime_scope();
@@ -135,6 +202,17 @@ fn codex_header_profile_uses_json_accept_for_non_stream() {
     assert!(find_header(&headers, "Version").is_none());
 }
 
+/// 函数 `codex_compact_header_profile_matches_remote_compact_shape`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_compact_header_profile_matches_remote_compact_shape() {
     let (_guard, _restore) = header_runtime_scope();
@@ -181,6 +259,17 @@ fn codex_compact_header_profile_matches_remote_compact_shape() {
     assert!(find_header(&headers, "x-codex-turn-state").is_none());
 }
 
+/// 函数 `codex_compact_header_profile_omits_subagent_without_explicit_source`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_compact_header_profile_omits_subagent_without_explicit_source() {
     let (_guard, _restore) = header_runtime_scope();
@@ -198,6 +287,17 @@ fn codex_compact_header_profile_omits_subagent_without_explicit_source() {
     assert!(find_header(&headers, "x-openai-subagent").is_none());
 }
 
+/// 函数 `codex_compact_header_profile_omits_session_without_thread_anchor`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_compact_header_profile_omits_session_without_thread_anchor() {
     let (_guard, _restore) = header_runtime_scope();
@@ -215,6 +315,17 @@ fn codex_compact_header_profile_omits_session_without_thread_anchor() {
     assert!(find_header(&headers, "session_id").is_none());
 }
 
+/// 函数 `codex_header_profile_uses_dynamic_originator_and_residency_requirement`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_header_profile_uses_dynamic_originator_and_residency_requirement() {
     let (_guard, _restore) = header_runtime_scope();
@@ -251,6 +362,17 @@ fn codex_header_profile_uses_dynamic_originator_and_residency_requirement() {
         .is_some_and(|value| value.contains("codex_cli_rs/0.101.0")));
 }
 
+/// 函数 `codex_header_profile_regenerates_session_on_failover`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_header_profile_regenerates_session_on_failover() {
     let (_guard, _restore) = header_runtime_scope();
@@ -282,6 +404,17 @@ fn codex_header_profile_regenerates_session_on_failover() {
     assert!(find_header(&headers, "Conversation_id").is_none());
 }
 
+/// 函数 `codex_header_profile_uses_fallback_session_when_incoming_missing`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_header_profile_uses_fallback_session_when_incoming_missing() {
     let (_guard, _restore) = header_runtime_scope();
@@ -308,6 +441,17 @@ fn codex_header_profile_uses_fallback_session_when_incoming_missing() {
     assert!(find_header(&headers, "x-client-request-id").is_none());
 }
 
+/// 函数 `codex_header_profile_does_not_forward_conversation_header_even_with_fallback`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_header_profile_does_not_forward_conversation_header_even_with_fallback() {
     let (_guard, _restore) = header_runtime_scope();
@@ -330,6 +474,17 @@ fn codex_header_profile_does_not_forward_conversation_header_even_with_fallback(
     assert!(find_header(&headers, "Conversation_id").is_none());
 }
 
+/// 函数 `codex_header_profile_skips_account_header_when_disabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_header_profile_skips_account_header_when_disabled() {
     let (_guard, _restore) = header_runtime_scope();
@@ -352,6 +507,17 @@ fn codex_header_profile_skips_account_header_when_disabled() {
     assert!(find_header(&headers, "ChatGPT-Account-ID").is_none());
 }
 
+/// 函数 `codex_header_profile_can_disable_affinity_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_header_profile_can_disable_affinity_headers() {
     let (_guard, _restore) = header_runtime_scope();
@@ -381,6 +547,17 @@ fn codex_header_profile_can_disable_affinity_headers() {
     assert!(find_header(&headers, "x-client-request-id").is_none());
 }
 
+/// 函数 `codex_header_profile_does_not_invent_client_request_id_on_failover`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn codex_header_profile_does_not_invent_client_request_id_on_failover() {
     let (_guard, _restore) = header_runtime_scope();

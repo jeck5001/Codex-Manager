@@ -14,6 +14,18 @@ pub(in super::super) struct CandidateExecutionState {
 }
 
 impl CandidateExecutionState {
+    /// 函数 `rewrite_cache_key`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - model_override: 参数 model_override
+    /// - prompt_cache_key: 参数 prompt_cache_key
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn rewrite_cache_key(
         model_override: Option<&str>,
         prompt_cache_key: Option<&str>,
@@ -34,6 +46,17 @@ impl CandidateExecutionState {
         ))
     }
 
+    /// 函数 `strip_session_affinity`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(in super::super) fn strip_session_affinity(
         &mut self,
         account: &Account,
@@ -65,6 +88,22 @@ impl CandidateExecutionState {
         }
     }
 
+    /// 函数 `rewrite_body_for_model`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - path: 参数 path
+    /// - body: 参数 body
+    /// - setup: 参数 setup
+    /// - model_override: 参数 model_override
+    /// - prompt_cache_key: 参数 prompt_cache_key
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn rewrite_body_for_model(
         &mut self,
         path: &str,
@@ -94,6 +133,17 @@ impl CandidateExecutionState {
             .clone()
     }
 
+    /// 函数 `body_for_attempt`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(in super::super) fn body_for_attempt(
         &mut self,
         path: &str,
@@ -131,6 +181,17 @@ impl CandidateExecutionState {
         }
     }
 
+    /// 函数 `retry_body`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(in super::super) fn retry_body(
         &mut self,
         path: &str,
@@ -173,6 +234,17 @@ mod tests {
     use super::CandidateExecutionState;
     use bytes::Bytes;
 
+    /// 函数 `body_for_attempt_rewrites_model_override`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn body_for_attempt_rewrites_model_override() {
         let mut state = CandidateExecutionState::default();

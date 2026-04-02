@@ -6,6 +6,17 @@ pub(in super::super) enum UpstreamOutcomeDecision {
     RespondUpstream,
 }
 
+/// 函数 `decide_upstream_outcome`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn decide_upstream_outcome<F>(
     storage: &Storage,
     account_id: &str,

@@ -11,6 +11,17 @@ pub(super) enum PrimaryAttemptResult {
     Terminal { status_code: u16, message: String },
 }
 
+/// 函数 `run_primary_upstream_attempt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_primary_upstream_attempt<F>(
     client: &reqwest::blocking::Client,

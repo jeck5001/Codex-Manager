@@ -43,6 +43,18 @@ struct RouteStateEntry<T: Copy> {
 }
 
 impl<T: Copy> RouteStateEntry<T> {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    /// - last_seen: 参数 last_seen
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new(value: T, last_seen: Instant) -> Self {
         Self { value, last_seen }
     }
@@ -56,6 +68,17 @@ struct RouteRoundRobinState {
     maintenance_tick: u64,
 }
 
+/// 函数 `apply_route_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn apply_route_strategy(
     candidates: &mut [(Account, Token)],
     key_id: &str,
@@ -78,6 +101,17 @@ pub(crate) fn apply_route_strategy(
     apply_health_p2c(candidates, key_id, model, mode);
 }
 
+/// 函数 `apply_balanced_round_robin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn apply_balanced_round_robin<T>(
     candidates: &mut [T],
     key_id: &str,
@@ -93,6 +127,17 @@ pub(crate) fn apply_balanced_round_robin<T>(
     }
 }
 
+/// 函数 `rotate_to_manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 返回函数执行结果
 fn rotate_to_manual_preferred_account(candidates: &mut [(Account, Token)]) -> bool {
     let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
     let state = crate::lock_utils::lock_recover(lock, "route_state");
@@ -113,10 +158,32 @@ fn rotate_to_manual_preferred_account(candidates: &mut [(Account, Token)]) -> bo
     true
 }
 
+/// 函数 `route_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_mode() -> u8 {
     ROUTE_MODE.load(Ordering::Relaxed)
 }
 
+/// 函数 `route_mode_label`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - mode: 参数 mode
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_mode_label(mode: u8) -> &'static str {
     if mode == ROUTE_MODE_BALANCED_ROUND_ROBIN {
         ROUTE_STRATEGY_BALANCED
@@ -125,6 +192,17 @@ fn route_mode_label(mode: u8) -> &'static str {
     }
 }
 
+/// 函数 `parse_route_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_route_mode(raw: &str) -> Option<u8> {
     match raw.trim().to_ascii_lowercase().as_str() {
         ROUTE_STRATEGY_ORDERED | "order" | "priority" | "sequential" => Some(ROUTE_MODE_ORDERED),
@@ -135,11 +213,33 @@ fn parse_route_mode(raw: &str) -> Option<u8> {
     }
 }
 
+/// 函数 `current_route_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_route_strategy() -> &'static str {
     ensure_route_config_loaded();
     route_mode_label(route_mode())
 }
 
+/// 函数 `set_route_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_route_strategy(strategy: &str) -> Result<&'static str, String> {
     let Some(mode) = parse_route_mode(strategy) else {
         return Err(
@@ -157,6 +257,17 @@ pub(crate) fn set_route_strategy(strategy: &str) -> Result<&'static str, String>
     Ok(route_mode_label(mode))
 }
 
+/// 函数 `get_manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn get_manual_preferred_account() -> Option<String> {
     ensure_route_config_loaded();
     let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
@@ -164,6 +275,17 @@ pub(crate) fn get_manual_preferred_account() -> Option<String> {
     state.manual_preferred_account_id.clone()
 }
 
+/// 函数 `set_manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_manual_preferred_account(account_id: &str) -> Result<(), String> {
     ensure_route_config_loaded();
     let id = account_id.trim();
@@ -176,6 +298,17 @@ pub(crate) fn set_manual_preferred_account(account_id: &str) -> Result<(), Strin
     Ok(())
 }
 
+/// 函数 `clear_manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn clear_manual_preferred_account() {
     ensure_route_config_loaded();
     let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
@@ -183,6 +316,17 @@ pub(crate) fn clear_manual_preferred_account() {
     state.manual_preferred_account_id = None;
 }
 
+/// 函数 `clear_manual_preferred_account_if`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn clear_manual_preferred_account_if(account_id: &str) -> bool {
     ensure_route_config_loaded();
     let id = account_id.trim();
@@ -202,6 +346,19 @@ pub(crate) fn clear_manual_preferred_account_if(account_id: &str) -> bool {
     false
 }
 
+/// 函数 `next_start_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key_id: 参数 key_id
+/// - model: 参数 model
+/// - candidate_count: 参数 candidate_count
+///
+/// # 返回
+/// 返回函数执行结果
 fn next_start_index(key_id: &str, model: Option<&str>, candidate_count: usize) -> usize {
     let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
     let mut state_guard = crate::lock_utils::lock_recover(lock, "route_state");
@@ -231,6 +388,20 @@ fn next_start_index(key_id: &str, model: Option<&str>, candidate_count: usize) -
     start
 }
 
+/// 函数 `apply_health_p2c`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+/// - key_id: 参数 key_id
+/// - model: 参数 model
+/// - mode: 参数 mode
+///
+/// # 返回
+/// 无
 fn apply_health_p2c(
     candidates: &mut [(Account, Token)],
     key_id: &str,
@@ -255,6 +426,19 @@ fn apply_health_p2c(
     }
 }
 
+/// 函数 `p2c_challenger_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key_id: 参数 key_id
+/// - model: 参数 model
+/// - candidate_count: 参数 candidate_count
+///
+/// # 返回
+/// 返回函数执行结果
 fn p2c_challenger_index(
     key_id: &str,
     model: Option<&str>,
@@ -295,6 +479,17 @@ fn p2c_challenger_index(
     Some(offset + 1)
 }
 
+/// 函数 `stable_hash_u64`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - input: 参数 input
+///
+/// # 返回
+/// 返回函数执行结果
 fn stable_hash_u64(input: &[u8]) -> u64 {
     let mut hash = 14695981039346656037_u64;
     for byte in input {
@@ -304,10 +499,32 @@ fn stable_hash_u64(input: &[u8]) -> u64 {
     hash
 }
 
+/// 函数 `route_health_p2c_enabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_health_p2c_enabled() -> bool {
     ROUTE_HEALTH_P2C_ENABLED.load(Ordering::Relaxed)
 }
 
+/// 函数 `route_health_window`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - mode: 参数 mode
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_health_window(mode: u8) -> usize {
     if mode == ROUTE_MODE_BALANCED_ROUND_ROBIN {
         ROUTE_HEALTH_P2C_BALANCED_WINDOW.load(Ordering::Relaxed)
@@ -316,14 +533,49 @@ fn route_health_window(mode: u8) -> usize {
     }
 }
 
+/// 函数 `route_state_ttl`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_state_ttl() -> Duration {
     Duration::from_secs(ROUTE_STATE_TTL_SECS.load(Ordering::Relaxed))
 }
 
+/// 函数 `route_state_capacity`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_state_capacity() -> usize {
     ROUTE_STATE_CAPACITY.load(Ordering::Relaxed)
 }
 
+/// 函数 `is_entry_expired`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - last_seen: 参数 last_seen
+/// - now: 参数 now
+/// - ttl: 参数 ttl
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_entry_expired(last_seen: Instant, now: Instant, ttl: Duration) -> bool {
     if ttl.is_zero() {
         return false;
@@ -332,6 +584,20 @@ fn is_entry_expired(last_seen: Instant, now: Instant, ttl: Duration) -> bool {
         .is_some_and(|age| age > ttl)
 }
 
+/// 函数 `remove_entry_if_expired`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - map: 参数 map
+/// - key: 参数 key
+/// - now: 参数 now
+/// - ttl: 参数 ttl
+///
+/// # 返回
+/// 无
 fn remove_entry_if_expired<T: Copy>(
     map: &mut HashMap<String, RouteStateEntry<T>>,
     key: &str,
@@ -349,6 +615,19 @@ fn remove_entry_if_expired<T: Copy>(
     }
 }
 
+/// 函数 `prune_expired_entries`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - map: 参数 map
+/// - now: 参数 now
+/// - ttl: 参数 ttl
+///
+/// # 返回
+/// 无
 fn prune_expired_entries<T: Copy>(
     map: &mut HashMap<String, RouteStateEntry<T>>,
     now: Instant,
@@ -360,6 +639,19 @@ fn prune_expired_entries<T: Copy>(
     map.retain(|_, entry| !is_entry_expired(entry.last_seen, now, ttl));
 }
 
+/// 函数 `enforce_capacity_pair`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - map: 参数 map
+/// - other: 参数 other
+/// - capacity: 参数 capacity
+///
+/// # 返回
+/// 无
 fn enforce_capacity_pair<T: Copy, U: Copy>(
     map: &mut HashMap<String, RouteStateEntry<T>>,
     other: &mut HashMap<String, RouteStateEntry<U>>,
@@ -377,12 +669,35 @@ fn enforce_capacity_pair<T: Copy, U: Copy>(
     }
 }
 
+/// 函数 `find_oldest_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - map: 参数 map
+///
+/// # 返回
+/// 返回函数执行结果
 fn find_oldest_key<T: Copy>(map: &HashMap<String, RouteStateEntry<T>>) -> Option<String> {
     map.iter()
         .min_by(|(ka, ea), (kb, eb)| ea.last_seen.cmp(&eb.last_seen).then_with(|| ka.cmp(kb)))
         .map(|(key, _)| key.clone())
 }
 
+/// 函数 `key_model_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key_id: 参数 key_id
+/// - model: 参数 model
+///
+/// # 返回
+/// 返回函数执行结果
 fn key_model_key(key_id: &str, model: Option<&str>) -> String {
     format!(
         "{}|{}",
@@ -394,6 +709,17 @@ fn key_model_key(key_id: &str, model: Option<&str>) -> String {
     )
 }
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn reload_from_env() {
     let raw = std::env::var(ROUTE_STRATEGY_ENV).unwrap_or_default();
     let mode = parse_route_mode(raw.as_str()).unwrap_or(ROUTE_MODE_ORDERED);
@@ -437,10 +763,33 @@ pub(super) fn reload_from_env() {
     }
 }
 
+/// 函数 `ensure_route_config_loaded`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn ensure_route_config_loaded() {
     let _ = ROUTE_CONFIG_LOADED.get_or_init(|| reload_from_env());
 }
 
+/// 函数 `env_bool_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_bool_or(name: &str, default: bool) -> bool {
     let Ok(raw) = std::env::var(name) else {
         return default;
@@ -452,6 +801,18 @@ fn env_bool_or(name: &str, default: bool) -> bool {
     }
 }
 
+/// 函数 `env_usize_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_usize_or(name: &str, default: usize) -> usize {
     std::env::var(name)
         .ok()
@@ -459,6 +820,18 @@ fn env_usize_or(name: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+/// 函数 `env_u64_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_u64_or(name: &str, default: u64) -> u64 {
     std::env::var(name)
         .ok()
@@ -467,6 +840,18 @@ fn env_u64_or(name: &str, default: u64) -> u64 {
 }
 
 impl RouteRoundRobinState {
+    /// 函数 `maybe_maintain`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - now: 参数 now
+    ///
+    /// # 返回
+    /// 无
     fn maybe_maintain(&mut self, now: Instant) {
         self.maintenance_tick = self.maintenance_tick.wrapping_add(1);
         if self.maintenance_tick % ROUTE_STATE_MAINTENANCE_EVERY != 0 {
@@ -489,6 +874,17 @@ impl RouteRoundRobinState {
     }
 }
 
+/// 函数 `clear_route_state_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn clear_route_state_for_tests() {
     super::route_quality::clear_route_quality_for_tests();

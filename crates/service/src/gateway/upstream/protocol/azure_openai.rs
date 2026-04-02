@@ -6,6 +6,17 @@ use tiny_http::Request;
 
 use crate::apikey_profile::PROTOCOL_AZURE_OPENAI;
 
+/// 函数 `parse_static_headers_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_static_headers_json(raw: Option<&str>) -> Result<Vec<(HeaderName, HeaderValue)>, String> {
     let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(Vec::new());
@@ -33,12 +44,37 @@ fn parse_static_headers_json(raw: Option<&str>) -> Result<Vec<(HeaderName, Heade
     Ok(out)
 }
 
+/// 函数 `has_api_key_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn has_api_key_header(headers: &[(HeaderName, HeaderValue)]) -> bool {
     headers
         .iter()
         .any(|(name, _)| name.as_str().eq_ignore_ascii_case("api-key"))
 }
 
+/// 函数 `respond_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+/// - status: 参数 status
+/// - message: 参数 message
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 无
 fn respond_error(request: Request, status: u16, message: &str, trace_id: Option<&str>) {
     let response = super::super::super::error_response::terminal_text_response(
         status,
@@ -48,6 +84,17 @@ fn respond_error(request: Request, status: u16, message: &str, trace_id: Option<
     let _ = request.respond(response);
 }
 
+/// 函数 `proxy_azure_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(in super::super) fn proxy_azure_request(
     request: Request,

@@ -4,14 +4,47 @@ use super::request_rewrite_shared::{
     path_matches_template, retain_fields_by_templates, TemplateAllowlist,
 };
 
+/// 函数 `is_chat_completions_create_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_chat_completions_create_path(path: &str) -> bool {
     path_matches_template(path, "/v1/chat/completions")
 }
 
+/// 函数 `is_stream_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_stream_request(obj: &serde_json::Map<String, Value>) -> bool {
     obj.get("stream").and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// 函数 `map_responses_role_to_chat`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - role: 参数 role
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_responses_role_to_chat(role: &str) -> &'static str {
     match role {
         "developer" => "system",
@@ -21,6 +54,17 @@ fn map_responses_role_to_chat(role: &str) -> &'static str {
     }
 }
 
+/// 函数 `value_to_string`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn value_to_string(value: &Value) -> Option<String> {
     match value {
         Value::Null => None,
@@ -31,6 +75,17 @@ fn value_to_string(value: &Value) -> Option<String> {
     }
 }
 
+/// 函数 `flatten_responses_message_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - content: 参数 content
+///
+/// # 返回
+/// 返回函数执行结果
 fn flatten_responses_message_content(content: &Value) -> Option<Value> {
     match content {
         Value::String(text) => Some(Value::String(text.clone())),
@@ -86,6 +141,18 @@ fn flatten_responses_message_content(content: &Value) -> Option<Value> {
     }
 }
 
+/// 函数 `convert_responses_input_item_to_chat_messages`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item: 参数 item
+/// - out: 参数 out
+///
+/// # 返回
+/// 无
 fn convert_responses_input_item_to_chat_messages(item: &Value, out: &mut Vec<Value>) {
     let Some(item_obj) = item.as_object() else {
         return;
@@ -151,6 +218,17 @@ fn convert_responses_input_item_to_chat_messages(item: &Value, out: &mut Vec<Val
     }
 }
 
+/// 函数 `normalize_responses_tools_to_chat`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_responses_tools_to_chat(obj: &mut serde_json::Map<String, Value>) -> bool {
     let Some(tools) = obj.get_mut("tools").and_then(Value::as_array_mut) else {
         return false;
@@ -190,6 +268,17 @@ fn normalize_responses_tools_to_chat(obj: &mut serde_json::Map<String, Value>) -
     changed
 }
 
+/// 函数 `normalize_responses_tool_choice_to_chat`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_responses_tool_choice_to_chat(obj: &mut serde_json::Map<String, Value>) -> bool {
     let Some(tool_choice_obj) = obj.get_mut("tool_choice").and_then(Value::as_object_mut) else {
         return false;
@@ -209,6 +298,17 @@ fn normalize_responses_tool_choice_to_chat(obj: &mut serde_json::Map<String, Val
     true
 }
 
+/// 函数 `normalize_responses_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn normalize_responses_payload(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -272,6 +372,17 @@ pub(super) fn normalize_responses_payload(
     changed
 }
 
+/// 函数 `ensure_stream_usage_override`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_stream_usage_override(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -303,6 +414,17 @@ pub(super) fn ensure_stream_usage_override(
     changed
 }
 
+/// 函数 `ensure_reasoning_effort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ensure_reasoning_effort(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -331,6 +453,17 @@ pub(super) fn ensure_reasoning_effort(
     changed
 }
 
+/// 函数 `apply_reasoning_override`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn apply_reasoning_override(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,
@@ -349,6 +482,17 @@ pub(super) fn apply_reasoning_override(
     true
 }
 
+/// 函数 `is_supported_openai_chat_completions_create_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_supported_openai_chat_completions_create_key(key: &str) -> bool {
     matches!(
         key,
@@ -388,6 +532,17 @@ fn is_supported_openai_chat_completions_create_key(key: &str) -> bool {
     )
 }
 
+/// 函数 `is_supported_openai_chat_completions_metadata_update_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_supported_openai_chat_completions_metadata_update_key(key: &str) -> bool {
     matches!(key, "metadata")
 }
@@ -403,6 +558,17 @@ const CHAT_COMPLETIONS_ALLOWLISTS: &[TemplateAllowlist] = &[
     },
 ];
 
+/// 函数 `retain_official_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn retain_official_fields(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,

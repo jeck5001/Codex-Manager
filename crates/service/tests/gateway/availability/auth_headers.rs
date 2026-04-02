@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `resolve_openai_bearer_token_uses_cached_storage_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn resolve_openai_bearer_token_uses_cached_storage_value() {
     let storage = Storage::open_in_memory().expect("open");
@@ -45,6 +56,17 @@ fn resolve_openai_bearer_token_uses_cached_storage_value() {
     );
 }
 
+/// 函数 `drop_incoming_header_keeps_session_affinity_for_primary_attempt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn drop_incoming_header_keeps_session_affinity_for_primary_attempt() {
     assert!(should_drop_incoming_header("ChatGPT-Account-Id"));
@@ -57,6 +79,17 @@ fn drop_incoming_header_keeps_session_affinity_for_primary_attempt() {
     assert!(!should_drop_incoming_header("Content-Type"));
 }
 
+/// 函数 `drop_incoming_header_for_failover_strips_session_affinity`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn drop_incoming_header_for_failover_strips_session_affinity() {
     assert!(should_drop_incoming_header_for_failover(

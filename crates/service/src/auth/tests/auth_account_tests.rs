@@ -2,10 +2,33 @@ use super::{resolve_plan_type, resolve_plan_type_raw};
 use codexmanager_core::auth::parse_id_token_claims;
 use codexmanager_core::storage::Token;
 
+/// 函数 `jwt_with_claims`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - payload: 参数 payload
+///
+/// # 返回
+/// 返回函数执行结果
 fn jwt_with_claims(payload: &str) -> String {
     format!("eyJhbGciOiJIUzI1NiJ9.{payload}.sig")
 }
 
+/// 函数 `build_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - access_token: 参数 access_token
+/// - id_token: 参数 id_token
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_token(access_token: &str, id_token: &str) -> Token {
     Token {
         account_id: "acc-1".to_string(),
@@ -17,6 +40,17 @@ fn build_token(access_token: &str, id_token: &str) -> Token {
     }
 }
 
+/// 函数 `resolve_plan_type_prefers_latest_access_token_claims`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn resolve_plan_type_prefers_latest_access_token_claims() {
     let access_token = jwt_with_claims(
@@ -33,6 +67,17 @@ fn resolve_plan_type_prefers_latest_access_token_claims() {
     assert_eq!(resolved.as_deref(), Some("go"));
 }
 
+/// 函数 `resolve_plan_type_falls_back_to_id_token_when_access_claims_missing`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn resolve_plan_type_falls_back_to_id_token_when_access_claims_missing() {
     let access_token = jwt_with_claims("eyJzdWIiOiJ1c2VyLTEifQ");
@@ -47,6 +92,17 @@ fn resolve_plan_type_falls_back_to_id_token_when_access_claims_missing() {
     assert_eq!(resolved.as_deref(), Some("team"));
 }
 
+/// 函数 `resolve_plan_type_preserves_unknown_raw_value_for_diagnostics`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn resolve_plan_type_preserves_unknown_raw_value_for_diagnostics() {
     let access_token = jwt_with_claims(

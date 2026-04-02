@@ -8,6 +8,19 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const defaultWebRoot = path.join(repoRoot, "apps", "out");
 
+/**
+ * 函数 `parseArgs`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - argv: 参数 argv
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function parseArgs(argv) {
   const options = {
     port: 49681,
@@ -37,6 +50,19 @@ function parseArgs(argv) {
   return options;
 }
 
+/**
+ * 函数 `createDefaultSettings`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function createDefaultSettings() {
   return {
     updateAutoCheck: true,
@@ -103,6 +129,19 @@ function createDefaultSettings() {
   };
 }
 
+/**
+ * 函数 `createState`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function createState() {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const accounts = [
@@ -205,10 +244,36 @@ const MIME_TYPES = new Map([
   [".txt", "text/plain; charset=utf-8"],
 ]);
 
+/**
+ * 函数 `contentTypeFor`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - filePath: 参数 filePath
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function contentTypeFor(filePath) {
   return MIME_TYPES.get(path.extname(filePath).toLowerCase()) || "application/octet-stream";
 }
 
+/**
+ * 函数 `fileExists`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - filePath: 参数 filePath
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function fileExists(filePath) {
   try {
     await access(filePath);
@@ -218,6 +283,20 @@ async function fileExists(filePath) {
   }
 }
 
+/**
+ * 函数 `resolveStaticFile`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - webRoot: 参数 webRoot
+ * - urlPath: 参数 urlPath
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function resolveStaticFile(webRoot, urlPath) {
   const rawPath = decodeURIComponent((urlPath || "/").split("?")[0] || "/");
   const normalizedPath = rawPath === "/" ? "/index.html" : rawPath;
@@ -247,6 +326,20 @@ async function resolveStaticFile(webRoot, urlPath) {
   return null;
 }
 
+/**
+ * 函数 `matchesStatusFilter`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - log: 参数 log
+ * - statusFilter: 参数 statusFilter
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function matchesStatusFilter(log, statusFilter) {
   const code = Number(log.statusCode || 0);
   switch (statusFilter) {
@@ -262,6 +355,20 @@ function matchesStatusFilter(log, statusFilter) {
   }
 }
 
+/**
+ * 函数 `filterLogs`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - logs: 参数 logs
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function filterLogs(logs, params = {}) {
   const query = String(params.query || "").trim().toLowerCase();
   const statusFilter = String(params.statusFilter || "all").trim();
@@ -284,6 +391,19 @@ function filterLogs(logs, params = {}) {
   });
 }
 
+/**
+ * 函数 `buildStartupSnapshot`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - state: 参数 state
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function buildStartupSnapshot(state) {
   return {
     accounts: state.accounts,
@@ -313,6 +433,20 @@ function buildStartupSnapshot(state) {
   };
 }
 
+/**
+ * 函数 `applySettingsPatch`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - state: 参数 state
+ * - patch: 参数 patch
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function applySettingsPatch(state, patch) {
   const nextPatch = patch && typeof patch === "object" && !Array.isArray(patch) ? { ...patch } : {};
   if (Object.prototype.hasOwnProperty.call(nextPatch, "webAccessPassword")) {
@@ -334,6 +468,21 @@ function applySettingsPatch(state, patch) {
   return state.settings;
 }
 
+/**
+ * 函数 `handleRpc`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - state: 参数 state
+ * - method: 参数 method
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function handleRpc(state, method, params) {
   switch (method) {
     case "appSettings/get":
@@ -438,6 +587,19 @@ function handleRpc(state, method, params) {
         1,
         Number.parseInt(String(params?.pageSize || "20"), 10) || 20
       );
+      /**
+       * 函数 `start`
+       *
+       * 作者: gaohongshun
+       *
+       * 时间: 2026-04-02
+       *
+       * # 参数
+       * - page - 1: 参数 page - 1
+       *
+       * # 返回
+       * 返回函数执行结果
+       */
       const start = (page - 1) * pageSize;
       return {
         items: filtered.slice(start, start + pageSize),
@@ -473,6 +635,21 @@ function handleRpc(state, method, params) {
   }
 }
 
+/**
+ * 函数 `serveStatic`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - webRoot: 参数 webRoot
+ * - requestPath: 参数 requestPath
+ * - response: 参数 response
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function serveStatic(webRoot, requestPath, response) {
   const filePath = await resolveStaticFile(webRoot, requestPath);
   if (!filePath) {
@@ -486,6 +663,19 @@ async function serveStatic(webRoot, requestPath, response) {
   response.end(body);
 }
 
+/**
+ * 函数 `readJsonBody`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - request: 参数 request
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function readJsonBody(request) {
   const chunks = [];
   for await (const chunk of request) {
@@ -495,6 +685,19 @@ async function readJsonBody(request) {
   return raw ? JSON.parse(raw) : {};
 }
 
+/**
+ * 函数 `main`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const state = createState();
@@ -556,6 +759,19 @@ async function main() {
     );
   });
 
+  /**
+   * 函数 `shutdown`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const shutdown = () => {
     server.close(() => process.exit(0));
   };

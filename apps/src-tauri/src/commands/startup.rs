@@ -1,6 +1,19 @@
 use crate::app_storage::apply_runtime_storage_env;
 use crate::commands::shared::rpc_call_in_background;
 
+/// 函数 `service_startup_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - app: 参数 app
+/// - addr: 参数 addr
+/// - request_log_limit: 参数 request_log_limit
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_startup_snapshot(
     app: tauri::AppHandle,

@@ -13,6 +13,17 @@ pub(crate) fn lock_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> MutexGuard
     }
 }
 
+/// 函数 `read_recover`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_recover<'a, T>(lock: &'a RwLock<T>, name: &str) -> RwLockReadGuard<'a, T> {
     match lock.read() {
         Ok(guard) => guard,
@@ -23,6 +34,17 @@ pub(crate) fn read_recover<'a, T>(lock: &'a RwLock<T>, name: &str) -> RwLockRead
     }
 }
 
+/// 函数 `write_recover`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn write_recover<'a, T>(lock: &'a RwLock<T>, name: &str) -> RwLockWriteGuard<'a, T> {
     match lock.write() {
         Ok(guard) => guard,

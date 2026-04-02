@@ -15,6 +15,19 @@ import { StartupSnapshot } from "@/types";
 
 type ApiKeyPayload = Parameters<typeof accountClient.createApiKey>[0];
 
+/**
+ * 函数 `useApiKeys`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function useApiKeys() {
   const queryClient = useQueryClient();
   const serviceStatus = useAppStore((state) => state.serviceStatus);
@@ -32,6 +45,19 @@ export function useApiKeys() {
   const hasStartupApiKeySnapshot = startupApiKeys.length > 0;
   const hasStartupApiModelSnapshot = startupApiModels.length > 0;
 
+  /**
+   * 函数 `ensureServiceReady`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - actionLabel: 参数 actionLabel
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const ensureServiceReady = (actionLabel: string): boolean => {
     if (isServiceReady) {
       return true;
@@ -58,6 +84,19 @@ export function useApiKeys() {
       previousData || (startupApiModels.length > 0 ? startupApiModels : undefined),
   });
 
+  /**
+   * 函数 `invalidateAll`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const invalidateAll = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["apikeys"] }),

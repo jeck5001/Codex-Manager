@@ -12,6 +12,17 @@ pub(crate) const ENV_DB_PATH: &str = "CODEXMANAGER_DB_PATH";
 pub(crate) const ENV_RPC_TOKEN: &str = "CODEXMANAGER_RPC_TOKEN";
 pub(crate) const ENV_RPC_TOKEN_FILE: &str = "CODEXMANAGER_RPC_TOKEN_FILE";
 
+/// 函数 `exe_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn exe_dir() -> PathBuf {
     std::env::current_exe()
         .ok()
@@ -20,6 +31,17 @@ pub(crate) fn exe_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// 函数 `strip_inline_comment`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn strip_inline_comment(value: &str) -> &str {
     // Only treat ` #` as comment start (common dotenv behavior).
     let Some(pos) = value.find(" #") else {
@@ -28,6 +50,17 @@ fn strip_inline_comment(value: &str) -> &str {
     value[..pos].trim_end()
 }
 
+/// 函数 `parse_dotenv_kv`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - line: 参数 line
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_dotenv_kv(line: &str) -> Option<(String, String)> {
     let mut line = line.trim();
     if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
@@ -53,6 +86,17 @@ fn parse_dotenv_kv(line: &str) -> Option<(String, String)> {
     Some((key.to_string(), value.to_string()))
 }
 
+/// 函数 `find_env_file_in_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - dir: 参数 dir
+///
+/// # 返回
+/// 返回函数执行结果
 fn find_env_file_in_dir(dir: &Path) -> Option<PathBuf> {
     for name in ENV_CANDIDATES {
         let candidate = dir.join(name);
@@ -63,6 +107,17 @@ fn find_env_file_in_dir(dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// 函数 `load_env_from_exe_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn load_env_from_exe_dir() {
     let dir = exe_dir();
     let Some(path) = find_env_file_in_dir(&dir) else {
@@ -94,6 +149,18 @@ pub(crate) fn load_env_from_exe_dir() {
     }
 }
 
+/// 函数 `resolve_path_with_base`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+/// - base_dir: 参数 base_dir
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_path_with_base(raw: &str, base_dir: &Path) -> PathBuf {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -106,6 +173,17 @@ fn resolve_path_with_base(raw: &str, base_dir: &Path) -> PathBuf {
     base_dir.join(path)
 }
 
+/// 函数 `ensure_default_db_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn ensure_default_db_path() -> PathBuf {
     let dir = exe_dir();
     let resolved = match std::env::var(ENV_DB_PATH) {
@@ -116,6 +194,17 @@ pub(crate) fn ensure_default_db_path() -> PathBuf {
     resolved
 }
 
+/// 函数 `db_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn db_dir() -> PathBuf {
     let db_path = ensure_default_db_path();
     db_path
@@ -124,6 +213,17 @@ pub(crate) fn db_dir() -> PathBuf {
         .unwrap_or_else(exe_dir)
 }
 
+/// 函数 `rpc_token_file_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn rpc_token_file_path() -> PathBuf {
     if let Ok(raw) = std::env::var(ENV_RPC_TOKEN_FILE) {
         let trimmed = raw.trim();
@@ -134,6 +234,17 @@ pub(crate) fn rpc_token_file_path() -> PathBuf {
     db_dir().join(DEFAULT_RPC_TOKEN_FILENAME)
 }
 
+/// 函数 `read_rpc_token_from_file`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_rpc_token_from_file(path: &Path) -> Option<String> {
     let Ok(mut f) = fs::File::open(path) else {
         return None;
@@ -149,6 +260,17 @@ pub(crate) fn read_rpc_token_from_file(path: &Path) -> Option<String> {
     Some(token.to_string())
 }
 
+/// 函数 `read_rpc_token_from_env_or_file`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_rpc_token_from_env_or_file() -> Option<String> {
     if let Ok(raw) = std::env::var(ENV_RPC_TOKEN) {
         let trimmed = raw.trim();
@@ -208,6 +330,17 @@ pub(crate) fn persist_rpc_token_if_missing(token: &str) -> Option<String> {
     }
 }
 
+/// 函数 `generate_rpc_token_hex_32bytes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn generate_rpc_token_hex_32bytes() -> String {
     let mut bytes = [0u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut bytes);
@@ -228,6 +361,18 @@ mod tests {
     }
 
     impl EnvGuard {
+        /// 函数 `set`
+        ///
+        /// 作者: gaohongshun
+        ///
+        /// 时间: 2026-04-02
+        ///
+        /// # 参数
+        /// - key: 参数 key
+        /// - value: 参数 value
+        ///
+        /// # 返回
+        /// 返回函数执行结果
         fn set(key: &'static str, value: Option<&str>) -> Self {
             let previous = std::env::var_os(key);
             match value {
@@ -239,6 +384,17 @@ mod tests {
     }
 
     impl Drop for EnvGuard {
+        /// 函数 `drop`
+        ///
+        /// 作者: gaohongshun
+        ///
+        /// 时间: 2026-04-02
+        ///
+        /// # 参数
+        /// - self: 参数 self
+        ///
+        /// # 返回
+        /// 无
         fn drop(&mut self) {
             if let Some(value) = self.previous.as_ref() {
                 std::env::set_var(self.key, value);
@@ -248,6 +404,17 @@ mod tests {
         }
     }
 
+    /// 函数 `ensure_default_db_path_resolves_relative_env_against_exe_dir`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn ensure_default_db_path_resolves_relative_env_against_exe_dir() {
         let _db_guard = EnvGuard::set(ENV_DB_PATH, Some("./data/codexmanager.db"));
@@ -261,6 +428,17 @@ mod tests {
         );
     }
 
+    /// 函数 `rpc_token_file_path_resolves_relative_env_against_exe_dir`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn rpc_token_file_path_resolves_relative_env_against_exe_dir() {
         let _db_guard = EnvGuard::set(ENV_DB_PATH, Some("./data/codexmanager.db"));

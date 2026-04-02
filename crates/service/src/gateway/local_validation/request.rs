@@ -7,6 +7,17 @@ use tiny_http::Request;
 
 use super::{LocalValidationError, LocalValidationResult};
 
+/// 函数 `resolve_effective_request_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - api_key: 参数 api_key
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_effective_request_overrides(
     api_key: &ApiKey,
 ) -> (Option<String>, Option<String>, Option<String>) {
@@ -34,6 +45,19 @@ fn resolve_effective_request_overrides(
     )
 }
 
+/// 函数 `ensure_anthropic_model_is_listed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - protocol_type: 参数 protocol_type
+/// - model: 参数 model
+///
+/// # 返回
+/// 返回函数执行结果
 fn ensure_anthropic_model_is_listed(
     storage: &codexmanager_core::storage::Storage,
     protocol_type: &str,
@@ -71,17 +95,55 @@ fn ensure_anthropic_model_is_listed(
     }
 }
 
+/// 函数 `allow_openai_responses_path_rewrite`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - protocol_type: 参数 protocol_type
+/// - normalized_path: 参数 normalized_path
+///
+/// # 返回
+/// 返回函数执行结果
 fn allow_openai_responses_path_rewrite(protocol_type: &str, normalized_path: &str) -> bool {
     protocol_type == crate::apikey_profile::PROTOCOL_OPENAI_COMPAT
         && (normalized_path.starts_with("/v1/chat/completions")
             || normalized_path.starts_with("/v1/completions"))
 }
 
+/// 函数 `should_derive_compat_conversation_anchor`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - protocol_type: 参数 protocol_type
+/// - normalized_path: 参数 normalized_path
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_derive_compat_conversation_anchor(protocol_type: &str, normalized_path: &str) -> bool {
     (protocol_type == PROTOCOL_ANTHROPIC_NATIVE && normalized_path.starts_with("/v1/messages"))
         || allow_openai_responses_path_rewrite(protocol_type, normalized_path)
 }
 
+/// 函数 `resolve_local_conversation_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - protocol_type: 参数 protocol_type
+/// - normalized_path: 参数 normalized_path
+/// - incoming_headers: 参数 incoming_headers
+/// - client_has_prompt_cache_key: 参数 client_has_prompt_cache_key
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_local_conversation_id(
     protocol_type: &str,
     normalized_path: &str,
@@ -105,6 +167,19 @@ fn resolve_local_conversation_id(
         })
 }
 
+/// 函数 `apply_passthrough_request_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - body: 参数 body
+/// - api_key: 参数 api_key
+///
+/// # 返回
+/// 返回函数执行结果
 fn apply_passthrough_request_overrides(
     path: &str,
     body: Vec<u8>,
@@ -140,6 +215,17 @@ fn apply_passthrough_request_overrides(
     )
 }
 
+/// 函数 `build_local_validation_result`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn build_local_validation_result(
     request: &Request,
     trace_id: String,

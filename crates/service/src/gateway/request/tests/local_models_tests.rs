@@ -1,6 +1,17 @@
 use super::*;
 use serde_json::Value;
 
+/// 函数 `build_openai_models_list_outputs_expected_shape`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn build_openai_models_list_outputs_expected_shape() {
     let items = vec![

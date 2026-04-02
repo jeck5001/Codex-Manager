@@ -12,6 +12,19 @@ pub(super) enum StatelessRetryResult {
     Terminal { status_code: u16, message: String },
 }
 
+/// 函数 `should_trigger_stateless_retry`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - strip_session_affinity: 参数 strip_session_affinity
+/// - disable_challenge_stateless_retry: 参数 disable_challenge_stateless_retry
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_trigger_stateless_retry(
     status: u16,
     strip_session_affinity: bool,
@@ -26,6 +39,17 @@ fn should_trigger_stateless_retry(
     matches!(status, 403 | 404 | 429)
 }
 
+/// 函数 `retry_stateless_then_optional_alt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(super) fn retry_stateless_then_optional_alt(
     client: &reqwest::blocking::Client,

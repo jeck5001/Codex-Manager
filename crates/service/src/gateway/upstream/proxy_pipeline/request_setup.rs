@@ -18,6 +18,17 @@ pub(in super::super) struct UpstreamRequestSetup {
     pub(in super::super) conversation_routing: Option<ConversationRoutingContext>,
 }
 
+/// 函数 `prepare_request_setup`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn prepare_request_setup(
     path: &str,
     protocol_type: &str,

@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `anthropic_messages_request_maps_to_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_request_maps_to_responses() {
     let body = serde_json::json!({
@@ -33,6 +44,17 @@ fn anthropic_messages_request_maps_to_responses() {
     assert_eq!(value["stream"], true);
 }
 
+/// 函数 `anthropic_messages_request_sets_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_request_sets_prompt_cache_key() {
     let body = serde_json::json!({
@@ -54,6 +76,17 @@ fn anthropic_messages_request_sets_prompt_cache_key() {
     assert!(key.contains('-'));
 }
 
+/// 函数 `anthropic_messages_request_drops_query_params`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_request_drops_query_params() {
     let body = serde_json::json!({
@@ -70,6 +103,17 @@ fn anthropic_messages_request_drops_query_params() {
     assert_eq!(adapted.path, "/v1/responses");
 }
 
+/// 函数 `anthropic_tools_request_maps_to_openai_tools_and_tool_choice`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_tools_request_maps_to_openai_tools_and_tool_choice() {
     let body = serde_json::json!({
@@ -104,6 +148,17 @@ fn anthropic_tools_request_maps_to_openai_tools_and_tool_choice() {
     assert_eq!(value["tool_choice"]["name"], "read_file");
 }
 
+/// 函数 `anthropic_tools_request_respects_disable_parallel_tool_use`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_tools_request_respects_disable_parallel_tool_use() {
     let body = serde_json::json!({
@@ -139,6 +194,17 @@ fn anthropic_tools_request_respects_disable_parallel_tool_use() {
     assert_eq!(value["parallel_tool_calls"], false);
 }
 
+/// 函数 `anthropic_tools_request_accepts_type_only_tool_definition`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_tools_request_accepts_type_only_tool_definition() {
     let body = serde_json::json!({
@@ -164,6 +230,17 @@ fn anthropic_tools_request_accepts_type_only_tool_definition() {
     assert_eq!(value["tools"][0]["name"], "bash_20250124");
 }
 
+/// 函数 `anthropic_stream_request_uses_sse_adapter`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_stream_request_uses_sse_adapter() {
     let body = serde_json::json!({
@@ -178,6 +255,17 @@ fn anthropic_stream_request_uses_sse_adapter() {
     assert_eq!(adapted.response_adapter, ResponseAdapter::AnthropicSse);
 }
 
+/// 函数 `anthropic_request_ignores_unsupported_block_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_request_ignores_unsupported_block_type() {
     let body = serde_json::json!({
@@ -198,6 +286,17 @@ fn anthropic_request_ignores_unsupported_block_type() {
     assert_eq!(value["input"].as_array().map(|items| items.len()), Some(0));
 }
 
+/// 函数 `anthropic_json_response_maps_from_openai_shape`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_from_openai_shape() {
     let upstream = serde_json::json!({
@@ -235,6 +334,17 @@ fn anthropic_json_response_maps_from_openai_shape() {
     assert_eq!(value["usage"]["output_tokens"], 6);
 }
 
+/// 函数 `anthropic_json_response_maps_from_openai_responses_shape`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_from_openai_responses_shape() {
     let upstream = serde_json::json!({
@@ -276,6 +386,17 @@ fn anthropic_json_response_maps_from_openai_responses_shape() {
     assert_eq!(value["content"][0]["text"], "已完成");
 }
 
+/// 函数 `anthropic_json_response_maps_openai_tool_calls`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_openai_tool_calls() {
     let upstream = serde_json::json!({
@@ -323,6 +444,17 @@ fn anthropic_json_response_maps_openai_tool_calls() {
     assert_eq!(value["content"][0]["input"]["path"], "README.md");
 }
 
+/// 函数 `anthropic_json_response_maps_responses_function_call_input_field`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_responses_function_call_input_field() {
     let upstream = serde_json::json!({
@@ -363,6 +495,17 @@ fn anthropic_json_response_maps_responses_function_call_input_field() {
     assert_eq!(value["content"][0]["input"]["content"], "hello");
 }
 
+/// 函数 `anthropic_json_response_maps_openai_error_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_openai_error_body() {
     let upstream = serde_json::json!({
@@ -390,6 +533,17 @@ fn anthropic_json_response_maps_openai_error_body() {
         .is_some_and(|message| message.contains("gpt-5.3-codex")));
 }
 
+/// 函数 `anthropic_json_response_maps_event_stream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_event_stream() {
     let upstream = concat!(
@@ -414,6 +568,17 @@ fn anthropic_json_response_maps_event_stream() {
     assert_eq!(value["usage"]["output_tokens"], 6);
 }
 
+/// 函数 `anthropic_sse_response_maps_event_stream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_sse_response_maps_event_stream() {
     let upstream = concat!(
@@ -436,6 +601,17 @@ fn anthropic_sse_response_maps_event_stream() {
     assert!(text.contains("event: message_stop"));
 }
 
+/// 函数 `anthropic_sse_response_maps_openai_responses_completed_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_sse_response_maps_openai_responses_completed_event() {
     let upstream = concat!(
@@ -457,6 +633,17 @@ fn anthropic_sse_response_maps_openai_responses_completed_event() {
     assert_eq!(text.matches("\"text\":\"你好\"").count(), 1);
 }
 
+/// 函数 `anthropic_json_response_deduplicates_consecutive_identical_text_blocks`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_deduplicates_consecutive_identical_text_blocks() {
     let upstream = serde_json::json!({
@@ -495,6 +682,17 @@ fn anthropic_json_response_deduplicates_consecutive_identical_text_blocks() {
     assert_eq!(value["content"][0]["text"], "重复计划");
 }
 
+/// 函数 `anthropic_sse_response_maps_openai_tool_call_deltas`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_sse_response_maps_openai_tool_call_deltas() {
     let upstream = concat!(
@@ -517,6 +715,17 @@ fn anthropic_sse_response_maps_openai_tool_call_deltas() {
     assert!(text.contains("event: message_stop"));
 }
 
+/// 函数 `anthropic_sse_response_uses_output_item_done_when_completed_output_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_sse_response_uses_output_item_done_when_completed_output_empty() {
     let upstream = concat!(

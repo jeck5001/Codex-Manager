@@ -1,5 +1,16 @@
 use serde_json::{json, Value};
 
+/// 函数 `convert_anthropic_messages_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn convert_anthropic_messages_request(
     body: &[u8],
 ) -> Result<(Vec<u8>, bool, super::ToolNameRestoreMap), String> {
@@ -135,6 +146,18 @@ pub(crate) fn convert_anthropic_messages_request(
         .map_err(|err| format!("convert claude request failed: {err}"))
 }
 
+/// 函数 `collect_anthropic_tool_names`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+/// - source_messages: 参数 source_messages
+///
+/// # 返回
+/// 返回函数执行结果
 fn collect_anthropic_tool_names(
     obj: &serde_json::Map<String, Value>,
     source_messages: &[Value],
@@ -210,6 +233,17 @@ fn collect_anthropic_tool_names(
     names
 }
 
+/// 函数 `resolve_anthropic_upstream_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - source: 参数 source
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_anthropic_upstream_model(
     source: &serde_json::Map<String, Value>,
 ) -> Result<String, String> {
@@ -223,6 +257,17 @@ fn resolve_anthropic_upstream_model(
         .ok_or_else(|| "claude model is required".to_string())
 }
 
+/// 函数 `resolve_anthropic_reasoning_effort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - source: 参数 source
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_anthropic_reasoning_effort(source: &serde_json::Map<String, Value>) -> &'static str {
     source
         .get("reasoning")
@@ -241,6 +286,17 @@ fn resolve_anthropic_reasoning_effort(source: &serde_json::Map<String, Value>) -
         .unwrap_or(super::DEFAULT_ANTHROPIC_REASONING)
 }
 
+/// 函数 `resolve_anthropic_reasoning_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - source: 参数 source
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_anthropic_reasoning_summary(
     source: &serde_json::Map<String, Value>,
 ) -> Option<&'static str> {
@@ -274,6 +330,17 @@ fn resolve_anthropic_reasoning_summary(
     }
 }
 
+/// 函数 `extract_latest_anthropic_thinking_signature`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - messages: 参数 messages
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_latest_anthropic_thinking_signature(messages: &[Value]) -> Option<String> {
     for message in messages.iter().rev() {
         let Some(message_obj) = message.as_object() else {
@@ -315,6 +382,18 @@ fn extract_latest_anthropic_thinking_signature(messages: &[Value]) -> Option<Str
     None
 }
 
+/// 函数 `append_assistant_messages`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - messages: 参数 messages
+/// - content: 参数 content
+///
+/// # 返回
+/// 返回函数执行结果
 fn append_assistant_messages(messages: &mut Vec<Value>, content: &Value) -> Result<(), String> {
     if let Some(text) = content.as_str() {
         messages.push(json!({
@@ -386,6 +465,18 @@ fn append_assistant_messages(messages: &mut Vec<Value>, content: &Value) -> Resu
     Ok(())
 }
 
+/// 函数 `append_user_messages`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - messages: 参数 messages
+/// - content: 参数 content
+///
+/// # 返回
+/// 返回函数执行结果
 fn append_user_messages(messages: &mut Vec<Value>, content: &Value) -> Result<(), String> {
     if let Some(text) = content.as_str() {
         if !text.trim().is_empty() {
@@ -463,6 +554,19 @@ fn append_user_messages(messages: &mut Vec<Value>, content: &Value) -> Result<()
     Ok(())
 }
 
+/// 函数 `append_tool_role_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - messages: 参数 messages
+/// - message_obj: 参数 message_obj
+/// - content: 参数 content
+///
+/// # 返回
+/// 返回函数执行结果
 fn append_tool_role_message(
     messages: &mut Vec<Value>,
     message_obj: &serde_json::Map<String, Value>,
@@ -482,6 +586,18 @@ fn append_tool_role_message(
     Ok(())
 }
 
+/// 函数 `flush_user_content_parts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - messages: 参数 messages
+/// - pending_parts: 参数 pending_parts
+///
+/// # 返回
+/// 无
 fn flush_user_content_parts(messages: &mut Vec<Value>, pending_parts: &mut Vec<Value>) {
     if pending_parts.is_empty() {
         return;
@@ -493,6 +609,17 @@ fn flush_user_content_parts(messages: &mut Vec<Value>, pending_parts: &mut Vec<V
     pending_parts.clear();
 }
 
+/// 函数 `extract_text_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_text_content(value: &Value) -> Result<String, String> {
     if let Some(text) = value.as_str() {
         return Ok(text.to_string());
@@ -516,6 +643,17 @@ fn extract_text_content(value: &Value) -> Result<String, String> {
     Err("unsupported claude content".to_string())
 }
 
+/// 函数 `extract_text_from_block`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - block: 参数 block
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_text_from_block(block: &serde_json::Map<String, Value>) -> Result<String, String> {
     let block_type = block
         .get("type")

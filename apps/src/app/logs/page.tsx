@@ -64,6 +64,19 @@ import {
 
 type StatusFilter = "all" | "2xx" | "4xx" | "5xx";
 
+/**
+ * 函数 `getStatusBadge`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - statusCode: 参数 statusCode
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function getStatusBadge(statusCode: number | null) {
   if (statusCode == null) {
     return <Badge variant="secondary">-</Badge>;
@@ -89,6 +102,19 @@ function getStatusBadge(statusCode: number | null) {
   );
 }
 
+/**
+ * 函数 `SummaryCard`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function SummaryCard({
   title,
   value,
@@ -130,6 +156,19 @@ function SummaryCard({
   );
 }
 
+/**
+ * 函数 `LogsPageSkeleton`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function LogsPageSkeleton() {
   return (
     <div className="space-y-5">
@@ -144,6 +183,19 @@ function LogsPageSkeleton() {
   );
 }
 
+/**
+ * 函数 `formatDuration`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatDuration(value: number | null): string {
   if (value == null) return "-";
   if (value >= 10_000) return `${Math.round(value / 1000)}s`;
@@ -151,6 +203,19 @@ function formatDuration(value: number | null): string {
   return `${Math.round(value)}ms`;
 }
 
+/**
+ * 函数 `fallbackAccountNameFromId`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - accountId: 参数 accountId
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function fallbackAccountNameFromId(accountId: string): string {
   const raw = accountId.trim();
   if (!raw) return "";
@@ -159,18 +224,57 @@ function fallbackAccountNameFromId(accountId: string): string {
   return raw.slice(sep + 2).trim();
 }
 
+/**
+ * 函数 `fallbackAccountDisplayFromKey`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - keyId: 参数 keyId
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function fallbackAccountDisplayFromKey(keyId: string): string {
   const raw = keyId.trim();
   if (!raw) return "";
   return `Key ${raw.slice(0, 10)}`;
 }
 
+/**
+ * 函数 `formatCompactKeyLabel`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - keyId: 参数 keyId
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatCompactKeyLabel(keyId: string): string {
   if (!keyId) return "-";
   if (keyId.length <= 12) return keyId;
   return `${keyId.slice(0, 8)}...`;
 }
 
+/**
+ * 函数 `resolveDisplayRequestPath`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - log: 参数 log
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function resolveDisplayRequestPath(log: RequestLog): string {
   const originalPath = String(log.originalPath || "").trim();
   if (originalPath) {
@@ -179,6 +283,19 @@ function resolveDisplayRequestPath(log: RequestLog): string {
   return String(log.path || log.requestPath || "").trim();
 }
 
+/**
+ * 函数 `resolveUpstreamDisplay`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - upstreamUrl: 参数 upstreamUrl
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function resolveUpstreamDisplay(upstreamUrl: string): string {
   const raw = String(upstreamUrl || "").trim();
   if (!raw) return "";
@@ -194,6 +311,20 @@ function resolveUpstreamDisplay(upstreamUrl: string): string {
   }
 }
 
+/**
+ * 函数 `resolveAccountDisplayName`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - log: 参数 log
+ * - accountNameMap: 参数 accountNameMap
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function resolveAccountDisplayName(
   log: RequestLog,
   accountNameMap: Map<string, string>,
@@ -211,6 +342,20 @@ function resolveAccountDisplayName(
   return fallbackAccountDisplayFromKey(log.keyId);
 }
 
+/**
+ * 函数 `resolveAccountDisplayNameById`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - accountId: 参数 accountId
+ * - accountNameMap: 参数 accountNameMap
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function resolveAccountDisplayNameById(
   accountId: string,
   accountNameMap: Map<string, string>,
@@ -224,6 +369,19 @@ function resolveAccountDisplayNameById(
   );
 }
 
+/**
+ * 函数 `resolveDisplayedStatusCode`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - log: 参数 log
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function resolveDisplayedStatusCode(log: RequestLog): number | null {
   const statusCode = log.statusCode;
   const hasError = Boolean(String(log.error || "").trim());
@@ -236,6 +394,21 @@ function resolveDisplayedStatusCode(log: RequestLog): number | null {
   return statusCode;
 }
 
+/**
+ * 函数 `resolveAggregateApiDisplayName`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - log: 参数 log
+ * - aggregateApi: 参数 aggregateApi
+ * - apiKey: 参数 apiKey
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function resolveAggregateApiDisplayName(
   log: RequestLog,
   aggregateApi: AggregateApi | null,
@@ -253,6 +426,21 @@ function resolveAggregateApiDisplayName(
   return "-";
 }
 
+/**
+ * 函数 `resolveAggregateApiTooltipUrl`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - log: 参数 log
+ * - aggregateApi: 参数 aggregateApi
+ * - apiKey: 参数 apiKey
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function resolveAggregateApiTooltipUrl(
   log: RequestLog,
   aggregateApi: AggregateApi | null,
@@ -270,6 +458,20 @@ function resolveAggregateApiTooltipUrl(
   return "-";
 }
 
+/**
+ * 函数 `resolveAggregateApiDisplayNameById`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - aggregateApiId: 参数 aggregateApiId
+ * - aggregateApiMap: 参数 aggregateApiMap
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function resolveAggregateApiDisplayNameById(
   aggregateApiId: string,
   aggregateApiMap: Map<string, AggregateApi>,
@@ -286,10 +488,36 @@ function resolveAggregateApiDisplayNameById(
   return normalized;
 }
 
+/**
+ * 函数 `normalizeAggregateApiUrl`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizeAggregateApiUrl(value: string): string {
   return String(value || "").trim().replace(/\/+$/, "");
 }
 
+/**
+ * 函数 `formatModelEffortDisplay`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - log: 参数 log
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatModelEffortDisplay(log: RequestLog): string {
   const model = String(log.model || "").trim();
   const effort = String(log.reasoningEffort || "").trim();
@@ -299,6 +527,19 @@ function formatModelEffortDisplay(log: RequestLog): string {
   return model || effort || "-";
 }
 
+/**
+ * 函数 `AccountKeyInfoCell`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function AccountKeyInfoCell({
   log,
   accountLabel,
@@ -339,6 +580,19 @@ function AccountKeyInfoCell({
   const aggregateApiById = apiKey?.aggregateApiId
     ? aggregateApiMap.get(apiKey.aggregateApiId) || null
     : null;
+  /**
+   * 函数 `aggregateApiByUrl`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - (): 参数 ()
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const aggregateApiByUrl = (() => {
     const upstreamUrl = normalizeAggregateApiUrl(log.upstreamUrl);
     if (!upstreamUrl) return null;
@@ -505,6 +759,19 @@ function AccountKeyInfoCell({
   );
 }
 
+/**
+ * 函数 `RequestRouteInfoCell`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function RequestRouteInfoCell({ log }: { log: RequestLog }) {
   const displayPath = resolveDisplayRequestPath(log) || "-";
   const recordedPath = String(log.path || log.requestPath || "").trim();
@@ -587,6 +854,19 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
   );
 }
 
+/**
+ * 函数 `ErrorInfoCell`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function ErrorInfoCell({ error }: { error: string }) {
   const text = String(error || "").trim();
   if (!text) {
@@ -609,6 +889,19 @@ function ErrorInfoCell({ error }: { error: string }) {
   );
 }
 
+/**
+ * 函数 `ModelEffortCell`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function ModelEffortCell({ log }: { log: RequestLog }) {
   const model = String(log.model || "").trim();
   const effort = String(log.reasoningEffort || "").trim();
@@ -641,6 +934,19 @@ function ModelEffortCell({ log }: { log: RequestLog }) {
   );
 }
 
+/**
+ * 函数 `buildSummaryPlaceholder`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - logs: 参数 logs
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function buildSummaryPlaceholder(logs: RequestLog[]): RequestLogFilterSummary {
   const successCount = logs.filter((item) => {
     const statusCode = item.statusCode ?? 0;
@@ -669,6 +975,19 @@ function buildSummaryPlaceholder(logs: RequestLog[]): RequestLogFilterSummary {
   };
 }
 
+/**
+ * 函数 `LogsPageContent`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function LogsPageContent() {
   const searchParams = useSearchParams();
   const { serviceStatus } = useAppStore();

@@ -8,6 +8,17 @@ pub(super) enum PromptCacheKeyRewriteSource {
 }
 
 impl PromptCacheKeyRewriteSource {
+    /// 函数 `as_str`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::MissingInput => "missing_input",
@@ -26,6 +37,17 @@ pub(super) struct PromptCacheKeyRewriteDecision<'a> {
     pub(super) changed: bool,
 }
 
+/// 函数 `resolve_prompt_cache_key_rewrite`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn resolve_prompt_cache_key_rewrite<'a>(
     existing: Option<&'a str>,
     prompt_cache_key: Option<&'a str>,
@@ -67,6 +89,17 @@ pub(super) fn resolve_prompt_cache_key_rewrite<'a>(
     }
 }
 
+/// 函数 `fingerprint_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn fingerprint_prompt_cache_key(value: &str) -> String {
     super::super::anchor_fingerprint::fingerprint_anchor(value)
 }
@@ -77,6 +110,17 @@ mod tests {
         fingerprint_prompt_cache_key, resolve_prompt_cache_key_rewrite, PromptCacheKeyRewriteSource,
     };
 
+    /// 函数 `missing_input_keeps_existing_value`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn missing_input_keeps_existing_value() {
         let actual = resolve_prompt_cache_key_rewrite(Some("existing"), None, false);
@@ -86,6 +130,17 @@ mod tests {
         assert!(!actual.changed);
     }
 
+    /// 函数 `inserted_prompt_cache_key_is_reported`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn inserted_prompt_cache_key_is_reported() {
         let actual = resolve_prompt_cache_key_rewrite(None, Some("thread_1"), false);
@@ -95,6 +150,17 @@ mod tests {
         assert!(actual.changed);
     }
 
+    /// 函数 `forced_prompt_cache_key_replaces_existing_value`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn forced_prompt_cache_key_replaces_existing_value() {
         let actual = resolve_prompt_cache_key_rewrite(Some("old"), Some("new"), true);
@@ -104,6 +170,17 @@ mod tests {
         assert!(actual.changed);
     }
 
+    /// 函数 `fingerprint_is_stable`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn fingerprint_is_stable() {
         assert_eq!(fingerprint_prompt_cache_key("thread_1").len(), 16);

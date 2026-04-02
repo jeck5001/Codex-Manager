@@ -11,6 +11,17 @@ use crate::storage_helpers::{
     generate_key_id, generate_platform_key, hash_platform_key, open_storage,
 };
 
+/// 函数 `create_api_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn create_api_key(
     name: Option<String>,
     model_slug: Option<String>,

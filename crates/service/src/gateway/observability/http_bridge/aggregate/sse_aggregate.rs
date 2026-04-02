@@ -38,6 +38,18 @@ struct ResponsesSseSynthesis {
     saw_completed: bool,
 }
 
+/// 函数 `merge_tool_call_arguments`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - existing: 参数 existing
+/// - fragment: 参数 fragment
+///
+/// # 返回
+/// 无
 fn merge_tool_call_arguments(existing: &mut String, fragment: &str) {
     if fragment.is_empty() {
         return;
@@ -56,6 +68,18 @@ fn merge_tool_call_arguments(existing: &mut String, fragment: &str) {
     existing.push_str(fragment);
 }
 
+/// 函数 `reserve_output_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - synthesis: 参数 synthesis
+/// - explicit_index: 参数 explicit_index
+///
+/// # 返回
+/// 返回函数执行结果
 fn reserve_output_index(synthesis: &mut ResponsesSseSynthesis, explicit_index: Option<i64>) -> i64 {
     if let Some(index) = explicit_index {
         synthesis.next_output_index = synthesis.next_output_index.max(index + 1);
@@ -67,6 +91,18 @@ fn reserve_output_index(synthesis: &mut ResponsesSseSynthesis, explicit_index: O
     }
 }
 
+/// 函数 `merge_response_output_item_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - synthesis: 参数 synthesis
+/// - value: 参数 value
+///
+/// # 返回
+/// 无
 fn merge_response_output_item_event(synthesis: &mut ResponsesSseSynthesis, value: &Value) {
     let Some(event_type) = value.get("type").and_then(Value::as_str) else {
         return;
@@ -146,6 +182,18 @@ fn merge_response_output_item_event(synthesis: &mut ResponsesSseSynthesis, value
     }
 }
 
+/// 函数 `append_chat_delta_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - buffer: 参数 buffer
+/// - delta_content: 参数 delta_content
+///
+/// # 返回
+/// 无
 fn append_chat_delta_content(buffer: &mut String, delta_content: &Value) {
     if let Some(text) = delta_content.as_str() {
         buffer.push_str(text);
@@ -161,6 +209,18 @@ fn append_chat_delta_content(buffer: &mut String, delta_content: &Value) {
     }
 }
 
+/// 函数 `update_chat_completion_sse_synthesis`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - synthesis: 参数 synthesis
+/// - value: 参数 value
+///
+/// # 返回
+/// 无
 fn update_chat_completion_sse_synthesis(synthesis: &mut ChatCompletionSseSynthesis, value: &Value) {
     if value.get("object").and_then(Value::as_str) != Some("chat.completion.chunk") {
         return;
@@ -215,6 +275,18 @@ fn update_chat_completion_sse_synthesis(synthesis: &mut ChatCompletionSseSynthes
     }
 }
 
+/// 函数 `update_responses_sse_synthesis`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - synthesis: 参数 synthesis
+/// - value: 参数 value
+///
+/// # 返回
+/// 无
 fn update_responses_sse_synthesis(synthesis: &mut ResponsesSseSynthesis, value: &Value) {
     let Some(event_type) = value.get("type").and_then(Value::as_str) else {
         return;
@@ -305,6 +377,17 @@ fn update_responses_sse_synthesis(synthesis: &mut ResponsesSseSynthesis, value: 
     }
 }
 
+/// 函数 `response_has_effective_output`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - response: 参数 response
+///
+/// # 返回
+/// 返回函数执行结果
 fn response_has_effective_output(response: &Value) -> bool {
     let mut output_text = String::new();
     if let Some(output) = response.get("output") {
@@ -313,6 +396,17 @@ fn response_has_effective_output(response: &Value) -> bool {
     !output_text.trim().is_empty()
 }
 
+/// 函数 `build_response_output_items_from_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - text: 参数 text
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_response_output_items_from_text(text: &str) -> Value {
     Value::Array(vec![json!({
         "type": "message",
@@ -324,6 +418,17 @@ fn build_response_output_items_from_text(text: &str) -> Value {
     })])
 }
 
+/// 函数 `build_response_output_items_from_sse`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - synthesis: 参数 synthesis
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_response_output_items_from_sse(synthesis: &ResponsesSseSynthesis) -> Option<Value> {
     if synthesis.output_items.is_empty() {
         return None;
@@ -333,6 +438,18 @@ fn build_response_output_items_from_sse(synthesis: &ResponsesSseSynthesis) -> Op
     ))
 }
 
+/// 函数 `enrich_completed_response_with_sse_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - completed_response: 参数 completed_response
+/// - synthesis: 参数 synthesis
+///
+/// # 返回
+/// 返回函数执行结果
 fn enrich_completed_response_with_sse_text(
     completed_response: Value,
     synthesis: &ResponsesSseSynthesis,
@@ -411,6 +528,17 @@ fn enrich_completed_response_with_sse_text(
     Value::Object(response_obj.clone())
 }
 
+/// 函数 `synthesize_response_body_from_sse`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - synthesis: 参数 synthesis
+///
+/// # 返回
+/// 返回函数执行结果
 fn synthesize_response_body_from_sse(synthesis: &ResponsesSseSynthesis) -> Option<Vec<u8>> {
     let output_items = build_response_output_items_from_sse(synthesis);
     if !synthesis.saw_completed
@@ -464,6 +592,17 @@ fn synthesize_response_body_from_sse(synthesis: &ResponsesSseSynthesis) -> Optio
     serde_json::to_vec(&Value::Object(out)).ok()
 }
 
+/// 函数 `synthesize_chat_completion_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - synthesis: 参数 synthesis
+///
+/// # 返回
+/// 返回函数执行结果
 fn synthesize_chat_completion_body(synthesis: &ChatCompletionSseSynthesis) -> Option<Vec<u8>> {
     if !synthesis.saw_terminal || synthesis.choices.is_empty() {
         return None;
@@ -524,6 +663,17 @@ fn synthesize_chat_completion_body(synthesis: &ChatCompletionSseSynthesis) -> Op
     serde_json::to_vec(&Value::Object(out)).ok()
 }
 
+/// 函数 `collect_non_stream_json_from_sse_bytes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn collect_non_stream_json_from_sse_bytes(
     payload: &[u8],
 ) -> (Option<Vec<u8>>, UpstreamResponseUsage) {
@@ -598,6 +748,17 @@ pub(in super::super) fn collect_non_stream_json_from_sse_bytes(
     (body, usage)
 }
 
+/// 函数 `looks_like_sse_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn looks_like_sse_payload(body: &[u8]) -> bool {
     let Ok(text) = std::str::from_utf8(body) else {
         return false;

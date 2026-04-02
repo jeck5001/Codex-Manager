@@ -9,6 +9,17 @@ use crate::storage_helpers;
 
 const MODEL_CACHE_SCOPE_DEFAULT: &str = "default";
 
+/// 函数 `read_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_model_options(refresh_remote: bool) -> Result<ApiKeyModelListResult, String> {
     let cached = read_cached_model_options()?;
     if !refresh_remote {
@@ -34,6 +45,17 @@ pub(crate) fn read_model_options(refresh_remote: bool) -> Result<ApiKeyModelList
     }
 }
 
+/// 函数 `save_model_options_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - items: 参数 items
+///
+/// # 返回
+/// 返回函数执行结果
 fn save_model_options_cache(items: &[ModelOption]) -> Result<(), String> {
     let storage =
         storage_helpers::open_storage().ok_or_else(|| "storage unavailable".to_string())?;
@@ -43,6 +65,17 @@ fn save_model_options_cache(items: &[ModelOption]) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// 函数 `read_cached_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn read_cached_model_options() -> Result<Vec<ModelOption>, String> {
     let storage =
         storage_helpers::open_storage().ok_or_else(|| "storage unavailable".to_string())?;
@@ -56,6 +89,18 @@ fn read_cached_model_options() -> Result<Vec<ModelOption>, String> {
     Ok(normalize_model_options(&items))
 }
 
+/// 函数 `merge_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - cached: 参数 cached
+/// - fetched: 参数 fetched
+///
+/// # 返回
+/// 返回函数执行结果
 fn merge_model_options(
     cached: &[ModelOption],
     fetched: &[ModelOption],
@@ -85,6 +130,17 @@ fn merge_model_options(
     (merged, changed)
 }
 
+/// 函数 `normalize_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - items: 参数 items
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_model_options(items: &[ModelOption]) -> Vec<ModelOption> {
     items
         .iter()
@@ -107,6 +163,17 @@ mod tests {
 
     use super::merge_model_options;
 
+    /// 函数 `as_pairs`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - items: 参数 items
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn as_pairs(items: &[ModelOption]) -> Vec<(String, String)> {
         items
             .iter()
@@ -114,6 +181,17 @@ mod tests {
             .collect()
     }
 
+    /// 函数 `merge_model_options_appends_only_new_models`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn merge_model_options_appends_only_new_models() {
         let cached = vec![
@@ -150,6 +228,17 @@ mod tests {
         );
     }
 
+    /// 函数 `merge_model_options_keeps_cache_when_remote_has_no_new_items`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn merge_model_options_keeps_cache_when_remote_has_no_new_items() {
         let cached = vec![ModelOption {

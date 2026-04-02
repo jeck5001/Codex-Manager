@@ -8,6 +8,17 @@ use std::time::Duration;
 use crate::account_cleanup::{delete_banned_accounts, delete_unavailable_free_accounts};
 use crate::storage_helpers::open_storage;
 
+/// 函数 `handle_task_run`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_task_run(req: &JsonRpcRequest) -> JsonRpcResponse {
     let Some(task_id) = req
         .params
@@ -35,6 +46,17 @@ pub(crate) fn handle_task_run(req: &JsonRpcRequest) -> JsonRpcResponse {
     }
 }
 
+/// 函数 `run_plugin_task`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn run_plugin_task(task_id: &str, input: Option<Value>) -> Result<Value, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let Some(task) = storage
@@ -102,6 +124,17 @@ pub(crate) fn run_plugin_task(task_id: &str, input: Option<Value>) -> Result<Val
     }
 }
 
+/// 函数 `fetch_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn fetch_text(url: &str) -> Result<String, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(20))
@@ -122,6 +155,21 @@ pub(crate) fn fetch_text(url: &str) -> Result<String, String> {
         .map_err(|err| format!("read {url} response failed: {err}"))
 }
 
+/// 函数 `execute_plugin_script`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - plugin: 参数 plugin
+/// - task: 参数 task
+/// - input: 参数 input
+/// - permissions: 参数 permissions
+/// - run_started_at: 参数 run_started_at
+///
+/// # 返回
+/// 返回函数执行结果
 fn execute_plugin_script(
     plugin: &PluginInstall,
     task: &PluginTask,
@@ -221,6 +269,19 @@ fn execute_plugin_script(
     Ok(json_from_dynamic(result))
 }
 
+/// 函数 `fetch_http_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - method: 参数 method
+/// - url: 参数 url
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn fetch_http_value(method: &str, url: &str, body: Option<String>) -> Result<Value, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(20))
@@ -249,6 +310,17 @@ fn fetch_http_value(method: &str, url: &str, body: Option<String>) -> Result<Val
     }))
 }
 
+/// 函数 `parse_permissions`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_permissions(raw: &str) -> HashSet<String> {
     serde_json::from_str::<Vec<String>>(raw)
         .unwrap_or_default()
@@ -258,6 +330,18 @@ fn parse_permissions(raw: &str) -> HashSet<String> {
         .collect()
 }
 
+/// 函数 `next_run_time_for_task`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - task: 参数 task
+/// - finished_at: 参数 finished_at
+///
+/// # 返回
+/// 返回函数执行结果
 fn next_run_time_for_task(task: &PluginTask, finished_at: i64) -> Option<i64> {
     if task.schedule_kind == "manual" {
         return None;
@@ -267,6 +351,17 @@ fn next_run_time_for_task(task: &PluginTask, finished_at: i64) -> Option<i64> {
         .map(|interval| finished_at + interval)
 }
 
+/// 函数 `dynamic_from_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn dynamic_from_json(value: Value) -> Dynamic {
     match value {
         Value::Null => Dynamic::UNIT,
@@ -300,6 +395,17 @@ fn dynamic_from_json(value: Value) -> Dynamic {
     }
 }
 
+/// 函数 `json_from_dynamic`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn json_from_dynamic(value: Dynamic) -> Value {
     if value.is_unit() {
         return Value::Null;

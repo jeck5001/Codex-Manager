@@ -20,6 +20,17 @@ pub(crate) struct OpenAICompletionsSseReader {
 }
 
 impl OpenAICompletionsSseReader {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn new(
         upstream: reqwest::blocking::Response,
         usage_collector: Arc<Mutex<PassthroughSseCollector>>,
@@ -34,6 +45,18 @@ impl OpenAICompletionsSseReader {
         }
     }
 
+    /// 函数 `update_usage_from_frame`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - lines: 参数 lines
+    ///
+    /// # 返回
+    /// 无
     fn update_usage_from_frame(&self, lines: &[String]) {
         let inspection = inspect_sse_frame(lines);
         if inspection.usage.is_none() && inspection.terminal.is_none() {
@@ -55,6 +78,18 @@ impl OpenAICompletionsSseReader {
         }
     }
 
+    /// 函数 `try_build_completion_fallback_stream`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - include_done: 参数 include_done
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn try_build_completion_fallback_stream(&mut self, include_done: bool) -> Option<Vec<u8>> {
         if self.emitted_text_delta {
             return None;
@@ -74,6 +109,18 @@ impl OpenAICompletionsSseReader {
         Some(out.into_bytes())
     }
 
+    /// 函数 `map_frame_to_completions_sse`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - lines: 参数 lines
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn map_frame_to_completions_sse(&mut self, lines: &[String]) -> Vec<u8> {
         let Some(data) = extract_sse_frame_payload(lines) else {
             return Vec::new();
@@ -132,6 +179,17 @@ impl OpenAICompletionsSseReader {
         out.into_bytes()
     }
 
+    /// 函数 `next_chunk`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn next_chunk(&mut self) -> std::io::Result<Vec<u8>> {
         loop {
             match self.upstream.recv_timeout(sse_keepalive_interval()) {
@@ -186,6 +244,18 @@ impl OpenAICompletionsSseReader {
 }
 
 impl Read for OpenAICompletionsSseReader {
+    /// 函数 `read`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - buf: 参数 buf
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         loop {
             let read = self.out_cursor.read(buf)?;

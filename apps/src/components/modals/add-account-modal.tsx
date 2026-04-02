@@ -31,6 +31,20 @@ interface AddAccountModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/**
+ * 函数 `pickImportTokenField`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - record: 参数 record
+ * - keys: 参数 keys
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function pickImportTokenField(record: unknown, keys: string[]): string {
   const source = record && typeof record === "object" && !Array.isArray(record)
     ? (record as Record<string, unknown>)
@@ -45,6 +59,19 @@ function pickImportTokenField(record: unknown, keys: string[]): string {
   return "";
 }
 
+/**
+ * 函数 `normalizeSingleImportRecord`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - record: 参数 record
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizeSingleImportRecord(record: unknown): unknown {
   if (!record || typeof record !== "object" || Array.isArray(record)) {
     return record;
@@ -83,6 +110,19 @@ function normalizeSingleImportRecord(record: unknown): unknown {
   };
 }
 
+/**
+ * 函数 `normalizeImportContentForCompatibility`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - rawContent: 参数 rawContent
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizeImportContentForCompatibility(rawContent: string): string {
   const text = String(rawContent || "").trim();
   if (!text) return text;
@@ -100,6 +140,19 @@ function normalizeImportContentForCompatibility(rawContent: string): string {
   }
 }
 
+/**
+ * 函数 `buildBulkImportContents`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - rawContent: 参数 rawContent
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function buildBulkImportContents(rawContent: string): string[] {
   const text = String(rawContent || "").trim();
   if (!text) return [];
@@ -115,6 +168,19 @@ function buildBulkImportContents(rawContent: string): string[] {
     .map((item) => normalizeImportContentForCompatibility(item));
 }
 
+/**
+ * 函数 `getBulkImportErrorMessage`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - error: 参数 error
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function getBulkImportErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("invalid JSON object stream")) {
@@ -126,6 +192,19 @@ function getBulkImportErrorMessage(error: unknown): string {
   return message;
 }
 
+/**
+ * 函数 `AddAccountModal`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   const serviceStatus = useAppStore((state) => state.serviceStatus);
   const { canAccessManagementRpc } = useRuntimeCapabilities();
@@ -162,6 +241,19 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setBulkContent("");
   }, []);
 
+  /**
+   * 函数 `invalidateLoginQueries`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const invalidateLoginQueries = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["accounts"] }),
@@ -170,6 +262,19 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     ]);
   };
 
+  /**
+   * 函数 `handleDialogOpenChange`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - nextOpen: 参数 nextOpen
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleDialogOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       resetModalState();
@@ -177,6 +282,19 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     onOpenChange(nextOpen);
   };
 
+  /**
+   * 函数 `completeLoginSuccess`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - message: 参数 message
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const completeLoginSuccess = async (message: string) => {
     await invalidateLoginQueries();
     toast.success(message);
@@ -184,6 +302,19 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     onOpenChange(false);
   };
 
+  /**
+   * 函数 `ensureServiceReady`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - actionLabel: 参数 actionLabel
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const ensureServiceReady = (actionLabel: string) => {
     if (isServiceReady) {
       return true;
@@ -196,6 +327,20 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     return false;
   };
 
+  /**
+   * 函数 `waitForLogin`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - loginId: 参数 loginId
+   * - pendingHint?: 参数 pendingHint?
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const waitForLogin = async (loginId: string, pendingHint?: string) => {
     const pollToken = loginPollTokenRef.current + 1;
     loginPollTokenRef.current = pollToken;
@@ -237,6 +382,19 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     }
   };
 
+  /**
+   * 函数 `handleStartLogin`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleStartLogin = async () => {
     if (!ensureServiceReady("开始登录授权")) {
       return;
@@ -272,6 +430,19 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     }
   };
 
+  /**
+   * 函数 `handleManualCallback`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleManualCallback = async () => {
     if (!ensureServiceReady("解析登录回调")) {
       return;
@@ -298,6 +469,19 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     }
   };
 
+  /**
+   * 函数 `handleBulkImport`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleBulkImport = async () => {
     if (!ensureServiceReady("导入账号")) {
       return;
@@ -326,6 +510,19 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     }
   };
 
+  /**
+   * 函数 `copyUrl`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const copyUrl = async () => {
     if (!loginUrl) return;
     try {

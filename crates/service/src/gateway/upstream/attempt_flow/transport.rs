@@ -15,6 +15,17 @@ pub(in super::super) struct UpstreamRequestContext<'a> {
 }
 
 impl<'a> UpstreamRequestContext<'a> {
+    /// 函数 `from_request`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(in super::super) fn from_request(request: &'a Request) -> Self {
         Self {
             request_path: request.url(),
@@ -22,6 +33,17 @@ impl<'a> UpstreamRequestContext<'a> {
     }
 }
 
+/// 函数 `should_force_connection_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - target_url: 参数 target_url
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_force_connection_close(target_url: &str) -> bool {
     reqwest::Url::parse(target_url)
         .ok()
@@ -29,6 +51,17 @@ fn should_force_connection_close(target_url: &str) -> bool {
         .is_some_and(|host| matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1"))
 }
 
+/// 函数 `force_connection_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 无
 fn force_connection_close(headers: &mut Vec<(String, String)>) {
     if let Some((_, value)) = headers
         .iter_mut()
@@ -40,6 +73,17 @@ fn force_connection_close(headers: &mut Vec<(String, String)>) {
     }
 }
 
+/// 函数 `extract_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_prompt_cache_key(body: &[u8]) -> Option<String> {
     if body.is_empty() || body.len() > 64 * 1024 {
         return None;
@@ -55,16 +99,53 @@ fn extract_prompt_cache_key(body: &[u8]) -> Option<String> {
         .map(str::to_string)
 }
 
+/// 函数 `is_compact_request_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_compact_request_path(path: &str) -> bool {
     path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?")
 }
 
+/// 函数 `has_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn has_header(headers: &[(String, String)], name: &str) -> bool {
     headers
         .iter()
         .any(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
 }
 
+/// 函数 `resolve_request_compression_with_flag`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - enabled: 参数 enabled
+/// - target_url: 参数 target_url
+/// - request_path: 参数 request_path
+/// - is_stream: 参数 is_stream
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_request_compression_with_flag(
     enabled: bool,
     target_url: &str,
@@ -86,6 +167,19 @@ fn resolve_request_compression_with_flag(
     RequestCompression::Zstd
 }
 
+/// 函数 `resolve_request_compression`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - target_url: 参数 target_url
+/// - request_path: 参数 request_path
+/// - is_stream: 参数 is_stream
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_request_compression(
     target_url: &str,
     request_path: &str,
@@ -99,6 +193,20 @@ fn resolve_request_compression(
     )
 }
 
+/// 函数 `encode_request_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request_path: 参数 request_path
+/// - body: 参数 body
+/// - compression: 参数 compression
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn encode_request_body(
     request_path: &str,
     body: &Bytes,
@@ -143,6 +251,17 @@ fn encode_request_body(
     }
 }
 
+/// 函数 `send_upstream_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn send_upstream_request(
     client: &reqwest::blocking::Client,
     method: &reqwest::Method,
@@ -257,6 +376,17 @@ mod tests {
     use super::{encode_request_body, resolve_request_compression_with_flag, RequestCompression};
     use bytes::Bytes;
 
+    /// 函数 `request_compression_only_applies_to_streaming_chatgpt_responses`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn request_compression_only_applies_to_streaming_chatgpt_responses() {
         assert_eq!(
@@ -306,6 +436,17 @@ mod tests {
         );
     }
 
+    /// 函数 `encode_request_body_adds_zstd_content_encoding`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn encode_request_body_adds_zstd_content_encoding() {
         let body = Bytes::from_static(br#"{"model":"gpt-5.4","input":"compress me"}"#);

@@ -15,6 +15,18 @@ pub(super) use self::openai::{
     convert_openai_chat_completions_request, convert_openai_completions_request,
 };
 
+/// 函数 `resolve_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+/// - model: 参数 model
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_prompt_cache_key(
     obj: &serde_json::Map<String, Value>,
     model: Option<&Value>,
@@ -22,6 +34,17 @@ fn resolve_prompt_cache_key(
     super::prompt_cache::resolve_prompt_cache_key(obj, model)
 }
 
+/// 函数 `build_shortened_tool_name_maps`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - names: 参数 names
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_shortened_tool_name_maps<I>(names: I) -> (BTreeMap<String, String>, ToolNameRestoreMap)
 where
     I: IntoIterator<Item = String>,
@@ -61,6 +84,18 @@ where
     (tool_name_map, restore_map)
 }
 
+/// 函数 `convert_chat_messages_to_responses_input`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - messages: 参数 messages
+/// - tool_name_map: 参数 tool_name_map
+///
+/// # 返回
+/// 返回函数执行结果
 fn convert_chat_messages_to_responses_input(
     messages: &[Value],
     tool_name_map: &BTreeMap<String, String>,
@@ -172,6 +207,19 @@ fn convert_chat_messages_to_responses_input(
     Ok((instructions, input_items))
 }
 
+/// 函数 `append_assistant_content_to_responses_input`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - input_items: 参数 input_items
+/// - content: 参数 content
+/// - tool_name_map: 参数 tool_name_map
+///
+/// # 返回
+/// 返回函数执行结果
 fn append_assistant_content_to_responses_input(
     input_items: &mut Vec<Value>,
     content: &Value,
@@ -256,6 +304,18 @@ fn append_assistant_content_to_responses_input(
     Ok(())
 }
 
+/// 函数 `flush_assistant_output_parts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - input_items: 参数 input_items
+/// - pending_parts: 参数 pending_parts
+///
+/// # 返回
+/// 无
 fn flush_assistant_output_parts(input_items: &mut Vec<Value>, pending_parts: &mut Vec<Value>) {
     if pending_parts.is_empty() {
         return;
@@ -268,6 +328,17 @@ fn flush_assistant_output_parts(input_items: &mut Vec<Value>, pending_parts: &mu
     pending_parts.clear();
 }
 
+/// 函数 `convert_tool_message_content_to_responses_output`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn convert_tool_message_content_to_responses_output(
     value: Option<&Value>,
 ) -> Result<Value, String> {
@@ -298,6 +369,17 @@ fn convert_tool_message_content_to_responses_output(
         .map_err(|err| format!("serialize tool result content failed: {err}"))
 }
 
+/// 函数 `map_tool_result_content_item_to_responses_output_item`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item: 参数 item
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_tool_result_content_item_to_responses_output_item(item: &Value) -> Option<Value> {
     if let Some(text) = item.as_str() {
         let trimmed = text.trim();
@@ -351,6 +433,17 @@ fn map_tool_result_content_item_to_responses_output_item(item: &Value) -> Option
     }
 }
 
+/// 函数 `prefix_tool_error_output`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - output: 参数 output
+///
+/// # 返回
+/// 返回函数执行结果
 fn prefix_tool_error_output(output: Value) -> Value {
     match output {
         Value::String(text) => Value::String(format!("[tool_error] {text}")),
@@ -368,6 +461,17 @@ fn prefix_tool_error_output(output: Value) -> Value {
     }
 }
 
+/// 函数 `convert_user_message_content_to_responses_items`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - content: 参数 content
+///
+/// # 返回
+/// 返回函数执行结果
 fn convert_user_message_content_to_responses_items(content: &Value) -> Vec<Value> {
     match content {
         Value::String(text) => {
@@ -401,6 +505,17 @@ fn convert_user_message_content_to_responses_items(content: &Value) -> Vec<Value
     }
 }
 
+/// 函数 `map_user_content_item_to_responses_item`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item: 参数 item
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_user_content_item_to_responses_item(item: &Value) -> Option<Value> {
     if let Some(text) = item.as_str() {
         let trimmed = text.trim();
@@ -449,6 +564,17 @@ fn map_user_content_item_to_responses_item(item: &Value) -> Option<Value> {
     }
 }
 
+/// 函数 `extract_openai_image_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_openai_image_url(obj: &serde_json::Map<String, Value>) -> Option<String> {
     if let Some(text) = obj.get("image_url").and_then(Value::as_str) {
         let trimmed = text.trim();
@@ -466,6 +592,17 @@ fn extract_openai_image_url(obj: &serde_json::Map<String, Value>) -> Option<Stri
         .map(ToString::to_string)
 }
 
+/// 函数 `map_anthropic_image_block_to_responses_item`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - block: 参数 block
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_anthropic_image_block_to_responses_item(
     block: &serde_json::Map<String, Value>,
 ) -> Option<Value> {
@@ -522,10 +659,33 @@ fn map_anthropic_image_block_to_responses_item(
     None
 }
 
+/// 函数 `extract_tool_result_output`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_tool_result_output(value: Option<&Value>) -> Result<Value, String> {
     convert_tool_message_content_to_responses_output(value)
 }
 
+/// 函数 `map_anthropic_tool_definition`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - tool_name_map: 参数 tool_name_map
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_anthropic_tool_definition(
     value: &Value,
     tool_name_map: &BTreeMap<String, String>,
@@ -562,6 +722,18 @@ fn map_anthropic_tool_definition(
     Some(Value::Object(tool_obj))
 }
 
+/// 函数 `map_anthropic_tool_choice`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - tool_name_map: 参数 tool_name_map
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_anthropic_tool_choice(
     value: &Value,
     tool_name_map: &BTreeMap<String, String>,
@@ -593,6 +765,17 @@ fn map_anthropic_tool_choice(
     }
 }
 
+/// 函数 `resolve_anthropic_parallel_tool_calls`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - source: 参数 source
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_anthropic_parallel_tool_calls(source: &serde_json::Map<String, Value>) -> bool {
     !source
         .get("tool_choice")

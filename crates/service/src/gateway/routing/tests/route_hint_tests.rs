@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `candidate_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn candidate_list() -> Vec<(Account, Token)> {
     vec![
         (
@@ -71,6 +82,17 @@ fn candidate_list() -> Vec<(Account, Token)> {
     ]
 }
 
+/// 函数 `account_ids`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 返回函数执行结果
 fn account_ids(candidates: &[(Account, Token)]) -> Vec<String> {
     candidates
         .iter()
@@ -78,6 +100,17 @@ fn account_ids(candidates: &[(Account, Token)]) -> Vec<String> {
         .collect()
 }
 
+/// 函数 `defaults_to_ordered_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn defaults_to_ordered_strategy() {
     let _guard = crate::test_env_guard();
@@ -116,6 +149,17 @@ fn defaults_to_ordered_strategy() {
     reload_from_env();
 }
 
+/// 函数 `balanced_round_robin_rotates_start_by_key_and_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn balanced_round_robin_rotates_start_by_key_and_model() {
     let _guard = crate::test_env_guard();
@@ -165,6 +209,17 @@ fn balanced_round_robin_rotates_start_by_key_and_model() {
     reload_from_env();
 }
 
+/// 函数 `balanced_round_robin_isolated_by_key_and_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn balanced_round_robin_isolated_by_key_and_model() {
     let _guard = crate::test_env_guard();
@@ -197,6 +252,17 @@ fn balanced_round_robin_isolated_by_key_and_model() {
     reload_from_env();
 }
 
+/// 函数 `set_route_strategy_accepts_aliases_and_reports_canonical_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn set_route_strategy_accepts_aliases_and_reports_canonical_name() {
     let _guard = crate::test_env_guard();
@@ -213,6 +279,17 @@ fn set_route_strategy_accepts_aliases_and_reports_canonical_name() {
     assert!(set_route_strategy("unsupported").is_err());
 }
 
+/// 函数 `route_state_ttl_expires_per_key_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn route_state_ttl_expires_per_key_state() {
     let _guard = crate::test_env_guard();
@@ -273,6 +350,17 @@ fn route_state_ttl_expires_per_key_state() {
     reload_from_env();
 }
 
+/// 函数 `route_state_capacity_evicts_lru_and_keeps_maps_in_sync`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn route_state_capacity_evicts_lru_and_keeps_maps_in_sync() {
     let _guard = crate::test_env_guard();
@@ -330,6 +418,17 @@ fn route_state_capacity_evicts_lru_and_keeps_maps_in_sync() {
     reload_from_env();
 }
 
+/// 函数 `health_p2c_promotes_healthier_candidate_in_ordered_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn health_p2c_promotes_healthier_candidate_in_ordered_mode() {
     let _guard = crate::test_env_guard();
@@ -357,6 +456,17 @@ fn health_p2c_promotes_healthier_candidate_in_ordered_mode() {
     reload_from_env();
 }
 
+/// 函数 `balanced_mode_keeps_strict_round_robin_by_default`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn balanced_mode_keeps_strict_round_robin_by_default() {
     let _guard = crate::test_env_guard();
@@ -402,6 +512,17 @@ fn balanced_mode_keeps_strict_round_robin_by_default() {
     reload_from_env();
 }
 
+/// 函数 `manual_preferred_account_is_preserved_when_current_candidates_do_not_include_it`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn manual_preferred_account_is_preserved_when_current_candidates_do_not_include_it() {
     let _guard = crate::test_env_guard();

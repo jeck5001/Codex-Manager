@@ -8,6 +8,19 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+<#
+函数 `Read-JsonPayload`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Path: 参数 Path
+
+# 返回
+返回函数执行结果
+#>
 function Read-JsonPayload {
   param(
     [string]$Path
@@ -22,6 +35,20 @@ function Read-JsonPayload {
   return Get-Content $Path -Raw | ConvertFrom-Json
 }
 
+<#
+函数 `Join-BaseUrl`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- BaseUrl: 参数 BaseUrl
+- RelativeOrAbsolute: 参数 RelativeOrAbsolute
+
+# 返回
+返回函数执行结果
+#>
 function Join-BaseUrl {
   param(
     [string]$BaseUrl,
@@ -39,6 +66,20 @@ function Join-BaseUrl {
   return ([Uri]::new($baseUri, $RelativeOrAbsolute)).AbsoluteUri
 }
 
+<#
+函数 `Read-RuntimePayload`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- BaseUrl: 参数 BaseUrl
+- Path: 参数 Path
+
+# 返回
+返回函数执行结果
+#>
 function Read-RuntimePayload {
   param(
     [string]$BaseUrl,
@@ -55,6 +96,20 @@ function Read-RuntimePayload {
   }
 }
 
+<#
+函数 `Read-InitializePayload`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- RpcUrl: 参数 RpcUrl
+- Path: 参数 Path
+
+# 返回
+返回函数执行结果
+#>
 function Read-InitializePayload {
   param(
     [string]$RpcUrl,

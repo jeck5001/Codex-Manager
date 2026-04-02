@@ -3,6 +3,20 @@ use rusqlite::params;
 use super::{ModelOptionsCacheRecord, Storage};
 
 impl Storage {
+    /// 函数 `upsert_model_options_cache`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - scope: 参数 scope
+    /// - items_json: 参数 items_json
+    /// - updated_at: 参数 updated_at
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn upsert_model_options_cache(
         &self,
         scope: &str,
@@ -20,6 +34,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `get_model_options_cache`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - scope: 参数 scope
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn get_model_options_cache(
         &self,
         scope: &str,

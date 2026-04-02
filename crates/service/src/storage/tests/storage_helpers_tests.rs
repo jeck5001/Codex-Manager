@@ -4,6 +4,17 @@ use super::{
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// 函数 `unique_db_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - prefix: 参数 prefix
+///
+/// # 返回
+/// 返回函数执行结果
 fn unique_db_path(prefix: &str) -> String {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -15,6 +26,17 @@ fn unique_db_path(prefix: &str) -> String {
         .to_string()
 }
 
+/// 函数 `open_storage_reuses_cached_connection_in_same_thread`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn open_storage_reuses_cached_connection_in_same_thread() {
     let db_path = unique_db_path("codexmanager-open-storage-reuse");
@@ -35,6 +57,17 @@ fn open_storage_reuses_cached_connection_in_same_thread() {
     let _ = std::fs::remove_file(&db_path);
 }
 
+/// 函数 `open_storage_reopens_when_db_path_changes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn open_storage_reopens_when_db_path_changes() {
     let db_path_1 = unique_db_path("codexmanager-open-storage-path-1");

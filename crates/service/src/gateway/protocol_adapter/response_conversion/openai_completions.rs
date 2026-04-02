@@ -4,6 +4,18 @@ use super::openai_chat::{
     extract_chat_content_text, extract_stream_event_text, map_openai_response_to_chat_completion,
 };
 
+/// 函数 `map_chat_choice_to_completion`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - choice: 参数 choice
+/// - default_index: 参数 default_index
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_chat_choice_to_completion(choice: &Map<String, Value>, default_index: usize) -> Value {
     let mut out = Map::new();
     let index = choice
@@ -29,6 +41,17 @@ fn map_chat_choice_to_completion(choice: &Map<String, Value>, default_index: usi
     Value::Object(out)
 }
 
+/// 函数 `map_chat_response_to_completions`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_chat_response_to_completions(value: &Value) -> Value {
     if value
         .get("object")
@@ -81,6 +104,18 @@ fn map_chat_response_to_completions(value: &Value) -> Value {
     Value::Object(out)
 }
 
+/// 函数 `build_openai_completions_text_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - text: 参数 text
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_openai_completions_text_chunk(value: &Value, text: &str) -> Value {
     json!({
         "id": super::stream_event_response_id(value),
@@ -94,6 +129,17 @@ fn build_openai_completions_text_chunk(value: &Value, text: &str) -> Value {
     })
 }
 
+/// 函数 `convert_openai_completions_stream_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn convert_openai_completions_stream_chunk(value: &Value) -> Option<Value> {
     if let Some(chunk_type) = value.get("type").and_then(Value::as_str) {
         match chunk_type {
@@ -189,6 +235,17 @@ pub(crate) fn convert_openai_completions_stream_chunk(value: &Value) -> Option<V
     None
 }
 
+/// 函数 `convert_openai_json_to_completions`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_openai_json_to_completions(
     body: &[u8],
 ) -> Result<(Vec<u8>, &'static str), String> {
@@ -210,6 +267,17 @@ pub(super) fn convert_openai_json_to_completions(
     Ok((bytes, "application/json"))
 }
 
+/// 函数 `convert_openai_sse_to_completions_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_openai_sse_to_completions_json(
     body: &[u8],
 ) -> Result<(Vec<u8>, &'static str), String> {

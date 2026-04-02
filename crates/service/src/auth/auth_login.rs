@@ -7,11 +7,33 @@ use codexmanager_core::storage::{now_ts, Event, LoginSession};
 use crate::auth_callback::{ensure_login_server, resolve_redirect_uri};
 use crate::storage_helpers::open_storage;
 
+/// 函数 `is_device_login_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - login_type: 参数 login_type
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_device_login_type(login_type: &str) -> bool {
     login_type.eq_ignore_ascii_case("chatgptDeviceCode")
         || login_type.eq_ignore_ascii_case("device")
 }
 
+/// 函数 `is_supported_chatgpt_login_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - login_type: 参数 login_type
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_supported_chatgpt_login_type(login_type: &str) -> bool {
     let normalized = login_type.trim();
     normalized.eq_ignore_ascii_case("chatgpt")
@@ -19,6 +41,17 @@ fn is_supported_chatgpt_login_type(login_type: &str) -> bool {
         || normalized.eq_ignore_ascii_case("device")
 }
 
+/// 函数 `login_start`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn login_start(
     login_type: &str,
     open_browser: bool,
@@ -151,6 +184,17 @@ pub(crate) fn login_start(
     })
 }
 
+/// 函数 `login_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn login_status(login_id: &str) -> serde_json::Value {
     // 查询登录会话状态
     if login_id.is_empty() {

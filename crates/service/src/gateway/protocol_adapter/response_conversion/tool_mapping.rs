@@ -3,6 +3,17 @@ use std::collections::BTreeMap;
 
 use super::{stream_event_created, stream_event_model, stream_event_response_id};
 
+/// 函数 `is_openai_chat_tool_item_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn is_openai_chat_tool_item_type(item_type: &str) -> bool {
     matches!(item_type, "function_call" | "custom_tool_call")
 }
@@ -18,6 +29,18 @@ pub(super) fn restore_openai_tool_name(
         .unwrap_or_else(|| name.to_string())
 }
 
+/// 函数 `restore_openai_tool_name_in_tool_call`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - tool_call: 参数 tool_call
+/// - tool_name_restore_map: 参数 tool_name_restore_map
+///
+/// # 返回
+/// 无
 fn restore_openai_tool_name_in_tool_call(
     tool_call: &mut Value,
     tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
@@ -32,6 +55,17 @@ fn restore_openai_tool_name_in_tool_call(
     function_obj.insert("name".to_string(), Value::String(restored_name));
 }
 
+/// 函数 `restore_openai_tool_name_in_chat_choice`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn restore_openai_tool_name_in_chat_choice(
     choice: &mut Value,
     tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
@@ -56,6 +90,17 @@ pub(super) fn restore_openai_tool_name_in_chat_choice(
     }
 }
 
+/// 函数 `map_response_event_to_openai_chat_tool_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn map_response_event_to_openai_chat_tool_chunk(
     value: &Value,
     tool_name_restore_map: Option<&super::ToolNameRestoreMap>,
@@ -174,6 +219,18 @@ pub(super) struct AggregatedChatToolCall {
     arguments: String,
 }
 
+/// 函数 `merge_tool_call_arguments`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - existing: 参数 existing
+/// - fragment: 参数 fragment
+///
+/// # 返回
+/// 无
 fn merge_tool_call_arguments(existing: &mut String, fragment: &str) {
     if fragment.is_empty() {
         return;
@@ -192,6 +249,19 @@ fn merge_tool_call_arguments(existing: &mut String, fragment: &str) {
     existing.push_str(fragment);
 }
 
+/// 函数 `merge_chat_tool_call_object`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - tool_obj: 参数 tool_obj
+/// - default_index: 参数 default_index
+/// - tool_calls: 参数 tool_calls
+///
+/// # 返回
+/// 无
 fn merge_chat_tool_call_object(
     tool_obj: &Map<String, Value>,
     default_index: usize,
@@ -239,6 +309,17 @@ fn merge_chat_tool_call_object(
     }
 }
 
+/// 函数 `collect_chat_tool_calls_from_delta`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn collect_chat_tool_calls_from_delta(
     delta: &Map<String, Value>,
     tool_calls: &mut BTreeMap<usize, AggregatedChatToolCall>,
@@ -254,6 +335,17 @@ pub(super) fn collect_chat_tool_calls_from_delta(
     }
 }
 
+/// 函数 `collect_chat_tool_calls_from_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn collect_chat_tool_calls_from_message(
     message: &Map<String, Value>,
     tool_calls: &mut BTreeMap<usize, AggregatedChatToolCall>,
@@ -269,6 +361,17 @@ pub(super) fn collect_chat_tool_calls_from_message(
     }
 }
 
+/// 函数 `build_openai_chat_tool_calls`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn build_openai_chat_tool_calls(
     tool_calls: &BTreeMap<usize, AggregatedChatToolCall>,
 ) -> Vec<Value> {

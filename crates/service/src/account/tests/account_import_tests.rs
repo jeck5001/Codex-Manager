@@ -11,6 +11,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const TEST_ID_TOKEN_WS_A: &str = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdWItMSIsImVtYWlsIjoidGVzdEBleGFtcGxlLmNvbSIsIndvcmtzcGFjZV9pZCI6IndzLWEiLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiY2dwdC0xIn19.sig";
 const TEST_ID_TOKEN_META: &str = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdWItMSIsImVtYWlsIjoibWV0YUBleGFtcGxlLmNvbSIsIndvcmtzcGFjZV9pZCI6IndzLW1ldGEiLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiY2dwdC1tZXRhIn19.sig";
 
+/// 函数 `unique_temp_db_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn unique_temp_db_path() -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -19,6 +30,17 @@ fn unique_temp_db_path() -> PathBuf {
     std::env::temp_dir().join(format!("codexmanager-account-import-test-{unique}.db"))
 }
 
+/// 函数 `payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn payload() -> ImportTokenPayload {
     ImportTokenPayload {
         access_token: "access".to_string(),
@@ -29,6 +51,17 @@ fn payload() -> ImportTokenPayload {
     }
 }
 
+/// 函数 `resolve_logical_account_id_distinguishes_workspace_under_same_chatgpt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn resolve_logical_account_id_distinguishes_workspace_under_same_chatgpt() {
     let input = payload();
@@ -52,6 +85,17 @@ fn resolve_logical_account_id_distinguishes_workspace_under_same_chatgpt() {
     assert_ne!(a, b);
 }
 
+/// 函数 `resolve_logical_account_id_is_stable_when_scope_is_stable`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn resolve_logical_account_id_is_stable_when_scope_is_stable() {
     let input = payload();
@@ -79,6 +123,17 @@ fn resolve_logical_account_id_is_stable_when_scope_is_stable() {
     );
 }
 
+/// 函数 `existing_account_index_next_sort_uses_step_five`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn existing_account_index_next_sort_uses_step_five() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -117,6 +172,17 @@ fn existing_account_index_next_sort_uses_step_five() {
     assert_eq!(idx.next_sort, 14);
 }
 
+/// 函数 `extract_token_payload_supports_flat_codex_format`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn extract_token_payload_supports_flat_codex_format() {
     let value = json!({
@@ -136,6 +202,17 @@ fn extract_token_payload_supports_flat_codex_format() {
     assert_eq!(payload.chatgpt_account_id_hint, None);
 }
 
+/// 函数 `extract_token_payload_supports_camel_case_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn extract_token_payload_supports_camel_case_fields() {
     let value = json!({
@@ -159,6 +236,17 @@ fn extract_token_payload_supports_camel_case_fields() {
     );
 }
 
+/// 函数 `import_single_item_reuses_existing_login_account_by_scope_identity`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn import_single_item_reuses_existing_login_account_by_scope_identity() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -209,6 +297,17 @@ fn import_single_item_reuses_existing_login_account_by_scope_identity() {
     assert_eq!(token.account_id, accounts[0].id);
 }
 
+/// 函数 `import_single_item_prefers_meta_fields_for_new_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn import_single_item_prefers_meta_fields_for_new_account() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -256,6 +355,17 @@ fn import_single_item_prefers_meta_fields_for_new_account() {
     assert_eq!(metadata.tags.as_deref(), Some("高频,团队A"));
 }
 
+/// 函数 `import_account_auth_json_keeps_valid_items_when_one_content_is_invalid`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn import_account_auth_json_keeps_valid_items_when_one_content_is_invalid() {
     let _guard = crate::test_env_guard();

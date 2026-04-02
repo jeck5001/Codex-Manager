@@ -13,6 +13,20 @@ if (-not $?) {
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("assert_release_version_" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
 
+<#
+函数 `Write-Utf8File`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Path: 参数 Path
+- Content: 参数 Content
+
+# 返回
+返回函数执行结果
+#>
 function Write-Utf8File {
   param(
     [string]$Path,

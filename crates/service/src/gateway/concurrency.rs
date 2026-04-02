@@ -16,6 +16,17 @@ pub(crate) struct GatewayConcurrencyRecommendation {
     pub(crate) queue_wait_timeout_ms: u64,
 }
 
+/// 函数 `current_gateway_concurrency_recommendation`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_gateway_concurrency_recommendation() -> GatewayConcurrencyRecommendation {
     let cpu_cores = thread::available_parallelism()
         .map(|value| value.get())
@@ -26,6 +37,17 @@ pub(crate) fn current_gateway_concurrency_recommendation() -> GatewayConcurrency
     recommend_gateway_concurrency(cpu_cores, memory_mib)
 }
 
+/// 函数 `recommend_gateway_concurrency`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn recommend_gateway_concurrency(
     cpu_cores: usize,
     memory_mib: u64,
@@ -66,6 +88,17 @@ pub(crate) fn recommend_gateway_concurrency(
 mod tests {
     use super::recommend_gateway_concurrency;
 
+    /// 函数 `small_machine_prefers_conservative_values`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn small_machine_prefers_conservative_values() {
         let recommendation = recommend_gateway_concurrency(2, 2_048);
@@ -77,6 +110,17 @@ mod tests {
         assert_eq!(recommendation.account_max_inflight, 1);
     }
 
+    /// 函数 `larger_machine_scales_up_gradually`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn larger_machine_scales_up_gradually() {
         let recommendation = recommend_gateway_concurrency(16, 32_768);

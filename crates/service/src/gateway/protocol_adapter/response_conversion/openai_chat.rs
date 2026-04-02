@@ -12,6 +12,17 @@ use super::tool_mapping::{
 };
 use super::{is_response_completed_event_type, parse_openai_sse_event_value, ToolNameRestoreMap};
 
+/// 函数 `extract_chat_content_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn extract_chat_content_text(content: Option<&Value>) -> String {
     let Some(content) = content else {
         return String::new();
@@ -44,6 +55,18 @@ pub(super) fn extract_chat_content_text(content: Option<&Value>) -> String {
     }
 }
 
+/// 函数 `collect_text_from_response_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - content: 参数 content
+/// - out: 参数 out
+///
+/// # 返回
+/// 无
 fn collect_text_from_response_content(content: &Value, out: &mut String) {
     match content {
         Value::String(text) => out.push_str(text),
@@ -78,6 +101,17 @@ fn collect_text_from_response_content(content: &Value, out: &mut String) {
     }
 }
 
+/// 函数 `stream_event_response_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn stream_event_response_id(value: &Value) -> String {
     value
         .get("response_id")
@@ -93,6 +127,17 @@ pub(super) fn stream_event_response_id(value: &Value) -> String {
         .to_string()
 }
 
+/// 函数 `stream_event_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn stream_event_model(value: &Value) -> String {
     value
         .get("model")
@@ -107,6 +152,17 @@ pub(super) fn stream_event_model(value: &Value) -> String {
         .to_string()
 }
 
+/// 函数 `stream_event_created`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn stream_event_created(value: &Value) -> i64 {
     value
         .get("created")
@@ -120,6 +176,17 @@ pub(super) fn stream_event_created(value: &Value) -> i64 {
         .unwrap_or(0)
 }
 
+/// 函数 `extract_stream_event_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn extract_stream_event_text(value: &Value) -> String {
     if let Some(delta) = value.get("delta") {
         if let Some(text) = delta.as_str() {
@@ -151,6 +218,18 @@ pub(super) fn extract_stream_event_text(value: &Value) -> String {
     out
 }
 
+/// 函数 `build_openai_chat_text_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - text: 参数 text
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_openai_chat_text_chunk(value: &Value, text: &str) -> Value {
     json!({
         "id": stream_event_response_id(value),
@@ -168,6 +247,18 @@ fn build_openai_chat_text_chunk(value: &Value, text: &str) -> Value {
     })
 }
 
+/// 函数 `append_text_from_response_output_item`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+/// - out: 参数 out
+///
+/// # 返回
+/// 无
 fn append_text_from_response_output_item(item_obj: &Map<String, Value>, out: &mut String) {
     if let Some(content) = item_obj.get("content") {
         collect_text_from_response_content(content, out);
@@ -186,6 +277,17 @@ fn append_text_from_response_output_item(item_obj: &Map<String, Value>, out: &mu
     }
 }
 
+/// 函数 `extract_text_from_response_output_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_text_from_response_output_payload(item_obj: &Map<String, Value>) -> String {
     let mut out = String::new();
     if let Some(output) = item_obj.get("output") {
@@ -194,6 +296,17 @@ fn extract_text_from_response_output_payload(item_obj: &Map<String, Value>) -> S
     out
 }
 
+/// 函数 `map_openai_response_to_chat_completion`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn map_openai_response_to_chat_completion(
     value: &Value,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
@@ -334,11 +447,33 @@ pub(super) fn map_openai_response_to_chat_completion(
     Value::Object(out)
 }
 
+/// 函数 `convert_openai_chat_stream_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(dead_code)]
 pub(super) fn convert_openai_chat_stream_chunk(value: &Value) -> Option<Value> {
     convert_openai_chat_stream_chunk_with_tool_name_restore_map(value, None)
 }
 
+/// 函数 `convert_openai_chat_stream_chunk_with_tool_name_restore_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_openai_chat_stream_chunk_with_tool_name_restore_map(
     value: &Value,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
@@ -489,6 +624,17 @@ pub(super) fn convert_openai_chat_stream_chunk_with_tool_name_restore_map(
     None
 }
 
+/// 函数 `convert_openai_json_to_chat_completions`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_openai_json_to_chat_completions(
     body: &[u8],
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
@@ -501,6 +647,17 @@ pub(super) fn convert_openai_json_to_chat_completions(
     Ok((bytes, "application/json"))
 }
 
+/// 函数 `convert_openai_sse_to_chat_completions_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_openai_sse_to_chat_completions_json(
     body: &[u8],
     tool_name_restore_map: Option<&ToolNameRestoreMap>,

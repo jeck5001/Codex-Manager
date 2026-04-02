@@ -8,10 +8,32 @@ pub(crate) const AUTH_API_KEY: &str = "api_key";
 pub(crate) const ROTATION_ACCOUNT: &str = "account_rotation";
 pub(crate) const ROTATION_AGGREGATE_API: &str = "aggregate_api_rotation";
 
+/// 函数 `normalize_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_key(value: &str) -> String {
     value.trim().to_ascii_lowercase().replace('-', "_")
 }
 
+/// 函数 `normalize_protocol_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_protocol_type(value: Option<String>) -> Result<String, String> {
     match value {
         Some(raw) => match normalize_key(&raw).as_str() {
@@ -24,6 +46,17 @@ pub(crate) fn normalize_protocol_type(value: Option<String>) -> Result<String, S
     }
 }
 
+/// 函数 `profile_from_protocol`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn profile_from_protocol(
     protocol_type: &str,
 ) -> Result<(String, String, String), String> {
@@ -38,6 +71,17 @@ pub(crate) fn profile_from_protocol(
     Ok((CLIENT_CODEX.to_string(), protocol, auth_scheme))
 }
 
+/// 函数 `normalize_rotation_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_rotation_strategy(value: Option<String>) -> Result<String, String> {
     match value {
         Some(raw) => match normalize_key(&raw).as_str() {
@@ -56,6 +100,17 @@ pub(crate) fn normalize_rotation_strategy(value: Option<String>) -> Result<Strin
     }
 }
 
+/// 函数 `normalize_upstream_base_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_upstream_base_url(value: Option<String>) -> Result<Option<String>, String> {
     let Some(raw) = value else {
         return Ok(None);
@@ -72,6 +127,17 @@ pub(crate) fn normalize_upstream_base_url(value: Option<String>) -> Result<Optio
     Ok(Some(trimmed))
 }
 
+/// 函数 `normalize_static_headers_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_static_headers_json(
     value: Option<String>,
 ) -> Result<Option<String>, String> {

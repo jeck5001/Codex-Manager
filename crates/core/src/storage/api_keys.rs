@@ -25,6 +25,18 @@ const API_KEY_SELECT_SQL: &str = "SELECT
  LEFT JOIN aggregate_apis a ON a.id = k.aggregate_api_id";
 
 impl Storage {
+    /// 函数 `insert_api_key`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key: 参数 key
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_api_key(&self, key: &ApiKey) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO api_keys (id, name, model_slug, reasoning_effort, key_hash, status, created_at, last_used_at, rotation_strategy, aggregate_api_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -71,6 +83,17 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `list_api_keys`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_api_keys(&self) -> Result<Vec<ApiKey>> {
         let mut stmt = self
             .conn
@@ -83,6 +106,18 @@ impl Storage {
         Ok(out)
     }
 
+    /// 函数 `find_api_key_by_hash`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_hash: 参数 key_hash
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn find_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKey>> {
         let mut stmt = self.conn.prepare(&format!(
             "{API_KEY_SELECT_SQL}
@@ -97,6 +132,18 @@ impl Storage {
         }
     }
 
+    /// 函数 `find_api_key_by_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_id: 参数 key_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn find_api_key_by_id(&self, key_id: &str) -> Result<Option<ApiKey>> {
         let mut stmt = self.conn.prepare(&format!(
             "{API_KEY_SELECT_SQL}
@@ -111,6 +158,18 @@ impl Storage {
         }
     }
 
+    /// 函数 `update_api_key_last_used`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_hash: 参数 key_hash
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_api_key_last_used(&self, key_hash: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE api_keys SET last_used_at = ?1 WHERE key_hash = ?2",
@@ -119,6 +178,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_api_key_status`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_id: 参数 key_id
+    /// - status: 参数 status
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_api_key_status(&self, key_id: &str, status: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE api_keys SET status = ?1 WHERE id = ?2",
@@ -127,6 +199,20 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_api_key_rotation_config`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_id: 参数 key_id
+    /// - rotation_strategy: 参数 rotation_strategy
+    /// - aggregate_api_id: 参数 aggregate_api_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_api_key_rotation_config(
         &self,
         key_id: &str,
@@ -140,6 +226,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_api_key_name`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_id: 参数 key_id
+    /// - name: 参数 name
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_api_key_name(&self, key_id: &str, name: Option<&str>) -> Result<()> {
         self.conn.execute(
             "UPDATE api_keys SET name = ?1 WHERE id = ?2",
@@ -148,6 +247,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_api_key_model_slug`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_id: 参数 key_id
+    /// - model_slug: 参数 model_slug
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_api_key_model_slug(&self, key_id: &str, model_slug: Option<&str>) -> Result<()> {
         self.conn.execute(
             "UPDATE api_keys SET model_slug = ?1 WHERE id = ?2",
@@ -156,6 +268,21 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_api_key_model_config`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_id: 参数 key_id
+    /// - model_slug: 参数 model_slug
+    /// - reasoning_effort: 参数 reasoning_effort
+    /// - service_tier: 参数 service_tier
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_api_key_model_config(
         &self,
         key_id: &str,
@@ -206,6 +333,24 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_api_key_profile_config`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_id: 参数 key_id
+    /// - client_type: 参数 client_type
+    /// - protocol_type: 参数 protocol_type
+    /// - auth_scheme: 参数 auth_scheme
+    /// - upstream_base_url: 参数 upstream_base_url
+    /// - static_headers_json: 参数 static_headers_json
+    /// - service_tier: 参数 service_tier
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_api_key_profile_config(
         &self,
         key_id: &str,
@@ -266,6 +411,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `delete_api_key`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_id: 参数 key_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn delete_api_key(&self, key_id: &str) -> Result<()> {
         self.conn
             .execute("DELETE FROM api_key_secrets WHERE key_id = ?1", [key_id])?;
@@ -274,6 +431,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `upsert_api_key_secret`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_id: 参数 key_id
+    /// - key_value: 参数 key_value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn upsert_api_key_secret(&self, key_id: &str, key_value: &str) -> Result<()> {
         let now = now_ts();
         self.conn.execute(
@@ -287,6 +457,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `find_api_key_secret_by_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key_id: 参数 key_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn find_api_key_secret_by_id(&self, key_id: &str) -> Result<Option<String>> {
         let mut stmt = self
             .conn
@@ -299,16 +481,49 @@ impl Storage {
         }
     }
 
+    /// 函数 `ensure_api_key_model_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_api_key_model_column(&self) -> Result<()> {
         self.ensure_column("api_keys", "model_slug", "TEXT")?;
         Ok(())
     }
 
+    /// 函数 `ensure_api_key_reasoning_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_api_key_reasoning_column(&self) -> Result<()> {
         self.ensure_column("api_keys", "reasoning_effort", "TEXT")?;
         Ok(())
     }
 
+    /// 函数 `ensure_api_key_rotation_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_api_key_rotation_columns(&self) -> Result<()> {
         self.ensure_column("api_keys", "rotation_strategy", "TEXT")?;
         self.ensure_column("api_keys", "aggregate_api_id", "TEXT")?;
@@ -321,6 +536,17 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_api_key_profiles_table`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_api_key_profiles_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS api_key_profiles (
@@ -345,11 +571,33 @@ impl Storage {
         self.backfill_api_key_profiles()
     }
 
+    /// 函数 `ensure_api_key_service_tier_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_api_key_service_tier_column(&self) -> Result<()> {
         self.ensure_column("api_key_profiles", "service_tier", "TEXT")?;
         Ok(())
     }
 
+    /// 函数 `ensure_api_key_secrets_table`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_api_key_secrets_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS api_key_secrets (
@@ -367,6 +615,17 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `backfill_api_key_profiles`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn backfill_api_key_profiles(&self) -> Result<()> {
         self.conn.execute(
             "INSERT OR IGNORE INTO api_key_profiles (
@@ -401,6 +660,17 @@ impl Storage {
     }
 }
 
+/// 函数 `map_api_key_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_api_key_row(row: &Row<'_>) -> Result<ApiKey> {
     Ok(ApiKey {
         id: row.get(0)?,

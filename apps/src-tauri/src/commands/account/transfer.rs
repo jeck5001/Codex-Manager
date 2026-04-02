@@ -6,6 +6,19 @@ use crate::app_storage::{
 use crate::commands::shared::rpc_call_in_background;
 use crate::rpc_client::rpc_call;
 
+/// 函数 `service_account_import`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - contents: 参数 contents
+/// - content: 参数 content
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_import(
     addr: Option<String>,
@@ -22,6 +35,17 @@ pub async fn service_account_import(
     rpc_call_in_background("account/import", addr, Some(params)).await
 }
 
+/// 函数 `service_account_import_by_directory`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - _addr: 参数 _addr
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_import_by_directory(
     _addr: Option<String>,
@@ -54,6 +78,17 @@ pub async fn service_account_import_by_directory(
     .map_err(|err| format!("service_account_import_by_directory task failed: {err}"))?
 }
 
+/// 函数 `service_account_import_by_file`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - _addr: 参数 _addr
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_import_by_file(_addr: Option<String>) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -88,6 +123,17 @@ pub async fn service_account_import_by_file(_addr: Option<String>) -> Result<ser
     .map_err(|err| format!("service_account_import_by_file task failed: {err}"))?
 }
 
+/// 函数 `service_account_export_by_account_files`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_export_by_account_files(
     addr: Option<String>,

@@ -31,6 +31,17 @@ const ISOLATED_RUNTIME_ENV_KEYS: &[&str] = &[
     "CODEXMANAGER_HTTP_STREAM_WORKER_MIN",
 ];
 
+/// 函数 `unique_temp_db_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn unique_temp_db_path() -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -39,6 +50,17 @@ fn unique_temp_db_path() -> PathBuf {
     std::env::temp_dir().join(format!("codexmanager-app-settings-test-{unique}.db"))
 }
 
+/// 函数 `reset_runtime_defaults`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn reset_runtime_defaults() {
     let _ = codexmanager_service::set_service_bind_mode(
         codexmanager_service::SERVICE_BIND_MODE_LOOPBACK,
@@ -72,6 +94,17 @@ fn reset_runtime_defaults() {
     })));
 }
 
+/// 函数 `with_temp_db`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - test: 参数 test
+///
+/// # 返回
+/// 无
 fn with_temp_db(test: impl FnOnce(&PathBuf)) {
     let _guard = test_env_guard();
     let db_path = unique_temp_db_path();
@@ -99,6 +132,17 @@ fn with_temp_db(test: impl FnOnce(&PathBuf)) {
 struct EnvRestore(Vec<(String, Option<std::ffi::OsString>)>);
 
 impl Drop for EnvRestore {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         for (key, value) in self.0.drain(..) {
             if let Some(value) = value {
@@ -110,6 +154,17 @@ impl Drop for EnvRestore {
     }
 }
 
+/// 函数 `override_env_vars`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - vars: 参数 vars
+///
+/// # 返回
+/// 返回函数执行结果
 fn override_env_vars(vars: &[(&str, Option<&str>)]) -> EnvRestore {
     let previous = vars
         .iter()
@@ -125,6 +180,17 @@ fn override_env_vars(vars: &[(&str, Option<&str>)]) -> EnvRestore {
     EnvRestore(previous)
 }
 
+/// 函数 `read_env_overrides_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - db_path: 参数 db_path
+///
+/// # 返回
+/// 返回函数执行结果
 fn read_env_overrides_map(db_path: &PathBuf) -> serde_json::Map<String, serde_json::Value> {
     let storage = Storage::open(db_path).expect("open storage");
     let raw = storage
@@ -134,6 +200,17 @@ fn read_env_overrides_map(db_path: &PathBuf) -> serde_json::Map<String, serde_js
     serde_json::from_str(&raw).expect("parse env overrides json")
 }
 
+/// 函数 `sync_runtime_settings_from_storage_preserves_process_env_when_override_not_persisted`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn sync_runtime_settings_from_storage_preserves_process_env_when_override_not_persisted() {
     with_temp_db(|db_path| {
@@ -163,6 +240,17 @@ fn sync_runtime_settings_from_storage_preserves_process_env_when_override_not_pe
     });
 }
 
+/// 函数 `sync_runtime_settings_from_storage_preserves_explicit_process_env_over_persisted_override`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn sync_runtime_settings_from_storage_preserves_explicit_process_env_over_persisted_override() {
     with_temp_db(|db_path| {
@@ -190,6 +278,17 @@ fn sync_runtime_settings_from_storage_preserves_explicit_process_env_over_persis
     });
 }
 
+/// 函数 `app_settings_set_persists_snapshot_and_password_hash`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_persists_snapshot_and_password_hash() {
     with_temp_db(|db_path| {
@@ -396,6 +495,17 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
     });
 }
 
+/// 函数 `app_settings_set_preserves_dark_one_theme`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_preserves_dark_one_theme() {
     with_temp_db(|_| {
@@ -424,6 +534,17 @@ fn app_settings_set_preserves_dark_one_theme() {
     });
 }
 
+/// 函数 `sync_runtime_settings_from_storage_applies_saved_runtime_values`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
     with_temp_db(|db_path| {
@@ -612,6 +733,17 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
     });
 }
 
+/// 函数 `app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
     with_temp_db(|db_path| {
@@ -829,6 +961,17 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
     });
 }
 
+/// 函数 `loopback_service_addr_env_keeps_saved_bind_mode_effective`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn loopback_service_addr_env_keeps_saved_bind_mode_effective() {
     with_temp_db(|db_path| {
@@ -867,6 +1010,17 @@ fn loopback_service_addr_env_keeps_saved_bind_mode_effective() {
     });
 }
 
+/// 函数 `app_settings_set_service_listen_mode_overrides_loopback_env_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_service_listen_mode_overrides_loopback_env_snapshot() {
     with_temp_db(|_| {
@@ -902,6 +1056,17 @@ fn app_settings_set_service_listen_mode_overrides_loopback_env_snapshot() {
     });
 }
 
+/// 函数 `app_settings_set_service_listen_mode_can_switch_back_from_all_interfaces_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_service_listen_mode_can_switch_back_from_all_interfaces_snapshot() {
     with_temp_db(|_| {
@@ -929,6 +1094,17 @@ fn app_settings_set_service_listen_mode_can_switch_back_from_all_interfaces_snap
     });
 }
 
+/// 函数 `app_settings_set_persists_env_overrides_and_exposes_catalog`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
     with_temp_db(|db_path| {
@@ -1028,6 +1204,17 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
     });
 }
 
+/// 函数 `app_settings_get_drops_web_addr_from_persisted_env_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_get_drops_web_addr_from_persisted_env_snapshot() {
     with_temp_db(|db_path| {
@@ -1070,6 +1257,17 @@ fn app_settings_get_drops_web_addr_from_persisted_env_snapshot() {
     });
 }
 
+/// 函数 `app_settings_get_seeds_full_env_override_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_get_seeds_full_env_override_snapshot() {
     with_temp_db(|db_path| {
@@ -1119,6 +1317,17 @@ fn app_settings_get_seeds_full_env_override_snapshot() {
     });
 }
 
+/// 函数 `app_settings_get_drops_reserved_env_overrides_from_persisted_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_get_drops_reserved_env_overrides_from_persisted_snapshot() {
     with_temp_db(|db_path| {
@@ -1194,6 +1403,17 @@ fn app_settings_get_drops_reserved_env_overrides_from_persisted_snapshot() {
     });
 }
 
+/// 函数 `app_settings_set_env_overrides_patch_preserves_other_values_and_reset_to_default`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_env_overrides_patch_preserves_other_values_and_reset_to_default() {
     with_temp_db(|_| {
@@ -1246,6 +1466,17 @@ fn app_settings_set_env_overrides_patch_preserves_other_values_and_reset_to_defa
     });
 }
 
+/// 函数 `app_settings_set_rejects_reserved_and_bootstrap_env_override_keys`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_rejects_reserved_and_bootstrap_env_override_keys() {
     with_temp_db(|_| {

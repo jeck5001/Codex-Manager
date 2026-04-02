@@ -14,11 +14,33 @@ pub(crate) static SKIP_NEXT_UNSAVED_SETTINGS_EXIT_CONFIRM: AtomicBool = AtomicBo
 static UNSAVED_SETTINGS_DRAFT_SECTIONS: LazyLock<Mutex<Vec<String>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 
+/// 函数 `should_keep_alive_for_lightweight_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn should_keep_alive_for_lightweight_close() -> bool {
     !APP_EXIT_REQUESTED.load(Ordering::Relaxed)
         && KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.load(Ordering::Relaxed)
 }
 
+/// 函数 `set_unsaved_settings_draft_sections`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn set_unsaved_settings_draft_sections(sections: Vec<String>) {
     let mut normalized_sections = Vec::new();
 
@@ -43,6 +65,17 @@ pub(crate) fn set_unsaved_settings_draft_sections(sections: Vec<String>) {
     }
 }
 
+/// 函数 `current_unsaved_settings_draft_sections`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_unsaved_settings_draft_sections() -> Vec<String> {
     match UNSAVED_SETTINGS_DRAFT_SECTIONS.lock() {
         Ok(guard) => guard.clone(),
@@ -53,31 +86,108 @@ pub(crate) fn current_unsaved_settings_draft_sections() -> Vec<String> {
     }
 }
 
+/// 函数 `has_unsaved_settings_draft_sections`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn has_unsaved_settings_draft_sections() -> bool {
     !current_unsaved_settings_draft_sections().is_empty()
 }
 
+/// 函数 `mark_skip_next_unsaved_settings_window_close_confirm`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn mark_skip_next_unsaved_settings_window_close_confirm() {
     SKIP_NEXT_UNSAVED_SETTINGS_WINDOW_CLOSE_CONFIRM.store(true, Ordering::Relaxed);
 }
 
+/// 函数 `take_skip_next_unsaved_settings_window_close_confirm`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn take_skip_next_unsaved_settings_window_close_confirm() -> bool {
     SKIP_NEXT_UNSAVED_SETTINGS_WINDOW_CLOSE_CONFIRM.swap(false, Ordering::Relaxed)
 }
 
+/// 函数 `mark_skip_next_unsaved_settings_exit_confirm`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn mark_skip_next_unsaved_settings_exit_confirm() {
     SKIP_NEXT_UNSAVED_SETTINGS_EXIT_CONFIRM.store(true, Ordering::Relaxed);
 }
 
+/// 函数 `take_skip_next_unsaved_settings_exit_confirm`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn take_skip_next_unsaved_settings_exit_confirm() -> bool {
     SKIP_NEXT_UNSAVED_SETTINGS_EXIT_CONFIRM.swap(false, Ordering::Relaxed)
 }
 
+/// 函数 `clear_skip_next_unsaved_settings_confirms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn clear_skip_next_unsaved_settings_confirms() {
     SKIP_NEXT_UNSAVED_SETTINGS_WINDOW_CLOSE_CONFIRM.store(false, Ordering::Relaxed);
     SKIP_NEXT_UNSAVED_SETTINGS_EXIT_CONFIRM.store(false, Ordering::Relaxed);
 }
 
+/// 函数 `prepare_for_forced_app_exit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn prepare_for_forced_app_exit() {
     APP_EXIT_REQUESTED.store(true, Ordering::Relaxed);
     CLOSE_TO_TRAY_ON_CLOSE.store(false, Ordering::Relaxed);
@@ -95,6 +205,17 @@ mod tests {
         take_skip_next_unsaved_settings_window_close_confirm,
     };
 
+    /// 函数 `clears_skip_flags_for_unsaved_settings_confirms`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn clears_skip_flags_for_unsaved_settings_confirms() {
         clear_skip_next_unsaved_settings_confirms();

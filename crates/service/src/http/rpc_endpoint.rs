@@ -8,6 +8,17 @@ use tiny_http::Request;
 use tiny_http::Response;
 use url::Url;
 
+/// 函数 `rpc_response_failed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - resp: 参数 resp
+///
+/// # 返回
+/// 返回函数执行结果
 fn rpc_response_failed(resp: &codexmanager_core::rpc::types::JsonRpcResponse) -> bool {
     if resp.result.get("error").is_some() {
         return true;
@@ -18,6 +29,18 @@ fn rpc_response_failed(resp: &codexmanager_core::rpc::types::JsonRpcResponse) ->
     )
 }
 
+/// 函数 `get_header_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn get_header_value<'a>(request: &'a Request, name: &str) -> Option<&'a str> {
     request
         .headers()
@@ -27,6 +50,17 @@ fn get_header_value<'a>(request: &'a Request, name: &str) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
+/// 函数 `is_json_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_json_content_type(request: &Request) -> bool {
     get_header_value(request, "Content-Type")
         .and_then(|value| value.split(';').next())
@@ -34,6 +68,17 @@ fn is_json_content_type(request: &Request) -> bool {
         .unwrap_or(false)
 }
 
+/// 函数 `is_loopback_origin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - origin: 参数 origin
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_loopback_origin(origin: &str) -> bool {
     let Ok(url) = Url::parse(origin) else {
         return false;
@@ -44,6 +89,17 @@ fn is_loopback_origin(origin: &str) -> bool {
     matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"))
 }
 
+/// 函数 `panic_payload_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - payload: 参数 payload
+///
+/// # 返回
+/// 返回函数执行结果
 fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
     if let Some(message) = payload.downcast_ref::<&str>() {
         return (*message).to_string();
@@ -54,6 +110,17 @@ fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
     "unknown panic payload".to_string()
 }
 
+/// 函数 `jsonrpc_message_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
 fn jsonrpc_message_success(message: &JsonRpcMessage) -> bool {
     match message {
         JsonRpcMessage::Response(resp) => !rpc_response_failed(resp),
@@ -63,6 +130,18 @@ fn jsonrpc_message_success(message: &JsonRpcMessage) -> bool {
     }
 }
 
+/// 函数 `handle_parsed_rpc_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - handler: 参数 handler
+///
+/// # 返回
+/// 返回函数执行结果
 fn handle_parsed_rpc_request<F>(req: JsonRpcRequest, handler: F) -> (String, bool)
 where
     F: FnOnce(JsonRpcRequest) -> JsonRpcMessage,
@@ -100,6 +179,17 @@ where
     }
 }
 
+/// 函数 `handle_rpc_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn handle_rpc_body(body: &str) -> (u16, String, bool) {
     if body.trim().is_empty() {
         return (400, "{}".to_string(), false);
@@ -119,6 +209,17 @@ fn handle_rpc_body(body: &str) -> (u16, String, bool) {
     (200, json, success)
 }
 
+/// 函数 `is_axum_json_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_axum_json_content_type(headers: &HeaderMap) -> bool {
     headers
         .get("Content-Type")
@@ -128,6 +229,17 @@ fn is_axum_json_content_type(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
+/// 函数 `validate_axum_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn validate_axum_headers(headers: &HeaderMap) -> Option<AxumResponse> {
     if !is_axum_json_content_type(headers) {
         return Some((StatusCode::UNSUPPORTED_MEDIA_TYPE, "{}").into_response());
@@ -169,6 +281,17 @@ fn validate_axum_headers(headers: &HeaderMap) -> Option<AxumResponse> {
     None
 }
 
+/// 函数 `handle_rpc_http`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) async fn handle_rpc_http(headers: HeaderMap, body: String) -> AxumResponse {
     let mut rpc_metrics_guard = crate::gateway::begin_rpc_request();
     if let Some(response) = validate_axum_headers(&headers) {
@@ -200,6 +323,17 @@ pub(crate) async fn handle_rpc_http(headers: HeaderMap, body: String) -> AxumRes
         .into_response()
 }
 
+/// 函数 `handle_rpc`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+///
+/// # 返回
+/// 无
 pub fn handle_rpc(mut request: Request) {
     let mut rpc_metrics_guard = crate::gateway::begin_rpc_request();
     if request.method().as_str() != "POST" {
@@ -261,6 +395,17 @@ mod tests {
         JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse,
     };
 
+    /// 函数 `panicking_rpc_handler_returns_structured_json_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn panicking_rpc_handler_returns_structured_json_error() {
         let request = JsonRpcRequest {
@@ -294,6 +439,17 @@ mod tests {
         );
     }
 
+    /// 函数 `normal_rpc_handler_keeps_success_shape`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normal_rpc_handler_keeps_success_shape() {
         let request = JsonRpcRequest {
@@ -322,6 +478,17 @@ mod tests {
         );
     }
 
+    /// 函数 `notification_handler_returns_empty_body`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn notification_handler_returns_empty_body() {
         let request = JsonRpcRequest {

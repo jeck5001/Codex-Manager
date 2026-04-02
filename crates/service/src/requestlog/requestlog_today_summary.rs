@@ -3,6 +3,17 @@ use codexmanager_core::rpc::types::RequestLogTodaySummaryResult;
 
 use crate::storage_helpers::open_storage;
 
+/// 函数 `local_day_bounds_ts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn local_day_bounds_ts() -> Result<(i64, i64), String> {
     let now = Local::now();
     let today = now.date_naive();
@@ -26,6 +37,17 @@ fn local_day_bounds_ts() -> Result<(i64, i64), String> {
     Ok((start, end.max(start)))
 }
 
+/// 函数 `read_requestlog_today_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_requestlog_today_summary() -> Result<RequestLogTodaySummaryResult, String> {
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
     let (start_ts, end_ts) = local_day_bounds_ts()?;

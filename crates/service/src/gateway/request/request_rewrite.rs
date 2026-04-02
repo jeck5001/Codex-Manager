@@ -11,6 +11,17 @@ use request_rewrite_responses as responses;
 type RetainFn = fn(&str, &mut serde_json::Map<String, Value>) -> Vec<String>;
 const RETAIN_FN_PROBE_KEY: &str = "__codexmanager_allowlist_probe__";
 
+/// 函数 `compute_upstream_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn compute_upstream_url(base: &str, path: &str) -> (String, Option<String>) {
     let base = base.trim_end_matches('/');
     let url = if base.contains("/backend-api/codex") && path.starts_with("/v1/") {
@@ -29,10 +40,33 @@ pub(super) fn compute_upstream_url(base: &str, path: &str) -> (String, Option<St
     (url, url_alt)
 }
 
+/// 函数 `is_codex_backend_base`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - base: 参数 base
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_codex_backend_base(base: &str) -> bool {
     base.to_ascii_lowercase().contains("/backend-api/codex")
 }
 
+/// 函数 `should_apply_codex_responses_compat`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - explicit_upstream_base: 参数 explicit_upstream_base
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_apply_codex_responses_compat(path: &str, explicit_upstream_base: Option<&str>) -> bool {
     if !responses::is_responses_path(path) {
         return false;
@@ -44,6 +78,18 @@ fn should_apply_codex_responses_compat(path: &str, explicit_upstream_base: Optio
     is_codex_backend_base(&normalized_base)
 }
 
+/// 函数 `path_matches_retain_fn`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - retain_fn: 参数 retain_fn
+///
+/// # 返回
+/// 返回函数执行结果
 fn path_matches_retain_fn(path: &str, retain_fn: RetainFn) -> bool {
     let mut probe = serde_json::Map::new();
     probe.insert(RETAIN_FN_PROBE_KEY.to_string(), Value::Null);
@@ -51,6 +97,18 @@ fn path_matches_retain_fn(path: &str, retain_fn: RetainFn) -> bool {
     !probe.contains_key(RETAIN_FN_PROBE_KEY)
 }
 
+/// 函数 `resolve_retain_fn`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - use_codex_responses_compat: 参数 use_codex_responses_compat
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_retain_fn(path: &str, use_codex_responses_compat: bool) -> Option<RetainFn> {
     if path_matches_retain_fn(path, chat_completions::retain_official_fields) {
         return Some(chat_completions::retain_official_fields);
@@ -65,6 +123,19 @@ fn resolve_retain_fn(path: &str, use_codex_responses_compat: bool) -> Option<Ret
     None
 }
 
+/// 函数 `is_allowed_field`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - key: 参数 key
+/// - retain_fn: 参数 retain_fn
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_allowed_field(path: &str, key: &str, retain_fn: RetainFn) -> bool {
     let mut one = serde_json::Map::new();
     one.insert(key.to_string(), Value::Null);
@@ -72,6 +143,19 @@ fn is_allowed_field(path: &str, key: &str, retain_fn: RetainFn) -> bool {
     one.contains_key(key)
 }
 
+/// 函数 `find_subsequence`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - haystack: 参数 haystack
+/// - needle: 参数 needle
+/// - start: 参数 start
+///
+/// # 返回
+/// 返回函数执行结果
 fn find_subsequence(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
     if needle.is_empty() || start >= haystack.len() || haystack.len() < needle.len() {
         return None;
@@ -82,6 +166,17 @@ fn find_subsequence(haystack: &[u8], needle: &[u8], start: usize) -> Option<usiz
         .map(|idx| idx + start)
 }
 
+/// 函数 `extract_multipart_part_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_multipart_part_name(headers: &[u8]) -> Option<String> {
     let headers_str = std::str::from_utf8(headers).ok()?;
     for line in headers_str.split("\r\n") {
@@ -110,6 +205,19 @@ fn extract_multipart_part_name(headers: &[u8]) -> Option<String> {
     None
 }
 
+/// 函数 `filter_form_urlencoded_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - body: 参数 body
+/// - retain_fn: 参数 retain_fn
+///
+/// # 返回
+/// 返回函数执行结果
 fn filter_form_urlencoded_body(
     path: &str,
     body: &[u8],
@@ -139,6 +247,19 @@ fn filter_form_urlencoded_body(
     Some((serializer.finish().into_bytes(), dropped_keys))
 }
 
+/// 函数 `filter_multipart_form_data_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - body: 参数 body
+/// - retain_fn: 参数 retain_fn
+///
+/// # 返回
+/// 返回函数执行结果
 fn filter_multipart_form_data_body(
     path: &str,
     body: &[u8],
@@ -234,6 +355,17 @@ fn filter_multipart_form_data_body(
     Some((rebuilt, dropped_keys))
 }
 
+/// 函数 `apply_request_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(dead_code)]
 pub(super) fn apply_request_overrides(
     path: &str,
@@ -252,6 +384,17 @@ pub(super) fn apply_request_overrides(
     )
 }
 
+/// 函数 `apply_request_overrides_with_service_tier`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn apply_request_overrides_with_service_tier(
     path: &str,
     body: Vec<u8>,
@@ -271,6 +414,17 @@ pub(super) fn apply_request_overrides_with_service_tier(
     )
 }
 
+/// 函数 `apply_request_overrides_with_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(dead_code)]
 pub(super) fn apply_request_overrides_with_prompt_cache_key(
     path: &str,
@@ -291,6 +445,17 @@ pub(super) fn apply_request_overrides_with_prompt_cache_key(
     )
 }
 
+/// 函数 `apply_request_overrides_with_service_tier_and_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn apply_request_overrides_with_service_tier_and_prompt_cache_key(
     path: &str,
     body: Vec<u8>,
@@ -312,6 +477,17 @@ pub(super) fn apply_request_overrides_with_service_tier_and_prompt_cache_key(
     )
 }
 
+/// 函数 `apply_request_overrides_with_forced_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn apply_request_overrides_with_forced_prompt_cache_key(
     path: &str,
     body: Vec<u8>,
@@ -331,6 +507,17 @@ pub(super) fn apply_request_overrides_with_forced_prompt_cache_key(
     )
 }
 
+/// 函数 `apply_request_overrides_with_service_tier_and_forced_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn apply_request_overrides_with_service_tier_and_forced_prompt_cache_key(
     path: &str,
     body: Vec<u8>,
@@ -352,6 +539,24 @@ pub(super) fn apply_request_overrides_with_service_tier_and_forced_prompt_cache_
     )
 }
 
+/// 函数 `apply_request_overrides_with_prompt_cache_key_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - body: 参数 body
+/// - model_slug: 参数 model_slug
+/// - reasoning_effort: 参数 reasoning_effort
+/// - upstream_base_url: 参数 upstream_base_url
+/// - prompt_cache_key: 参数 prompt_cache_key
+/// - force_prompt_cache_key: 参数 force_prompt_cache_key
+/// - service_tier: 参数 service_tier
+///
+/// # 返回
+/// 返回函数执行结果
 fn apply_request_overrides_with_prompt_cache_key_mode(
     path: &str,
     body: Vec<u8>,

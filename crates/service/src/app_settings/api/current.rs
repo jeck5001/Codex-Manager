@@ -46,6 +46,17 @@ const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS: &[&str] = &[
     "gpt-5.4",
 ];
 
+/// 函数 `normalize_service_bind_mode_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_service_bind_mode_value(raw: Option<&str>) -> &'static str {
     let Some(value) = raw else {
         return SERVICE_BIND_MODE_LOOPBACK;
@@ -57,6 +68,17 @@ fn normalize_service_bind_mode_value(raw: Option<&str>) -> &'static str {
     }
 }
 
+/// 函数 `current_app_settings_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn current_app_settings_value(
     close_to_tray_on_close: Option<bool>,
     close_to_tray_supported: Option<bool>,
@@ -182,6 +204,17 @@ pub(super) fn current_app_settings_value(
     }))
 }
 
+/// 函数 `load_free_account_max_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - current: 参数 current
+///
+/// # 返回
+/// 返回函数执行结果
 fn load_free_account_max_model_options(current: &str) -> Vec<String> {
     let cached = crate::apikey_models::read_model_options(false)
         .map(|result| result.items)
@@ -189,6 +222,18 @@ fn load_free_account_max_model_options(current: &str) -> Vec<String> {
     collect_free_account_max_model_options(current, &cached)
 }
 
+/// 函数 `collect_free_account_max_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - current: 参数 current
+/// - cached: 参数 cached
+///
+/// # 返回
+/// 返回函数执行结果
 fn collect_free_account_max_model_options(current: &str, cached: &[ModelOption]) -> Vec<String> {
     let mut items = vec!["auto".to_string()];
     for slug in cached
@@ -218,11 +263,54 @@ fn collect_free_account_max_model_options(current: &str, cached: &[ModelOption])
     items
 }
 
+/// 函数 `is_free_account_max_model_option`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - slug: 参数 slug
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_free_account_max_model_option(slug: &str) -> bool {
     let normalized = slug.trim().to_ascii_lowercase();
     !normalized.is_empty() && normalized.starts_with("gpt-") && normalized != "gpt-5.4-pro"
 }
 
+/// 函数 `persist_current_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - update_auto_check: 参数 update_auto_check
+/// - persisted_close_to_tray: 参数 persisted_close_to_tray
+/// - lightweight_mode_on_close_to_tray: 参数 lightweight_mode_on_close_to_tray
+/// - low_transparency: 参数 low_transparency
+/// - theme: 参数 theme
+/// - appearance_preset: 参数 appearance_preset
+/// - service_addr: 参数 service_addr
+/// - service_listen_mode: 参数 service_listen_mode
+/// - route_strategy: 参数 route_strategy
+/// - free_account_max_model: 参数 free_account_max_model
+/// - account_max_inflight: 参数 account_max_inflight
+/// - request_compression_enabled: 参数 request_compression_enabled
+/// - gateway_originator: 参数 gateway_originator
+/// - gateway_user_agent_version: 参数 gateway_user_agent_version
+/// - gateway_residency_requirement: 参数 gateway_residency_requirement
+/// - plugin_market_mode: 参数 plugin_market_mode
+/// - plugin_market_source_url: 参数 plugin_market_source_url
+/// - upstream_proxy_url: 参数 upstream_proxy_url
+/// - upstream_stream_timeout_ms: 参数 upstream_stream_timeout_ms
+/// - sse_keepalive_interval_ms: 参数 sse_keepalive_interval_ms
+/// - background_tasks_raw: 参数 background_tasks_raw
+/// - env_overrides: 参数 env_overrides
+///
+/// # 返回
+/// 无
 fn persist_current_snapshot(
     update_auto_check: bool,
     persisted_close_to_tray: bool,
@@ -327,6 +415,17 @@ fn persist_current_snapshot(
     let _ = save_env_overrides_value(env_overrides);
 }
 
+/// 函数 `normalize_market_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_market_mode(raw: &str) -> &'static str {
     match raw.trim().to_ascii_lowercase().as_str() {
         "private" => "private",
@@ -343,6 +442,17 @@ mod tests {
     };
     use codexmanager_core::rpc::types::ModelOption;
 
+    /// 函数 `free_account_max_model_options_fallback_to_curated_defaults`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_account_max_model_options_fallback_to_curated_defaults() {
         let actual = collect_free_account_max_model_options("auto", &[]);
@@ -353,6 +463,17 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    /// 函数 `free_account_max_model_options_reuse_cached_model_picker_options`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_account_max_model_options_reuse_cached_model_picker_options() {
         let actual = collect_free_account_max_model_options(
@@ -392,6 +513,17 @@ mod tests {
         );
     }
 
+    /// 函数 `plugin_market_mode_normalization_defaults_to_builtin`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn plugin_market_mode_normalization_defaults_to_builtin() {
         assert_eq!(normalize_market_mode(""), "builtin");

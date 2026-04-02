@@ -17,6 +17,17 @@ pub(crate) struct IncomingHeaderSnapshot {
 }
 
 impl IncomingHeaderSnapshot {
+    /// 函数 `from_request`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn from_request(request: &Request) -> Self {
         let mut snapshot = IncomingHeaderSnapshot::default();
         for header in request.headers() {
@@ -94,58 +105,201 @@ impl IncomingHeaderSnapshot {
         snapshot
     }
 
+    /// 函数 `platform_key`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn platform_key(&self) -> Option<&str> {
         self.x_api_key
             .as_deref()
             .or(self.authorization_bearer_strict.as_deref())
     }
 
+    /// 函数 `sticky_key_material`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn sticky_key_material(&self) -> Option<&str> {
         self.x_api_key
             .as_deref()
             .or(self.authorization_bearer_case_insensitive.as_deref())
     }
 
+    /// 函数 `has_authorization`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn has_authorization(&self) -> bool {
         self.authorization_present
     }
 
+    /// 函数 `has_x_api_key`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn has_x_api_key(&self) -> bool {
         self.x_api_key_present
     }
 
+    /// 函数 `session_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
     }
 
+    /// 函数 `client_request_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn client_request_id(&self) -> Option<&str> {
         self.client_request_id.as_deref()
     }
 
+    /// 函数 `subagent`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn subagent(&self) -> Option<&str> {
         self.subagent.as_deref()
     }
 
+    /// 函数 `beta_features`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn beta_features(&self) -> Option<&str> {
         self.beta_features.as_deref()
     }
 
+    /// 函数 `turn_metadata`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn turn_metadata(&self) -> Option<&str> {
         self.turn_metadata.as_deref()
     }
 
+    /// 函数 `turn_state`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn turn_state(&self) -> Option<&str> {
         self.turn_state.as_deref()
     }
 
+    /// 函数 `conversation_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn conversation_id(&self) -> Option<&str> {
         self.conversation_id.as_deref()
     }
 
+    /// 函数 `with_conversation_id_override`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn with_conversation_id_override(&self, conversation_id: Option<&str>) -> Self {
         self.with_thread_affinity_override(conversation_id, false)
     }
 
+    /// 函数 `with_thread_affinity_override`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn with_thread_affinity_override(
         &self,
         conversation_id: Option<&str>,
@@ -164,6 +318,17 @@ impl IncomingHeaderSnapshot {
     }
 }
 
+/// 函数 `strict_bearer_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn strict_bearer_token(value: &str) -> Option<String> {
     let token = value.strip_prefix("Bearer ")?.trim();
     if token.is_empty() {
@@ -173,6 +338,17 @@ fn strict_bearer_token(value: &str) -> Option<String> {
     }
 }
 
+/// 函数 `case_insensitive_bearer_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn case_insensitive_bearer_token(value: &str) -> Option<String> {
     let (scheme, token) = value.split_once(' ')?;
     if !scheme.eq_ignore_ascii_case("bearer") {

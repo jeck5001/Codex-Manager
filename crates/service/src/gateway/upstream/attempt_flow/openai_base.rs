@@ -7,6 +7,17 @@ pub(super) enum OpenAiAttemptResult {
     Terminal { status_code: u16, message: String },
 }
 
+/// 函数 `handle_openai_base_attempt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn handle_openai_base_attempt<F>(
     client: &reqwest::blocking::Client,
     storage: &Storage,

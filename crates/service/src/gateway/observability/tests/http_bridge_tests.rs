@@ -20,6 +20,18 @@ struct EnvGuard {
 }
 
 impl EnvGuard {
+    /// 函数 `set`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - key: 参数 key
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn set(key: &'static str, value: &str) -> Self {
         let original = std::env::var_os(key);
         std::env::set_var(key, value);
@@ -28,6 +40,17 @@ impl EnvGuard {
 }
 
 impl Drop for EnvGuard {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         if let Some(value) = &self.original {
             std::env::set_var(self.key, value);
@@ -37,6 +60,18 @@ impl Drop for EnvGuard {
     }
 }
 
+/// 函数 `open_mock_http_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - content_type: 参数 content_type
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn open_mock_http_response(content_type: &str, body: &str) -> reqwest::blocking::Response {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock upstream");
     let addr = listener.local_addr().expect("mock upstream addr");
@@ -60,6 +95,18 @@ fn open_mock_http_response(content_type: &str, body: &str) -> reqwest::blocking:
     response
 }
 
+/// 函数 `open_streaming_mock_http_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - content_type: 参数 content_type
+/// - chunks: 参数 chunks
+///
+/// # 返回
+/// 返回函数执行结果
 fn open_streaming_mock_http_response(
     content_type: &str,
     chunks: &[(&str, u64)],
@@ -95,6 +142,17 @@ fn open_streaming_mock_http_response(
     (response, server)
 }
 
+/// 函数 `parse_usage_from_json_reads_cached_and_reasoning_details`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_usage_from_json_reads_cached_and_reasoning_details() {
     let payload = json!({
@@ -114,6 +172,17 @@ fn parse_usage_from_json_reads_cached_and_reasoning_details() {
     assert_eq!(usage.reasoning_output_tokens, Some(21));
 }
 
+/// 函数 `parse_usage_from_json_reads_response_usage_compat_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_usage_from_json_reads_response_usage_compat_fields() {
     let payload = json!({
@@ -136,6 +205,17 @@ fn parse_usage_from_json_reads_response_usage_compat_fields() {
     assert_eq!(usage.reasoning_output_tokens, Some(9));
 }
 
+/// 函数 `parse_usage_from_json_reads_anthropic_compat_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_usage_from_json_reads_anthropic_compat_fields() {
     let payload = json!({
@@ -155,6 +235,17 @@ fn parse_usage_from_json_reads_anthropic_compat_fields() {
     assert_eq!(usage.reasoning_output_tokens, Some(4));
 }
 
+/// 函数 `parse_usage_from_json_merges_response_usage_over_top_level_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_usage_from_json_merges_response_usage_over_top_level_usage() {
     let payload = json!({
@@ -180,6 +271,17 @@ fn parse_usage_from_json_merges_response_usage_over_top_level_usage() {
     assert_eq!(usage.reasoning_output_tokens, None);
 }
 
+/// 函数 `parse_usage_from_sse_frame_reads_response_completed_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_usage_from_sse_frame_reads_response_completed_usage() {
     let frame_lines = vec![
@@ -196,6 +298,17 @@ fn parse_usage_from_sse_frame_reads_response_completed_usage() {
     assert_eq!(usage.reasoning_output_tokens, Some(6));
 }
 
+/// 函数 `parse_usage_from_sse_frame_reads_top_level_and_response_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_usage_from_sse_frame_reads_top_level_and_response_usage() {
     let frame_lines = vec![
@@ -212,6 +325,17 @@ fn parse_usage_from_sse_frame_reads_top_level_and_response_usage() {
     assert_eq!(usage.reasoning_output_tokens, Some(4));
 }
 
+/// 函数 `parse_usage_from_sse_frame_caps_output_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_usage_from_sse_frame_caps_output_text() {
     let limit = super::output_text_limit_bytes();
@@ -240,6 +364,17 @@ fn parse_usage_from_sse_frame_caps_output_text() {
     assert!(text.ends_with(super::OUTPUT_TEXT_TRUNCATED_MARKER));
 }
 
+/// 函数 `inspect_sse_frame_recognizes_done_marker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn inspect_sse_frame_recognizes_done_marker() {
     let frame_lines = vec![
@@ -251,6 +386,17 @@ fn inspect_sse_frame_recognizes_done_marker() {
     assert!(inspection.terminal.is_some());
 }
 
+/// 函数 `anthropic_sse_reader_final_usage_contains_input_cache_and_output_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_sse_reader_final_usage_contains_input_cache_and_output_tokens() {
     let (response, server) = open_streaming_mock_http_response(
@@ -277,6 +423,17 @@ fn anthropic_sse_reader_final_usage_contains_input_cache_and_output_tokens() {
     assert!(out.contains("\"reasoning_output_tokens\":2"));
 }
 
+/// 函数 `inspect_sse_frame_recognizes_response_failed_as_terminal_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn inspect_sse_frame_recognizes_response_failed_as_terminal_error() {
     let frame_lines = vec![
@@ -297,6 +454,17 @@ fn inspect_sse_frame_recognizes_response_failed_as_terminal_error() {
     assert!(err.contains("Internal server error"));
 }
 
+/// 函数 `inspect_sse_frame_recognizes_response_done_as_terminal`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn inspect_sse_frame_recognizes_response_done_as_terminal() {
     let frame_lines = vec![
@@ -308,6 +476,17 @@ fn inspect_sse_frame_recognizes_response_done_as_terminal() {
     assert!(inspection.terminal.is_some());
 }
 
+/// 函数 `inspect_sse_frame_recognizes_chat_completion_finish_reason_as_terminal`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn inspect_sse_frame_recognizes_chat_completion_finish_reason_as_terminal() {
     let frame_lines = vec![
@@ -320,6 +499,17 @@ fn inspect_sse_frame_recognizes_chat_completion_finish_reason_as_terminal() {
     assert!(inspection.terminal.is_some());
 }
 
+/// 函数 `inspect_sse_frame_recognizes_nested_response_error_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn inspect_sse_frame_recognizes_nested_response_error_message() {
     let frame_lines = vec![
@@ -341,6 +531,17 @@ fn inspect_sse_frame_recognizes_nested_response_error_message() {
     assert!(err.contains("model_not_found"), "unexpected err: {err}");
 }
 
+/// 函数 `collect_non_stream_json_from_sse_bytes_extracts_response_completed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn collect_non_stream_json_from_sse_bytes_extracts_response_completed() {
     let sse = concat!(
@@ -358,6 +559,17 @@ fn collect_non_stream_json_from_sse_bytes_extracts_response_completed() {
     assert_eq!(usage.total_tokens, Some(10));
 }
 
+/// 函数 `collect_non_stream_json_from_sse_bytes_extracts_response_done`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn collect_non_stream_json_from_sse_bytes_extracts_response_done() {
     let sse = concat!(
@@ -375,6 +587,17 @@ fn collect_non_stream_json_from_sse_bytes_extracts_response_done() {
     assert_eq!(usage.total_tokens, Some(10));
 }
 
+/// 函数 `collect_non_stream_json_from_sse_bytes_synthesizes_chat_completion_chunks`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn collect_non_stream_json_from_sse_bytes_synthesizes_chat_completion_chunks() {
     let sse = concat!(
@@ -394,6 +617,17 @@ fn collect_non_stream_json_from_sse_bytes_synthesizes_chat_completion_chunks() {
     assert_eq!(usage.total_tokens, Some(10));
 }
 
+/// 函数 `extract_openai_completed_output_text_reads_completed_output_message_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn extract_openai_completed_output_text_reads_completed_output_message_text() {
     let payload = json!({
@@ -412,6 +646,17 @@ fn extract_openai_completed_output_text_reads_completed_output_message_text() {
     assert_eq!(text, "hello from completed");
 }
 
+/// 函数 `apply_openai_stream_meta_defaults_fills_missing_chunk_meta`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn apply_openai_stream_meta_defaults_fills_missing_chunk_meta() {
     let mut mapped = json!({
@@ -436,6 +681,17 @@ fn apply_openai_stream_meta_defaults_fills_missing_chunk_meta() {
     assert_eq!(mapped["created"], 1700000123);
 }
 
+/// 函数 `collect_non_stream_json_from_sse_bytes_backfills_response_output_from_deltas`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn collect_non_stream_json_from_sse_bytes_backfills_response_output_from_deltas() {
     let sse = concat!(
@@ -463,6 +719,17 @@ fn collect_non_stream_json_from_sse_bytes_backfills_response_output_from_deltas(
     assert_eq!(usage.total_tokens, Some(11));
 }
 
+/// 函数 `collect_non_stream_json_from_sse_bytes_backfills_reasoning_output_items`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn collect_non_stream_json_from_sse_bytes_backfills_reasoning_output_items() {
     let sse = concat!(
@@ -483,6 +750,17 @@ fn collect_non_stream_json_from_sse_bytes_backfills_reasoning_output_items() {
     assert_eq!(usage.total_tokens, Some(6));
 }
 
+/// 函数 `collect_non_stream_json_from_sse_bytes_backfills_function_call_output_items`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn collect_non_stream_json_from_sse_bytes_backfills_function_call_output_items() {
     let sse = concat!(
@@ -506,6 +784,17 @@ fn collect_non_stream_json_from_sse_bytes_backfills_function_call_output_items()
     assert_eq!(usage.total_tokens, Some(7));
 }
 
+/// 函数 `parse_sse_frame_json_infers_type_from_event_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_sse_frame_json_infers_type_from_event_name() {
     let frame_lines = vec![
@@ -518,6 +807,17 @@ fn parse_sse_frame_json_infers_type_from_event_name() {
     assert_eq!(value["delta"], "hello");
 }
 
+/// 函数 `collect_non_stream_json_from_sse_bytes_supports_event_only_type_frames`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn collect_non_stream_json_from_sse_bytes_supports_event_only_type_frames() {
     let sse = concat!(
@@ -542,6 +842,17 @@ fn collect_non_stream_json_from_sse_bytes_supports_event_only_type_frames() {
     assert_eq!(usage.total_tokens, Some(5));
 }
 
+/// 函数 `parse_sse_frame_json_supports_json_lines_without_data_prefix`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_sse_frame_json_supports_json_lines_without_data_prefix() {
     let frame_lines = vec![
@@ -554,6 +865,17 @@ fn parse_sse_frame_json_supports_json_lines_without_data_prefix() {
     assert_eq!(value["delta"], "hi");
 }
 
+/// 函数 `synthesize_chat_completion_sse_from_json_emits_done_stream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn synthesize_chat_completion_sse_from_json_emits_done_stream() {
     let payload = json!({
@@ -588,6 +910,17 @@ fn synthesize_chat_completion_sse_from_json_emits_done_stream() {
     assert_eq!(usage.output_tokens, Some(1));
 }
 
+/// 函数 `synthesize_completions_sse_from_json_emits_done_stream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn synthesize_completions_sse_from_json_emits_done_stream() {
     let payload = json!({
@@ -614,6 +947,17 @@ fn synthesize_completions_sse_from_json_emits_done_stream() {
     assert!(sse_text.contains("data: [DONE]"));
 }
 
+/// 函数 `live_chat_stream_skips_done_and_message_item_text_events`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn live_chat_stream_skips_done_and_message_item_text_events() {
     let output_text_done = json!({
@@ -651,6 +995,17 @@ fn live_chat_stream_skips_done_and_message_item_text_events() {
     ));
 }
 
+/// 函数 `live_completion_stream_skips_done_and_message_item_text_events`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn live_completion_stream_skips_done_and_message_item_text_events() {
     let output_text_done = json!({
@@ -688,6 +1043,17 @@ fn live_completion_stream_skips_done_and_message_item_text_events() {
     ));
 }
 
+/// 函数 `normalize_chat_chunk_delta_role_keeps_first_and_removes_later`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn normalize_chat_chunk_delta_role_keeps_first_and_removes_later() {
     let mut role_emitted = false;
@@ -708,6 +1074,17 @@ fn normalize_chat_chunk_delta_role_keeps_first_and_removes_later() {
     assert_eq!(second["choices"][0]["delta"]["content"], "好");
 }
 
+/// 函数 `openai_chat_sse_reader_requires_terminal_event_before_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_sse_reader_requires_terminal_event_before_success() {
     let upstream = open_mock_http_response(
@@ -738,6 +1115,17 @@ fn openai_chat_sse_reader_requires_terminal_event_before_success() {
     );
 }
 
+/// 函数 `openai_completions_sse_reader_requires_terminal_event_before_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_completions_sse_reader_requires_terminal_event_before_success() {
     let upstream = open_mock_http_response(
@@ -766,6 +1154,17 @@ fn openai_completions_sse_reader_requires_terminal_event_before_success() {
     );
 }
 
+/// 函数 `passthrough_sse_reader_emits_keepalive_for_responses_stream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn passthrough_sse_reader_emits_keepalive_for_responses_stream() {
     let _guard = crate::test_env_guard();
@@ -800,6 +1199,17 @@ fn passthrough_sse_reader_emits_keepalive_for_responses_stream() {
     assert!(mapped.contains("data: [DONE]"));
 }
 
+/// 函数 `passthrough_sse_reader_captures_raw_html_error_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn passthrough_sse_reader_captures_raw_html_error_body() {
     let (upstream, server) = open_streaming_mock_http_response(
@@ -836,6 +1246,17 @@ fn passthrough_sse_reader_captures_raw_html_error_body() {
     );
 }
 
+/// 函数 `openai_chat_sse_reader_emits_keepalive_chunk_during_idle_gap`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_sse_reader_emits_keepalive_chunk_during_idle_gap() {
     let _guard = crate::test_env_guard();

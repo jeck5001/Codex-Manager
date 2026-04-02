@@ -60,6 +60,17 @@ pub(crate) struct ChatgptAuthTokensLoginInput {
     pub(crate) chatgpt_plan_type: Option<String>,
 }
 
+/// 函数 `login_with_chatgpt_auth_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn login_with_chatgpt_auth_tokens(
     input: ChatgptAuthTokensLoginInput,
 ) -> Result<LoginStartResult, String> {
@@ -174,6 +185,17 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
     Ok(LoginStartResult::ChatgptAuthTokens {})
 }
 
+/// 函数 `read_current_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_current_account(refresh_token: bool) -> Result<AccountReadResponse, String> {
     let Some(storage) = open_storage() else {
         return Ok(AccountReadResponse {
@@ -213,6 +235,17 @@ pub(crate) fn read_current_account(refresh_token: bool) -> Result<AccountReadRes
     })
 }
 
+/// 函数 `refresh_current_chatgpt_auth_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn refresh_current_chatgpt_auth_tokens(
     previous_account_id: Option<&str>,
 ) -> Result<ChatgptAuthTokensRefreshResponse, String> {
@@ -255,6 +288,17 @@ pub(crate) fn refresh_current_chatgpt_auth_tokens(
     })
 }
 
+/// 函数 `logout_current_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn logout_current_account() -> Result<serde_json::Value, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let current_account_id = get_persisted_app_setting(CURRENT_AUTH_ACCOUNT_ID_KEY);
@@ -275,6 +319,17 @@ pub(crate) fn logout_current_account() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({}))
 }
 
+/// 函数 `resolve_current_account_with_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_current_account_with_token(
     storage: &Storage,
 ) -> Result<Option<(Account, Token)>, String> {
@@ -298,6 +353,18 @@ fn resolve_current_account_with_token(
     }
 }
 
+/// 函数 `resolve_refresh_target`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - previous_account_id: 参数 previous_account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_refresh_target(
     storage: &Storage,
     previous_account_id: Option<&str>,
@@ -327,6 +394,19 @@ fn resolve_refresh_target(
     Ok(token.map(|token| (account, token)))
 }
 
+/// 函数 `current_account_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account: 参数 account
+/// - token: 参数 token
+/// - auth_mode: 参数 auth_mode
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_account_payload(
     account: &Account,
     token: &Token,
@@ -352,6 +432,18 @@ fn current_account_payload(
     }
 }
 
+/// 函数 `resolve_plan_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+/// - parsed_claims: 参数 parsed_claims
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 fn resolve_plan_type(
     token: &Token,
@@ -360,6 +452,18 @@ fn resolve_plan_type(
     resolve_plan_type_resolution(token, parsed_claims).map(|plan| plan.normalized)
 }
 
+/// 函数 `resolve_plan_type_raw`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+/// - parsed_claims: 参数 parsed_claims
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 fn resolve_plan_type_raw(
     token: &Token,
@@ -374,6 +478,18 @@ struct ResolvedPlanType {
     raw: Option<String>,
 }
 
+/// 函数 `resolve_plan_type_resolution`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+/// - parsed_claims: 参数 parsed_claims
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_plan_type_resolution(
     token: &Token,
     parsed_claims: Option<&codexmanager_core::auth::IdTokenClaims>,
@@ -402,6 +518,17 @@ fn resolve_plan_type_resolution(
         .and_then(normalize_plan_type)
 }
 
+/// 函数 `normalize_plan_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_plan_type(value: String) -> Option<ResolvedPlanType> {
     let normalized = value.trim().to_ascii_lowercase();
     match normalized.as_str() {
@@ -421,14 +548,47 @@ fn normalize_plan_type(value: String) -> Option<ResolvedPlanType> {
     }
 }
 
+/// 函数 `set_current_auth_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_current_auth_account_id(account_id: Option<&str>) -> Result<(), String> {
     save_persisted_app_setting(CURRENT_AUTH_ACCOUNT_ID_KEY, account_id)
 }
 
+/// 函数 `set_current_auth_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_current_auth_mode(auth_mode: Option<&str>) -> Result<(), String> {
     save_persisted_app_setting(CURRENT_AUTH_MODE_KEY, auth_mode)
 }
 
+/// 函数 `resolve_current_auth_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_current_auth_mode(token: &Token) -> String {
     get_persisted_app_setting(CURRENT_AUTH_MODE_KEY)
         .map(|value| value.trim().to_string())
@@ -436,6 +596,17 @@ fn resolve_current_auth_mode(token: &Token) -> String {
         .unwrap_or_else(|| infer_auth_mode_from_token(token).to_string())
 }
 
+/// 函数 `infer_auth_mode_from_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 fn infer_auth_mode_from_token(token: &Token) -> &'static str {
     if token.id_token.trim() == token.access_token.trim() {
         AUTH_MODE_CHATGPT_AUTH_TOKENS

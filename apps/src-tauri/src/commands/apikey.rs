@@ -1,10 +1,33 @@
 use crate::commands::shared::rpc_call_in_background;
 
+/// 函数 `service_apikey_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_apikey_list(addr: Option<String>) -> Result<serde_json::Value, String> {
     rpc_call_in_background("apikey/list", addr, None).await
 }
 
+/// 函数 `service_apikey_read_secret`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - key_id: 参数 key_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_apikey_read_secret(
     addr: Option<String>,
@@ -14,6 +37,26 @@ pub async fn service_apikey_read_secret(
     rpc_call_in_background("apikey/readSecret", addr, Some(params)).await
 }
 
+/// 函数 `service_apikey_create`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - name: 参数 name
+/// - model_slug: 参数 model_slug
+/// - reasoning_effort: 参数 reasoning_effort
+/// - service_tier: 参数 service_tier
+/// - protocol_type: 参数 protocol_type
+/// - upstream_base_url: 参数 upstream_base_url
+/// - static_headers_json: 参数 static_headers_json
+/// - rotation_strategy: 参数 rotation_strategy
+/// - aggregate_api_id: 参数 aggregate_api_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_apikey_create(
     addr: Option<String>,
@@ -41,6 +84,18 @@ pub async fn service_apikey_create(
     rpc_call_in_background("apikey/create", addr, Some(params)).await
 }
 
+/// 函数 `service_apikey_models`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - refresh_remote: 参数 refresh_remote
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_apikey_models(
     addr: Option<String>,
@@ -50,11 +105,43 @@ pub async fn service_apikey_models(
     rpc_call_in_background("apikey/models", addr, params).await
 }
 
+/// 函数 `service_apikey_usage_stats`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_apikey_usage_stats(addr: Option<String>) -> Result<serde_json::Value, String> {
     rpc_call_in_background("apikey/usageStats", addr, None).await
 }
 
+/// 函数 `service_apikey_update_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - key_id: 参数 key_id
+/// - name: 参数 name
+/// - model_slug: 参数 model_slug
+/// - reasoning_effort: 参数 reasoning_effort
+/// - service_tier: 参数 service_tier
+/// - protocol_type: 参数 protocol_type
+/// - upstream_base_url: 参数 upstream_base_url
+/// - static_headers_json: 参数 static_headers_json
+/// - rotation_strategy: 参数 rotation_strategy
+/// - aggregate_api_id: 参数 aggregate_api_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_apikey_update_model(
     addr: Option<String>,
@@ -84,6 +171,18 @@ pub async fn service_apikey_update_model(
     rpc_call_in_background("apikey/updateModel", addr, Some(params)).await
 }
 
+/// 函数 `service_apikey_delete`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - key_id: 参数 key_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_apikey_delete(
     addr: Option<String>,
@@ -93,6 +192,18 @@ pub async fn service_apikey_delete(
     rpc_call_in_background("apikey/delete", addr, Some(params)).await
 }
 
+/// 函数 `service_apikey_disable`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - key_id: 参数 key_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_apikey_disable(
     addr: Option<String>,
@@ -102,6 +213,18 @@ pub async fn service_apikey_disable(
     rpc_call_in_background("apikey/disable", addr, Some(params)).await
 }
 
+/// 函数 `service_apikey_enable`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - key_id: 参数 key_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_apikey_enable(
     addr: Option<String>,

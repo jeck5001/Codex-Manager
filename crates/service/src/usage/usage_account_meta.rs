@@ -4,6 +4,17 @@ use codexmanager_core::auth::{
 use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 use std::collections::HashMap;
 
+/// 函数 `clean_header_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn clean_header_value(value: Option<String>) -> Option<String> {
     match value {
         Some(v) => {
@@ -18,6 +29,18 @@ pub(crate) fn clean_header_value(value: Option<String>) -> Option<String> {
     }
 }
 
+/// 函数 `resolve_workspace_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - workspace_id: 参数 workspace_id
+/// - chatgpt_account_id: 参数 chatgpt_account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_workspace_header(
     workspace_id: Option<String>,
     chatgpt_account_id: Option<String>,
@@ -25,6 +48,17 @@ fn resolve_workspace_header(
     clean_header_value(workspace_id).or_else(|| clean_header_value(chatgpt_account_id))
 }
 
+/// 函数 `workspace_header_for_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn workspace_header_for_account(account: &Account) -> Option<String> {
     resolve_workspace_header(
         account.workspace_id.clone(),
@@ -32,6 +66,17 @@ pub(crate) fn workspace_header_for_account(account: &Account) -> Option<String> 
     )
 }
 
+/// 函数 `build_workspace_map_from_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn build_workspace_map_from_accounts(
     accounts: &[Account],
 ) -> HashMap<String, Option<String>> {
@@ -43,6 +88,17 @@ pub(crate) fn build_workspace_map_from_accounts(
     workspace_map
 }
 
+/// 函数 `build_workspace_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(dead_code)]
 pub(crate) fn build_workspace_map(storage: &Storage) -> HashMap<String, Option<String>> {
     storage
@@ -51,6 +107,17 @@ pub(crate) fn build_workspace_map(storage: &Storage) -> HashMap<String, Option<S
         .unwrap_or_default()
 }
 
+/// 函数 `resolve_workspace_id_for_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(dead_code)]
 pub(crate) fn resolve_workspace_id_for_account(
     storage: &Storage,
@@ -63,6 +130,17 @@ pub(crate) fn resolve_workspace_id_for_account(
         .and_then(|account| workspace_header_for_account(&account))
 }
 
+/// 函数 `derive_account_meta`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn derive_account_meta(token: &Token) -> (Option<String>, Option<String>) {
     let mut chatgpt_account_id = None;
     let mut workspace_id = None;
@@ -97,6 +175,17 @@ pub(crate) fn derive_account_meta(token: &Token) -> (Option<String>, Option<Stri
     (chatgpt_account_id, workspace_id)
 }
 
+/// 函数 `patch_account_meta`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn patch_account_meta(
     storage: &Storage,
     account_id: &str,
@@ -116,6 +205,17 @@ pub(crate) fn patch_account_meta(
     }
 }
 
+/// 函数 `patch_account_meta_cached`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn patch_account_meta_cached(
     storage: &Storage,
     accounts: &mut HashMap<String, Account>,
@@ -134,6 +234,17 @@ pub(crate) fn patch_account_meta_cached(
     patch_account_meta(storage, account_id, chatgpt_account_id, workspace_id);
 }
 
+/// 函数 `patch_account_meta_in_place`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn patch_account_meta_in_place(
     account: &mut Account,
     chatgpt_account_id: Option<String>,
@@ -142,6 +253,17 @@ pub(crate) fn patch_account_meta_in_place(
     apply_account_meta_patch(account, chatgpt_account_id, workspace_id)
 }
 
+/// 函数 `is_invalid_upstream_scope_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_invalid_upstream_scope_value(value: &str) -> bool {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -151,6 +273,19 @@ fn is_invalid_upstream_scope_value(value: &str) -> bool {
     trimmed.contains('|') || trimmed.starts_with("import-sub-")
 }
 
+/// 函数 `apply_account_meta_patch`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account: 参数 account
+/// - chatgpt_account_id: 参数 chatgpt_account_id
+/// - workspace_id: 参数 workspace_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn apply_account_meta_patch(
     account: &mut Account,
     chatgpt_account_id: Option<String>,

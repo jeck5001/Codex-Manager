@@ -29,6 +29,17 @@ pub(crate) struct DeleteBannedResult {
     deleted_account_ids: Vec<String>,
 }
 
+/// 函数 `delete_unavailable_free_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFreeResult, String> {
     let mut storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
@@ -116,6 +127,17 @@ pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFree
     Ok(result)
 }
 
+/// 函数 `delete_banned_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn delete_banned_accounts() -> Result<DeleteBannedResult, String> {
     let mut storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
@@ -158,6 +180,17 @@ pub(crate) fn delete_banned_accounts() -> Result<DeleteBannedResult, String> {
     Ok(result)
 }
 
+/// 函数 `plan_label_for_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - plan: 参数 plan
+///
+/// # 返回
+/// 返回函数执行结果
 fn plan_label_for_event(plan: Option<&ResolvedAccountPlan>) -> Option<&str> {
     plan.and_then(|value| {
         if value.normalized == "unknown" {
@@ -179,6 +212,17 @@ mod tests {
 
     static CLEANUP_TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
 
+    /// 函数 `new_test_dir`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - prefix: 参数 prefix
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new_test_dir(prefix: &str) -> PathBuf {
         let seq = CLEANUP_TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
         let mut dir = std::env::temp_dir();
@@ -193,6 +237,18 @@ mod tests {
     }
 
     impl EnvGuard {
+        /// 函数 `set`
+        ///
+        /// 作者: gaohongshun
+        ///
+        /// 时间: 2026-04-02
+        ///
+        /// # 参数
+        /// - key: 参数 key
+        /// - value: 参数 value
+        ///
+        /// # 返回
+        /// 返回函数执行结果
         fn set(key: &'static str, value: &str) -> Self {
             let original = std::env::var_os(key);
             std::env::set_var(key, value);
@@ -201,6 +257,17 @@ mod tests {
     }
 
     impl Drop for EnvGuard {
+        /// 函数 `drop`
+        ///
+        /// 作者: gaohongshun
+        ///
+        /// 时间: 2026-04-02
+        ///
+        /// # 参数
+        /// - self: 参数 self
+        ///
+        /// # 返回
+        /// 无
         fn drop(&mut self) {
             if let Some(value) = &self.original {
                 std::env::set_var(self.key, value);
@@ -210,6 +277,17 @@ mod tests {
         }
     }
 
+    /// 函数 `delete_banned_accounts_removes_only_banned_accounts`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn delete_banned_accounts_removes_only_banned_accounts() {
         let _lock = test_env_guard();

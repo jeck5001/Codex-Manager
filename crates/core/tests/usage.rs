@@ -1,6 +1,17 @@
 use codexmanager_core::usage::{parse_usage_snapshot, usage_endpoint};
 use serde_json::json;
 
+/// 函数 `usage_snapshot_parsed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_snapshot_parsed() {
     let payload = json!({

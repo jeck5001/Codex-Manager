@@ -3,6 +3,17 @@ use std::collections::HashSet;
 use codexmanager_core::rpc::types::ModelOption;
 use serde_json::Value;
 
+/// 函数 `parse_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn parse_model_options(body: &[u8]) -> Vec<ModelOption> {
     let mut items: Vec<ModelOption> = Vec::new();
     let mut seen = HashSet::new();
@@ -24,6 +35,19 @@ pub(super) fn parse_model_options(body: &[u8]) -> Vec<ModelOption> {
     items
 }
 
+/// 函数 `parse_models_array`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - models: 参数 models
+/// - seen: 参数 seen
+/// - items: 参数 items
+///
+/// # 返回
+/// 无
 fn parse_models_array(
     models: Option<&Vec<Value>>,
     seen: &mut HashSet<String>,
@@ -44,6 +68,19 @@ fn parse_models_array(
     }
 }
 
+/// 函数 `parse_data_array`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - data: 参数 data
+/// - seen: 参数 seen
+/// - items: 参数 items
+///
+/// # 返回
+/// 无
 fn parse_data_array(
     data: Option<&Vec<Value>>,
     seen: &mut HashSet<String>,
@@ -65,6 +102,19 @@ fn parse_data_array(
     }
 }
 
+/// 函数 `push_model_option`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - slug: 参数 slug
+/// - seen: 参数 seen
+/// - items: 参数 items
+///
+/// # 返回
+/// 无
 fn push_model_option(slug: &str, seen: &mut HashSet<String>, items: &mut Vec<ModelOption>) {
     if seen.insert(slug.to_string()) {
         items.push(ModelOption {
@@ -80,6 +130,17 @@ mod tests {
 
     use super::parse_model_options;
 
+    /// 函数 `parse_model_options_normalizes_display_name_to_slug`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn parse_model_options_normalizes_display_name_to_slug() {
         let body = json!({

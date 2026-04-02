@@ -26,6 +26,17 @@ struct PromptCacheEntry {
     lru_tick: u64,
 }
 
+/// 函数 `resolve_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn resolve_prompt_cache_key(
     source: &serde_json::Map<String, Value>,
     model: Option<&Value>,
@@ -47,6 +58,17 @@ pub(super) fn resolve_prompt_cache_key(
     Some(get_or_create_prompt_cache_id(&cache_key))
 }
 
+/// 函数 `get_or_create_prompt_cache_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn get_or_create_prompt_cache_id(key: &str) -> String {
     let now = Instant::now();
     let cache = PROMPT_CACHE.get_or_init(|| Mutex::new(PromptCache::new(now)));
@@ -54,6 +76,17 @@ fn get_or_create_prompt_cache_id(key: &str) -> String {
     guard.get_or_create(key, now)
 }
 
+/// 函数 `with_prompt_cache_mut`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - f: 参数 f
+///
+/// # 返回
+/// 返回函数执行结果
 fn with_prompt_cache_mut<R>(f: impl FnOnce(&mut PromptCache) -> R) -> Option<R> {
     let cache = PROMPT_CACHE.get()?;
     let mut guard = crate::lock_utils::lock_recover(cache, "prompt_cache");
@@ -68,6 +101,17 @@ struct PromptCacheConfig {
 }
 
 impl PromptCacheConfig {
+    /// 函数 `load_from_env`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn load_from_env() -> Self {
         let ttl_secs = env_u64_or(PROMPT_CACHE_TTL_SECS_ENV, DEFAULT_PROMPT_CACHE_TTL_SECS);
         let cleanup_secs = env_u64_or(
@@ -93,6 +137,17 @@ struct PromptCache {
 }
 
 impl PromptCache {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - now: 参数 now
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new(now: Instant) -> Self {
         Self {
             by_key: HashMap::new(),
@@ -103,6 +158,19 @@ impl PromptCache {
         }
     }
 
+    /// 函数 `get_or_create`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key: 参数 key
+    /// - now: 参数 now
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn get_or_create(&mut self, key: &str, now: Instant) -> String {
         self.maybe_cleanup(now);
 
@@ -151,6 +219,18 @@ impl PromptCache {
         id
     }
 
+    /// 函数 `maybe_cleanup`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - now: 参数 now
+    ///
+    /// # 返回
+    /// 无
     fn maybe_cleanup(&mut self, now: Instant) {
         let interval = self.config.cleanup_interval;
         if interval.is_zero()
@@ -162,6 +242,18 @@ impl PromptCache {
         }
     }
 
+    /// 函数 `cleanup`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - now: 参数 now
+    ///
+    /// # 返回
+    /// 无
     fn cleanup(&mut self, now: Instant) {
         self.last_cleanup = now;
 
@@ -180,6 +272,17 @@ impl PromptCache {
         self.enforce_capacity();
     }
 
+    /// 函数 `enforce_capacity`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn enforce_capacity(&mut self) {
         let cap = self.config.capacity;
         if cap == 0 {
@@ -196,6 +299,17 @@ impl PromptCache {
     }
 }
 
+/// 函数 `clear_runtime_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn clear_runtime_state() {
     let _ = with_prompt_cache_mut(|cache| {
         let now = Instant::now();
@@ -205,6 +319,17 @@ pub(super) fn clear_runtime_state() {
     });
 }
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn reload_from_env() {
     let _ = with_prompt_cache_mut(|cache| {
         cache.config = PromptCacheConfig::load_from_env();
@@ -212,11 +337,35 @@ pub(super) fn reload_from_env() {
     });
 }
 
+/// 函数 `reload_runtime_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn reload_runtime_state() {
     clear_runtime_state();
     reload_from_env();
 }
 
+/// 函数 `is_entry_expired`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - last_seen: 参数 last_seen
+/// - now: 参数 now
+/// - ttl: 参数 ttl
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_entry_expired(last_seen: Instant, now: Instant, ttl: Duration) -> bool {
     if ttl.is_zero() {
         return false;
@@ -225,6 +374,18 @@ fn is_entry_expired(last_seen: Instant, now: Instant, ttl: Duration) -> bool {
         .is_some_and(|age| age > ttl)
 }
 
+/// 函数 `env_u64_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_u64_or(name: &str, default: u64) -> u64 {
     std::env::var(name)
         .ok()
@@ -232,6 +393,18 @@ fn env_u64_or(name: &str, default: u64) -> u64 {
         .unwrap_or(default)
 }
 
+/// 函数 `env_usize_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_usize_or(name: &str, default: usize) -> usize {
     std::env::var(name)
         .ok()
@@ -239,6 +412,17 @@ fn env_usize_or(name: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+/// 函数 `random_uuid_v4`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn random_uuid_v4() -> String {
     let mut bytes = [0u8; 16];
     rand::rngs::OsRng.fill_bytes(&mut bytes);

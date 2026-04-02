@@ -40,14 +40,47 @@ pub(crate) use openai_chat::OpenAIChatCompletionsSseReader;
 pub(crate) use openai_completions::OpenAICompletionsSseReader;
 pub(crate) use passthrough::PassthroughSseUsageReader;
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn reload_from_env() {
     common::reload_from_env();
 }
 
+/// 函数 `current_sse_keepalive_interval_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn current_sse_keepalive_interval_ms() -> u64 {
     common::current_sse_keepalive_interval_ms()
 }
 
+/// 函数 `set_sse_keepalive_interval_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn set_sse_keepalive_interval_ms(interval_ms: u64) -> Result<u64, String> {
     common::set_sse_keepalive_interval_ms(interval_ms)
 }

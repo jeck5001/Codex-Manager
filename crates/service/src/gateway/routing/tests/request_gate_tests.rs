@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `same_scope_reuses_same_lock_instance`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn same_scope_reuses_same_lock_instance() {
     let _guard = crate::test_env_guard();
@@ -9,6 +20,17 @@ fn same_scope_reuses_same_lock_instance() {
     assert!(Arc::ptr_eq(&first, &second));
 }
 
+/// 函数 `different_scope_uses_different_lock_instances`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn different_scope_uses_different_lock_instances() {
     let _guard = crate::test_env_guard();
@@ -18,6 +40,17 @@ fn different_scope_uses_different_lock_instances() {
     assert!(!Arc::ptr_eq(&first, &second));
 }
 
+/// 函数 `stale_unshared_lock_entry_is_reclaimed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn stale_unshared_lock_entry_is_reclaimed() {
     let _guard = crate::test_env_guard();
@@ -42,6 +75,17 @@ fn stale_unshared_lock_entry_is_reclaimed() {
     assert!(weak.upgrade().is_none());
 }
 
+/// 函数 `stale_shared_lock_entry_is_not_reclaimed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn stale_shared_lock_entry_is_not_reclaimed() {
     let _guard = crate::test_env_guard();

@@ -1,5 +1,16 @@
 use tiny_http::{Request, Response};
 
+/// 函数 `handle_gateway_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String> {
     // 处理代理请求（鉴权后转发到上游）
     let debug = super::DEFAULT_GATEWAY_DEBUG;

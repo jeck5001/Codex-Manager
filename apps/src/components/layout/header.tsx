@@ -22,6 +22,19 @@ import {
 
 const DEFAULT_SERVICE_ADDR = "localhost:48760";
 
+/**
+ * 函数 `Header`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function Header() {
   const { serviceStatus, setServiceStatus, setAppSettings } = useAppStore();
   const pathname = usePathname();
@@ -36,6 +49,19 @@ export function Header() {
     setPortInput(port || "48760");
   }, [serviceStatus.addr]);
 
+  /**
+   * 函数 `getPageTitle`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const getPageTitle = () => {
     const normalizedPathname = pathname === "/" ? pathname : pathname.replace(/\/+$/, "");
     switch (normalizedPathname) {
@@ -56,6 +82,19 @@ export function Header() {
     }
   };
 
+  /**
+   * 函数 `persistServiceAddr`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - nextAddr: 参数 nextAddr
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const persistServiceAddr = async (nextAddr: string) => {
     const normalized = normalizeServiceAddr(nextAddr);
     const settings = await appClient.setSettings({ serviceAddr: normalized });
@@ -64,6 +103,19 @@ export function Header() {
     return normalized;
   };
 
+  /**
+   * 函数 `handleToggleService`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - enabled: 参数 enabled
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleToggleService = async (enabled: boolean) => {
     setIsToggling(true);
     try {
@@ -92,6 +144,19 @@ export function Header() {
     }
   };
 
+  /**
+   * 函数 `handlePortBlur`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handlePortBlur = async () => {
     try {
       const nextAddr = await persistServiceAddr(`localhost:${portInput}`);

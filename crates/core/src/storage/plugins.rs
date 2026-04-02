@@ -2,6 +2,18 @@ use super::{now_ts, PluginInstall, PluginRunLog, PluginTask, Storage};
 use rusqlite::{params, params_from_iter, types::Value, Result, Row};
 
 impl Storage {
+    /// 函数 `upsert_plugin_install`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - plugin: 参数 plugin
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn upsert_plugin_install(&self, plugin: &PluginInstall) -> Result<()> {
         self.conn.execute(
             "INSERT INTO plugin_installs (
@@ -46,6 +58,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `replace_plugin_install`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - plugin: 参数 plugin
+    /// - tasks: 参数 tasks
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn replace_plugin_install(
         &self,
         plugin: &PluginInstall,
@@ -125,6 +150,17 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `list_plugin_installs`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_plugin_installs(&self) -> Result<Vec<PluginInstall>> {
         let mut stmt = self.conn.prepare(
             "SELECT
@@ -142,6 +178,18 @@ impl Storage {
         Ok(items)
     }
 
+    /// 函数 `find_plugin_install`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - plugin_id: 参数 plugin_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn find_plugin_install(&self, plugin_id: &str) -> Result<Option<PluginInstall>> {
         let mut stmt = self.conn.prepare(
             "SELECT
@@ -160,6 +208,20 @@ impl Storage {
         }
     }
 
+    /// 函数 `update_plugin_install_status`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - plugin_id: 参数 plugin_id
+    /// - status: 参数 status
+    /// - last_error: 参数 last_error
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_plugin_install_status(
         &self,
         plugin_id: &str,
@@ -175,6 +237,20 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_plugin_install_last_run`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - plugin_id: 参数 plugin_id
+    /// - last_run_at: 参数 last_run_at
+    /// - last_error: 参数 last_error
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_plugin_install_last_run(
         &self,
         plugin_id: &str,
@@ -190,6 +266,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `delete_plugin_install`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - plugin_id: 参数 plugin_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn delete_plugin_install(&self, plugin_id: &str) -> Result<()> {
         self.conn
             .execute("DELETE FROM plugin_tasks WHERE plugin_id = ?1", [plugin_id])?;
@@ -200,6 +288,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `list_plugin_tasks`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - plugin_id: 参数 plugin_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_plugin_tasks(&self, plugin_id: Option<&str>) -> Result<Vec<PluginTask>> {
         let sql = if plugin_id.is_some() {
             "SELECT id, plugin_id, name, description, entrypoint, schedule_kind, interval_seconds,
@@ -226,6 +326,18 @@ impl Storage {
         Ok(items)
     }
 
+    /// 函数 `find_plugin_task`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - task_id: 参数 task_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn find_plugin_task(&self, task_id: &str) -> Result<Option<PluginTask>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, plugin_id, name, description, entrypoint, schedule_kind, interval_seconds,
@@ -242,6 +354,19 @@ impl Storage {
         }
     }
 
+    /// 函数 `set_plugin_task_enabled`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - task_id: 参数 task_id
+    /// - enabled: 参数 enabled
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn set_plugin_task_enabled(&self, task_id: &str, enabled: bool) -> Result<()> {
         self.conn.execute(
             "UPDATE plugin_tasks
@@ -252,6 +377,26 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_plugin_task_definition`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - task_id: 参数 task_id
+    /// - name: 参数 name
+    /// - description: 参数 description
+    /// - entrypoint: 参数 entrypoint
+    /// - schedule_kind: 参数 schedule_kind
+    /// - interval_seconds: 参数 interval_seconds
+    /// - enabled: 参数 enabled
+    /// - next_run_at: 参数 next_run_at
+    /// - task_json: 参数 task_json
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_plugin_task_definition(
         &self,
         task_id: &str,
@@ -292,6 +437,22 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_plugin_task_schedule`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - task_id: 参数 task_id
+    /// - next_run_at: 参数 next_run_at
+    /// - last_run_at: 参数 last_run_at
+    /// - last_status: 参数 last_status
+    /// - last_error: 参数 last_error
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_plugin_task_schedule(
         &self,
         task_id: &str,
@@ -309,6 +470,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `list_due_plugin_tasks`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - now: 参数 now
+    /// - limit: 参数 limit
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_due_plugin_tasks(&self, now: i64, limit: i64) -> Result<Vec<PluginTask>> {
         let normalized_limit = limit.max(1);
         let mut stmt = self.conn.prepare(
@@ -328,6 +502,18 @@ impl Storage {
         Ok(items)
     }
 
+    /// 函数 `insert_plugin_run_log`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - log: 参数 log
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_plugin_run_log(&self, log: &PluginRunLog) -> Result<i64> {
         self.conn.execute(
             "INSERT INTO plugin_run_logs (
@@ -348,6 +534,20 @@ impl Storage {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// 函数 `list_plugin_run_logs`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - plugin_id: 参数 plugin_id
+    /// - task_id: 参数 task_id
+    /// - limit: 参数 limit
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_plugin_run_logs(
         &self,
         plugin_id: Option<&str>,
@@ -386,6 +586,17 @@ impl Storage {
     }
 }
 
+/// 函数 `map_plugin_install_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_plugin_install_row(row: &Row<'_>) -> Result<PluginInstall> {
     Ok(PluginInstall {
         plugin_id: row.get(0)?,
@@ -407,6 +618,17 @@ fn map_plugin_install_row(row: &Row<'_>) -> Result<PluginInstall> {
     })
 }
 
+/// 函数 `map_plugin_task_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_plugin_task_row(row: &Row<'_>) -> Result<PluginTask> {
     Ok(PluginTask {
         id: row.get(0)?,
@@ -427,6 +649,17 @@ fn map_plugin_task_row(row: &Row<'_>) -> Result<PluginTask> {
     })
 }
 
+/// 函数 `map_plugin_run_log_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_plugin_run_log_row(row: &Row<'_>) -> Result<PluginRunLog> {
     Ok(PluginRunLog {
         id: row.get(0)?,
@@ -446,6 +679,17 @@ fn map_plugin_run_log_row(row: &Row<'_>) -> Result<PluginRunLog> {
 mod tests {
     use super::super::{PluginInstall, PluginTask, Storage};
 
+    /// 函数 `update_plugin_task_definition_updates_interval`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn update_plugin_task_definition_updates_interval() {
         let storage = Storage::open_in_memory().expect("open storage");
@@ -528,6 +772,17 @@ mod tests {
         assert_eq!(updated.next_run_at, Some(61));
     }
 
+    /// 函数 `list_due_plugin_tasks_returns_enabled_interval_tasks`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn list_due_plugin_tasks_returns_enabled_interval_tasks() {
         let storage = Storage::open_in_memory().expect("open storage");

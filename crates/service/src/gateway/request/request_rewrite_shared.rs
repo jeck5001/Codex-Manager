@@ -1,5 +1,16 @@
 use serde_json::Value;
 
+/// 函数 `retain_fields_with_allowlist`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn retain_fields_with_allowlist(
     obj: &mut serde_json::Map<String, Value>,
     allow: fn(&str) -> bool,
@@ -16,10 +27,32 @@ pub(super) fn retain_fields_with_allowlist(
     dropped
 }
 
+/// 函数 `normalize_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn normalize_path(path: &str) -> &str {
     path.split('?').next().unwrap_or(path)
 }
 
+/// 函数 `path_matches_template`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn path_matches_template(path: &str, template: &str) -> bool {
     let normalized_path = normalize_path(path);
     let mut path_segments = normalized_path
@@ -55,6 +88,17 @@ pub(super) struct TemplateAllowlist {
     pub(super) allow: fn(&str) -> bool,
 }
 
+/// 函数 `retain_fields_by_templates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn retain_fields_by_templates(
     path: &str,
     obj: &mut serde_json::Map<String, Value>,

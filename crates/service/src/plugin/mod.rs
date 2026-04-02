@@ -11,6 +11,17 @@ mod store;
 
 static PLUGIN_SCHEDULER_STARTED: OnceLock<()> = OnceLock::new();
 
+/// 函数 `ensure_plugin_scheduler`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn ensure_plugin_scheduler() {
     PLUGIN_SCHEDULER_STARTED.get_or_init(|| {
         catalog::sync_builtin_cleanup_task_schedule();
@@ -20,6 +31,17 @@ pub(crate) fn ensure_plugin_scheduler() {
     });
 }
 
+/// 函数 `try_handle`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     let result = match req.method.as_str() {
         "plugin/catalog/list" | "plugin/catalog/refresh" => Some(catalog::handle_catalog_list(req)),
@@ -38,6 +60,17 @@ pub(crate) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     Some(result)
 }
 
+/// 函数 `json_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn json_response(req: &JsonRpcRequest, result: Value) -> JsonRpcResponse {
     JsonRpcResponse {
         id: req.id.clone(),
@@ -45,6 +78,17 @@ pub(crate) fn json_response(req: &JsonRpcRequest, result: Value) -> JsonRpcRespo
     }
 }
 
+/// 函数 `plugin_scheduler_loop`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn plugin_scheduler_loop() {
     loop {
         let sleep_secs = scheduler::run_due_tasks_once();

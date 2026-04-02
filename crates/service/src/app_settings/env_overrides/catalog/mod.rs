@@ -32,14 +32,47 @@ impl EnvOverrideCatalogItem {
     }
 }
 
+/// 函数 `env_override_reserved_keys`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn env_override_reserved_keys() -> &'static [&'static str] {
     APP_SETTINGS_ENV_RESERVED_KEYS
 }
 
+/// 函数 `env_override_unsupported_keys`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn env_override_unsupported_keys() -> &'static [&'static str] {
     APP_SETTINGS_ENV_UNSUPPORTED_KEYS
 }
 
+/// 函数 `editable_env_override_catalog`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn editable_env_override_catalog(
 ) -> impl Iterator<Item = &'static EnvOverrideCatalogItem> {
     ENV_OVERRIDE_CATALOG
@@ -47,26 +80,81 @@ pub(super) fn editable_env_override_catalog(
         .filter(|item| !is_env_override_reserved_key(item.key))
 }
 
+/// 函数 `env_override_catalog_item`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn env_override_catalog_item(key: &str) -> Option<&'static EnvOverrideCatalogItem> {
     editable_env_override_catalog().find(|item| item.key.eq_ignore_ascii_case(key))
 }
 
+/// 函数 `is_env_override_catalog_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn is_env_override_catalog_key(key: &str) -> bool {
     env_override_catalog_item(key).is_some()
 }
 
+/// 函数 `is_env_override_unsupported_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn is_env_override_unsupported_key(key: &str) -> bool {
     APP_SETTINGS_ENV_UNSUPPORTED_KEYS
         .iter()
         .any(|item| item.eq_ignore_ascii_case(key))
 }
 
+/// 函数 `is_env_override_reserved_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn is_env_override_reserved_key(key: &str) -> bool {
     APP_SETTINGS_ENV_RESERVED_KEYS
         .iter()
         .any(|item| item.eq_ignore_ascii_case(key))
 }
 
+/// 函数 `env_override_catalog_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn env_override_catalog_value() -> Vec<Value> {
     editable_env_override_catalog()
         .map(|item| {

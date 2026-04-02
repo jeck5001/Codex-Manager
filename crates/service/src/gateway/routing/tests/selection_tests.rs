@@ -1,6 +1,17 @@
 use super::{clear_candidate_cache_for_tests, collect_gateway_candidates, CANDIDATE_CACHE_TTL_ENV};
 use codexmanager_core::storage::{now_ts, Account, Storage, Token, UsageSnapshotRecord};
 
+/// 函数 `candidate_snapshot_cache_reuses_recent_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn candidate_snapshot_cache_reuses_recent_snapshot() {
     let _guard = crate::test_env_guard();
@@ -74,6 +85,17 @@ fn candidate_snapshot_cache_reuses_recent_snapshot() {
     super::reload_from_env();
 }
 
+/// 函数 `candidates_follow_account_sort_order`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn candidates_follow_account_sort_order() {
     let _guard = crate::test_env_guard();

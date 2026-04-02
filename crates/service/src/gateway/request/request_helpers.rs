@@ -11,6 +11,17 @@ pub(crate) struct ParsedRequestMetadata {
     pub(crate) has_prompt_cache_key: bool,
 }
 
+/// 函数 `parse_request_metadata`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn parse_request_metadata(body: &[u8]) -> ParsedRequestMetadata {
     if body.is_empty() {
         return ParsedRequestMetadata::default();
@@ -64,6 +75,17 @@ pub(crate) fn parse_request_metadata(body: &[u8]) -> ParsedRequestMetadata {
     }
 }
 
+/// 函数 `summarize_request_shape_from_object`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - object: 参数 object
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_request_shape_from_object(object: &serde_json::Map<String, Value>) -> String {
     let mut keys = object.keys().cloned().collect::<Vec<_>>();
     keys.sort_unstable();
@@ -116,6 +138,17 @@ fn summarize_request_shape_from_object(object: &serde_json::Map<String, Value>) 
     format!("fp={fingerprint};{shape}")
 }
 
+/// 函数 `should_drop_incoming_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 pub(crate) fn should_drop_incoming_header(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
@@ -131,6 +164,17 @@ pub(crate) fn should_drop_incoming_header(name: &str) -> bool {
         || name.eq_ignore_ascii_case("ChatGPT-Account-Id")
 }
 
+/// 函数 `should_drop_session_affinity_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 pub(crate) fn should_drop_session_affinity_header(name: &str) -> bool {
     // 中文注释：session_id / turn-state 属于会话粘性信号，正常直连时应保留；
@@ -138,11 +182,33 @@ pub(crate) fn should_drop_session_affinity_header(name: &str) -> bool {
     name.eq_ignore_ascii_case("session_id") || name.eq_ignore_ascii_case("x-codex-turn-state")
 }
 
+/// 函数 `should_drop_incoming_header_for_failover`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 pub(crate) fn should_drop_incoming_header_for_failover(name: &str) -> bool {
     should_drop_incoming_header(name) || should_drop_session_affinity_header(name)
 }
 
+/// 函数 `is_upstream_challenge_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn is_upstream_challenge_response(
     status_code: u16,
     content_type: Option<&HeaderValue>,
@@ -157,10 +223,32 @@ pub(crate) fn is_upstream_challenge_response(
     is_html
 }
 
+/// 函数 `is_html_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn is_html_content_type(value: &str) -> bool {
     value.trim().to_ascii_lowercase().starts_with("text/html")
 }
 
+/// 函数 `normalize_models_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_models_path(path: &str) -> String {
     let is_models_path = path == "/v1/models" || path.starts_with("/v1/models?");
     if !is_models_path {

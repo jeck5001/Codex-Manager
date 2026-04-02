@@ -3,6 +3,17 @@ use tiny_http::Response;
 
 use crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE;
 
+/// 函数 `accumulate_text_len`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn accumulate_text_len(value: &Value) -> usize {
     match value {
         Value::String(text) => text.chars().count(),
@@ -23,6 +34,17 @@ fn accumulate_text_len(value: &Value) -> usize {
     }
 }
 
+/// 函数 `estimate_input_tokens_from_anthropic_messages`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn estimate_input_tokens_from_anthropic_messages(body: &[u8]) -> Result<u64, String> {
     let payload: Value =
         serde_json::from_slice(body).map_err(|_| "invalid claude request json".to_string())?;
@@ -47,6 +69,17 @@ fn estimate_input_tokens_from_anthropic_messages(body: &[u8]) -> Result<u64, Str
     Ok(estimated)
 }
 
+/// 函数 `maybe_respond_local_count_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn maybe_respond_local_count_tokens(
     request: tiny_http::Request,
     trace_id: &str,

@@ -23,19 +23,63 @@ use openai::{
     update_openai_stream_meta, OpenAIStreamMeta,
 };
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn reload_from_env() {
     reload_output_text_from_env();
     stream_readers::reload_from_env();
 }
 
+/// 函数 `current_sse_keepalive_interval_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn current_sse_keepalive_interval_ms() -> u64 {
     stream_readers::current_sse_keepalive_interval_ms()
 }
 
+/// 函数 `set_sse_keepalive_interval_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn set_sse_keepalive_interval_ms(interval_ms: u64) -> Result<u64, String> {
     stream_readers::set_sse_keepalive_interval_ms(interval_ms)
 }
 
+/// 函数 `summarize_upstream_error_hint_from_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn summarize_upstream_error_hint_from_body(
     status_code: u16,
     body: &[u8],
@@ -43,6 +87,18 @@ pub(crate) fn summarize_upstream_error_hint_from_body(
     aggregate::extract_error_hint_from_body(status_code, body)
 }
 
+/// 函数 `push_trace_id_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 无
 fn push_trace_id_header(headers: &mut Vec<Header>, trace_id: &str) {
     let Some(trace_id) = Some(trace_id)
         .map(str::trim)
@@ -60,6 +116,17 @@ fn push_trace_id_header(headers: &mut Vec<Header>, trace_id: &str) {
 
 mod delivery;
 mod stream_readers;
+/// 函数 `respond_with_upstream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn respond_with_upstream(
     request: Request,
     upstream: reqwest::blocking::Response,

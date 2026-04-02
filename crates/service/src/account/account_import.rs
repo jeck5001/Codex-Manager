@@ -61,6 +61,17 @@ struct ExistingAccountIndex {
 }
 
 impl ExistingAccountIndex {
+    /// 函数 `build`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - storage: 参数 storage
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn build(storage: &Storage) -> Result<Self, String> {
         let accounts = storage.list_accounts().map_err(|e| e.to_string())?;
         let mut idx = ExistingAccountIndex::default();
@@ -73,6 +84,21 @@ impl ExistingAccountIndex {
         Ok(idx)
     }
 
+    /// 函数 `find_existing_account_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - chatgpt_account_id: 参数 chatgpt_account_id
+    /// - workspace_id: 参数 workspace_id
+    /// - fallback_subject_key: 参数 fallback_subject_key
+    /// - account_id_hint: 参数 account_id_hint
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn find_existing_account_id(
         &self,
         chatgpt_account_id: Option<&str>,
@@ -89,11 +115,34 @@ impl ExistingAccountIndex {
         )
     }
 
+    /// 函数 `upsert_index`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account: 参数 account
+    ///
+    /// # 返回
+    /// 无
     fn upsert_index(&mut self, account: &Account) {
         self.by_id.insert(account.id.clone(), account.clone());
     }
 }
 
+/// 函数 `import_account_auth_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn import_account_auth_json(
     contents: Vec<String>,
 ) -> Result<AccountImportResult, String> {
@@ -131,6 +180,17 @@ pub(crate) fn import_account_auth_json(
     Ok(result)
 }
 
+/// 函数 `import_batch_size`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn import_batch_size() -> usize {
     std::env::var(IMPORT_BATCH_SIZE_ENV)
         .ok()
@@ -139,6 +199,22 @@ fn import_batch_size() -> usize {
         .unwrap_or(DEFAULT_IMPORT_BATCH_SIZE)
 }
 
+/// 函数 `import_items_in_batches`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - index: 参数 index
+/// - result: 参数 result
+/// - progress: 参数 progress
+/// - items: 参数 items
+/// - batch_size: 参数 batch_size
+///
+/// # 返回
+/// 无
 fn import_items_in_batches(
     storage: &Storage,
     index: &mut ExistingAccountIndex,
@@ -181,6 +257,19 @@ fn import_items_in_batches(
     }
 }
 
+/// 函数 `record_import_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - result: 参数 result
+/// - progress: 参数 progress
+/// - message: 参数 message
+///
+/// # 返回
+/// 无
 fn record_import_error(
     result: &mut AccountImportResult,
     progress: &mut AccountImportProgress,
@@ -219,6 +308,17 @@ struct AccountImportBatchProgress {
 }
 
 impl AccountImportProgress {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new() -> Self {
         Self {
             started_at: Instant::now(),
@@ -230,6 +330,20 @@ impl AccountImportProgress {
         }
     }
 
+    /// 函数 `begin_batch`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - index: 参数 index
+    /// - total: 参数 total
+    /// - size: 参数 size
+    ///
+    /// # 返回
+    /// 无
     fn begin_batch(&mut self, index: usize, total: usize, size: usize) {
         self.active_batch = Some(AccountImportBatchProgress {
             index,
@@ -242,6 +356,18 @@ impl AccountImportProgress {
         });
     }
 
+    /// 函数 `on_item_success`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - created: 参数 created
+    ///
+    /// # 返回
+    /// 无
     fn on_item_success(&mut self, created: bool) {
         self.processed += 1;
         if created {
@@ -259,6 +385,17 @@ impl AccountImportProgress {
         }
     }
 
+    /// 函数 `on_item_failure`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn on_item_failure(&mut self) {
         self.processed += 1;
         self.failed += 1;
@@ -268,6 +405,17 @@ impl AccountImportProgress {
         }
     }
 
+    /// 函数 `finish_batch`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn finish_batch(&mut self) {
         if let Some(batch) = self.active_batch.take() {
             log::info!(
@@ -285,6 +433,17 @@ impl AccountImportProgress {
         }
     }
 
+    /// 函数 `finish`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn finish(&self) {
         log::info!(
             "account import finished: processed={} created={} updated={} failed={} elapsed_ms={}",
@@ -297,6 +456,17 @@ impl AccountImportProgress {
     }
 }
 
+/// 函数 `parse_items_from_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - content: 参数 content
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_items_from_content(content: &str) -> Result<Vec<Value>, String> {
     let trimmed = content.trim();
     if trimmed.is_empty() {
@@ -317,6 +487,20 @@ fn parse_items_from_content(content: &str) -> Result<Vec<Value>, String> {
     Ok(out)
 }
 
+/// 函数 `import_single_item`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - index: 参数 index
+/// - item: 参数 item
+/// - sequence: 参数 sequence
+///
+/// # 返回
+/// 返回函数执行结果
 fn import_single_item(
     storage: &Storage,
     index: &mut ExistingAccountIndex,
@@ -485,6 +669,17 @@ fn import_single_item(
     Ok(created)
 }
 
+/// 函数 `extract_token_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item: 参数 item
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_token_payload(item: &Value) -> Result<ImportTokenPayload, String> {
     let tokens = item.get("tokens").unwrap_or(item);
     let access_token = required_string_any(
@@ -535,6 +730,21 @@ fn extract_token_payload(item: &Value) -> Result<ImportTokenPayload, String> {
     })
 }
 
+/// 函数 `resolve_logical_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - payload: 参数 payload
+/// - subject_account_id: 参数 subject_account_id
+/// - chatgpt_account_id: 参数 chatgpt_account_id
+/// - workspace_id: 参数 workspace_id
+/// - token_fingerprint: 参数 token_fingerprint
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_logical_account_id(
     payload: &ImportTokenPayload,
     subject_account_id: Option<&str>,
@@ -598,6 +808,17 @@ fn resolve_logical_account_id(
     Err("unable to resolve account id from tokens.account_id / id_token / access_token".to_string())
 }
 
+/// 函数 `token_fingerprint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - refresh_token: 参数 refresh_token
+///
+/// # 返回
+/// 返回函数执行结果
 fn token_fingerprint(refresh_token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(refresh_token.as_bytes());
@@ -609,6 +830,17 @@ fn token_fingerprint(refresh_token: &str) -> String {
     out
 }
 
+/// 函数 `extract_account_meta`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item: 参数 item
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_account_meta(item: &Value) -> ImportAccountMeta {
     let meta = item.get("meta").unwrap_or(item);
     ImportAccountMeta {
@@ -637,6 +869,18 @@ fn extract_account_meta(item: &Value) -> ImportAccountMeta {
     }
 }
 
+/// 函数 `required_string`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn required_string(value: &Value, key: &str) -> Result<String, String> {
     let raw = value
         .get(key)
@@ -649,6 +893,18 @@ fn required_string(value: &Value, key: &str) -> Result<String, String> {
     Ok(out.to_string())
 }
 
+/// 函数 `required_string_any`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+/// - label: 参数 label
+///
+/// # 返回
+/// 返回函数执行结果
 fn required_string_any(candidates: &[(&Value, &str)], label: &str) -> Result<String, String> {
     for (value, key) in candidates {
         if let Ok(found) = required_string(value, key) {
@@ -658,6 +914,18 @@ fn required_string_any(candidates: &[(&Value, &str)], label: &str) -> Result<Str
     Err(format!("missing field: {label}"))
 }
 
+/// 函数 `optional_string`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn optional_string(value: &Value, key: &str) -> Option<String> {
     value
         .get(key)
@@ -667,6 +935,17 @@ fn optional_string(value: &Value, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// 函数 `optional_string_any`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 返回函数执行结果
 fn optional_string_any(candidates: &[(&Value, &str)]) -> Option<String> {
     for (value, key) in candidates {
         if let Some(found) = optional_string(value, key) {
@@ -676,6 +955,18 @@ fn optional_string_any(candidates: &[(&Value, &str)]) -> Option<String> {
     None
 }
 
+/// 函数 `optional_tags`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn optional_tags(value: &Value, key: &str) -> Option<String> {
     let value = value.get(key)?;
     if let Some(text) = value.as_str() {
@@ -706,6 +997,17 @@ fn optional_tags(value: &Value, key: &str) -> Option<String> {
     }
 }
 
+/// 函数 `optional_tags_any`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 返回函数执行结果
 fn optional_tags_any(candidates: &[(&Value, &str)]) -> Option<String> {
     for (value, key) in candidates {
         if let Some(found) = optional_tags(value, key) {

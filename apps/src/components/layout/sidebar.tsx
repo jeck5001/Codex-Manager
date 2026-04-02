@@ -70,6 +70,19 @@ const NavItem = memo(({
 
 NavItem.displayName = "NavItem";
 
+/**
+ * 函数 `Sidebar`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -169,6 +182,19 @@ export function Sidebar() {
     };
     const controllers: AbortController[] = [];
 
+    /**
+     * 函数 `warmRouteDocument`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * - href: 参数 href
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const warmRouteDocument = async (href: string) => {
       const normalizedHref = normalizeRoutePath(href);
       if (!normalizedHref || normalizedHref === normalizedPathname) {
@@ -202,6 +228,19 @@ export function Sidebar() {
       }
     };
 
+    /**
+     * 函数 `prefetchRoutes`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * 无
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const prefetchRoutes = () => {
       for (const item of NAV_ITEMS) {
         prefetchRoute(item.href);

@@ -3,6 +3,17 @@ use codexmanager_core::storage::{
     UsageSnapshotRecord,
 };
 
+/// 函数 `storage_can_insert_account_and_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_can_insert_account_and_token() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -36,6 +47,17 @@ fn storage_can_insert_account_and_token() {
     assert_eq!(storage.token_count().expect("count tokens"), 1);
 }
 
+/// 函数 `storage_can_find_token_and_account_by_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_can_find_token_and_account_by_account_id() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -91,6 +113,17 @@ fn storage_can_find_token_and_account_by_account_id() {
         .is_none());
 }
 
+/// 函数 `token_upsert_keeps_refresh_schedule_columns`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn token_upsert_keeps_refresh_schedule_columns() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -143,6 +176,17 @@ fn token_upsert_keeps_refresh_schedule_columns() {
     assert_eq!(due2[0].account_id, "acc-schedule-1");
 }
 
+/// 函数 `tokens_due_for_refresh_include_other_unavailable_accounts_but_skip_deactivated`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn tokens_due_for_refresh_include_other_unavailable_accounts_but_skip_deactivated() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -207,6 +251,17 @@ fn tokens_due_for_refresh_include_other_unavailable_accounts_but_skip_deactivate
     );
 }
 
+/// 函数 `storage_login_session_roundtrip`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_login_session_roundtrip() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -236,6 +291,17 @@ fn storage_login_session_roundtrip() {
     assert_eq!(loaded.workspace_id.as_deref(), Some("org_123"));
 }
 
+/// 函数 `storage_account_metadata_roundtrip_and_delete_cleanup`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_account_metadata_roundtrip_and_delete_cleanup() {
     let mut storage = Storage::open_in_memory().expect("open in memory");
@@ -274,6 +340,17 @@ fn storage_account_metadata_roundtrip_and_delete_cleanup() {
         .is_none());
 }
 
+/// 函数 `storage_can_update_account_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_can_update_account_status() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -307,6 +384,17 @@ fn storage_can_update_account_status() {
     assert_eq!(loaded.status, "inactive");
 }
 
+/// 函数 `storage_updates_account_status_only_when_changed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_updates_account_status_only_when_changed() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -343,6 +431,17 @@ fn storage_updates_account_status_only_when_changed() {
     assert_eq!(loaded.status, "inactive");
 }
 
+/// 函数 `storage_account_usage_filters_support_sql_pagination`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_account_usage_filters_support_sql_pagination() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -422,6 +521,17 @@ fn storage_account_usage_filters_support_sql_pagination() {
     assert_eq!(low_quota_ids, vec!["acc-low-1", "acc-inactive-low"]);
 }
 
+/// 函数 `storage_gateway_candidates_exclude_unavailable_or_missing_token_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_gateway_candidates_exclude_unavailable_or_missing_token_accounts() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -535,6 +645,17 @@ fn storage_gateway_candidates_exclude_unavailable_or_missing_token_accounts() {
     assert_eq!(candidate_ids, vec!["acc-ready", "acc-no-snapshot"]);
 }
 
+/// 函数 `latest_usage_snapshots_break_ties_by_latest_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn latest_usage_snapshots_break_ties_by_latest_id() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -598,6 +719,17 @@ fn latest_usage_snapshots_break_ties_by_latest_id() {
     assert_eq!(acc1.used_percent, Some(30.0));
 }
 
+/// 函数 `request_logs_support_prefixed_query_filters`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_logs_support_prefixed_query_filters() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -753,6 +885,17 @@ fn request_logs_support_prefixed_query_filters() {
     );
 }
 
+/// 函数 `request_log_today_summary_reads_from_token_stats_table`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_log_today_summary_reads_from_token_stats_table() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -815,6 +958,17 @@ fn request_log_today_summary_reads_from_token_stats_table() {
     assert!(summary.estimated_cost_usd > 0.32);
 }
 
+/// 函数 `insert_request_log_with_token_stat_writes_both_tables_in_one_call`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn insert_request_log_with_token_stat_writes_both_tables_in_one_call() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -886,6 +1040,17 @@ fn insert_request_log_with_token_stat_writes_both_tables_in_one_call() {
     assert_eq!(logs[0].reasoning_output_tokens, Some(1));
 }
 
+/// 函数 `clear_request_logs_keeps_token_stats_for_usage_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn clear_request_logs_keeps_token_stats_for_usage_summary() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -952,6 +1117,17 @@ fn clear_request_logs_keeps_token_stats_for_usage_summary() {
     assert!(summary.estimated_cost_usd > 0.11);
 }
 
+/// 函数 `request_token_stats_can_summarize_total_tokens_by_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_token_stats_can_summarize_total_tokens_by_key() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -1030,6 +1206,17 @@ fn request_token_stats_can_summarize_total_tokens_by_key() {
     assert!((summary[1].estimated_cost_usd - 0.78).abs() < f64::EPSILON);
 }
 
+/// 函数 `usage_snapshots_can_prune_history_per_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_snapshots_can_prune_history_per_account() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -1082,6 +1269,17 @@ fn usage_snapshots_can_prune_history_per_account() {
     assert_eq!(untouched, 1);
 }
 
+/// 函数 `storage_api_keys_include_profile_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_api_keys_include_profile_fields() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -1122,6 +1320,17 @@ fn storage_api_keys_include_profile_fields() {
     assert_eq!(key.service_tier.as_deref(), Some("fast"));
 }
 
+/// 函数 `storage_can_roundtrip_api_key_secret`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_can_roundtrip_api_key_secret() {
     let storage = Storage::open_in_memory().expect("open in memory");

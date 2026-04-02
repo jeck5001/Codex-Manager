@@ -36,6 +36,17 @@ pub(super) enum CooldownReason {
     Challenge,
 }
 
+/// 函数 `cooldown_secs_for_reason`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - reason: 参数 reason
+///
+/// # 返回
+/// 返回函数执行结果
 fn cooldown_secs_for_reason(reason: CooldownReason) -> i64 {
     match reason {
         CooldownReason::Default => DEFAULT_ACCOUNT_COOLDOWN_SECS,
@@ -47,6 +58,17 @@ fn cooldown_secs_for_reason(reason: CooldownReason) -> i64 {
     }
 }
 
+/// 函数 `rate_limit_cooldown_secs_for_offense`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - offense_count: 参数 offense_count
+///
+/// # 返回
+/// 返回函数执行结果
 fn rate_limit_cooldown_secs_for_offense(offense_count: u32) -> i64 {
     let idx = offense_count
         .saturating_sub(1)
@@ -54,6 +76,21 @@ fn rate_limit_cooldown_secs_for_offense(offense_count: u32) -> i64 {
     ACCOUNT_RATE_LIMIT_COOLDOWN_LADDER_SECS[idx]
 }
 
+/// 函数 `cooldown_secs_for_mark`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - offense_counts: 参数 offense_counts
+/// - offense_last_at: 参数 offense_last_at
+/// - account_id: 参数 account_id
+/// - reason: 参数 reason
+/// - now: 参数 now
+///
+/// # 返回
+/// 返回函数执行结果
 fn cooldown_secs_for_mark(
     offense_counts: &mut HashMap<String, u32>,
     offense_last_at: &mut HashMap<String, i64>,
@@ -79,6 +116,19 @@ fn cooldown_secs_for_mark(
     }
 }
 
+/// 函数 `decay_offense_count_for_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - offense_counts: 参数 offense_counts
+/// - offense_last_at: 参数 offense_last_at
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 无
 fn decay_offense_count_for_success(
     offense_counts: &mut HashMap<String, u32>,
     offense_last_at: &mut HashMap<String, i64>,
@@ -98,6 +148,17 @@ fn decay_offense_count_for_success(
     }
 }
 
+/// 函数 `cooldown_reason_for_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn cooldown_reason_for_status(status: u16) -> CooldownReason {
     match status {
         429 => CooldownReason::RateLimited,
@@ -108,6 +169,17 @@ pub(super) fn cooldown_reason_for_status(status: u16) -> CooldownReason {
     }
 }
 
+/// 函数 `is_account_in_cooldown`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn is_account_in_cooldown(account_id: &str) -> bool {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut state = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
@@ -122,6 +194,17 @@ pub(super) fn is_account_in_cooldown(account_id: &str) -> bool {
     }
 }
 
+/// 函数 `mark_account_cooldown`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut guard = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
@@ -150,10 +233,32 @@ pub(super) fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
     }
 }
 
+/// 函数 `mark_account_cooldown_for_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn mark_account_cooldown_for_status(account_id: &str, status: u16) {
     mark_account_cooldown(account_id, cooldown_reason_for_status(status));
 }
 
+/// 函数 `clear_account_cooldown`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn clear_account_cooldown(account_id: &str) {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut guard = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
@@ -166,6 +271,18 @@ pub(super) fn clear_account_cooldown(account_id: &str) {
     );
 }
 
+/// 函数 `maybe_cleanup_expired_cooldowns`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - state: 参数 state
+/// - now: 参数 now
+///
+/// # 返回
+/// 无
 fn maybe_cleanup_expired_cooldowns(state: &mut AccountCooldownState, now: i64) {
     if state.last_cleanup_at != 0
         && now.saturating_sub(state.last_cleanup_at) < ACCOUNT_COOLDOWN_CLEANUP_INTERVAL_SECS
@@ -186,6 +303,17 @@ fn maybe_cleanup_expired_cooldowns(state: &mut AccountCooldownState, now: i64) {
     }
 }
 
+/// 函数 `clear_runtime_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn clear_runtime_state() {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut state = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
@@ -195,6 +323,17 @@ pub(super) fn clear_runtime_state() {
     state.last_cleanup_at = 0;
 }
 
+/// 函数 `clear_account_cooldown_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn clear_account_cooldown_for_tests() {
     clear_runtime_state();

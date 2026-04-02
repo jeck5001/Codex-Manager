@@ -15,6 +15,19 @@ $ErrorActionPreference = "Stop"
 $LongToolName =
     "mcp__tool_server_namespace_for_codex_manager_gateway_adapter_alignment__very_long_tool_operation_name"
 
+<#
+函数 `New-ChatBodyJson`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function New-ChatBodyJson
 {
     param(
@@ -61,6 +74,19 @@ function New-ChatBodyJson
     return ($body | ConvertTo-Json -Depth 100 -Compress)
 }
 
+<#
+函数 `Print-NonStreamResult`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Print-NonStreamResult
 {
     param(
@@ -108,6 +134,19 @@ function Print-NonStreamResult
     Write-Output ($ResponseObject | ConvertTo-Json -Depth 100)
 }
 
+<#
+函数 `Has-Property`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Has-Property
 {
     param(
@@ -121,6 +160,19 @@ function Has-Property
     return ($InputObject.PSObject.Properties.Match($PropertyName).Count -gt 0)
 }
 
+<#
+函数 `Print-StreamResult`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Print-StreamResult
 {
     param(
@@ -197,6 +249,19 @@ function Print-StreamResult
     $Lines | ForEach-Object { Write-Output $_ }
 }
 
+<#
+函数 `Join-BaseAndEndpoint`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Join-BaseAndEndpoint
 {
     param(
@@ -212,6 +277,19 @@ function Join-BaseAndEndpoint
     return ($base + $endpoint)
 }
 
+<#
+函数 `Invoke-ChatProbe`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-ChatProbe
 {
     param(

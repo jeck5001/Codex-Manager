@@ -18,10 +18,33 @@ const REQUEST_ID_HEADER_CANDIDATES: &[&str] = &["x-request-id", "x-oai-request-i
 const CF_RAY_HEADER_NAME: &str = "cf-ray";
 const AUTH_ERROR_HEADER_NAME: &str = "x-openai-authorization-error";
 
+/// 函数 `is_compact_request_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_compact_request_path(path: &str) -> bool {
     path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?")
 }
 
+/// 函数 `first_upstream_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - names: 参数 names
+///
+/// # 返回
+/// 返回函数执行结果
 fn first_upstream_header(headers: &reqwest::header::HeaderMap, names: &[&str]) -> Option<String> {
     names.iter().find_map(|name| {
         headers
@@ -33,6 +56,21 @@ fn first_upstream_header(headers: &reqwest::header::HeaderMap, names: &[&str]) -
     })
 }
 
+/// 函数 `compact_debug_suffix`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - kind: 参数 kind
+/// - request_id: 参数 request_id
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn compact_debug_suffix(
     kind: Option<&str>,
     request_id: Option<&str>,
@@ -66,6 +104,22 @@ fn compact_debug_suffix(
     }
 }
 
+/// 函数 `with_upstream_debug_suffix`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+/// - kind: 参数 kind
+/// - request_id: 参数 request_id
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn with_upstream_debug_suffix(
     message: Option<String>,
     kind: Option<&str>,
@@ -83,6 +137,18 @@ fn with_upstream_debug_suffix(
     }
 }
 
+/// 函数 `should_suppress_deactivation_delivery`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - upstream_error_hint: 参数 upstream_error_hint
+/// - allow_failover_for_deactivation: 参数 allow_failover_for_deactivation
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_suppress_deactivation_delivery(
     upstream_error_hint: Option<&str>,
     allow_failover_for_deactivation: bool,
@@ -93,6 +159,17 @@ fn should_suppress_deactivation_delivery(
         })
 }
 
+/// 函数 `looks_like_blocked_marker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn looks_like_blocked_marker(value: &str) -> bool {
     let normalized = value.trim().to_ascii_lowercase();
     normalized.contains("blocked")
@@ -101,6 +178,20 @@ fn looks_like_blocked_marker(value: &str) -> bool {
         || normalized.contains("region_restricted")
 }
 
+/// 函数 `classify_compact_invalid_success_kind`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_compact_invalid_success_kind(
     body: &[u8],
     cf_ray: Option<&str>,
@@ -138,6 +229,22 @@ fn classify_compact_invalid_success_kind(
     }
 }
 
+/// 函数 `classify_compact_non_success_kind`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status_code: 参数 status_code
+/// - content_type: 参数 content_type
+/// - body: 参数 body
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_compact_non_success_kind(
     status_code: u16,
     content_type: Option<&str>,
@@ -183,6 +290,17 @@ fn classify_compact_non_success_kind(
     }
 }
 
+/// 函数 `compact_success_body_is_valid`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn compact_success_body_is_valid(body: &[u8]) -> bool {
     serde_json::from_slice::<Value>(body)
         .ok()
@@ -190,6 +308,21 @@ fn compact_success_body_is_valid(body: &[u8]) -> bool {
         .is_some_and(|output| output.is_array())
 }
 
+/// 函数 `build_invalid_compact_success_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+/// - request_id: 参数 request_id
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_invalid_compact_success_message(
     body: &[u8],
     request_id: Option<&str>,
@@ -236,6 +369,21 @@ fn build_invalid_compact_success_message(
     )
 }
 
+/// 函数 `compact_non_success_body_should_be_normalized`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status_code: 参数 status_code
+/// - content_type: 参数 content_type
+/// - body: 参数 body
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn compact_non_success_body_should_be_normalized(
     status_code: u16,
     content_type: Option<&str>,
@@ -265,6 +413,23 @@ fn compact_non_success_body_should_be_normalized(
         .is_some_and(|hint| hint.contains("Cloudflare") || hint.contains("HTML 错误页"))
 }
 
+/// 函数 `build_compact_non_success_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status_code: 参数 status_code
+/// - content_type: 参数 content_type
+/// - body: 参数 body
+/// - request_id: 参数 request_id
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_compact_non_success_message(
     status_code: u16,
     content_type: Option<&str>,
@@ -320,6 +485,23 @@ fn build_compact_non_success_message(
     )
 }
 
+/// 函数 `respond_synthesized_compact_error_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+/// - status_code: 参数 status_code
+/// - usage: 参数 usage
+/// - message: 参数 message
+/// - request_id: 参数 request_id
+/// - cf_ray: 参数 cf_ray
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn respond_synthesized_compact_error_body(
     request: Request,
     status_code: u16,
@@ -351,6 +533,23 @@ fn respond_synthesized_compact_error_body(
     }
 }
 
+/// 函数 `with_bridge_debug_meta`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - result: 参数 result
+/// - upstream_request_id: 参数 upstream_request_id
+/// - upstream_cf_ray: 参数 upstream_cf_ray
+/// - upstream_auth_error: 参数 upstream_auth_error
+/// - upstream_identity_error_code: 参数 upstream_identity_error_code
+/// - upstream_content_type: 参数 upstream_content_type
+/// - last_sse_event_type: 参数 last_sse_event_type
+///
+/// # 返回
+/// 返回函数执行结果
 fn with_bridge_debug_meta(
     mut result: UpstreamResponseBridgeResult,
     upstream_request_id: &Option<String>,
@@ -369,6 +568,24 @@ fn with_bridge_debug_meta(
     result
 }
 
+/// 函数 `respond_invalid_compact_success_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+/// - usage: 参数 usage
+/// - body: 参数 body
+/// - request_id: 参数 request_id
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn respond_invalid_compact_success_body(
     request: Request,
     usage: UpstreamResponseUsage,
@@ -404,6 +621,26 @@ fn respond_invalid_compact_success_body(
     )
 }
 
+/// 函数 `respond_invalid_compact_non_success_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+/// - status_code: 参数 status_code
+/// - usage: 参数 usage
+/// - body: 参数 body
+/// - content_type: 参数 content_type
+/// - request_id: 参数 request_id
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn respond_invalid_compact_non_success_body(
     request: Request,
     status_code: u16,
@@ -443,6 +680,17 @@ fn respond_invalid_compact_non_success_body(
     )
 }
 
+/// 函数 `respond_with_upstream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn respond_with_upstream(
     request: Request,
     upstream: reqwest::blocking::Response,
@@ -1262,6 +1510,18 @@ pub(crate) fn respond_with_upstream(
     }
 }
 
+/// 函数 `resolve_stream_keepalive_frame`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - response_adapter: 参数 response_adapter
+/// - request_path: 参数 request_path
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_stream_keepalive_frame(
     response_adapter: ResponseAdapter,
     request_path: &str,
@@ -1287,6 +1547,17 @@ fn resolve_stream_keepalive_frame(
 mod tests {
     use super::{classify_compact_non_success_kind, compact_non_success_body_should_be_normalized};
 
+    /// 函数 `compact_header_only_identity_error_is_normalized_and_classified`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn compact_header_only_identity_error_is_normalized_and_classified() {
         assert!(compact_non_success_body_should_be_normalized(
@@ -1309,6 +1580,17 @@ mod tests {
         );
     }
 
+    /// 函数 `compact_header_only_cf_ray_is_classified_as_cloudflare_edge`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn compact_header_only_cf_ray_is_classified_as_cloudflare_edge() {
         assert_eq!(

@@ -11,6 +11,20 @@ if ($Version -notmatch '^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z\.-]+)?$') {
 
 $root = Split-Path -Parent $PSScriptRoot
 
+<#
+函数 `Update-TextFileVersion`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- true: 参数 true
+- Path: 参数 Path
+
+# 返回
+返回函数执行结果
+#>
 function Update-TextFileVersion {
   param(
     [Parameter(Mandatory = $true)][string]$Path,

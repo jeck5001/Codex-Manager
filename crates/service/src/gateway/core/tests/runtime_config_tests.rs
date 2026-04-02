@@ -6,12 +6,35 @@ struct EnvGuard {
 }
 
 impl EnvGuard {
+    /// 函数 `set`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - key: 参数 key
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn set(key: &'static str, value: &str) -> Self {
         let original = std::env::var_os(key);
         std::env::set_var(key, value);
         Self { key, original }
     }
 
+    /// 函数 `clear`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - key: 参数 key
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn clear(key: &'static str) -> Self {
         let original = std::env::var_os(key);
         std::env::remove_var(key);
@@ -20,6 +43,17 @@ impl EnvGuard {
 }
 
 impl Drop for EnvGuard {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         if let Some(value) = &self.original {
             std::env::set_var(self.key, value);
@@ -29,6 +63,17 @@ impl Drop for EnvGuard {
     }
 }
 
+/// 函数 `reload_from_env_updates_timeout_and_proxy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn reload_from_env_updates_timeout_and_proxy() {
     let _guard = crate::test_env_guard();
@@ -59,6 +104,17 @@ fn reload_from_env_updates_timeout_and_proxy() {
     );
 }
 
+/// 函数 `reload_from_env_defaults_account_max_inflight_to_one`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn reload_from_env_defaults_account_max_inflight_to_one() {
     let _guard = crate::test_env_guard();
@@ -71,6 +127,17 @@ fn reload_from_env_defaults_account_max_inflight_to_one() {
     assert!(request_compression_enabled());
 }
 
+/// 函数 `parse_proxy_list_env_limits_to_five_entries`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_proxy_list_env_limits_to_five_entries() {
     let _guard = crate::test_env_guard();
@@ -84,6 +151,17 @@ fn parse_proxy_list_env_limits_to_five_entries() {
     assert_eq!(parsed.last().map(String::as_str), Some("http://p5:8080"));
 }
 
+/// 函数 `parse_proxy_list_env_normalizes_socks_entries`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_proxy_list_env_normalizes_socks_entries() {
     let _guard = crate::test_env_guard();
@@ -100,6 +178,17 @@ fn parse_proxy_list_env_normalizes_socks_entries() {
     assert_eq!(parsed[2], "socks5h://127.0.0.1:7892");
 }
 
+/// 函数 `stable_proxy_index_is_deterministic`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn stable_proxy_index_is_deterministic() {
     let _guard = crate::test_env_guard();
@@ -109,6 +198,17 @@ fn stable_proxy_index_is_deterministic() {
     assert!(idx1.expect("index") < 5);
 }
 
+/// 函数 `set_upstream_proxy_url_updates_env_and_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn set_upstream_proxy_url_updates_env_and_cache() {
     let _guard = crate::test_env_guard();
@@ -131,6 +231,17 @@ fn set_upstream_proxy_url_updates_env_and_cache() {
     assert_eq!(upstream_proxy_url(), None);
 }
 
+/// 函数 `set_upstream_proxy_url_normalizes_socks_scheme`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn set_upstream_proxy_url_normalizes_socks_scheme() {
     let _guard = crate::test_env_guard();
@@ -146,6 +257,17 @@ fn set_upstream_proxy_url_normalizes_socks_scheme() {
     );
 }
 
+/// 函数 `set_upstream_stream_timeout_ms_updates_env_and_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn set_upstream_stream_timeout_ms_updates_env_and_cache() {
     let _guard = crate::test_env_guard();
@@ -167,6 +289,17 @@ fn set_upstream_stream_timeout_ms_updates_env_and_cache() {
     );
 }
 
+/// 函数 `normalize_model_slug_maps_legacy_gpt_5_4_pro_to_gpt_5_4`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn normalize_model_slug_maps_legacy_gpt_5_4_pro_to_gpt_5_4() {
     let _guard = crate::test_env_guard();
@@ -176,6 +309,17 @@ fn normalize_model_slug_maps_legacy_gpt_5_4_pro_to_gpt_5_4() {
     assert_eq!(actual, "gpt-5.4");
 }
 
+/// 函数 `normalize_model_slug_accepts_auto`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn normalize_model_slug_accepts_auto() {
     let _guard = crate::test_env_guard();
@@ -185,6 +329,17 @@ fn normalize_model_slug_accepts_auto() {
     assert_eq!(actual, "auto");
 }
 
+/// 函数 `set_originator_updates_env_and_dynamic_user_agent`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn set_originator_updates_env_and_dynamic_user_agent() {
     let _guard = crate::test_env_guard();
@@ -202,6 +357,17 @@ fn set_originator_updates_env_and_dynamic_user_agent() {
     assert!(current_codex_user_agent().contains(expected_prefix.as_str()));
 }
 
+/// 函数 `set_codex_user_agent_version_updates_env_and_user_agent`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn set_codex_user_agent_version_updates_env_and_user_agent() {
     let _guard = crate::test_env_guard();
@@ -213,6 +379,17 @@ fn set_codex_user_agent_version_updates_env_and_user_agent() {
     assert!(current_codex_user_agent().contains("codex_cli_rs/0.102.1"));
 }
 
+/// 函数 `set_residency_requirement_updates_env_and_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn set_residency_requirement_updates_env_and_cache() {
     let _guard = crate::test_env_guard();
@@ -232,6 +409,17 @@ fn set_residency_requirement_updates_env_and_cache() {
     assert_eq!(std::env::var(ENV_RESIDENCY_REQUIREMENT).ok(), None);
 }
 
+/// 函数 `set_request_compression_enabled_updates_env_and_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn set_request_compression_enabled_updates_env_and_cache() {
     let _guard = crate::test_env_guard();

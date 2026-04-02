@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `lookup_evicts_expired_target_entry_without_full_scan`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn lookup_evicts_expired_target_entry_without_full_scan() {
     let _guard = crate::test_env_guard();
@@ -18,6 +29,17 @@ fn lookup_evicts_expired_target_entry_without_full_scan() {
     assert!(state.entries.contains_key("acc-b"));
 }
 
+/// 函数 `mark_path_cleanup_prunes_expired_entries`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn mark_path_cleanup_prunes_expired_entries() {
     let _guard = crate::test_env_guard();
@@ -36,6 +58,17 @@ fn mark_path_cleanup_prunes_expired_entries() {
     assert!(state.entries.contains_key("fresh"));
 }
 
+/// 函数 `rate_limit_ladder_maps_to_expected_steps`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rate_limit_ladder_maps_to_expected_steps() {
     assert_eq!(rate_limit_cooldown_secs_for_offense(1), 45);
@@ -45,6 +78,17 @@ fn rate_limit_ladder_maps_to_expected_steps() {
     assert_eq!(rate_limit_cooldown_secs_for_offense(5), 7200);
 }
 
+/// 函数 `rate_limited_mark_increments_and_success_clear_decays_offense`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rate_limited_mark_increments_and_success_clear_decays_offense() {
     let _guard = crate::test_env_guard();
@@ -75,6 +119,17 @@ fn rate_limited_mark_increments_and_success_clear_decays_offense() {
     }
 }
 
+/// 函数 `non_rate_limited_mark_keeps_existing_behavior_without_offense_count`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn non_rate_limited_mark_keeps_existing_behavior_without_offense_count() {
     let _guard = crate::test_env_guard();
@@ -87,6 +142,17 @@ fn non_rate_limited_mark_keeps_existing_behavior_without_offense_count() {
     assert!(!state.offense_counts.contains_key("acc"));
 }
 
+/// 函数 `rate_limited_offense_resets_after_quiet_period`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rate_limited_offense_resets_after_quiet_period() {
     let _guard = crate::test_env_guard();

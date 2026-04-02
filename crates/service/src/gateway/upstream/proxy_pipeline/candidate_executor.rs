@@ -18,6 +18,17 @@ use super::response_finalize::{
     FinalizeUpstreamResponseOutcome,
 };
 
+/// 函数 `extract_prompt_cache_key_for_trace`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_prompt_cache_key_for_trace(body: &[u8]) -> Option<String> {
     if body.is_empty() || body.len() > 64 * 1024 {
         return None;
@@ -65,6 +76,17 @@ pub(in super::super) struct CandidateExecutorParams<'a> {
     pub(in super::super) disable_challenge_stateless_retry: bool,
 }
 
+/// 函数 `execute_candidate_sequence`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn execute_candidate_sequence(
     request: Request,
     candidates: Vec<(Account, Token)>,

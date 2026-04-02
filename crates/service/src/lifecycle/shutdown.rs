@@ -5,14 +5,47 @@ use std::time::Duration;
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+/// 函数 `shutdown_requested`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn shutdown_requested() -> bool {
     SHUTDOWN_REQUESTED.load(Ordering::SeqCst)
 }
 
+/// 函数 `clear_shutdown_flag`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 pub fn clear_shutdown_flag() {
     SHUTDOWN_REQUESTED.store(false, Ordering::SeqCst);
 }
 
+/// 函数 `request_shutdown`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 无
 pub fn request_shutdown(addr: &str) {
     SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
     let _ = send_shutdown_request(addr);
@@ -26,6 +59,17 @@ pub fn request_shutdown(addr: &str) {
     }
 }
 
+/// 函数 `send_shutdown_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn send_shutdown_request(addr: &str) -> std::io::Result<()> {
     let addr = addr.trim();
     if addr.is_empty() {

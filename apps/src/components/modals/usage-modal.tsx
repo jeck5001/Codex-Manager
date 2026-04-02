@@ -45,6 +45,19 @@ interface UsageDetailRowProps {
   emptyResetText?: string;
 }
 
+/**
+ * 函数 `UsageDetailRow`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function UsageDetailRow({
   label,
   remainPercent,

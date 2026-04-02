@@ -6,6 +6,17 @@ use tiny_http::Response;
 const MODEL_CACHE_SCOPE_DEFAULT: &str = "default";
 const MODELS_OWNED_BY: &str = "openai";
 
+/// 函数 `build_openai_models_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - items: 参数 items
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_openai_models_list(items: &[ModelOption]) -> String {
     let mut ordered = items.iter().collect::<Vec<_>>();
     ordered.sort_by(|a, b| a.slug.cmp(&b.slug));
@@ -28,6 +39,17 @@ fn build_openai_models_list(items: &[ModelOption]) -> String {
     .to_string()
 }
 
+/// 函数 `created_timestamp_for_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - slug: 参数 slug
+///
+/// # 返回
+/// 返回函数执行结果
 fn created_timestamp_for_model(slug: &str) -> i64 {
     let normalized = slug.trim().to_ascii_lowercase();
     match normalized.as_str() {
@@ -50,6 +72,17 @@ fn created_timestamp_for_model(slug: &str) -> i64 {
     }
 }
 
+/// 函数 `fallback_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - model_for_log: 参数 model_for_log
+///
+/// # 返回
+/// 返回函数执行结果
 fn fallback_model_options(model_for_log: Option<&str>) -> Vec<ModelOption> {
     let Some(slug) = model_for_log
         .map(str::trim)
@@ -63,6 +96,17 @@ fn fallback_model_options(model_for_log: Option<&str>) -> Vec<ModelOption> {
     }]
 }
 
+/// 函数 `maybe_respond_local_models`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn maybe_respond_local_models(
     request: tiny_http::Request,
     trace_id: &str,

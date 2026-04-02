@@ -11,6 +11,17 @@ pub struct UsageSnapshot {
     pub credits_json: Option<String>,
 }
 
+/// 函数 `normalize_base_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - base_url: 参数 base_url
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn normalize_base_url(base_url: &str) -> String {
     let mut base = base_url.trim_end_matches('/').to_string();
     let is_chatgpt_host =
@@ -21,6 +32,17 @@ pub fn normalize_base_url(base_url: &str) -> String {
     base
 }
 
+/// 函数 `usage_endpoint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - base_url: 参数 base_url
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn usage_endpoint(base_url: &str) -> String {
     let base = normalize_base_url(base_url);
     if base.contains("/backend-api") {
@@ -30,6 +52,17 @@ pub fn usage_endpoint(base_url: &str) -> String {
     }
 }
 
+/// 函数 `parse_usage_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn parse_usage_snapshot(value: &Value) -> UsageSnapshot {
     let used_percent = value
         .pointer("/rate_limit/primary_window/used_percent")

@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `route_quality_penalty_prefers_successful_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn route_quality_penalty_prefers_successful_accounts() {
     let _guard = crate::test_env_guard();
@@ -11,6 +22,17 @@ fn route_quality_penalty_prefers_successful_accounts() {
     assert!(route_health_score("acc_b") > route_health_score("acc_a"));
 }
 
+/// 函数 `route_quality_penalty_evicts_expired_record`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn route_quality_penalty_evicts_expired_record() {
     let _guard = crate::test_env_guard();
@@ -37,6 +59,17 @@ fn route_quality_penalty_evicts_expired_record() {
     assert!(!state.entries.contains_key("acc_old"));
 }
 
+/// 函数 `record_path_cleanup_prunes_expired_records`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn record_path_cleanup_prunes_expired_records() {
     let _guard = crate::test_env_guard();

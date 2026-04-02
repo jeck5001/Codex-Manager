@@ -9,6 +9,17 @@ use crate::gateway::request_log::RequestLogUsage;
 
 const AGGREGATE_API_RETRY_ATTEMPTS_PER_CHANNEL: usize = 3;
 
+/// 函数 `should_skip_forward_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_skip_forward_header(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
@@ -27,6 +38,20 @@ fn should_skip_forward_header(name: &str) -> bool {
     )
 }
 
+/// 函数 `respond_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+/// - status: 参数 status
+/// - message: 参数 message
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 无
 fn respond_error(request: Request, status: u16, message: &str, trace_id: Option<&str>) {
     let response = super::super::super::error_response::terminal_text_response(
         status,
@@ -36,6 +61,17 @@ fn respond_error(request: Request, status: u16, message: &str, trace_id: Option<
     let _ = request.respond(response);
 }
 
+/// 函数 `normalize_candidate_order`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_candidate_order(mut candidates: Vec<AggregateApi>) -> Vec<AggregateApi> {
     candidates.sort_by(|left, right| {
         left.sort
@@ -46,6 +82,17 @@ fn normalize_candidate_order(mut candidates: Vec<AggregateApi>) -> Vec<Aggregate
     candidates
 }
 
+/// 函数 `apply_gateway_route_strategy_to_aggregate_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn apply_gateway_route_strategy_to_aggregate_candidates(
     candidates: &mut [AggregateApi],
     key_id: &str,
@@ -79,6 +126,17 @@ pub(crate) fn apply_gateway_route_strategy_to_aggregate_candidates(
     }
 }
 
+/// 函数 `normalize_provider_type_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_provider_type_value(value: &str) -> String {
     let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
     match normalized.as_str() {
@@ -89,6 +147,18 @@ fn normalize_provider_type_value(value: &str) -> String {
     }
 }
 
+/// 函数 `first_upstream_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - names: 参数 names
+///
+/// # 返回
+/// 返回函数执行结果
 fn first_upstream_header(headers: &reqwest::header::HeaderMap, names: &[&str]) -> Option<String> {
     names.iter().find_map(|name| {
         headers
@@ -100,6 +170,22 @@ fn first_upstream_header(headers: &reqwest::header::HeaderMap, names: &[&str]) -
     })
 }
 
+/// 函数 `aggregate_api_failure_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status_code: 参数 status_code
+/// - body: 参数 body
+/// - request_id: 参数 request_id
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn aggregate_api_failure_message(
     status_code: u16,
     body: &[u8],
@@ -135,6 +221,24 @@ fn aggregate_api_failure_message(
     }
 }
 
+/// 函数 `build_aggregate_api_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - client: 参数 client
+/// - request: 参数 request
+/// - method: 参数 method
+/// - url: 参数 url
+/// - body: 参数 body
+/// - secret: 参数 secret
+/// - request_deadline: 参数 request_deadline
+/// - is_stream: 参数 is_stream
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_aggregate_api_request(
     client: &reqwest::blocking::Client,
     request: &Request,
@@ -174,6 +278,17 @@ fn build_aggregate_api_request(
     Ok(builder)
 }
 
+/// 函数 `resolve_aggregate_api_rotation_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn resolve_aggregate_api_rotation_candidates(
     storage: &Storage,
     protocol_type: &str,
@@ -218,6 +333,17 @@ pub(crate) fn resolve_aggregate_api_rotation_candidates(
     }
 }
 
+/// 函数 `proxy_aggregate_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(in super::super) fn proxy_aggregate_request(
     request: Request,
@@ -572,6 +698,18 @@ pub(in super::super) fn proxy_aggregate_request(
 mod bridge_tests {
     use super::*;
 
+    /// 函数 `candidate`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - id: 参数 id
+    /// - sort: 参数 sort
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn candidate(id: &str, sort: i64) -> AggregateApi {
         AggregateApi {
             id: id.to_string(),
@@ -588,10 +726,32 @@ mod bridge_tests {
         }
     }
 
+    /// 函数 `ids`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - items: 参数 items
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn ids(items: &[AggregateApi]) -> Vec<String> {
         items.iter().map(|item| item.id.clone()).collect()
     }
 
+    /// 函数 `balanced_route_strategy_rotates_aggregate_candidates`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn balanced_route_strategy_rotates_aggregate_candidates() {
         let _guard = crate::test_env_guard();
@@ -633,6 +793,17 @@ mod bridge_tests {
         crate::gateway::reload_runtime_config_from_env();
     }
 
+    /// 函数 `balanced_route_strategy_preserves_explicit_preferred_aggregate_api`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn balanced_route_strategy_preserves_explicit_preferred_aggregate_api() {
         let _guard = crate::test_env_guard();
@@ -677,24 +848,70 @@ mod bridge_tests {
 
 #[cfg(test)]
 mod tests {
+    /// 函数 `final_error_promotes_success_status_to_bad_gateway`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn final_error_promotes_success_status_to_bad_gateway() {
         let status_code = bridge_status_code(Some(200), true, Some("unsupported model"));
         assert_eq!(status_code, 502);
     }
 
+    /// 函数 `successful_bridge_keeps_success_status`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn successful_bridge_keeps_success_status() {
         let status_code = bridge_status_code(Some(200), true, None);
         assert_eq!(status_code, 200);
     }
 
+    /// 函数 `incomplete_bridge_without_status_defaults_to_bad_gateway`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn incomplete_bridge_without_status_defaults_to_bad_gateway() {
         let status_code = bridge_status_code(None, false, None);
         assert_eq!(status_code, 502);
     }
 
+    /// 函数 `bridge_status_code`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - delivered_status_code: 参数 delivered_status_code
+    /// - bridge_ok: 参数 bridge_ok
+    /// - final_error: 参数 final_error
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn bridge_status_code(
         delivered_status_code: Option<u16>,
         bridge_ok: bool,

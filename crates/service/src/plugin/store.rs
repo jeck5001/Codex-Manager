@@ -7,10 +7,32 @@ use std::collections::HashMap;
 
 use crate::storage_helpers::open_storage;
 
+/// 函数 `error_result`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
 fn error_result(message: impl Into<String>) -> Value {
     crate::error_codes::rpc_error_payload(message.into())
 }
 
+/// 函数 `parse_permissions`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_permissions(raw: &str) -> Vec<String> {
     serde_json::from_str::<Vec<String>>(raw)
         .unwrap_or_default()
@@ -20,6 +42,17 @@ fn parse_permissions(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/// 函数 `rearm_enabled_interval_tasks_for_plugin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn rearm_enabled_interval_tasks_for_plugin(
     storage: &Storage,
     plugin_id: Option<&str>,
@@ -52,6 +85,17 @@ pub(crate) fn rearm_enabled_interval_tasks_for_plugin(
     Ok(())
 }
 
+/// 函数 `handle_list_installed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_list_installed(
     req: &JsonRpcRequest,
 ) -> codexmanager_core::rpc::types::JsonRpcResponse {
@@ -61,6 +105,17 @@ pub(crate) fn handle_list_installed(
     }
 }
 
+/// 函数 `handle_enable`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_enable(
     req: &JsonRpcRequest,
     enabled: bool,
@@ -97,6 +152,17 @@ pub(crate) fn handle_enable(
     super::json_response(req, serde_json::json!({ "ok": true }))
 }
 
+/// 函数 `handle_task_update`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_task_update(
     req: &JsonRpcRequest,
 ) -> codexmanager_core::rpc::types::JsonRpcResponse {
@@ -184,6 +250,17 @@ pub(crate) fn handle_task_update(
     )
 }
 
+/// 函数 `handle_task_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_task_list(
     req: &JsonRpcRequest,
 ) -> codexmanager_core::rpc::types::JsonRpcResponse {
@@ -200,6 +277,17 @@ pub(crate) fn handle_task_list(
     }
 }
 
+/// 函数 `handle_log_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_log_list(
     req: &JsonRpcRequest,
 ) -> codexmanager_core::rpc::types::JsonRpcResponse {
@@ -230,6 +318,17 @@ pub(crate) fn handle_log_list(
     }
 }
 
+/// 函数 `list_installed_plugins`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn list_installed_plugins() -> Result<Vec<InstalledPluginSummary>, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let installs = storage
@@ -263,6 +362,17 @@ pub(crate) fn list_installed_plugins() -> Result<Vec<InstalledPluginSummary>, St
         .collect()
 }
 
+/// 函数 `list_plugin_tasks`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn list_plugin_tasks(plugin_id: Option<&str>) -> Result<Vec<PluginTaskSummary>, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let installs = storage
@@ -299,6 +409,17 @@ pub(crate) fn list_plugin_tasks(plugin_id: Option<&str>) -> Result<Vec<PluginTas
         .collect()
 }
 
+/// 函数 `list_plugin_run_logs`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn list_plugin_run_logs(
     plugin_id: Option<&str>,
     task_id: Option<&str>,
@@ -348,6 +469,19 @@ pub(crate) fn list_plugin_run_logs(
         .collect()
 }
 
+/// 函数 `to_installed_plugin_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - plugin: 参数 plugin
+/// - task_count: 参数 task_count
+/// - enabled_task_count: 参数 enabled_task_count
+///
+/// # 返回
+/// 返回函数执行结果
 fn to_installed_plugin_summary(
     plugin: &PluginInstall,
     task_count: i64,
@@ -402,6 +536,17 @@ mod tests {
     use super::{rearm_enabled_interval_tasks_for_plugin, Storage};
     use codexmanager_core::storage::{PluginInstall, PluginTask};
 
+    /// 函数 `rearm_enabled_interval_tasks_updates_enabled_interval_tasks`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn rearm_enabled_interval_tasks_updates_enabled_interval_tasks() {
         let storage = Storage::open_in_memory().expect("open storage");

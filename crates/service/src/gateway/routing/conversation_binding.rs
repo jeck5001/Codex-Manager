@@ -19,6 +19,17 @@ pub(crate) enum CandidateRotationSource {
 }
 
 impl CandidateRotationSource {
+    /// 函数 `as_str`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::ConversationBinding => "conversation_bound",
@@ -41,6 +52,17 @@ pub(crate) struct ConversationThreadAttempt {
     pub(crate) reset_session_affinity: bool,
 }
 
+/// 函数 `normalize_conversation_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - conversation_id: 参数 conversation_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_conversation_id(conversation_id: Option<&str>) -> Option<String> {
     conversation_id
         .map(str::trim)
@@ -48,6 +70,17 @@ fn normalize_conversation_id(conversation_id: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
+/// 函数 `load_conversation_binding`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn load_conversation_binding(
     storage: &Storage,
     platform_key_hash: &str,
@@ -61,6 +94,17 @@ pub(crate) fn load_conversation_binding(
         .map_err(|err| format!("load conversation binding failed: {err}"))
 }
 
+/// 函数 `effective_thread_anchor`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn effective_thread_anchor(
     conversation_id: Option<&str>,
     binding: Option<&ConversationBinding>,
@@ -70,6 +114,18 @@ pub(crate) fn effective_thread_anchor(
         .or_else(|| normalize_conversation_id(conversation_id))
 }
 
+/// 函数 `rotate_to_bound_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+/// - binding: 参数 binding
+///
+/// # 返回
+/// 返回函数执行结果
 fn rotate_to_bound_account(
     candidates: &mut [(Account, Token)],
     binding: &ConversationBinding,
@@ -77,6 +133,18 @@ fn rotate_to_bound_account(
     rotate_to_account_id(candidates, binding.account_id.as_str())
 }
 
+/// 函数 `rotate_to_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn rotate_to_account_id(candidates: &mut [(Account, Token)], account_id: &str) -> bool {
     let Some(index) = candidates
         .iter()
@@ -90,10 +158,34 @@ fn rotate_to_account_id(candidates: &mut [(Account, Token)], account_id: &str) -
     true
 }
 
+/// 函数 `derive_next_thread_epoch`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - existing_binding: 参数 existing_binding
+///
+/// # 返回
+/// 返回函数执行结果
 fn derive_next_thread_epoch(existing_binding: Option<&ConversationBinding>) -> Option<i64> {
     existing_binding.map(|binding| binding.thread_epoch + 1)
 }
 
+/// 函数 `derive_thread_anchor`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - platform_key_hash: 参数 platform_key_hash
+/// - conversation_id: 参数 conversation_id
+/// - thread_epoch: 参数 thread_epoch
+///
+/// # 返回
+/// 返回函数执行结果
 fn derive_thread_anchor(
     platform_key_hash: &str,
     conversation_id: &str,
@@ -115,6 +207,18 @@ fn derive_thread_anchor(
     )
 }
 
+/// 函数 `switch_reason_for_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - routing: 参数 routing
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn switch_reason_for_account(
     routing: &ConversationRoutingContext,
     account_id: &str,
@@ -130,6 +234,17 @@ fn switch_reason_for_account(
     }
 }
 
+/// 函数 `prepare_conversation_routing`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn prepare_conversation_routing(
     platform_key_hash: &str,
     conversation_id: Option<&str>,
@@ -165,6 +280,17 @@ pub(crate) fn prepare_conversation_routing(
     })
 }
 
+/// 函数 `apply_candidate_rotation`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn apply_candidate_rotation(
     candidates: &mut Vec<(Account, Token)>,
     routing: Option<&ConversationRoutingContext>,
@@ -189,6 +315,17 @@ pub(crate) fn apply_candidate_rotation(
     }
 }
 
+/// 函数 `resolve_attempt_thread`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn resolve_attempt_thread(
     routing: Option<&ConversationRoutingContext>,
     account: &Account,
@@ -221,6 +358,17 @@ pub(crate) fn resolve_attempt_thread(
     }
 }
 
+/// 函数 `record_conversation_binding_terminal_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn record_conversation_binding_terminal_response(
     storage: &Storage,
     routing: Option<&ConversationRoutingContext>,
@@ -294,6 +442,18 @@ mod tests {
     };
     use codexmanager_core::storage::{Account, ConversationBinding, Storage, Token};
 
+    /// 函数 `sample_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - id: 参数 id
+    /// - sort: 参数 sort
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn sample_account(id: &str, sort: i64) -> Account {
         Account {
             id: id.to_string(),
@@ -309,6 +469,17 @@ mod tests {
         }
     }
 
+    /// 函数 `sample_token`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn sample_token(account_id: &str) -> Token {
         Token {
             account_id: account_id.to_string(),
@@ -320,6 +491,17 @@ mod tests {
         }
     }
 
+    /// 函数 `sample_binding`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn sample_binding(account_id: &str) -> ConversationBinding {
         ConversationBinding {
             platform_key_hash: "key-hash-1".to_string(),
@@ -336,6 +518,17 @@ mod tests {
         }
     }
 
+    /// 函数 `prepare_conversation_routing_rotates_bound_account_first`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn prepare_conversation_routing_rotates_bound_account_first() {
         let mut candidates = vec![
@@ -357,6 +550,17 @@ mod tests {
         assert_eq!(candidates[1].0.id, "acc-1");
     }
 
+    /// 函数 `effective_thread_anchor_prefers_existing_binding_anchor`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn effective_thread_anchor_prefers_existing_binding_anchor() {
         let binding = sample_binding("acc-1");
@@ -366,6 +570,17 @@ mod tests {
         assert_eq!(actual.as_deref(), Some("thread-anchor-1"));
     }
 
+    /// 函数 `resolve_attempt_thread_uses_next_generation_for_switched_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn resolve_attempt_thread_uses_next_generation_for_switched_account() {
         let binding = sample_binding("acc-1");
@@ -385,6 +600,17 @@ mod tests {
         assert_ne!(actual.thread_anchor, binding.thread_anchor);
     }
 
+    /// 函数 `apply_candidate_rotation_reports_binding_source_when_binding_selected`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn apply_candidate_rotation_reports_binding_source_when_binding_selected() {
         let binding = sample_binding("acc-1");
@@ -416,6 +642,17 @@ mod tests {
         assert_eq!(candidates[0].0.id, "acc-2");
     }
 
+    /// 函数 `terminal_response_creates_and_rebinds_conversation_binding_on_success`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn terminal_response_creates_and_rebinds_conversation_binding_on_success() {
         let storage = Storage::open_in_memory().expect("open in memory");

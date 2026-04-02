@@ -13,6 +13,17 @@ pub(in super::super) enum AltPathRetryResult {
     Terminal { status_code: u16, message: String },
 }
 
+/// 函数 `retry_with_alternate_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(in super::super) fn retry_with_alternate_path<F>(
     client: &reqwest::blocking::Client,

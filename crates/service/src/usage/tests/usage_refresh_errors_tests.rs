@@ -3,6 +3,17 @@ use super::{
 };
 use std::collections::HashMap;
 
+/// 函数 `usage_refresh_error_class_groups_by_status_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_refresh_error_class_groups_by_status_code() {
     assert_eq!(
@@ -15,6 +26,17 @@ fn usage_refresh_error_class_groups_by_status_code() {
     );
 }
 
+/// 函数 `usage_refresh_error_class_catches_timeout_and_connection`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_refresh_error_class_catches_timeout_and_connection() {
     assert_eq!(
@@ -28,6 +50,17 @@ fn usage_refresh_error_class_catches_timeout_and_connection() {
     assert_eq!(classify_usage_refresh_error("unknown error"), "other");
 }
 
+/// 函数 `failure_event_throttle_dedupes_within_window`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn failure_event_throttle_dedupes_within_window() {
     let mut state = HashMap::new();
@@ -53,6 +86,17 @@ fn failure_event_throttle_dedupes_within_window() {
     ));
 }
 
+/// 函数 `failure_event_throttle_isolated_by_error_class`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn failure_event_throttle_isolated_by_error_class() {
     let mut state = HashMap::new();

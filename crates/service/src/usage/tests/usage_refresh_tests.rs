@@ -8,6 +8,17 @@ use std::collections::HashSet;
 use std::sync::mpsc;
 use std::time::Duration;
 
+/// 函数 `enqueue_usage_refresh_for_same_account_is_deduplicated_until_finish`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn enqueue_usage_refresh_for_same_account_is_deduplicated_until_finish() {
     let _guard = crate::test_env_guard();
@@ -36,6 +47,17 @@ fn enqueue_usage_refresh_for_same_account_is_deduplicated_until_finish() {
     clear_pending_usage_refresh_tasks_for_tests();
 }
 
+/// 函数 `enqueue_usage_refresh_for_different_accounts_keeps_queue_progress`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn enqueue_usage_refresh_for_different_accounts_keeps_queue_progress() {
     let _guard = crate::test_env_guard();
@@ -73,6 +95,17 @@ fn enqueue_usage_refresh_for_different_accounts_keeps_queue_progress() {
     clear_pending_usage_refresh_tasks_for_tests();
 }
 
+/// 函数 `schedule_prefers_exp_minus_ahead`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn schedule_prefers_exp_minus_ahead() {
     let now = now_ts();
@@ -89,6 +122,17 @@ fn schedule_prefers_exp_minus_ahead() {
     assert_eq!(scheduled_at, 4_102_444_200);
 }
 
+/// 函数 `schedule_falls_back_to_last_refresh_when_exp_missing`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn schedule_falls_back_to_last_refresh_when_exp_missing() {
     let now = now_ts();
@@ -105,6 +149,17 @@ fn schedule_falls_back_to_last_refresh_when_exp_missing() {
     assert_eq!(scheduled_at, now);
 }
 
+/// 函数 `usage_poll_batch_indices_rotate_from_cursor`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_poll_batch_indices_rotate_from_cursor() {
     reset_usage_poll_cursor_for_tests();
@@ -112,6 +167,17 @@ fn usage_poll_batch_indices_rotate_from_cursor() {
     assert_eq!(usage_poll_batch_indices(3, 1, 10), vec![1, 2, 0]);
 }
 
+/// 函数 `usage_poll_cursor_advances_by_processed_count`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_poll_cursor_advances_by_processed_count() {
     reset_usage_poll_cursor_for_tests();

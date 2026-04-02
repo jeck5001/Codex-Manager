@@ -15,6 +15,18 @@ pub(super) enum FallbackBranchResult {
     Terminal { status_code: u16, message: String },
 }
 
+/// 函数 `should_failover_after_fallback_non_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - has_more_candidates: 参数 has_more_candidates
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_failover_after_fallback_non_success(status: u16, has_more_candidates: bool) -> bool {
     if !has_more_candidates {
         return false;
@@ -22,6 +34,18 @@ fn should_failover_after_fallback_non_success(status: u16, has_more_candidates: 
     matches!(status, 401 | 403 | 404 | 408 | 409 | 429)
 }
 
+/// 函数 `extract_response_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)
@@ -31,6 +55,17 @@ fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+/// 函数 `looks_like_blocked_marker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn looks_like_blocked_marker(value: &str) -> bool {
     let normalized = value.trim().to_ascii_lowercase();
     normalized.contains("blocked")
@@ -39,6 +74,22 @@ fn looks_like_blocked_marker(value: &str) -> bool {
         || normalized.contains("region_restricted")
 }
 
+/// 函数 `classify_fallback_non_success_kind`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - fallback_status: 参数 fallback_status
+/// - content_type: 参数 content_type
+/// - body: 参数 body
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_fallback_non_success_kind(
     fallback_status: u16,
     content_type: Option<&str>,
@@ -96,6 +147,20 @@ fn classify_fallback_non_success_kind(
     }
 }
 
+/// 函数 `summarize_fallback_non_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - primary_status: 参数 primary_status
+/// - fallback_status: 参数 fallback_status
+/// - headers: 参数 headers
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_fallback_non_success(
     primary_status: u16,
     fallback_status: u16,
@@ -146,6 +211,19 @@ fn summarize_fallback_non_success(
     )
 }
 
+/// 函数 `summarize_fallback_non_success_headers_only`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - primary_status: 参数 primary_status
+/// - fallback_status: 参数 fallback_status
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_fallback_non_success_headers_only(
     primary_status: u16,
     fallback_status: u16,
@@ -192,6 +270,17 @@ fn summarize_fallback_non_success_headers_only(
     )
 }
 
+/// 函数 `handle_openai_fallback_branch`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_openai_fallback_branch<F>(
     client: &reqwest::blocking::Client,

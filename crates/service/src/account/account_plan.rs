@@ -14,6 +14,17 @@ pub(crate) struct ResolvedAccountPlan {
     pub(crate) raw: Option<String>,
 }
 
+/// 函数 `extract_plan_type_from_id_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn extract_plan_type_from_id_token(id_token: &str) -> Option<String> {
     parse_id_token_claims(id_token)
         .ok()
@@ -23,6 +34,17 @@ pub(crate) fn extract_plan_type_from_id_token(id_token: &str) -> Option<String> 
         .filter(|value| !value.is_empty())
 }
 
+/// 函数 `is_free_plan_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn is_free_plan_type(plan_type: Option<&str>) -> bool {
     let Some(plan_type) = plan_type else {
         return false;
@@ -34,10 +56,32 @@ pub(crate) fn is_free_plan_type(plan_type: Option<&str>) -> bool {
     normalized.contains("free")
 }
 
+/// 函数 `is_free_plan_from_credits_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn is_free_plan_from_credits_json(raw_credits_json: Option<&str>) -> bool {
     is_free_plan_type(extract_plan_type_from_credits_json(raw_credits_json).as_deref())
 }
 
+/// 函数 `resolve_account_plan`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn resolve_account_plan(
     token: Option<&Token>,
     snapshot: Option<&UsageSnapshotRecord>,
@@ -65,6 +109,17 @@ pub(crate) fn resolve_account_plan(
     None
 }
 
+/// 函数 `extract_plan_type_from_credits_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn extract_plan_type_from_credits_json(
     raw_credits_json: Option<&str>,
 ) -> Option<String> {
@@ -87,6 +142,17 @@ pub(crate) fn extract_plan_type_from_credits_json(
     extract_string_by_keys_recursive(&value, &keys)
 }
 
+/// 函数 `is_single_window_long_usage_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn is_single_window_long_usage_snapshot(snapshot: &UsageSnapshotRecord) -> bool {
     let has_primary_signal = snapshot.used_percent.is_some() || snapshot.window_minutes.is_some();
     let has_secondary_signal =
@@ -94,6 +160,17 @@ pub(crate) fn is_single_window_long_usage_snapshot(snapshot: &UsageSnapshotRecor
     has_primary_signal && !has_secondary_signal && is_long_window(snapshot.window_minutes)
 }
 
+/// 函数 `is_free_or_single_window_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn is_free_or_single_window_account(
     storage: &Storage,
     account_id: &str,
@@ -116,10 +193,33 @@ pub(crate) fn is_free_or_single_window_account(
         .unwrap_or(false)
 }
 
+/// 函数 `is_long_window`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - window_minutes: 参数 window_minutes
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_long_window(window_minutes: Option<i64>) -> bool {
     window_minutes.is_some_and(|value| value > MINUTES_PER_DAY + ROUNDING_BIAS)
 }
 
+/// 函数 `extract_string_by_keys_recursive`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - keys: 参数 keys
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_string_by_keys_recursive(value: &Value, keys: &[&str]) -> Option<String> {
     if let Some(object) = value.as_object() {
         for key in keys {
@@ -151,6 +251,17 @@ fn extract_string_by_keys_recursive(value: &Value, keys: &[&str]) -> Option<Stri
     None
 }
 
+/// 函数 `normalize_plan_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_plan_type(value: &str) -> Option<ResolvedAccountPlan> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -203,6 +314,17 @@ mod tests {
     };
     use codexmanager_core::storage::{now_ts, Account, Storage, Token, UsageSnapshotRecord};
 
+    /// 函数 `encode_base64url`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - bytes: 参数 bytes
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn encode_base64url(bytes: &[u8]) -> String {
         const TABLE: &[u8; 64] =
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -235,6 +357,17 @@ mod tests {
         out
     }
 
+    /// 函数 `free_plan_detection_accepts_common_variants`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_plan_detection_accepts_common_variants() {
         assert!(is_free_plan_type(Some("free")));
@@ -242,6 +375,17 @@ mod tests {
         assert!(is_free_plan_type(Some("free_tier")));
     }
 
+    /// 函数 `free_plan_detection_rejects_paid_or_unknown_variants`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_plan_detection_rejects_paid_or_unknown_variants() {
         assert!(!is_free_plan_type(None));
@@ -251,12 +395,34 @@ mod tests {
         assert!(!is_free_plan_type(Some("team")));
     }
 
+    /// 函数 `free_plan_detection_accepts_credits_json_marker`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_plan_detection_accepts_credits_json_marker() {
         let credits_json = r#"{"planType":"free"}"#;
         assert!(is_free_plan_from_credits_json(Some(credits_json)));
     }
 
+    /// 函数 `extract_plan_type_from_credits_json_reads_nested_value`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn extract_plan_type_from_credits_json_reads_nested_value() {
         let credits_json = r#"{"subscription":{"planType":"business"}}"#;
@@ -266,6 +432,17 @@ mod tests {
         );
     }
 
+    /// 函数 `extract_plan_type_from_id_token_reads_chatgpt_claim`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn extract_plan_type_from_id_token_reads_chatgpt_claim() {
         let header = encode_base64url(br#"{"alg":"none","typ":"JWT"}"#);
@@ -286,6 +463,17 @@ mod tests {
         );
     }
 
+    /// 函数 `single_window_long_usage_snapshot_counts_as_free_like`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn single_window_long_usage_snapshot_counts_as_free_like() {
         let snapshot = UsageSnapshotRecord {
@@ -303,6 +491,17 @@ mod tests {
         assert!(is_single_window_long_usage_snapshot(&snapshot));
     }
 
+    /// 函数 `free_or_single_window_account_accepts_weekly_single_window_without_plan_claim`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_or_single_window_account_accepts_weekly_single_window_without_plan_claim() {
         let storage = Storage::open_in_memory().expect("open");
@@ -352,6 +551,17 @@ mod tests {
         ));
     }
 
+    /// 函数 `normalize_plan_type_maps_known_variants`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normalize_plan_type_maps_known_variants() {
         assert_eq!(
@@ -368,6 +578,17 @@ mod tests {
         );
     }
 
+    /// 函数 `resolve_account_plan_prefers_token_claims_and_falls_back_to_usage`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn resolve_account_plan_prefers_token_claims_and_falls_back_to_usage() {
         let token = Token {

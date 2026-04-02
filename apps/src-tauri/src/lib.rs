@@ -12,6 +12,17 @@ use app_shell::{
     CLOSE_TO_TRAY_ON_CLOSE, TRAY_AVAILABLE,
 };
 
+/// 函数 `run`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()

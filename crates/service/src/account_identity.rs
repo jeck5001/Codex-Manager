@@ -2,6 +2,17 @@ use codexmanager_core::storage::Account;
 
 use crate::storage_helpers::account_key;
 
+/// 函数 `clean_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn clean_value(value: Option<String>) -> Option<String> {
     match value {
         Some(v) => {
@@ -16,19 +27,64 @@ pub(crate) fn clean_value(value: Option<String>) -> Option<String> {
     }
 }
 
+/// 函数 `normalize_non_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_non_empty<'a>(value: Option<&'a str>) -> Option<&'a str> {
     value.map(str::trim).filter(|v| !v.is_empty())
 }
 
+/// 函数 `normalize_id_part`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_id_part(value: Option<&str>) -> Option<String> {
     let raw = normalize_non_empty(value)?;
     Some(raw.replace("::", "_"))
 }
 
+/// 函数 `same_normalized`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - lhs: 参数 lhs
+/// - rhs: 参数 rhs
+///
+/// # 返回
+/// 返回函数执行结果
 fn same_normalized(lhs: Option<&str>, rhs: Option<&str>) -> bool {
     normalize_non_empty(lhs) == normalize_non_empty(rhs)
 }
 
+/// 函数 `build_scope_identity_hint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn build_scope_identity_hint(
     chatgpt_account_id: Option<&str>,
     workspace_id: Option<&str>,
@@ -45,6 +101,17 @@ pub(crate) fn build_scope_identity_hint(
     }
 }
 
+/// 函数 `build_account_storage_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn build_account_storage_id(
     subject_account_id: &str,
     chatgpt_account_id: Option<&str>,
@@ -65,6 +132,17 @@ pub(crate) fn build_account_storage_id(
     format!("{base}::{}", suffix_parts.join("|"))
 }
 
+/// 函数 `build_fallback_subject_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn build_fallback_subject_key(
     subject_account_id: Option<&str>,
     tags: Option<&str>,
@@ -72,6 +150,17 @@ pub(crate) fn build_fallback_subject_key(
     normalize_non_empty(subject_account_id).map(|subject| account_key(subject, tags))
 }
 
+/// 函数 `pick_existing_account_id_by_identity`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn pick_existing_account_id_by_identity<'a, I>(
     accounts: I,
     chatgpt_account_id: Option<&str>,

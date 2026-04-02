@@ -14,6 +14,17 @@ use super::{
     SERVICE_BIND_MODE_SETTING_KEY,
 };
 
+/// 函数 `process_env_has_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn process_env_has_value(name: &str) -> bool {
     std::env::var(name)
         .ok()
@@ -21,10 +32,32 @@ fn process_env_has_value(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// 函数 `any_process_env_has_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - names: 参数 names
+///
+/// # 返回
+/// 返回函数执行结果
 fn any_process_env_has_value(names: &[&str]) -> bool {
     names.iter().any(|name| process_env_has_value(name))
 }
 
+/// 函数 `sync_runtime_settings_from_storage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 pub fn sync_runtime_settings_from_storage() {
     let settings = list_app_settings_map();
     let env_overrides = persisted_env_overrides_missing_process_env();

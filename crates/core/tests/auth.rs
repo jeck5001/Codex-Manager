@@ -1,5 +1,16 @@
 use codexmanager_core::auth::build_authorize_url;
 
+/// 函数 `build_authorize_url_matches_codex`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn build_authorize_url_matches_codex() {
     let issuer = "https://auth.openai.com";
@@ -35,6 +46,17 @@ fn build_authorize_url_matches_codex() {
     assert!(url.contains("allowed_workspace_id=org_abc"));
 }
 
+/// 函数 `parse_id_token_claims_extracts_email_and_sub`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_id_token_claims_extracts_email_and_sub() {
     let token =
@@ -44,6 +66,17 @@ fn parse_id_token_claims_extracts_email_and_sub() {
     assert_eq!(claims.email.as_deref(), Some("test@example.com"));
 }
 
+/// 函数 `extract_token_exp_reads_exp_claim`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn extract_token_exp_reads_exp_claim() {
     let token = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NzA0NjU4ODYsInN1YiI6InVzZXItMSJ9.sig";

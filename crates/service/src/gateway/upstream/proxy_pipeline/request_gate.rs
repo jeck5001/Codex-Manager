@@ -1,6 +1,17 @@
 use super::super::support::deadline;
 use std::time::{Duration, Instant};
 
+/// 函数 `acquire_request_gate`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn acquire_request_gate(
     trace_id: &str,
     key_id: &str,

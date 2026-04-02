@@ -11,6 +11,17 @@ use std::path::PathBuf;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// 函数 `normalize_addr_defaults_to_localhost`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn normalize_addr_defaults_to_localhost() {
     assert_eq!(normalize_addr("5050").unwrap(), "localhost:5050");
@@ -18,6 +29,17 @@ fn normalize_addr_defaults_to_localhost() {
     assert_eq!(normalize_addr("example.com").unwrap(), "example.com");
 }
 
+/// 函数 `lightweight_close_to_tray_requires_close_to_tray_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn lightweight_close_to_tray_requires_close_to_tray_mode() {
     assert!(!effective_lightweight_mode_on_close_to_tray(false, true));
@@ -25,6 +47,17 @@ fn lightweight_close_to_tray_requires_close_to_tray_mode() {
     assert!(effective_lightweight_mode_on_close_to_tray(true, true));
 }
 
+/// 函数 `rpc_call_tolerates_slow_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_call_tolerates_slow_response() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
@@ -48,6 +81,17 @@ fn rpc_call_tolerates_slow_response() {
     assert!(res.is_ok());
 }
 
+/// 函数 `rpc_call_handles_chunked_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_call_handles_chunked_response() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
@@ -79,6 +123,17 @@ fn rpc_call_handles_chunked_response() {
     assert_eq!(ok, Some(true));
 }
 
+/// 函数 `rpc_call_falls_back_to_next_socket_after_empty_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_call_falls_back_to_next_socket_after_empty_response() {
     let bad_listener = TcpListener::bind("127.0.0.1:0").expect("bind bad");
@@ -122,6 +177,17 @@ fn rpc_call_falls_back_to_next_socket_after_empty_response() {
     assert_eq!(user_agent, Some("codex_cli_rs/test"));
 }
 
+/// 函数 `rpc_token_path_stays_in_db_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_token_path_stays_in_db_dir() {
     let db =
@@ -135,6 +201,17 @@ fn rpc_token_path_stays_in_db_dir() {
     );
 }
 
+/// 函数 `read_account_import_contents_from_directory_collects_nested_json_files`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn read_account_import_contents_from_directory_collects_nested_json_files() {
     let unique = SystemTime::now()
@@ -160,6 +237,17 @@ fn read_account_import_contents_from_directory_collects_nested_json_files() {
     fs::remove_dir_all(&root).expect("cleanup temp dir");
 }
 
+/// 函数 `read_account_import_contents_from_files_collects_non_empty_contents`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn read_account_import_contents_from_files_collects_non_empty_contents() {
     let unique = SystemTime::now()

@@ -21,6 +21,19 @@ const DISCLAIMER_ITEMS = [
 
 const DISCLAIMER_ROTATE_INTERVAL_MS = 3200;
 
+/**
+ * 函数 `DisclaimerTicker`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function DisclaimerTicker() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [open, setOpen] = useState(false);

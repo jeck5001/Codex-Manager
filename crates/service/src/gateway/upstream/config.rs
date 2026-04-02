@@ -7,6 +7,17 @@ const DEFAULT_UPSTREAM_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 static CONFIG_LOADED: OnceLock<()> = OnceLock::new();
 static UPSTREAM_BASE_URL: OnceLock<RwLock<String>> = OnceLock::new();
 
+/// 函数 `normalize_upstream_base_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn normalize_upstream_base_url(base: &str) -> String {
     let mut normalized = base.trim().trim_end_matches('/').to_string();
     let lower = normalized.to_ascii_lowercase();
@@ -19,26 +30,81 @@ pub(in super::super) fn normalize_upstream_base_url(base: &str) -> String {
     normalized
 }
 
+/// 函数 `resolve_upstream_base_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn resolve_upstream_base_url() -> String {
     ensure_config_loaded();
     crate::lock_utils::read_recover(upstream_base_url_cell(), "upstream_base_url").clone()
 }
 
+/// 函数 `resolve_upstream_fallback_base_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn resolve_upstream_fallback_base_url(_primary_base: &str) -> Option<String> {
     None
 }
 
+/// 函数 `is_openai_api_base`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn is_openai_api_base(base: &str) -> bool {
     let normalized = base.trim().to_ascii_lowercase();
     normalized.contains("api.openai.com/v1")
 }
 
+/// 函数 `is_chatgpt_backend_base`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn is_chatgpt_backend_base(base: &str) -> bool {
     let normalized = base.trim().to_ascii_lowercase();
     normalized.contains("chatgpt.com/backend-api")
         || normalized.contains("chat.openai.com/backend-api")
 }
 
+/// 函数 `should_try_openai_fallback`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn should_try_openai_fallback(
     base: &str,
     request_path: &str,
@@ -65,6 +131,17 @@ pub(in super::super) fn should_try_openai_fallback(
     super::super::is_html_content_type(value)
 }
 
+/// 函数 `should_try_openai_fallback_by_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn should_try_openai_fallback_by_status(
     base: &str,
     request_path: &str,
@@ -88,6 +165,17 @@ pub(in super::super) fn should_try_openai_fallback_by_status(
     false
 }
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 无
 pub(in super::super) fn reload_from_env() {
     let base = env_non_empty(ENV_UPSTREAM_BASE_URL)
         .map(|value| normalize_upstream_base_url(&value))
@@ -97,14 +185,47 @@ pub(in super::super) fn reload_from_env() {
     *cached_base = base;
 }
 
+/// 函数 `ensure_config_loaded`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn ensure_config_loaded() {
     let _ = CONFIG_LOADED.get_or_init(|| reload_from_env());
 }
 
+/// 函数 `upstream_base_url_cell`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn upstream_base_url_cell() -> &'static RwLock<String> {
     UPSTREAM_BASE_URL.get_or_init(|| RwLock::new(DEFAULT_UPSTREAM_BASE_URL.to_string()))
 }
 
+/// 函数 `env_non_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_non_empty(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()

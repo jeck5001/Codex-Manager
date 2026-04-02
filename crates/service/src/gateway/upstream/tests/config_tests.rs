@@ -5,6 +5,17 @@ use super::{
     should_try_openai_fallback_by_status,
 };
 
+/// 函数 `fallback_status_trigger_is_limited_to_responses_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn fallback_status_trigger_is_limited_to_responses_path() {
     assert!(should_try_openai_fallback_by_status(
@@ -19,6 +30,17 @@ fn fallback_status_trigger_is_limited_to_responses_path() {
     ));
 }
 
+/// 函数 `fallback_content_type_trigger_is_limited_to_responses_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn fallback_content_type_trigger_is_limited_to_responses_path() {
     let html = HeaderValue::from_static("text/html; charset=utf-8");
@@ -34,6 +56,17 @@ fn fallback_content_type_trigger_is_limited_to_responses_path() {
     ));
 }
 
+/// 函数 `fallback_base_is_disabled_even_when_env_is_set`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn fallback_base_is_disabled_even_when_env_is_set() {
     std::env::remove_var("CODEXMANAGER_UPSTREAM_FALLBACK_BASE_URL");

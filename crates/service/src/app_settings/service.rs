@@ -11,6 +11,17 @@ pub const SERVICE_BIND_MODE_SETTING_KEY: &str = "service.bind_mode";
 pub const SERVICE_BIND_MODE_LOOPBACK: &str = "loopback";
 pub const SERVICE_BIND_MODE_ALL_INTERFACES: &str = "all_interfaces";
 
+/// 函数 `normalize_service_bind_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_service_bind_mode(raw: Option<&str>) -> &'static str {
     let Some(value) = raw else {
         return SERVICE_BIND_MODE_LOOPBACK;
@@ -22,6 +33,17 @@ fn normalize_service_bind_mode(raw: Option<&str>) -> &'static str {
     }
 }
 
+/// 函数 `normalize_saved_service_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_saved_service_addr(raw: Option<&str>) -> Result<String, String> {
     let Some(value) = normalize_optional_text(raw) else {
         return Ok(DEFAULT_ADDR.to_string());
@@ -40,6 +62,17 @@ fn normalize_saved_service_addr(raw: Option<&str>) -> Result<String, String> {
     Ok(format!("localhost:{value}"))
 }
 
+/// 函数 `current_env_service_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_env_service_addr() -> Option<String> {
     let raw = std::env::var("CODEXMANAGER_SERVICE_ADDR").ok()?;
     let normalized = normalize_saved_service_addr(Some(&raw)).ok()?;
@@ -52,6 +85,17 @@ fn current_env_service_addr() -> Option<String> {
     }
 }
 
+/// 函数 `current_env_service_bind_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_env_service_bind_mode() -> Option<String> {
     let raw = std::env::var("CODEXMANAGER_SERVICE_ADDR").ok()?;
     let normalized = normalize_saved_service_addr(Some(&raw)).ok()?;
@@ -67,17 +111,50 @@ fn current_env_service_bind_mode() -> Option<String> {
     Some(mode.to_string())
 }
 
+/// 函数 `current_persisted_service_bind_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_persisted_service_bind_mode() -> Option<String> {
     get_persisted_app_setting(SERVICE_BIND_MODE_SETTING_KEY)
         .map(|value| normalize_service_bind_mode(Some(&value)).to_string())
 }
 
+/// 函数 `current_effective_service_bind_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_effective_service_bind_mode() -> String {
     current_persisted_service_bind_mode()
         .or_else(current_env_service_bind_mode)
         .unwrap_or_else(|| SERVICE_BIND_MODE_LOOPBACK.to_string())
 }
 
+/// 函数 `current_service_bind_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn current_service_bind_mode() -> String {
     current_env_service_bind_mode()
         .or_else(|| {
@@ -87,6 +164,17 @@ pub fn current_service_bind_mode() -> String {
         .unwrap_or_else(|| SERVICE_BIND_MODE_LOOPBACK.to_string())
 }
 
+/// 函数 `set_service_bind_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - mode: 参数 mode
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn set_service_bind_mode(mode: &str) -> Result<String, String> {
     let normalized = normalize_service_bind_mode(Some(mode)).to_string();
     save_persisted_app_setting(SERVICE_BIND_MODE_SETTING_KEY, Some(&normalized))?;
@@ -97,14 +185,47 @@ pub fn set_service_bind_mode(mode: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
+/// 函数 `bind_all_interfaces_enabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn bind_all_interfaces_enabled() -> bool {
     current_effective_service_bind_mode() == SERVICE_BIND_MODE_ALL_INTERFACES
 }
 
+/// 函数 `bind_all_interfaces_enabled_for_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - mode: 参数 mode
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn bind_all_interfaces_enabled_for_mode(mode: &str) -> bool {
     normalize_service_bind_mode(Some(mode)) == SERVICE_BIND_MODE_ALL_INTERFACES
 }
 
+/// 函数 `default_listener_bind_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn default_listener_bind_addr() -> String {
     if bind_all_interfaces_enabled() {
         DEFAULT_BIND_ADDR.to_string()
@@ -113,6 +234,17 @@ pub fn default_listener_bind_addr() -> String {
     }
 }
 
+/// 函数 `default_web_listener_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn default_web_listener_addr() -> String {
     let service_addr = current_saved_service_addr();
     let Some((host, port_text)) = service_addr.rsplit_once(':') else {
@@ -144,10 +276,33 @@ pub fn default_web_listener_addr() -> String {
     }
 }
 
+/// 函数 `listener_bind_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn listener_bind_addr(addr: &str) -> String {
     listener_bind_addr_for_mode(addr, &current_effective_service_bind_mode())
 }
 
+/// 函数 `listener_bind_addr_for_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - bind_mode: 参数 bind_mode
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn listener_bind_addr_for_mode(addr: &str, bind_mode: &str) -> String {
     let trimmed = addr.trim();
     if trimmed.is_empty() {
@@ -192,6 +347,17 @@ pub fn listener_bind_addr_for_mode(addr: &str, bind_mode: &str) -> String {
     addr.to_string()
 }
 
+/// 函数 `current_saved_service_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn current_saved_service_addr() -> String {
     current_env_service_addr()
         .or_else(|| {
@@ -201,6 +367,17 @@ pub fn current_saved_service_addr() -> String {
         .unwrap_or_else(|| DEFAULT_ADDR.to_string())
 }
 
+/// 函数 `set_saved_service_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn set_saved_service_addr(addr: Option<&str>) -> Result<String, String> {
     let normalized = normalize_saved_service_addr(addr)?;
     save_persisted_app_setting(APP_SETTING_SERVICE_ADDR_KEY, Some(&normalized))?;

@@ -26,6 +26,19 @@ const WINDOW_ROUNDING_BIAS_MINUTES = 3;
 
 type UsageWindowDisplayMode = "primary-only" | "secondary-only" | "dual" | "unknown";
 
+/**
+ * 函数 `toNullableNumber`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function toNullableNumber(value: unknown): number | null {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
@@ -39,6 +52,20 @@ export function toNullableNumber(value: unknown): number | null {
   return null;
 }
 
+/**
+ * 函数 `formatTsFromSeconds`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - timestamp: 参数 timestamp
+ * - emptyLabel: 参数 emptyLabel
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function formatTsFromSeconds(
   timestamp: number | null | undefined,
   emptyLabel = "未知"
@@ -49,10 +76,38 @@ export function formatTsFromSeconds(
   return dateTimeFormatter.format(date);
 }
 
+/**
+ * 函数 `trimTrailingZeros`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - text: 参数 text
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function trimTrailingZeros(text: string): string {
   return text.replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
 }
 
+/**
+ * 函数 `formatCompactNumber`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ * - fallback: 参数 fallback
+ * - maxFractionDigits: 参数 maxFractionDigits
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function formatCompactNumber(
   value: number | null | undefined,
   fallback = "-",
@@ -75,28 +130,106 @@ export function formatCompactNumber(
   return `${Math.round(normalized)}`;
 }
 
+/**
+ * 函数 `normalizedAccountStatus`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - account?: 参数 account?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizedAccountStatus(account?: { status?: string } | null): string {
   return String(account?.status || "").trim().toLowerCase();
 }
 
+/**
+ * 函数 `normalizedAccountStatusReason`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - account?: 参数 account?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizedAccountStatusReason(
   account?: { statusReason?: string } | null
 ): string {
   return String(account?.statusReason || "").trim().toLowerCase();
 }
 
+/**
+ * 函数 `isDisabledAccount`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - account?: 参数 account?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function isDisabledAccount(account?: { status?: string } | null): boolean {
   return normalizedAccountStatus(account) === "disabled";
 }
 
+/**
+ * 函数 `isRecoveryRequiredAccount`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - account?: 参数 account?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function isRecoveryRequiredAccount(account?: { status?: string } | null): boolean {
   return normalizedAccountStatus(account) === "inactive";
 }
 
+/**
+ * 函数 `isUnavailableAccount`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - account?: 参数 account?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function isUnavailableAccount(account?: { status?: string } | null): boolean {
   return normalizedAccountStatus(account) === "unavailable";
 }
 
+/**
+ * 函数 `isBannedAccount`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - account?: 参数 account?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function isBannedAccount(
   account?: { status?: string; statusReason?: string } | null
 ): boolean {
@@ -113,12 +246,38 @@ export function isBannedAccount(
   );
 }
 
+/**
+ * 函数 `remainingPercent`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function remainingPercent(value: number | null | undefined): number | null {
   const parsed = toNullableNumber(value);
   if (parsed == null) return null;
   return Math.max(0, Math.min(100, Math.round(100 - parsed)));
 }
 
+/**
+ * 函数 `hasSecondarySignal`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - usage?: 参数 usage?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function hasSecondarySignal(usage?: Partial<AccountUsage> | null): boolean {
   return (
     toNullableNumber(usage?.secondaryUsedPercent) != null ||
@@ -126,11 +285,37 @@ function hasSecondarySignal(usage?: Partial<AccountUsage> | null): boolean {
   );
 }
 
+/**
+ * 函数 `isLongWindow`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - windowMinutes: 参数 windowMinutes
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function isLongWindow(windowMinutes: number | null | undefined): boolean {
   const parsed = toNullableNumber(windowMinutes);
   return parsed != null && parsed > MINUTES_PER_DAY + WINDOW_ROUNDING_BIAS_MINUTES;
 }
 
+/**
+ * 函数 `parseCreditsJson`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - raw: 参数 raw
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function parseCreditsJson(raw: string | null | undefined): unknown | null {
   const text = String(raw || "").trim();
   if (!text) return null;
@@ -141,6 +326,19 @@ function parseCreditsJson(raw: string | null | undefined): unknown | null {
   }
 }
 
+/**
+ * 函数 `extractPlanTypeRecursive`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function extractPlanTypeRecursive(value: unknown): string | null {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -177,12 +375,38 @@ function extractPlanTypeRecursive(value: unknown): string | null {
   return null;
 }
 
+/**
+ * 函数 `isFreePlanUsage`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - raw: 参数 raw
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function isFreePlanUsage(raw: string | null | undefined): boolean {
   const credits = parseCreditsJson(raw);
   const planType = extractPlanTypeRecursive(credits);
   return Boolean(planType && planType.includes("free"));
 }
 
+/**
+ * 函数 `getUsageWindowDisplayMode`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - usage?: 参数 usage?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function getUsageWindowDisplayMode(
   usage?: Partial<AccountUsage> | null
 ): UsageWindowDisplayMode {
@@ -206,6 +430,19 @@ export function getUsageWindowDisplayMode(
   return "dual";
 }
 
+/**
+ * 函数 `getUsageDisplayBuckets`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - usage?: 参数 usage?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function getUsageDisplayBuckets(usage?: Partial<AccountUsage> | null): {
   mode: UsageWindowDisplayMode;
   primaryRemainPercent: number | null;
@@ -233,6 +470,20 @@ export function getUsageDisplayBuckets(usage?: Partial<AccountUsage> | null): {
   };
 }
 
+/**
+ * 函数 `calcAvailability`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - usage?: 参数 usage?
+ * - account?: 参数 account?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function calcAvailability(
   usage?: Partial<AccountUsage> | null,
   account?: { status?: string; statusReason?: string } | null
@@ -302,18 +553,57 @@ export function calcAvailability(
   return { text: "可用", level: "ok" };
 }
 
+/**
+ * 函数 `isPrimaryWindowOnlyUsage`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - usage?: 参数 usage?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function isPrimaryWindowOnlyUsage(
   usage?: Partial<AccountUsage> | null
 ): boolean {
   return getUsageWindowDisplayMode(usage) === "primary-only";
 }
 
+/**
+ * 函数 `isSecondaryWindowOnlyUsage`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - usage?: 参数 usage?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function isSecondaryWindowOnlyUsage(
   usage?: Partial<AccountUsage> | null
 ): boolean {
   return getUsageWindowDisplayMode(usage) === "secondary-only";
 }
 
+/**
+ * 函数 `isLowQuotaUsage`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - usage?: 参数 usage?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function isLowQuotaUsage(usage?: Partial<AccountUsage> | null): boolean {
   const buckets = getUsageDisplayBuckets(usage);
   const primaryRemain = buckets.primaryRemainPercent;
@@ -324,10 +614,38 @@ export function isLowQuotaUsage(usage?: Partial<AccountUsage> | null): boolean {
   );
 }
 
+/**
+ * 函数 `canParticipateInRouting`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - level: 参数 level
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function canParticipateInRouting(level: AvailabilityLevel): boolean {
   return level !== "warn" && level !== "bad";
 }
 
+/**
+ * 函数 `pickCurrentAccount`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - accounts: 参数 accounts
+ * - requestLogs: 参数 requestLogs
+ * - manualPreferredAccountId?: 参数 manualPreferredAccountId?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function pickCurrentAccount(
   accounts: Account[],
   requestLogs: RequestLog[],
@@ -365,6 +683,19 @@ export function pickCurrentAccount(
   );
 }
 
+/**
+ * 函数 `pickBestRecommendations`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - accounts: 参数 accounts
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function pickBestRecommendations(accounts: Account[]): {
   primaryPick: Account | null;
   secondaryPick: Account | null;

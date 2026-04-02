@@ -42,8 +42,34 @@ const PRIMARY_PAGE_ROUTES = [
 ] as const;
 const DEV_ROUTE_WARMUP_TIMEOUT_MS = 12_000;
 const STARTUP_WARMUP_LABEL = "[startup warmup]";
+/**
+ * 函数 `sleep`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - ms: 参数 ms
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
+/**
+ * 函数 `AppBootstrap`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function AppBootstrap({ children }: { children: React.ReactNode }) {
   const {
     setServiceStatus,
@@ -75,6 +101,19 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     runtimeCapabilitiesRef.current = runtimeCapabilities;
   }, [runtimeCapabilities]);
 
+  /**
+   * 函数 `applyLowTransparency`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - enabled: 参数 enabled
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const applyLowTransparency = (enabled: boolean) => {
     if (enabled) {
       document.body.classList.add("low-transparency");
@@ -231,6 +270,19 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
         );
       }
 
+      /**
+       * 函数 `runPrimaryWarmup`
+       *
+       * 作者: gaohongshun
+       *
+       * 时间: 2026-04-02
+       *
+       * # 参数
+       * 无
+       *
+       * # 返回
+       * 返回函数执行结果
+       */
       const runPrimaryWarmup = () => {
         void warmupPrimaryPages(addr).catch((warmupError) => {
           console.warn(
@@ -304,6 +356,19 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     const controllers: AbortController[] = [];
     let disposed = false;
 
+    /**
+     * 函数 `warmRouteDocument`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * - route: 参数 route
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const warmRouteDocument = async (route: (typeof PRIMARY_PAGE_ROUTES)[number]) => {
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), DEV_ROUTE_WARMUP_TIMEOUT_MS);
@@ -329,6 +394,19 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       }
     };
 
+    /**
+     * 函数 `runWarmup`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * 无
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const runWarmup = () => {
       void (async () => {
         for (const route of routes) {
@@ -450,6 +528,19 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     shouldBlockOnInitialDashboardSnapshot,
   ]);
 
+  /**
+   * 函数 `handleForceStart`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleForceStart = async () => {
     if (!supportsLocalServiceStart) {
       void init();

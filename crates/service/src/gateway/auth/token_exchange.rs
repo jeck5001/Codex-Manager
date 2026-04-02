@@ -24,6 +24,17 @@ struct AccountTokenExchangeLockTable {
 static ACCOUNT_TOKEN_EXCHANGE_LOCKS: OnceLock<Mutex<AccountTokenExchangeLockTable>> =
     OnceLock::new();
 
+/// 函数 `account_token_exchange_lock`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn account_token_exchange_lock(account_id: &str) -> Arc<Mutex<()>> {
     let lock = ACCOUNT_TOKEN_EXCHANGE_LOCKS
         .get_or_init(|| Mutex::new(AccountTokenExchangeLockTable::default()));
@@ -41,6 +52,18 @@ pub(super) fn account_token_exchange_lock(account_id: &str) -> Arc<Mutex<()>> {
     entry.lock.clone()
 }
 
+/// 函数 `maybe_cleanup_exchange_locks`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - table: 参数 table
+/// - now: 参数 now
+///
+/// # 返回
+/// 无
 fn maybe_cleanup_exchange_locks(table: &mut AccountTokenExchangeLockTable, now: i64) {
     if table.last_cleanup_at != 0
         && now.saturating_sub(table.last_cleanup_at)
@@ -55,6 +78,18 @@ fn maybe_cleanup_exchange_locks(table: &mut AccountTokenExchangeLockTable, now: 
     });
 }
 
+/// 函数 `find_cached_api_key_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn find_cached_api_key_access_token(storage: &Storage, account_id: &str) -> Option<String> {
     storage
         .find_token_by_account_id(account_id)
@@ -64,6 +99,20 @@ fn find_cached_api_key_access_token(storage: &Storage, account_id: &str) -> Opti
         .filter(|v| !v.is_empty())
 }
 
+/// 函数 `exchange_and_persist_api_key_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - token: 参数 token
+/// - issuer: 参数 issuer
+/// - client_id: 参数 client_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn exchange_and_persist_api_key_access_token(
     storage: &Storage,
     token: &mut Token,
@@ -76,6 +125,18 @@ fn exchange_and_persist_api_key_access_token(
     Ok(exchanged)
 }
 
+/// 函数 `fallback_to_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+/// - exchange_error: 参数 exchange_error
+///
+/// # 返回
+/// 返回函数执行结果
 fn fallback_to_access_token(token: &Token, exchange_error: &str) -> Result<String, String> {
     let fallback = token.access_token.trim();
     if fallback.is_empty() {
@@ -88,6 +149,17 @@ fn fallback_to_access_token(token: &Token, exchange_error: &str) -> Result<Strin
     Ok(fallback.to_string())
 }
 
+/// 函数 `resolve_openai_bearer_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn resolve_openai_bearer_token(
     storage: &Storage,
     account: &Account,
@@ -173,6 +245,17 @@ pub(super) fn resolve_openai_bearer_token(
     }
 }
 
+/// 函数 `clear_account_token_exchange_locks_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn clear_account_token_exchange_locks_for_tests() {
     let lock = ACCOUNT_TOKEN_EXCHANGE_LOCKS

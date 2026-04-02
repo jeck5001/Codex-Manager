@@ -15,10 +15,32 @@ pub(super) struct LoginQuery {
     force: Option<String>,
 }
 
+/// 函数 `current_web_access_password_hash`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_web_access_password_hash() -> Option<String> {
     codexmanager_service::current_web_access_password_hash()
 }
 
+/// 函数 `generate_web_auth_session_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn generate_web_auth_session_key() -> String {
     let mut bytes = [0u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut bytes);
@@ -29,6 +51,17 @@ pub(super) fn generate_web_auth_session_key() -> String {
     out
 }
 
+/// 函数 `build_web_auth_cookie_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn build_web_auth_cookie_value(
     password_hash: &str,
     rpc_token: &str,
@@ -38,6 +71,17 @@ pub(super) fn build_web_auth_cookie_value(
     codexmanager_service::build_web_access_session_token(password_hash, &scoped_rpc_token)
 }
 
+/// 函数 `parse_cookie_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn parse_cookie_value(headers: &HeaderMap, cookie_name: &str) -> Option<String> {
     let raw = headers.get(header::COOKIE)?.to_str().ok()?;
     raw.split(';').find_map(|segment| {
@@ -50,6 +94,17 @@ pub(super) fn parse_cookie_value(headers: &HeaderMap, cookie_name: &str) -> Opti
     })
 }
 
+/// 函数 `set_cookie_header_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn set_cookie_header_value(value: &str) -> Option<HeaderValue> {
     HeaderValue::from_str(&format!(
         "{WEB_AUTH_COOKIE_NAME}={value}; Path=/; HttpOnly; SameSite=Lax"
@@ -57,6 +112,17 @@ fn set_cookie_header_value(value: &str) -> Option<HeaderValue> {
     .ok()
 }
 
+/// 函数 `clear_cookie_header_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn clear_cookie_header_value() -> Option<HeaderValue> {
     HeaderValue::from_str(&format!(
         "{WEB_AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
@@ -64,6 +130,17 @@ fn clear_cookie_header_value() -> Option<HeaderValue> {
     .ok()
 }
 
+/// 函数 `append_no_store_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - response: 参数 response
+///
+/// # 返回
+/// 无
 fn append_no_store_headers(response: &mut Response) {
     response.headers_mut().insert(
         header::CACHE_CONTROL,
@@ -77,6 +154,17 @@ fn append_no_store_headers(response: &mut Response) {
         .insert(header::EXPIRES, HeaderValue::from_static("0"));
 }
 
+/// 函数 `login_force_requested`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - query: 参数 query
+///
+/// # 返回
+/// 返回函数执行结果
 fn login_force_requested(query: &LoginQuery) -> bool {
     query
         .force
@@ -86,6 +174,18 @@ fn login_force_requested(query: &LoginQuery) -> bool {
         .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
 }
 
+/// 函数 `request_is_authenticated`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - state: 参数 state
+///
+/// # 返回
+/// 返回函数执行结果
 fn request_is_authenticated(headers: &HeaderMap, state: &AppState) -> bool {
     let Some(password_hash) = current_web_access_password_hash() else {
         return true;
@@ -101,6 +201,17 @@ fn request_is_authenticated(headers: &HeaderMap, state: &AppState) -> bool {
     cookie_value == expected
 }
 
+/// 函数 `builtin_login_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - error: 参数 error
+///
+/// # 返回
+/// 返回函数执行结果
 fn builtin_login_html(error: Option<&str>) -> String {
     let error_html = error
         .map(|text| format!(r#"<div class="error">{}</div>"#, escape_html(text)))
@@ -221,6 +332,17 @@ fn builtin_login_html(error: Option<&str>) -> String {
     )
 }
 
+/// 函数 `login_success_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn login_success_html() -> String {
     format!(
         r#"<!doctype html>
@@ -243,6 +365,17 @@ fn login_success_html() -> String {
     )
 }
 
+/// 函数 `logout_success_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn logout_success_html() -> String {
     format!(
         r#"<!doctype html>
@@ -265,6 +398,17 @@ fn logout_success_html() -> String {
     )
 }
 
+/// 函数 `web_auth_middleware`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn web_auth_middleware(
     State(state): State<Arc<AppState>>,
     request: Request,
@@ -287,6 +431,17 @@ pub(super) async fn web_auth_middleware(
     Redirect::to("/__login").into_response()
 }
 
+/// 函数 `login_page`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn login_page(
     State(state): State<Arc<AppState>>,
     Query(query): Query<LoginQuery>,
@@ -303,6 +458,17 @@ pub(super) async fn login_page(
     response
 }
 
+/// 函数 `login_submit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn login_submit(
     State(state): State<Arc<AppState>>,
     axum::Form(form): axum::Form<LoginForm>,
@@ -334,6 +500,17 @@ pub(super) async fn login_submit(
     response
 }
 
+/// 函数 `logout`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn logout() -> impl IntoResponse {
     let mut response = Html(logout_success_html()).into_response();
     if let Some(header_value) = clear_cookie_header_value() {
@@ -345,6 +522,17 @@ pub(super) async fn logout() -> impl IntoResponse {
     response
 }
 
+/// 函数 `auth_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn auth_status() -> impl IntoResponse {
     let mut response = axum::Json(serde_json::json!({
         "passwordConfigured": current_web_access_password_hash().is_some(),
@@ -358,6 +546,17 @@ pub(super) async fn auth_status() -> impl IntoResponse {
 mod tests {
     use super::*;
 
+    /// 函数 `login_force_requested_accepts_truthy_flags`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn login_force_requested_accepts_truthy_flags() {
         for value in ["1", "true", "TRUE", "yes", "on"] {
@@ -375,6 +574,17 @@ mod tests {
         assert!(!login_force_requested(&LoginQuery::default()));
     }
 
+    /// 函数 `login_success_html_marks_current_tab_session`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn login_success_html_marks_current_tab_session() {
         let html = login_success_html();

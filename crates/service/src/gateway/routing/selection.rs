@@ -19,6 +19,17 @@ struct CandidateSnapshotCache {
     candidates: Vec<(Account, Token)>,
 }
 
+/// 函数 `collect_gateway_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn collect_gateway_candidates(
     storage: &Storage,
 ) -> Result<Vec<(Account, Token)>, String> {
@@ -31,6 +42,17 @@ pub(crate) fn collect_gateway_candidates(
     Ok(candidates)
 }
 
+/// 函数 `collect_gateway_candidates_uncached`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+///
+/// # 返回
+/// 返回函数执行结果
 fn collect_gateway_candidates_uncached(storage: &Storage) -> Result<Vec<(Account, Token)>, String> {
     // 选择可用账号作为网关上游候选
     let candidates = storage
@@ -52,6 +74,17 @@ fn collect_gateway_candidates_uncached(storage: &Storage) -> Result<Vec<(Account
     Ok(out)
 }
 
+/// 函数 `read_candidate_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn read_candidate_cache() -> Option<Vec<(Account, Token)>> {
     let ttl = candidate_cache_ttl();
     if ttl.is_zero() {
@@ -77,6 +110,17 @@ fn read_candidate_cache() -> Option<Vec<(Account, Token)>> {
     Some(cached.candidates.clone())
 }
 
+/// 函数 `write_candidate_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 无
 fn write_candidate_cache(candidates: Vec<(Account, Token)>) {
     let ttl = candidate_cache_ttl();
     if ttl.is_zero() {
@@ -101,6 +145,17 @@ fn write_candidate_cache(candidates: Vec<(Account, Token)>) {
     });
 }
 
+/// 函数 `cache_identity`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn cache_identity() -> Option<String> {
     let db_path = current_db_path();
     if db_path.trim().is_empty() || db_path == "<unset>" {
@@ -109,17 +164,50 @@ fn cache_identity() -> Option<String> {
     Some(db_path)
 }
 
+/// 函数 `candidate_cache_ttl`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn candidate_cache_ttl() -> Duration {
     ensure_selection_config_loaded();
     let ttl_ms = CANDIDATE_CACHE_TTL_MS.load(Ordering::Relaxed);
     Duration::from_millis(ttl_ms)
 }
 
+/// 函数 `current_db_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_db_path() -> String {
     ensure_selection_config_loaded();
     crate::lock_utils::read_recover(current_db_path_cell(), "current_db_path").clone()
 }
 
+/// 函数 `log_no_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+///
+/// # 返回
+/// 无
 fn log_no_candidates(storage: &Storage) {
     let accounts = storage.list_accounts().unwrap_or_default();
     let tokens = storage.list_tokens().unwrap_or_default();
@@ -157,6 +245,17 @@ fn log_no_candidates(storage: &Storage) {
     }
 }
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn reload_from_env() {
     let ttl_ms = std::env::var(CANDIDATE_CACHE_TTL_ENV)
         .ok()
@@ -170,14 +269,47 @@ pub(super) fn reload_from_env() {
     clear_candidate_cache();
 }
 
+/// 函数 `ensure_selection_config_loaded`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn ensure_selection_config_loaded() {
     let _ = SELECTION_CONFIG_LOADED.get_or_init(|| reload_from_env());
 }
 
+/// 函数 `current_db_path_cell`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_db_path_cell() -> &'static RwLock<String> {
     CURRENT_DB_PATH.get_or_init(|| RwLock::new("<unset>".to_string()))
 }
 
+/// 函数 `clear_candidate_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn clear_candidate_cache() {
     if let Some(mutex) = CANDIDATE_SNAPSHOT_CACHE.get() {
         let mut guard = match mutex.lock() {
@@ -191,6 +323,17 @@ fn clear_candidate_cache() {
     }
 }
 
+/// 函数 `clear_candidate_cache_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn clear_candidate_cache_for_tests() {
     clear_candidate_cache();

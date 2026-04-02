@@ -1,5 +1,17 @@
 use super::estimate_cost_usd;
 
+/// 函数 `assert_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - actual: 参数 actual
+/// - expected: 参数 expected
+///
+/// # 返回
+/// 无
 fn assert_close(actual: f64, expected: f64) {
     assert!(
         (actual - expected).abs() < 1e-12,
@@ -7,6 +19,17 @@ fn assert_close(actual: f64, expected: f64) {
     );
 }
 
+/// 函数 `estimate_cost_matches_openai_gpt5_family_prices`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_cost_matches_openai_gpt5_family_prices() {
     // 基准样本：输入 1000，缓存 200，输出 500
@@ -27,6 +50,17 @@ fn estimate_cost_matches_openai_gpt5_family_prices() {
     }
 }
 
+/// 函数 `estimate_cost_matches_openai_gpt54_and_mini_prices`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_cost_matches_openai_gpt54_and_mini_prices() {
     // gpt-5.4-mini：输入 0.75/M，缓存 0.075/M，输出 4.5/M
@@ -42,6 +76,17 @@ fn estimate_cost_matches_openai_gpt54_and_mini_prices() {
     assert_close(actual, 0.00955);
 }
 
+/// 函数 `estimate_cost_matches_openai_gpt54_large_context_prices`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_cost_matches_openai_gpt54_large_context_prices() {
     // gpt-5.4：输入超过 272K 时，输入 5/M，缓存 0.5/M，输出 22.5/M
@@ -52,6 +97,17 @@ fn estimate_cost_matches_openai_gpt54_large_context_prices() {
     assert_close(actual, 3.525);
 }
 
+/// 函数 `estimate_cost_matches_openai_gpt54_pro_prices`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_cost_matches_openai_gpt54_pro_prices() {
     // gpt-5.4-pro：输入 30/M，输出 180/M；无缓存折扣时按输入同价处理。
@@ -59,6 +115,17 @@ fn estimate_cost_matches_openai_gpt54_pro_prices() {
     assert_close(actual, 0.12);
 }
 
+/// 函数 `estimate_cost_matches_openai_gpt54_pro_large_context_prices`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_cost_matches_openai_gpt54_pro_large_context_prices() {
     // gpt-5.4-pro：输入超过 272K 时，输入 60/M，输出 270/M。
@@ -71,6 +138,17 @@ fn estimate_cost_matches_openai_gpt54_pro_large_context_prices() {
     assert_close(actual, 45.0);
 }
 
+/// 函数 `estimate_cost_matches_openai_gpt5_mini_and_52_prices`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_cost_matches_openai_gpt5_mini_and_52_prices() {
     // mini：输入 0.25/M，缓存 0.025/M，输出 2/M
@@ -90,6 +168,17 @@ fn estimate_cost_matches_openai_gpt5_mini_and_52_prices() {
     }
 }
 
+/// 函数 `estimate_cost_uses_cached_input_rate_for_gpt_5_1_codex`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_cost_uses_cached_input_rate_for_gpt_5_1_codex() {
     // 非缓存输入 800k * 1.25 + 缓存输入 200k * 0.125 + 输出 500k * 10
@@ -103,6 +192,17 @@ fn estimate_cost_uses_cached_input_rate_for_gpt_5_1_codex() {
     assert_close(actual, 6.025);
 }
 
+/// 函数 `estimate_cost_falls_back_gpt_5_3_codex_to_gpt_5_2_codex_price`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_cost_falls_back_gpt_5_3_codex_to_gpt_5_2_codex_price() {
     // gpt-5.3-codex 暂按 gpt-5.2-codex：输入 1.75 + 输出 14.00
@@ -115,6 +215,17 @@ fn estimate_cost_falls_back_gpt_5_3_codex_to_gpt_5_2_codex_price() {
     assert_close(actual, 15.75);
 }
 
+/// 函数 `estimate_cost_matches_openai_gpt4o_and_o3_prices`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_cost_matches_openai_gpt4o_and_o3_prices() {
     let gpt41_models = ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"];

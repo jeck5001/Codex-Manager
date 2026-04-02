@@ -7,6 +7,17 @@ use std::time::Duration;
 const PRIMARY_APP_IDENTIFIER: &str = "com.codexmanager.desktop";
 const QA_APP_IDENTIFIER: &str = "com.codexmanager.desktop.qa";
 
+/// 函数 `maybe_migrate_legacy_db`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn maybe_migrate_legacy_db(current_db: &Path) {
     let current_has_data = db_has_user_data(current_db);
     if current_has_data {
@@ -63,6 +74,18 @@ pub(super) fn maybe_migrate_legacy_db(current_db: &Path) {
     }
 }
 
+/// 函数 `copy_db_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - source: 参数 source
+/// - target: 参数 target
+///
+/// # 返回
+/// 返回函数执行结果
 fn copy_db_snapshot(source: &Path, target: &Path) -> Result<(), String> {
     remove_db_sidecars(target);
     if target.is_file() {
@@ -105,6 +128,17 @@ fn copy_db_snapshot(source: &Path, target: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// 函数 `remove_db_sidecars`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 无
 fn remove_db_sidecars(path: &Path) {
     for sidecar in db_sidecar_paths(path) {
         if sidecar.is_file() {
@@ -113,6 +147,17 @@ fn remove_db_sidecars(path: &Path) {
     }
 }
 
+/// 函数 `db_sidecar_paths`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn db_sidecar_paths(path: &Path) -> [PathBuf; 2] {
     let base = path.as_os_str().to_string_lossy();
     [
@@ -121,6 +166,17 @@ fn db_sidecar_paths(path: &Path) -> [PathBuf; 2] {
     ]
 }
 
+/// 函数 `db_has_user_data`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn db_has_user_data(path: &Path) -> bool {
     if !path.is_file() {
         return false;
@@ -144,6 +200,17 @@ fn db_has_user_data(path: &Path) -> bool {
             .unwrap_or(false)
 }
 
+/// 函数 `legacy_db_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - current_db: 参数 current_db
+///
+/// # 返回
+/// 返回函数执行结果
 fn legacy_db_candidates(current_db: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
 
@@ -163,12 +230,34 @@ fn legacy_db_candidates(current_db: &Path) -> Vec<PathBuf> {
     dedup_candidates(current_db, out)
 }
 
+/// 函数 `bootstrap_db_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - current_db: 参数 current_db
+///
+/// # 返回
+/// 返回函数执行结果
 fn bootstrap_db_candidates(current_db: &Path) -> Vec<PathBuf> {
     let mut out = profile_db_candidates(current_db);
     out.extend(legacy_db_candidates(current_db));
     dedup_candidates(current_db, out)
 }
 
+/// 函数 `profile_db_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - current_db: 参数 current_db
+///
+/// # 返回
+/// 返回函数执行结果
 fn profile_db_candidates(current_db: &Path) -> Vec<PathBuf> {
     let Some(parent) = current_db.parent() else {
         return Vec::new();
@@ -186,6 +275,18 @@ fn profile_db_candidates(current_db: &Path) -> Vec<PathBuf> {
     vec![root.join(PRIMARY_APP_IDENTIFIER).join("codexmanager.db")]
 }
 
+/// 函数 `dedup_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - current_db: 参数 current_db
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 返回函数执行结果
 fn dedup_candidates(current_db: &Path, candidates: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut dedup = Vec::new();
     for candidate in candidates {
@@ -208,6 +309,17 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    /// 函数 `unique_temp_dir`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn unique_temp_dir() -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -216,6 +328,17 @@ mod tests {
         std::env::temp_dir().join(format!("codexmanager-qa-migration-test-{unique}"))
     }
 
+    /// 函数 `create_populated_db`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - path: 参数 path
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn create_populated_db(path: &Path) -> Storage {
         let storage = Storage::open(path).expect("open storage");
         storage.init().expect("init storage");
@@ -236,6 +359,17 @@ mod tests {
         storage
     }
 
+    /// 函数 `profile_db_candidates_only_seed_qa_profile_from_primary_profile`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn profile_db_candidates_only_seed_qa_profile_from_primary_profile() {
         let qa_db = PathBuf::from(format!(
@@ -254,6 +388,17 @@ mod tests {
         assert!(profile_db_candidates(&primary_db).is_empty());
     }
 
+    /// 函数 `maybe_migrate_legacy_db_seeds_empty_qa_profile_from_primary_profile`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn maybe_migrate_legacy_db_seeds_empty_qa_profile_from_primary_profile() {
         let root = unique_temp_dir();

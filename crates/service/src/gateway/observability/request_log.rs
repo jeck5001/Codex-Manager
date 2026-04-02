@@ -62,6 +62,18 @@ const MODEL_PRICE_PER_1K_TOKENS: &[(&str, f64, f64, f64)] = &[
     ("claude-3", 0.003, 0.003, 0.015),
 ];
 
+/// 函数 `resolve_model_price_per_1k`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - normalized: 参数 normalized
+/// - input_tokens_total: 参数 input_tokens_total
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_model_price_per_1k(
     normalized: &str,
     input_tokens_total: i64,
@@ -85,6 +97,20 @@ fn resolve_model_price_per_1k(
         .map(|(_, input, cached_input, output)| (*input, *cached_input, *output))
 }
 
+/// 函数 `estimate_cost_usd`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - model: 参数 model
+/// - input_tokens: 参数 input_tokens
+/// - cached_input_tokens: 参数 cached_input_tokens
+/// - output_tokens: 参数 output_tokens
+///
+/// # 返回
+/// 返回函数执行结果
 fn estimate_cost_usd(
     model: Option<&str>,
     input_tokens: Option<i64>,
@@ -113,20 +139,64 @@ fn estimate_cost_usd(
         + (out_tokens / 1000.0) * out_per_1k
 }
 
+/// 函数 `normalize_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_token(value: Option<i64>) -> Option<i64> {
     value.map(|v| v.max(0))
 }
 
+/// 函数 `normalize_duration_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_duration_ms(value: Option<u128>) -> Option<i64> {
     value.map(|duration| duration.min(i64::MAX as u128) as i64)
 }
 
+/// 函数 `is_inference_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_inference_path(path: &str) -> bool {
     path.starts_with("/v1/responses")
         || path.starts_with("/v1/chat/completions")
         || path.starts_with("/v1/messages")
 }
 
+/// 函数 `response_adapter_label`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn response_adapter_label(value: super::ResponseAdapter) -> &'static str {
     match value {
         super::ResponseAdapter::Passthrough => "Passthrough",
@@ -139,6 +209,17 @@ fn response_adapter_label(value: super::ResponseAdapter) -> &'static str {
     }
 }
 
+/// 函数 `write_request_log`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn write_request_log(
     storage: &Storage,
     trace_context: RequestLogTraceContext<'_>,
@@ -172,6 +253,17 @@ pub(super) fn write_request_log(
     );
 }
 
+/// 函数 `write_request_log_with_attempts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_request_log_with_attempts(
     storage: &Storage,

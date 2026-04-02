@@ -1,3 +1,14 @@
+/// 函数 `shutdown_flag_can_toggle`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn shutdown_flag_can_toggle() {
     assert_eq!(codexmanager_service::shutdown_requested(), false);

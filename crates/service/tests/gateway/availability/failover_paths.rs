@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `failover_on_missing_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn failover_on_missing_usage() {
     let storage = Storage::open_in_memory().expect("open");
@@ -36,6 +47,17 @@ fn failover_on_missing_usage() {
     assert!(should_failover);
 }
 
+/// 函数 `compute_url_keeps_v1_for_models_on_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn compute_url_keeps_v1_for_models_on_codex_backend() {
     let (url, alt) = compute_upstream_url("https://chatgpt.com/backend-api/codex", "/v1/models");
@@ -49,6 +71,17 @@ fn compute_url_keeps_v1_for_models_on_codex_backend() {
     assert!(alt.is_none());
 }
 
+/// 函数 `compute_url_keeps_compact_responses_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn compute_url_keeps_compact_responses_for_codex_backend() {
     let (url, alt) = compute_upstream_url(
@@ -65,6 +98,17 @@ fn compute_url_keeps_compact_responses_for_codex_backend() {
     );
 }
 
+/// 函数 `normalize_upstream_base_url_for_chatgpt_host`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn normalize_upstream_base_url_for_chatgpt_host() {
     assert_eq!(
@@ -77,6 +121,17 @@ fn normalize_upstream_base_url_for_chatgpt_host() {
     );
 }
 
+/// 函数 `normalize_upstream_base_url_keeps_existing_backend_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn normalize_upstream_base_url_keeps_existing_backend_path() {
     assert_eq!(
@@ -89,6 +144,17 @@ fn normalize_upstream_base_url_keeps_existing_backend_path() {
     );
 }
 
+/// 函数 `normalize_models_path_keeps_original_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn normalize_models_path_keeps_original_path() {
     assert_eq!(normalize_models_path("/v1/models"), "/v1/models");
@@ -98,6 +164,17 @@ fn normalize_models_path_keeps_original_path() {
     );
 }
 
+/// 函数 `normalize_models_path_keeps_existing_query_string`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn normalize_models_path_keeps_existing_query_string() {
     assert_eq!(
@@ -107,6 +184,17 @@ fn normalize_models_path_keeps_existing_query_string() {
     assert_eq!(normalize_models_path("/v1/responses"), "/v1/responses");
 }
 
+/// 函数 `models_path_does_not_try_openai_fallback`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn models_path_does_not_try_openai_fallback() {
     let content_type = HeaderValue::from_str("text/html; charset=utf-8").ok();
@@ -122,6 +210,17 @@ fn models_path_does_not_try_openai_fallback() {
     ));
 }
 
+/// 函数 `status_fallback_only_triggers_for_responses_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn status_fallback_only_triggers_for_responses_path() {
     assert!(!should_try_openai_fallback_by_status(

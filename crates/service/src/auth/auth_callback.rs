@@ -9,6 +9,17 @@ use url::Url;
 use crate::auth_tokens::complete_login;
 use crate::storage_helpers::open_storage;
 
+/// 函数 `resolve_redirect_uri`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn resolve_redirect_uri() -> Option<String> {
     // 优先使用显式配置的回调地址
     if let Ok(uri) = std::env::var("CODEXMANAGER_REDIRECT_URI") {
@@ -23,6 +34,17 @@ pub(crate) fn resolve_redirect_uri() -> Option<String> {
     Some(format!("http://localhost:{}/auth/callback", info.port))
 }
 
+/// 函数 `handle_login_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_login_request(request: Request) -> Result<(), String> {
     // 解析回调地址与参数
     let url = Url::parse(&format!("http://localhost{}", request.url()))
@@ -48,6 +70,17 @@ pub(crate) fn handle_login_request(request: Request) -> Result<(), String> {
     Ok(())
 }
 
+/// 函数 `handle_login_callback_query`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - params: 参数 params
+///
+/// # 返回
+/// 返回函数执行结果
 fn handle_login_callback_query(params: &HashMap<String, String>) -> Result<(), String> {
     let state = params
         .get("state")
@@ -87,6 +120,17 @@ fn handle_login_callback_query(params: &HashMap<String, String>) -> Result<(), S
     handle_login_callback_params(code, state)
 }
 
+/// 函数 `handle_login_callback_params`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_login_callback_params(code: &str, state: &str) -> Result<(), String> {
     complete_login(state, code).map_err(|err| {
         if err == "unknown login session" {
@@ -97,6 +141,17 @@ pub(crate) fn handle_login_callback_params(code: &str, state: &str) -> Result<()
     })
 }
 
+/// 函数 `ensure_login_session_exists`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - state: 参数 state
+///
+/// # 返回
+/// 返回函数执行结果
 fn ensure_login_session_exists(state: &str) -> Result<(), String> {
     let Some(storage) = open_storage() else {
         return Err("storage unavailable".to_string());
@@ -110,6 +165,18 @@ fn ensure_login_session_exists(state: &str) -> Result<(), String> {
     }
 }
 
+/// 函数 `update_login_session_failed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - state: 参数 state
+/// - error: 参数 error
+///
+/// # 返回
+/// 无
 fn update_login_session_failed(state: Option<&str>, error: &str) {
     let Some(state) = state else {
         return;
@@ -123,6 +190,18 @@ fn update_login_session_failed(state: Option<&str>, error: &str) {
     }
 }
 
+/// 函数 `is_missing_codex_entitlement_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - error_code: 参数 error_code
+/// - error_description: 参数 error_description
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_missing_codex_entitlement_error(error_code: &str, error_description: Option<&str>) -> bool {
     error_code == "access_denied"
         && error_description.is_some_and(|description| {
@@ -132,6 +211,18 @@ fn is_missing_codex_entitlement_error(error_code: &str, error_description: Optio
         })
 }
 
+/// 函数 `oauth_callback_error_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - error_code: 参数 error_code
+/// - error_description: 参数 error_description
+///
+/// # 返回
+/// 返回函数执行结果
 fn oauth_callback_error_message(error_code: &str, error_description: Option<&str>) -> String {
     if is_missing_codex_entitlement_error(error_code, error_description) {
         return "Codex is not enabled for your workspace. Contact your workspace administrator to request access to Codex.".to_string();
@@ -154,12 +245,34 @@ pub(crate) struct LoginServerInfo {
 static LOGIN_SERVER_STATE: std::sync::OnceLock<std::sync::Mutex<Option<LoginServerInfo>>> =
     std::sync::OnceLock::new();
 
+/// 函数 `ensure_login_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn ensure_login_server() -> Result<LoginServerInfo, String> {
     let addr =
         std::env::var("CODEXMANAGER_LOGIN_ADDR").unwrap_or_else(|_| "localhost:1455".to_string());
     ensure_login_server_with_addr(&addr)
 }
 
+/// 函数 `ensure_login_server_with_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn ensure_login_server_with_addr(addr: &str) -> Result<LoginServerInfo, String> {
     let cell = LOGIN_SERVER_STATE.get_or_init(|| std::sync::Mutex::new(None));
     let mut guard = crate::lock_utils::lock_recover(cell, "login_server_state");
@@ -174,10 +287,32 @@ fn ensure_login_server_with_addr(addr: &str) -> Result<LoginServerInfo, String> 
     Ok(info)
 }
 
+/// 函数 `is_loopback_host`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - host: 参数 host
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_loopback_host(host: &str) -> bool {
     matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]")
 }
 
+/// 函数 `allow_non_loopback_login_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn allow_non_loopback_login_addr() -> bool {
     matches!(
         std::env::var("CODEXMANAGER_ALLOW_NON_LOOPBACK_LOGIN_ADDR")
@@ -188,6 +323,17 @@ fn allow_non_loopback_login_addr() -> bool {
     )
 }
 
+/// 函数 `server_port`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - server: 参数 server
+///
+/// # 返回
+/// 返回函数执行结果
 fn server_port(server: &Server) -> Result<u16, String> {
     server
         .server_addr()
@@ -196,6 +342,20 @@ fn server_port(server: &Server) -> Result<u16, String> {
         .ok_or_else(|| "login server missing port".to_string())
 }
 
+/// 函数 `try_bind_login_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - servers: 参数 servers
+/// - addr_in_use: 参数 addr_in_use
+/// - last_err: 参数 last_err
+///
+/// # 返回
+/// 返回函数执行结果
 fn try_bind_login_server(
     addr: &str,
     servers: &mut Vec<Server>,
@@ -218,6 +378,17 @@ fn try_bind_login_server(
     }
 }
 
+/// 函数 `bind_localhost_login_servers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - port: 参数 port
+///
+/// # 返回
+/// 返回函数执行结果
 fn bind_localhost_login_servers(port: u16) -> Result<(Vec<Server>, LoginServerInfo), String> {
     let mut addr_in_use = false;
     let mut last_err: Option<String> = None;
@@ -283,6 +454,17 @@ fn bind_localhost_login_servers(port: u16) -> Result<(Vec<Server>, LoginServerIn
     Err("failed to bind login server".to_string())
 }
 
+/// 函数 `bind_login_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn bind_login_server(addr: &str) -> Result<(Vec<Server>, LoginServerInfo), String> {
     if let Ok(url) = Url::parse(&format!("http://{addr}")) {
         let host = url.host_str().unwrap_or("localhost");
@@ -302,12 +484,34 @@ fn bind_login_server(addr: &str) -> Result<(Vec<Server>, LoginServerInfo), Strin
     Ok((vec![server], LoginServerInfo { port }))
 }
 
+/// 函数 `is_addr_in_use`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - err: 参数 err
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_addr_in_use(err: &(dyn std::error::Error + 'static)) -> bool {
     err.downcast_ref::<io::Error>()
         .map(|io_err| io_err.kind() == io::ErrorKind::AddrInUse)
         .unwrap_or(false)
 }
 
+/// 函数 `run_login_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - server: 参数 server
+///
+/// # 返回
+/// 无
 fn run_login_server(server: Server) {
     for request in server.incoming_requests() {
         if let Err(err) = handle_login_request(request) {
@@ -316,6 +520,17 @@ fn run_login_server(server: Server) {
     }
 }
 
+/// 函数 `html_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn html_response(body: String) -> Response<std::io::Cursor<Vec<u8>>> {
     let mut response = Response::from_string(body);
     if let Ok(header) = Header::from_bytes(
@@ -330,6 +545,17 @@ fn html_response(body: String) -> Response<std::io::Cursor<Vec<u8>>> {
     response
 }
 
+/// 函数 `build_callback_success_page`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_callback_success_page() -> String {
     r#"<!doctype html>
 <html lang="en">
@@ -369,6 +595,17 @@ fn build_callback_success_page() -> String {
         .to_string()
 }
 
+/// 函数 `build_callback_error_page`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - err: 参数 err
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_callback_error_page(err: &str) -> String {
     let escaped = err
         .replace('&', "&amp;")

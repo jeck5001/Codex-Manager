@@ -26,6 +26,17 @@ pub const APP_SETTING_ENV_OVERRIDES_KEY: &str = "app.env_overrides";
 pub const APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY: &str = "web.auth.password_hash";
 pub const WEB_ACCESS_SESSION_COOKIE_NAME: &str = "codexmanager_web_auth";
 
+/// 函数 `parse_bool_with_default`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn parse_bool_with_default(raw: &str, default: bool) -> bool {
     match raw.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => true,
@@ -34,6 +45,17 @@ pub(crate) fn parse_bool_with_default(raw: &str, default: bool) -> bool {
     }
 }
 
+/// 函数 `normalize_optional_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_optional_text(raw: Option<&str>) -> Option<String> {
     raw.map(str::trim)
         .filter(|value| !value.is_empty())

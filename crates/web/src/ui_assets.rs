@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `builtin_missing_ui_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn builtin_missing_ui_html(detail: &str) -> String {
     let detail = escape_html(detail);
     format!(
@@ -34,24 +45,79 @@ pub(super) fn builtin_missing_ui_html(detail: &str) -> String {
     )
 }
 
+/// 函数 `serve_missing_ui`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn serve_missing_ui(State(state): State<Arc<AppState>>) -> Html<String> {
     Html((*state.missing_ui_html).clone())
 }
 
+/// 函数 `serve_embedded_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn serve_embedded_index() -> Response {
     serve_embedded_path("index.html")
 }
 
+/// 函数 `serve_embedded_asset`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn serve_embedded_asset(
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> Response {
     serve_embedded_path(&path)
 }
 
+/// 函数 `looks_like_asset_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn looks_like_asset_path(path: &str) -> bool {
     path.rsplit('/').next().unwrap_or(path).contains('.')
 }
 
+/// 函数 `serve_embedded_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn serve_embedded_path(path: &str) -> Response {
     let raw = path.trim_start_matches('/');
     if raw.contains("..") {
@@ -73,6 +139,17 @@ fn serve_embedded_path(path: &str) -> Response {
     out
 }
 
+/// 函数 `resolve_embedded_asset`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_embedded_asset(path: &str) -> Option<(String, &'static [u8])> {
     let raw = path.trim_start_matches('/');
     let trimmed = raw.trim_end_matches('/');
@@ -100,6 +177,17 @@ fn resolve_embedded_asset(path: &str) -> Option<(String, &'static [u8])> {
 mod tests {
     use super::*;
 
+    /// 函数 `spa_route_fallback_uses_html_content_type`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn spa_route_fallback_uses_html_content_type() {
         let response = serve_embedded_path("accounts");
@@ -114,6 +202,17 @@ mod tests {
         );
     }
 
+    /// 函数 `directory_route_prefers_embedded_directory_index`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn directory_route_prefers_embedded_directory_index() {
         let (served_path, _) = resolve_embedded_asset("accounts/").expect("accounts asset");

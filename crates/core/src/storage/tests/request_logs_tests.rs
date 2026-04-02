@@ -1,5 +1,17 @@
 use super::{RequestLog, RequestTokenStat, Storage};
 
+/// 函数 `collect_query_plan_details`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - sql: 参数 sql
+///
+/// # 返回
+/// 返回函数执行结果
 fn collect_query_plan_details(storage: &Storage, sql: &str) -> Vec<String> {
     let mut stmt = storage.conn.prepare(sql).expect("prepare explain");
     let mut rows = stmt.query([]).expect("query explain");
@@ -11,6 +23,17 @@ fn collect_query_plan_details(storage: &Storage, sql: &str) -> Vec<String> {
     details
 }
 
+/// 函数 `method_exact_query_matches_composite_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn method_exact_query_matches_composite_index() {
     let storage = Storage::open_in_memory().expect("open");
@@ -29,6 +52,17 @@ fn method_exact_query_matches_composite_index() {
         .any(|detail| detail.contains("idx_request_logs_method_created_at")));
 }
 
+/// 函数 `key_exact_query_matches_composite_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn key_exact_query_matches_composite_index() {
     let storage = Storage::open_in_memory().expect("open");
@@ -47,6 +81,17 @@ fn key_exact_query_matches_composite_index() {
         .any(|detail| detail.contains("idx_request_logs_key_id_created_at")));
 }
 
+/// 函数 `insert_request_log_with_token_stat_is_visible_via_join`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn insert_request_log_with_token_stat_is_visible_via_join() {
     let storage = Storage::open_in_memory().expect("open");
@@ -127,6 +172,17 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
     assert_eq!(row.estimated_cost_usd, Some(0.123));
 }
 
+/// 函数 `token_stat_failure_still_commits_request_log`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn token_stat_failure_still_commits_request_log() {
     let storage = Storage::open_in_memory().expect("open");
@@ -191,6 +247,17 @@ fn token_stat_failure_still_commits_request_log() {
     assert_eq!(count, 1);
 }
 
+/// 函数 `request_logs_support_backend_pagination_and_status_filters`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_logs_support_backend_pagination_and_status_filters() {
     let storage = Storage::open_in_memory().expect("open");
@@ -267,6 +334,17 @@ fn request_logs_support_backend_pagination_and_status_filters() {
     assert_eq!(total_5xx, 2);
 }
 
+/// 函数 `request_logs_filtered_summary_aggregates_counts_and_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_logs_filtered_summary_aggregates_counts_and_tokens() {
     let storage = Storage::open_in_memory().expect("open");

@@ -3,6 +3,20 @@ use codexmanager_core::rpc::types::ModelOption;
 use codexmanager_core::storage::{now_ts, Storage};
 use serde_json::Value;
 
+/// 函数 `sample_api_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - protocol_type: 参数 protocol_type
+/// - model_slug: 参数 model_slug
+/// - reasoning: 参数 reasoning
+/// - service_tier: 参数 service_tier
+///
+/// # 返回
+/// 返回函数执行结果
 fn sample_api_key(
     protocol_type: &str,
     model_slug: Option<&str>,
@@ -30,6 +44,17 @@ fn sample_api_key(
     }
 }
 
+/// 函数 `anthropic_key_keeps_empty_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_key_keeps_empty_overrides() {
     let api_key = sample_api_key(
@@ -44,6 +69,17 @@ fn anthropic_key_keeps_empty_overrides() {
     assert_eq!(service_tier, None);
 }
 
+/// 函数 `anthropic_key_applies_custom_model_and_reasoning`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_key_applies_custom_model_and_reasoning() {
     let api_key = sample_api_key(
@@ -58,6 +94,17 @@ fn anthropic_key_applies_custom_model_and_reasoning() {
     assert_eq!(service_tier.as_deref(), Some("fast"));
 }
 
+/// 函数 `openai_key_keeps_empty_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_key_keeps_empty_overrides() {
     let api_key = sample_api_key("openai_compat", None, None, None);
@@ -67,6 +114,17 @@ fn openai_key_keeps_empty_overrides() {
     assert_eq!(service_tier, None);
 }
 
+/// 函数 `aggregate_passthrough_applies_model_reasoning_and_service_tier_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn aggregate_passthrough_applies_model_reasoning_and_service_tier_overrides() {
     let api_key = sample_api_key(
@@ -101,6 +159,17 @@ fn aggregate_passthrough_applies_model_reasoning_and_service_tier_overrides() {
     assert_eq!(reasoning_for_log.as_deref(), Some("high"));
 }
 
+/// 函数 `anthropic_model_must_exist_in_cached_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_model_must_exist_in_cached_model_options() {
     let storage = Storage::open_in_memory().expect("open storage");

@@ -1,5 +1,16 @@
 use std::collections::HashMap;
 
+/// 函数 `set_env_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_env_overrides(
     overrides: HashMap<String, String>,
 ) -> Result<std::collections::BTreeMap<String, String>, String> {

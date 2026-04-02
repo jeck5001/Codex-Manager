@@ -1,5 +1,16 @@
 use super::super::{ConversationBinding, Storage};
 
+/// 函数 `sample_binding`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn sample_binding() -> ConversationBinding {
     ConversationBinding {
         platform_key_hash: "key-hash-1".to_string(),
@@ -16,6 +27,17 @@ fn sample_binding() -> ConversationBinding {
     }
 }
 
+/// 函数 `conversation_binding_roundtrip_and_touch`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn conversation_binding_roundtrip_and_touch() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -48,6 +70,17 @@ fn conversation_binding_roundtrip_and_touch() {
     assert_eq!(touched_loaded.updated_at, 200);
 }
 
+/// 函数 `conversation_binding_upsert_rebinds_existing_pair`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn conversation_binding_upsert_rebinds_existing_pair() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -83,6 +116,17 @@ fn conversation_binding_upsert_rebinds_existing_pair() {
     assert_eq!(loaded.updated_at, 300);
 }
 
+/// 函数 `conversation_binding_delete_helpers_remove_rows`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn conversation_binding_delete_helpers_remove_rows() {
     let storage = Storage::open_in_memory().expect("open in memory");

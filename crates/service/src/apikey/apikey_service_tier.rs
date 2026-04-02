@@ -1,3 +1,14 @@
+/// 函数 `normalize_service_tier`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_service_tier(value: &str) -> Option<&'static str> {
     let normalized = value.trim().to_ascii_lowercase();
     match normalized.as_str() {
@@ -8,6 +19,17 @@ pub(crate) fn normalize_service_tier(value: &str) -> Option<&'static str> {
     }
 }
 
+/// 函数 `normalize_service_tier_owned`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_service_tier_owned(
     value: Option<String>,
 ) -> Result<Option<String>, String> {

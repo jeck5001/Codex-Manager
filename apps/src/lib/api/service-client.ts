@@ -16,10 +16,37 @@ import {
 } from "../../types";
 import { readInitializeResult } from "@/lib/utils/service";
 
+/**
+ * 函数 `readStringField`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ * - key: 参数 key
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function readStringField(payload: unknown, key: string): string {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return "";
   }
+  /**
+   * 函数 `value`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - payload as Record<string, unknown>: 参数 payload as Record<string, unknown>
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const value = (payload as Record<string, unknown>)[key];
   return typeof value === "string" ? value.trim() : "";
 }

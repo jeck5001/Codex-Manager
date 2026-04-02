@@ -38,6 +38,17 @@ pub(crate) enum RefreshTokenAuthErrorReason {
 }
 
 impl RefreshTokenAuthErrorReason {
+    /// 函数 `as_code`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn as_code(self) -> &'static str {
         match self {
             Self::Expired => "refresh_token_expired",
@@ -47,6 +58,17 @@ impl RefreshTokenAuthErrorReason {
         }
     }
 
+    /// 函数 `user_message`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn user_message(self) -> &'static str {
         match self {
             Self::Expired => REFRESH_TOKEN_EXPIRED_MESSAGE,
@@ -66,6 +88,17 @@ pub(crate) struct RefreshTokenResponse {
     pub(crate) id_token: Option<String>,
 }
 
+/// 函数 `usage_http_runtime`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn usage_http_runtime() -> &'static Runtime {
     USAGE_HTTP_RUNTIME.get_or_init(|| {
         Builder::new_multi_thread()
@@ -77,6 +110,17 @@ fn usage_http_runtime() -> &'static Runtime {
     })
 }
 
+/// 函数 `run_usage_future`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - future: 参数 future
+///
+/// # 返回
+/// 返回函数执行结果
 fn run_usage_future<F>(future: F) -> F::Output
 where
     F: Future,
@@ -84,6 +128,17 @@ where
     usage_http_runtime().block_on(future)
 }
 
+/// 函数 `extract_refresh_token_error_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_refresh_token_error_code(body: &str) -> Option<String> {
     let value = serde_json::from_str::<serde_json::Value>(body).ok()?;
     value
@@ -108,6 +163,17 @@ fn extract_refresh_token_error_code(body: &str) -> Option<String> {
         })
 }
 
+/// 函数 `looks_like_refresh_token_blocked_marker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn looks_like_refresh_token_blocked_marker(value: &str) -> bool {
     let normalized = value.trim().to_ascii_lowercase();
     normalized.contains("blocked")
@@ -116,6 +182,18 @@ fn looks_like_refresh_token_blocked_marker(value: &str) -> bool {
         || normalized.contains("region_restricted")
 }
 
+/// 函数 `classify_refresh_token_status_error_kind_with_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_refresh_token_status_error_kind_with_headers(
     headers: Option<&HeaderMap>,
     body: &str,
@@ -166,6 +244,17 @@ fn classify_refresh_token_status_error_kind_with_headers(
     "non_json"
 }
 
+/// 函数 `classify_refresh_token_auth_error_reason_from_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - code: 参数 code
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_refresh_token_auth_error_reason_from_code(
     code: Option<&str>,
 ) -> RefreshTokenAuthErrorReason {
@@ -177,6 +266,17 @@ fn classify_refresh_token_auth_error_reason_from_code(
     }
 }
 
+/// 函数 `classify_refresh_token_auth_error_reason`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 pub(crate) fn classify_refresh_token_auth_error_reason(
     status: reqwest::StatusCode,
@@ -185,6 +285,19 @@ pub(crate) fn classify_refresh_token_auth_error_reason(
     classify_refresh_token_auth_error_reason_with_headers(status, None, body)
 }
 
+/// 函数 `classify_refresh_token_auth_error_reason_with_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - _headers: 参数 _headers
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_refresh_token_auth_error_reason_with_headers(
     status: reqwest::StatusCode,
     _headers: Option<&HeaderMap>,
@@ -198,6 +311,17 @@ fn classify_refresh_token_auth_error_reason_with_headers(
     ))
 }
 
+/// 函数 `refresh_token_auth_error_reason_from_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn refresh_token_auth_error_reason_from_message(
     message: &str,
 ) -> Option<RefreshTokenAuthErrorReason> {
@@ -217,11 +341,36 @@ pub(crate) fn refresh_token_auth_error_reason_from_message(
     Some(RefreshTokenAuthErrorReason::Unknown401)
 }
 
+/// 函数 `format_refresh_token_status_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 fn format_refresh_token_status_error(status: reqwest::StatusCode, body: &str) -> String {
     format_refresh_token_status_error_with_headers(status, None, body)
 }
 
+/// 函数 `format_refresh_token_status_error_with_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - headers: 参数 headers
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn format_refresh_token_status_error_with_headers(
     status: reqwest::StatusCode,
     headers: Option<&HeaderMap>,
@@ -285,6 +434,17 @@ fn format_refresh_token_status_error_with_headers(
     }
 }
 
+/// 函数 `build_usage_http_client`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_usage_http_client() -> Client {
     let default_headers = build_usage_http_default_headers();
     let mut builder = Client::builder()
@@ -312,6 +472,17 @@ fn build_usage_http_client() -> Client {
     builder.build().unwrap_or_else(|_| Client::new())
 }
 
+/// 函数 `build_usage_http_default_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_usage_http_default_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     if let Ok(value) = HeaderValue::from_str(&crate::gateway::current_wire_originator()) {
@@ -325,6 +496,17 @@ fn build_usage_http_default_headers() -> HeaderMap {
     headers
 }
 
+/// 函数 `build_usage_request_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - workspace_id: 参数 workspace_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_usage_request_headers(workspace_id: Option<&str>) -> HeaderMap {
     let mut headers = HeaderMap::new();
     if let Some(workspace_id) = workspace_id
@@ -340,6 +522,17 @@ fn build_usage_request_headers(workspace_id: Option<&str>) -> HeaderMap {
     headers
 }
 
+/// 函数 `resolve_refresh_token_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - issuer: 参数 issuer
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_refresh_token_url(issuer: &str) -> String {
     if let Some(override_url) = std::env::var(REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR)
         .ok()
@@ -359,6 +552,18 @@ fn resolve_refresh_token_url(issuer: &str) -> String {
     format!("{normalized_issuer}/oauth/token")
 }
 
+/// 函数 `extract_response_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)
@@ -368,6 +573,20 @@ fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+/// 函数 `summarize_usage_error_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - headers: 参数 headers
+/// - body: 参数 body
+/// - force_html_error: 参数 force_html_error
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_usage_error_response(
     status: reqwest::StatusCode,
     headers: &HeaderMap,
@@ -415,11 +634,33 @@ fn summarize_usage_error_response(
     }
 }
 
+/// 函数 `usage_http_client`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn usage_http_client() -> Client {
     let lock = USAGE_HTTP_CLIENT.get_or_init(|| RwLock::new(build_usage_http_client()));
     crate::lock_utils::read_recover(lock, "usage_http_client").clone()
 }
 
+/// 函数 `rebuild_usage_http_client`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn rebuild_usage_http_client() {
     let next = build_usage_http_client();
     let lock = USAGE_HTTP_CLIENT.get_or_init(|| RwLock::new(next.clone()));
@@ -427,10 +668,32 @@ fn rebuild_usage_http_client() {
     *current = next;
 }
 
+/// 函数 `reload_usage_http_client_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn reload_usage_http_client_from_env() {
     rebuild_usage_http_client();
 }
 
+/// 函数 `current_upstream_proxy_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_upstream_proxy_url() -> Option<String> {
     std::env::var(ENV_UPSTREAM_PROXY_URL)
         .ok()
@@ -438,6 +701,17 @@ fn current_upstream_proxy_url() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+/// 函数 `fetch_usage_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn fetch_usage_snapshot(
     base_url: &str,
     bearer: &str,
@@ -446,6 +720,19 @@ pub(crate) fn fetch_usage_snapshot(
     run_usage_future(fetch_usage_snapshot_async(base_url, bearer, workspace_id))
 }
 
+/// 函数 `fetch_usage_snapshot_async`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - base_url: 参数 base_url
+/// - bearer: 参数 bearer
+/// - workspace_id: 参数 workspace_id
+///
+/// # 返回
+/// 返回函数执行结果
 async fn fetch_usage_snapshot_async(
     base_url: &str,
     bearer: &str,
@@ -507,6 +794,17 @@ async fn fetch_usage_snapshot_async(
         .map_err(|e| format!("read usage endpoint json failed: {e}"))
 }
 
+/// 函数 `refresh_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn refresh_access_token(
     issuer: &str,
     client_id: &str,
@@ -515,6 +813,19 @@ pub(crate) fn refresh_access_token(
     run_usage_future(refresh_access_token_async(issuer, client_id, refresh_token))
 }
 
+/// 函数 `refresh_access_token_async`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - issuer: 参数 issuer
+/// - client_id: 参数 client_id
+/// - refresh_token: 参数 refresh_token
+///
+/// # 返回
+/// 返回函数执行结果
 async fn refresh_access_token_async(
     issuer: &str,
     client_id: &str,
@@ -560,6 +871,18 @@ async fn refresh_access_token_async(
         .map_err(|e| format!("read refresh token response json failed: {e}"))
 }
 
+/// 函数 `read_response_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - resp: 参数 resp
+/// - timeout: 参数 timeout
+///
+/// # 返回
+/// 返回函数执行结果
 async fn read_response_text(resp: reqwest::Response, timeout: Duration) -> Result<String, String> {
     match tokio::time::timeout(timeout, resp.text()).await {
         Ok(Ok(body)) => Ok(body),
@@ -571,6 +894,18 @@ async fn read_response_text(resp: reqwest::Response, timeout: Duration) -> Resul
     }
 }
 
+/// 函数 `read_response_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - resp: 参数 resp
+/// - timeout: 参数 timeout
+///
+/// # 返回
+/// 返回函数执行结果
 async fn read_response_json<T>(resp: reqwest::Response, timeout: Duration) -> Result<T, String>
 where
     T: serde::de::DeserializeOwned,
@@ -585,6 +920,18 @@ where
     }
 }
 
+/// 函数 `build_refresh_token_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - client_id: 参数 client_id
+/// - refresh_token: 参数 refresh_token
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_refresh_token_body(client_id: &str, refresh_token: &str) -> String {
     let mut serializer = url::form_urlencoded::Serializer::new(String::new());
     serializer.append_pair("client_id", client_id);

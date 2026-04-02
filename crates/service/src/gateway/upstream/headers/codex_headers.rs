@@ -32,6 +32,17 @@ pub(crate) struct CodexCompactUpstreamHeaderInput<'a> {
     pub(crate) has_body: bool,
 }
 
+/// 函数 `build_codex_upstream_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn build_codex_upstream_headers(
     input: CodexUpstreamHeaderInput<'_>,
 ) -> Vec<(String, String)> {
@@ -128,6 +139,17 @@ pub(crate) fn build_codex_upstream_headers(
     headers
 }
 
+/// 函数 `build_codex_compact_upstream_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn build_codex_compact_upstream_headers(
     input: CodexCompactUpstreamHeaderInput<'_>,
 ) -> Vec<(String, String)> {
@@ -183,6 +205,19 @@ pub(crate) fn build_codex_compact_upstream_headers(
     headers
 }
 
+/// 函数 `resolve_optional_session_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - incoming: 参数 incoming
+/// - fallback_session_id: 参数 fallback_session_id
+/// - strip_session_affinity: 参数 strip_session_affinity
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_optional_session_id(
     incoming: Option<&str>,
     fallback_session_id: Option<&str>,
@@ -206,6 +241,17 @@ fn resolve_optional_session_id(
         .map(str::to_string)
 }
 
+/// 函数 `resolve_client_request_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - incoming_client_request_id: 参数 incoming_client_request_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_client_request_id(incoming_client_request_id: Option<&str>) -> Option<String> {
     if let Some(value) = incoming_client_request_id
         .map(str::trim)
@@ -224,6 +270,18 @@ mod tests {
         CodexUpstreamHeaderInput,
     };
 
+    /// 函数 `header_value`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - headers: 参数 headers
+    /// - name: 参数 name
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
         headers
             .iter()
@@ -231,6 +289,17 @@ mod tests {
             .map(|(_, value)| value.as_str())
     }
 
+    /// 函数 `build_codex_upstream_headers_keeps_final_affinity_shape`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn build_codex_upstream_headers_keeps_final_affinity_shape() {
         let _guard = crate::test_env_guard();
@@ -292,6 +361,17 @@ mod tests {
         );
     }
 
+    /// 函数 `build_codex_upstream_headers_clears_turn_state_when_affinity_diverges`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn build_codex_upstream_headers_clears_turn_state_when_affinity_diverges() {
         let _guard = crate::test_env_guard();
@@ -326,6 +406,17 @@ mod tests {
         assert_eq!(header_value(&headers, "x-codex-turn-state"), None);
     }
 
+    /// 函数 `build_codex_compact_upstream_headers_use_session_fallback_only`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn build_codex_compact_upstream_headers_use_session_fallback_only() {
         let _guard = crate::test_env_guard();

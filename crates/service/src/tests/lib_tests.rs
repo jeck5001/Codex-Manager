@@ -1,6 +1,17 @@
 use super::*;
 use codexmanager_core::rpc::types::{JsonRpcMessage, JsonRpcResponse};
 
+/// 函数 `response_result`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - resp: 参数 resp
+///
+/// # 返回
+/// 返回函数执行结果
 fn response_result(resp: JsonRpcMessage) -> JsonRpcResponse {
     match resp {
         JsonRpcMessage::Response(resp) => resp,
@@ -10,6 +21,17 @@ fn response_result(resp: JsonRpcMessage) -> JsonRpcResponse {
     }
 }
 
+/// 函数 `login_complete_requires_params`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn login_complete_requires_params() {
     let req = JsonRpcRequest {
@@ -55,6 +77,17 @@ fn login_complete_requires_params() {
     assert!(err.contains("missing"));
 }
 
+/// 函数 `unknown_method_returns_jsonrpc_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn unknown_method_returns_jsonrpc_error() {
     let req = JsonRpcRequest {

@@ -35,6 +35,17 @@ struct AppState {
     missing_ui_html: Arc<String>,
 }
 
+/// 函数 `read_env_trim`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn read_env_trim(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -42,6 +53,17 @@ fn read_env_trim(name: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// 函数 `normalize_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_addr(raw: &str) -> Option<String> {
     let mut value = raw.trim();
     if value.is_empty() {
@@ -63,6 +85,17 @@ fn normalize_addr(raw: &str) -> Option<String> {
     Some(value.to_string())
 }
 
+/// 函数 `normalize_connect_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_connect_addr(raw: &str) -> Option<String> {
     let normalized = normalize_addr(raw)?;
     let Some((host, port)) = normalized.rsplit_once(':') else {
@@ -74,6 +107,17 @@ fn normalize_connect_addr(raw: &str) -> Option<String> {
     }
 }
 
+/// 函数 `browser_open_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn browser_open_addr(raw: &str) -> Option<String> {
     let normalized = normalize_addr(raw)?;
     let Some((host, port)) = normalized.rsplit_once(':') else {
@@ -85,18 +129,51 @@ fn browser_open_addr(raw: &str) -> Option<String> {
     }
 }
 
+/// 函数 `resolve_service_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_service_addr() -> String {
     read_env_trim("CODEXMANAGER_SERVICE_ADDR")
         .and_then(|v| normalize_connect_addr(&v))
         .unwrap_or_else(|| codexmanager_service::DEFAULT_ADDR.to_string())
 }
 
+/// 函数 `resolve_web_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_web_addr() -> String {
     read_env_trim("CODEXMANAGER_WEB_ADDR")
         .and_then(|v| normalize_addr(&v))
         .unwrap_or_else(codexmanager_service::default_web_listener_addr)
 }
 
+/// 函数 `resolve_web_root`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_web_root() -> PathBuf {
     if let Some(v) = read_env_trim("CODEXMANAGER_WEB_ROOT") {
         let p = PathBuf::from(v);
@@ -108,6 +185,17 @@ fn resolve_web_root() -> PathBuf {
     exe_dir().join("web")
 }
 
+/// 函数 `exe_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn exe_dir() -> PathBuf {
     std::env::current_exe()
         .ok()
@@ -116,10 +204,32 @@ fn exe_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// 函数 `ensure_index_file`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - index: 参数 index
+///
+/// # 返回
+/// 返回函数执行结果
 fn ensure_index_file(index: &Path) -> bool {
     index.is_file()
 }
 
+/// 函数 `is_json_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_json_content_type(headers: &HeaderMap) -> bool {
     headers
         .get("content-type")
@@ -129,6 +239,17 @@ fn is_json_content_type(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
+/// 函数 `escape_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - text: 参数 text
+///
+/// # 返回
+/// 返回函数执行结果
 fn escape_html(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -137,6 +258,17 @@ fn escape_html(text: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// 函数 `runtime_info`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 async fn runtime_info() -> impl IntoResponse {
     Json(serde_json::json!({
         "mode": "web-gateway",
@@ -150,6 +282,19 @@ async fn runtime_info() -> impl IntoResponse {
     }))
 }
 
+/// 函数 `serve_on_listener`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - listener: 参数 listener
+/// - app: 参数 app
+/// - shutdown_rx: 参数 shutdown_rx
+///
+/// # 返回
+/// 返回函数执行结果
 async fn serve_on_listener(
     listener: tokio::net::TcpListener,
     app: Router,
@@ -167,6 +312,19 @@ async fn serve_on_listener(
         .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
 }
 
+/// 函数 `run_web_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - app: 参数 app
+/// - shutdown_rx: 参数 shutdown_rx
+///
+/// # 返回
+/// 返回函数执行结果
 async fn run_web_server(
     addr: &str,
     app: Router,
@@ -197,6 +355,17 @@ async fn run_web_server(
     serve_on_listener(listener, app, shutdown_rx).await
 }
 
+/// 函数 `async_main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 async fn async_main() {
     let service_addr = resolve_service_addr();
     let web_addr = resolve_web_addr();
@@ -295,6 +464,17 @@ async fn async_main() {
     }
 }
 
+/// 函数 `main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn main() {
     codexmanager_service::portable::bootstrap_current_process();
     let _ = codexmanager_service::initialize_storage_if_needed();
@@ -309,6 +489,17 @@ mod tests {
     use super::*;
     use axum::body::to_bytes;
 
+    /// 函数 `web_auth_cookie_is_scoped_by_process_session_key`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn web_auth_cookie_is_scoped_by_process_session_key() {
         let password_hash = "sha256$abc$def";
@@ -320,6 +511,17 @@ mod tests {
         assert_ne!(first, second);
     }
 
+    /// 函数 `parse_cookie_value_returns_matching_cookie`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn parse_cookie_value_returns_matching_cookie() {
         let mut headers = HeaderMap::new();
@@ -333,6 +535,17 @@ mod tests {
         assert_eq!(actual.as_deref(), Some("token-123"));
     }
 
+    /// 函数 `normalize_connect_addr_maps_all_interfaces_to_localhost`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normalize_connect_addr_maps_all_interfaces_to_localhost() {
         assert_eq!(
@@ -349,6 +562,17 @@ mod tests {
         );
     }
 
+    /// 函数 `browser_open_addr_maps_all_interfaces_to_loopback`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn browser_open_addr_maps_all_interfaces_to_loopback() {
         assert_eq!(
@@ -365,6 +589,17 @@ mod tests {
         );
     }
 
+    /// 函数 `runtime_info_reports_web_gateway_capabilities`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[tokio::test]
     async fn runtime_info_reports_web_gateway_capabilities() {
         let response = runtime_info().await.into_response();

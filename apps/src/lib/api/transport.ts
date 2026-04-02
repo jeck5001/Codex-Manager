@@ -177,12 +177,38 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   },
 };
 
+/**
+ * 函数 `asRecord`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
 
+/**
+ * 函数 `cacheRuntimeCapabilities`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - runtimeCapabilities: 参数 runtimeCapabilities
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function cacheRuntimeCapabilities(
   runtimeCapabilities: RuntimeCapabilities
 ): RuntimeCapabilities {
@@ -190,6 +216,19 @@ function cacheRuntimeCapabilities(
   return runtimeCapabilities;
 }
 
+/**
+ * 函数 `probeRuntimeCapabilities`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function probeRuntimeCapabilities(): Promise<RuntimeCapabilities | null> {
   if (typeof window === "undefined") {
     return null;
@@ -222,6 +261,19 @@ async function probeRuntimeCapabilities(): Promise<RuntimeCapabilities | null> {
   }
 }
 
+/**
+ * 函数 `getCachedRuntimeCapabilities`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function getCachedRuntimeCapabilities(): RuntimeCapabilities | null {
   if (isTauriRuntime()) {
     return runtimeCapabilitiesCache ?? buildDesktopRuntimeCapabilities();
@@ -229,6 +281,19 @@ export function getCachedRuntimeCapabilities(): RuntimeCapabilities | null {
   return runtimeCapabilitiesCache;
 }
 
+/**
+ * 函数 `loadRuntimeCapabilities`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - force: 参数 force
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export async function loadRuntimeCapabilities(
   force = false
 ): Promise<RuntimeCapabilities> {
@@ -267,6 +332,20 @@ export async function loadRuntimeCapabilities(
   }
 }
 
+/**
+ * 函数 `getAppErrorMessage`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - error: 参数 error
+ * - fallback: 参数 fallback
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function getAppErrorMessage(
   error: unknown,
   fallback = "操作失败"
@@ -286,6 +365,19 @@ export function getAppErrorMessage(
   return rpcMessage;
 }
 
+/**
+ * 函数 `resolveRpcErrorMessage`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - error: 参数 error
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function resolveRpcErrorMessage(error: unknown): string {
   if (typeof error === "string") return error;
   const record = asRecord(error);
@@ -295,11 +387,39 @@ function resolveRpcErrorMessage(error: unknown): string {
   return error ? JSON.stringify(error) : "RPC 请求失败";
 }
 
+/**
+ * 函数 `throwIfBusinessError`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function throwIfBusinessError(payload: unknown): void {
   const msg = resolveBusinessErrorMessage(payload);
   if (msg) throw new Error(msg);
 }
 
+/**
+ * 函数 `invokeWebRpc`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - method: 参数 method
+ * - params?: 参数 params?
+ * - options: 参数 options
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function invokeWebRpc<T>(
   method: string,
   params?: InvokeParams,
@@ -322,6 +442,21 @@ async function invokeWebRpc<T>(
   );
 }
 
+/**
+ * 函数 `postWebRpc`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - rpcMethod: 参数 rpcMethod
+ * - params?: 参数 params?
+ * - options: 参数 options
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function postWebRpc<T>(
   rpcMethod: string,
   params?: InvokeParams,
@@ -351,6 +486,19 @@ async function postWebRpc<T>(
 
   if (!response.ok) throw new Error(`RPC 请求失败（HTTP ${response.status}）`);
 
+  /**
+   * 函数 `payload`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - await response.json(): 参数 await response.json()
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const payload = (await response.json()) as unknown;
   const responseRecord = asRecord(payload);
   if (responseRecord && "error" in responseRecord) {
@@ -366,6 +514,19 @@ async function postWebRpc<T>(
   return payload as T;
 }
 
+/**
+ * 函数 `isTauriRuntime`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function isTauriRuntime(): boolean {
   if (typeof window === "undefined") {
     return false;
@@ -383,6 +544,19 @@ export function isTauriRuntime(): boolean {
   );
 }
 
+/**
+ * 函数 `withAddr`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function withAddr(
   params: Record<string, unknown> = {}
 ): Record<string, unknown> {
@@ -393,6 +567,19 @@ export function withAddr(
   };
 }
 
+/**
+ * 函数 `isCommandMissingError`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - err: 参数 err
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function isCommandMissingError(err: unknown): boolean {
   const msg = getAppErrorMessage(err, "").toLowerCase();
   return (
@@ -402,6 +589,21 @@ export function isCommandMissingError(err: unknown): boolean {
   );
 }
 
+/**
+ * 函数 `invokeFirst`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - methods: 参数 methods
+ * - params?: 参数 params?
+ * - options: 参数 options
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export async function invokeFirst<T>(
   methods: string[],
   params?: Record<string, unknown>,
@@ -421,6 +623,21 @@ export async function invokeFirst<T>(
   throw lastErr || new Error("未配置可用命令");
 }
 
+/**
+ * 函数 `invoke`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - method: 参数 method
+ * - params?: 参数 params?
+ * - options: 参数 options
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export async function invoke<T>(
   method: string,
   params?: InvokeParams,
@@ -457,6 +674,19 @@ export async function invoke<T>(
   return response as T;
 }
 
+/**
+ * 函数 `resolveBusinessErrorMessage`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function resolveBusinessErrorMessage(payload: unknown): string {
   const source = asRecord(payload);
   if (!source) return "";
@@ -478,6 +708,19 @@ function resolveBusinessErrorMessage(payload: unknown): string {
   return "";
 }
 
+/**
+ * 函数 `mapKeyIdToId`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params?: 参数 params?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function mapKeyIdToId(params?: InvokeParams): InvokeParams {
   const source = params ?? {};
   const keyId =
@@ -493,11 +736,37 @@ function mapKeyIdToId(params?: InvokeParams): InvokeParams {
   };
 }
 
+/**
+ * 函数 `isSupportedBrowserImportFile`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - file: 参数 file
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function isSupportedBrowserImportFile(file: File): boolean {
   const normalizedName = String(file.name || "").trim().toLowerCase();
   return normalizedName.endsWith(".json") || normalizedName.endsWith(".txt");
 }
 
+/**
+ * 函数 `pickImportFilesFromBrowser`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - directory: 参数 directory
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function pickImportFilesFromBrowser(directory: boolean): Promise<unknown> {
   if (typeof document === "undefined") {
     throw new Error("当前环境不支持浏览器文件选择");
@@ -521,12 +790,38 @@ async function pickImportFilesFromBrowser(directory: boolean): Promise<unknown> 
   return await new Promise<unknown>((resolve, reject) => {
     let finished = false;
 
+    /**
+     * 函数 `cleanup`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * 无
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const cleanup = () => {
       input.removeEventListener("change", handleChange);
       input.removeEventListener("cancel", handleCancel as EventListener);
       input.remove();
     };
 
+    /**
+     * 函数 `finish`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * - value: 参数 value
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const finish = (value: unknown) => {
       if (finished) return;
       finished = true;
@@ -534,6 +829,19 @@ async function pickImportFilesFromBrowser(directory: boolean): Promise<unknown> 
       resolve(value);
     };
 
+    /**
+     * 函数 `fail`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * - error: 参数 error
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const fail = (error: unknown) => {
       if (finished) return;
       finished = true;
@@ -541,6 +849,19 @@ async function pickImportFilesFromBrowser(directory: boolean): Promise<unknown> 
       reject(error);
     };
 
+    /**
+     * 函数 `handleCancel`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * 无
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const handleCancel = () => {
       finish({
         ok: true,
@@ -548,6 +869,19 @@ async function pickImportFilesFromBrowser(directory: boolean): Promise<unknown> 
       });
     };
 
+    /**
+     * 函数 `handleChange`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * 无
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const handleChange = async () => {
       try {
         const files = Array.from(input.files ?? []);
@@ -614,6 +948,19 @@ async function pickImportFilesFromBrowser(directory: boolean): Promise<unknown> 
   });
 }
 
+/**
+ * 函数 `exportAccountsViaBrowser`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - options: 参数 options
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function exportAccountsViaBrowser(
   options: RequestOptions = {}
 ): Promise<unknown> {
@@ -658,6 +1005,21 @@ async function exportAccountsViaBrowser(
   };
 }
 
+/**
+ * 函数 `requestlogListViaHttpRpc`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ * - addr: 参数 addr
+ * - options: 参数 options
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export async function requestlogListViaHttpRpc<T>(
   params: {
     query?: string;
@@ -707,6 +1069,19 @@ export async function requestlogListViaHttpRpc<T>(
   );
 
   if (!response.ok) throw new Error(`RPC 请求失败（HTTP ${response.status}）`);
+  /**
+   * 函数 `payload`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - await response.json(): 参数 await response.json()
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const payload = (await response.json()) as Record<string, unknown>;
   return ((payload.result ?? payload) as T);
 }

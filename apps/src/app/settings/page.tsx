@@ -174,6 +174,21 @@ const WORKER_PRESETS: WorkerPreset[] = [
 
 const WORKER_REFERENCE_CORES = [8, 16, 32] as const;
 
+/**
+ * 函数 `estimateWorkerCount`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - cores: 参数 cores
+ * - factor: 参数 factor
+ * - minimum: 参数 minimum
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function estimateWorkerCount(cores: number, factor: number, minimum: number) {
   return Math.max(cores * factor, minimum);
 }
@@ -194,6 +209,19 @@ const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS = [
   "gpt-5.4",
 ] as const;
 
+/**
+ * 函数 `formatFreeAccountModelLabel`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatFreeAccountModelLabel(value: string | null | undefined): string {
   const normalized = String(value || "").trim();
   if (!normalized || normalized === "auto") {
@@ -212,6 +240,19 @@ const SETTINGS_TABS = [
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 const SETTINGS_ACTIVE_TAB_KEY = "codexmanager.settings.active-tab";
 
+/**
+ * 函数 `readInitialSettingsTab`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function readInitialSettingsTab(): SettingsTab {
   if (typeof window === "undefined") return "general";
   const savedTab = window.sessionStorage.getItem(SETTINGS_ACTIVE_TAB_KEY);
@@ -221,10 +262,38 @@ function readInitialSettingsTab(): SettingsTab {
   return "general";
 }
 
+/**
+ * 函数 `stringifyNumber`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function stringifyNumber(value: number | null | undefined): string {
   return value == null ? "" : String(value);
 }
 
+/**
+ * 函数 `readNumberField`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - source: 参数 source
+ * - key: 参数 key
+ * - fallback: 参数 fallback
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function readNumberField(
   source: Record<string, unknown>,
   key: string,
@@ -234,6 +303,20 @@ function readNumberField(
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/**
+ * 函数 `parseIntegerInput`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ * - minimum: 参数 minimum
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function parseIntegerInput(value: string, minimum = 0): number | null {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
@@ -242,6 +325,20 @@ function parseIntegerInput(value: string, minimum = 0): number | null {
   return rounded;
 }
 
+/**
+ * 函数 `inferServiceBindPreview`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - addr: 参数 addr
+ * - mode: 参数 mode
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function inferServiceBindPreview(addr: string, mode: string): string {
   const normalizedAddr = String(addr || "").trim() || "localhost:48760";
   const [, port = "48760"] = normalizedAddr.split(":");
@@ -281,17 +378,58 @@ type CheckUpdateRequest = {
   silent?: boolean;
 };
 
+/**
+ * 函数 `asRecord`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
 
+/**
+ * 函数 `readStringField`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - source: 参数 source
+ * - key: 参数 key
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function readStringField(source: Record<string, unknown>, key: string): string {
   const value = source[key];
   return typeof value === "string" ? value : "";
 }
 
+/**
+ * 函数 `readBooleanField`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - source: 参数 source
+ * - key: 参数 key
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function readBooleanField(
   source: Record<string, unknown>,
   key: string,
@@ -299,6 +437,19 @@ function readBooleanField(
   return source[key] === true;
 }
 
+/**
+ * 函数 `normalizeUpdateCheckSummary`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizeUpdateCheckSummary(payload: unknown): UpdateCheckSummary {
   const source = asRecord(payload) ?? {};
   return {
@@ -315,6 +466,19 @@ function normalizeUpdateCheckSummary(payload: unknown): UpdateCheckSummary {
   };
 }
 
+/**
+ * 函数 `normalizeUpdatePrepareSummary`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizeUpdatePrepareSummary(payload: unknown): UpdatePrepareSummary {
   const source = asRecord(payload) ?? {};
   return {
@@ -329,6 +493,19 @@ function normalizeUpdatePrepareSummary(payload: unknown): UpdatePrepareSummary {
   };
 }
 
+/**
+ * 函数 `normalizePendingUpdateSummary`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizePendingUpdateSummary(
   payload: unknown,
 ): UpdatePrepareSummary | null {
@@ -348,6 +525,19 @@ function normalizePendingUpdateSummary(
   };
 }
 
+/**
+ * 函数 `normalizeUpdateStatusSummary`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizeUpdateStatusSummary(payload: unknown): UpdateStatusSummary {
   const source = asRecord(payload) ?? {};
   return {
@@ -358,6 +548,19 @@ function normalizeUpdateStatusSummary(payload: unknown): UpdateStatusSummary {
   };
 }
 
+/**
+ * 函数 `buildReleaseUrl`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - summary: 参数 summary
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function buildReleaseUrl(summary: UpdateCheckSummary | null): string {
   if (!summary?.repo) {
     return "https://github.com/qxcnm/Codex-Manager/releases";
@@ -665,6 +868,19 @@ export default function SettingsPage() {
     checkUpdate.mutate({ silent: true });
   }, [checkUpdate, isDesktopRuntime, snapshot?.updateAutoCheck]);
 
+  /**
+   * 函数 `handleOpenReleasePage`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleOpenReleasePage = () => {
     void appClient
       .openInBrowser(buildReleaseUrl(updateDialogCheck ?? lastUpdateCheck))
@@ -673,6 +889,19 @@ export default function SettingsPage() {
       });
   };
 
+  /**
+   * 函数 `handleManualCheckUpdate`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleManualCheckUpdate = () => {
     manualUpdateCheckPendingRef.current = true;
     setManualUpdateCheckPending(true);
@@ -711,6 +940,19 @@ export default function SettingsPage() {
         ? "正在替换..."
         : updateActionLabel;
 
+  /**
+   * 函数 `handleUpdateAction`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleUpdateAction = () => {
     if (preparedUpdate) {
       setUpdateDialogCheck((current) => current ?? lastUpdateCheck);
@@ -727,6 +969,19 @@ export default function SettingsPage() {
     handleManualCheckUpdate();
   };
 
+  /**
+   * 函数 `handleOpenUpdateLogsDir`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleOpenUpdateLogsDir = () => {
     void appClient
       .openUpdateLogsDir(preparedUpdate?.assetPath)
@@ -782,6 +1037,19 @@ export default function SettingsPage() {
   const lastIntentThemeRef = useRef<string | null>(null);
   const lastIntentAppearancePresetRef = useRef<string | null>(null);
 
+  /**
+   * 函数 `handleThemeChange`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - nextTheme: 参数 nextTheme
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleThemeChange = (nextTheme: string) => {
     if (!snapshot || nextTheme === snapshot.theme) return;
     const previousSnapshot = snapshot;
@@ -834,6 +1102,19 @@ export default function SettingsPage() {
     );
   };
 
+  /**
+   * 函数 `handleAppearancePresetChange`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - nextPreset: 参数 nextPreset
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleAppearancePresetChange = (nextPreset: string) => {
     if (!snapshot) return;
 
@@ -878,6 +1159,19 @@ export default function SettingsPage() {
     );
   };
 
+  /**
+   * 函数 `updateBackgroundTasks`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - patch: 参数 patch
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const updateBackgroundTasks = (patch: Partial<BackgroundTaskSettings>) => {
     if (!snapshot) return;
     updateSettings.mutate({
@@ -888,6 +1182,19 @@ export default function SettingsPage() {
     });
   };
 
+  /**
+   * 函数 `clearBackgroundTaskDraftKeys`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - keys: 参数 keys
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const clearBackgroundTaskDraftKeys = (keys: readonly string[]) => {
     setBackgroundTaskDraft((current) => {
       const nextDraft = { ...current };
@@ -898,6 +1205,19 @@ export default function SettingsPage() {
     });
   };
 
+  /**
+   * 函数 `applyWorkerPreset`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - preset: 参数 preset
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const applyWorkerPreset = (preset: WorkerPreset) => {
     if (!snapshot) return;
     void updateSettings
@@ -915,6 +1235,20 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
+  /**
+   * 函数 `saveTransportField`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - key: 参数 key
+   * - minimum: 参数 minimum
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const saveTransportField = (
     key: "sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs",
     minimum: number,
@@ -941,6 +1275,20 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
+  /**
+   * 函数 `saveBackgroundTaskField`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - key: 参数 key
+   * - minimum: 参数 minimum
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const saveBackgroundTaskField = (
     key: keyof BackgroundTaskSettings,
     minimum = 1,
@@ -977,6 +1325,19 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
+  /**
+   * 函数 `saveAccountMaxInflightField`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - minimum: 参数 minimum
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const saveAccountMaxInflightField = (minimum = 0) => {
     if (!snapshot) return;
     const draftKey = "accountMaxInflight";
@@ -1006,6 +1367,19 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
+  /**
+   * 函数 `handleSaveEnv`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleSaveEnv = () => {
     if (!selectedEnvKey || !snapshot) return;
     void updateSettings
@@ -1025,6 +1399,19 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
+  /**
+   * 函数 `handleResetEnv`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleResetEnv = () => {
     if (!selectedEnvKey || !snapshot) return;
     const nextOverrides = { ...snapshot.envOverrides };

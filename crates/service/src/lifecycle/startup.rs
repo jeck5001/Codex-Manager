@@ -7,11 +7,33 @@ pub struct ServerHandle {
 }
 
 impl ServerHandle {
+    /// 函数 `join`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     pub fn join(self) {
         let _ = self.join.join();
     }
 }
 
+/// 函数 `start_one_shot_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn start_one_shot_server() -> std::io::Result<ServerHandle> {
     crate::portable::bootstrap_current_process();
     crate::gateway::reload_runtime_config_from_env();
@@ -34,6 +56,17 @@ pub fn start_one_shot_server() -> std::io::Result<ServerHandle> {
     Ok(ServerHandle { addr, join })
 }
 
+/// 函数 `start_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn start_server(addr: &str) -> std::io::Result<()> {
     crate::portable::bootstrap_current_process();
     crate::gateway::reload_runtime_config_from_env();

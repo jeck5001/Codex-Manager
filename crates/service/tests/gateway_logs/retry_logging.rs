@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content() {
     let _lock = test_env_guard();
@@ -132,6 +143,17 @@ fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content
     );
 }
 
+/// 函数 `gateway_request_log_keeps_only_final_result_for_multi_attempt_flow`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
     let _lock = test_env_guard();
@@ -282,6 +304,17 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
     );
 }
 
+/// 函数 `gateway_error_logging_writes_only_trace_log_file`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_error_logging_writes_only_trace_log_file() {
     let _lock = test_env_guard();

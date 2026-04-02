@@ -6,6 +6,17 @@ use super::{
 };
 use crate::apikey_profile::PROTOCOL_OPENAI_COMPAT;
 
+/// 函数 `openai_chat_completions_are_adapted_to_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_completions_are_adapted_to_responses() {
     let body = br#"{"model":"gpt-5.3-codex","messages":[{"role":"user","content":"hi"}]}"#.to_vec();
@@ -44,6 +55,17 @@ fn openai_chat_completions_are_adapted_to_responses() {
     );
 }
 
+/// 函数 `openai_chat_completions_preserve_multimodal_user_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_completions_preserve_multimodal_user_content() {
     let body = serde_json::json!({
@@ -115,6 +137,17 @@ fn openai_chat_completions_preserve_multimodal_user_content() {
     );
 }
 
+/// 函数 `openai_chat_completions_preserve_image_only_user_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_completions_preserve_image_only_user_content() {
     let body = serde_json::json!({
@@ -168,6 +201,17 @@ fn openai_chat_completions_preserve_image_only_user_content() {
     );
 }
 
+/// 函数 `openai_chat_completions_stream_uses_sse_adapter`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_completions_stream_uses_sse_adapter() {
     let body =
@@ -182,6 +226,17 @@ fn openai_chat_completions_stream_uses_sse_adapter() {
     );
 }
 
+/// 函数 `openai_chat_completions_default_tool_choice_is_auto`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_completions_default_tool_choice_is_auto() {
     let body = br#"{"model":"gpt-5.3-codex","messages":[{"role":"user","content":"hi"}]}"#.to_vec();
@@ -195,6 +250,17 @@ fn openai_chat_completions_default_tool_choice_is_auto() {
     );
 }
 
+/// 函数 `openai_chat_completions_forward_service_tier_to_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_completions_forward_service_tier_to_responses() {
     let body = br#"{"model":"gpt-5.3-codex","messages":[{"role":"user","content":"hi"}],"service_tier":"flex"}"#.to_vec();
@@ -210,6 +276,17 @@ fn openai_chat_completions_forward_service_tier_to_responses() {
     );
 }
 
+/// 函数 `openai_chat_completions_forward_text_verbosity_to_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_completions_forward_text_verbosity_to_responses() {
     let body = br#"{"model":"gpt-5.3-codex","messages":[{"role":"user","content":"hi"}],"verbosity":"low","response_format":{"type":"json_schema","json_schema":{"name":"answer","schema":{"type":"object"}}}}"#.to_vec();
@@ -234,6 +311,17 @@ fn openai_chat_completions_forward_text_verbosity_to_responses() {
     );
 }
 
+/// 函数 `openai_chat_completions_map_dynamic_tools_to_responses_tools`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_completions_map_dynamic_tools_to_responses_tools() {
     let original_tool_name =
@@ -295,6 +383,17 @@ fn openai_chat_completions_map_dynamic_tools_to_responses_tools() {
     );
 }
 
+/// 函数 `openai_chat_completions_shortens_tool_names_and_builds_restore_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_completions_shortens_tool_names_and_builds_restore_map() {
     let original_tool_name =
@@ -376,6 +475,17 @@ fn openai_chat_completions_shortens_tool_names_and_builds_restore_map() {
     );
 }
 
+/// 函数 `openai_chat_completions_stream_passthrough_is_forwarded`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_completions_stream_passthrough_is_forwarded() {
     let body = br#"{"model":"gpt-5.3-codex","messages":[{"role":"user","content":"hi"}],"stream":false,"stream_passthrough":true}"#.to_vec();
@@ -392,6 +502,17 @@ fn openai_chat_completions_stream_passthrough_is_forwarded() {
     );
 }
 
+/// 函数 `openai_chat_json_response_restores_shortened_tool_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_json_response_restores_shortened_tool_name() {
     let original_tool_name =
@@ -458,6 +579,17 @@ fn openai_chat_json_response_restores_shortened_tool_name() {
     );
 }
 
+/// 函数 `openai_chat_stream_chunk_restores_shortened_tool_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_chat_stream_chunk_restores_shortened_tool_name() {
     let mut restore_map = super::ToolNameRestoreMap::new();
@@ -495,6 +627,17 @@ fn openai_chat_stream_chunk_restores_shortened_tool_name() {
     );
 }
 
+/// 函数 `openai_responses_passthrough_keeps_responses_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_responses_passthrough_keeps_responses_path() {
     let body = br#"{"model":"gpt-5.3-codex","input":"hi"}"#.to_vec();
@@ -505,6 +648,17 @@ fn openai_responses_passthrough_keeps_responses_path() {
     assert_eq!(adapted.response_adapter, ResponseAdapter::Passthrough);
 }
 
+/// 函数 `openai_completions_are_adapted_to_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_completions_are_adapted_to_responses() {
     let body = br#"{"model":"gpt-5.3-codex","prompt":"hello","max_tokens":16}"#.to_vec();
@@ -537,6 +691,17 @@ fn openai_completions_are_adapted_to_responses() {
     );
 }
 
+/// 函数 `openai_completions_stream_uses_sse_adapter`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_completions_stream_uses_sse_adapter() {
     let body = br#"{"model":"gpt-5.3-codex","prompt":"hello","stream":true}"#.to_vec();

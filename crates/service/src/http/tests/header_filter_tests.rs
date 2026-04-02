@@ -1,6 +1,17 @@
 use super::{should_skip_request_header, should_skip_response_header};
 use axum::http::{HeaderName, HeaderValue};
 
+/// 函数 `request_header_filters_hop_by_hop_and_non_ascii`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_header_filters_hop_by_hop_and_non_ascii() {
     let connection = HeaderName::from_static("connection");
@@ -12,6 +23,17 @@ fn request_header_filters_hop_by_hop_and_non_ascii() {
     assert!(should_skip_request_header(&metadata, &bad_value));
 }
 
+/// 函数 `request_header_keeps_ascii_turn_metadata`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_header_keeps_ascii_turn_metadata() {
     let metadata = HeaderName::from_static("x-codex-turn-metadata");
@@ -21,6 +43,17 @@ fn request_header_keeps_ascii_turn_metadata() {
     assert!(!should_skip_request_header(&metadata, &ascii_value));
 }
 
+/// 函数 `request_header_keeps_normal_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_header_keeps_normal_content_type() {
     let content_type = HeaderName::from_static("content-type");
@@ -28,6 +61,17 @@ fn request_header_keeps_normal_content_type() {
     assert!(!should_skip_request_header(&content_type, &json));
 }
 
+/// 函数 `response_header_filters_content_length_and_connection`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn response_header_filters_content_length_and_connection() {
     let content_length = HeaderName::from_static("content-length");

@@ -34,6 +34,17 @@ struct TraceAsyncWriter {
 }
 
 impl TraceAsyncWriter {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - path: 参数 path
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new(path: PathBuf) -> Self {
         let queue_capacity = trace_queue_capacity();
         let (tx, rx) = mpsc::sync_channel::<TraceCommand>(queue_capacity);
@@ -47,6 +58,19 @@ impl TraceAsyncWriter {
         }
     }
 
+    /// 函数 `append_line`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - line: 参数 line
+    /// - flush: 参数 flush
+    ///
+    /// # 返回
+    /// 无
     fn append_line(&self, line: String, flush: bool) {
         if flush {
             let (ack_tx, ack_rx) = mpsc::sync_channel(0);
@@ -88,6 +112,18 @@ impl TraceAsyncWriter {
         }
     }
 
+    /// 函数 `reset_path`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - path: 参数 path
+    ///
+    /// # 返回
+    /// 无
     fn reset_path(&self, path: PathBuf) {
         if self.tx.send(TraceCommand::ResetPath(path)).is_err() {
             log::warn!("gateway trace reset-path failed: writer channel closed");
@@ -101,10 +137,33 @@ struct TraceFileWriter {
 }
 
 impl TraceFileWriter {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - path: 参数 path
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new(path: PathBuf) -> Self {
         Self { path, writer: None }
     }
 
+    /// 函数 `reset_path`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - next_path: 参数 next_path
+    ///
+    /// # 返回
+    /// 无
     fn reset_path(&mut self, next_path: PathBuf) {
         if self.path == next_path {
             return;
@@ -113,6 +172,19 @@ impl TraceFileWriter {
         self.writer = None;
     }
 
+    /// 函数 `append_line`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - line: 参数 line
+    /// - flush: 参数 flush
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn append_line(&mut self, line: &str, flush: bool) -> std::io::Result<()> {
         let writer = self.ensure_open_writer()?;
         writeln!(writer, "{line}")?;
@@ -122,6 +194,17 @@ impl TraceFileWriter {
         Ok(())
     }
 
+    /// 函数 `ensure_open_writer`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn ensure_open_writer(&mut self) -> std::io::Result<&mut BufWriter<File>> {
         if self.writer.is_none() {
             let file = OpenOptions::new()
@@ -134,6 +217,17 @@ impl TraceFileWriter {
     }
 }
 
+/// 函数 `trace_file_path_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn trace_file_path_from_env() -> PathBuf {
     if let Ok(db_path) = std::env::var("CODEXMANAGER_DB_PATH") {
         let path = PathBuf::from(db_path);
@@ -144,10 +238,32 @@ fn trace_file_path_from_env() -> PathBuf {
     PathBuf::from("gateway-trace.log")
 }
 
+/// 函数 `sanitize_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn sanitize_text(value: &str) -> String {
     value.replace(['\r', '\n'], " ")
 }
 
+/// 函数 `short_fingerprint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn short_fingerprint(value: &str) -> String {
     let mut hash: u64 = 14695981039346656037;
     for byte in value.as_bytes() {
@@ -157,30 +273,97 @@ fn short_fingerprint(value: &str) -> String {
     format!("{hash:016x}")
 }
 
+/// 函数 `append_trace_line`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - line: 参数 line
+/// - flush: 参数 flush
+///
+/// # 返回
+/// 无
 fn append_trace_line(line: String, flush: bool) {
     trace_writer().append_line(line, flush);
 }
 
+/// 函数 `trace_error_traces`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn trace_error_traces() -> &'static Mutex<HashSet<String>> {
     TRACE_ERROR_TRACES.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
+/// 函数 `trace_pending_lines`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn trace_pending_lines() -> &'static Mutex<HashMap<String, Vec<String>>> {
     TRACE_PENDING_LINES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// 函数 `mark_trace_has_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 无
 fn mark_trace_has_error(trace_id: &str) {
     if let Ok(mut traces) = trace_error_traces().lock() {
         traces.insert(trace_id.to_string());
     }
 }
 
+/// 函数 `clear_trace_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 无
 fn clear_trace_error(trace_id: &str) {
     if let Ok(mut traces) = trace_error_traces().lock() {
         traces.remove(trace_id);
     }
 }
 
+/// 函数 `current_trace_ts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_trace_ts() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -188,6 +371,18 @@ fn current_trace_ts() -> i64 {
         .unwrap_or(0)
 }
 
+/// 函数 `buffer_trace_line`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - trace_id: 参数 trace_id
+/// - line: 参数 line
+///
+/// # 返回
+/// 无
 fn buffer_trace_line(trace_id: &str, line: String) {
     if trace_id.trim().is_empty() {
         return;
@@ -217,6 +412,17 @@ fn buffer_trace_line(trace_id: &str, line: String) {
     }
 }
 
+/// 函数 `flush_trace_lines`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 无
 fn flush_trace_lines(trace_id: &str) {
     let lines = trace_pending_lines()
         .lock()
@@ -229,6 +435,17 @@ fn flush_trace_lines(trace_id: &str) {
     }
 }
 
+/// 函数 `clear_trace_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 无
 fn clear_trace_state(trace_id: &str) {
     if let Ok(mut pending) = trace_pending_lines().lock() {
         pending.remove(trace_id);
@@ -236,6 +453,17 @@ fn clear_trace_state(trace_id: &str) {
     clear_trace_error(trace_id);
 }
 
+/// 函数 `trace_has_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - trace_id: 参数 trace_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 fn trace_has_error(trace_id: &str) -> bool {
     trace_error_traces()
@@ -244,16 +472,50 @@ fn trace_has_error(trace_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// 函数 `has_error_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - error: 参数 error
+///
+/// # 返回
+/// 返回函数执行结果
 fn has_error_text(error: Option<&str>) -> bool {
     error
         .map(str::trim)
         .is_some_and(|value| !value.is_empty() && value != "-")
 }
 
+/// 函数 `trace_writer`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn trace_writer() -> &'static TraceAsyncWriter {
     TRACE_WRITER.get_or_init(|| TraceAsyncWriter::new(trace_file_path_from_env()))
 }
 
+/// 函数 `trace_writer_loop`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - rx: 参数 rx
+/// - writer: 参数 writer
+///
+/// # 返回
+/// 无
 fn trace_writer_loop(rx: Receiver<TraceCommand>, mut writer: TraceFileWriter) {
     while let Ok(command) = rx.recv() {
         match command {
@@ -275,6 +537,17 @@ fn trace_writer_loop(rx: Receiver<TraceCommand>, mut writer: TraceFileWriter) {
     }
 }
 
+/// 函数 `trace_queue_capacity`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn trace_queue_capacity() -> usize {
     std::env::var(ENV_TRACE_QUEUE_CAPACITY)
         .ok()
@@ -285,11 +558,33 @@ fn trace_queue_capacity() -> usize {
         .unwrap_or(DEFAULT_TRACE_QUEUE_CAPACITY)
 }
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn reload_from_env() {
     let path = trace_file_path_from_env();
     trace_writer().reset_path(path);
 }
 
+/// 函数 `next_trace_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn next_trace_id() -> String {
     trace_writer().reset_path(trace_file_path_from_env());
     let millis = SystemTime::now()
@@ -300,6 +595,17 @@ pub(crate) fn next_trace_id() -> String {
     format!("trc_{millis}_{seq:x}")
 }
 
+/// 函数 `log_request_start`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_request_start(
     trace_id: &str,
     key_id: &str,
@@ -325,14 +631,47 @@ pub(crate) fn log_request_start(
     buffer_trace_line(trace_id, line);
 }
 
+/// 函数 `log_request_body_preview`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_request_body_preview(trace_id: &str, body: &[u8]) {
     let _ = (trace_id, body, super::trace_body_preview_max_bytes());
 }
 
+/// 函数 `log_request_gate_wait`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_request_gate_wait(trace_id: &str, key_id: &str, path: &str, model: Option<&str>) {
     let _ = (trace_id, key_id, path, model);
 }
 
+/// 函数 `log_request_gate_acquired`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_request_gate_acquired(
     trace_id: &str,
     key_id: &str,
@@ -343,10 +682,32 @@ pub(crate) fn log_request_gate_acquired(
     let _ = (trace_id, key_id, path, model, wait_ms);
 }
 
+/// 函数 `log_request_gate_skip`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_request_gate_skip(trace_id: &str, reason: &str) {
     let _ = (trace_id, reason);
 }
 
+/// 函数 `log_candidate_start`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_candidate_start(
     trace_id: &str,
     idx: usize,
@@ -366,6 +727,17 @@ pub(crate) fn log_candidate_start(
     buffer_trace_line(trace_id, line);
 }
 
+/// 函数 `log_candidate_pool`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_candidate_pool(
     trace_id: &str,
     key_id: &str,
@@ -396,6 +768,17 @@ pub(crate) fn log_candidate_pool(
     buffer_trace_line(trace_id, line);
 }
 
+/// 函数 `log_candidate_skip`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_candidate_skip(
     trace_id: &str,
     idx: usize,
@@ -415,6 +798,17 @@ pub(crate) fn log_candidate_skip(
     buffer_trace_line(trace_id, line);
 }
 
+/// 函数 `log_attempt_result`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_attempt_result(
     trace_id: &str,
     account_id: &str,
@@ -439,6 +833,17 @@ pub(crate) fn log_attempt_result(
     buffer_trace_line(trace_id, line);
 }
 
+/// 函数 `log_bridge_result`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn log_bridge_result(
     trace_id: &str,
@@ -496,6 +901,17 @@ pub(crate) fn log_bridge_result(
     buffer_trace_line(trace_id, line);
 }
 
+/// 函数 `log_attempt_profile`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn log_attempt_profile(
     trace_id: &str,
@@ -533,6 +949,17 @@ pub(crate) fn log_attempt_profile(
     buffer_trace_line(trace_id, line);
 }
 
+/// 函数 `log_request_final`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_request_final(
     trace_id: &str,
     status_code: u16,
@@ -550,6 +977,17 @@ pub(crate) fn log_request_final(
     clear_trace_state(trace_id);
 }
 
+/// 函数 `log_failed_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn log_failed_request(
     ts: i64,
@@ -608,6 +1046,17 @@ mod tests {
         trace_has_error,
     };
 
+    /// 函数 `has_error_text_ignores_empty_and_dash`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn has_error_text_ignores_empty_and_dash() {
         assert!(!has_error_text(None));
@@ -616,6 +1065,17 @@ mod tests {
         assert!(has_error_text(Some("upstream failed")));
     }
 
+    /// 函数 `trace_error_state_can_mark_and_clear`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn trace_error_state_can_mark_and_clear() {
         let trace_id = "trc_trace_log_unit";
@@ -627,6 +1087,17 @@ mod tests {
         assert!(!trace_has_error(trace_id));
     }
 
+    /// 函数 `request_record_ignores_success_without_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn request_record_ignores_success_without_error() {
         log_failed_request(

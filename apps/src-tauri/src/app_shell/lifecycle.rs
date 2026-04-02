@@ -26,6 +26,19 @@ enum MainWindowCloseMode {
     CloseForLightweightTray,
 }
 
+/// 函数 `resolve_main_window_close_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - close_to_tray_on_close: 参数 close_to_tray_on_close
+/// - tray_available: 参数 tray_available
+/// - lightweight_tray_close: 参数 lightweight_tray_close
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_main_window_close_mode(
     close_to_tray_on_close: bool,
     tray_available: bool,
@@ -40,6 +53,18 @@ fn resolve_main_window_close_mode(
     MainWindowCloseMode::HideToTray
 }
 
+/// 函数 `should_confirm_unsaved_settings_before_window_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - close_mode: 参数 close_mode
+/// - has_unsaved_settings: 参数 has_unsaved_settings
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_confirm_unsaved_settings_before_window_close(
     close_mode: MainWindowCloseMode,
     has_unsaved_settings: bool,
@@ -47,6 +72,19 @@ fn should_confirm_unsaved_settings_before_window_close(
     has_unsaved_settings && close_mode != MainWindowCloseMode::HideToTray
 }
 
+/// 函数 `should_confirm_unsaved_settings_before_app_exit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - keep_alive_for_lightweight_close: 参数 keep_alive_for_lightweight_close
+/// - skip_unsaved_settings_confirm: 参数 skip_unsaved_settings_confirm
+/// - has_unsaved_settings: 参数 has_unsaved_settings
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_confirm_unsaved_settings_before_app_exit(
     keep_alive_for_lightweight_close: bool,
     skip_unsaved_settings_confirm: bool,
@@ -55,6 +93,17 @@ fn should_confirm_unsaved_settings_before_app_exit(
     has_unsaved_settings && !keep_alive_for_lightweight_close && !skip_unsaved_settings_confirm
 }
 
+/// 函数 `handle_main_window_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn handle_main_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
     if window.label() != MAIN_WINDOW_LABEL {
         return;
@@ -129,6 +178,17 @@ pub(crate) fn handle_main_window_event(window: &tauri::Window, event: &tauri::Wi
     }
 }
 
+/// 函数 `handle_run_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn handle_run_event(app: &tauri::AppHandle, event: &tauri::RunEvent) {
     #[cfg(not(target_os = "macos"))]
     let _ = app;
@@ -170,6 +230,17 @@ mod tests {
         should_confirm_unsaved_settings_before_window_close, MainWindowCloseMode,
     };
 
+    /// 函数 `resolves_main_window_close_modes`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn resolves_main_window_close_modes() {
         assert_eq!(
@@ -190,6 +261,17 @@ mod tests {
         );
     }
 
+    /// 函数 `confirms_window_close_only_when_window_destroy_would_drop_drafts`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn confirms_window_close_only_when_window_destroy_would_drop_drafts() {
         assert!(!should_confirm_unsaved_settings_before_window_close(
@@ -210,6 +292,17 @@ mod tests {
         ));
     }
 
+    /// 函数 `confirms_app_exit_only_when_unsaved_drafts_would_be_lost`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn confirms_app_exit_only_when_unsaved_drafts_would_be_lost() {
         assert!(should_confirm_unsaved_settings_before_app_exit(

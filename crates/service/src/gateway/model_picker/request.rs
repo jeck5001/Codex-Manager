@@ -18,6 +18,17 @@ const MODEL_PICKER_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const MODEL_PICKER_TOTAL_TIMEOUT: Duration = Duration::from_secs(120);
 const MODEL_PICKER_RESPONSE_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// 函数 `append_client_version_query`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - url: 参数 url
+///
+/// # 返回
+/// 返回函数执行结果
 fn append_client_version_query(url: &str) -> String {
     if url.contains("client_version=") {
         return url.to_string();
@@ -29,6 +40,22 @@ fn append_client_version_query(url: &str) -> String {
     )
 }
 
+/// 函数 `build_models_request_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - bearer: 参数 bearer
+/// - user_agent: 参数 user_agent
+/// - originator: 参数 originator
+/// - residency_requirement: 参数 residency_requirement
+/// - include_account_header: 参数 include_account_header
+/// - account_header_value: 参数 account_header_value
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_models_request_headers(
     bearer: &str,
     user_agent: &str,
@@ -62,6 +89,18 @@ fn build_models_request_headers(
     headers
 }
 
+/// 函数 `extract_response_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)
@@ -71,6 +110,20 @@ fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+/// 函数 `summarize_models_error_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - headers: 参数 headers
+/// - body: 参数 body
+/// - force_html_error: 参数 force_html_error
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_models_error_response(
     status: StatusCode,
     headers: &HeaderMap,
@@ -121,6 +174,17 @@ fn summarize_models_error_response(
     }
 }
 
+/// 函数 `model_picker_runtime`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn model_picker_runtime() -> &'static Runtime {
     MODEL_PICKER_RUNTIME.get_or_init(|| {
         Builder::new_multi_thread()
@@ -132,6 +196,17 @@ fn model_picker_runtime() -> &'static Runtime {
     })
 }
 
+/// 函数 `run_model_picker_future`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - future: 参数 future
+///
+/// # 返回
+/// 返回函数执行结果
 fn run_model_picker_future<F>(future: F) -> F::Output
 where
     F: Future,
@@ -139,6 +214,17 @@ where
     model_picker_runtime().block_on(future)
 }
 
+/// 函数 `build_model_picker_client`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_model_picker_client() -> Client {
     let mut builder = Client::builder()
         .connect_timeout(MODEL_PICKER_CONNECT_TIMEOUT)
@@ -157,6 +243,18 @@ fn build_model_picker_client() -> Client {
     })
 }
 
+/// 函数 `read_response_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - resp: 参数 resp
+/// - timeout: 参数 timeout
+///
+/// # 返回
+/// 返回函数执行结果
 async fn read_response_text(resp: reqwest::Response, timeout: Duration) -> Result<String, String> {
     match tokio::time::timeout(timeout, resp.text()).await {
         Ok(Ok(body)) => Ok(body),
@@ -168,6 +266,18 @@ async fn read_response_text(resp: reqwest::Response, timeout: Duration) -> Resul
     }
 }
 
+/// 函数 `read_response_bytes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - resp: 参数 resp
+/// - timeout: 参数 timeout
+///
+/// # 返回
+/// 返回函数执行结果
 async fn read_response_bytes(
     resp: reqwest::Response,
     timeout: Duration,
@@ -182,6 +292,17 @@ async fn read_response_bytes(
     }
 }
 
+/// 函数 `send_models_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn send_models_request(
     storage: &Storage,
     method: &Method,
@@ -200,6 +321,22 @@ pub(super) fn send_models_request(
     ))
 }
 
+/// 函数 `send_models_request_async`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - method: 参数 method
+/// - upstream_base: 参数 upstream_base
+/// - path: 参数 path
+/// - account: 参数 account
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 async fn send_models_request_async(
     storage: &Storage,
     method: &Method,
@@ -287,6 +424,17 @@ mod tests {
     use reqwest::header::{HeaderMap, HeaderValue};
     use reqwest::StatusCode;
 
+    /// 函数 `append_client_version_query_adds_missing_param`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn append_client_version_query_adds_missing_param() {
         let actual = append_client_version_query("https://example.com/backend-api/codex/models");
@@ -296,6 +444,17 @@ mod tests {
         );
     }
 
+    /// 函数 `append_client_version_query_preserves_existing_query`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn append_client_version_query_preserves_existing_query() {
         let actual =
@@ -306,6 +465,17 @@ mod tests {
         );
     }
 
+    /// 函数 `append_client_version_query_does_not_duplicate_param`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn append_client_version_query_does_not_duplicate_param() {
         let actual = append_client_version_query(
@@ -317,6 +487,17 @@ mod tests {
         );
     }
 
+    /// 函数 `build_models_request_headers_match_codex_profile`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn build_models_request_headers_match_codex_profile() {
         let headers = build_models_request_headers(
@@ -351,6 +532,17 @@ mod tests {
         assert!(find("ChatGPT-Account-Id").is_none());
     }
 
+    /// 函数 `build_models_request_headers_omits_optional_headers_when_not_applicable`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn build_models_request_headers_omits_optional_headers_when_not_applicable() {
         let headers = build_models_request_headers(
@@ -373,6 +565,17 @@ mod tests {
         assert!(find(crate::gateway::runtime_config::RESIDENCY_HEADER_NAME).is_none());
     }
 
+    /// 函数 `summarize_models_error_response_uses_stable_challenge_hint_and_debug_headers`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn summarize_models_error_response_uses_stable_challenge_hint_and_debug_headers() {
         let mut headers = HeaderMap::new();
@@ -402,6 +605,17 @@ mod tests {
         assert!(!message.contains("<html>"));
     }
 
+    /// 函数 `summarize_models_error_response_includes_identity_error_code`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn summarize_models_error_response_includes_identity_error_code() {
         let mut headers = HeaderMap::new();

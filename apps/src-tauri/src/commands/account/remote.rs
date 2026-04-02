@@ -1,5 +1,20 @@
 use crate::commands::shared::rpc_call_in_background;
 
+/// 函数 `account_list_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - page: 参数 page
+/// - page_size: 参数 page_size
+/// - query: 参数 query
+/// - filter: 参数 filter
+/// - group_filter: 参数 group_filter
+///
+/// # 返回
+/// 返回函数执行结果
 fn account_list_payload(
     page: Option<i64>,
     page_size: Option<i64>,
@@ -39,6 +54,22 @@ fn account_list_payload(
     }
 }
 
+/// 函数 `account_update_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account_id: 参数 account_id
+/// - sort: 参数 sort
+/// - status: 参数 status
+/// - label: 参数 label
+/// - note: 参数 note
+/// - tags: 参数 tags
+///
+/// # 返回
+/// 返回函数执行结果
 fn account_update_payload(
     account_id: String,
     sort: Option<i64>,
@@ -74,6 +105,22 @@ fn account_update_payload(
     }
 }
 
+/// 函数 `service_account_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - page: 参数 page
+/// - page_size: 参数 page_size
+/// - query: 参数 query
+/// - filter: 参数 filter
+/// - group_filter: 参数 group_filter
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_list(
     addr: Option<String>,
@@ -91,6 +138,18 @@ pub async fn service_account_list(
     .await
 }
 
+/// 函数 `service_account_delete`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_delete(
     addr: Option<String>,
@@ -100,6 +159,18 @@ pub async fn service_account_delete(
     rpc_call_in_background("account/delete", addr, Some(params)).await
 }
 
+/// 函数 `service_account_delete_many`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - account_ids: 参数 account_ids
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_delete_many(
     addr: Option<String>,
@@ -109,6 +180,17 @@ pub async fn service_account_delete_many(
     rpc_call_in_background("account/deleteMany", addr, Some(params)).await
 }
 
+/// 函数 `service_account_delete_unavailable_free`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_delete_unavailable_free(
     addr: Option<String>,
@@ -116,6 +198,23 @@ pub async fn service_account_delete_unavailable_free(
     rpc_call_in_background("account/deleteUnavailableFree", addr, None).await
 }
 
+/// 函数 `service_account_update`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - account_id: 参数 account_id
+/// - sort: 参数 sort
+/// - status: 参数 status
+/// - label: 参数 label
+/// - note: 参数 note
+/// - tags: 参数 tags
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_account_update(
     addr: Option<String>,
@@ -138,6 +237,17 @@ pub async fn service_account_update(
 mod tests {
     use super::account_update_payload;
 
+    /// 函数 `account_update_payload_supports_status_only_updates`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn account_update_payload_supports_status_only_updates() {
         let actual = account_update_payload(
@@ -156,6 +266,17 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    /// 函数 `account_update_payload_supports_sort_only_updates`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn account_update_payload_supports_sort_only_updates() {
         let actual = account_update_payload("acc-1".to_string(), Some(5), None, None, None, None)
@@ -167,6 +288,17 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    /// 函数 `account_update_payload_omits_blank_status`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn account_update_payload_omits_blank_status() {
         let actual = account_update_payload(

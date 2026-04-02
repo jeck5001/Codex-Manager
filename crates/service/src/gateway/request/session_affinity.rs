@@ -6,10 +6,32 @@ pub(crate) struct OutgoingSessionAffinity<'a> {
     pub(crate) fallback_session_id: Option<&'a str>,
 }
 
+/// 函数 `normalize_anchor`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_anchor(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
 }
 
+/// 函数 `has_thread_anchor_conflict`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 pub(crate) fn has_thread_anchor_conflict(
     conversation_id: Option<&str>,
@@ -24,6 +46,17 @@ pub(crate) fn has_thread_anchor_conflict(
     }
 }
 
+/// 函数 `log_thread_anchor_conflict`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn log_thread_anchor_conflict(
     context: &str,
     account_id: Option<&str>,
@@ -49,6 +82,17 @@ pub(crate) fn log_thread_anchor_conflict(
     );
 }
 
+/// 函数 `derive_outgoing_session_affinity`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn derive_outgoing_session_affinity<'a>(
     incoming_session_id: Option<&'a str>,
     incoming_client_request_id: Option<&'a str>,
@@ -91,6 +135,17 @@ pub(crate) fn derive_outgoing_session_affinity<'a>(
 mod tests {
     use super::{derive_outgoing_session_affinity, has_thread_anchor_conflict};
 
+    /// 函数 `uses_conversation_anchor_when_prompt_cache_missing`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn uses_conversation_anchor_when_prompt_cache_missing() {
         let actual = derive_outgoing_session_affinity(
@@ -110,6 +165,17 @@ mod tests {
         assert_eq!(actual.fallback_session_id, Some("conv_anchor_only"));
     }
 
+    /// 函数 `uses_thread_anchor_for_fallback_headers`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn uses_thread_anchor_for_fallback_headers() {
         let actual = derive_outgoing_session_affinity(
@@ -132,6 +198,17 @@ mod tests {
         assert_eq!(actual.fallback_session_id, Some("conv_anchor_fallback"));
     }
 
+    /// 函数 `clears_turn_state_when_thread_anchor_diverges`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn clears_turn_state_when_thread_anchor_diverges() {
         let actual = derive_outgoing_session_affinity(
@@ -151,6 +228,17 @@ mod tests {
         assert_eq!(actual.fallback_session_id, Some("prompt_thread_anchor"));
     }
 
+    /// 函数 `drops_orphan_turn_state_without_conversation_anchor`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn drops_orphan_turn_state_without_conversation_anchor() {
         let actual = derive_outgoing_session_affinity(
@@ -170,6 +258,17 @@ mod tests {
         assert_eq!(actual.fallback_session_id, None);
     }
 
+    /// 函数 `conflict_detection_matches_anchor_mismatch`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn conflict_detection_matches_anchor_mismatch() {
         assert!(has_thread_anchor_conflict(

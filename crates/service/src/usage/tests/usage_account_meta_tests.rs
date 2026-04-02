@@ -5,6 +5,19 @@ use super::{
 use codexmanager_core::storage::{now_ts, Account, Storage};
 use std::collections::HashMap;
 
+/// 函数 `build_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - id: 参数 id
+/// - workspace_id: 参数 workspace_id
+/// - chatgpt_account_id: 参数 chatgpt_account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_account(
     id: &str,
     workspace_id: Option<&str>,
@@ -24,6 +37,17 @@ fn build_account(
     }
 }
 
+/// 函数 `clean_header_value_trims_and_drops_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn clean_header_value_trims_and_drops_empty() {
     assert_eq!(
@@ -34,6 +58,17 @@ fn clean_header_value_trims_and_drops_empty() {
     assert_eq!(clean_header_value(None), None);
 }
 
+/// 函数 `resolve_workspace_prefers_workspace_then_chatgpt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn resolve_workspace_prefers_workspace_then_chatgpt() {
     let storage = Storage::open_in_memory().expect("open");
@@ -45,6 +80,17 @@ fn resolve_workspace_prefers_workspace_then_chatgpt() {
     assert_eq!(resolved, Some("ws-primary".to_string()));
 }
 
+/// 函数 `build_workspace_map_falls_back_to_chatgpt_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn build_workspace_map_falls_back_to_chatgpt_account_id() {
     let storage = Storage::open_in_memory().expect("open");
@@ -60,6 +106,17 @@ fn build_workspace_map_falls_back_to_chatgpt_account_id() {
     );
 }
 
+/// 函数 `build_workspace_map_from_accounts_uses_preloaded_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn build_workspace_map_from_accounts_uses_preloaded_snapshot() {
     let accounts = vec![
@@ -74,6 +131,17 @@ fn build_workspace_map_from_accounts_uses_preloaded_snapshot() {
     );
 }
 
+/// 函数 `patch_account_meta_cached_updates_preloaded_account_without_lookup`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn patch_account_meta_cached_updates_preloaded_account_without_lookup() {
     let storage = Storage::open_in_memory().expect("open");
@@ -99,6 +167,17 @@ fn patch_account_meta_cached_updates_preloaded_account_without_lookup() {
     assert_eq!(updated.workspace_id.as_deref(), Some("workspace-5"));
 }
 
+/// 函数 `patch_account_meta_cached_replaces_subject_style_scope_values`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn patch_account_meta_cached_replaces_subject_style_scope_values() {
     let storage = Storage::open_in_memory().expect("open");

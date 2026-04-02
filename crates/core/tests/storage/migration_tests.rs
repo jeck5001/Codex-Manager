@@ -4,6 +4,17 @@ use std::path::PathBuf;
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// 函数 `temp_db_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn temp_db_path(name: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -12,6 +23,17 @@ fn temp_db_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("codexmanager-{name}-{}-{nanos}.db", process::id()))
 }
 
+/// 函数 `init_tracks_schema_migrations_and_is_idempotent`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn init_tracks_schema_migrations_and_is_idempotent() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -276,6 +298,17 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
         .expect("check request_logs.reasoning_output_tokens"));
 }
 
+/// 函数 `file_open_enables_wal_and_normal_synchronous`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn file_open_enables_wal_and_normal_synchronous() {
     let path = temp_db_path("sqlite-pragmas");
@@ -297,6 +330,17 @@ fn file_open_enables_wal_and_normal_synchronous() {
     let _ = fs::remove_file(path);
 }
 
+/// 函数 `account_meta_sql_migration_coexists_with_legacy_compat_marker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn account_meta_sql_migration_coexists_with_legacy_compat_marker() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -372,6 +416,17 @@ fn account_meta_sql_migration_coexists_with_legacy_compat_marker() {
     assert_eq!(legacy_compat_marker, 1);
 }
 
+/// 函数 `sql_migration_can_fallback_to_compat_when_schema_already_exists`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn sql_migration_can_fallback_to_compat_when_schema_already_exists() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -412,6 +467,17 @@ fn sql_migration_can_fallback_to_compat_when_schema_already_exists() {
     assert_eq!(applied_004, 1);
 }
 
+/// 函数 `api_key_profile_migration_backfills_existing_keys`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn api_key_profile_migration_backfills_existing_keys() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -489,6 +555,17 @@ fn api_key_profile_migration_backfills_existing_keys() {
     assert_eq!(profile_row.6, None);
 }
 
+/// 函数 `key_hash_index_migration_adds_api_keys_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn key_hash_index_migration_adds_api_keys_index() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -508,6 +585,17 @@ fn key_hash_index_migration_adds_api_keys_index() {
     assert!(index_sql.contains("key_hash"));
 }
 
+/// 函数 `usage_snapshot_latest_index_migration_adds_captured_id_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_snapshot_latest_index_migration_adds_captured_id_index() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -528,6 +616,17 @@ fn usage_snapshot_latest_index_migration_adds_captured_id_index() {
     assert!(index_sql.contains("id DESC"));
 }
 
+/// 函数 `accounts_sort_index_migration_adds_sort_updated_at_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn accounts_sort_index_migration_adds_sort_updated_at_index() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -548,6 +647,17 @@ fn accounts_sort_index_migration_adds_sort_updated_at_index() {
     assert!(index_sql.contains("updated_at DESC"));
 }
 
+/// 函数 `conversation_bindings_migration_adds_indexes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn conversation_bindings_migration_adds_indexes() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -580,6 +690,17 @@ fn conversation_bindings_migration_adds_indexes() {
     assert!(last_used_index_sql.contains("last_used_at DESC"));
 }
 
+/// 函数 `request_logs_compact_migration_drops_legacy_usage_columns_and_preserves_rows`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_logs_compact_migration_drops_legacy_usage_columns_and_preserves_rows() {
     let storage = Storage::open_in_memory().expect("open in memory");

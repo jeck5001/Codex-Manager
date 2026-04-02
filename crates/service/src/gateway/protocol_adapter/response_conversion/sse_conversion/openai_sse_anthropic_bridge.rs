@@ -10,6 +10,17 @@ use super::super::tool_mapping::{is_openai_chat_tool_item_type, restore_openai_t
 use super::super::ToolNameRestoreMap;
 use super::anthropic_sse_writer::{build_final_usage, convert_anthropic_json_to_sse};
 
+/// 函数 `convert_openai_sse_to_anthropic`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_openai_sse_to_anthropic(
     body: &[u8],
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
@@ -525,6 +536,18 @@ struct StreamingReasoningBlock {
     signature: Option<String>,
 }
 
+/// 函数 `merge_reasoning_item`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+/// - entry: 参数 entry
+///
+/// # 返回
+/// 无
 fn merge_reasoning_item(
     item_obj: &serde_json::Map<String, Value>,
     entry: &mut StreamingReasoningBlock,
@@ -563,6 +586,19 @@ fn merge_reasoning_item(
     }
 }
 
+/// 函数 `append_reasoning_content_block`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - out: 参数 out
+/// - content_block_index: 参数 content_block_index
+/// - reasoning_block: 参数 reasoning_block
+///
+/// # 返回
+/// 返回函数执行结果
 fn append_reasoning_content_block(
     out: &mut String,
     content_block_index: usize,
@@ -628,6 +664,17 @@ fn append_reasoning_content_block(
     true
 }
 
+/// 函数 `to_tool_input_partial_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn to_tool_input_partial_json(value: &Value) -> Option<String> {
     let serialized = serde_json::to_string(value).ok()?;
     if serialized == "{}" {
@@ -636,6 +683,19 @@ fn to_tool_input_partial_json(value: &Value) -> Option<String> {
     Some(serialized)
 }
 
+/// 函数 `append_sse_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - buffer: 参数 buffer
+/// - event_name: 参数 event_name
+/// - payload: 参数 payload
+///
+/// # 返回
+/// 无
 fn append_sse_event(buffer: &mut String, event_name: &str, payload: &Value) {
     let data = serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string());
     buffer.push_str("event: ");

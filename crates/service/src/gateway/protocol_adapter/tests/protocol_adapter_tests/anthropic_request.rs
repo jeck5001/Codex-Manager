@@ -2,6 +2,17 @@
 use super::{adapt_request_for_protocol, ResponseAdapter};
 use crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE;
 
+/// 函数 `adapted_anthropic_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn adapted_anthropic_value(body: serde_json::Value) -> serde_json::Value {
     let adapted = adapt_request_for_protocol(
         PROTOCOL_ANTHROPIC_NATIVE,
@@ -12,6 +23,17 @@ fn adapted_anthropic_value(body: serde_json::Value) -> serde_json::Value {
     serde_json::from_slice(&adapted.body).expect("parse adapted body")
 }
 
+/// 函数 `anthropic_messages_are_the_only_path_adapted_to_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_are_the_only_path_adapted_to_responses() {
     let body =
@@ -22,6 +44,17 @@ fn anthropic_messages_are_the_only_path_adapted_to_responses() {
     assert_ne!(adapted.response_adapter, ResponseAdapter::Passthrough);
 }
 
+/// 函数 `anthropic_messages_map_text_and_base64_image_to_responses_input`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_map_text_and_base64_image_to_responses_input() {
     let body = serde_json::json!({
@@ -103,6 +136,17 @@ fn anthropic_messages_map_text_and_base64_image_to_responses_input() {
     );
 }
 
+/// 函数 `anthropic_messages_map_url_image_to_responses_input`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_map_url_image_to_responses_input() {
     let body = serde_json::json!({
@@ -138,6 +182,17 @@ fn anthropic_messages_map_url_image_to_responses_input() {
     );
 }
 
+/// 函数 `anthropic_messages_map_thinking_and_output_config_effort_to_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_map_thinking_and_output_config_effort_to_responses() {
     let body = serde_json::json!({
@@ -197,6 +252,17 @@ fn anthropic_messages_map_thinking_and_output_config_effort_to_responses() {
     );
 }
 
+/// 函数 `anthropic_messages_map_disabled_thinking_to_summary_none`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_map_disabled_thinking_to_summary_none() {
     let body = serde_json::json!({
@@ -227,6 +293,17 @@ fn anthropic_messages_map_disabled_thinking_to_summary_none() {
     );
 }
 
+/// 函数 `anthropic_messages_preserve_sonnet_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_preserve_sonnet_model() {
     let value = adapted_anthropic_value(serde_json::json!({
@@ -240,6 +317,17 @@ fn anthropic_messages_preserve_sonnet_model() {
     );
 }
 
+/// 函数 `anthropic_messages_preserve_haiku_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_preserve_haiku_model() {
     let value = adapted_anthropic_value(serde_json::json!({
@@ -253,6 +341,17 @@ fn anthropic_messages_preserve_haiku_model() {
     );
 }
 
+/// 函数 `anthropic_messages_preserve_unknown_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_preserve_unknown_model() {
     let value = adapted_anthropic_value(serde_json::json!({
@@ -266,6 +365,17 @@ fn anthropic_messages_preserve_unknown_model() {
     );
 }
 
+/// 函数 `anthropic_messages_require_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_require_model() {
     let err = adapt_request_for_protocol(
@@ -281,6 +391,17 @@ fn anthropic_messages_require_model() {
     assert!(err.contains("claude model is required"));
 }
 
+/// 函数 `anthropic_messages_default_tool_choice_is_auto`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_default_tool_choice_is_auto() {
     let value = adapted_anthropic_value(serde_json::json!({
@@ -294,6 +415,17 @@ fn anthropic_messages_default_tool_choice_is_auto() {
     );
 }
 
+/// 函数 `anthropic_assistant_tool_use_preserves_text_order_in_responses_input`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_assistant_tool_use_preserves_text_order_in_responses_input() {
     let body = serde_json::json!({
@@ -421,6 +553,17 @@ fn anthropic_assistant_tool_use_preserves_text_order_in_responses_input() {
     );
 }
 
+/// 函数 `anthropic_tool_result_with_image_maps_to_function_call_output_items`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_tool_result_with_image_maps_to_function_call_output_items() {
     let body = serde_json::json!({
@@ -531,6 +674,17 @@ fn anthropic_tool_result_with_image_maps_to_function_call_output_items() {
     );
 }
 
+/// 函数 `anthropic_messages_preserve_all_tools_across_multiple_mcp_servers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_preserve_all_tools_across_multiple_mcp_servers() {
     let mut tools = Vec::new();
@@ -579,6 +733,17 @@ fn anthropic_messages_preserve_all_tools_across_multiple_mcp_servers() {
     }));
 }
 
+/// 函数 `anthropic_messages_shorten_long_tool_names_and_build_restore_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_messages_shorten_long_tool_names_and_build_restore_map() {
     let original_tool_name =

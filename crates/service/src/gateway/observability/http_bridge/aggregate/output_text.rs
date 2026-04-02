@@ -36,6 +36,17 @@ pub(crate) struct UpstreamResponseBridgeResult {
 }
 
 impl UpstreamResponseBridgeResult {
+    /// 函数 `is_ok`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn is_ok(&self, is_stream: bool) -> bool {
         if self.delivery_error.is_some() {
             return false;
@@ -51,6 +62,17 @@ impl UpstreamResponseBridgeResult {
         true
     }
 
+    /// 函数 `error_message`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn error_message(&self, is_stream: bool) -> Option<String> {
         if let Some(err) = self.stream_terminal_error.as_ref() {
             return Some(err.clone());
@@ -65,6 +87,17 @@ impl UpstreamResponseBridgeResult {
     }
 }
 
+/// 函数 `merge_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 无
 pub(in super::super) fn merge_usage(
     target: &mut UpstreamResponseUsage,
     source: UpstreamResponseUsage,
@@ -90,6 +123,17 @@ pub(in super::super) fn merge_usage(
     }
 }
 
+/// 函数 `usage_has_signal`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn usage_has_signal(usage: &UpstreamResponseUsage) -> bool {
     usage.input_tokens.is_some()
         || usage.cached_input_tokens.is_some()
@@ -102,6 +146,17 @@ pub(in super::super) fn usage_has_signal(usage: &UpstreamResponseUsage) -> bool 
             .is_some_and(|text| !text.trim().is_empty())
 }
 
+/// 函数 `parse_usage_from_object`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - usage: 参数 usage
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_usage_from_object(usage: Option<&Map<String, Value>>) -> UpstreamResponseUsage {
     let input_tokens = usage
         .and_then(|map| map.get("input_tokens").and_then(Value::as_i64))
@@ -150,6 +205,17 @@ fn parse_usage_from_object(usage: Option<&Map<String, Value>>) -> UpstreamRespon
     }
 }
 
+/// 函数 `append_output_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 无
 pub(in super::super) fn append_output_text(buffer: &mut String, text: &str) {
     if text.is_empty() {
         return;
@@ -182,6 +248,17 @@ pub(in super::super) fn append_output_text(buffer: &mut String, text: &str) {
     }
 }
 
+/// 函数 `append_output_text_raw`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 无
 pub(in super::super) fn append_output_text_raw(buffer: &mut String, text: &str) {
     if text.is_empty() {
         return;
@@ -207,6 +284,17 @@ pub(in super::super) fn append_output_text_raw(buffer: &mut String, text: &str) 
     }
 }
 
+/// 函数 `collect_response_output_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 无
 pub(in super::super) fn collect_response_output_text(value: &Value, output: &mut String) {
     match value {
         Value::String(text) => append_output_text(output, text),
@@ -239,11 +327,33 @@ pub(in super::super) fn collect_response_output_text(value: &Value, output: &mut
     }
 }
 
+/// 函数 `output_text_limit_bytes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn output_text_limit_bytes() -> usize {
     let _ = OUTPUT_TEXT_LIMIT_LOADED.get_or_init(reload_from_env);
     OUTPUT_TEXT_LIMIT_BYTES.load(Ordering::Relaxed)
 }
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 无
 pub(in super::super) fn reload_from_env() {
     let raw = std::env::var(OUTPUT_TEXT_LIMIT_BYTES_ENV).unwrap_or_default();
     let limit = raw
@@ -253,6 +363,18 @@ pub(in super::super) fn reload_from_env() {
     OUTPUT_TEXT_LIMIT_BYTES.store(limit, Ordering::Relaxed);
 }
 
+/// 函数 `truncate_str_to_bytes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - text: 参数 text
+/// - max_bytes: 参数 max_bytes
+///
+/// # 返回
+/// 返回函数执行结果
 fn truncate_str_to_bytes(text: &str, max_bytes: usize) -> &str {
     if max_bytes >= text.len() {
         return text;
@@ -264,6 +386,18 @@ fn truncate_str_to_bytes(text: &str, max_bytes: usize) -> &str {
     &text[..idx]
 }
 
+/// 函数 `truncate_string_to_bytes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - max_bytes: 参数 max_bytes
+///
+/// # 返回
+/// 无
 fn truncate_string_to_bytes(value: &mut String, max_bytes: usize) {
     if max_bytes >= value.len() {
         return;
@@ -275,6 +409,18 @@ fn truncate_string_to_bytes(value: &mut String, max_bytes: usize) {
     value.truncate(idx);
 }
 
+/// 函数 `mark_output_text_truncated`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - buffer: 参数 buffer
+/// - limit: 参数 limit
+///
+/// # 返回
+/// 无
 fn mark_output_text_truncated(buffer: &mut String, limit: usize) {
     if limit == 0 {
         return;
@@ -303,6 +449,17 @@ fn mark_output_text_truncated(buffer: &mut String, limit: usize) {
     buffer.push_str(OUTPUT_TEXT_TRUNCATED_MARKER);
 }
 
+/// 函数 `collect_output_text_from_event_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 无
 pub(in super::super) fn collect_output_text_from_event_fields(value: &Value, output: &mut String) {
     if let Some(item) = value.get("item") {
         collect_response_output_text(item, output);
@@ -318,6 +475,17 @@ pub(in super::super) fn collect_output_text_from_event_fields(value: &Value, out
     }
 }
 
+/// 函数 `extract_output_text_from_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_output_text_from_json(value: &Value) -> Option<String> {
     let mut output = String::new();
     if let Some(text) = value.get("output_text").and_then(Value::as_str) {
@@ -345,6 +513,17 @@ fn extract_output_text_from_json(value: &Value) -> Option<String> {
     }
 }
 
+/// 函数 `parse_usage_from_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn parse_usage_from_json(value: &Value) -> UpstreamResponseUsage {
     let mut usage = parse_usage_from_object(value.get("usage").and_then(Value::as_object));
     let response_usage = value
@@ -356,7 +535,29 @@ pub(in super::super) fn parse_usage_from_json(value: &Value) -> UpstreamResponse
     usage
 }
 
+/// 函数 `extract_error_message_from_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn extract_error_message_from_json(value: &Value) -> Option<String> {
+    /// 函数 `extract_message_from_error_map`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - err_obj: 参数 err_obj
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn extract_message_from_error_map(err_obj: &Map<String, Value>) -> Option<String> {
         let message = err_obj
             .get("message")
@@ -405,6 +606,17 @@ pub(crate) fn extract_error_message_from_json(value: &Value) -> Option<String> {
             .filter(|v| !v.is_empty())
     }
 
+    /// 函数 `extract_message_from_error_value`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - err_value: 参数 err_value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn extract_message_from_error_value(err_value: Option<&Value>) -> Option<String> {
         let err_value = err_value?;
         if let Some(message) = err_value.as_str() {
@@ -452,6 +664,17 @@ pub(crate) fn extract_error_message_from_json(value: &Value) -> Option<String> {
     None
 }
 
+/// 函数 `extract_error_hint_from_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn extract_error_hint_from_body(
     status_code: u16,
     body: &[u8],
@@ -483,6 +706,17 @@ pub(in super::super) fn extract_error_hint_from_body(
         .map(|text| summarize_upstream_error_hint(status_code, text))
 }
 
+/// 函数 `limit_upstream_error_hint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn limit_upstream_error_hint(raw: &str) -> String {
     let text = raw.trim();
     if text.is_empty() {
@@ -496,6 +730,18 @@ fn limit_upstream_error_hint(raw: &str) -> String {
     snippet
 }
 
+/// 函数 `summarize_upstream_error_hint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status_code: 参数 status_code
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_upstream_error_hint(status_code: u16, raw: &str) -> String {
     let text = raw.trim();
     if text.is_empty() {
@@ -539,6 +785,17 @@ fn summarize_upstream_error_hint(status_code: u16, raw: &str) -> String {
     text.to_string()
 }
 
+/// 函数 `summarize_model_not_supported`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_model_not_supported(raw: &str) -> Option<String> {
     let normalized = raw.trim().to_ascii_lowercase();
     let looks_unsupported = normalized.contains("model_not_found")
@@ -559,6 +816,17 @@ fn summarize_model_not_supported(raw: &str) -> Option<String> {
     })
 }
 
+/// 函数 `summarize_cloudflare_challenge`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_cloudflare_challenge(raw: &str) -> String {
     let title = extract_html_title(raw);
     let ray = extract_object_string_field(raw, "cRay");
@@ -580,6 +848,17 @@ fn summarize_cloudflare_challenge(raw: &str) -> String {
     }
 }
 
+/// 函数 `summarize_html_error_page`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_html_error_page(raw: &str) -> String {
     if let Some(title) = extract_html_title(raw) {
         if !title.is_empty() {
@@ -589,6 +868,17 @@ fn summarize_html_error_page(raw: &str) -> String {
     "上游返回 HTML 错误页".to_string()
 }
 
+/// 函数 `extract_html_title`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_html_title(raw: &str) -> Option<String> {
     let lower = raw.to_ascii_lowercase();
     let start_tag = "<title>";
@@ -599,6 +889,18 @@ fn extract_html_title(raw: &str) -> Option<String> {
     (!title.is_empty()).then(|| title.to_string())
 }
 
+/// 函数 `extract_object_string_field`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_object_string_field(raw: &str, key: &str) -> Option<String> {
     let start = raw.find(key)?;
     let after_key = raw.get(start + key.len()..)?;
@@ -614,6 +916,17 @@ fn extract_object_string_field(raw: &str, key: &str) -> Option<String> {
     (!extracted.is_empty()).then(|| extracted.to_string())
 }
 
+/// 函数 `extract_model_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_model_name(raw: &str) -> Option<String> {
     let lowered = raw.to_ascii_lowercase();
     if let Some(model) = extract_quoted_model_before_keyword(raw, &lowered) {
@@ -639,6 +952,18 @@ fn extract_model_name(raw: &str) -> Option<String> {
     None
 }
 
+/// 函数 `extract_quoted_model_before_keyword`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+/// - lowered: 参数 lowered
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_quoted_model_before_keyword(raw: &str, lowered: &str) -> Option<String> {
     for keyword in [" model", " models"] {
         let keyword_idx = lowered.find(keyword)?;
@@ -656,6 +981,17 @@ fn extract_quoted_model_before_keyword(raw: &str, lowered: &str) -> Option<Strin
     None
 }
 
+/// 函数 `extract_model_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - fragment: 参数 fragment
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_model_token(fragment: &str) -> Option<String> {
     let fragment = fragment
         .trim_start_matches(|c: char| c.is_whitespace() || matches!(c, '=' | ':' | '(' | '['));
@@ -692,6 +1028,17 @@ mod tests {
         UpstreamResponseBridgeResult, UPSTREAM_ERROR_HINT_LIMIT_BYTES,
     };
 
+    /// 函数 `summarize_upstream_error_hint_recognizes_challenge_html`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn summarize_upstream_error_hint_recognizes_challenge_html() {
         assert_eq!(
@@ -700,6 +1047,17 @@ mod tests {
         );
     }
 
+    /// 函数 `summarize_upstream_error_hint_recognizes_generic_html`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn summarize_upstream_error_hint_recognizes_generic_html() {
         assert_eq!(
@@ -708,6 +1066,17 @@ mod tests {
         );
     }
 
+    /// 函数 `summarize_upstream_error_hint_recognizes_unsupported_model`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn summarize_upstream_error_hint_recognizes_unsupported_model() {
         assert_eq!(
@@ -723,6 +1092,17 @@ mod tests {
         );
     }
 
+    /// 函数 `extract_error_hint_from_body_summarizes_html_body`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn extract_error_hint_from_body_summarizes_html_body() {
         assert_eq!(
@@ -731,6 +1111,17 @@ mod tests {
         );
     }
 
+    /// 函数 `extract_error_hint_from_body_prefers_json_message`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn extract_error_hint_from_body_prefers_json_message() {
         let body = br#"{"error":{"message":"forbidden","type":"permission_error"}}"#;
@@ -740,6 +1131,17 @@ mod tests {
         );
     }
 
+    /// 函数 `extract_error_hint_from_body_summarizes_unsupported_model_json`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn extract_error_hint_from_body_summarizes_unsupported_model_json() {
         let body = br#"{"error":{"message":"The model 'gpt-5.4' does not exist","type":"invalid_request_error","code":"model_not_found"}}"#;
@@ -749,6 +1151,17 @@ mod tests {
         );
     }
 
+    /// 函数 `extract_error_hint_from_body_summarizes_unsupported_model_detail_json`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn extract_error_hint_from_body_summarizes_unsupported_model_detail_json() {
         let body = br#"{"detail":"The 'gpt-5.4' model is not supported when using Codex with a ChatGPT account."}"#;
@@ -758,6 +1171,17 @@ mod tests {
         );
     }
 
+    /// 函数 `limit_upstream_error_hint_truncates_large_body`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn limit_upstream_error_hint_truncates_large_body() {
         let raw = "x".repeat(UPSTREAM_ERROR_HINT_LIMIT_BYTES + 32);
@@ -766,6 +1190,17 @@ mod tests {
         assert!(text.len() > UPSTREAM_ERROR_HINT_LIMIT_BYTES);
     }
 
+    /// 函数 `bridge_error_message_reports_stream_incomplete_in_chinese`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn bridge_error_message_reports_stream_incomplete_in_chinese() {
         let bridge = UpstreamResponseBridgeResult {

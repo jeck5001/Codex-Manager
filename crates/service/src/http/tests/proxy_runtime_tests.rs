@@ -10,6 +10,18 @@ struct EnvGuard {
 }
 
 impl EnvGuard {
+    /// 函数 `set`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - key: 参数 key
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn set(key: &'static str, value: &str) -> Self {
         let original = std::env::var_os(key);
         std::env::set_var(key, value);
@@ -18,6 +30,17 @@ impl EnvGuard {
 }
 
 impl Drop for EnvGuard {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         if let Some(value) = &self.original {
             std::env::set_var(self.key, value);
@@ -27,6 +50,17 @@ impl Drop for EnvGuard {
     }
 }
 
+/// 函数 `backend_base_url_uses_http_scheme`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn backend_base_url_uses_http_scheme() {
     assert_eq!(
@@ -35,11 +69,33 @@ fn backend_base_url_uses_http_scheme() {
     );
 }
 
+/// 函数 `local_backend_client_builds_without_system_proxy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn local_backend_client_builds_without_system_proxy() {
     build_local_backend_client().expect("local backend client");
 }
 
+/// 函数 `request_without_content_length_over_limit_returns_413`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_without_content_length_over_limit_returns_413() {
     let _guard = crate::test_env_guard();
@@ -69,6 +125,17 @@ fn request_without_content_length_over_limit_returns_413() {
     assert!(text.contains("request body too large: content-length>8"));
 }
 
+/// 函数 `backend_send_failure_returns_502`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn backend_send_failure_returns_502() {
     let _ = crate::gateway::front_proxy_max_body_bytes();

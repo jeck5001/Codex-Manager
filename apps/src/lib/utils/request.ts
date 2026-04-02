@@ -8,6 +8,21 @@ export interface RequestOptions {
   shouldRetryStatus?: (status: number) => boolean;
 }
 
+/**
+ * 函数 `fetchWithRetry`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - url: 参数 url
+ * - init?: 参数 init?
+ * - options: 参数 options
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export async function fetchWithRetry(
   url: string,
   init?: RequestInit,
@@ -55,6 +70,20 @@ export async function fetchWithRetry(
   throw lastError || new Error("Fetch failed after retries");
 }
 
+/**
+ * 函数 `runWithControl`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - fn: 参数 fn
+ * - options: 参数 options
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export async function runWithControl<T>(
   fn: () => Promise<T>,
   options: RequestOptions = {}

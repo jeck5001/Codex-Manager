@@ -1,3 +1,14 @@
+/// 函数 `main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn main() {
     codexmanager_service::portable::bootstrap_current_process();
     let configured_addr = std::env::var("CODEXMANAGER_SERVICE_ADDR")

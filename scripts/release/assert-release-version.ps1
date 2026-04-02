@@ -10,6 +10,19 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+<#
+函数 `Get-TomlSectionBody`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- true: 参数 true
+
+# 返回
+返回函数执行结果
+#>
 function Get-TomlSectionBody {
     param(
         [Parameter(Mandatory = $true)]
@@ -29,6 +42,20 @@ function Get-TomlSectionBody {
     return $match.Groups[1].Value
 }
 
+<#
+函数 `Get-WorkspaceVersion`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- true: 参数 true
+- Path: 参数 Path
+
+# 返回
+返回函数执行结果
+#>
 function Get-WorkspaceVersion {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -44,6 +71,20 @@ function Get-WorkspaceVersion {
     return $match.Groups[1].Value
 }
 
+<#
+函数 `Get-PackageVersionEntry`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- true: 参数 true
+- Path: 参数 Path
+
+# 返回
+返回函数执行结果
+#>
 function Get-PackageVersionEntry {
     param([Parameter(Mandatory = $true)][string]$Path)
 

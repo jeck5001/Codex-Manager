@@ -15,6 +15,17 @@ use super::sse_conversion::{
 };
 use super::ToolNameRestoreMap;
 
+/// 函数 `adapt_upstream_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn adapt_upstream_response(
     adapter: ResponseAdapter,
     upstream_content_type: Option<&str>,
@@ -58,6 +69,17 @@ pub(super) fn adapt_upstream_response(
     }
 }
 
+/// 函数 `build_anthropic_error_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn build_anthropic_error_body(message: &str) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "type": "error",
@@ -72,6 +94,17 @@ pub(super) fn build_anthropic_error_body(message: &str) -> Vec<u8> {
     })
 }
 
+/// 函数 `reject_html_challenge`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - upstream_content_type: 参数 upstream_content_type
+///
+/// # 返回
+/// 返回函数执行结果
 fn reject_html_challenge(upstream_content_type: Option<&str>) -> Result<(), String> {
     if upstream_content_type.is_some_and(is_html_content_type) {
         Err("upstream returned html challenge".to_string())
@@ -80,6 +113,17 @@ fn reject_html_challenge(upstream_content_type: Option<&str>) -> Result<(), Stri
     }
 }
 
+/// 函数 `is_json_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - upstream_content_type: 参数 upstream_content_type
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_json_payload(upstream_content_type: Option<&str>) -> bool {
     upstream_content_type
         .map(|value| {
@@ -91,6 +135,18 @@ fn is_json_payload(upstream_content_type: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
+/// 函数 `is_sse_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - upstream_content_type: 参数 upstream_content_type
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_sse_payload(upstream_content_type: Option<&str>, body: &[u8]) -> bool {
     upstream_content_type
         .map(|value| value.to_ascii_lowercase().starts_with("text/event-stream"))
@@ -98,6 +154,17 @@ fn is_sse_payload(upstream_content_type: Option<&str>, body: &[u8]) -> bool {
         || looks_like_sse_payload(body)
 }
 
+/// 函数 `looks_like_sse_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn looks_like_sse_payload(body: &[u8]) -> bool {
     let Ok(text) = std::str::from_utf8(body) else {
         return false;

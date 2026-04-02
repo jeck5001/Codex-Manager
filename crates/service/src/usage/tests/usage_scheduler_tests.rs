@@ -2,6 +2,17 @@ use super::{parse_interval_secs, run_blocking_poll_loop_with_sleep};
 use std::cell::{Cell, RefCell};
 use std::time::Duration;
 
+/// 函数 `blocking_poll_loop_runs_task_and_respects_interval`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn blocking_poll_loop_runs_task_and_respects_interval() {
     let task_runs = Cell::new(0usize);
@@ -32,6 +43,17 @@ fn blocking_poll_loop_runs_task_and_respects_interval() {
         .all(|d| *d == Duration::from_secs(3)));
 }
 
+/// 函数 `blocking_poll_loop_calls_error_filter_before_sleep`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn blocking_poll_loop_calls_error_filter_before_sleep() {
     let checks = RefCell::new(Vec::new());
@@ -65,6 +87,17 @@ fn blocking_poll_loop_calls_error_filter_before_sleep() {
     );
 }
 
+/// 函数 `blocking_poll_loop_applies_failure_backoff_with_cap_and_reset`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn blocking_poll_loop_applies_failure_backoff_with_cap_and_reset() {
     let runs = Cell::new(0usize);
@@ -102,6 +135,17 @@ fn blocking_poll_loop_applies_failure_backoff_with_cap_and_reset() {
     );
 }
 
+/// 函数 `blocking_poll_loop_adds_jitter_on_top_of_base_delay`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn blocking_poll_loop_adds_jitter_on_top_of_base_delay() {
     let runs = Cell::new(0usize);
@@ -131,6 +175,17 @@ fn blocking_poll_loop_adds_jitter_on_top_of_base_delay() {
     );
 }
 
+/// 函数 `parse_interval_secs_falls_back_and_applies_minimum`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn parse_interval_secs_falls_back_and_applies_minimum() {
     assert_eq!(parse_interval_secs(None, 600, 30), 600);

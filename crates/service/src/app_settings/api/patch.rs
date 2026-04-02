@@ -44,6 +44,17 @@ pub(super) struct AppSettingsPatch {
     web_access_password: Option<String>,
 }
 
+/// 函数 `parse_app_settings_patch`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn parse_app_settings_patch(params: Option<&Value>) -> Result<AppSettingsPatch, String> {
     match params {
         Some(value) => serde_json::from_value::<AppSettingsPatch>(value.clone())
@@ -52,6 +63,17 @@ pub(super) fn parse_app_settings_patch(params: Option<&Value>) -> Result<AppSett
     }
 }
 
+/// 函数 `apply_app_settings_patch`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), String> {
     if let Some(enabled) = patch.update_auto_check {
         set_update_auto_check_enabled(enabled)?;

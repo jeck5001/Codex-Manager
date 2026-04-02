@@ -2,6 +2,17 @@ use codexmanager_core::storage::{now_ts, Event};
 
 use crate::{account_status, storage_helpers::open_storage};
 
+/// 函数 `update_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn update_account(
     account_id: &str,
     sort: Option<i64>,
@@ -91,6 +102,17 @@ pub(crate) fn update_account(
     Ok(())
 }
 
+/// 函数 `normalize_account_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_account_status(status: &str) -> Result<&'static str, String> {
     let normalized = status.trim().to_ascii_lowercase();
     match normalized.as_str() {
@@ -100,6 +122,17 @@ fn normalize_account_status(status: &str) -> Result<&'static str, String> {
     }
 }
 
+/// 函数 `normalize_optional_label`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - label: 参数 label
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_optional_label(label: Option<&str>) -> Result<Option<&str>, String> {
     let Some(label) = label else {
         return Ok(None);
@@ -111,6 +144,17 @@ fn normalize_optional_label(label: Option<&str>) -> Result<Option<&str>, String>
     Ok(Some(trimmed))
 }
 
+/// 函数 `normalize_optional_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_optional_text(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -118,6 +162,17 @@ fn normalize_optional_text(value: Option<&str>) -> Option<String> {
         .map(ToString::to_string)
 }
 
+/// 函数 `normalize_optional_tags`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_optional_tags(value: Option<&str>) -> Option<String> {
     let Some(value) = value else {
         return None;

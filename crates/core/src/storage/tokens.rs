@@ -3,6 +3,18 @@ use rusqlite::{Result, Row};
 use super::{Storage, Token};
 
 impl Storage {
+    /// 函数 `insert_token`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - token: 参数 token
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_token(&self, token: &Token) -> Result<()> {
         self.conn.execute(
             "INSERT INTO tokens (account_id, id_token, access_token, refresh_token, api_key_access_token, last_refresh)
@@ -25,6 +37,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `list_tokens_due_for_refresh`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - now_ts: 参数 now_ts
+    /// - limit: 参数 limit
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_tokens_due_for_refresh(&self, now_ts: i64, limit: usize) -> Result<Vec<Token>> {
         let mut stmt = self.conn.prepare(
             "WITH latest_status AS (
@@ -63,6 +88,20 @@ impl Storage {
         Ok(out)
     }
 
+    /// 函数 `update_token_refresh_schedule`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    /// - access_token_exp: 参数 access_token_exp
+    /// - next_refresh_at: 参数 next_refresh_at
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_token_refresh_schedule(
         &self,
         account_id: &str,
@@ -79,6 +118,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `touch_token_refresh_attempt`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    /// - attempt_ts: 参数 attempt_ts
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn touch_token_refresh_attempt(&self, account_id: &str, attempt_ts: i64) -> Result<()> {
         self.conn.execute(
             "UPDATE tokens
@@ -89,11 +141,33 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `token_count`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn token_count(&self) -> Result<i64> {
         self.conn
             .query_row("SELECT COUNT(1) FROM tokens", [], |row| row.get(0))
     }
 
+    /// 函数 `list_tokens`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_tokens(&self) -> Result<Vec<Token>> {
         let mut stmt = self.conn.prepare(
             "SELECT account_id, id_token, access_token, refresh_token, api_key_access_token, last_refresh FROM tokens",
@@ -106,6 +180,18 @@ impl Storage {
         Ok(out)
     }
 
+    /// 函数 `find_token_by_account_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn find_token_by_account_id(&self, account_id: &str) -> Result<Option<Token>> {
         let mut stmt = self.conn.prepare(
             "SELECT account_id, id_token, access_token, refresh_token, api_key_access_token, last_refresh
@@ -121,6 +207,17 @@ impl Storage {
         }
     }
 
+    /// 函数 `ensure_token_api_key_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_token_api_key_column(&self) -> Result<()> {
         if self.has_column("tokens", "api_key_access_token")? {
             return Ok(());
@@ -132,6 +229,17 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_token_refresh_schedule_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_token_refresh_schedule_columns(&self) -> Result<()> {
         self.ensure_column("tokens", "access_token_exp", "INTEGER")?;
         self.ensure_column("tokens", "next_refresh_at", "INTEGER")?;
@@ -144,6 +252,17 @@ impl Storage {
     }
 }
 
+/// 函数 `map_token_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_token_row(row: &Row<'_>) -> Result<Token> {
     Ok(Token {
         account_id: row.get(0)?,

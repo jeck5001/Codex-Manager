@@ -3,6 +3,18 @@ use rusqlite::Result;
 use super::{ApiKeyTokenUsageSummary, RequestLogTodaySummary, RequestTokenStat, Storage};
 
 impl Storage {
+    /// 函数 `insert_request_token_stat`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - stat: 参数 stat
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_request_token_stat(&self, stat: &RequestTokenStat) -> Result<()> {
         self.conn.execute(
             "INSERT INTO request_token_stats (
@@ -27,6 +39,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `summarize_request_token_stats_between`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - start_ts: 参数 start_ts
+    /// - end_ts: 参数 end_ts
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn summarize_request_token_stats_between(
         &self,
         start_ts: i64,
@@ -61,6 +86,17 @@ impl Storage {
         })
     }
 
+    /// 函数 `summarize_request_token_stats_by_key`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn summarize_request_token_stats_by_key(&self) -> Result<Vec<ApiKeyTokenUsageSummary>> {
         let mut stmt = self.conn.prepare(
             "SELECT
@@ -98,6 +134,17 @@ impl Storage {
         Ok(items)
     }
 
+    /// 函数 `ensure_request_token_stats_table`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_token_stats_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS request_token_stats (

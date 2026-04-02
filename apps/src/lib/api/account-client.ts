@@ -105,6 +105,19 @@ interface AggregateApiPayload {
 const MAX_IMPORT_RPC_BODY_BYTES = 4 * 1024 * 1024;
 const MAX_IMPORT_ERROR_ITEMS = 50;
 
+/**
+ * 函数 `createEmptyImportResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function createEmptyImportResult(): AccountImportResult {
   return {
     total: 0,
@@ -115,10 +128,36 @@ function createEmptyImportResult(): AccountImportResult {
   };
 }
 
+/**
+ * 函数 `estimateImportRequestBytes`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - contents: 参数 contents
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function estimateImportRequestBytes(contents: string[]): number {
   return new Blob([JSON.stringify({ contents })]).size;
 }
 
+/**
+ * 函数 `splitImportContents`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - contents: 参数 contents
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function splitImportContents(contents: string[]): string[][] {
   const chunks: string[][] = [];
   let current: string[] = [];
@@ -144,6 +183,21 @@ function splitImportContents(contents: string[]): string[][] {
   return chunks;
 }
 
+/**
+ * 函数 `mergeImportResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - target: 参数 target
+ * - source: 参数 source
+ * - indexOffset: 参数 indexOffset
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function mergeImportResult(
   target: AccountImportResult,
   source: AccountImportResult,
@@ -169,6 +223,19 @@ function mergeImportResult(
   }
 }
 
+/**
+ * 函数 `importAccountContents`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - contents: 参数 contents
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 async function importAccountContents(contents: string[]): Promise<AccountImportResult> {
   const batches = splitImportContents(contents);
   if (batches.length === 0) {

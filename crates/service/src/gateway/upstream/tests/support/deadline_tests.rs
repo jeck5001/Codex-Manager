@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `effective_request_timeout_non_stream_uses_total_only`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn effective_request_timeout_non_stream_uses_total_only() {
     assert_eq!(
@@ -16,6 +27,17 @@ fn effective_request_timeout_non_stream_uses_total_only() {
     );
 }
 
+/// 函数 `effective_request_timeout_stream_uses_max_total_and_stream`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn effective_request_timeout_stream_uses_max_total_and_stream() {
     assert_eq!(
@@ -36,6 +58,17 @@ fn effective_request_timeout_stream_uses_max_total_and_stream() {
     );
 }
 
+/// 函数 `effective_request_timeout_stream_falls_back_when_one_side_missing`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn effective_request_timeout_stream_falls_back_when_one_side_missing() {
     assert_eq!(

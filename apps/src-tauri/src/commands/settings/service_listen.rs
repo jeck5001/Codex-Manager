@@ -1,5 +1,16 @@
 use crate::app_storage::apply_runtime_storage_env;
 
+/// 函数 `service_listen_config_get`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - app: 参数 app
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_listen_config_get(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     apply_runtime_storage_env(&app);
@@ -17,6 +28,18 @@ pub async fn service_listen_config_get(app: tauri::AppHandle) -> Result<serde_js
     .map_err(|err| format!("service_listen_config_get task failed: {err}"))?
 }
 
+/// 函数 `service_listen_config_set`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - app: 参数 app
+/// - mode: 参数 mode
+///
+/// # 返回
+/// 返回函数执行结果
 #[tauri::command]
 pub async fn service_listen_config_set(
     app: tauri::AppHandle,

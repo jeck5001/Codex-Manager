@@ -7,6 +7,17 @@ use reqwest::Client;
 use reqwest::StatusCode;
 use std::sync::MutexGuard;
 
+/// 函数 `usage_header_runtime_scope`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn usage_header_runtime_scope() -> (MutexGuard<'static, ()>, UsageHeaderRuntimeRestore) {
     let guard = crate::test_env_guard();
     let restore = UsageHeaderRuntimeRestore::capture();
@@ -21,6 +32,17 @@ struct UsageHeaderRuntimeRestore {
 }
 
 impl UsageHeaderRuntimeRestore {
+    /// 函数 `capture`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn capture() -> Self {
         Self {
             originator: crate::current_gateway_originator(),
@@ -30,12 +52,34 @@ impl UsageHeaderRuntimeRestore {
 }
 
 impl Drop for UsageHeaderRuntimeRestore {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         let _ = crate::gateway::set_originator(&self.originator);
         let _ = crate::gateway::set_residency_requirement(self.residency_requirement.as_deref());
     }
 }
 
+/// 函数 `usage_http_client_is_cloneable`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_http_client_is_cloneable() {
     let first = usage_http_client();
@@ -45,6 +89,17 @@ fn usage_http_client_is_cloneable() {
     assert_ne!(first_ptr, second_ptr);
 }
 
+/// 函数 `refresh_token_status_error_omits_empty_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_status_error_omits_empty_body() {
     assert_eq!(
@@ -53,6 +108,17 @@ fn refresh_token_status_error_omits_empty_body() {
     );
 }
 
+/// 函数 `refresh_token_status_error_includes_body_snippet`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_status_error_includes_body_snippet() {
     assert_eq!(
@@ -64,6 +130,17 @@ fn refresh_token_status_error_includes_body_snippet() {
     );
 }
 
+/// 函数 `refresh_token_status_error_maps_invalidated_401_to_official_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_status_error_maps_invalidated_401_to_official_message() {
     assert_eq!(
@@ -75,6 +152,17 @@ fn refresh_token_status_error_maps_invalidated_401_to_official_message() {
     );
 }
 
+/// 函数 `refresh_token_status_error_maps_unknown_401_to_official_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_status_error_maps_unknown_401_to_official_message() {
     assert_eq!(
@@ -86,6 +174,17 @@ fn refresh_token_status_error_maps_unknown_401_to_official_message() {
     );
 }
 
+/// 函数 `classify_refresh_token_auth_error_reason_maps_known_and_unknown_401`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn classify_refresh_token_auth_error_reason_maps_known_and_unknown_401() {
     assert_eq!(
@@ -111,6 +210,17 @@ fn classify_refresh_token_auth_error_reason_maps_known_and_unknown_401() {
     );
 }
 
+/// 函数 `refresh_token_status_error_ignores_headers_for_401_reason_when_body_lacks_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_status_error_ignores_headers_for_401_reason_when_body_lacks_code() {
     let mut headers = HeaderMap::new();
@@ -133,6 +243,17 @@ fn refresh_token_status_error_ignores_headers_for_401_reason_when_body_lacks_cod
     );
 }
 
+/// 函数 `refresh_token_status_error_stabilizes_html_and_debug_headers_for_non_401`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_status_error_stabilizes_html_and_debug_headers_for_non_401() {
     let mut headers = HeaderMap::new();
@@ -162,6 +283,17 @@ fn refresh_token_status_error_stabilizes_html_and_debug_headers_for_non_401() {
     assert!(message.contains("identity_error_code=token_expired"));
 }
 
+/// 函数 `refresh_token_status_error_uses_header_only_debug_suffix_for_empty_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_status_error_uses_header_only_debug_suffix_for_empty_body() {
     let mut headers = HeaderMap::new();
@@ -183,6 +315,17 @@ fn refresh_token_status_error_uses_header_only_debug_suffix_for_empty_body() {
     assert!(message.contains("cf_ray=cf_refresh_empty"));
 }
 
+/// 函数 `refresh_token_auth_error_reason_from_message_tracks_canonical_messages`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_auth_error_reason_from_message_tracks_canonical_messages() {
     let invalidated = super::format_refresh_token_status_error(
@@ -204,6 +347,17 @@ fn refresh_token_auth_error_reason_from_message_tracks_canonical_messages() {
     );
 }
 
+/// 函数 `usage_http_default_headers_follow_gateway_runtime_profile`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_http_default_headers_follow_gateway_runtime_profile() {
     let (_guard, _restore) = usage_header_runtime_scope();
@@ -227,6 +381,17 @@ fn usage_http_default_headers_follow_gateway_runtime_profile() {
     );
 }
 
+/// 函数 `usage_request_headers_use_official_chatgpt_account_header_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_request_headers_use_official_chatgpt_account_header_name() {
     let headers = build_usage_request_headers(Some("workspace_123"));
@@ -240,6 +405,17 @@ fn usage_request_headers_use_official_chatgpt_account_header_name() {
     assert_eq!(headers.len(), 1);
 }
 
+/// 函数 `refresh_token_url_uses_official_default_for_openai_issuer`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_url_uses_official_default_for_openai_issuer() {
     let _lock = crate::test_env_guard();
@@ -255,6 +431,17 @@ fn refresh_token_url_uses_official_default_for_openai_issuer() {
     );
 }
 
+/// 函数 `refresh_token_url_preserves_custom_issuer_and_override`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn refresh_token_url_preserves_custom_issuer_and_override() {
     let _lock = crate::test_env_guard();
@@ -281,6 +468,17 @@ fn refresh_token_url_preserves_custom_issuer_and_override() {
     }
 }
 
+/// 函数 `summarize_usage_error_response_stabilizes_html_and_debug_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn summarize_usage_error_response_stabilizes_html_and_debug_headers() {
     let mut headers = HeaderMap::new();
@@ -310,6 +508,17 @@ fn summarize_usage_error_response_stabilizes_html_and_debug_headers() {
     assert!(summary.contains("identity error code: token_expired"));
 }
 
+/// 函数 `summarize_usage_error_response_accepts_raw_error_json_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn summarize_usage_error_response_accepts_raw_error_json_header() {
     let mut headers = HeaderMap::new();

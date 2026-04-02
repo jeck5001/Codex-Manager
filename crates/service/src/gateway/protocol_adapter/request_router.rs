@@ -3,6 +3,17 @@ use crate::apikey_profile::{PROTOCOL_ANTHROPIC_NATIVE, PROTOCOL_OPENAI_COMPAT};
 use super::request_mapping;
 use super::{AdaptedGatewayRequest, ResponseAdapter, ToolNameRestoreMap};
 
+/// 函数 `adapt_request_for_protocol`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn adapt_request_for_protocol(
     protocol_type: &str,
     path: &str,
@@ -70,6 +81,18 @@ pub(crate) fn adapt_request_for_protocol(
     })
 }
 
+/// 函数 `rewrite_responses_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - prefix: 参数 prefix
+///
+/// # 返回
+/// 返回函数执行结果
 fn rewrite_responses_path(path: &str, prefix: &str) -> String {
     if let Some(suffix) = path.strip_prefix(prefix) {
         format!("/v1/responses{suffix}")

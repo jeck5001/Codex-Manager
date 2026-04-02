@@ -4,6 +4,17 @@ use codexmanager_core::storage::{now_ts, Storage, Token};
 use crate::auth_tokens::obtain_api_key;
 use crate::usage_http::refresh_access_token;
 
+/// 函数 `refresh_and_persist_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn refresh_and_persist_access_token(
     storage: &Storage,
     token: &mut Token,

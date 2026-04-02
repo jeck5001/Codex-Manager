@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `gateway_claude_protocol_stabilizes_prompt_cache_key_without_conversation_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_claude_protocol_stabilizes_prompt_cache_key_without_conversation_id() {
     let _lock = test_env_guard();
@@ -152,6 +163,17 @@ fn gateway_claude_protocol_stabilizes_prompt_cache_key_without_conversation_id()
     );
 }
 
+/// 函数 `gateway_claude_protocol_end_to_end_uses_codex_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
     let _lock = test_env_guard();
@@ -340,6 +362,17 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
     assert_eq!(log.reasoning_output_tokens, None);
 }
 
+/// 函数 `gateway_claude_failover_cross_workspace_strips_session_affinity_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_claude_failover_cross_workspace_strips_session_affinity_headers() {
     let _lock = test_env_guard();
@@ -544,6 +577,17 @@ fn gateway_claude_failover_cross_workspace_strips_session_affinity_headers() {
     );
 }
 
+/// 函数 `gateway_claude_failover_same_workspace_preserves_session_affinity_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_claude_failover_same_workspace_preserves_session_affinity_headers() {
     let _lock = test_env_guard();

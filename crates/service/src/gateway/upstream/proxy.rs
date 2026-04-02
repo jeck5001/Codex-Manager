@@ -14,6 +14,20 @@ use super::proxy_pipeline::request_setup::prepare_request_setup;
 use super::proxy_pipeline::response_finalize::respond_terminal;
 use super::support::precheck::{prepare_candidates_for_proxy, CandidatePrecheckResult};
 
+/// 函数 `exhausted_gateway_error_for_log`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - attempted_account_ids: 参数 attempted_account_ids
+/// - skipped_cooldown: 参数 skipped_cooldown
+/// - skipped_inflight: 参数 skipped_inflight
+/// - last_attempt_error: 参数 last_attempt_error
+///
+/// # 返回
+/// 返回函数执行结果
 fn exhausted_gateway_error_for_log(
     attempted_account_ids: &[String],
     skipped_cooldown: usize,
@@ -50,6 +64,17 @@ fn exhausted_gateway_error_for_log(
     parts.join("; ")
 }
 
+/// 函数 `proxy_validated_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn proxy_validated_request(
     request: Request,
     validated: LocalValidationResult,
@@ -344,6 +369,17 @@ pub(in super::super) fn proxy_validated_request(
 mod tests {
     use super::exhausted_gateway_error_for_log;
 
+    /// 函数 `exhausted_gateway_error_includes_attempts_skips_and_last_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn exhausted_gateway_error_includes_attempts_skips_and_last_error() {
         let message = exhausted_gateway_error_for_log(
@@ -360,6 +396,17 @@ mod tests {
         assert!(message.contains("last_attempt=upstream challenge blocked"));
     }
 
+    /// 函数 `exhausted_gateway_error_marks_cooldown_only_skip_kind`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn exhausted_gateway_error_marks_cooldown_only_skip_kind() {
         let message = exhausted_gateway_error_for_log(&[], 2, 0, None);

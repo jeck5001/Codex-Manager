@@ -11,6 +11,19 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+<#
+函数 `Require-Tool`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Require-Tool
 {
     param([string]$Name)
@@ -20,6 +33,19 @@ function Require-Tool
     }
 }
 
+<#
+函数 `New-OutDir`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function New-OutDir
 {
     param([string]$InputOutDir)
@@ -36,6 +62,19 @@ function New-OutDir
     return $dir
 }
 
+<#
+函数 `Build-ChatBodyJson`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Build-ChatBodyJson
 {
     param(
@@ -55,6 +94,19 @@ function Build-ChatBodyJson
     return ($obj | ConvertTo-Json -Depth 20 -Compress)
 }
 
+<#
+函数 `Build-ResponsesBodyJson`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Build-ResponsesBodyJson
 {
     param(
@@ -80,6 +132,19 @@ function Build-ResponsesBodyJson
     return ($obj | ConvertTo-Json -Depth 20 -Compress)
 }
 
+<#
+函数 `Invoke-CurlStream`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-CurlStream
 {
     param(
@@ -109,6 +174,19 @@ function Invoke-CurlStream
     }
 }
 
+<#
+函数 `Get-DataLinePayloads`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Get-DataLinePayloads
 {
     param([string]$Path)
@@ -127,6 +205,19 @@ function Get-DataLinePayloads
     return $payloads
 }
 
+<#
+函数 `Read-ChunkText`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Read-ChunkText
 {
     param($DeltaContent)
@@ -156,6 +247,19 @@ function Read-ChunkText
     return ""
 }
 
+<#
+函数 `Has-Property`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Has-Property
 {
     param(
@@ -168,6 +272,19 @@ function Has-Property
     return ($InputObject.PSObject.Properties.Match($PropertyName).Count -gt 0)
 }
 
+<#
+函数 `Analyze-ChatStream`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Analyze-ChatStream
 {
     param([string]$Path)
@@ -273,6 +390,19 @@ function Analyze-ChatStream
     }
 }
 
+<#
+函数 `Analyze-ResponsesStream`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Analyze-ResponsesStream
 {
     param([string]$Path)
@@ -298,6 +428,19 @@ function Analyze-ResponsesStream
     }
 }
 
+<#
+函数 `Save-TraceTail`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Save-TraceTail
 {
     param(

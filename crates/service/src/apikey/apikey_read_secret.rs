@@ -2,6 +2,17 @@ use codexmanager_core::rpc::types::ApiKeySecretResult;
 
 use crate::storage_helpers::open_storage;
 
+/// 函数 `read_api_key_secret`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_api_key_secret(key_id: &str) -> Result<ApiKeySecretResult, String> {
     let normalized = key_id.trim();
     if normalized.is_empty() {

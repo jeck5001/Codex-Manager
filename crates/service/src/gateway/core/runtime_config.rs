@@ -71,27 +71,84 @@ struct UpstreamClientPool {
 }
 
 impl UpstreamClientPool {
+    /// 函数 `client_for_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn client_for_account(&self, account_id: &str) -> Option<&Client> {
         let idx = stable_proxy_index(account_id, self.clients.len())?;
         self.clients.get(idx)
     }
 
+    /// 函数 `proxy_for_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn proxy_for_account(&self, account_id: &str) -> Option<&str> {
         let idx = stable_proxy_index(account_id, self.proxies.len())?;
         self.proxies.get(idx).map(String::as_str)
     }
 }
 
+/// 函数 `upstream_client`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn upstream_client() -> Client {
     ensure_runtime_config_loaded();
     crate::lock_utils::read_recover(upstream_client_lock(), "upstream_client").clone()
 }
 
+/// 函数 `fresh_upstream_client`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn fresh_upstream_client() -> Client {
     ensure_runtime_config_loaded();
     build_upstream_client()
 }
 
+/// 函数 `upstream_client_for_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn upstream_client_for_account(account_id: &str) -> Client {
     ensure_runtime_config_loaded();
     let cached =
@@ -101,6 +158,17 @@ pub(crate) fn upstream_client_for_account(account_id: &str) -> Client {
     cached.unwrap_or_else(upstream_client)
 }
 
+/// 函数 `fresh_upstream_client_for_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn fresh_upstream_client_for_account(account_id: &str) -> Client {
     ensure_runtime_config_loaded();
     let pool = crate::lock_utils::read_recover(upstream_client_pool_lock(), "upstream_client_pool");
@@ -110,15 +178,48 @@ pub(crate) fn fresh_upstream_client_for_account(account_id: &str) -> Client {
     build_upstream_client()
 }
 
+/// 函数 `upstream_connect_timeout_cached`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn upstream_connect_timeout_cached() -> Duration {
     Duration::from_secs(UPSTREAM_CONNECT_TIMEOUT_SECS.load(Ordering::Relaxed))
 }
 
+/// 函数 `build_upstream_client`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_upstream_client() -> Client {
     let proxy_url = current_upstream_proxy_url();
     build_upstream_client_with_proxy(proxy_url.as_deref())
 }
 
+/// 函数 `build_upstream_client_with_proxy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - proxy_url: 参数 proxy_url
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_upstream_client_with_proxy(proxy_url: Option<&str>) -> Client {
     let mut builder = Client::builder()
         // 中文注释：显式关闭总超时，避免长时流式响应在客户端层被误判超时中断。
@@ -148,6 +249,17 @@ fn build_upstream_client_with_proxy(proxy_url: Option<&str>) -> Client {
     })
 }
 
+/// 函数 `upstream_total_timeout`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn upstream_total_timeout() -> Option<Duration> {
     ensure_runtime_config_loaded();
     let timeout_ms = UPSTREAM_TOTAL_TIMEOUT_MS.load(Ordering::Relaxed);
@@ -158,6 +270,17 @@ pub(crate) fn upstream_total_timeout() -> Option<Duration> {
     }
 }
 
+/// 函数 `upstream_stream_timeout`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn upstream_stream_timeout() -> Option<Duration> {
     ensure_runtime_config_loaded();
     let timeout_ms = UPSTREAM_STREAM_TIMEOUT_MS.load(Ordering::Relaxed);
@@ -168,21 +291,65 @@ pub(crate) fn upstream_stream_timeout() -> Option<Duration> {
     }
 }
 
+/// 函数 `current_upstream_stream_timeout_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_upstream_stream_timeout_ms() -> u64 {
     ensure_runtime_config_loaded();
     UPSTREAM_STREAM_TIMEOUT_MS.load(Ordering::Relaxed)
 }
 
+/// 函数 `request_compression_enabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn request_compression_enabled() -> bool {
     ensure_runtime_config_loaded();
     ENABLE_REQUEST_COMPRESSION.load(Ordering::Relaxed)
 }
 
+/// 函数 `account_max_inflight_limit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn account_max_inflight_limit() -> usize {
     ensure_runtime_config_loaded();
     ACCOUNT_MAX_INFLIGHT.load(Ordering::Relaxed)
 }
 
+/// 函数 `set_account_max_inflight_limit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_account_max_inflight_limit(limit: usize) -> usize {
     ensure_runtime_config_loaded();
     ACCOUNT_MAX_INFLIGHT.store(limit, Ordering::Relaxed);
@@ -190,45 +357,144 @@ pub(crate) fn set_account_max_inflight_limit(limit: usize) -> usize {
     limit
 }
 
+/// 函数 `strict_request_param_allowlist_enabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn strict_request_param_allowlist_enabled() -> bool {
     ensure_runtime_config_loaded();
     STRICT_REQUEST_PARAM_ALLOWLIST.load(Ordering::Relaxed)
 }
 
+/// 函数 `request_gate_wait_timeout`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn request_gate_wait_timeout() -> Duration {
     ensure_runtime_config_loaded();
     Duration::from_millis(REQUEST_GATE_WAIT_TIMEOUT_MS.load(Ordering::Relaxed))
 }
 
+/// 函数 `trace_body_preview_max_bytes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn trace_body_preview_max_bytes() -> usize {
     ensure_runtime_config_loaded();
     TRACE_BODY_PREVIEW_MAX_BYTES.load(Ordering::Relaxed)
 }
 
+/// 函数 `front_proxy_max_body_bytes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn front_proxy_max_body_bytes() -> usize {
     ensure_runtime_config_loaded();
     FRONT_PROXY_MAX_BODY_BYTES.load(Ordering::Relaxed)
 }
 
+/// 函数 `upstream_proxy_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn upstream_proxy_url() -> Option<String> {
     ensure_runtime_config_loaded();
     current_upstream_proxy_url()
 }
 
+/// 函数 `current_free_account_max_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_free_account_max_model() -> String {
     ensure_runtime_config_loaded();
     crate::lock_utils::read_recover(free_account_max_model_cell(), "free_account_max_model").clone()
 }
 
+/// 函数 `current_originator`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_originator() -> String {
     ensure_runtime_config_loaded();
     crate::lock_utils::read_recover(originator_cell(), "originator").clone()
 }
 
+/// 函数 `current_wire_originator`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_wire_originator() -> String {
     DEFAULT_ORIGINATOR.to_string()
 }
 
+/// 函数 `set_originator`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_originator(originator: &str) -> Result<String, String> {
     ensure_runtime_config_loaded();
     let normalized = normalize_originator(originator)?;
@@ -238,12 +504,34 @@ pub(crate) fn set_originator(originator: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
+/// 函数 `current_codex_user_agent_version`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_codex_user_agent_version() -> String {
     ensure_runtime_config_loaded();
     crate::lock_utils::read_recover(codex_user_agent_version_cell(), "codex_user_agent_version")
         .clone()
 }
 
+/// 函数 `set_codex_user_agent_version`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_codex_user_agent_version(version: &str) -> Result<String, String> {
     ensure_runtime_config_loaded();
     let normalized = normalize_codex_user_agent_version(version)?;
@@ -255,6 +543,17 @@ pub(crate) fn set_codex_user_agent_version(version: &str) -> Result<String, Stri
     Ok(normalized)
 }
 
+/// 函数 `current_codex_user_agent`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_codex_user_agent() -> String {
     ensure_runtime_config_loaded();
     let originator = current_wire_originator();
@@ -271,11 +570,33 @@ pub(crate) fn current_codex_user_agent() -> String {
     )
 }
 
+/// 函数 `current_residency_requirement`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_residency_requirement() -> Option<String> {
     ensure_runtime_config_loaded();
     crate::lock_utils::read_recover(residency_requirement_cell(), "residency_requirement").clone()
 }
 
+/// 函数 `set_residency_requirement`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_residency_requirement(value: Option<&str>) -> Result<Option<String>, String> {
     ensure_runtime_config_loaded();
     let normalized = normalize_residency_requirement(value)?;
@@ -290,6 +611,17 @@ pub(crate) fn set_residency_requirement(value: Option<&str>) -> Result<Option<St
     Ok(normalized)
 }
 
+/// 函数 `set_free_account_max_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_free_account_max_model(model: &str) -> Result<String, String> {
     ensure_runtime_config_loaded();
     let normalized = normalize_model_slug(model)?;
@@ -300,6 +632,17 @@ pub(crate) fn set_free_account_max_model(model: &str) -> Result<String, String> 
     Ok(normalized)
 }
 
+/// 函数 `set_request_compression_enabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_request_compression_enabled(enabled: bool) -> bool {
     ensure_runtime_config_loaded();
     ENABLE_REQUEST_COMPRESSION.store(enabled, Ordering::Relaxed);
@@ -310,6 +653,17 @@ pub(crate) fn set_request_compression_enabled(enabled: bool) -> bool {
     enabled
 }
 
+/// 函数 `set_upstream_proxy_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn set_upstream_proxy_url(proxy_url: Option<&str>) -> Result<Option<String>, String> {
     ensure_runtime_config_loaded();
     let normalized = normalize_upstream_proxy_url(proxy_url)?;
@@ -328,6 +682,17 @@ pub(super) fn set_upstream_proxy_url(proxy_url: Option<&str>) -> Result<Option<S
     Ok(normalized)
 }
 
+/// 函数 `set_upstream_stream_timeout_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_upstream_stream_timeout_ms(timeout_ms: u64) -> u64 {
     ensure_runtime_config_loaded();
     UPSTREAM_STREAM_TIMEOUT_MS.store(timeout_ms, Ordering::Relaxed);
@@ -335,17 +700,50 @@ pub(crate) fn set_upstream_stream_timeout_ms(timeout_ms: u64) -> u64 {
     timeout_ms
 }
 
+/// 函数 `token_exchange_client_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn token_exchange_client_id() -> String {
     ensure_runtime_config_loaded();
     crate::lock_utils::read_recover(token_exchange_client_id_cell(), "token_exchange_client_id")
         .clone()
 }
 
+/// 函数 `token_exchange_default_issuer`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn token_exchange_default_issuer() -> String {
     ensure_runtime_config_loaded();
     crate::lock_utils::read_recover(token_exchange_issuer_cell(), "token_exchange_issuer").clone()
 }
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn reload_from_env() {
     REQUEST_GATE_WAIT_TIMEOUT_MS.store(
         env_u64_or(
@@ -472,18 +870,62 @@ pub(super) fn reload_from_env() {
     refresh_upstream_clients_from_runtime_config();
 }
 
+/// 函数 `ensure_runtime_config_loaded`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn ensure_runtime_config_loaded() {
     let _ = RUNTIME_CONFIG_LOADED.get_or_init(|| reload_from_env());
 }
 
+/// 函数 `upstream_client_lock`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn upstream_client_lock() -> &'static RwLock<Client> {
     UPSTREAM_CLIENT.get_or_init(|| RwLock::new(build_upstream_client()))
 }
 
+/// 函数 `upstream_client_pool_lock`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn upstream_client_pool_lock() -> &'static RwLock<UpstreamClientPool> {
     UPSTREAM_CLIENT_POOL.get_or_init(|| RwLock::new(build_upstream_client_pool()))
 }
 
+/// 函数 `refresh_upstream_clients_from_runtime_config`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn refresh_upstream_clients_from_runtime_config() {
     let client = build_upstream_client();
     let mut client_lock =
@@ -497,6 +939,17 @@ fn refresh_upstream_clients_from_runtime_config() {
     *pool_lock = pool;
 }
 
+/// 函数 `build_upstream_client_pool`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_upstream_client_pool() -> UpstreamClientPool {
     if current_upstream_proxy_url().is_some() {
         return UpstreamClientPool::default();
@@ -531,39 +984,138 @@ fn build_upstream_client_pool() -> UpstreamClientPool {
     }
 }
 
+/// 函数 `upstream_proxy_url_cell`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn upstream_proxy_url_cell() -> &'static RwLock<Option<String>> {
     UPSTREAM_PROXY_URL.get_or_init(|| RwLock::new(None))
 }
 
+/// 函数 `free_account_max_model_cell`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn free_account_max_model_cell() -> &'static RwLock<String> {
     FREE_ACCOUNT_MAX_MODEL.get_or_init(|| RwLock::new(DEFAULT_FREE_ACCOUNT_MAX_MODEL.to_string()))
 }
 
+/// 函数 `originator_cell`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn originator_cell() -> &'static RwLock<String> {
     ORIGINATOR.get_or_init(|| RwLock::new(DEFAULT_ORIGINATOR.to_string()))
 }
 
+/// 函数 `codex_user_agent_version_cell`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn codex_user_agent_version_cell() -> &'static RwLock<String> {
     CODEX_USER_AGENT_VERSION
         .get_or_init(|| RwLock::new(DEFAULT_CODEX_USER_AGENT_VERSION.to_string()))
 }
 
+/// 函数 `residency_requirement_cell`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn residency_requirement_cell() -> &'static RwLock<Option<String>> {
     RESIDENCY_REQUIREMENT.get_or_init(|| RwLock::new(None))
 }
 
+/// 函数 `current_upstream_proxy_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_upstream_proxy_url() -> Option<String> {
     crate::lock_utils::read_recover(upstream_proxy_url_cell(), "upstream_proxy_url").clone()
 }
 
+/// 函数 `token_exchange_client_id_cell`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn token_exchange_client_id_cell() -> &'static RwLock<String> {
     TOKEN_EXCHANGE_CLIENT_ID.get_or_init(|| RwLock::new(DEFAULT_CLIENT_ID.to_string()))
 }
 
+/// 函数 `token_exchange_issuer_cell`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn token_exchange_issuer_cell() -> &'static RwLock<String> {
     TOKEN_EXCHANGE_ISSUER.get_or_init(|| RwLock::new(DEFAULT_ISSUER.to_string()))
 }
 
+/// 函数 `env_non_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_non_empty(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -571,18 +1123,54 @@ fn env_non_empty(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+/// 函数 `env_u64_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_u64_or(name: &str, default: u64) -> u64 {
     env_non_empty(name)
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(default)
 }
 
+/// 函数 `env_usize_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_usize_or(name: &str, default: usize) -> usize {
     env_non_empty(name)
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(default)
 }
 
+/// 函数 `env_bool_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_bool_or(name: &str, default: bool) -> bool {
     let Some(value) = env_non_empty(name) else {
         return default;
@@ -594,6 +1182,17 @@ fn env_bool_or(name: &str, default: bool) -> bool {
     }
 }
 
+/// 函数 `normalize_model_slug`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_model_slug(raw: &str) -> Result<String, String> {
     let normalized = raw.trim().to_ascii_lowercase();
     if normalized.is_empty() {
@@ -614,6 +1213,17 @@ fn normalize_model_slug(raw: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
+/// 函数 `normalize_originator`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_originator(raw: &str) -> Result<String, String> {
     let normalized = raw.trim();
     if normalized.is_empty() {
@@ -625,6 +1235,17 @@ fn normalize_originator(raw: &str) -> Result<String, String> {
     Ok(normalized.to_string())
 }
 
+/// 函数 `normalize_codex_user_agent_version`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_codex_user_agent_version(raw: &str) -> Result<String, String> {
     let normalized = raw.trim();
     if normalized.is_empty() {
@@ -642,6 +1263,17 @@ fn normalize_codex_user_agent_version(raw: &str) -> Result<String, String> {
     Ok(normalized.to_string())
 }
 
+/// 函数 `current_codex_terminal_user_agent_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_codex_terminal_user_agent_token() -> String {
     if let Some(program) = env_non_empty("TERM_PROGRAM") {
         if let Some(version) = env_non_empty("TERM_PROGRAM_VERSION") {
@@ -658,6 +1290,17 @@ fn current_codex_terminal_user_agent_token() -> String {
     "unknown".to_string()
 }
 
+/// 函数 `sanitize_user_agent_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn sanitize_user_agent_token(raw: String) -> String {
     let sanitized: String = raw
         .chars()
@@ -670,6 +1313,17 @@ fn sanitize_user_agent_token(raw: String) -> String {
     trimmed.replace('(', "_").replace(')', "_")
 }
 
+/// 函数 `normalize_residency_requirement`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_residency_requirement(raw: Option<&str>) -> Result<Option<String>, String> {
     let Some(value) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
@@ -680,6 +1334,17 @@ fn normalize_residency_requirement(raw: Option<&str>) -> Result<Option<String>, 
     }
 }
 
+/// 函数 `rewrite_socks_proxy_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - proxy_url: 参数 proxy_url
+///
+/// # 返回
+/// 返回函数执行结果
 fn rewrite_socks_proxy_url(proxy_url: &str) -> String {
     let mut normalized = proxy_url.trim().to_string();
     if let Some(rest) = normalized.strip_prefix("http://socks") {
@@ -695,6 +1360,17 @@ fn rewrite_socks_proxy_url(proxy_url: &str) -> String {
     normalized
 }
 
+/// 函数 `normalize_upstream_proxy_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - proxy_url: 参数 proxy_url
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_upstream_proxy_url(proxy_url: Option<&str>) -> Result<Option<String>, String> {
     let mut normalized = proxy_url
         .map(str::trim)
@@ -707,6 +1383,17 @@ fn normalize_upstream_proxy_url(proxy_url: Option<&str>) -> Result<Option<String
     Ok(normalized)
 }
 
+/// 函数 `parse_proxy_list_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_proxy_list_env() -> Vec<String> {
     let Some(raw) = env_non_empty(ENV_PROXY_LIST) else {
         return Vec::new();
@@ -719,6 +1406,18 @@ fn parse_proxy_list_env() -> Vec<String> {
         .collect()
 }
 
+/// 函数 `stable_proxy_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account_id: 参数 account_id
+/// - size: 参数 size
+///
+/// # 返回
+/// 返回函数执行结果
 fn stable_proxy_index(account_id: &str, size: usize) -> Option<usize> {
     if size == 0 {
         return None;
@@ -730,6 +1429,17 @@ fn stable_proxy_index(account_id: &str, size: usize) -> Option<usize> {
     Some((hash as usize) % size)
 }
 
+/// 函数 `stable_account_hash`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn stable_account_hash(account_id: &str) -> u64 {
     // 中文注释：FNV-1a 保证跨进程稳定，不受 std 默认随机种子影响。
     let mut hash = 14695981039346656037_u64;

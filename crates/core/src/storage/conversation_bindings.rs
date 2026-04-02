@@ -3,6 +3,19 @@ use rusqlite::params;
 use super::{ConversationBinding, Storage};
 
 impl Storage {
+    /// 函数 `get_conversation_binding`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - platform_key_hash: 参数 platform_key_hash
+    /// - conversation_id: 参数 conversation_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn get_conversation_binding(
         &self,
         platform_key_hash: &str,
@@ -45,6 +58,18 @@ impl Storage {
         Ok(None)
     }
 
+    /// 函数 `upsert_conversation_binding`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - binding: 参数 binding
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn upsert_conversation_binding(
         &self,
         binding: &ConversationBinding,
@@ -91,6 +116,22 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `touch_conversation_binding`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - platform_key_hash: 参数 platform_key_hash
+    /// - conversation_id: 参数 conversation_id
+    /// - account_id: 参数 account_id
+    /// - last_model: 参数 last_model
+    /// - touched_at: 参数 touched_at
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn touch_conversation_binding(
         &self,
         platform_key_hash: &str,
@@ -118,6 +159,19 @@ impl Storage {
         Ok(updated > 0)
     }
 
+    /// 函数 `delete_conversation_binding`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - platform_key_hash: 参数 platform_key_hash
+    /// - conversation_id: 参数 conversation_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn delete_conversation_binding(
         &self,
         platform_key_hash: &str,
@@ -132,6 +186,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `delete_conversation_bindings_for_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn delete_conversation_bindings_for_account(
         &self,
         account_id: &str,
@@ -144,6 +210,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `delete_stale_conversation_bindings`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - older_than_ts: 参数 older_than_ts
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn delete_stale_conversation_bindings(
         &self,
         older_than_ts: i64,

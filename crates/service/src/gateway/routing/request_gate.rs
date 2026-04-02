@@ -36,6 +36,17 @@ pub(crate) struct RequestGateLock {
 }
 
 impl RequestGateLock {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new() -> Self {
         Self {
             state: Mutex::new(RequestGateState::default()),
@@ -43,6 +54,17 @@ impl RequestGateLock {
         }
     }
 
+    /// 函数 `try_acquire`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn try_acquire(
         self: &Arc<Self>,
     ) -> Result<Option<RequestGateGuard>, RequestGateAcquireError> {
@@ -63,6 +85,17 @@ impl RequestGateLock {
         }))
     }
 
+    /// 函数 `acquire_with_timeout`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn acquire_with_timeout(
         self: &Arc<Self>,
         timeout: Duration,
@@ -97,6 +130,17 @@ pub(crate) struct RequestGateGuard {
 }
 
 impl Drop for RequestGateGuard {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         let mut state = match self.lock.state.lock() {
             Ok(guard) => guard,
@@ -110,6 +154,19 @@ impl Drop for RequestGateGuard {
     }
 }
 
+/// 函数 `gate_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key_id: 参数 key_id
+/// - path: 参数 path
+/// - model: 参数 model
+///
+/// # 返回
+/// 返回函数执行结果
 fn gate_key(key_id: &str, path: &str, model: Option<&str>) -> String {
     format!(
         "{}|{}|{}",
@@ -122,6 +179,17 @@ fn gate_key(key_id: &str, path: &str, model: Option<&str>) -> String {
     )
 }
 
+/// 函数 `request_gate_lock`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn request_gate_lock(
     key_id: &str,
     path: &str,
@@ -142,6 +210,18 @@ pub(crate) fn request_gate_lock(
     entry.lock.clone()
 }
 
+/// 函数 `maybe_cleanup_request_gate_locks`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - table: 参数 table
+/// - now: 参数 now
+///
+/// # 返回
+/// 无
 fn maybe_cleanup_request_gate_locks(table: &mut RequestGateLockTable, now: i64) {
     if table.last_cleanup_at != 0
         && now.saturating_sub(table.last_cleanup_at) < REQUEST_GATE_LOCK_CLEANUP_INTERVAL_SECS
@@ -155,6 +235,17 @@ fn maybe_cleanup_request_gate_locks(table: &mut RequestGateLockTable, now: i64) 
     });
 }
 
+/// 函数 `clear_runtime_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn clear_runtime_state() {
     let lock = REQUEST_GATE_LOCKS.get_or_init(|| Mutex::new(RequestGateLockTable::default()));
     let mut table = crate::lock_utils::lock_recover(lock, "request_gate_locks");
@@ -162,6 +253,17 @@ pub(super) fn clear_runtime_state() {
     table.last_cleanup_at = 0;
 }
 
+/// 函数 `clear_request_gate_locks_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn clear_request_gate_locks_for_tests() {
     clear_runtime_state();

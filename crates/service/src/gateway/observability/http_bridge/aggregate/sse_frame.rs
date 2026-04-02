@@ -6,6 +6,17 @@ use output_text::{
     parse_usage_from_json, UpstreamResponseUsage,
 };
 
+/// 函数 `parse_usage_from_sse_frame`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 pub(in super::super) fn parse_usage_from_sse_frame(
     lines: &[String],
@@ -67,6 +78,17 @@ pub(in super::super) struct SseFrameInspection {
     pub last_event_type: Option<String>,
 }
 
+/// 函数 `classify_terminal_event_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_terminal_event_name(name: &str) -> Option<SseTerminal> {
     let normalized = name.trim().to_ascii_lowercase();
     if normalized.is_empty() {
@@ -91,11 +113,33 @@ fn classify_terminal_event_name(name: &str) -> Option<SseTerminal> {
     None
 }
 
+/// 函数 `is_response_completed_event_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn is_response_completed_event_name(name: &str) -> bool {
     let normalized = name.trim().to_ascii_lowercase();
     normalized == "response.completed" || normalized == "response.done"
 }
 
+/// 函数 `is_chat_completion_terminal_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_chat_completion_terminal_chunk(value: &Value) -> bool {
     if value.get("object").and_then(Value::as_str) != Some("chat.completion.chunk") {
         return false;
@@ -112,6 +156,17 @@ fn is_chat_completion_terminal_chunk(value: &Value) -> bool {
         })
 }
 
+/// 函数 `inspect_sse_frame`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn inspect_sse_frame(lines: &[String]) -> SseFrameInspection {
     let mut inspection = SseFrameInspection::default();
     let mut data_lines = Vec::new();
@@ -202,6 +257,17 @@ pub(in super::super) fn inspect_sse_frame(lines: &[String]) -> SseFrameInspectio
     inspection
 }
 
+/// 函数 `extract_sse_event_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn extract_sse_event_name(lines: &[String]) -> Option<String> {
     for line in lines {
         let trimmed = line.trim_end_matches(['\r', '\n']);
@@ -215,6 +281,17 @@ pub(in super::super) fn extract_sse_event_name(lines: &[String]) -> Option<Strin
     None
 }
 
+/// 函数 `normalize_sse_event_name_for_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - event_name: 参数 event_name
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_sse_event_name_for_type(event_name: &str) -> Option<&str> {
     let normalized = event_name.trim();
     if normalized.is_empty() || normalized.eq_ignore_ascii_case("message") {
@@ -223,6 +300,17 @@ fn normalize_sse_event_name_for_type(event_name: &str) -> Option<&str> {
     Some(normalized)
 }
 
+/// 函数 `extract_sse_frame_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn extract_sse_frame_payload(lines: &[String]) -> Option<String> {
     let mut data_lines = Vec::new();
     for line in lines {
@@ -259,6 +347,17 @@ pub(in super::super) fn extract_sse_frame_payload(lines: &[String]) -> Option<St
 mod tests {
     use super::inspect_sse_frame;
 
+    /// 函数 `inspect_sse_frame_keeps_last_event_type_from_header`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn inspect_sse_frame_keeps_last_event_type_from_header() {
         let lines = vec![
@@ -273,6 +372,17 @@ mod tests {
         );
     }
 
+    /// 函数 `inspect_sse_frame_keeps_last_event_type_from_json_type`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn inspect_sse_frame_keeps_last_event_type_from_json_type() {
         let lines = vec![
@@ -287,6 +397,18 @@ mod tests {
     }
 }
 
+/// 函数 `ensure_value_has_sse_event_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - lines: 参数 lines
+/// - value: 参数 value
+///
+/// # 返回
+/// 无
 fn ensure_value_has_sse_event_type(lines: &[String], value: &mut Value) {
     let Some(event_name) = extract_sse_event_name(lines) else {
         return;
@@ -306,6 +428,17 @@ fn ensure_value_has_sse_event_type(lines: &[String], value: &mut Value) {
     }
 }
 
+/// 函数 `parse_sse_frame_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn parse_sse_frame_json(lines: &[String]) -> Option<Value> {
     let payload = extract_sse_frame_payload(lines)?;
     let mut value = serde_json::from_str::<Value>(&payload).ok()?;

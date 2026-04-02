@@ -46,11 +46,37 @@ $legacyPortableMarker = Join-Path $portableRoot ".codexmanager-portable"
 $appExe = Join-Path $tauriDir "target\\release\\$appName.exe"
 $artifactsRoot = if ($ArtifactsDir) { $ArtifactsDir } else { Join-Path $root "artifacts" }
 
+<#
+函数 `Write-Step`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Message: 参数 Message
+
+# 返回
+返回函数执行结果
+#>
 function Write-Step {
   param([string]$Message)
   Write-Output $Message
 }
 
+<#
+函数 `Remove-Dir`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Path: 参数 Path
+
+# 返回
+返回函数执行结果
+#>
 function Remove-Dir {
   param([string]$Path)
   if (-not (Test-Path $Path)) {
@@ -67,6 +93,20 @@ function Remove-Dir {
   }
 }
 
+<#
+函数 `Run-Cargo`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- CommandLine: 参数 CommandLine
+- Action: 参数 Action
+
+# 返回
+返回函数执行结果
+#>
 function Run-Cargo {
   param([string]$CommandLine, [scriptblock]$Action)
   if ($DryRun) {
@@ -79,6 +119,19 @@ function Run-Cargo {
   }
 }
 
+<#
+函数 `Get-GitHubRepoInfo`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Get-GitHubRepoInfo {
   $remote = (& git remote get-url origin 2>$null) -join ""
   if ([string]::IsNullOrWhiteSpace($remote)) {
@@ -93,6 +146,19 @@ function Get-GitHubRepoInfo {
   throw "origin is not a GitHub repository: $remote"
 }
 
+<#
+函数 `Resolve-GitHubToken`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Resolve-GitHubToken {
   if (-not [string]::IsNullOrWhiteSpace($GithubToken)) {
     return $GithubToken.Trim()
@@ -106,6 +172,19 @@ function Resolve-GitHubToken {
   throw "GitHub token required for -AllPlatforms. Pass -GithubToken or set GITHUB_TOKEN."
 }
 
+<#
+函数 `Invoke-GitHubApi`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-GitHubApi {
   param(
     [ValidateSet("GET", "POST")]
@@ -127,6 +206,21 @@ function Invoke-GitHubApi {
   return Invoke-RestMethod -Method Post -Uri $Uri -Headers $headers -ContentType "application/json" -Body $json
 }
 
+<#
+函数 `Resolve-WorkflowDefinition`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Repo: 参数 Repo
+- Token: 参数 Token
+- WorkflowFile: 参数 WorkflowFile
+
+# 返回
+返回函数执行结果
+#>
 function Resolve-WorkflowDefinition {
   param(
     [hashtable]$Repo,
@@ -156,6 +250,19 @@ function Resolve-WorkflowDefinition {
   }
 }
 
+<#
+函数 `Invoke-LocalWindowsBuild`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-LocalWindowsBuild {
   if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     throw "cargo not found in PATH"
@@ -210,6 +317,19 @@ function Invoke-LocalWindowsBuild {
   }
 }
 
+<#
+函数 `Invoke-AllPlatformBuild`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-AllPlatformBuild {
   $repo = Get-GitHubRepoInfo
   $token = Resolve-GitHubToken

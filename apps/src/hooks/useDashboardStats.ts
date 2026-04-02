@@ -15,6 +15,19 @@ import { serviceClient } from "@/lib/api/service-client";
 import { useAppStore } from "@/lib/store/useAppStore";
 import { pickBestRecommendations, pickCurrentAccount } from "@/lib/utils/usage";
 
+/**
+ * 函数 `useDashboardStats`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * 无
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function useDashboardStats() {
   const serviceStatus = useAppStore((state) => state.serviceStatus);
   const isServiceReady = serviceStatus.connected;

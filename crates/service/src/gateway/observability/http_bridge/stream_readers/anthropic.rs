@@ -29,6 +29,17 @@ struct AnthropicSseState {
 }
 
 impl AnthropicSseReader {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn new(
         upstream: reqwest::blocking::Response,
         usage_collector: Arc<Mutex<UpstreamResponseUsage>>,
@@ -41,6 +52,17 @@ impl AnthropicSseReader {
         }
     }
 
+    /// 函数 `next_chunk`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn next_chunk(&mut self) -> std::io::Result<Vec<u8>> {
         loop {
             match self.upstream.recv_timeout(sse_keepalive_interval()) {
@@ -67,6 +89,18 @@ impl AnthropicSseReader {
         }
     }
 
+    /// 函数 `process_sse_frame`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - lines: 参数 lines
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn process_sse_frame(&mut self, lines: &[String]) -> Vec<u8> {
         let mut data_lines = Vec::new();
         for line in lines {
@@ -90,6 +124,18 @@ impl AnthropicSseReader {
         self.consume_openai_event(&value)
     }
 
+    /// 函数 `consume_openai_event`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn consume_openai_event(&mut self, value: &Value) -> Vec<u8> {
         self.capture_response_meta(value);
         let mut out = String::new();
@@ -233,6 +279,18 @@ impl AnthropicSseReader {
         out.into_bytes()
     }
 
+    /// 函数 `capture_response_meta`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 无
     fn capture_response_meta(&mut self, value: &Value) {
         if let Some(id) = value.get("id").and_then(Value::as_str) {
             self.state.response_id = Some(id.to_string());
@@ -302,6 +360,18 @@ impl AnthropicSseReader {
         }
     }
 
+    /// 函数 `ensure_message_start`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - out: 参数 out
+    ///
+    /// # 返回
+    /// 无
     fn ensure_message_start(&mut self, out: &mut String) {
         if self.state.started {
             return;
@@ -332,6 +402,18 @@ impl AnthropicSseReader {
         );
     }
 
+    /// 函数 `ensure_text_block_start`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - out: 参数 out
+    ///
+    /// # 返回
+    /// 无
     fn ensure_text_block_start(&mut self, out: &mut String) {
         if self.state.text_block_index.is_some() {
             return;
@@ -353,6 +435,18 @@ impl AnthropicSseReader {
         );
     }
 
+    /// 函数 `close_text_block`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - out: 参数 out
+    ///
+    /// # 返回
+    /// 无
     fn close_text_block(&mut self, out: &mut String) {
         let Some(index) = self.state.text_block_index.take() else {
             return;
@@ -367,6 +461,17 @@ impl AnthropicSseReader {
         );
     }
 
+    /// 函数 `finish_stream`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn finish_stream(&mut self) -> Vec<u8> {
         if self.state.finished {
             return Vec::new();
@@ -409,6 +514,18 @@ impl AnthropicSseReader {
 }
 
 impl Read for AnthropicSseReader {
+    /// 函数 `read`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - buf: 参数 buf
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         loop {
             let read = self.out_cursor.read(buf)?;
@@ -424,6 +541,19 @@ impl Read for AnthropicSseReader {
     }
 }
 
+/// 函数 `append_sse_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - buffer: 参数 buffer
+/// - event_name: 参数 event_name
+/// - payload: 参数 payload
+///
+/// # 返回
+/// 无
 fn append_sse_event(buffer: &mut String, event_name: &str, payload: &Value) {
     let data = serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string());
     buffer.push_str("event: ");
@@ -434,6 +564,21 @@ fn append_sse_event(buffer: &mut String, event_name: &str, payload: &Value) {
     buffer.push_str("\n\n");
 }
 
+/// 函数 `build_anthropic_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - input_tokens: 参数 input_tokens
+/// - output_tokens: 参数 output_tokens
+/// - cache_read_input_tokens: 参数 cache_read_input_tokens
+/// - total_tokens: 参数 total_tokens
+/// - reasoning_output_tokens: 参数 reasoning_output_tokens
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_anthropic_usage(
     input_tokens: i64,
     output_tokens: i64,
@@ -457,6 +602,17 @@ fn build_anthropic_usage(
     Value::Object(usage)
 }
 
+/// 函数 `extract_function_call_input`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_function_call_input(item_obj: &Map<String, Value>) -> Option<Value> {
     const ARGUMENT_KEYS: [&str; 5] = [
         "arguments",
@@ -487,6 +643,17 @@ fn extract_function_call_input(item_obj: &Map<String, Value>) -> Option<Value> {
     None
 }
 
+/// 函数 `tool_input_partial_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn tool_input_partial_json(value: Value) -> Option<String> {
     let serialized = serde_json::to_string(&value).ok()?;
     let trimmed = serialized.trim();

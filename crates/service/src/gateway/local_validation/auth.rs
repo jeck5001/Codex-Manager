@@ -2,10 +2,32 @@ use codexmanager_core::storage::{ApiKey, Storage};
 
 use crate::storage_helpers::{hash_platform_key, open_storage, StorageHandle};
 
+/// 函数 `open_storage_or_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn open_storage_or_error() -> Result<StorageHandle, super::LocalValidationError> {
     open_storage().ok_or_else(|| super::LocalValidationError::new(500, "storage unavailable"))
 }
 
+/// 函数 `load_active_api_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn load_active_api_key(
     storage: &Storage,
     platform_key: &str,

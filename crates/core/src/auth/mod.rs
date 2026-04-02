@@ -36,6 +36,17 @@ pub struct PkceCodes {
     pub code_challenge: String,
 }
 
+/// 函数 `generate_pkce`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn generate_pkce() -> PkceCodes {
     let mut bytes = [0u8; 64];
     rand::thread_rng().fill_bytes(&mut bytes);
@@ -48,12 +59,34 @@ pub fn generate_pkce() -> PkceCodes {
     }
 }
 
+/// 函数 `generate_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn generate_state() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
+/// 函数 `parse_id_token_claims`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn parse_id_token_claims(token: &str) -> Result<IdTokenClaims, String> {
     let mut parts = token.split('.');
     let _header = parts.next();
@@ -65,6 +98,17 @@ pub fn parse_id_token_claims(token: &str) -> Result<IdTokenClaims, String> {
     serde_json::from_str(json).map_err(|e| e.to_string())
 }
 
+/// 函数 `extract_token_exp`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn extract_token_exp(token: &str) -> Option<i64> {
     let mut parts = token.split('.');
     let _header = parts.next()?;
@@ -77,6 +121,17 @@ pub fn extract_token_exp(token: &str) -> Option<i64> {
     value.get("exp").and_then(|v| v.as_i64())
 }
 
+/// 函数 `extract_chatgpt_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn extract_chatgpt_account_id(token: &str) -> Option<String> {
     let mut parts = token.split('.');
     let _header = parts.next()?;
@@ -99,6 +154,17 @@ pub fn extract_chatgpt_account_id(token: &str) -> Option<String> {
         .filter(|v| !v.trim().is_empty())
 }
 
+/// 函数 `extract_workspace_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn extract_workspace_id(token: &str) -> Option<String> {
     let mut parts = token.split('.');
     let _header = parts.next()?;
@@ -156,6 +222,17 @@ pub fn extract_workspace_id(token: &str) -> Option<String> {
     None
 }
 
+/// 函数 `extract_workspace_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn extract_workspace_name(token: &str) -> Option<String> {
     let mut parts = token.split('.');
     let _header = parts.next()?;
@@ -194,6 +271,23 @@ pub fn extract_workspace_name(token: &str) -> Option<String> {
     None
 }
 
+/// 函数 `build_authorize_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - issuer: 参数 issuer
+/// - client_id: 参数 client_id
+/// - redirect_uri: 参数 redirect_uri
+/// - code_challenge: 参数 code_challenge
+/// - state: 参数 state
+/// - originator: 参数 originator
+/// - workspace_id: 参数 workspace_id
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn build_authorize_url(
     issuer: &str,
     client_id: &str,
@@ -230,6 +324,20 @@ pub fn build_authorize_url(
     format!("{issuer}/oauth/authorize?{qs}")
 }
 
+/// 函数 `token_exchange_body_authorization_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - code: 参数 code
+/// - redirect_uri: 参数 redirect_uri
+/// - client_id: 参数 client_id
+/// - code_verifier: 参数 code_verifier
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn token_exchange_body_authorization_code(
     code: &str,
     redirect_uri: &str,
@@ -245,6 +353,18 @@ pub fn token_exchange_body_authorization_code(
     )
 }
 
+/// 函数 `token_exchange_body_token_exchange`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - id_token: 参数 id_token
+/// - client_id: 参数 client_id
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn token_exchange_body_token_exchange(id_token: &str, client_id: &str) -> String {
     format!(
         "grant_type={}&client_id={}&requested_token={}&subject_token={}&subject_token_type={}",
@@ -256,6 +376,17 @@ pub fn token_exchange_body_token_exchange(id_token: &str, client_id: &str) -> St
     )
 }
 
+/// 函数 `device_usercode_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - issuer: 参数 issuer
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn device_usercode_url(issuer: &str) -> String {
     format!(
         "{}/api/accounts/deviceauth/usercode",
@@ -263,6 +394,17 @@ pub fn device_usercode_url(issuer: &str) -> String {
     )
 }
 
+/// 函数 `device_token_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - issuer: 参数 issuer
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn device_token_url(issuer: &str) -> String {
     format!(
         "{}/api/accounts/deviceauth/token",
@@ -270,10 +412,32 @@ pub fn device_token_url(issuer: &str) -> String {
     )
 }
 
+/// 函数 `device_verification_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - issuer: 参数 issuer
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn device_verification_url(issuer: &str) -> String {
     format!("{}/codex/device", issuer.trim_end_matches('/'))
 }
 
+/// 函数 `device_redirect_uri`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - issuer: 参数 issuer
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn device_redirect_uri(issuer: &str) -> String {
     format!("{}/deviceauth/callback", issuer.trim_end_matches('/'))
 }

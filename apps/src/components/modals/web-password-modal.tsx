@@ -24,6 +24,19 @@ interface WebPasswordModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/**
+ * 函数 `WebPasswordModal`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function WebPasswordModal({ open, onOpenChange }: WebPasswordModalProps) {
   const { appSettings, setAppSettings } = useAppStore();
   const { canAccessManagementRpc } = useRuntimeCapabilities();
@@ -42,6 +55,19 @@ export function WebPasswordModal({ open, onOpenChange }: WebPasswordModalProps) 
     if (!canAccessManagementRpc) {
       return;
     }
+    /**
+     * 函数 `syncSettings`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * 无
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const syncSettings = async () => {
       try {
         const settings = await appClient.getSettings();
@@ -64,6 +90,19 @@ export function WebPasswordModal({ open, onOpenChange }: WebPasswordModalProps) 
     };
   }, [canAccessManagementRpc, open, setAppSettings]);
 
+  /**
+   * 函数 `handleSave`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleSave = async () => {
     if (!canAccessManagementRpc) {
       toast.info("当前运行环境暂不支持读取或保存访问密码");
@@ -93,6 +132,19 @@ export function WebPasswordModal({ open, onOpenChange }: WebPasswordModalProps) 
     }
   };
 
+  /**
+   * 函数 `handleClear`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleClear = async () => {
     if (!canAccessManagementRpc) {
       toast.info("当前运行环境暂不支持读取或保存访问密码");

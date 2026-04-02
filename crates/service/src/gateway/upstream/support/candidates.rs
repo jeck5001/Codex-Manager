@@ -6,6 +6,17 @@ pub(in super::super) enum CandidateSkipReason {
     Inflight,
 }
 
+/// 函数 `prepare_gateway_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn prepare_gateway_candidates(
     storage: &Storage,
     _request_model: Option<&str>,
@@ -14,6 +25,17 @@ pub(crate) fn prepare_gateway_candidates(
     super::super::super::collect_gateway_candidates(storage)
 }
 
+/// 函数 `free_account_model_override`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn free_account_model_override(
     storage: &Storage,
     account: &Account,
@@ -30,6 +52,17 @@ pub(in super::super) fn free_account_model_override(
     }
 }
 
+/// 函数 `candidate_skip_reason_for_proxy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn candidate_skip_reason_for_proxy(
     account_id: &str,
     idx: usize,
@@ -68,6 +101,17 @@ mod tests {
     use super::free_account_model_override;
     use codexmanager_core::storage::{now_ts, Account, Storage, Token, UsageSnapshotRecord};
 
+    /// 函数 `free_account_model_override_uses_configured_model_for_free_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_account_model_override_uses_configured_model_for_free_account() {
         let _guard = crate::test_env_guard();
@@ -133,6 +177,17 @@ mod tests {
         assert_eq!(actual.as_deref(), Some("gpt-5.2"));
     }
 
+    /// 函数 `free_account_model_override_accepts_single_window_weekly_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_account_model_override_accepts_single_window_weekly_account() {
         let _guard = crate::test_env_guard();
@@ -198,6 +253,17 @@ mod tests {
         assert_eq!(actual.as_deref(), Some("gpt-5.2"));
     }
 
+    /// 函数 `free_account_model_override_skips_rewrite_when_configured_auto`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_account_model_override_skips_rewrite_when_configured_auto() {
         let _guard = crate::test_env_guard();

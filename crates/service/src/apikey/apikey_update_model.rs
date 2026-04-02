@@ -6,6 +6,17 @@ use crate::apikey_profile::{
 use crate::reasoning_effort::normalize_reasoning_effort;
 use crate::storage_helpers::open_storage;
 
+/// 函数 `update_api_key_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn update_api_key_model(
     key_id: &str,
     name: Option<String>,

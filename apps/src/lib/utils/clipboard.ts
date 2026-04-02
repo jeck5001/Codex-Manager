@@ -1,5 +1,18 @@
 "use client";
 
+/**
+ * 函数 `legacyCopyText`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - text: 参数 text
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function legacyCopyText(text: string): boolean {
   if (typeof document === "undefined") {
     return false;
@@ -38,6 +51,19 @@ function legacyCopyText(text: string): boolean {
   return copied;
 }
 
+/**
+ * 函数 `copyTextToClipboard`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - text: 参数 text
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export async function copyTextToClipboard(text: string): Promise<void> {
   if (
     typeof navigator !== "undefined" &&

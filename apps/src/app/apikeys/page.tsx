@@ -50,6 +50,19 @@ const ROTATION_STRATEGY_LABELS: Record<string, string> = {
   aggregate_api_rotation: "聚合API轮转",
 };
 
+/**
+ * 函数 `formatUsd`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatUsd(value: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -59,6 +72,19 @@ function formatUsd(value: number): string {
   }).format(Math.max(0, value));
 }
 
+/**
+ * 函数 `ApiKeyStatCard`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function ApiKeyStatCard({
   title,
   value,
@@ -153,16 +179,55 @@ export default function ApiKeysPage() {
   const usageByKey = usageOverview?.usageByKey || {};
   const showOverviewLoading = isServiceReady && isPageActive && isUsageOverviewLoading;
 
+  /**
+   * 函数 `openCreateModal`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const openCreateModal = () => {
     setEditingKeyId(null);
     setApiKeyModalOpen(true);
   };
 
+  /**
+   * 函数 `openEditModal`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - id: 参数 id
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const openEditModal = (id: string) => {
     setEditingKeyId(id);
     setApiKeyModalOpen(true);
   };
 
+  /**
+   * 函数 `ensureSecretLoaded`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - id: 参数 id
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const ensureSecretLoaded = async (id: string) => {
     if (revealedSecrets[id]) {
       return revealedSecrets[id];
@@ -180,6 +245,19 @@ export default function ApiKeysPage() {
     }
   };
 
+  /**
+   * 函数 `toggleSecret`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - id: 参数 id
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const toggleSecret = async (id: string) => {
     if (revealedSecrets[id]) {
       setRevealedSecrets((current) => {
@@ -197,6 +275,19 @@ export default function ApiKeysPage() {
     }
   };
 
+  /**
+   * 函数 `copyToClipboard`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - id: 参数 id
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const copyToClipboard = async (id: string) => {
     try {
       const secret = await ensureSecretLoaded(id);
@@ -207,6 +298,19 @@ export default function ApiKeysPage() {
     }
   };
 
+  /**
+   * 函数 `handleDelete`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - id: 参数 id
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleDelete = (id: string) => {
     setDeleteKeyId(id);
   };

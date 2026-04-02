@@ -10,6 +10,17 @@ mod request;
 use parse::parse_model_options;
 use request::send_models_request;
 
+/// 函数 `should_retry_models_with_openai_fallback`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - err: 参数 err
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_retry_models_with_openai_fallback(err: &str) -> bool {
     let normalized = err.to_ascii_lowercase();
     normalized.contains("cloudflare")
@@ -18,6 +29,17 @@ fn should_retry_models_with_openai_fallback(err: &str) -> bool {
         || normalized.contains("challenge")
 }
 
+/// 函数 `fetch_models_for_picker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn fetch_models_for_picker() -> Result<Vec<ModelOption>, String> {
     let storage = super::open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let mut candidates = super::collect_gateway_candidates(&storage)?;
@@ -76,6 +98,18 @@ enum ModelPickerPlanTier {
     Unknown,
 }
 
+/// 函数 `sort_model_picker_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 无
 fn sort_model_picker_candidates(storage: &Storage, candidates: &mut [(Account, Token)]) {
     candidates.sort_by_key(|(account, token)| {
         (
@@ -86,6 +120,19 @@ fn sort_model_picker_candidates(storage: &Storage, candidates: &mut [(Account, T
     });
 }
 
+/// 函数 `resolve_model_picker_plan_tier`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - account_id: 参数 account_id
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_model_picker_plan_tier(
     storage: &Storage,
     account_id: &str,
@@ -97,6 +144,17 @@ fn resolve_model_picker_plan_tier(
         .unwrap_or(ModelPickerPlanTier::Unknown)
 }
 
+/// 函数 `plan_tier_from_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw_token: 参数 raw_token
+///
+/// # 返回
+/// 返回函数执行结果
 fn plan_tier_from_token(raw_token: &str) -> Option<ModelPickerPlanTier> {
     parse_id_token_claims(raw_token)
         .ok()
@@ -104,6 +162,18 @@ fn plan_tier_from_token(raw_token: &str) -> Option<ModelPickerPlanTier> {
         .and_then(|value| normalize_model_picker_plan_tier(value.as_str()))
 }
 
+/// 函数 `plan_tier_from_usage_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn plan_tier_from_usage_snapshot(
     storage: &Storage,
     account_id: &str,
@@ -116,6 +186,17 @@ fn plan_tier_from_usage_snapshot(
         .and_then(|raw| plan_tier_from_credits_json(raw.as_str()))
 }
 
+/// 函数 `plan_tier_from_credits_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn plan_tier_from_credits_json(raw: &str) -> Option<ModelPickerPlanTier> {
     let value = serde_json::from_str::<Value>(raw).ok()?;
     extract_plan_string_by_keys_recursive(
@@ -134,6 +215,18 @@ fn plan_tier_from_credits_json(raw: &str) -> Option<ModelPickerPlanTier> {
     .and_then(|value| normalize_model_picker_plan_tier(value.as_str()))
 }
 
+/// 函数 `extract_plan_string_by_keys_recursive`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - keys: 参数 keys
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_plan_string_by_keys_recursive(value: &Value, keys: &[&str]) -> Option<String> {
     if let Some(object) = value.as_object() {
         for key in keys {
@@ -166,6 +259,17 @@ fn extract_plan_string_by_keys_recursive(value: &Value, keys: &[&str]) -> Option
     None
 }
 
+/// 函数 `normalize_model_picker_plan_tier`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_model_picker_plan_tier(raw: &str) -> Option<ModelPickerPlanTier> {
     let normalized = raw.trim().to_ascii_lowercase();
     if normalized.is_empty() {
@@ -200,6 +304,17 @@ mod tests {
 
     use super::{should_retry_models_with_openai_fallback, sort_model_picker_candidates, Account};
 
+    /// 函数 `encode_base64url`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - bytes: 参数 bytes
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn encode_base64url(bytes: &[u8]) -> String {
         const TABLE: &[u8; 64] =
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -232,6 +347,17 @@ mod tests {
         out
     }
 
+    /// 函数 `plan_token`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - plan: 参数 plan
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn plan_token(plan: &str) -> String {
         let header = encode_base64url(br#"{"alg":"none","typ":"JWT"}"#);
         let payload = encode_base64url(
@@ -247,6 +373,19 @@ mod tests {
         format!("{header}.{payload}.sig")
     }
 
+    /// 函数 `candidate`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - id: 参数 id
+    /// - sort: 参数 sort
+    /// - plan: 参数 plan
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn candidate(id: &str, sort: i64, plan: &str) -> (Account, Token) {
         let now = now_ts();
         let token = plan_token(plan);
@@ -274,6 +413,17 @@ mod tests {
         )
     }
 
+    /// 函数 `fallback_retry_matches_stable_html_and_challenge_summaries`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn fallback_retry_matches_stable_html_and_challenge_summaries() {
         assert!(should_retry_models_with_openai_fallback(
@@ -287,6 +437,17 @@ mod tests {
         ));
     }
 
+    /// 函数 `sort_model_picker_candidates_prefers_plan_tier_priority`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn sort_model_picker_candidates_prefers_plan_tier_priority() {
         let storage = Storage::open_in_memory().expect("open");

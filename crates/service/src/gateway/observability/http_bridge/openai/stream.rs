@@ -9,6 +9,17 @@ pub(in super::super) struct OpenAIStreamMeta {
     pub(in super::super) created: Option<i64>,
 }
 
+/// 函数 `update_openai_stream_meta`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 无
 pub(in super::super) fn update_openai_stream_meta(meta: &mut OpenAIStreamMeta, value: &Value) {
     let response = value.get("response");
 
@@ -72,6 +83,17 @@ pub(in super::super) fn update_openai_stream_meta(meta: &mut OpenAIStreamMeta, v
     }
 }
 
+/// 函数 `apply_openai_stream_meta_defaults`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 无
 pub(in super::super) fn apply_openai_stream_meta_defaults(
     mapped: &mut Value,
     meta: &OpenAIStreamMeta,
@@ -108,6 +130,17 @@ pub(in super::super) fn apply_openai_stream_meta_defaults(
     }
 }
 
+/// 函数 `extract_openai_completed_output_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn extract_openai_completed_output_text(value: &Value) -> Option<String> {
     let response = value.get("response").unwrap_or(value);
     let mut output_text = String::new();
@@ -120,6 +153,17 @@ pub(in super::super) fn extract_openai_completed_output_text(value: &Value) -> O
     }
 }
 
+/// 函数 `map_chunk_has_chat_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn map_chunk_has_chat_text(mapped: &Value) -> bool {
     mapped
         .get("choices")
@@ -136,6 +180,17 @@ pub(in super::super) fn map_chunk_has_chat_text(mapped: &Value) -> bool {
         })
 }
 
+/// 函数 `map_chunk_has_completion_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn map_chunk_has_completion_text(mapped: &Value) -> bool {
     mapped
         .get("choices")
@@ -150,6 +205,17 @@ pub(in super::super) fn map_chunk_has_completion_text(mapped: &Value) -> bool {
         })
 }
 
+/// 函数 `is_function_call_output_item`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_function_call_output_item(value: &Value) -> bool {
     value
         .get("item")
@@ -159,6 +225,17 @@ fn is_function_call_output_item(value: &Value) -> bool {
         .is_some_and(|item_type| item_type == "function_call")
 }
 
+/// 函数 `should_skip_chat_live_text_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn should_skip_chat_live_text_event(event_type: &str, value: &Value) -> bool {
     match event_type {
         "response.output_text.done"
@@ -172,6 +249,17 @@ pub(in super::super) fn should_skip_chat_live_text_event(event_type: &str, value
     }
 }
 
+/// 函数 `should_skip_completion_live_text_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn should_skip_completion_live_text_event(
     event_type: &str,
     value: &Value,
@@ -188,6 +276,17 @@ pub(in super::super) fn should_skip_completion_live_text_event(
     }
 }
 
+/// 函数 `normalize_chat_chunk_delta_role`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 无
 pub(in super::super) fn normalize_chat_chunk_delta_role(
     mapped: &mut Value,
     role_emitted: &mut bool,
@@ -213,6 +312,17 @@ pub(in super::super) fn normalize_chat_chunk_delta_role(
     }
 }
 
+/// 函数 `build_chat_fallback_content_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn build_chat_fallback_content_chunk(
     meta: &OpenAIStreamMeta,
     content: &str,
@@ -233,6 +343,17 @@ pub(in super::super) fn build_chat_fallback_content_chunk(
     })
 }
 
+/// 函数 `build_completion_fallback_text_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn build_completion_fallback_text_chunk(
     meta: &OpenAIStreamMeta,
     text: &str,
@@ -249,6 +370,18 @@ pub(in super::super) fn build_completion_fallback_text_chunk(
     })
 }
 
+/// 函数 `append_sse_data_frame`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - buffer: 参数 buffer
+/// - payload: 参数 payload
+///
+/// # 返回
+/// 无
 fn append_sse_data_frame(buffer: &mut String, payload: &Value) {
     let data = serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string());
     buffer.push_str("data: ");
@@ -256,6 +389,17 @@ fn append_sse_data_frame(buffer: &mut String, payload: &Value) {
     buffer.push_str("\n\n");
 }
 
+/// 函数 `collect_text_for_sse_delta`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn collect_text_for_sse_delta(value: Option<&Value>) -> String {
     let Some(value) = value else {
         return String::new();
@@ -265,6 +409,17 @@ fn collect_text_for_sse_delta(value: Option<&Value>) -> String {
     text.trim().to_string()
 }
 
+/// 函数 `synthesize_chat_completion_sse_from_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn synthesize_chat_completion_sse_from_json(value: &Value) -> Vec<u8> {
     let Some(root) = value.as_object() else {
         return b"data: [DONE]\n\n".to_vec();
@@ -355,6 +510,17 @@ pub(in super::super) fn synthesize_chat_completion_sse_from_json(value: &Value) 
     out.into_bytes()
 }
 
+/// 函数 `synthesize_completions_sse_from_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn synthesize_completions_sse_from_json(value: &Value) -> Vec<u8> {
     let Some(root) = value.as_object() else {
         return b"data: [DONE]\n\n".to_vec();

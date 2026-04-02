@@ -5,6 +5,17 @@ use super::{
 };
 use crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE;
 
+/// 函数 `anthropic_json_response_maps_reasoning_item_to_thinking_block`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_reasoning_item_to_thinking_block() {
     let upstream = serde_json::json!({
@@ -60,6 +71,17 @@ fn anthropic_json_response_maps_reasoning_item_to_thinking_block() {
     );
 }
 
+/// 函数 `anthropic_sse_response_maps_reasoning_deltas_to_thinking_events`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_sse_response_maps_reasoning_deltas_to_thinking_events() {
     let upstream = r#"data: {"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_stream_1","summary":[]}}
@@ -85,6 +107,17 @@ data: [DONE]
     assert!(text.contains("\"signature\":\"sig_stream_1\""));
 }
 
+/// 函数 `anthropic_json_response_from_sse_preserves_thinking_block`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_from_sse_preserves_thinking_block() {
     let upstream = r#"data: {"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_stream_json_1","summary":[]}}
@@ -130,6 +163,17 @@ data: [DONE]
     );
 }
 
+/// 函数 `anthropic_chat_completions_still_passthrough`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_chat_completions_still_passthrough() {
     let body =
@@ -145,6 +189,17 @@ fn anthropic_chat_completions_still_passthrough() {
     assert_eq!(adapted.response_adapter, ResponseAdapter::Passthrough);
 }
 
+/// 函数 `anthropic_json_response_restores_shortened_tool_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_restores_shortened_tool_name() {
     let original_tool_name =
@@ -204,6 +259,17 @@ fn anthropic_json_response_restores_shortened_tool_name() {
     );
 }
 
+/// 函数 `anthropic_json_response_maps_custom_tool_call_to_tool_use`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_custom_tool_call_to_tool_use() {
     let upstream = serde_json::json!({
@@ -234,6 +300,17 @@ fn anthropic_json_response_maps_custom_tool_call_to_tool_use() {
     assert_eq!(value["stop_reason"], "tool_use");
 }
 
+/// 函数 `anthropic_json_response_maps_cache_usage_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_cache_usage_fields() {
     let upstream = serde_json::json!({
@@ -269,6 +346,17 @@ fn anthropic_json_response_maps_cache_usage_fields() {
     assert_eq!(value["usage"]["cache_read_input_tokens"], 9);
 }
 
+/// 函数 `anthropic_json_response_maps_web_search_call_to_text_block`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_web_search_call_to_text_block() {
     let upstream = serde_json::json!({
@@ -299,6 +387,17 @@ fn anthropic_json_response_maps_web_search_call_to_text_block() {
     );
 }
 
+/// 函数 `anthropic_json_response_maps_image_generation_call_to_text_block`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_image_generation_call_to_text_block() {
     let upstream = serde_json::json!({
@@ -330,6 +429,17 @@ fn anthropic_json_response_maps_image_generation_call_to_text_block() {
     );
 }
 
+/// 函数 `anthropic_json_response_maps_local_shell_call_to_text_block`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_local_shell_call_to_text_block() {
     let upstream = serde_json::json!({
@@ -364,6 +474,17 @@ fn anthropic_json_response_maps_local_shell_call_to_text_block() {
     );
 }
 
+/// 函数 `anthropic_json_response_maps_custom_tool_call_output_to_text_block`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_json_response_maps_custom_tool_call_output_to_text_block() {
     let upstream = serde_json::json!({
@@ -390,6 +511,17 @@ fn anthropic_json_response_maps_custom_tool_call_output_to_text_block() {
     assert_eq!(value["content"][0]["text"], "command finished");
 }
 
+/// 函数 `anthropic_sse_response_maps_custom_tool_call_to_tool_use_events`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_sse_response_maps_custom_tool_call_to_tool_use_events() {
     let upstream = r#"data: {"type":"response.output_item.done","response_id":"resp_custom_tool_stream_1","created":1700001300,"model":"gpt-5.3-codex","output_index":0,"item":{"type":"custom_tool_call","call_id":"call_exec_stream_1","name":"exec","input":"{\"cmd\":\"pwd\"}"}}
@@ -411,6 +543,17 @@ data: [DONE]
     assert!(text.contains("\"partial_json\":\"{\\\"cmd\\\":\\\"pwd\\\"}\""));
 }
 
+/// 函数 `anthropic_sse_response_maps_web_search_call_to_text_events`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_sse_response_maps_web_search_call_to_text_events() {
     let upstream = r#"data: {"type":"response.output_item.done","response_id":"resp_web_search_stream_1","created":1700001301,"model":"gpt-5.3-codex","output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"weather seattle"}}}
@@ -430,6 +573,17 @@ data: [DONE]
     assert!(text.contains("[web_search_call] status=completed query=weather seattle"));
 }
 
+/// 函数 `anthropic_sse_response_restores_shortened_tool_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_sse_response_restores_shortened_tool_name() {
     let mut restore_map = super::ToolNameRestoreMap::new();
@@ -459,6 +613,17 @@ data: [DONE]
     assert!(text.contains("mcp__plugin_super_long_workspace_namespace__tool_server_namespace_for_codex_manager_gateway_adapter_alignment__very_long_tool_operation_name"));
 }
 
+/// 函数 `anthropic_sse_response_maps_cache_usage_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_sse_response_maps_cache_usage_fields() {
     let upstream = r#"data: {"type":"response.output_text.delta","delta":"hello"}

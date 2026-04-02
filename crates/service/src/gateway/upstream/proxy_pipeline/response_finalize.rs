@@ -8,6 +8,17 @@ pub(super) enum FinalizeUpstreamResponseOutcome {
     Failover,
 }
 
+/// 函数 `respond_terminal`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn respond_terminal(
     request: Request,
     status_code: u16,
@@ -20,6 +31,17 @@ pub(in super::super) fn respond_terminal(
     Ok(())
 }
 
+/// 函数 `is_client_disconnect_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_client_disconnect_error(message: &str) -> bool {
     let normalized = message.trim().to_ascii_lowercase();
     normalized.contains("broken pipe")
@@ -31,6 +53,17 @@ fn is_client_disconnect_error(message: &str) -> bool {
         || normalized.contains("os error 104")
 }
 
+/// 函数 `respond_total_timeout`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn respond_total_timeout(
     request: Request,
     context: &GatewayUpstreamExecutionContext<'_>,
@@ -53,6 +86,17 @@ pub(super) fn respond_total_timeout(
     respond_terminal(request, 504, message, Some(trace_id))
 }
 
+/// 函数 `finalize_terminal_candidate`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn finalize_terminal_candidate(
     request: Request,
     context: &GatewayUpstreamExecutionContext<'_>,
@@ -79,6 +123,17 @@ pub(super) fn finalize_terminal_candidate(
     respond_terminal(request, status_code, message, Some(trace_id))
 }
 
+/// 函数 `finalize_upstream_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finalize_upstream_response(
     request: Request,

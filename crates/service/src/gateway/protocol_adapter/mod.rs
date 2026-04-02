@@ -9,6 +9,17 @@ mod types;
 pub(super) use self::request_router::adapt_request_for_protocol;
 pub(super) use self::types::{AdaptedGatewayRequest, ResponseAdapter, ToolNameRestoreMap};
 
+/// 函数 `adapt_upstream_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn adapt_upstream_response(
     adapter: ResponseAdapter,
     upstream_content_type: Option<&str>,
@@ -17,6 +28,17 @@ pub(super) fn adapt_upstream_response(
     response_conversion::adapt_upstream_response(adapter, upstream_content_type, body, None)
 }
 
+/// 函数 `adapt_upstream_response_with_tool_name_restore_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn adapt_upstream_response_with_tool_name_restore_map(
     adapter: ResponseAdapter,
     upstream_content_type: Option<&str>,
@@ -31,19 +53,63 @@ pub(super) fn adapt_upstream_response_with_tool_name_restore_map(
     )
 }
 
+/// 函数 `build_anthropic_error_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn build_anthropic_error_body(message: &str) -> Vec<u8> {
     response_conversion::build_anthropic_error_body(message)
 }
 
+/// 函数 `convert_openai_completions_stream_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_openai_completions_stream_chunk(value: &Value) -> Option<Value> {
     response_conversion::convert_openai_completions_stream_chunk(value)
 }
 
+/// 函数 `convert_openai_chat_stream_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(dead_code)]
 pub(super) fn convert_openai_chat_stream_chunk(value: &Value) -> Option<Value> {
     response_conversion::convert_openai_chat_stream_chunk(value)
 }
 
+/// 函数 `convert_openai_chat_stream_chunk_with_tool_name_restore_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_openai_chat_stream_chunk_with_tool_name_restore_map(
     value: &Value,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,

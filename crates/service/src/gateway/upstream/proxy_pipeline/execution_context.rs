@@ -17,6 +17,17 @@ pub(in super::super) struct GatewayUpstreamExecutionContext<'a> {
 }
 
 impl<'a> GatewayUpstreamExecutionContext<'a> {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     #[allow(clippy::too_many_arguments)]
     pub(in super::super) fn new(
         trace_id: &'a str,
@@ -48,10 +59,32 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         }
     }
 
+    /// 函数 `has_more_candidates`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(in super::super) fn has_more_candidates(&self, idx: usize) -> bool {
         idx + 1 < self.candidate_count
     }
 
+    /// 函数 `should_skip_candidate`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(in super::super) fn should_skip_candidate(
         &self,
         account_id: &str,
@@ -65,6 +98,17 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         )
     }
 
+    /// 函数 `log_candidate_start`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 无
     pub(in super::super) fn log_candidate_start(
         &self,
         account_id: &str,
@@ -80,6 +124,17 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         );
     }
 
+    /// 函数 `log_candidate_skip`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 无
     pub(in super::super) fn log_candidate_skip(
         &self,
         account_id: &str,
@@ -99,6 +154,17 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         );
     }
 
+    /// 函数 `log_attempt_result`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 无
     pub(super) fn log_attempt_result(
         &self,
         account_id: &str,
@@ -115,6 +181,17 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         );
     }
 
+    /// 函数 `mark_account_unavailable_for_gateway_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(in super::super) fn mark_account_unavailable_for_gateway_error(
         &self,
         account_id: &str,
@@ -127,6 +204,17 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         )
     }
 
+    /// 函数 `log_final_result`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 无
     pub(in super::super) fn log_final_result(
         &self,
         final_account_id: Option<&str>,
@@ -149,6 +237,17 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         );
     }
 
+    /// 函数 `log_final_result_with_model`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 无
     #[allow(clippy::too_many_arguments)]
     pub(in super::super) fn log_final_result_with_model(
         &self,

@@ -1,5 +1,16 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 
+/// 函数 `normalize_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_addr(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -25,6 +36,17 @@ pub(crate) fn normalize_addr(raw: &str) -> Result<String, String> {
     }
 }
 
+/// 函数 `resolve_service_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn resolve_service_addr(addr: Option<String>) -> Result<String, String> {
     if let Some(addr) = addr {
         return normalize_addr(&addr);
@@ -37,6 +59,17 @@ pub(crate) fn resolve_service_addr(addr: Option<String>) -> Result<String, Strin
     Ok(codexmanager_service::DEFAULT_ADDR.to_string())
 }
 
+/// 函数 `resolve_socket_addrs`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn resolve_socket_addrs(addr: &str) -> Result<Vec<SocketAddr>, String> {
     let addrs = addr
         .to_socket_addrs()
@@ -55,6 +88,17 @@ pub(crate) fn resolve_socket_addrs(addr: &str) -> Result<Vec<SocketAddr>, String
     Ok(out)
 }
 
+/// 函数 `normalize_host`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_host(value: &str) -> String {
     if let Some((host, port)) = value.rsplit_once(':') {
         let mapped = match host {

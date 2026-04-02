@@ -8,6 +8,18 @@ use std::path::PathBuf;
 mod support;
 use support::{test_env_guard, EnvGuard};
 
+/// 函数 `post_rpc`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn post_rpc(addr: &str, body: &str) -> String {
     let mut stream = TcpStream::connect(addr).expect("connect server");
     let token = codexmanager_service::rpc_auth_token().to_string();
@@ -23,6 +35,17 @@ fn post_rpc(addr: &str, body: &str) -> String {
     buf
 }
 
+/// 函数 `e2e_initialize_writes_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn e2e_initialize_writes_event() {
     let _guard = test_env_guard();

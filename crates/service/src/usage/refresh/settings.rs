@@ -50,6 +50,17 @@ pub(crate) struct BackgroundTasksSettingsPatch {
     pub http_stream_worker_min: Option<usize>,
 }
 
+/// 函数 `background_tasks_settings`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn background_tasks_settings() -> BackgroundTasksSettings {
     ensure_background_tasks_config_loaded();
     BackgroundTasksSettings {
@@ -69,6 +80,17 @@ pub(crate) fn background_tasks_settings() -> BackgroundTasksSettings {
     }
 }
 
+/// 函数 `set_background_tasks_settings`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_background_tasks_settings(
     patch: BackgroundTasksSettingsPatch,
 ) -> BackgroundTasksSettings {
@@ -141,14 +163,47 @@ pub(crate) fn set_background_tasks_settings(
     background_tasks_settings()
 }
 
+/// 函数 `reload_background_tasks_runtime_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn reload_background_tasks_runtime_from_env() {
     reload_background_tasks_from_env();
 }
 
+/// 函数 `ensure_background_tasks_config_loaded`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn ensure_background_tasks_config_loaded() {
     let _ = BACKGROUND_TASKS_CONFIG_LOADED.get_or_init(reload_background_tasks_from_env);
 }
 
+/// 函数 `reload_background_tasks_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn reload_background_tasks_from_env() {
     let usage_polling_default_enabled = std::env::var(ENV_DISABLE_POLLING).is_err();
     USAGE_POLLING_ENABLED.store(
@@ -217,6 +272,18 @@ fn reload_background_tasks_from_env() {
     );
 }
 
+/// 函数 `env_usize_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_usize_or(name: &str, default: usize) -> usize {
     std::env::var(name)
         .ok()
@@ -224,6 +291,18 @@ fn env_usize_or(name: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+/// 函数 `env_bool_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_bool_or(name: &str, default: bool) -> bool {
     let Some(raw) = std::env::var(name).ok() else {
         return default;

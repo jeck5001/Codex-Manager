@@ -40,6 +40,17 @@ pub(super) struct LocalValidationError {
 }
 
 impl LocalValidationError {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn new(status_code: u16, message: impl Into<String>) -> Self {
         Self {
             status_code,
@@ -48,6 +59,17 @@ impl LocalValidationError {
     }
 }
 
+/// 函数 `prepare_local_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn prepare_local_request(
     request: &mut Request,
     trace_id: String,

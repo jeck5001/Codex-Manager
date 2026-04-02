@@ -1,9 +1,32 @@
 use super::*;
 
+/// 函数 `should_spawn_service`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn should_spawn_service() -> bool {
     read_env_trim("CODEXMANAGER_WEB_NO_SPAWN_SERVICE").is_none()
 }
 
+/// 函数 `service_rpc_probe`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - service_addr: 参数 service_addr
+/// - rpc_token: 参数 rpc_token
+///
+/// # 返回
+/// 返回函数执行结果
 async fn service_rpc_probe(service_addr: &str, rpc_token: &str) -> Result<(), String> {
     let trimmed = service_addr.trim();
     if trimmed.is_empty() {
@@ -57,6 +80,17 @@ async fn service_rpc_probe(service_addr: &str, rpc_token: &str) -> Result<(), St
     Ok(())
 }
 
+/// 函数 `shutdown_existing_service`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - service_addr: 参数 service_addr
+///
+/// # 返回
+/// 返回函数执行结果
 async fn shutdown_existing_service(service_addr: &str) -> bool {
     let addr = service_addr.to_string();
     let _ = tokio::task::spawn_blocking(move || {
@@ -73,6 +107,17 @@ async fn shutdown_existing_service(service_addr: &str) -> bool {
     false
 }
 
+/// 函数 `tcp_probe`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn tcp_probe(addr: &str) -> bool {
     let addr = addr.trim();
     if addr.is_empty() {
@@ -89,6 +134,17 @@ pub(super) async fn tcp_probe(addr: &str) -> bool {
     .is_ok()
 }
 
+/// 函数 `service_bin_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - dir: 参数 dir
+///
+/// # 返回
+/// 返回函数执行结果
 fn service_bin_path(dir: &Path) -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -100,6 +156,18 @@ fn service_bin_path(dir: &Path) -> PathBuf {
     }
 }
 
+/// 函数 `spawn_service_detached`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - dir: 参数 dir
+/// - service_addr: 参数 service_addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn spawn_service_detached(dir: &Path, service_addr: &str) -> std::io::Result<()> {
     let bin = service_bin_path(dir);
     let mut cmd = Command::new(bin);
@@ -117,6 +185,17 @@ fn spawn_service_detached(dir: &Path, service_addr: &str) -> std::io::Result<()>
     Ok(())
 }
 
+/// 函数 `ensure_service_running`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn ensure_service_running(
     service_addr: &str,
     rpc_token: &str,
@@ -180,6 +259,17 @@ pub(super) async fn ensure_service_running(
     )
 }
 
+/// 函数 `rpc_proxy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn rpc_proxy(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -221,6 +311,17 @@ pub(super) async fn rpc_proxy(
     out
 }
 
+/// 函数 `quit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn quit(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     if *state.spawned_service.lock().await {
         let addr = state.service_addr.clone();

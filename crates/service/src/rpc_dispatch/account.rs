@@ -5,6 +5,17 @@ use crate::{
     account_list, account_update, auth_account, auth_login, auth_tokens,
 };
 
+/// 函数 `try_handle`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     let result = match req.method.as_str() {
         "account/list" => {
@@ -168,14 +179,50 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     Some(super::response(req, result))
 }
 
+/// 函数 `first_str_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - keys: 参数 keys
+///
+/// # 返回
+/// 返回函数执行结果
 fn first_str_param<'a>(req: &'a JsonRpcRequest, keys: &[&str]) -> Option<&'a str> {
     keys.iter().find_map(|key| super::str_param(req, key))
 }
 
+/// 函数 `first_string_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - keys: 参数 keys
+///
+/// # 返回
+/// 返回函数执行结果
 fn first_string_param(req: &JsonRpcRequest, keys: &[&str]) -> Option<String> {
     first_str_param(req, keys).map(|value| value.to_string())
 }
 
+/// 函数 `first_bool_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - keys: 参数 keys
+///
+/// # 返回
+/// 返回函数执行结果
 fn first_bool_param(req: &JsonRpcRequest, keys: &[&str]) -> Option<bool> {
     keys.iter().find_map(|key| super::bool_param(req, key))
 }

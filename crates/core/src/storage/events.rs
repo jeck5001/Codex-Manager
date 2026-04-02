@@ -4,6 +4,18 @@ use std::collections::HashMap;
 use super::{Event, Storage};
 
 impl Storage {
+    /// 函数 `insert_event`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - event: 参数 event
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_event(&self, event: &Event) -> Result<()> {
         self.conn.execute(
             "INSERT INTO events (account_id, type, message, created_at) VALUES (?1, ?2, ?3, ?4)",
@@ -17,11 +29,34 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `event_count`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn event_count(&self) -> Result<i64> {
         self.conn
             .query_row("SELECT COUNT(1) FROM events", [], |row| row.get(0))
     }
 
+    /// 函数 `latest_account_status_reasons`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_ids: 参数 account_ids
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn latest_account_status_reasons(
         &self,
         account_ids: &[String],
@@ -67,6 +102,17 @@ impl Storage {
     }
 }
 
+/// 函数 `extract_status_reason_from_event_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_status_reason_from_event_message(message: &str) -> Option<&str> {
     let marker = " reason=";
     let start = message.find(marker)? + marker.len();

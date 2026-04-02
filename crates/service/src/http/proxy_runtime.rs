@@ -16,6 +16,19 @@ struct ProxyState {
     client: Client,
 }
 
+/// 函数 `log_proxy_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - target_url: 参数 target_url
+/// - message: 参数 message
+///
+/// # 返回
+/// 无
 fn log_proxy_error(status: StatusCode, target_url: &str, message: &str) {
     log::warn!(
         "event=front_proxy_error code={} status={} target_url={} message={}",
@@ -26,14 +39,48 @@ fn log_proxy_error(status: StatusCode, target_url: &str, message: &str) {
     );
 }
 
+/// 函数 `build_backend_base_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - backend_addr: 参数 backend_addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_backend_base_url(backend_addr: &str) -> String {
     format!("http://{backend_addr}")
 }
 
+/// 函数 `build_local_backend_client`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_local_backend_client() -> Result<Client, reqwest::Error> {
     Client::builder().no_proxy().build()
 }
 
+/// 函数 `proxy_handler`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - State(state): 参数 State(state)
+/// - request: 参数 request
+///
+/// # 返回
+/// 返回函数执行结果
 async fn proxy_handler(
     State(state): State<ProxyState>,
     request: HttpRequest<Body>,
@@ -109,6 +156,17 @@ async fn proxy_handler(
     }
 }
 
+/// 函数 `build_front_proxy_app`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - state: 参数 state
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_front_proxy_app(state: ProxyState) -> Router {
     Router::new()
         .route("/rpc", post(crate::http::rpc_endpoint::handle_rpc_http))
@@ -116,6 +174,17 @@ fn build_front_proxy_app(state: ProxyState) -> Router {
         .with_state(state)
 }
 
+/// 函数 `run_front_proxy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn run_front_proxy(addr: &str, backend_addr: &str) -> io::Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

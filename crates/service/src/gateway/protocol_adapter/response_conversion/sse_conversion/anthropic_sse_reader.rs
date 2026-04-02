@@ -3,6 +3,17 @@ use std::collections::BTreeMap;
 
 use super::super::json_conversion::parse_tool_arguments_as_object;
 
+/// 函数 `convert_anthropic_sse_to_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_anthropic_sse_to_json(
     body: &[u8],
 ) -> Result<(Vec<u8>, &'static str), String> {

@@ -1,6 +1,17 @@
 use serde_json::json;
 use tiny_http::{Header, Response};
 
+/// 函数 `with_trace_id_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn with_trace_id_header<R: std::io::Read>(
     mut response: Response<R>,
     trace_id: Option<&str>,
@@ -16,6 +27,17 @@ pub(super) fn with_trace_id_header<R: std::io::Read>(
     response
 }
 
+/// 函数 `terminal_text_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn terminal_text_response(
     status_code: u16,
     message: impl Into<String>,

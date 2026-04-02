@@ -15,6 +15,17 @@ pub(crate) struct PassthroughSseUsageReader {
 }
 
 impl PassthroughSseUsageReader {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn new(
         upstream: reqwest::blocking::Response,
         usage_collector: Arc<Mutex<PassthroughSseCollector>>,
@@ -29,6 +40,18 @@ impl PassthroughSseUsageReader {
         }
     }
 
+    /// 函数 `update_usage_from_frame`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - lines: 参数 lines
+    ///
+    /// # 返回
+    /// 无
     fn update_usage_from_frame(&self, lines: &[String]) {
         let inspection = inspect_sse_frame(lines);
         if let Ok(mut collector) = self.usage_collector.lock() {
@@ -67,6 +90,17 @@ impl PassthroughSseUsageReader {
         }
     }
 
+    /// 函数 `next_chunk`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn next_chunk(&mut self) -> std::io::Result<Vec<u8>> {
         match self.upstream.recv_timeout(sse_keepalive_interval()) {
             Ok(UpstreamSseFramePumpItem::Frame(frame)) => {
@@ -110,6 +144,18 @@ impl PassthroughSseUsageReader {
 }
 
 impl Read for PassthroughSseUsageReader {
+    /// 函数 `read`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - buf: 参数 buf
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         loop {
             let read = self.out_cursor.read(buf)?;

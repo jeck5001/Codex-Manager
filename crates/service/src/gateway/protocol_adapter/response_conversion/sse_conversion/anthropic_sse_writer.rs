@@ -1,5 +1,16 @@
 use serde_json::{json, Map, Value};
 
+/// 函数 `convert_anthropic_json_to_sse`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_anthropic_json_to_sse(
     body: &[u8],
 ) -> Result<(Vec<u8>, &'static str), String> {
@@ -263,6 +274,17 @@ pub(super) fn convert_anthropic_json_to_sse(
     Ok((out.into_bytes(), "text/event-stream"))
 }
 
+/// 函数 `to_tool_input_partial_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn to_tool_input_partial_json(value: &Value) -> Option<String> {
     let serialized = serde_json::to_string(value).ok()?;
     if serialized == "{}" {
@@ -271,6 +293,17 @@ pub(super) fn to_tool_input_partial_json(value: &Value) -> Option<String> {
     Some(serialized)
 }
 
+/// 函数 `build_final_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn build_final_usage(
     input_tokens: i64,
     output_tokens: i64,
@@ -292,6 +325,17 @@ pub(super) fn build_final_usage(
     Value::Object(usage)
 }
 
+/// 函数 `append_sse_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn append_sse_event(buffer: &mut String, event_name: &str, payload: &Value) {
     let data = serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string());
     buffer.push_str("event: ");

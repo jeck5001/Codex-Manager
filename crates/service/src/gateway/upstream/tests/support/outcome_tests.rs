@@ -1,6 +1,17 @@
 use super::*;
 use reqwest::header::HeaderValue;
 
+/// 函数 `status_404_with_more_candidates_triggers_failover`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn status_404_with_more_candidates_triggers_failover() {
     let storage = Storage::open_in_memory().expect("open");
@@ -17,6 +28,17 @@ fn status_404_with_more_candidates_triggers_failover() {
     assert!(matches!(decision, UpstreamOutcomeDecision::Failover));
 }
 
+/// 函数 `status_404_on_last_candidate_keeps_upstream_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn status_404_on_last_candidate_keeps_upstream_response() {
     let storage = Storage::open_in_memory().expect("open");
@@ -33,6 +55,17 @@ fn status_404_on_last_candidate_keeps_upstream_response() {
     assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
 }
 
+/// 函数 `status_429_with_more_candidates_triggers_failover`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn status_429_with_more_candidates_triggers_failover() {
     let storage = Storage::open_in_memory().expect("open");
@@ -49,6 +82,17 @@ fn status_429_with_more_candidates_triggers_failover() {
     assert!(matches!(decision, UpstreamOutcomeDecision::Failover));
 }
 
+/// 函数 `status_429_on_last_candidate_keeps_upstream_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn status_429_on_last_candidate_keeps_upstream_response() {
     let storage = Storage::open_in_memory().expect("open");
@@ -65,6 +109,17 @@ fn status_429_on_last_candidate_keeps_upstream_response() {
     assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
 }
 
+/// 函数 `challenge_with_more_candidates_triggers_failover`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn challenge_with_more_candidates_triggers_failover() {
     let storage = Storage::open_in_memory().expect("open");
@@ -82,6 +137,17 @@ fn challenge_with_more_candidates_triggers_failover() {
     assert!(matches!(decision, UpstreamOutcomeDecision::Failover));
 }
 
+/// 函数 `challenge_on_last_candidate_keeps_upstream_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn challenge_on_last_candidate_keeps_upstream_response() {
     let storage = Storage::open_in_memory().expect("open");
@@ -99,6 +165,17 @@ fn challenge_on_last_candidate_keeps_upstream_response() {
     assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
 }
 
+/// 函数 `status_500_with_more_candidates_triggers_failover`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn status_500_with_more_candidates_triggers_failover() {
     let storage = Storage::open_in_memory().expect("open");
@@ -115,6 +192,17 @@ fn status_500_with_more_candidates_triggers_failover() {
     assert!(matches!(decision, UpstreamOutcomeDecision::Failover));
 }
 
+/// 函数 `status_500_on_last_candidate_keeps_upstream_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn status_500_on_last_candidate_keeps_upstream_response() {
     let storage = Storage::open_in_memory().expect("open");

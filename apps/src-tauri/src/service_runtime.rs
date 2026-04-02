@@ -8,6 +8,17 @@ use crate::rpc_client::rpc_call;
 
 const ENV_SERVICE_ADDR: &str = "CODEXMANAGER_SERVICE_ADDR";
 
+/// 函数 `validate_initialize_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn validate_initialize_response(v: &serde_json::Value) -> Result<(), String> {
     // 连接探测必须确认对端确实是 CodexManager 服务，避免端口被其他服务占用时误判“已连接”。
     let result = v
@@ -35,6 +46,17 @@ pub(super) fn validate_initialize_response(v: &serde_json::Value) -> Result<(), 
     ))
 }
 
+/// 函数 `spawn_service_with_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn spawn_service_with_addr(
     app: &tauri::AppHandle,
     bind_addr: &str,
@@ -76,6 +98,17 @@ struct ServiceRuntime {
 
 static SERVICE_RUNTIME: OnceLock<Mutex<Option<ServiceRuntime>>> = OnceLock::new();
 
+/// 函数 `set_service_runtime`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - runtime: 参数 runtime
+///
+/// # 返回
+/// 无
 fn set_service_runtime(runtime: ServiceRuntime) {
     let slot = SERVICE_RUNTIME.get_or_init(|| Mutex::new(None));
     if let Ok(mut guard) = slot.lock() {
@@ -83,6 +116,17 @@ fn set_service_runtime(runtime: ServiceRuntime) {
     }
 }
 
+/// 函数 `take_service_runtime`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn take_service_runtime() -> Option<ServiceRuntime> {
     let slot = SERVICE_RUNTIME.get_or_init(|| Mutex::new(None));
     if let Ok(mut guard) = slot.lock() {
@@ -92,6 +136,17 @@ fn take_service_runtime() -> Option<ServiceRuntime> {
     }
 }
 
+/// 函数 `stop_service`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn stop_service() {
     if let Some(runtime) = take_service_runtime() {
         log::info!("service stopping at {}", runtime.addr);
@@ -102,6 +157,17 @@ pub(super) fn stop_service() {
     }
 }
 
+/// 函数 `wait_for_service_ready`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn wait_for_service_ready(
     addr: &str,
     retries: usize,

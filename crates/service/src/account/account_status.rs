@@ -7,6 +7,18 @@ pub(crate) enum AccountAvailabilitySignal {
     UsageHttp(u16),
 }
 
+/// 函数 `latest_status_reason`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn latest_status_reason(storage: &Storage, account_id: &str) -> Option<String> {
     storage
         .latest_account_status_reasons(&[account_id.to_string()])
@@ -14,6 +26,17 @@ fn latest_status_reason(storage: &Storage, account_id: &str) -> Option<String> {
         .and_then(|mut reasons| reasons.remove(account_id))
 }
 
+/// 函数 `set_account_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn set_account_status(storage: &Storage, account_id: &str, status: &str, reason: &str) {
     let changed = matches!(
         storage.update_account_status_if_changed(account_id, status),
@@ -36,6 +59,18 @@ pub(crate) fn set_account_status(storage: &Storage, account_id: &str, status: &s
     }
 }
 
+/// 函数 `should_preserve_manual_account_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_preserve_manual_account_status(storage: &Storage, account_id: &str) -> bool {
     storage
         .find_account_by_id(account_id)
@@ -48,6 +83,17 @@ fn should_preserve_manual_account_status(storage: &Storage, account_id: &str) ->
         .unwrap_or(false)
 }
 
+/// 函数 `classify_account_availability_signal`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn classify_account_availability_signal(err: &str) -> Option<AccountAvailabilitySignal> {
     if let Some(reason) = crate::usage_http::refresh_token_auth_error_reason_from_message(err) {
         return Some(AccountAvailabilitySignal::RefreshToken(reason));
@@ -61,6 +107,17 @@ pub(crate) fn classify_account_availability_signal(err: &str) -> Option<AccountA
     None
 }
 
+/// 函数 `extract_usage_http_status_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_usage_http_status_code(message: &str) -> Option<u16> {
     let rest = message.trim().strip_prefix("usage endpoint status ")?;
     let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
@@ -70,6 +127,17 @@ fn extract_usage_http_status_code(message: &str) -> Option<u16> {
     digits.parse::<u16>().ok()
 }
 
+/// 函数 `deactivation_reason_from_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn deactivation_reason_from_message(message: &str) -> Option<&'static str> {
     let normalized = message.trim().to_ascii_lowercase();
     if normalized.contains("workspace_deactivated")
@@ -89,6 +157,17 @@ pub(crate) fn deactivation_reason_from_message(message: &str) -> Option<&'static
     None
 }
 
+/// 函数 `is_banned_status_reason`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn is_banned_status_reason(reason: &str) -> bool {
     matches!(
         reason.trim().to_ascii_lowercase().as_str(),
@@ -96,10 +175,34 @@ pub(crate) fn is_banned_status_reason(reason: &str) -> bool {
     )
 }
 
+/// 函数 `should_failover_for_deactivation_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn should_failover_for_deactivation_error(err: &str, has_more_candidates: bool) -> bool {
     has_more_candidates && deactivation_reason_from_message(err).is_some()
 }
 
+/// 函数 `set_account_unavailable_with_reason`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - account_id: 参数 account_id
+/// - reason: 参数 reason
+///
+/// # 返回
+/// 返回函数执行结果
 fn set_account_unavailable_with_reason(storage: &Storage, account_id: &str, reason: &str) -> bool {
     if should_preserve_manual_account_status(storage, account_id) {
         return false;
@@ -108,6 +211,19 @@ fn set_account_unavailable_with_reason(storage: &Storage, account_id: &str, reas
     true
 }
 
+/// 函数 `set_account_banned_with_reason`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - account_id: 参数 account_id
+/// - reason: 参数 reason
+///
+/// # 返回
+/// 返回函数执行结果
 fn set_account_banned_with_reason(storage: &Storage, account_id: &str, reason: &str) -> bool {
     if should_preserve_manual_account_status(storage, account_id) {
         return false;
@@ -116,6 +232,17 @@ fn set_account_banned_with_reason(storage: &Storage, account_id: &str, reason: &
     true
 }
 
+/// 函数 `mark_account_unavailable_for_usage_http_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn mark_account_unavailable_for_usage_http_error(
     storage: &Storage,
     account_id: &str,
@@ -135,6 +262,17 @@ pub(crate) fn mark_account_unavailable_for_usage_http_error(
     }
 }
 
+/// 函数 `mark_account_unavailable_for_deactivation_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn mark_account_unavailable_for_deactivation_error(
     storage: &Storage,
     account_id: &str,
@@ -148,6 +286,17 @@ pub(crate) fn mark_account_unavailable_for_deactivation_error(
     set_account_banned_with_reason(storage, account_id, reason)
 }
 
+/// 函数 `mark_account_unavailable_for_auth_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn mark_account_unavailable_for_auth_error(
     storage: &Storage,
     account_id: &str,
@@ -168,6 +317,17 @@ pub(crate) fn mark_account_unavailable_for_auth_error(
     }
 }
 
+/// 函数 `mark_account_unavailable_for_refresh_token_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn mark_account_unavailable_for_refresh_token_error(
     storage: &Storage,
     account_id: &str,
@@ -189,6 +349,17 @@ mod tests {
         AccountAvailabilitySignal,
     };
 
+    /// 函数 `classify_account_availability_signal_separates_usage_refresh_and_deactivation`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn classify_account_availability_signal_separates_usage_refresh_and_deactivation() {
         assert!(matches!(

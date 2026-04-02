@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `gateway_logs_invalid_api_key_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_logs_invalid_api_key_error() {
     let _lock = test_env_guard();
@@ -52,6 +63,17 @@ fn gateway_logs_invalid_api_key_error() {
     );
 }
 
+/// 函数 `gateway_tolerates_non_ascii_turn_metadata_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_tolerates_non_ascii_turn_metadata_header() {
     let _lock = test_env_guard();

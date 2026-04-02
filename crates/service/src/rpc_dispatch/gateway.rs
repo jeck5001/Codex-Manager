@@ -1,6 +1,17 @@
 use codexmanager_core::rpc::types::{JsonRpcRequest, JsonRpcResponse};
 use serde_json::Value;
 
+/// 函数 `try_handle`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     let result = match req.method.as_str() {
         "gateway/routeStrategy/get" => {
@@ -133,6 +144,18 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     Some(super::response(req, result))
 }
 
+/// 函数 `u64_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn u64_param(req: &JsonRpcRequest, key: &str) -> Option<u64> {
     let value = req.params.as_ref()?.get(key)?;
     match value {
@@ -142,6 +165,18 @@ fn u64_param(req: &JsonRpcRequest, key: &str) -> Option<u64> {
     }
 }
 
+/// 函数 `usize_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn usize_param(req: &JsonRpcRequest, key: &str) -> Option<usize> {
     u64_param(req, key).and_then(|value| usize::try_from(value).ok())
 }

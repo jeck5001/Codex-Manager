@@ -17,6 +17,18 @@ const AGGREGATE_API_SELECT_SQL: &str = "SELECT
  FROM aggregate_apis";
 
 impl Storage {
+    /// 函数 `insert_aggregate_api`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - api: 参数 api
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_aggregate_api(&self, api: &AggregateApi) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO aggregate_apis (
@@ -49,6 +61,17 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `list_aggregate_apis`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_aggregate_apis(&self) -> Result<Vec<AggregateApi>> {
         let mut stmt = self.conn.prepare(&format!(
             "{AGGREGATE_API_SELECT_SQL} ORDER BY sort ASC, updated_at DESC"
@@ -61,6 +84,18 @@ impl Storage {
         Ok(out)
     }
 
+    /// 函数 `find_aggregate_api_by_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - api_id: 参数 api_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn find_aggregate_api_by_id(&self, api_id: &str) -> Result<Option<AggregateApi>> {
         let mut stmt = self.conn.prepare(&format!(
             "{AGGREGATE_API_SELECT_SQL}
@@ -75,6 +110,19 @@ impl Storage {
         }
     }
 
+    /// 函数 `update_aggregate_api`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - api_id: 参数 api_id
+    /// - url: 参数 url
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_aggregate_api(&self, api_id: &str, url: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE aggregate_apis SET url = ?1, updated_at = ?2 WHERE id = ?3",
@@ -83,6 +131,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_aggregate_api_supplier_name`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - api_id: 参数 api_id
+    /// - supplier_name: 参数 supplier_name
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_aggregate_api_supplier_name(
         &self,
         api_id: &str,
@@ -95,6 +156,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_aggregate_api_sort`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - api_id: 参数 api_id
+    /// - sort: 参数 sort
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_aggregate_api_sort(&self, api_id: &str, sort: i64) -> Result<()> {
         self.conn.execute(
             "UPDATE aggregate_apis SET sort = ?1, updated_at = ?2 WHERE id = ?3",
@@ -103,6 +177,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_aggregate_api_type`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - api_id: 参数 api_id
+    /// - provider_type: 参数 provider_type
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_aggregate_api_type(&self, api_id: &str, provider_type: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE aggregate_apis SET provider_type = ?1, updated_at = ?2 WHERE id = ?3",
@@ -111,6 +198,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `delete_aggregate_api`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - api_id: 参数 api_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn delete_aggregate_api(&self, api_id: &str) -> Result<()> {
         self.conn.execute(
             "DELETE FROM aggregate_api_secrets WHERE aggregate_api_id = ?1",
@@ -121,6 +220,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `upsert_aggregate_api_secret`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - api_id: 参数 api_id
+    /// - secret_value: 参数 secret_value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn upsert_aggregate_api_secret(&self, api_id: &str, secret_value: &str) -> Result<()> {
         let now = now_ts();
         self.conn.execute(
@@ -134,6 +246,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `find_aggregate_api_secret_by_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - api_id: 参数 api_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn find_aggregate_api_secret_by_id(&self, api_id: &str) -> Result<Option<String>> {
         let mut stmt = self.conn.prepare(
             "SELECT secret_value FROM aggregate_api_secrets WHERE aggregate_api_id = ?1 LIMIT 1",
@@ -146,6 +270,21 @@ impl Storage {
         }
     }
 
+    /// 函数 `update_aggregate_api_test_result`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - api_id: 参数 api_id
+    /// - ok: 参数 ok
+    /// - status_code: 参数 status_code
+    /// - error: 参数 error
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_aggregate_api_test_result(
         &self,
         api_id: &str,
@@ -176,6 +315,17 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_aggregate_apis_table`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_aggregate_apis_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS aggregate_apis (
@@ -215,6 +365,17 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_aggregate_api_secrets_table`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_aggregate_api_secrets_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS aggregate_api_secrets (
@@ -233,6 +394,17 @@ impl Storage {
     }
 }
 
+/// 函数 `map_aggregate_api_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_aggregate_api_row(row: &Row<'_>) -> Result<AggregateApi> {
     Ok(AggregateApi {
         id: row.get(0)?,

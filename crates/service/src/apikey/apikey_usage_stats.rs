@@ -2,6 +2,17 @@ use codexmanager_core::rpc::types::ApiKeyUsageStatSummary;
 
 use crate::storage_helpers::open_storage;
 
+/// 函数 `read_api_key_usage_stats`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_api_key_usage_stats() -> Result<Vec<ApiKeyUsageStatSummary>, String> {
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
     let items = storage

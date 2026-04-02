@@ -49,6 +49,17 @@ impl ErrorCode {
     }
 }
 
+/// 函数 `classify_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn classify_message(message: &str) -> ErrorCode {
     let normalized = message.trim().to_ascii_lowercase();
     if normalized.is_empty() {
@@ -137,6 +148,17 @@ pub(crate) fn classify_message(message: &str) -> ErrorCode {
     ErrorCode::UnknownError
 }
 
+/// 函数 `code_or_dash`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn code_or_dash(message: Option<&str>) -> &'static str {
     message
         .map(classify_message)
@@ -144,10 +166,32 @@ pub(crate) fn code_or_dash(message: Option<&str>) -> &'static str {
         .unwrap_or("-")
 }
 
+/// 函数 `code_for_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn code_for_message(message: &str) -> &'static str {
     classify_message(message).as_str()
 }
 
+/// 函数 `rpc_error_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn rpc_error_payload(message: String) -> Value {
     let code = classify_message(message.as_str()).as_str();
     json!({
@@ -160,6 +204,17 @@ pub(crate) fn rpc_error_payload(message: String) -> Value {
     })
 }
 
+/// 函数 `rpc_action_error_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn rpc_action_error_payload(message: String) -> Value {
     let code = classify_message(message.as_str()).as_str();
     json!({
@@ -177,6 +232,17 @@ pub(crate) fn rpc_action_error_payload(message: String) -> Value {
 mod tests {
     use super::{classify_message, ErrorCode};
 
+    /// 函数 `classify_known_messages`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn classify_known_messages() {
         assert_eq!(

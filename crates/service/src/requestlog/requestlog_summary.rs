@@ -4,6 +4,17 @@ use crate::storage_helpers::open_storage;
 
 use super::list::{normalize_optional_text, normalize_status_filter};
 
+/// 函数 `read_request_log_filter_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_request_log_filter_summary(
     query: Option<String>,
     status_filter: Option<String>,

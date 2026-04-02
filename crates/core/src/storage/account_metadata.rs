@@ -3,6 +3,20 @@ use rusqlite::{Result, Row};
 use super::{now_ts, AccountMetadata, Storage};
 
 impl Storage {
+    /// 函数 `upsert_account_metadata`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    /// - note: 参数 note
+    /// - tags: 参数 tags
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn upsert_account_metadata(
         &self,
         account_id: &str,
@@ -31,6 +45,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `find_account_metadata`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn find_account_metadata(&self, account_id: &str) -> Result<Option<AccountMetadata>> {
         let mut stmt = self.conn.prepare(
             "SELECT account_id, note, tags, updated_at
@@ -46,6 +72,17 @@ impl Storage {
         }
     }
 
+    /// 函数 `list_account_metadata`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_account_metadata(&self) -> Result<Vec<AccountMetadata>> {
         let mut stmt = self.conn.prepare(
             "SELECT account_id, note, tags, updated_at
@@ -61,6 +98,17 @@ impl Storage {
     }
 }
 
+/// 函数 `normalize_optional_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_optional_text(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -68,6 +116,17 @@ fn normalize_optional_text(value: Option<&str>) -> Option<String> {
         .map(ToString::to_string)
 }
 
+/// 函数 `map_account_metadata_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_account_metadata_row(row: &Row<'_>) -> Result<AccountMetadata> {
     Ok(AccountMetadata {
         account_id: row.get(0)?,

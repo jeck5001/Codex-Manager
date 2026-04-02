@@ -50,20 +50,74 @@ const DEFAULT_BACKGROUND_TASKS: BackgroundTaskSettings = {
   httpStreamWorkerMin: 2,
 };
 
+/**
+ * 函数 `asObject`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asObject(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === "object" && !Array.isArray(payload)
     ? (payload as Record<string, unknown>)
     : {};
 }
 
+/**
+ * 函数 `asArray`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asArray<T = unknown>(payload: unknown): T[] {
   return Array.isArray(payload) ? payload : [];
 }
 
+/**
+ * 函数 `asString`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ * - fallback: 参数 fallback
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
+/**
+ * 函数 `asBoolean`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ * - fallback: 参数 fallback
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
@@ -75,12 +129,40 @@ function asBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+/**
+ * 函数 `asInteger`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ * - fallback: 参数 fallback
+ * - min: 参数 min
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asInteger(value: unknown, fallback: number, min = 0): number {
   const parsed = toNullableNumber(value);
   if (parsed == null) return fallback;
   return Math.max(min, Math.trunc(parsed));
 }
 
+/**
+ * 函数 `normalizeStringRecord`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizeStringRecord(payload: unknown): Record<string, string> {
   const source = asObject(payload);
   return Object.entries(source).reduce<Record<string, string>>((result, [key, value]) => {
@@ -89,6 +171,19 @@ function normalizeStringRecord(payload: unknown): Record<string, string> {
   }, {});
 }
 
+/**
+ * 函数 `asStringArray`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
@@ -104,6 +199,19 @@ function asStringArray(value: unknown): string[] {
   return [];
 }
 
+/**
+ * 函数 `normalizeUsageSnapshot`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeUsageSnapshot(payload: unknown): AccountUsage | null {
   const source = asObject(payload);
   const accountId = asString(source.accountId ?? source.account_id);
@@ -129,6 +237,19 @@ export function normalizeUsageSnapshot(payload: unknown): AccountUsage | null {
   };
 }
 
+/**
+ * 函数 `normalizeUsageList`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeUsageList(payload: unknown): AccountUsage[] {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload);
@@ -137,10 +258,36 @@ export function normalizeUsageList(payload: unknown): AccountUsage[] {
     .filter((item): item is AccountUsage => Boolean(item));
 }
 
+/**
+ * 函数 `buildUsageMap`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - usages: 参数 usages
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function buildUsageMap(usages: AccountUsage[]): Map<string, AccountUsage> {
   return new Map(usages.map((item) => [item.accountId, item]));
 }
 
+/**
+ * 函数 `normalizeUsageAggregateSummary`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeUsageAggregateSummary(payload: unknown): UsageAggregateSummary {
   const source = asObject(payload);
   return {
@@ -155,6 +302,19 @@ export function normalizeUsageAggregateSummary(payload: unknown): UsageAggregate
   };
 }
 
+/**
+ * 函数 `normalizeTodaySummary`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeTodaySummary(payload: unknown): RequestLogTodaySummary {
   const source = asObject(payload);
   const inputTokens = asInteger(source.inputTokens, 0, 0);
@@ -175,6 +335,20 @@ export function normalizeTodaySummary(payload: unknown): RequestLogTodaySummary 
   };
 }
 
+/**
+ * 函数 `normalizeAccount`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - item: 参数 item
+ * - usage?: 参数 usage?
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Account | null {
   const source = asObject(item);
   const id = asString(source.id);
@@ -212,6 +386,20 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
   };
 }
 
+/**
+ * 函数 `normalizeAccountList`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ * - usages: 参数 usages
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeAccountList(
   payload: unknown,
   usages: AccountUsage[] = []
@@ -231,6 +419,20 @@ export function normalizeAccountList(
   };
 }
 
+/**
+ * 函数 `attachUsagesToAccounts`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - accounts: 参数 accounts
+ * - usages: 参数 usages
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function attachUsagesToAccounts(
   accounts: Account[],
   usages: AccountUsage[]
@@ -239,6 +441,19 @@ export function attachUsagesToAccounts(
   return accounts.map((account) => normalizeAccount(account, usageMap.get(account.id)) || account);
 }
 
+/**
+ * 函数 `normalizeModelOptions`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeModelOptions(payload: unknown): ModelOption[] {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload);
@@ -255,6 +470,19 @@ export function normalizeModelOptions(payload: unknown): ModelOption[] {
     .filter((item): item is ModelOption => Boolean(item));
 }
 
+/**
+ * 函数 `normalizeApiKey`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - item: 参数 item
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeApiKey(item: unknown): ApiKey | null {
   const source = asObject(item);
   const id = asString(source.id);
@@ -281,6 +509,19 @@ export function normalizeApiKey(item: unknown): ApiKey | null {
   };
 }
 
+/**
+ * 函数 `normalizeApiKeyList`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeApiKeyList(payload: unknown): ApiKey[] {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload);
@@ -289,6 +530,19 @@ export function normalizeApiKeyList(payload: unknown): ApiKey[] {
     .filter((item): item is ApiKey => Boolean(item));
 }
 
+/**
+ * 函数 `normalizeApiKeyCreateResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeApiKeyCreateResult(payload: unknown): ApiKeyCreateResult {
   const source = asObject(payload);
   return {
@@ -297,6 +551,19 @@ export function normalizeApiKeyCreateResult(payload: unknown): ApiKeyCreateResul
   };
 }
 
+/**
+ * 函数 `normalizeAggregateApi`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - item: 参数 item
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeAggregateApi(item: unknown): AggregateApi | null {
   const source = asObject(item);
   const id = asString(source.id);
@@ -317,6 +584,19 @@ export function normalizeAggregateApi(item: unknown): AggregateApi | null {
   };
 }
 
+/**
+ * 函数 `normalizeAggregateApiList`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeAggregateApiList(payload: unknown): AggregateApi[] {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload);
@@ -325,6 +605,19 @@ export function normalizeAggregateApiList(payload: unknown): AggregateApi[] {
     .filter((item): item is AggregateApi => Boolean(item));
 }
 
+/**
+ * 函数 `normalizeAggregateApiCreateResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeAggregateApiCreateResult(payload: unknown): AggregateApiCreateResult {
   const source = asObject(payload);
   return {
@@ -333,6 +626,19 @@ export function normalizeAggregateApiCreateResult(payload: unknown): AggregateAp
   };
 }
 
+/**
+ * 函数 `normalizeAggregateApiTestResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeAggregateApiTestResult(payload: unknown): AggregateApiTestResult {
   const source = asObject(payload);
   return {
@@ -345,6 +651,19 @@ export function normalizeAggregateApiTestResult(payload: unknown): AggregateApiT
   };
 }
 
+/**
+ * 函数 `normalizeApiKeyUsageStats`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeApiKeyUsageStats(payload: unknown): ApiKeyUsageStat[] {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload);
@@ -365,6 +684,19 @@ export function normalizeApiKeyUsageStats(payload: unknown): ApiKeyUsageStat[] {
     .filter((item): item is ApiKeyUsageStat => Boolean(item));
 }
 
+/**
+ * 函数 `normalizePluginCatalogTask`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizePluginCatalogTask(payload: unknown): PluginCatalogTask | null {
   const source = asObject(payload);
   const id = asString(source.id);
@@ -381,6 +713,19 @@ export function normalizePluginCatalogTask(payload: unknown): PluginCatalogTask 
   };
 }
 
+/**
+ * 函数 `normalizePluginCatalogEntry`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizePluginCatalogEntry(payload: unknown): PluginCatalogEntry | null {
   const source = asObject(payload);
   const id = asString(source.id);
@@ -406,6 +751,19 @@ export function normalizePluginCatalogEntry(payload: unknown): PluginCatalogEntr
   };
 }
 
+/**
+ * 函数 `normalizePluginCatalogResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizePluginCatalogResult(payload: unknown): PluginCatalogResult {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload)
@@ -417,6 +775,19 @@ export function normalizePluginCatalogResult(payload: unknown): PluginCatalogRes
   };
 }
 
+/**
+ * 函数 `normalizeInstalledPlugin`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeInstalledPlugin(payload: unknown): InstalledPluginSummary | null {
   const source = asObject(payload);
   const pluginId = asString(source.pluginId ?? source.plugin_id);
@@ -446,6 +817,19 @@ export function normalizeInstalledPlugin(payload: unknown): InstalledPluginSumma
   };
 }
 
+/**
+ * 函数 `normalizePluginInstalledList`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizePluginInstalledList(payload: unknown): InstalledPluginSummary[] {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload);
@@ -454,6 +838,19 @@ export function normalizePluginInstalledList(payload: unknown): InstalledPluginS
     .filter((item): item is InstalledPluginSummary => Boolean(item));
 }
 
+/**
+ * 函数 `normalizePluginTask`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizePluginTask(payload: unknown): PluginTaskSummary | null {
   const source = asObject(payload);
   const id = asString(source.id);
@@ -476,6 +873,19 @@ export function normalizePluginTask(payload: unknown): PluginTaskSummary | null 
   };
 }
 
+/**
+ * 函数 `normalizePluginTaskList`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizePluginTaskList(payload: unknown): PluginTaskSummary[] {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload);
@@ -484,6 +894,19 @@ export function normalizePluginTaskList(payload: unknown): PluginTaskSummary[] {
     .filter((item): item is PluginTaskSummary => Boolean(item));
 }
 
+/**
+ * 函数 `normalizePluginRunLog`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizePluginRunLog(payload: unknown): PluginRunLogSummary | null {
   const source = asObject(payload);
   const id = asInteger(source.id, 0, 0);
@@ -504,6 +927,19 @@ export function normalizePluginRunLog(payload: unknown): PluginRunLogSummary | n
   };
 }
 
+/**
+ * 函数 `normalizePluginRunLogList`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizePluginRunLogList(payload: unknown): PluginRunLogSummary[] {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload);
@@ -512,6 +948,19 @@ export function normalizePluginRunLogList(payload: unknown): PluginRunLogSummary
     .filter((item): item is PluginRunLogSummary => Boolean(item));
 }
 
+/**
+ * 函数 `normalizeDeviceAuthInfo`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeDeviceAuthInfo(payload: unknown): DeviceAuthInfo | null {
   const source = asObject(payload);
   const verificationUrl = asString(source.verificationUrl ?? source.verification_url);
@@ -525,6 +974,19 @@ export function normalizeDeviceAuthInfo(payload: unknown): DeviceAuthInfo | null
   };
 }
 
+/**
+ * 函数 `normalizeLoginStartResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeLoginStartResult(payload: unknown): LoginStartResult {
   const source = asObject(payload);
   const verificationUrl = asString(source.verificationUrl ?? source.verification_url);
@@ -537,6 +999,19 @@ export function normalizeLoginStartResult(payload: unknown): LoginStartResult {
   };
 }
 
+/**
+ * 函数 `normalizeRequestLog`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - item: 参数 item
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeRequestLog(item: unknown): RequestLog | null {
   const source = asObject(item);
   const createdAt = toNullableNumber(source.createdAt ?? source.created_at);
@@ -609,6 +1084,19 @@ export function normalizeRequestLog(item: unknown): RequestLog | null {
   };
 }
 
+/**
+ * 函数 `normalizeRequestLogs`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeRequestLogs(payload: unknown): RequestLog[] {
   const source = asObject(payload);
   const items = asArray(source.items ?? payload);
@@ -617,6 +1105,19 @@ export function normalizeRequestLogs(payload: unknown): RequestLog[] {
     .filter((item): item is RequestLog => Boolean(item));
 }
 
+/**
+ * 函数 `normalizeRequestLogListResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeRequestLogListResult(payload: unknown): RequestLogListResult {
   const source = asObject(payload);
   const items = normalizeRequestLogs(source.items ?? payload);
@@ -628,6 +1129,19 @@ export function normalizeRequestLogListResult(payload: unknown): RequestLogListR
   };
 }
 
+/**
+ * 函数 `normalizeRequestLogFilterSummary`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeRequestLogFilterSummary(
   payload: unknown
 ): RequestLogFilterSummary {
@@ -642,6 +1156,19 @@ export function normalizeRequestLogFilterSummary(
   };
 }
 
+/**
+ * 函数 `normalizeBackgroundTasks`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeBackgroundTasks(payload: unknown): BackgroundTaskSettings {
   const source = asObject(payload);
   return {
@@ -700,6 +1227,19 @@ export function normalizeBackgroundTasks(payload: unknown): BackgroundTaskSettin
   };
 }
 
+/**
+ * 函数 `normalizeEnvOverrideCatalog`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeEnvOverrideCatalog(payload: unknown): EnvOverrideCatalogItem[] {
   return asArray(payload).reduce<EnvOverrideCatalogItem[]>((result, item) => {
     const source = asObject(item);
@@ -716,6 +1256,19 @@ export function normalizeEnvOverrideCatalog(payload: unknown): EnvOverrideCatalo
   }, []);
 }
 
+/**
+ * 函数 `normalizeAppSettings`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeAppSettings(payload: unknown): AppSettings {
   const source = asObject(payload);
   return {
@@ -771,6 +1324,19 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
   };
 }
 
+/**
+ * 函数 `normalizeStartupSnapshot`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeStartupSnapshot(payload: unknown): StartupSnapshot {
   const source = asObject(payload);
   const usageSnapshots = normalizeUsageList(source.usageSnapshots);

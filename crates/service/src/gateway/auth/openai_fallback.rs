@@ -5,6 +5,17 @@ use reqwest::Method;
 use serde_json::Value;
 use std::time::Instant;
 
+/// 函数 `should_force_connection_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - target_url: 参数 target_url
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_force_connection_close(target_url: &str) -> bool {
     reqwest::Url::parse(target_url)
         .ok()
@@ -12,6 +23,17 @@ fn should_force_connection_close(target_url: &str) -> bool {
         .is_some_and(|host| matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1"))
 }
 
+/// 函数 `force_connection_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 无
 fn force_connection_close(headers: &mut Vec<(String, String)>) {
     if let Some((_, value)) = headers
         .iter_mut()
@@ -23,6 +45,17 @@ fn force_connection_close(headers: &mut Vec<(String, String)>) {
     }
 }
 
+/// 函数 `body_has_encrypted_content_hint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn body_has_encrypted_content_hint(body: &[u8]) -> bool {
     // Fast path: avoid JSON parsing unless we hit the recovery path.
     std::str::from_utf8(body)
@@ -30,6 +63,17 @@ fn body_has_encrypted_content_hint(body: &[u8]) -> bool {
         .is_some_and(|text| text.contains("\"encrypted_content\""))
 }
 
+/// 函数 `strip_encrypted_content_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn strip_encrypted_content_value(value: &mut Value) -> bool {
     match value {
         Value::Object(map) => {
@@ -54,6 +98,17 @@ fn strip_encrypted_content_value(value: &mut Value) -> bool {
     }
 }
 
+/// 函数 `strip_encrypted_content_from_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn strip_encrypted_content_from_body(body: &[u8]) -> Option<Vec<u8>> {
     let mut value: Value = serde_json::from_slice(body).ok()?;
     if !strip_encrypted_content_value(&mut value) {
@@ -62,6 +117,17 @@ fn strip_encrypted_content_from_body(body: &[u8]) -> Option<Vec<u8>> {
     serde_json::to_vec(&value).ok()
 }
 
+/// 函数 `extract_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_prompt_cache_key(body: &[u8]) -> Option<String> {
     if body.is_empty() || body.len() > 64 * 1024 {
         return None;
@@ -77,10 +143,32 @@ fn extract_prompt_cache_key(body: &[u8]) -> Option<String> {
         .map(str::to_string)
 }
 
+/// 函数 `is_compact_request_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_compact_request_path(path: &str) -> bool {
     path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?")
 }
 
+/// 函数 `try_openai_fallback`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn try_openai_fallback(
     client: &Client,
     storage: &Storage,

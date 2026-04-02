@@ -20,6 +20,17 @@ struct FailureThrottleKey {
 
 static FAILURE_EVENT_THROTTLE: OnceLock<Mutex<HashMap<FailureThrottleKey, i64>>> = OnceLock::new();
 
+/// 函数 `record_usage_refresh_failure`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn record_usage_refresh_failure(storage: &Storage, account_id: &str, message: &str) {
     let created_at = now_ts();
     let error_class = classify_usage_refresh_error(message);
@@ -37,6 +48,17 @@ pub(super) fn record_usage_refresh_failure(storage: &Storage, account_id: &str, 
     });
 }
 
+/// 函数 `mark_usage_unreachable_if_needed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn mark_usage_unreachable_if_needed(storage: &Storage, account_id: &str, err: &str) {
     if mark_account_unavailable_for_refresh_token_error(storage, account_id, err) {
         return;
@@ -47,10 +69,32 @@ pub(super) fn mark_usage_unreachable_if_needed(storage: &Storage, account_id: &s
     let _ = mark_account_unavailable_for_usage_http_error(storage, account_id, err);
 }
 
+/// 函数 `should_retry_with_refresh`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn should_retry_with_refresh(err: &str) -> bool {
     err.contains("401") || err.contains("403")
 }
 
+/// 函数 `usage_refresh_failure_event_window_secs`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn usage_refresh_failure_event_window_secs() -> i64 {
     std::env::var(USAGE_REFRESH_FAILURE_EVENT_WINDOW_ENV)
         .ok()
@@ -59,6 +103,17 @@ fn usage_refresh_failure_event_window_secs() -> i64 {
         .unwrap_or(DEFAULT_USAGE_REFRESH_FAILURE_EVENT_WINDOW_SECS)
 }
 
+/// 函数 `classify_usage_refresh_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_usage_refresh_error(message: &str) -> String {
     let normalized = message.trim().to_ascii_lowercase();
     if let Some(status_code) = extract_usage_status_code(&normalized) {
@@ -85,6 +140,17 @@ fn classify_usage_refresh_error(message: &str) -> String {
     "other".to_string()
 }
 
+/// 函数 `extract_usage_status_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_usage_status_code(message: &str) -> Option<u16> {
     let rest = message.strip_prefix("usage endpoint status ")?;
     let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
@@ -94,6 +160,20 @@ fn extract_usage_status_code(message: &str) -> Option<u16> {
     digits.parse::<u16>().ok()
 }
 
+/// 函数 `should_record_failure_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account_id: 参数 account_id
+/// - error_class: 参数 error_class
+/// - created_at: 参数 created_at
+/// - dedupe_window_secs: 参数 dedupe_window_secs
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_record_failure_event(
     account_id: &str,
     error_class: &str,
@@ -109,6 +189,20 @@ fn should_record_failure_event(
     should_record_failure_event_with_state(&mut state, key, created_at, dedupe_window_secs)
 }
 
+/// 函数 `should_record_failure_event_with_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - state: 参数 state
+/// - key: 参数 key
+/// - created_at: 参数 created_at
+/// - dedupe_window_secs: 参数 dedupe_window_secs
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_record_failure_event_with_state(
     state: &mut HashMap<FailureThrottleKey, i64>,
     key: FailureThrottleKey,
@@ -136,6 +230,19 @@ fn should_record_failure_event_with_state(
     true
 }
 
+/// 函数 `prune_failure_event_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - state: 参数 state
+/// - now: 参数 now
+/// - dedupe_window_secs: 参数 dedupe_window_secs
+///
+/// # 返回
+/// 无
 fn prune_failure_event_state(
     state: &mut HashMap<FailureThrottleKey, i64>,
     now: i64,

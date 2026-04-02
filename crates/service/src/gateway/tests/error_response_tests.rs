@@ -1,6 +1,17 @@
 use super::{terminal_text_response, with_trace_id_header};
 use tiny_http::Response;
 
+/// 函数 `terminal_text_response_sets_error_code_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn terminal_text_response_sets_error_code_header() {
     let response = terminal_text_response(503, "no available account", Some("trc_test_1"));
@@ -43,6 +54,17 @@ fn terminal_text_response_sets_error_code_header() {
     assert_eq!(trace_header.as_deref(), Some("trc_test_1"));
 }
 
+/// 函数 `with_trace_id_header_appends_trace_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn with_trace_id_header_appends_trace_header() {
     let response = with_trace_id_header(Response::from_string("ok"), Some("trc_ok_1"));

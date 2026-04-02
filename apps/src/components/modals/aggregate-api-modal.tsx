@@ -46,6 +46,19 @@ interface AggregateApiModalProps {
   defaultSort?: number;
 }
 
+/**
+ * 函数 `AggregateApiModal`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function AggregateApiModal({
   open,
   onOpenChange,
@@ -78,6 +91,19 @@ export function AggregateApiModal({
     setGeneratedKey("");
   }, [aggregateApi, defaultSort, open]);
 
+  /**
+   * 函数 `handleSave`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleSave = async () => {
     if (!isServiceReady) {
       toast.info(
@@ -154,6 +180,19 @@ export function AggregateApiModal({
     }
   };
 
+  /**
+   * 函数 `copyKey`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const copyKey = async () => {
     try {
       await copyTextToClipboard(generatedKey);

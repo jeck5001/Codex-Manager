@@ -12,6 +12,19 @@ $supportedSession = "codexmanager-web-ui-smoke-supported"
 $unsupportedSession = "codexmanager-web-ui-smoke-unsupported"
 $playwrightCliStateDir = Join-Path $repoRoot ".playwright-cli"
 
+<#
+函数 `Resolve-PlaywrightCliCommand`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Resolve-PlaywrightCliCommand {
   try {
     return (Get-Command npx.cmd -ErrorAction Stop).Source
@@ -20,6 +33,21 @@ function Resolve-PlaywrightCliCommand {
   }
 }
 
+<#
+函数 `Invoke-PlaywrightCli`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- CommandPath: 参数 CommandPath
+- Session: 参数 Session
+- CliArgs: 参数 CliArgs
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-PlaywrightCli {
   param(
     [string]$CommandPath,
@@ -40,6 +68,21 @@ function Invoke-PlaywrightCli {
   return $output.Trim()
 }
 
+<#
+函数 `Get-PlaywrightEvalResult`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- CommandPath: 参数 CommandPath
+- Session: 参数 Session
+- Expression: 参数 Expression
+
+# 返回
+返回函数执行结果
+#>
 function Get-PlaywrightEvalResult {
   param(
     [string]$CommandPath,
@@ -55,6 +98,19 @@ function Get-PlaywrightEvalResult {
   return $match.Groups[1].Value.Trim()
 }
 
+<#
+函数 `ConvertTo-JsSingleQuotedLiteral`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Text: 参数 Text
+
+# 返回
+返回函数执行结果
+#>
 function ConvertTo-JsSingleQuotedLiteral {
   param(
     [string]$Text
@@ -68,6 +124,23 @@ function ConvertTo-JsSingleQuotedLiteral {
   return "'$value'"
 }
 
+<#
+函数 `Wait-PageCondition`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- CommandPath: 参数 CommandPath
+- Session: 参数 Session
+- Expression: 参数 Expression
+- Description: 参数 Description
+- TimeoutMs: 参数 TimeoutMs
+
+# 返回
+返回函数执行结果
+#>
 function Wait-PageCondition {
   param(
     [string]$CommandPath,
@@ -96,6 +169,22 @@ function Wait-PageCondition {
   throw "Timed out waiting for: $Description`nLastResult: $lastResult`nLastError: $lastError"
 }
 
+<#
+函数 `Wait-PageText`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- CommandPath: 参数 CommandPath
+- Session: 参数 Session
+- Text: 参数 Text
+- TimeoutMs: 参数 TimeoutMs
+
+# 返回
+返回函数执行结果
+#>
 function Wait-PageText {
   param(
     [string]$CommandPath,
@@ -108,6 +197,22 @@ function Wait-PageText {
   Wait-PageCondition -CommandPath $CommandPath -Session $Session -Expression "document.body.innerText.includes($textLiteral)" -Description "page text '$Text'" -TimeoutMs $TimeoutMs
 }
 
+<#
+函数 `Invoke-PageClickByText`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- CommandPath: 参数 CommandPath
+- Session: 参数 Session
+- Text: 参数 Text
+- TimeoutMs: 参数 TimeoutMs
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-PageClickByText {
   param(
     [string]$CommandPath,
@@ -122,6 +227,22 @@ function Invoke-PageClickByText {
   Wait-PageCondition -CommandPath $CommandPath -Session $Session -Expression $expression -Description "click '$Text'" -TimeoutMs $TimeoutMs
 }
 
+<#
+函数 `Assert-NodeEnabledByText`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- CommandPath: 参数 CommandPath
+- Session: 参数 Session
+- Text: 参数 Text
+- Description: 参数 Description
+
+# 返回
+返回函数执行结果
+#>
 function Assert-NodeEnabledByText {
   param(
     [string]$CommandPath,
@@ -136,6 +257,22 @@ function Assert-NodeEnabledByText {
   Wait-PageCondition -CommandPath $CommandPath -Session $Session -Expression $expression -Description $Description
 }
 
+<#
+函数 `Assert-ElementEnabled`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- CommandPath: 参数 CommandPath
+- Session: 参数 Session
+- Selector: 参数 Selector
+- Description: 参数 Description
+
+# 返回
+返回函数执行结果
+#>
 function Assert-ElementEnabled {
   param(
     [string]$CommandPath,
@@ -148,6 +285,20 @@ function Assert-ElementEnabled {
   Wait-PageCondition -CommandPath $CommandPath -Session $Session -Expression "(window.__codexNode = document.querySelector($selectorLiteral), Boolean(window.__codexNode) && !window.__codexNode.disabled)" -Description $Description
 }
 
+<#
+函数 `Close-PlaywrightSession`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- CommandPath: 参数 CommandPath
+- Session: 参数 Session
+
+# 返回
+返回函数执行结果
+#>
 function Close-PlaywrightSession {
   param(
     [string]$CommandPath,
@@ -160,6 +311,19 @@ function Close-PlaywrightSession {
   }
 }
 
+<#
+函数 `Remove-TransientPath`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Path: 参数 Path
+
+# 返回
+返回函数执行结果
+#>
 function Remove-TransientPath {
   param(
     [string]$Path
@@ -177,6 +341,21 @@ function Remove-TransientPath {
 
 $npxCommand = Resolve-PlaywrightCliCommand
 
+<#
+函数 `New-BackgroundProcess`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- FilePath: 参数 FilePath
+- ArgumentList: 参数 ArgumentList
+- WorkingDirectory: 参数 WorkingDirectory
+
+# 返回
+返回函数执行结果
+#>
 function New-BackgroundProcess {
   param(
     [string]$FilePath,
@@ -196,6 +375,21 @@ function New-BackgroundProcess {
   return [System.Diagnostics.Process]::Start($startInfo)
 }
 
+<#
+函数 `Wait-HttpOk`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Url: 参数 Url
+- Description: 参数 Description
+- TimeoutMs: 参数 TimeoutMs
+
+# 返回
+返回函数执行结果
+#>
 function Wait-HttpOk {
   param(
     [string]$Url,
@@ -218,6 +412,19 @@ function Wait-HttpOk {
   throw "Timed out waiting for $Description at $Url"
 }
 
+<#
+函数 `Stop-BackgroundProcess`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Process: 参数 Process
+
+# 返回
+返回函数执行结果
+#>
 function Stop-BackgroundProcess {
   param(
     [System.Diagnostics.Process]$Process

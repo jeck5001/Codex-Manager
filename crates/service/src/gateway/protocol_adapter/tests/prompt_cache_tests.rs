@@ -2,6 +2,18 @@ use super::{PromptCache, PromptCacheConfig};
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
+/// 函数 `new_test_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - now: 参数 now
+/// - config: 参数 config
+///
+/// # 返回
+/// 返回函数执行结果
 fn new_test_cache(now: Instant, config: PromptCacheConfig) -> PromptCache {
     PromptCache {
         by_key: HashMap::new(),
@@ -12,6 +24,17 @@ fn new_test_cache(now: Instant, config: PromptCacheConfig) -> PromptCache {
     }
 }
 
+/// 函数 `lru_capacity_evicts_least_recently_seen`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn lru_capacity_evicts_least_recently_seen() {
     let now = Instant::now();
@@ -44,6 +67,17 @@ fn lru_capacity_evicts_least_recently_seen() {
     assert_ne!(cache.get_or_create("k1", now + Duration::from_secs(3)), id1);
 }
 
+/// 函数 `ttl_expires_after_idle_and_is_checked_on_access`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn ttl_expires_after_idle_and_is_checked_on_access() {
     let now = Instant::now();

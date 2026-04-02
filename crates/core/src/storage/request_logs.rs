@@ -6,6 +6,17 @@ use super::{
 };
 
 impl Storage {
+    /// 函数 `ensure_request_logs_indexes`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn ensure_request_logs_indexes(&self) -> Result<()> {
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_request_logs_created_at ON request_logs(created_at DESC)",
@@ -38,6 +49,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `insert_request_log`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - log: 参数 log
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_request_log(&self, log: &RequestLog) -> Result<i64> {
         self.conn.execute(
             "INSERT INTO request_logs (
@@ -72,6 +95,19 @@ impl Storage {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// 函数 `insert_request_log_with_token_stat`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - log: 参数 log
+    /// - stat: 参数 stat
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_request_log_with_token_stat(
         &self,
         log: &RequestLog,
@@ -140,10 +176,38 @@ impl Storage {
         Ok((request_log_id, token_stat_error))
     }
 
+    /// 函数 `list_request_logs`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - limit: 参数 limit
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_request_logs(&self, query: Option<&str>, limit: i64) -> Result<Vec<RequestLog>> {
         self.list_request_logs_paginated(query, None, 0, limit)
     }
 
+    /// 函数 `list_request_logs_paginated`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - status_filter: 参数 status_filter
+    /// - offset: 参数 offset
+    /// - limit: 参数 limit
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_request_logs_paginated(
         &self,
         query: Option<&str>,
@@ -181,6 +245,19 @@ impl Storage {
         Ok(out)
     }
 
+    /// 函数 `count_request_logs`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - status_filter: 参数 status_filter
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn count_request_logs(
         &self,
         query: Option<&str>,
@@ -200,6 +277,19 @@ impl Storage {
             })
     }
 
+    /// 函数 `summarize_request_logs_filtered`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - status_filter: 参数 status_filter
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn summarize_request_logs_filtered(
         &self,
         query: Option<&str>,
@@ -241,12 +331,36 @@ impl Storage {
             })
     }
 
+    /// 函数 `clear_request_logs`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn clear_request_logs(&self) -> Result<()> {
         // 只清理请求明细日志，保留 token 统计用于仪表盘历史用量与费用汇总。
         self.conn.execute("DELETE FROM request_logs", [])?;
         Ok(())
     }
 
+    /// 函数 `summarize_request_logs_between`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - start_ts: 参数 start_ts
+    /// - end_ts: 参数 end_ts
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn summarize_request_logs_between(
         &self,
         start_ts: i64,
@@ -255,6 +369,17 @@ impl Storage {
         self.summarize_request_token_stats_between(start_ts, end_ts)
     }
 
+    /// 函数 `ensure_request_logs_table`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_logs_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS request_logs (
@@ -287,11 +412,33 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_reasoning_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_reasoning_column(&self) -> Result<()> {
         self.ensure_column("request_logs", "reasoning_effort", "TEXT")?;
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_account_tokens_cost_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_account_tokens_cost_columns(&self) -> Result<()> {
         self.ensure_column("request_logs", "account_id", "TEXT")?;
         self.conn.execute(
@@ -305,10 +452,32 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_cached_reasoning_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_cached_reasoning_columns(&self) -> Result<()> {
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_trace_context_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_trace_context_columns(&self) -> Result<()> {
         self.ensure_column("request_logs", "trace_id", "TEXT")?;
         self.ensure_column("request_logs", "original_path", "TEXT")?;
@@ -321,29 +490,84 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_aggregate_api_context_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_aggregate_api_context_columns(&self) -> Result<()> {
         self.ensure_column("request_logs", "aggregate_api_supplier_name", "TEXT")?;
         self.ensure_column("request_logs", "aggregate_api_url", "TEXT")?;
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_attempt_chain_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_attempt_chain_columns(&self) -> Result<()> {
         self.ensure_column("request_logs", "initial_account_id", "TEXT")?;
         self.ensure_column("request_logs", "attempted_account_ids_json", "TEXT")?;
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_aggregate_api_attempt_chain_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_aggregate_api_attempt_chain_columns(&self) -> Result<()> {
         self.ensure_column("request_logs", "initial_aggregate_api_id", "TEXT")?;
         self.ensure_column("request_logs", "attempted_aggregate_api_ids_json", "TEXT")?;
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_duration_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_duration_column(&self) -> Result<()> {
         self.ensure_column("request_logs", "duration_ms", "INTEGER")?;
         Ok(())
     }
 
+    /// 函数 `compact_request_logs_legacy_usage_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn compact_request_logs_legacy_usage_columns(&self) -> Result<()> {
         self.ensure_request_logs_table()?;
         self.ensure_request_log_reasoning_column()?;
@@ -413,6 +637,17 @@ impl Storage {
     }
 }
 
+/// 函数 `map_request_log_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_request_log_row(row: &Row<'_>) -> Result<RequestLog> {
     Ok(RequestLog {
         trace_id: row.get(0)?,
@@ -450,6 +685,17 @@ struct RequestLogSqlFilters {
     params: Vec<Value>,
 }
 
+/// 函数 `normalize_request_log_limit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_request_log_limit(value: i64) -> i64 {
     if value <= 0 {
         200
@@ -458,6 +704,18 @@ fn normalize_request_log_limit(value: i64) -> i64 {
     }
 }
 
+/// 函数 `build_request_log_filters`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - query: 参数 query
+/// - status_filter: 参数 status_filter
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_request_log_filters(
     query: Option<&str>,
     status_filter: Option<&str>,
@@ -482,6 +740,19 @@ fn build_request_log_filters(
     }
 }
 
+/// 函数 `append_request_log_query_clause`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - query: 参数 query
+/// - clauses: 参数 clauses
+/// - params: 参数 params
+///
+/// # 返回
+/// 无
 fn append_request_log_query_clause(
     query: request_log_query::RequestLogQuery,
     clauses: &mut Vec<String>,
@@ -542,6 +813,19 @@ fn append_request_log_query_clause(
     }
 }
 
+/// 函数 `append_status_filter_clause`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status_filter: 参数 status_filter
+/// - clauses: 参数 clauses
+/// - params: 参数 params
+///
+/// # 返回
+/// 无
 fn append_status_filter_clause(
     status_filter: Option<&str>,
     clauses: &mut Vec<String>,

@@ -4,12 +4,38 @@ import { ServiceInitializationResult } from "@/types";
 
 const LOOPBACK_PROXY_HINT = "若开启全局代理，请将 localhost/127.0.0.1/::1 设为直连";
 
+/**
+ * 函数 `asRecord`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asRecord(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === "object" && !Array.isArray(payload)
     ? (payload as Record<string, unknown>)
     : {};
 }
 
+/**
+ * 函数 `normalizeServiceAddr`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - raw: 参数 raw
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeServiceAddr(raw: string): string {
   const trimmed = String(raw || "").trim();
   if (!trimmed) {
@@ -37,6 +63,19 @@ export function normalizeServiceAddr(raw: string): string {
   return value;
 }
 
+/**
+ * 函数 `readInitializeResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function readInitializeResult(payload: unknown): ServiceInitializationResult {
   const source = asRecord(payload);
   const userAgent =
@@ -66,11 +105,37 @@ export function readInitializeResult(payload: unknown): ServiceInitializationRes
   return { userAgent, codexHome, platformFamily, platformOs };
 }
 
+/**
+ * 函数 `isExpectedInitializeResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function isExpectedInitializeResult(payload: unknown): boolean {
   const result = readInitializeResult(payload);
   return result.userAgent.includes("codex_cli_rs/") && result.codexHome.length > 0;
 }
 
+/**
+ * 函数 `formatServiceError`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - error: 参数 error
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function formatServiceError(error: unknown): string {
   const raw =
     error && typeof error === "object" && "message" in error

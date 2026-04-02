@@ -3,6 +3,17 @@ use serde_json::{json, Map, Value};
 use super::tool_mapping::restore_openai_tool_name;
 use super::ToolNameRestoreMap;
 
+/// 函数 `map_openai_error_to_anthropic`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_openai_error_to_anthropic(value: &Value) -> Option<Value> {
     let error = value.get("error")?.as_object()?;
     let message = error
@@ -32,6 +43,17 @@ fn map_openai_error_to_anthropic(value: &Value) -> Option<Value> {
     }))
 }
 
+/// 函数 `convert_openai_json_to_anthropic`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn convert_openai_json_to_anthropic(
     body: &[u8],
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
@@ -55,6 +77,18 @@ pub(super) fn convert_openai_json_to_anthropic(
         .map_err(|err| format!("serialize claude response failed: {err}"))
 }
 
+/// 函数 `build_anthropic_message_from_chat_completions`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - tool_name_restore_map: 参数 tool_name_restore_map
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_anthropic_message_from_chat_completions(
     value: &Value,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
@@ -149,6 +183,18 @@ fn build_anthropic_message_from_chat_completions(
     }))
 }
 
+/// 函数 `build_anthropic_message_from_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - tool_name_restore_map: 参数 tool_name_restore_map
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_anthropic_message_from_responses(
     value: &Value,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
@@ -305,6 +351,17 @@ fn build_anthropic_message_from_responses(
     }))
 }
 
+/// 函数 `build_anthropic_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - usage: 参数 usage
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_anthropic_usage(usage: Option<&Map<String, Value>>) -> Value {
     let mut out = Map::new();
     out.insert(
@@ -345,6 +402,18 @@ fn build_anthropic_usage(usage: Option<&Map<String, Value>>) -> Value {
     Value::Object(out)
 }
 
+/// 函数 `extract_usage_i64`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - usage: 参数 usage
+/// - paths: 参数 paths
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_usage_i64(usage: Option<&Map<String, Value>>, paths: &[&str]) -> Option<i64> {
     let usage = usage?;
     for path in paths {
@@ -365,6 +434,18 @@ fn extract_usage_i64(usage: Option<&Map<String, Value>>, paths: &[&str]) -> Opti
     None
 }
 
+/// 函数 `push_anthropic_text_block`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - content_blocks: 参数 content_blocks
+/// - text: 参数 text
+///
+/// # 返回
+/// 返回函数执行结果
 fn push_anthropic_text_block(content_blocks: &mut Vec<Value>, text: &str) -> bool {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -389,6 +470,17 @@ fn push_anthropic_text_block(content_blocks: &mut Vec<Value>, text: &str) -> boo
     true
 }
 
+/// 函数 `summarize_special_response_item_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn summarize_special_response_item_text(
     item_obj: &serde_json::Map<String, Value>,
 ) -> Option<String> {
@@ -405,7 +497,30 @@ pub(super) fn summarize_special_response_item_text(
     }
 }
 
+/// 函数 `extract_response_item_output_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_response_item_output_text(item_obj: &serde_json::Map<String, Value>) -> Option<String> {
+    /// 函数 `collect_output`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    /// - out: 参数 out
+    ///
+    /// # 返回
+    /// 无
     fn collect_output(value: &Value, out: &mut Vec<String>) {
         match value {
             Value::String(text) => {
@@ -448,6 +563,17 @@ fn extract_response_item_output_text(item_obj: &serde_json::Map<String, Value>) 
     }
 }
 
+/// 函数 `summarize_web_search_call`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_web_search_call(item_obj: &serde_json::Map<String, Value>) -> Option<String> {
     let status = item_obj
         .get("status")
@@ -521,6 +647,17 @@ fn summarize_web_search_call(item_obj: &serde_json::Map<String, Value>) -> Optio
     Some(summary)
 }
 
+/// 函数 `summarize_image_generation_call`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_image_generation_call(item_obj: &serde_json::Map<String, Value>) -> Option<String> {
     let status = item_obj
         .get("status")
@@ -548,6 +685,17 @@ fn summarize_image_generation_call(item_obj: &serde_json::Map<String, Value>) ->
     Some(parts.join(" "))
 }
 
+/// 函数 `summarize_local_shell_call`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_local_shell_call(item_obj: &serde_json::Map<String, Value>) -> Option<String> {
     let status = item_obj
         .get("status")
@@ -584,6 +732,17 @@ fn summarize_local_shell_call(item_obj: &serde_json::Map<String, Value>) -> Opti
     Some(parts.join(" "))
 }
 
+/// 函数 `map_responses_reasoning_item_to_anthropic`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_responses_reasoning_item_to_anthropic(
     item_obj: &serde_json::Map<String, Value>,
 ) -> Option<Value> {
@@ -607,6 +766,17 @@ fn map_responses_reasoning_item_to_anthropic(
     Some(Value::Object(block))
 }
 
+/// 函数 `extract_responses_reasoning_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn extract_responses_reasoning_text(
     item_obj: &serde_json::Map<String, Value>,
 ) -> String {
@@ -617,6 +787,18 @@ pub(super) fn extract_responses_reasoning_text(
     collect_reasoning_text(item_obj.get("summary"), false)
 }
 
+/// 函数 `collect_reasoning_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - content_mode: 参数 content_mode
+///
+/// # 返回
+/// 返回函数执行结果
 fn collect_reasoning_text(value: Option<&Value>, content_mode: bool) -> String {
     let Some(items) = value.and_then(Value::as_array) else {
         return String::new();
@@ -654,6 +836,17 @@ fn collect_reasoning_text(value: Option<&Value>, content_mode: bool) -> String {
     }
 }
 
+/// 函数 `extract_openai_text_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_openai_text_content(value: &Value) -> Result<String, String> {
     if value.is_null() {
         return Ok(String::new());
@@ -682,6 +875,17 @@ fn extract_openai_text_content(value: &Value) -> Result<String, String> {
     Ok(parts.join(""))
 }
 
+/// 函数 `parse_tool_arguments_as_object`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn parse_tool_arguments_as_object(raw: &str) -> Value {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -703,6 +907,17 @@ pub(super) fn parse_tool_arguments_as_object(raw: &str) -> Value {
     }
 }
 
+/// 函数 `extract_function_call_input_object`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_function_call_input_object(item_obj: &serde_json::Map<String, Value>) -> Value {
     let Some(arguments_raw) = extract_function_call_arguments_raw(item_obj) else {
         return json!({});
@@ -710,6 +925,17 @@ fn extract_function_call_input_object(item_obj: &serde_json::Map<String, Value>)
     parse_tool_arguments_as_object(&arguments_raw)
 }
 
+/// 函数 `extract_function_call_arguments_raw`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn extract_function_call_arguments_raw(
     item_obj: &serde_json::Map<String, Value>,
 ) -> Option<String> {
@@ -744,6 +970,17 @@ pub(super) fn extract_function_call_arguments_raw(
     None
 }
 
+/// 函数 `map_finish_reason`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn map_finish_reason(reason: &str) -> &'static str {
     match reason {
         "tool_calls" => "tool_use",

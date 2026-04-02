@@ -1,5 +1,16 @@
 use tiny_http::Request;
 
+/// 函数 `read_request_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn read_request_body(
     request: &mut Request,
 ) -> Result<Vec<u8>, super::LocalValidationError> {
@@ -27,6 +38,17 @@ pub(super) fn read_request_body(
     Ok(body)
 }
 
+/// 函数 `extract_platform_key_or_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn extract_platform_key_or_error(
     request: &Request,
     incoming_headers: &super::super::IncomingHeaderSnapshot,

@@ -19,6 +19,18 @@ use super::state::{
     clear_pending_update, pending_update_path, read_pending_update, script_dir_from_pending,
 };
 
+/// 函数 `append_apply_log`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - log_path: 参数 log_path
+/// - message: 参数 message
+///
+/// # 返回
+/// 无
 fn append_apply_log(log_path: &Path, message: &str) {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -39,10 +51,34 @@ fn append_apply_log(log_path: &Path, message: &str) {
     }
 }
 
+/// 函数 `log_path_for_script_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - script_dir: 参数 script_dir
+/// - file_name: 参数 file_name
+///
+/// # 返回
+/// 返回函数执行结果
 fn log_path_for_script_dir(script_dir: &Path, file_name: &str) -> PathBuf {
     script_dir.join("logs").join(file_name)
 }
 
+/// 函数 `write_windows_powershell_script`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - script_path: 参数 script_path
+/// - script: 参数 script
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(target_os = "windows")]
 fn write_windows_powershell_script(script_path: &Path, script: &str) -> Result<(), String> {
     // Windows PowerShell 5.1 对无 BOM 的 UTF-8 脚本兼容较差，写入 BOM 避免脚本内容被误解析。
@@ -52,6 +88,17 @@ fn write_windows_powershell_script(script_path: &Path, script: &str) -> Result<(
     fs::write(script_path, bytes).map_err(|err| format!("写入更新应用脚本失败：{err}"))
 }
 
+/// 函数 `portable_executable_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn portable_executable_candidates() -> &'static [&'static str] {
     if cfg!(target_os = "windows") {
         &["CodexManager-portable.exe", "CodexManager.exe"]
@@ -66,6 +113,17 @@ fn portable_executable_candidates() -> &'static [&'static str] {
     }
 }
 
+/// 函数 `resolve_portable_restart_exe`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn resolve_portable_restart_exe(
     staging_dir: &Path,
     current_exe_name: &str,
@@ -86,6 +144,22 @@ pub(super) fn resolve_portable_restart_exe(
     ))
 }
 
+/// 函数 `spawn_portable_apply_worker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - script_dir: 参数 script_dir
+/// - target_dir: 参数 target_dir
+/// - staging_dir: 参数 staging_dir
+/// - exe_name: 参数 exe_name
+/// - pending_path: 参数 pending_path
+/// - pid_to_wait: 参数 pid_to_wait
+///
+/// # 返回
+/// 返回函数执行结果
 fn spawn_portable_apply_worker(
     script_dir: &Path,
     target_dir: &Path,
@@ -231,6 +305,17 @@ log "应用已重新拉起"
     }
 }
 
+/// 函数 `schedule_app_exit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - app: 参数 app
+///
+/// # 返回
+/// 无
 fn schedule_app_exit(app: tauri::AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(280));
@@ -238,6 +323,17 @@ fn schedule_app_exit(app: tauri::AppHandle) {
     });
 }
 
+/// 函数 `resolve_current_macos_app_bundle`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - exe_path: 参数 exe_path
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(target_os = "macos")]
 fn resolve_current_macos_app_bundle(exe_path: &Path) -> Result<PathBuf, String> {
     for ancestor in exe_path.ancestors() {
@@ -258,6 +354,17 @@ fn resolve_current_macos_app_bundle(exe_path: &Path) -> Result<PathBuf, String> 
     ))
 }
 
+/// 函数 `resolve_staged_macos_app_bundle`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - staging_dir: 参数 staging_dir
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(target_os = "macos")]
 fn resolve_staged_macos_app_bundle(staging_dir: &Path) -> Result<PathBuf, String> {
     let entries =
@@ -282,6 +389,21 @@ fn resolve_staged_macos_app_bundle(staging_dir: &Path) -> Result<PathBuf, String
     ))
 }
 
+/// 函数 `spawn_macos_bundle_replace_worker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - script_dir: 参数 script_dir
+/// - target_app: 参数 target_app
+/// - staged_app: 参数 staged_app
+/// - pending_path: 参数 pending_path
+/// - pid_to_wait: 参数 pid_to_wait
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(target_os = "macos")]
 fn spawn_macos_bundle_replace_worker(
     script_dir: &Path,
@@ -369,6 +491,18 @@ log "应用已重新拉起"
     Ok(())
 }
 
+/// 函数 `apply_macos_bundle_update`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - app: 参数 app
+/// - pending: 参数 pending
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(target_os = "macos")]
 fn apply_macos_bundle_update(
     app: tauri::AppHandle,
@@ -418,6 +552,17 @@ fn apply_macos_bundle_update(
     })
 }
 
+/// 函数 `launch_installer`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - installer_path: 参数 installer_path
+///
+/// # 返回
+/// 返回函数执行结果
 fn launch_installer(installer_path: &Path) -> Result<(), String> {
     if !installer_path.is_file() {
         return Err(format!("未找到安装包：{}", installer_path.display()));
@@ -468,6 +613,17 @@ fn launch_installer(installer_path: &Path) -> Result<(), String> {
     }
 }
 
+/// 函数 `apply_portable_impl`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn apply_portable_impl(app: tauri::AppHandle) -> Result<UpdateActionResponse, String> {
     let pending = read_pending_update(&app)?
         .ok_or_else(|| "未找到已准备更新，请先调用 app_update_prepare".to_string())?;
@@ -530,6 +686,17 @@ pub(super) fn apply_portable_impl(app: tauri::AppHandle) -> Result<UpdateActionR
     })
 }
 
+/// 函数 `launch_installer_impl`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn launch_installer_impl(app: tauri::AppHandle) -> Result<UpdateActionResponse, String> {
     let pending = read_pending_update(&app)?
         .ok_or_else(|| "未找到已准备更新，请先调用 app_update_prepare".to_string())?;
@@ -587,6 +754,17 @@ mod tests {
 
     use super::resolve_portable_restart_exe;
 
+    /// 函数 `resolve_portable_restart_exe_prefers_existing_current_name`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn resolve_portable_restart_exe_prefers_existing_current_name() {
         let staging = std::env::temp_dir().join(format!(

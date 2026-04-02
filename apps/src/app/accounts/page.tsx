@@ -133,6 +133,19 @@ fn run(context) {
   sourceUrl: "builtin://codexmanager",
 };
 
+/**
+ * 函数 `formatAccountPlanValueLabel`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatAccountPlanValueLabel(value: string) {
   const normalized = String(value || "")
     .trim()
@@ -161,12 +174,38 @@ function formatAccountPlanValueLabel(value: string) {
   }
 }
 
+/**
+ * 函数 `normalizeAccountPlanKey`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - account: 参数 account
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizeAccountPlanKey(account: Account) {
   return String(account.planType || "")
     .trim()
     .toLowerCase() || "unknown";
 }
 
+/**
+ * 函数 `formatPlanFilterLabel`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatPlanFilterLabel(value: string) {
   const nextValue = String(value || "").trim();
   if (!nextValue || nextValue === "all") {
@@ -175,6 +214,19 @@ function formatPlanFilterLabel(value: string) {
   return formatAccountPlanValueLabel(nextValue);
 }
 
+/**
+ * 函数 `formatStatusFilterLabel`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatStatusFilterLabel(value: string) {
   const nextValue = String(value || "").trim();
   switch (nextValue) {
@@ -200,6 +252,19 @@ interface QuotaProgressProps {
   emptyResetText?: string;
 }
 
+/**
+ * 函数 `QuotaProgress`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function QuotaProgress({
   label,
   remainPercent,
@@ -236,6 +301,19 @@ function QuotaProgress({
   );
 }
 
+/**
+ * 函数 `getAccountStatusAction`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - account: 参数 account
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function getAccountStatusAction(account: Account): {
   action: "enable" | "disable" | null;
   label: string;
@@ -256,6 +334,19 @@ function getAccountStatusAction(account: Account): {
   return { action: "disable", label: "禁用账号", icon: PowerOff };
 }
 
+/**
+ * 函数 `formatAccountPlanLabel`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - account: 参数 account
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatAccountPlanLabel(account: Account): string | null {
   const normalized = normalizeAccountPlanKey(account);
   return normalized === "unknown"
@@ -263,6 +354,19 @@ function formatAccountPlanLabel(account: Account): string | null {
     : formatAccountPlanValueLabel(normalized);
 }
 
+/**
+ * 函数 `getAccountPlanBadgeClassName`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - planLabel: 参数 planLabel
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function getAccountPlanBadgeClassName(planLabel: string | null): string {
   switch (planLabel) {
     case "FREE":
@@ -286,6 +390,19 @@ function getAccountPlanBadgeClassName(planLabel: string | null): string {
   }
 }
 
+/**
+ * 函数 `formatAccountTags`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - tags: 参数 tags
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function formatAccountTags(tags: string[]): string {
   return tags
     .map((tag) => String(tag || "").trim())
@@ -293,6 +410,19 @@ function formatAccountTags(tags: string[]): string {
     .join("、");
 }
 
+/**
+ * 函数 `normalizeTagsDraft`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - tagsDraft: 参数 tagsDraft
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function normalizeTagsDraft(tagsDraft: string): string[] {
   return tagsDraft
     .split(",")
@@ -300,6 +430,19 @@ function normalizeTagsDraft(tagsDraft: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * 函数 `buildAccountOrderUpdates`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - orderedAccounts: 参数 orderedAccounts
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function buildAccountOrderUpdates(orderedAccounts: Account[]) {
   return orderedAccounts.reduce<Array<{ accountId: string; sort: number }>>(
     (updates, account, index) => {
@@ -318,6 +461,19 @@ function buildAccountOrderUpdates(orderedAccounts: Account[]) {
 
 type AccountSizeSortMode = "large-first" | "small-first";
 
+/**
+ * 函数 `getAccountSizeGroup`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - account: 参数 account
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function getAccountSizeGroup(account: Account): "large" | "standard" | "small" {
   switch (normalizeAccountPlanKey(account)) {
     case "plus":
@@ -333,6 +489,20 @@ function getAccountSizeGroup(account: Account): "large" | "standard" | "small" {
   }
 }
 
+/**
+ * 函数 `buildAccountsBySizeOrder`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - orderedAccounts: 参数 orderedAccounts
+ * - mode: 参数 mode
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function buildAccountsBySizeOrder(
   orderedAccounts: Account[],
   mode: AccountSizeSortMode,
@@ -352,6 +522,19 @@ function buildAccountsBySizeOrder(
     : [...buckets.small, ...buckets.standard, ...buckets.large];
 }
 
+/**
+ * 函数 `AccountInfoCell`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function AccountInfoCell({
   account,
   isPreferred,
@@ -579,6 +762,19 @@ export default function AccountsPage() {
   );
 
   const visibleAccounts = useMemo(() => {
+    /**
+     * 函数 `offset`
+     *
+     * 作者: gaohongshun
+     *
+     * 时间: 2026-04-02
+     *
+     * # 参数
+     * - safePage - 1: 参数 safePage - 1
+     *
+     * # 返回
+     * 返回函数执行结果
+     */
     const offset = (safePage - 1) * pageSizeNumber;
     return filteredAccounts.slice(offset, offset + pageSizeNumber);
   }, [filteredAccounts, pageSizeNumber, safePage]);
@@ -599,26 +795,91 @@ export default function AccountsPage() {
     [accountEditorState, accounts],
   );
 
+  /**
+   * 函数 `handleSearchChange`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - value: 参数 value
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleSearchChange = (value: string) => {
     setSearch(value);
     setPage(1);
   };
 
+  /**
+   * 函数 `handlePlanFilterChange`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - value: 参数 value
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handlePlanFilterChange = (value: string | null) => {
     setPlanFilter(value || "all");
     setPage(1);
   };
 
+  /**
+   * 函数 `handleStatusFilterChange`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - value: 参数 value
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleStatusFilterChange = (value: StatusFilter) => {
     setStatusFilter(value);
     setPage(1);
   };
 
+  /**
+   * 函数 `handlePageSizeChange`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - value: 参数 value
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handlePageSizeChange = (value: string | null) => {
     setPageSize(value || "20");
     setPage(1);
   };
 
+  /**
+   * 函数 `toggleSelect`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - id: 参数 id
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const toggleSelect = (id: string) => {
     setSelectedIds((current) =>
       current.includes(id)
@@ -627,6 +888,19 @@ export default function AccountsPage() {
     );
   };
 
+  /**
+   * 函数 `toggleSelectAllVisible`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const toggleSelectAllVisible = () => {
     const visibleIds = visibleAccounts.map((account) => account.id);
     const allSelected = visibleIds.every((id) =>
@@ -640,11 +914,37 @@ export default function AccountsPage() {
     });
   };
 
+  /**
+   * 函数 `openUsage`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - account: 参数 account
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const openUsage = (account: Account) => {
     setSelectedAccountId(account.id);
     setUsageModalOpen(true);
   };
 
+  /**
+   * 函数 `handleDeleteSelected`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleDeleteSelected = () => {
     if (!effectiveSelectedIds.length) {
       toast.error("请先选择要删除的账号");
@@ -657,6 +957,19 @@ export default function AccountsPage() {
     });
   };
 
+  /**
+   * 函数 `handleDeleteBanned`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleDeleteBanned = () => {
     const bannedIds = accounts
       .filter((account) => isBannedAccount(account))
@@ -672,6 +985,19 @@ export default function AccountsPage() {
     });
   };
 
+  /**
+   * 函数 `handleConfirmCleanupSchedule`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleConfirmCleanupSchedule = () => {
     const parsed = Number(cleanupScheduleDraft.trim());
     if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -681,10 +1007,36 @@ export default function AccountsPage() {
     void scheduleCleanupMutation.mutateAsync(Math.max(1, Math.trunc(parsed)));
   };
 
+  /**
+   * 函数 `handleDeleteSingle`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - account: 参数 account
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleDeleteSingle = (account: Account) => {
     setDeleteDialogState({ kind: "single", account });
   };
 
+  /**
+   * 函数 `openAccountEditor`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - account: 参数 account
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const openAccountEditor = (account: Account) => {
     setAccountEditorState({
       accountId: account.id,
@@ -700,6 +1052,20 @@ export default function AccountsPage() {
     setSortDraft(String(account.priority));
   };
 
+  /**
+   * 函数 `handleMoveAccount`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - account: 参数 account
+   * - direction: 参数 direction
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleMoveAccount = async (
     account: Account,
     direction: "up" | "down",
@@ -745,6 +1111,19 @@ export default function AccountsPage() {
     }
   };
 
+  /**
+   * 函数 `handleApplyAccountSizeSort`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - mode: 参数 mode
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleApplyAccountSizeSort = async (mode: AccountSizeSortMode) => {
     if (accounts.length < 2) {
       toast.info("账号数量不足，无需重新排序");
@@ -769,6 +1148,19 @@ export default function AccountsPage() {
     }
   };
 
+  /**
+   * 函数 `handleConfirmAccountEditor`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleConfirmAccountEditor = async () => {
     if (!accountEditorState) return;
 
@@ -818,6 +1210,19 @@ export default function AccountsPage() {
     }
   };
 
+  /**
+   * 函数 `handleConfirmDelete`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const handleConfirmDelete = () => {
     if (!deleteDialogState) return;
     if (deleteDialogState.kind === "single") {

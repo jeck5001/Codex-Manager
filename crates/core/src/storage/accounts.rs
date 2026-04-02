@@ -9,6 +9,18 @@ enum AccountUsageQueryMode {
 }
 
 impl Storage {
+    /// 函数 `insert_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account: 参数 account
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_account(&self, account: &Account) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO accounts (id, label, issuer, chatgpt_account_id, workspace_id, sort, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -27,11 +39,35 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `account_count`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn account_count(&self) -> Result<i64> {
         self.conn
             .query_row("SELECT COUNT(1) FROM accounts", [], |row| row.get(0))
     }
 
+    /// 函数 `account_count_filtered`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - group_name: 参数 group_name
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn account_count_filtered(
         &self,
         query: Option<&str>,
@@ -44,6 +80,19 @@ impl Storage {
             .query_row(&sql, params_from_iter(params), |row| row.get(0))
     }
 
+    /// 函数 `account_count_active_available`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - group_name: 参数 group_name
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn account_count_active_available(
         &self,
         query: Option<&str>,
@@ -56,6 +105,19 @@ impl Storage {
         )
     }
 
+    /// 函数 `account_count_low_quota`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - group_name: 参数 group_name
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn account_count_low_quota(
         &self,
         query: Option<&str>,
@@ -64,10 +126,34 @@ impl Storage {
         self.count_accounts_with_usage_mode(query, group_name, AccountUsageQueryMode::LowQuota)
     }
 
+    /// 函数 `list_accounts`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_accounts(&self) -> Result<Vec<Account>> {
         self.list_accounts_filtered(None, None)
     }
 
+    /// 函数 `list_accounts_filtered`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - group_name: 参数 group_name
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_accounts_filtered(
         &self,
         query: Option<&str>,
@@ -76,6 +162,21 @@ impl Storage {
         self.query_accounts(query, group_name, None)
     }
 
+    /// 函数 `list_accounts_paginated`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - group_name: 参数 group_name
+    /// - offset: 参数 offset
+    /// - limit: 参数 limit
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_accounts_paginated(
         &self,
         query: Option<&str>,
@@ -86,6 +187,20 @@ impl Storage {
         self.query_accounts(query, group_name, Some((offset, limit)))
     }
 
+    /// 函数 `list_accounts_active_available`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - group_name: 参数 group_name
+    /// - pagination: 参数 pagination
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_accounts_active_available(
         &self,
         query: Option<&str>,
@@ -100,6 +215,20 @@ impl Storage {
         )
     }
 
+    /// 函数 `list_accounts_low_quota`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - group_name: 参数 group_name
+    /// - pagination: 参数 pagination
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_accounts_low_quota(
         &self,
         query: Option<&str>,
@@ -114,6 +243,17 @@ impl Storage {
         )
     }
 
+    /// 函数 `list_gateway_candidates`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_gateway_candidates(&self) -> Result<Vec<(Account, Token)>> {
         let sql = format!(
             "{latest_usage_cte}
@@ -144,6 +284,18 @@ impl Storage {
         Ok(out)
     }
 
+    /// 函数 `find_account_by_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn find_account_by_id(&self, account_id: &str) -> Result<Option<Account>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, label, issuer, chatgpt_account_id, workspace_id, sort, status, created_at, updated_at
@@ -159,6 +311,19 @@ impl Storage {
         }
     }
 
+    /// 函数 `update_account_sort`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    /// - sort: 参数 sort
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_account_sort(&self, account_id: &str, sort: i64) -> Result<()> {
         self.conn.execute(
             "UPDATE accounts SET sort = ?1, updated_at = ?2 WHERE id = ?3",
@@ -167,6 +332,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_account_label`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    /// - label: 参数 label
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_account_label(&self, account_id: &str, label: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE accounts SET label = ?1, updated_at = ?2 WHERE id = ?3",
@@ -175,6 +353,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `touch_account_updated_at`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn touch_account_updated_at(&self, account_id: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE accounts SET updated_at = ?1 WHERE id = ?2",
@@ -183,6 +373,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_account_status`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    /// - status: 参数 status
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_account_status(&self, account_id: &str, status: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE accounts SET status = ?1, updated_at = ?2 WHERE id = ?3",
@@ -191,6 +394,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_account_status_if_changed`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    /// - status: 参数 status
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_account_status_if_changed(&self, account_id: &str, status: &str) -> Result<bool> {
         let updated = self.conn.execute(
             "UPDATE accounts SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status != ?1",
@@ -199,6 +415,18 @@ impl Storage {
         Ok(updated > 0)
     }
 
+    /// 函数 `delete_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn delete_account(&mut self, account_id: &str) -> Result<()> {
         let tx = self.conn.transaction()?;
         tx.execute(
@@ -220,6 +448,17 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_account_meta_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_account_meta_columns(&self) -> Result<()> {
         self.ensure_column("accounts", "chatgpt_account_id", "TEXT")?;
         self.ensure_column("accounts", "group_name", "TEXT")?;
@@ -230,11 +469,36 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_login_session_workspace_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_login_session_workspace_column(&self) -> Result<()> {
         self.ensure_column("login_sessions", "workspace_id", "TEXT")?;
         Ok(())
     }
 
+    /// 函数 `query_accounts`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - group_name: 参数 group_name
+    /// - pagination: 参数 pagination
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn query_accounts(
         &self,
         query: Option<&str>,
@@ -263,6 +527,21 @@ impl Storage {
         Ok(out)
     }
 
+    /// 函数 `query_accounts_with_usage_mode`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - group_name: 参数 group_name
+    /// - mode: 参数 mode
+    /// - pagination: 参数 pagination
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn query_accounts_with_usage_mode(
         &self,
         query: Option<&str>,
@@ -304,6 +583,20 @@ impl Storage {
         Ok(out)
     }
 
+    /// 函数 `count_accounts_with_usage_mode`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - group_name: 参数 group_name
+    /// - mode: 参数 mode
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn count_accounts_with_usage_mode(
         &self,
         query: Option<&str>,
@@ -331,6 +624,17 @@ impl Storage {
     }
 }
 
+/// 函数 `normalize_optional_filter`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_optional_filter(value: Option<&str>) -> Option<String> {
     let trimmed = value.map(str::trim).unwrap_or_default();
     if trimmed.is_empty() {
@@ -339,6 +643,20 @@ fn normalize_optional_filter(value: Option<&str>) -> Option<String> {
     Some(trimmed.to_string())
 }
 
+/// 函数 `build_account_where_clause`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - query: 参数 query
+/// - group_name: 参数 group_name
+/// - params: 参数 params
+/// - table_name: 参数 table_name
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_account_where_clause(
     query: Option<&str>,
     group_name: Option<&str>,
@@ -366,6 +684,18 @@ fn build_account_where_clause(
     }
 }
 
+/// 函数 `append_where_clause`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - where_clause: 参数 where_clause
+/// - clause: 参数 clause
+///
+/// # 返回
+/// 无
 fn append_where_clause(where_clause: &mut String, clause: &str) {
     if clause.trim().is_empty() {
         return;
@@ -378,10 +708,33 @@ fn append_where_clause(where_clause: &mut String, clause: &str) {
     where_clause.push_str(clause);
 }
 
+/// 函数 `qualified_column`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - table_name: 参数 table_name
+/// - column: 参数 column
+///
+/// # 返回
+/// 返回函数执行结果
 fn qualified_column(table_name: &str, column: &str) -> String {
     format!("{table_name}.{column}")
 }
 
+/// 函数 `latest_usage_cte_sql`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn latest_usage_cte_sql() -> &'static str {
     "WITH latest_usage AS (
         SELECT
@@ -398,6 +751,17 @@ fn latest_usage_cte_sql() -> &'static str {
     )"
 }
 
+/// 函数 `available_usage_clause`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - usage_alias: 参数 usage_alias
+///
+/// # 返回
+/// 返回函数执行结果
 fn available_usage_clause(usage_alias: &str) -> String {
     format!(
         "{usage_alias}.used_percent IS NOT NULL
@@ -411,6 +775,17 @@ fn available_usage_clause(usage_alias: &str) -> String {
     )
 }
 
+/// 函数 `gateway_available_usage_clause`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - usage_alias: 参数 usage_alias
+///
+/// # 返回
+/// 返回函数执行结果
 fn gateway_available_usage_clause(usage_alias: &str) -> String {
     format!(
         "{usage_alias}.account_id IS NULL OR ({})",
@@ -418,6 +793,19 @@ fn gateway_available_usage_clause(usage_alias: &str) -> String {
     )
 }
 
+/// 函数 `account_usage_filter_clause`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - mode: 参数 mode
+/// - account_alias: 参数 account_alias
+/// - usage_alias: 参数 usage_alias
+///
+/// # 返回
+/// 返回函数执行结果
 fn account_usage_filter_clause(
     mode: AccountUsageQueryMode,
     account_alias: &str,
@@ -437,6 +825,17 @@ fn account_usage_filter_clause(
     }
 }
 
+/// 函数 `account_select_columns`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - table_name: 参数 table_name
+///
+/// # 返回
+/// 返回函数执行结果
 fn account_select_columns(table_name: &str) -> String {
     [
         "id",
@@ -455,6 +854,17 @@ fn account_select_columns(table_name: &str) -> String {
     .join(", ")
 }
 
+/// 函数 `token_select_columns`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - table_name: 参数 table_name
+///
+/// # 返回
+/// 返回函数执行结果
 fn token_select_columns(table_name: &str) -> String {
     [
         "account_id",
@@ -470,10 +880,33 @@ fn token_select_columns(table_name: &str) -> String {
     .join(", ")
 }
 
+/// 函数 `map_account_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_account_row(row: &Row<'_>) -> Result<Account> {
     map_account_row_from_offset(row, 0)
 }
 
+/// 函数 `map_account_row_from_offset`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+/// - offset: 参数 offset
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_account_row_from_offset(row: &Row<'_>, offset: usize) -> Result<Account> {
     Ok(Account {
         id: row.get(offset)?,
@@ -489,6 +922,18 @@ fn map_account_row_from_offset(row: &Row<'_>, offset: usize) -> Result<Account> 
     })
 }
 
+/// 函数 `map_token_row_from_offset`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+/// - offset: 参数 offset
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_token_row_from_offset(row: &Row<'_>, offset: usize) -> Result<Token> {
     Ok(Token {
         account_id: row.get(offset)?,
@@ -500,6 +945,17 @@ fn map_token_row_from_offset(row: &Row<'_>, offset: usize) -> Result<Token> {
     })
 }
 
+/// 函数 `map_gateway_candidate_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_gateway_candidate_row(row: &Row<'_>) -> Result<(Account, Token)> {
     let account = map_account_row_from_offset(row, 0)?;
     let token = map_token_row_from_offset(row, 9)?;

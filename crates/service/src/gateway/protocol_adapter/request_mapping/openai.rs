@@ -5,6 +5,17 @@ const DEFAULT_COMPLETIONS_PROMPT: &str = "Complete this:";
 const DEFAULT_OPENAI_REASONING: &str = "medium";
 pub(super) const MAX_OPENAI_TOOL_NAME_LEN: usize = 64;
 
+/// 函数 `shorten_openai_tool_name_candidate`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn shorten_openai_tool_name_candidate(name: &str) -> String {
     if name.len() <= MAX_OPENAI_TOOL_NAME_LEN {
         return name.to_string();
@@ -23,6 +34,17 @@ pub(super) fn shorten_openai_tool_name_candidate(name: &str) -> String {
     name.chars().take(MAX_OPENAI_TOOL_NAME_LEN).collect()
 }
 
+/// 函数 `collect_openai_tool_names`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn collect_openai_tool_names(obj: &serde_json::Map<String, Value>) -> Vec<String> {
     let mut names = Vec::new();
 
@@ -117,12 +139,35 @@ fn collect_openai_tool_names(obj: &serde_json::Map<String, Value>) -> Vec<String
     names
 }
 
+/// 函数 `get_dynamic_tools_array`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn get_dynamic_tools_array<'a>(obj: &'a serde_json::Map<String, Value>) -> Option<&'a Vec<Value>> {
     obj.get("dynamic_tools")
         .or_else(|| obj.get("dynamicTools"))
         .and_then(Value::as_array)
 }
 
+/// 函数 `map_dynamic_tool_to_responses_tool`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - tool_obj: 参数 tool_obj
+/// - tool_name_map: 参数 tool_name_map
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_dynamic_tool_to_responses_tool(
     tool_obj: &serde_json::Map<String, Value>,
     tool_name_map: &BTreeMap<String, String>,
@@ -156,6 +201,17 @@ fn map_dynamic_tool_to_responses_tool(
     Some(Value::Object(mapped))
 }
 
+/// 函数 `build_openai_tool_name_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_openai_tool_name_map(obj: &serde_json::Map<String, Value>) -> BTreeMap<String, String> {
     let mut unique_names = BTreeSet::new();
     for name in collect_openai_tool_names(obj) {
@@ -184,6 +240,17 @@ fn build_openai_tool_name_map(obj: &serde_json::Map<String, Value>) -> BTreeMap<
     out
 }
 
+/// 函数 `shorten_openai_tool_name_with_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn shorten_openai_tool_name_with_map(
     name: &str,
     tool_name_map: &BTreeMap<String, String>,
@@ -194,6 +261,17 @@ pub(super) fn shorten_openai_tool_name_with_map(
         .unwrap_or_else(|| shorten_openai_tool_name_candidate(name))
 }
 
+/// 函数 `build_openai_tool_name_restore_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - tool_name_map: 参数 tool_name_map
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_openai_tool_name_restore_map(
     tool_name_map: &BTreeMap<String, String>,
 ) -> super::ToolNameRestoreMap {
@@ -206,6 +284,17 @@ fn build_openai_tool_name_restore_map(
     restore_map
 }
 
+/// 函数 `normalize_openai_role_for_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - role: 参数 role
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_openai_role_for_responses(role: &str) -> Option<&'static str> {
     match role {
         "system" | "developer" => Some("system"),
@@ -216,6 +305,17 @@ fn normalize_openai_role_for_responses(role: &str) -> Option<&'static str> {
     }
 }
 
+/// 函数 `normalize_openai_chat_messages_for_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - messages: 参数 messages
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_openai_chat_messages_for_responses(messages: &[Value]) -> Vec<Value> {
     let mut normalized = Vec::new();
     for message in messages {
@@ -309,6 +409,18 @@ fn normalize_openai_chat_messages_for_responses(messages: &[Value]) -> Vec<Value
     normalized
 }
 
+/// 函数 `map_openai_chat_tools_to_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+/// - tool_name_map: 参数 tool_name_map
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_openai_chat_tools_to_responses(
     obj: &serde_json::Map<String, Value>,
     tool_name_map: &BTreeMap<String, String>,
@@ -376,6 +488,18 @@ fn map_openai_chat_tools_to_responses(
     }
 }
 
+/// 函数 `map_openai_chat_tool_choice_to_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - tool_name_map: 参数 tool_name_map
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_openai_chat_tool_choice_to_responses(
     value: &Value,
     tool_name_map: &BTreeMap<String, String>,
@@ -402,6 +526,17 @@ fn map_openai_chat_tool_choice_to_responses(
     }))
 }
 
+/// 函数 `map_openai_chat_text_controls_to_responses`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - obj: 参数 obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_openai_chat_text_controls_to_responses(
     obj: &serde_json::Map<String, Value>,
 ) -> Option<Value> {
@@ -433,6 +568,17 @@ fn map_openai_chat_text_controls_to_responses(
     }
 }
 
+/// 函数 `convert_openai_chat_completions_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn convert_openai_chat_completions_request(
     body: &[u8],
 ) -> Result<(Vec<u8>, bool, super::ToolNameRestoreMap), String> {
@@ -532,6 +678,17 @@ pub(crate) fn convert_openai_chat_completions_request(
         .map_err(|err| format!("convert chat.completions request failed: {err}"))
 }
 
+/// 函数 `stringify_completion_prompt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn stringify_completion_prompt(value: &Value) -> Option<String> {
     match value {
         Value::String(text) => Some(text.clone()),
@@ -553,6 +710,17 @@ fn stringify_completion_prompt(value: &Value) -> Option<String> {
     }
 }
 
+/// 函数 `convert_openai_completions_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn convert_openai_completions_request(body: &[u8]) -> Result<(Vec<u8>, bool), String> {
     let payload: Value =
         serde_json::from_slice(body).map_err(|_| "invalid completions request json".to_string())?;

@@ -6,14 +6,53 @@ import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { cn } from "@/lib/utils"
 import { ChevronRightIcon, CheckIcon } from "lucide-react"
 
+/**
+ * 函数 `DropdownMenu`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
 }
 
+/**
+ * 函数 `DropdownMenuPortal`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
   return <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
 }
 
+/**
+ * 函数 `DropdownMenuTrigger`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
   return (
     <MenuPrimitive.Trigger
@@ -25,6 +64,19 @@ function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
   )
 }
 
+/**
+ * 函数 `DropdownMenuContent`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuContent({
   align = "start",
   alignOffset = 0,
@@ -56,10 +108,36 @@ function DropdownMenuContent({
   )
 }
 
+/**
+ * 函数 `DropdownMenuGroup`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuGroup({ ...props }: MenuPrimitive.Group.Props) {
   return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />
 }
 
+/**
+ * 函数 `DropdownMenuLabel`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuLabel({
   className,
   inset,
@@ -80,6 +158,19 @@ function DropdownMenuLabel({
   )
 }
 
+/**
+ * 函数 `DropdownMenuItem`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuItem({
   className,
   inset,
@@ -103,10 +194,36 @@ function DropdownMenuItem({
   )
 }
 
+/**
+ * 函数 `DropdownMenuSub`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {
   return <MenuPrimitive.SubmenuRoot data-slot="dropdown-menu-sub" {...props} />
 }
 
+/**
+ * 函数 `DropdownMenuSubTrigger`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuSubTrigger({
   className,
   inset,
@@ -132,6 +249,19 @@ function DropdownMenuSubTrigger({
   )
 }
 
+/**
+ * 函数 `DropdownMenuSubContent`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuSubContent({
   align = "start",
   alignOffset = -3,
@@ -153,6 +283,19 @@ function DropdownMenuSubContent({
   )
 }
 
+/**
+ * 函数 `DropdownMenuCheckboxItem`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuCheckboxItem({
   className,
   children,
@@ -187,6 +330,19 @@ function DropdownMenuCheckboxItem({
   )
 }
 
+/**
+ * 函数 `DropdownMenuRadioGroup`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuRadioGroup({ ...props }: MenuPrimitive.RadioGroup.Props) {
   return (
     <MenuPrimitive.RadioGroup
@@ -196,6 +352,19 @@ function DropdownMenuRadioGroup({ ...props }: MenuPrimitive.RadioGroup.Props) {
   )
 }
 
+/**
+ * 函数 `DropdownMenuRadioItem`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuRadioItem({
   className,
   children,
@@ -228,6 +397,19 @@ function DropdownMenuRadioItem({
   )
 }
 
+/**
+ * 函数 `DropdownMenuSeparator`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuSeparator({
   className,
   ...props
@@ -241,6 +423,19 @@ function DropdownMenuSeparator({
   )
 }
 
+/**
+ * 函数 `DropdownMenuShortcut`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function DropdownMenuShortcut({
   className,
   ...props

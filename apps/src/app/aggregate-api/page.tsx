@@ -68,6 +68,19 @@ const AGGREGATE_API_PROVIDER_FILTER_LABELS: Record<string, string> = {
   claude: "Claude",
 };
 
+/**
+ * 函数 `getTestBadge`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - api: 参数 api
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function getTestBadge(api: AggregateApi) {
   if (api.lastTestStatus === "success") {
     return (
@@ -139,6 +152,19 @@ export default function AggregateApiPage() {
     return maxSort + 5;
   }, [aggregateApis]);
 
+  /**
+   * 函数 `renderTestStatus`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - api: 参数 api
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const renderTestStatus = (api: AggregateApi) => {
     const badge = getTestBadge(api);
     if (api.lastTestStatus !== "failed" || !api.lastTestError) {
@@ -233,16 +259,55 @@ export default function AggregateApiPage() {
     },
   });
 
+  /**
+   * 函数 `openCreateModal`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const openCreateModal = () => {
     setEditingId(null);
     setModalOpen(true);
   };
 
+  /**
+   * 函数 `openEditModal`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - apiId: 参数 apiId
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const openEditModal = (apiId: string) => {
     setEditingId(apiId);
     setModalOpen(true);
   };
 
+  /**
+   * 函数 `ensureSecretLoaded`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - apiId: 参数 apiId
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const ensureSecretLoaded = async (apiId: string) => {
     if (revealedSecrets[apiId]) {
       return revealedSecrets[apiId];
@@ -260,6 +325,19 @@ export default function AggregateApiPage() {
     }
   };
 
+  /**
+   * 函数 `toggleSecret`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - apiId: 参数 apiId
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const toggleSecret = async (apiId: string) => {
     if (revealedSecrets[apiId]) {
       setRevealedSecrets((current) => {
@@ -276,6 +354,19 @@ export default function AggregateApiPage() {
     }
   };
 
+  /**
+   * 函数 `copySecret`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-02
+   *
+   * # 参数
+   * - apiId: 参数 apiId
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
   const copySecret = async (apiId: string) => {
     try {
       const secret = await ensureSecretLoaded(apiId);

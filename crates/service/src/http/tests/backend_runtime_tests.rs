@@ -6,18 +6,51 @@ use super::{
 use crossbeam_channel::bounded;
 use std::time::{Duration, Instant};
 
+/// 函数 `worker_count_has_minimum_guard`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn worker_count_has_minimum_guard() {
     assert!(http_worker_count() >= HTTP_WORKER_MIN);
     assert!(http_stream_worker_count() >= HTTP_STREAM_WORKER_MIN);
 }
 
+/// 函数 `queue_size_has_minimum_guard`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn queue_size_has_minimum_guard() {
     assert!(http_queue_size(0) >= HTTP_QUEUE_MIN);
     assert!(http_stream_queue_size(0) >= HTTP_STREAM_QUEUE_MIN);
 }
 
+/// 函数 `panic_payload_message_formats_common_payloads`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn panic_payload_message_formats_common_payloads() {
     let text = "boom";
@@ -27,6 +60,17 @@ fn panic_payload_message_formats_common_payloads() {
     assert_eq!(panic_payload_message(&owned), "owned boom");
 }
 
+/// 函数 `full_queue_times_out_quickly`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn full_queue_times_out_quickly() {
     let (tx, rx) = bounded::<usize>(1);
@@ -40,6 +84,17 @@ fn full_queue_times_out_quickly() {
     drop(rx);
 }
 
+/// 函数 `bypass_queue_covers_health_and_metrics`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn bypass_queue_covers_health_and_metrics() {
     assert!(should_bypass_queue("/health"));

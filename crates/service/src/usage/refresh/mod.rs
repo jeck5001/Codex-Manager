@@ -103,6 +103,17 @@ enum UsageAvailabilityStatus {
 }
 
 impl UsageAvailabilityStatus {
+    /// 函数 `as_code`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn as_code(self) -> &'static str {
         match self {
             Self::Available => "available",
@@ -135,6 +146,17 @@ pub(crate) use self::settings::{
     set_background_tasks_settings, BackgroundTasksSettingsPatch,
 };
 
+/// 函数 `ensure_usage_polling`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn ensure_usage_polling() {
     ensure_background_tasks_config_loaded();
     USAGE_POLLING_STARTED.get_or_init(|| {
@@ -142,6 +164,17 @@ pub(crate) fn ensure_usage_polling() {
     });
 }
 
+/// 函数 `ensure_gateway_keepalive`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn ensure_gateway_keepalive() {
     ensure_background_tasks_config_loaded();
     GATEWAY_KEEPALIVE_STARTED.get_or_init(|| {
@@ -149,6 +182,17 @@ pub(crate) fn ensure_gateway_keepalive() {
     });
 }
 
+/// 函数 `ensure_token_refresh_polling`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn ensure_token_refresh_polling() {
     ensure_background_tasks_config_loaded();
     TOKEN_REFRESH_POLLING_STARTED.get_or_init(|| {
@@ -156,6 +200,18 @@ pub(crate) fn ensure_token_refresh_polling() {
     });
 }
 
+/// 函数 `spawn_background_loop`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - worker: 参数 worker
+///
+/// # 返回
+/// 无
 fn spawn_background_loop(name: &str, worker: fn()) {
     let thread_name = name.to_string();
     let _ = thread::Builder::new()
@@ -173,6 +229,17 @@ fn spawn_background_loop(name: &str, worker: fn()) {
         });
 }
 
+/// 函数 `enqueue_usage_refresh_for_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn enqueue_usage_refresh_for_account(account_id: &str) -> bool {
     enqueue_usage_refresh_with_worker(account_id, |id| {
         if let Err(err) = refresh_usage_for_account(&id) {
@@ -187,11 +254,33 @@ pub(crate) fn enqueue_usage_refresh_for_account(account_id: &str) -> bool {
     })
 }
 
+/// 函数 `reset_usage_poll_cursor_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn reset_usage_poll_cursor_for_tests() {
     USAGE_POLL_CURSOR.store(0, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// 函数 `refresh_tokens_before_expiry_for_all_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn refresh_tokens_before_expiry_for_all_accounts() -> Result<(), String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let now = now_ts();
@@ -232,6 +321,17 @@ pub(crate) fn refresh_tokens_before_expiry_for_all_accounts() -> Result<(), Stri
     Ok(())
 }
 
+/// 函数 `refresh_usage_for_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn refresh_usage_for_account(account_id: &str) -> Result<(), String> {
     // 刷新单个账号用量
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
@@ -273,6 +373,18 @@ pub(crate) fn refresh_usage_for_account(account_id: &str) -> Result<(), String> 
     Ok(())
 }
 
+/// 函数 `record_usage_refresh_metrics`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - success: 参数 success
+/// - started_at: 参数 started_at
+///
+/// # 返回
+/// 无
 fn record_usage_refresh_metrics(success: bool, started_at: Instant) {
     crate::gateway::record_usage_refresh_outcome(
         success,
@@ -280,6 +392,20 @@ fn record_usage_refresh_metrics(success: bool, started_at: Instant) {
     );
 }
 
+/// 函数 `refresh_usage_for_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - token: 参数 token
+/// - workspace_id: 参数 workspace_id
+/// - account_cache: 参数 account_cache
+///
+/// # 返回
+/// 返回函数执行结果
 fn refresh_usage_for_token(
     storage: &Storage,
     token: &Token,
@@ -367,6 +493,17 @@ mod status_tests;
 #[path = "../tests/usage_refresh_tests.rs"]
 mod tests;
 
+/// 函数 `classify_usage_status_from_snapshot_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_usage_status_from_snapshot_value(value: &serde_json::Value) -> UsageAvailabilityStatus {
     let parsed = parse_usage_snapshot(value);
 
@@ -396,6 +533,17 @@ fn classify_usage_status_from_snapshot_value(value: &serde_json::Value) -> Usage
     UsageAvailabilityStatus::Available
 }
 
+/// 函数 `classify_usage_status_from_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - err: 参数 err
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_usage_status_from_error(err: &str) -> UsageAvailabilityStatus {
     if err.starts_with("usage endpoint status ") {
         return UsageAvailabilityStatus::Unavailable;
@@ -403,6 +551,17 @@ fn classify_usage_status_from_error(err: &str) -> UsageAvailabilityStatus {
     UsageAvailabilityStatus::Unknown
 }
 
+/// 函数 `token_refresh_batch_limit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn token_refresh_batch_limit() -> usize {
     std::env::var(ENV_TOKEN_REFRESH_BATCH_LIMIT)
         .ok()
@@ -411,6 +570,17 @@ fn token_refresh_batch_limit() -> usize {
         .max(1)
 }
 
+/// 函数 `token_refresh_worker_count`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - total: 参数 total
+///
+/// # 返回
+/// 返回函数执行结果
 fn token_refresh_worker_count(total: usize) -> usize {
     if total == 0 {
         return 0;
@@ -421,6 +591,19 @@ fn token_refresh_worker_count(total: usize) -> usize {
         .min(total)
 }
 
+/// 函数 `run_token_refresh_tasks`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - tokens: 参数 tokens
+/// - issuer: 参数 issuer
+/// - client_id: 参数 client_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn run_token_refresh_tasks(
     tokens: Vec<Token>,
     issuer: &str,
@@ -483,6 +666,20 @@ fn run_token_refresh_tasks(
     Ok(refreshed.load(std::sync::atomic::Ordering::Relaxed))
 }
 
+/// 函数 `run_token_refresh_task`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - token: 参数 token
+/// - issuer: 参数 issuer
+/// - client_id: 参数 client_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn run_token_refresh_task(
     storage: &Storage,
     token: &mut Token,
@@ -503,6 +700,20 @@ fn run_token_refresh_task(
     }
 }
 
+/// 函数 `token_refresh_schedule`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+/// - now_ts_secs: 参数 now_ts_secs
+/// - ahead_secs: 参数 ahead_secs
+/// - fallback_age_secs: 参数 fallback_age_secs
+///
+/// # 返回
+/// 返回函数执行结果
 fn token_refresh_schedule(
     token: &Token,
     now_ts_secs: i64,

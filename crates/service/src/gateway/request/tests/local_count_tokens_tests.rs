@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `estimate_input_tokens_uses_messages_and_system_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_input_tokens_uses_messages_and_system_text() {
     let body = br#"{
@@ -14,6 +25,17 @@ fn estimate_input_tokens_uses_messages_and_system_text() {
     assert_eq!(count, 5);
 }
 
+/// 函数 `estimate_input_tokens_rejects_invalid_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_input_tokens_rejects_invalid_json() {
     let err = estimate_input_tokens_from_anthropic_messages(br#"{"messages":["#)
@@ -21,6 +43,17 @@ fn estimate_input_tokens_rejects_invalid_json() {
     assert_eq!(err, "invalid claude request json");
 }
 
+/// 函数 `estimate_input_tokens_rejects_non_object_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn estimate_input_tokens_rejects_non_object_payload() {
     let err = estimate_input_tokens_from_anthropic_messages(br#"["bad"]"#)

@@ -274,6 +274,17 @@ pub struct Storage {
 }
 
 impl Storage {
+    /// 函数 `open`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - path: 参数 path
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let conn = Connection::open(path)?;
         // 中文注释：并发写入时给 SQLite 一点等待时间，避免瞬时 lock 导致请求直接失败。
@@ -287,12 +298,34 @@ impl Storage {
         Ok(Self { conn })
     }
 
+    /// 函数 `open_in_memory`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         conn.busy_timeout(Duration::from_millis(3000))?;
         Ok(Self { conn })
     }
 
+    /// 函数 `init`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn init(&self) -> Result<()> {
         self.ensure_migrations_table()?;
 
@@ -490,6 +523,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `insert_login_session`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - session: 参数 session
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_login_session(&self, session: &LoginSession) -> Result<()> {
         self.conn.execute(
             "INSERT INTO login_sessions (login_id, code_verifier, state, status, error, workspace_id, note, tags, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -509,6 +554,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `get_login_session`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - login_id: 参数 login_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn get_login_session(&self, login_id: &str) -> Result<Option<LoginSession>> {
         let mut stmt = self.conn.prepare(
             "SELECT login_id, code_verifier, state, status, error, workspace_id, note, tags, created_at, updated_at FROM login_sessions WHERE login_id = ?1",
@@ -533,6 +590,20 @@ impl Storage {
         }
     }
 
+    /// 函数 `update_login_session_status`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - login_id: 参数 login_id
+    /// - status: 参数 status
+    /// - error: 参数 error
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_login_session_status(
         &self,
         login_id: &str,
@@ -546,6 +617,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_login_session_code_verifier`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - login_id: 参数 login_id
+    /// - code_verifier: 参数 code_verifier
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_login_session_code_verifier(
         &self,
         login_id: &str,
@@ -558,6 +642,20 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - table: 参数 table
+    /// - column: 参数 column
+    /// - column_type: 参数 column_type
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn ensure_column(&self, table: &str, column: &str, column_type: &str) -> Result<()> {
         if self.has_column(table, column)? {
             return Ok(());
@@ -567,6 +665,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `has_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - table: 参数 table
+    /// - column: 参数 column
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn has_column(&self, table: &str, column: &str) -> Result<bool> {
         let sql = format!("PRAGMA table_info({table})");
         let mut stmt = self.conn.prepare(&sql)?;
@@ -580,6 +691,17 @@ impl Storage {
         Ok(false)
     }
 
+    /// 函数 `ensure_migrations_table`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn ensure_migrations_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -591,6 +713,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `has_migration`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - version: 参数 version
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn has_migration(&self, version: &str) -> Result<bool> {
         let mut stmt = self
             .conn
@@ -599,6 +733,18 @@ impl Storage {
         Ok(rows.next()?.is_some())
     }
 
+    /// 函数 `mark_migration`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - version: 参数 version
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn mark_migration(&self, version: &str) -> Result<()> {
         self.conn.execute(
             "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
@@ -607,6 +753,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `apply_sql_migration`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - version: 参数 version
+    /// - sql: 参数 sql
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn apply_sql_migration(&self, version: &str, sql: &str) -> Result<()> {
         if self.has_migration(version)? {
             return Ok(());
@@ -615,6 +774,20 @@ impl Storage {
         self.mark_migration(version)
     }
 
+    /// 函数 `apply_sql_or_compat_migration`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - version: 参数 version
+    /// - sql: 参数 sql
+    /// - compat: 参数 compat
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn apply_sql_or_compat_migration<F>(&self, version: &str, sql: &str, compat: F) -> Result<()>
     where
         F: FnOnce(&Self) -> Result<()>,
@@ -635,6 +808,19 @@ impl Storage {
         self.mark_migration(version)
     }
 
+    /// 函数 `apply_compat_migration`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - version: 参数 version
+    /// - compat: 参数 compat
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn apply_compat_migration<F>(&self, version: &str, compat: F) -> Result<()>
     where
         F: FnOnce(&Self) -> Result<()>,
@@ -646,6 +832,17 @@ impl Storage {
         self.mark_migration(version)
     }
 
+    /// 函数 `is_schema_conflict_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - err: 参数 err
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn is_schema_conflict_error(err: &rusqlite::Error) -> bool {
         match err {
             rusqlite::Error::SqliteFailure(_, maybe_message) => maybe_message
@@ -663,6 +860,17 @@ impl Storage {
 #[path = "../../tests/storage/migration_tests.rs"]
 mod migration_tests;
 
+/// 函数 `now_ts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn now_ts() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

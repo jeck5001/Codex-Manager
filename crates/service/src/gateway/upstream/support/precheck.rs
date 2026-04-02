@@ -9,6 +9,17 @@ pub(in super::super) enum CandidatePrecheckResult {
     Responded,
 }
 
+/// 函数 `prepare_candidates_for_proxy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(in super::super) fn prepare_candidates_for_proxy(
     request: Request,
