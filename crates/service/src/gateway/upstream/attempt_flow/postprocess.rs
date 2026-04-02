@@ -150,10 +150,9 @@ where
                         account.id,
                         err
                     );
-                    if refresh_token_invalid
-                        && has_more_candidates
-                        && super::super::super::retry_policy_allows_status(401)
-                    {
+                    if refresh_token_invalid && has_more_candidates {
+                        // Refresh token invalidates the account itself. This should fail over to the
+                        // next candidate even when generic upstream 401 retries are disabled.
                         log_gateway_result(Some(url), 401, Some("refresh token invalid failover"));
                         return PostRetryFlowDecision::Failover;
                     }
