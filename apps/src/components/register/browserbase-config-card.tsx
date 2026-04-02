@@ -76,7 +76,7 @@ const EMPTY_FORM: BrowserbaseFormState = {
   browserTimezone: "Asia/Shanghai",
   oauthClientId: "",
   oauthRedirectPort: "8787",
-  agentModel: "computer-use-preview",
+  agentModel: "google/gemini-2.5-computer-use-preview-10-2025",
   maxWaitSeconds: "300",
 };
 
@@ -527,7 +527,7 @@ export function BrowserbaseConfigCard() {
                 onChange={(event) =>
                   setFormState((current) => ({ ...current, agentModel: event.target.value }))
                 }
-                placeholder="computer-use-preview"
+                placeholder="google/gemini-2.5-computer-use-preview-10-2025"
                 className="h-10 rounded-xl"
               />
             </div>
