@@ -243,3 +243,50 @@ class BrowserbaseDDGRunnerWaitTests(unittest.TestCase):
 
         self.assertEqual(matched, "https://chatgpt.com/")
         self.assertTrue(conn.closed)
+
+
+class DummyStreamingResponse:
+    def __init__(self, status_code=200, text=""):
+        self.status_code = status_code
+        self.text = text
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class BrowserbaseDDGRunnerAgentTests(unittest.TestCase):
+    def test_agent_model_normalizes_legacy_computer_use_name(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={"agent_model": "computer-use-preview"},
+        )
+
+        self.assertEqual(
+            runner._agent_model(),
+            "google/gemini-2.5-computer-use-preview-10-2025",
+        )
+
+    def test_send_agent_goal_keeps_stream_open(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={"agent_model": "computer-use-preview"},
+        )
+        captured = {}
+        response = DummyStreamingResponse(200, "")
+
+        def fake_http(method, url, **kwargs):
+            captured["method"] = method
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            return response
+
+        runner._http = fake_http
+
+        returned = runner._send_agent_goal("session-1", "do something")
+
+        self.assertIs(returned, response)
+        self.assertFalse(response.closed)
+        self.assertIn("google/gemini-2.5-computer-use-preview-10-2025", captured["url"])

@@ -27,6 +27,7 @@ from .register import RegistrationResult
 DEFAULT_REGISTER_MODE = "standard"
 BROWSERBASE_DDG_REGISTER_MODE = "browserbase_ddg"
 DEFAULT_BROWSERBASE_API_BASE = "https://gemini.browserbase.com"
+DEFAULT_BROWSERBASE_AGENT_MODEL = "google/gemini-2.5-computer-use-preview-10-2025"
 
 
 @dataclass
@@ -155,6 +156,22 @@ class BrowserbaseDDGRegistrationRunner:
     def _generate_password(self, length: int = 16) -> str:
         return "".join(random.choice(PASSWORD_CHARSET) for _ in range(length)) + "A1!"
 
+    def _agent_model(self) -> str:
+        raw = self._config_str(
+            "agent_model",
+            "agentModel",
+            default=DEFAULT_BROWSERBASE_AGENT_MODEL,
+        )
+        normalized = raw.strip()
+        if not normalized:
+            return DEFAULT_BROWSERBASE_AGENT_MODEL
+        if normalized == "computer-use-preview":
+            self._log(
+                f"检测到旧 Agent 模型配置 {normalized}，自动改用 {DEFAULT_BROWSERBASE_AGENT_MODEL}"
+            )
+            return DEFAULT_BROWSERBASE_AGENT_MODEL
+        return normalized
+
     def _resolve_redirect_uri(self, default_redirect_uri: str) -> str:
         explicit = self._config_str("oauth_redirect_uri", "oauthRedirectUri")
         if explicit:
@@ -213,20 +230,24 @@ class BrowserbaseDDGRegistrationRunner:
         self._log(f"Browserbase 会话已创建: {session_id}")
         return BrowserbaseSession(session_id=session_id, session_url=session_url, ws_url=ws_url)
 
-    def _send_agent_goal(self, session_id: str, goal: str) -> None:
+    def _send_agent_goal(self, session_id: str, goal: str):
         api_base = self._browserbase_api_base()
-        model = self._config_str(
-            "agent_model",
-            "agentModel",
-            default="google/gemini-3-flash-preview",
-        )
+        model = self._agent_model()
         url = (
             f"{api_base}/api/agent/stream?sessionId={quote(session_id)}"
             f"&goal={quote(goal)}&model={quote(model)}"
         )
-        self._log("正在下发 Browserbase Agent 目标")
+        self._log(f"正在下发 Browserbase Agent 目标，模型: {model}")
         response = self._http("get", url, stream=True, timeout=20)
-        response.close()
+        status_code = int(getattr(response, "status_code", 0) or 0)
+        if not 200 <= status_code < 300:
+            snippet = self._response_text_snippet(response)
+            detail = f"HTTP {status_code}"
+            if snippet:
+                detail = f"{detail}: {snippet}"
+            raise RuntimeError(f"Browserbase Agent 目标下发失败: {detail}")
+        self._log(f"Browserbase Agent 目标下发成功: HTTP {status_code}")
+        return response
 
     def _wait_for_target_url(self, ws_url: str, target_keyword: str, timeout_seconds: int) -> str:
         normalized_ws_url = ws_url if ws_url.startswith("ws") else f"wss://{ws_url}"
@@ -322,7 +343,7 @@ class BrowserbaseDDGRegistrationRunner:
         )
 
         phase1_session = self._create_browserbase_session()
-        self._send_agent_goal(
+        phase1_stream = self._send_agent_goal(
             phase1_session.session_id,
             self._build_phase1_goal(
                 email=email,
@@ -332,11 +353,17 @@ class BrowserbaseDDGRegistrationRunner:
             ),
         )
         timeout_seconds = self._config_int("max_wait_seconds", "maxWaitSeconds", default=1800)
-        self._wait_for_target_url(phase1_session.ws_url, "MISSION_ACCOMPLISHED", timeout_seconds)
+        try:
+            self._wait_for_target_url(phase1_session.ws_url, "MISSION_ACCOMPLISHED", timeout_seconds)
+        finally:
+            try:
+                phase1_stream.close()
+            except Exception:
+                pass
         self._log("Browserbase 注册阶段完成")
 
         phase2_session = self._create_browserbase_session()
-        self._send_agent_goal(
+        phase2_stream = self._send_agent_goal(
             phase2_session.session_id,
             self._build_phase2_goal(
                 auth_url=oauth_start.auth_url,
@@ -344,7 +371,13 @@ class BrowserbaseDDGRegistrationRunner:
                 password=password,
             ),
         )
-        callback_url = self._wait_for_target_url(phase2_session.ws_url, "localhost", timeout_seconds)
+        try:
+            callback_url = self._wait_for_target_url(phase2_session.ws_url, "localhost", timeout_seconds)
+        finally:
+            try:
+                phase2_stream.close()
+            except Exception:
+                pass
         self._log(f"捕获 OAuth 回调 URL: {callback_url}")
 
         token_json = submit_callback_url(
