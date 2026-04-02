@@ -2165,7 +2165,135 @@ fn gateway_at_only_account_uses_access_token_directly() {
 }
 
 #[test]
-fn gateway_at_only_unauthorized_fails_over_to_next_candidate() {
+fn gateway_at_only_unauthorized_retries_stateless_before_failover() {
+    let _lock = lock_env();
+    let dir = new_test_dir("codexmanager-gateway-openai-at-only-stateless-retry");
+    let db_path: PathBuf = dir.join("codexmanager.db");
+
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let _no_proxy_guard = EnvGuard::set("NO_PROXY", "127.0.0.1,localhost");
+    let _no_proxy_lower_guard = EnvGuard::set("no_proxy", "127.0.0.1,localhost");
+
+    let first_response = serde_json::json!({
+        "error": {
+            "message": "expired access token",
+            "type": "authentication_error"
+        }
+    });
+    let second_response = serde_json::json!({
+        "id": "resp_after_at_only_stateless_retry",
+        "model": "gpt-5.3-codex",
+        "output": [{
+            "type": "message",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "text": "ok after at-only stateless retry" }]
+        }],
+        "usage": { "input_tokens": 4, "output_tokens": 3, "total_tokens": 7 }
+    });
+    let body_401 = serde_json::to_string(&first_response).expect("serialize first response");
+    let body_200 = serde_json::to_string(&second_response).expect("serialize second response");
+    let (upstream_addr, upstream_rx, upstream_join) =
+        start_mock_upstream_sequence(vec![(401, body_401), (200, body_200)]);
+
+    let upstream_base = format!("http://{upstream_addr}/chatgpt.com/backend-api/codex");
+    let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
+
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init db");
+    let now = now_ts();
+
+    storage
+        .insert_account(&Account {
+            id: "acc_at_only_retry_bad".to_string(),
+            label: "at-only-retry-bad".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_at_only_retry_bad".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert first account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_at_only_retry_bad".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_at_only_retry_bad".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert first token");
+
+    let platform_key = "pk_openai_at_only_retry";
+    storage
+        .insert_api_key(&ApiKey {
+            id: "gk_openai_at_only_retry".to_string(),
+            name: Some("openai-at-only-retry".to_string()),
+            model_slug: Some("gpt-5.3-codex".to_string()),
+            reasoning_effort: None,
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: hash_platform_key_for_test(platform_key),
+            status: "active".to_string(),
+            created_at: now,
+            last_used_at: None,
+            expires_at: None,
+        })
+        .expect("insert api key");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req_body = r#"{"model":"gpt-5.3-codex","input":"hello","stream":false}"#;
+    let (status, response_body) = post_http_raw(
+        &server.addr,
+        "/v1/responses",
+        req_body,
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", &format!("Bearer {platform_key}")),
+            ("Session_id", "legacy_session_should_be_dropped"),
+            ("x-codex-turn-state", "legacy_turn_state_should_be_dropped"),
+        ],
+    );
+    server.join();
+    assert_eq!(status, 200, "gateway response: {response_body}");
+
+    let first = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive first upstream request");
+    let second = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive stateless retry request");
+    upstream_join.join().expect("join mock upstream");
+
+    assert_eq!(
+        first.headers.get("authorization").map(String::as_str),
+        Some("Bearer access_token_at_only_retry_bad")
+    );
+    assert_eq!(
+        second.headers.get("authorization").map(String::as_str),
+        Some("Bearer access_token_at_only_retry_bad")
+    );
+    assert_eq!(
+        first.headers.get("session_id").map(String::as_str),
+        Some("legacy_session_should_be_dropped")
+    );
+    assert!(!second.headers.contains_key("x-codex-turn-state"));
+    assert!(
+        second
+            .headers
+            .get("session_id")
+            .is_some_and(|value| value != "legacy_session_should_be_dropped")
+    );
+}
+
+#[test]
+fn gateway_at_only_stateless_retry_fails_over_to_next_candidate() {
     let _lock = lock_env();
     let dir = new_test_dir("codexmanager-gateway-openai-at-only-failover");
     let db_path: PathBuf = dir.join("codexmanager.db");
@@ -2192,8 +2320,11 @@ fn gateway_at_only_unauthorized_fails_over_to_next_candidate() {
     });
     let body_401 = serde_json::to_string(&first_response).expect("serialize first response");
     let body_200 = serde_json::to_string(&second_response).expect("serialize second response");
-    let (upstream_addr, upstream_rx, upstream_join) =
-        start_mock_upstream_sequence(vec![(401, body_401), (200, body_200)]);
+    let (upstream_addr, upstream_rx, upstream_join) = start_mock_upstream_sequence(vec![
+        (401, body_401.clone()),
+        (401, body_401),
+        (200, body_200),
+    ]);
 
     let upstream_base = format!("http://{upstream_addr}/chatgpt.com/backend-api/codex");
     let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
@@ -2281,6 +2412,8 @@ fn gateway_at_only_unauthorized_fails_over_to_next_candidate() {
         &[
             ("Content-Type", "application/json"),
             ("Authorization", &format!("Bearer {platform_key}")),
+            ("Session_id", "legacy_session_should_be_dropped"),
+            ("x-codex-turn-state", "legacy_turn_state_should_be_dropped"),
         ],
     );
     server.join();
@@ -2291,6 +2424,9 @@ fn gateway_at_only_unauthorized_fails_over_to_next_candidate() {
         .expect("receive first upstream request");
     let second = upstream_rx
         .recv_timeout(Duration::from_secs(2))
+        .expect("receive stateless retry request");
+    let third = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
         .expect("receive second-account request");
     upstream_join.join().expect("join mock upstream");
 
@@ -2300,6 +2436,11 @@ fn gateway_at_only_unauthorized_fails_over_to_next_candidate() {
     );
     assert_eq!(
         second.headers.get("authorization").map(String::as_str),
+        Some("Bearer access_token_at_only_failover_bad")
+    );
+    assert!(!second.headers.contains_key("x-codex-turn-state"));
+    assert_eq!(
+        third.headers.get("authorization").map(String::as_str),
         Some("Bearer access_token_at_only_failover_good")
     );
 }
