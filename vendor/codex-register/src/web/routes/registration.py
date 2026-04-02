@@ -621,6 +621,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                     profile_config=profile.config or {},
                     proxy_url=actual_proxy_url,
                     callback_logger=log_callback,
+                    task_uuid=task_uuid,
                 )
                 result = runner.run()
                 if result.success:

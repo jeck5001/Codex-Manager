@@ -55,6 +55,11 @@ def load_browserbase_ddg_module():
     sys.modules["src.config.settings"] = settings_module
 
     crud_module = types.ModuleType("src.database.crud")
+    crud_module.appended_logs = []
+    def append_task_log(_db, task_uuid, log_message):
+        crud_module.appended_logs.append((task_uuid, log_message))
+        return True
+    crud_module.append_task_log = append_task_log
     sys.modules["src.database.crud"] = crud_module
 
     session_module = types.ModuleType("src.database.session")
@@ -175,3 +180,24 @@ class BrowserbaseDDGRunnerApiBaseTests(unittest.TestCase):
             runner._browserbase_api_base(),
             "https://gemini.browserbase.com",
         )
+
+
+class BrowserbaseDDGRunnerLogTests(unittest.TestCase):
+    def test_log_persists_task_log_when_task_uuid_present(self):
+        BROWSERBASE_DDG_MODULE.crud.appended_logs.clear()
+        captured = []
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={},
+            callback_logger=captured.append,
+            task_uuid="task-123",
+        )
+
+        runner._log("hello")
+
+        self.assertTrue(captured)
+        self.assertEqual(len(BROWSERBASE_DDG_MODULE.crud.appended_logs), 1)
+        task_uuid, log_message = BROWSERBASE_DDG_MODULE.crud.appended_logs[0]
+        self.assertEqual(task_uuid, "task-123")
+        self.assertIn("hello", log_message)
