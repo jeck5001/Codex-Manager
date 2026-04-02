@@ -57,6 +57,34 @@ class BrowserbaseDDGRegistrationRunner:
         self.logs.append(entry)
         self.callback_logger(entry)
 
+    @staticmethod
+    def _response_text_snippet(response: Any, limit: int = 200) -> str:
+        text = str(getattr(response, "text", "") or "").strip()
+        return text[:limit]
+
+    def _parse_json_response(self, response: Any, stage: str) -> Dict[str, Any]:
+        try:
+            payload = response.json()
+        except json.JSONDecodeError as exc:
+            snippet = self._response_text_snippet(response)
+            detail = "返回了空响应或非 JSON 响应"
+            if snippet:
+                detail = f"{detail}: {snippet}"
+            raise RuntimeError(f"{stage}: {detail}") from exc
+        return payload or {}
+
+    def _parse_json_text(self, raw: str, stage: str) -> Dict[str, Any]:
+        text = str(raw or "").strip()
+        if not text:
+            raise RuntimeError(f"{stage}: 返回了空响应或非 JSON 响应")
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"{stage}: 返回了空响应或非 JSON 响应: {text[:200]}") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"{stage}: 返回的 JSON 不是对象")
+        return payload
+
     def _http(self, method: str, url: str, **kwargs):
         request_method = getattr(cffi_requests, method.lower())
         proxies = None
@@ -116,7 +144,7 @@ class BrowserbaseDDGRegistrationRunner:
         )
         if not 200 <= response.status_code < 300:
             raise RuntimeError(f"DDG 邮箱别名生成失败: HTTP {response.status_code}")
-        payload = response.json()
+        payload = self._parse_json_response(response, "DDG 邮箱别名生成失败")
         address = str((payload or {}).get("address") or "").strip()
         if not address:
             raise RuntimeError("DDG 邮箱别名生成失败: 缺少 address")
@@ -141,7 +169,7 @@ class BrowserbaseDDGRegistrationRunner:
         )
         if response.status_code != 200:
             raise RuntimeError(f"Browserbase 会话创建失败: HTTP {response.status_code}")
-        payload = response.json() or {}
+        payload = self._parse_json_response(response, "Browserbase 会话创建失败")
         if not payload.get("success"):
             raise RuntimeError("Browserbase 会话创建失败: success=false")
         session_url = str(payload.get("sessionUrl") or "").strip()
@@ -191,7 +219,15 @@ class BrowserbaseDDGRegistrationRunner:
                 message_id += 1
                 while time.time() < deadline:
                     raw = conn.recv()
-                    payload = json.loads(raw)
+                    text = str(raw or "").strip()
+                    if not text:
+                        self._log("收到空 WebSocket 消息，已忽略")
+                        continue
+                    try:
+                        payload = json.loads(text)
+                    except json.JSONDecodeError:
+                        self._log(f"收到非 JSON WebSocket 消息，已忽略: {text[:120]}")
+                        continue
                     if payload.get("id") != expected_id:
                         continue
                     targets = (payload.get("result") or {}).get("targetInfos") or []
@@ -285,7 +321,7 @@ class BrowserbaseDDGRegistrationRunner:
             token_url=settings.openai_token_url,
             proxy_url=self.proxy_url,
         )
-        token_payload = json.loads(token_json)
+        token_payload = self._parse_json_text(token_json, "OAuth token 交换失败")
         expired_at = None
         expired_text = str(token_payload.get("expired") or "").strip()
         if expired_text:

@@ -115,3 +115,37 @@ class BrowserbaseDDGRunnerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DummyInvalidJsonResponse:
+    def __init__(self, status_code=200, text=""):
+        self.status_code = status_code
+        self.text = text
+
+    def json(self):
+        import json
+        raise json.JSONDecodeError("Expecting value", self.text, 0)
+
+
+class BrowserbaseDDGRunnerJsonErrorTests(unittest.TestCase):
+    def test_generate_alias_reports_invalid_json_response(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={"ddg_token": "token"},
+        )
+        runner._http = lambda *_args, **_kwargs: DummyInvalidJsonResponse(200, "")
+
+        with self.assertRaisesRegex(RuntimeError, "DDG 邮箱别名生成失败: 返回了空响应或非 JSON 响应"):
+            runner._generate_alias()
+
+    def test_create_browserbase_session_reports_invalid_json_response(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={},
+        )
+        runner._http = lambda *_args, **_kwargs: DummyInvalidJsonResponse(200, "")
+
+        with self.assertRaisesRegex(RuntimeError, "Browserbase 会话创建失败: 返回了空响应或非 JSON 响应"):
+            runner._create_browserbase_session()
