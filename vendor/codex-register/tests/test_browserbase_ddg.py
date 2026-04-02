@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import types
 import unittest
@@ -370,6 +371,8 @@ class BrowserbaseDDGRunnerPromptTests(unittest.TestCase):
         self.assertIn("month=1", goal)
         self.assertIn("day=1", goal)
         self.assertIn("年龄，则填写 35", goal)
+        self.assertIn("切到已经打开的收件箱标签页", goal)
+        self.assertIn("刷新收件箱", goal)
 
     def test_phase_timeout_seconds_upgrades_legacy_short_timeout(self):
         runner = BrowserbaseDDGRegistrationRunner(
@@ -453,3 +456,79 @@ class BrowserbaseDDGRunnerNavigationTests(unittest.TestCase):
         self.assertIn('Target.createTarget', sent_payload)
         self.assertIn('https://auth.openai.com/test', sent_payload)
         self.assertTrue(conn.closed)
+
+
+class BrowserbaseDDGRunnerRunTests(unittest.TestCase):
+    def test_run_opens_auth_and_mail_inbox_targets_before_agent_goal(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={
+                "ddg_token": "token",
+                "mail_inbox_url": "https://mail.example/inbox",
+            },
+        )
+
+        opened_targets = []
+        sent_goals = []
+
+        runner._generate_alias = lambda: "alias@duck.com"
+        runner._generate_password = lambda: "Pass123!"
+        runner._create_browserbase_session = lambda: BROWSERBASE_DDG_MODULE.BrowserbaseSession(
+            session_id="session-1",
+            session_url="https://session.example",
+            ws_url="wss://browser.example",
+        )
+        runner._open_target_url = lambda ws_url, target_url: opened_targets.append((ws_url, target_url)) or "target-1"
+        runner._send_agent_goal = lambda session_id, goal: sent_goals.append((session_id, goal)) or DummyStreamingResponse()
+        runner._wait_for_target_url = lambda *_args, **_kwargs: "http://localhost:8787/auth/callback?code=real-code&state=test"
+        runner._phase_timeout_seconds = lambda: 900
+
+        original_generate_random_user_info = BROWSERBASE_DDG_MODULE.generate_random_user_info
+        original_generate_oauth_url = BROWSERBASE_DDG_MODULE.generate_oauth_url
+        original_submit_callback_url = BROWSERBASE_DDG_MODULE.submit_callback_url
+        original_registration_result = BROWSERBASE_DDG_MODULE.RegistrationResult
+        original_get_settings = BROWSERBASE_DDG_MODULE.get_settings
+        try:
+            BROWSERBASE_DDG_MODULE.generate_random_user_info = lambda: {
+                "name": "Nora",
+                "birthdate": "1985-07-08",
+            }
+            BROWSERBASE_DDG_MODULE.generate_oauth_url = lambda **_kwargs: types.SimpleNamespace(
+                auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+                state="state-1",
+                code_verifier="verifier-1",
+            )
+            BROWSERBASE_DDG_MODULE.submit_callback_url = lambda **_kwargs: json.dumps({
+                "account_id": "acct-1",
+                "workspace_id": "ws-1",
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "id_token": "id",
+                "expired": "",
+            })
+            BROWSERBASE_DDG_MODULE.RegistrationResult = lambda **kwargs: types.SimpleNamespace(**kwargs)
+            BROWSERBASE_DDG_MODULE.get_settings = lambda: types.SimpleNamespace(
+                openai_redirect_uri="http://localhost:8787/auth/callback",
+                openai_client_id="client-id",
+                openai_scope="openid profile email",
+                openai_token_url="https://auth.openai.com/oauth/token",
+            )
+
+            result = runner.run()
+        finally:
+            BROWSERBASE_DDG_MODULE.generate_random_user_info = original_generate_random_user_info
+            BROWSERBASE_DDG_MODULE.generate_oauth_url = original_generate_oauth_url
+            BROWSERBASE_DDG_MODULE.submit_callback_url = original_submit_callback_url
+            BROWSERBASE_DDG_MODULE.RegistrationResult = original_registration_result
+            BROWSERBASE_DDG_MODULE.get_settings = original_get_settings
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            opened_targets,
+            [
+                ("wss://browser.example", "https://auth.openai.com/oauth/authorize?client_id=test"),
+                ("wss://browser.example", "https://mail.example/inbox"),
+            ],
+        )
+        self.assertEqual(sent_goals[0][0], "session-1")
