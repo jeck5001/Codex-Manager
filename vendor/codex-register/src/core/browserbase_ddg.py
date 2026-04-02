@@ -259,6 +259,36 @@ class BrowserbaseDDGRegistrationRunner:
         self._log(f"Browserbase Agent 目标下发成功: HTTP {status_code}")
         return response
 
+    def _open_target_url(self, ws_url: str, target_url: str) -> str:
+        normalized_ws_url = ws_url if ws_url.startswith("ws") else f"wss://{ws_url}"
+        conn = websocket.create_connection(normalized_ws_url, timeout=10)
+        try:
+            message_id = 1
+            conn.send(json.dumps({
+                "id": message_id,
+                "method": "Target.createTarget",
+                "params": {"url": target_url},
+            }))
+            while True:
+                raw = conn.recv()
+                text = str(raw or "").strip()
+                if not text:
+                    continue
+                try:
+                    payload = json.loads(text)
+                except json.JSONDecodeError:
+                    continue
+                if payload.get("id") != message_id:
+                    continue
+                result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+                target_id = str(result.get("targetId") or "").strip()
+                if not target_id:
+                    raise RuntimeError("Browserbase 打开授权页失败: 缺少 targetId")
+                self._log(f"已在 Browserbase 会话中打开目标页: {target_url}")
+                return target_id
+        finally:
+            conn.close()
+
     def _wait_for_target_url(self, ws_url: str, target_keyword: str, timeout_seconds: int) -> str:
         normalized_ws_url = ws_url if ws_url.startswith("ws") else f"wss://{ws_url}"
         deadline = time.time() + timeout_seconds
@@ -359,6 +389,7 @@ class BrowserbaseDDGRegistrationRunner:
         )
 
         phase1_session = self._create_browserbase_session()
+        self._open_target_url(phase1_session.ws_url, oauth_start.auth_url)
         phase1_stream = self._send_agent_goal(
             phase1_session.session_id,
             self._build_phase1_goal(
