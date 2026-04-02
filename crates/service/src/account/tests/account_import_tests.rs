@@ -236,6 +236,33 @@ fn extract_token_payload_supports_camel_case_fields() {
     );
 }
 
+/// 函数 `extract_token_payload_allows_missing_id_and_refresh_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn extract_token_payload_allows_missing_id_and_refresh_tokens() {
+    let value = json!({
+        "tokens": {
+            "access_token": "access.only",
+            "account_id": "acc-only"
+        }
+    });
+
+    let payload = extract_token_payload(&value).expect("parse optional token payload");
+    assert_eq!(payload.access_token, "access.only");
+    assert_eq!(payload.id_token, "");
+    assert_eq!(payload.refresh_token, "");
+    assert_eq!(payload.account_id_hint.as_deref(), Some("acc-only"));
+}
+
 /// 函数 `import_single_item_reuses_existing_login_account_by_scope_identity`
 ///
 /// 作者: gaohongshun
@@ -353,6 +380,55 @@ fn import_single_item_prefers_meta_fields_for_new_account() {
         .expect("metadata");
     assert_eq!(metadata.note.as_deref(), Some("Meta Note"));
     assert_eq!(metadata.tags.as_deref(), Some("高频,团队A"));
+}
+
+/// 函数 `import_single_item_allows_missing_id_and_refresh_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn import_single_item_allows_missing_id_and_refresh_tokens() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init");
+    let mut idx = ExistingAccountIndex::build(&storage).expect("build index");
+    let item = json!({
+        "tokens": {
+            "access_token": "access.only",
+            "account_id": "legacy-import-id"
+        },
+        "meta": {
+            "label": "Only Access Token",
+            "workspace_id": "ws-manual",
+            "chatgpt_account_id": "cgpt-manual"
+        }
+    });
+
+    let created = import_single_item(&storage, &mut idx, &item, 1).expect("import item");
+    assert!(created);
+
+    let accounts = storage.list_accounts().expect("list accounts");
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].label, "Only Access Token");
+    assert_eq!(
+        accounts[0].chatgpt_account_id.as_deref(),
+        Some("cgpt-manual")
+    );
+    assert_eq!(accounts[0].workspace_id.as_deref(), Some("ws-manual"));
+
+    let token = storage
+        .find_token_by_account_id(&accounts[0].id)
+        .expect("find token")
+        .expect("token");
+    assert_eq!(token.access_token, "access.only");
+    assert_eq!(token.id_token, "");
+    assert_eq!(token.refresh_token, "");
 }
 
 /// 函数 `import_account_auth_json_keeps_valid_items_when_one_content_is_invalid`

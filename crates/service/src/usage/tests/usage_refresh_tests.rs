@@ -1,9 +1,9 @@
 use super::{
     clear_pending_usage_refresh_tasks_for_tests, enqueue_usage_refresh_with_worker,
-    next_usage_poll_cursor, reset_usage_poll_cursor_for_tests, token_refresh_schedule,
-    usage_poll_batch_indices,
+    next_usage_poll_cursor, reset_usage_poll_cursor_for_tests, run_token_refresh_task,
+    token_refresh_schedule, usage_poll_batch_indices,
 };
-use codexmanager_core::storage::{now_ts, Token};
+use codexmanager_core::storage::{now_ts, Storage, Token};
 use std::collections::HashSet;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -147,6 +147,67 @@ fn schedule_falls_back_to_last_refresh_when_exp_missing() {
     let (exp, scheduled_at) = token_refresh_schedule(&token, now, 300, 2700);
     assert_eq!(exp, None);
     assert_eq!(scheduled_at, now);
+}
+
+/// 函数 `schedule_skips_when_refresh_token_is_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn schedule_skips_when_refresh_token_is_empty() {
+    let now = now_ts();
+    let token = Token {
+        account_id: "acc-empty-refresh".to_string(),
+        id_token: "id".to_string(),
+        access_token: "a.eyJleHAiOjQxMDI0NDQ4MDB9.s".to_string(),
+        refresh_token: String::new(),
+        api_key_access_token: None,
+        last_refresh: now - 10,
+    };
+    let (exp, scheduled_at) = token_refresh_schedule(&token, now, 600, 2700);
+    assert_eq!(exp, None);
+    assert_eq!(scheduled_at, i64::MAX);
+}
+
+/// 函数 `run_token_refresh_task_skips_empty_refresh_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn run_token_refresh_task_skips_empty_refresh_token() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init");
+    let now = now_ts();
+    let mut token = Token {
+        account_id: "acc-empty-refresh".to_string(),
+        id_token: "id".to_string(),
+        access_token: "access".to_string(),
+        refresh_token: String::new(),
+        api_key_access_token: None,
+        last_refresh: now,
+    };
+
+    let refreshed = run_token_refresh_task(
+        &storage,
+        &mut token,
+        "https://auth.openai.com",
+        "codex-cli",
+    );
+    assert!(!refreshed);
 }
 
 /// 函数 `usage_poll_batch_indices_rotate_from_cursor`

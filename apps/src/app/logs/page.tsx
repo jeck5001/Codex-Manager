@@ -248,6 +248,25 @@ function formatCompactTokenAmount(value: number | null | undefined): string {
 }
 
 /**
+ * 函数 `formatTableTokenAmount`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
+function formatTableTokenAmount(value: number | null | undefined): string {
+  const normalized =
+    typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+  return Math.round(normalized).toLocaleString("zh-CN");
+}
+
+/**
  * 函数 `fallbackAccountNameFromId`
  *
  * 作者: gaohongshun
@@ -1452,12 +1471,12 @@ function LogsPageContent() {
                     </TableCell>
                     <TableCell className="px-4 py-3 align-top">
                       <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
-                        <span>总 {formatTokenAmount(log.totalTokens)}</span>
+                        <span>总 {formatTableTokenAmount(log.totalTokens)}</span>
                         <span>
-                          输入 {formatTokenAmount(log.inputTokens)}
+                          输入 {formatTableTokenAmount(log.inputTokens)}
                         </span>
                         <span className="opacity-60">
-                          缓存 {formatTokenAmount(log.cachedInputTokens)}
+                          缓存 {formatTableTokenAmount(log.cachedInputTokens)}
                         </span>
                       </div>
                     </TableCell>

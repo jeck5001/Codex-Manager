@@ -691,24 +691,20 @@ fn extract_token_payload(item: &Value) -> Result<ImportTokenPayload, String> {
         ],
         "access_token/accessToken",
     )?;
-    let id_token = required_string_any(
-        &[
-            (tokens, "id_token"),
-            (tokens, "idToken"),
-            (item, "id_token"),
-            (item, "idToken"),
-        ],
-        "id_token/idToken",
-    )?;
-    let refresh_token = required_string_any(
-        &[
-            (tokens, "refresh_token"),
-            (tokens, "refreshToken"),
-            (item, "refresh_token"),
-            (item, "refreshToken"),
-        ],
-        "refresh_token/refreshToken",
-    )?;
+    let id_token = optional_string_any(&[
+        (tokens, "id_token"),
+        (tokens, "idToken"),
+        (item, "id_token"),
+        (item, "idToken"),
+    ])
+    .unwrap_or_default();
+    let refresh_token = optional_string_any(&[
+        (tokens, "refresh_token"),
+        (tokens, "refreshToken"),
+        (item, "refresh_token"),
+        (item, "refreshToken"),
+    ])
+    .unwrap_or_default();
     let account_id_hint = optional_string_any(&[
         (tokens, "account_id"),
         (tokens, "accountId"),

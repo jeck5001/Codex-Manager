@@ -85,7 +85,7 @@ function normalizeSingleImportRecord(record: unknown): unknown {
   const accessToken = pickImportTokenField(record, ["access_token", "accessToken"]);
   const idToken = pickImportTokenField(record, ["id_token", "idToken"]);
   const refreshToken = pickImportTokenField(record, ["refresh_token", "refreshToken"]);
-  if (!accessToken || !idToken || !refreshToken) {
+  if (!accessToken) {
     return record;
   }
 
@@ -97,9 +97,13 @@ function normalizeSingleImportRecord(record: unknown): unknown {
   ]);
   const normalizedTokens: Record<string, string> = {
     access_token: accessToken,
-    id_token: idToken,
-    refresh_token: refreshToken,
   };
+  if (idToken) {
+    normalizedTokens.id_token = idToken;
+  }
+  if (refreshToken) {
+    normalizedTokens.refresh_token = refreshToken;
+  }
   if (accountIdHint) {
     normalizedTokens.account_id = accountIdHint;
   }

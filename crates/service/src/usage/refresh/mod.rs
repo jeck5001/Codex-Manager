@@ -686,6 +686,13 @@ fn run_token_refresh_task(
     issuer: &str,
     client_id: &str,
 ) -> bool {
+    if token.refresh_token.trim().is_empty() {
+        log::debug!(
+            "skip token refresh polling for account without refresh token: account_id={}",
+            token.account_id
+        );
+        return false;
+    }
     match refresh_and_persist_access_token(storage, token, issuer, client_id) {
         Ok(_) => true,
         Err(err) => {
