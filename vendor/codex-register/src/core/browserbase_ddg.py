@@ -358,21 +358,55 @@ class BrowserbaseDDGRegistrationRunner:
         normalized_ws_url = ws_url if ws_url.startswith("ws") else f"wss://{ws_url}"
         deadline = time.time() + timeout_seconds
         message_id = 1
-        conn = websocket.create_connection(normalized_ws_url, timeout=10)
+        conn = None
+        seen_urls: set[str] = set()
+
+        def close_conn() -> None:
+            nonlocal conn
+            if conn is None:
+                return
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = None
+
         try:
-            conn.send(json.dumps({
-                "id": message_id,
-                "method": "Target.setDiscoverTargets",
-                "params": {"discover": True},
-            }))
-            message_id += 1
-            seen_urls: set[str] = set()
             while time.time() < deadline:
-                conn.send(json.dumps({"id": message_id, "method": "Target.getTargets", "params": {}}))
+                if conn is None:
+                    try:
+                        message_id = 1
+                        conn = websocket.create_connection(normalized_ws_url, timeout=10)
+                        conn.send(json.dumps({
+                            "id": message_id,
+                            "method": "Target.setDiscoverTargets",
+                            "params": {"discover": True},
+                        }))
+                        message_id += 1
+                    except Exception as exc:
+                        self._log(f"Browserbase 监控 WebSocket 建连失败，准备重试: {exc}")
+                        close_conn()
+                        time.sleep(3)
+                        continue
+
+                try:
+                    conn.send(json.dumps({"id": message_id, "method": "Target.getTargets", "params": {}}))
+                except Exception as exc:
+                    self._log(f"Browserbase 监控 WebSocket 发送失败，准备重连: {exc}")
+                    close_conn()
+                    time.sleep(3)
+                    continue
+
                 expected_id = message_id
                 message_id += 1
                 while time.time() < deadline:
-                    raw = conn.recv()
+                    try:
+                        raw = conn.recv()
+                    except Exception as exc:
+                        self._log(f"Browserbase 监控 WebSocket 连接中断，准备重连: {exc}")
+                        close_conn()
+                        break
+
                     text = str(raw or "").strip()
                     if not text:
                         self._log("收到空 WebSocket 消息，已忽略")
@@ -406,7 +440,7 @@ class BrowserbaseDDGRegistrationRunner:
                     break
                 time.sleep(3)
         finally:
-            conn.close()
+            close_conn()
         raise RuntimeError(f"等待目标页面超时: {target_keyword}")
 
     def _build_phase1_goal(
