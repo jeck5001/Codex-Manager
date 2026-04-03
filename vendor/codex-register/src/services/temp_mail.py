@@ -164,6 +164,20 @@ class TempMailService(BaseEmailService):
         }
 
     @staticmethod
+    def _sanitize_otp_search_text(value: str) -> str:
+        """移除邮箱地址等高噪声片段，避免把域名数字误识别成 OTP。"""
+        text = str(value or "")
+        if not text:
+            return ""
+
+        text = re.sub(
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+            " ",
+            text,
+        )
+        return text
+
+    @staticmethod
     def _parse_timestamp_value(value: Any) -> Optional[float]:
         """解析时间值，兼容秒/毫秒/ISO 格式"""
         if value is None or value == "":
@@ -427,7 +441,16 @@ class TempMailService(BaseEmailService):
                     subject = parsed["subject"]
                     body_text = parsed["body"]
                     raw_text = parsed["raw"]
-                    content = f"{sender}\n{subject}\n{body_text}\n{raw_text}".strip()
+                    content = "\n".join(
+                        part
+                        for part in (
+                            self._sanitize_otp_search_text(sender),
+                            self._sanitize_otp_search_text(subject),
+                            self._sanitize_otp_search_text(body_text),
+                            self._sanitize_otp_search_text(raw_text),
+                        )
+                        if part
+                    ).strip()
 
                     # 只处理 OpenAI 邮件
                     if "openai" not in sender and "openai" not in content.lower():

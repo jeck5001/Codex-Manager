@@ -191,6 +191,46 @@ class TempMailServiceTests(unittest.TestCase):
 
         self.assertEqual(code, "222222")
 
+    def test_ignores_six_digits_inside_recipient_email_domain(self):
+        service = TempMailService(
+            config={
+                "base_url": "https://mail.example.com",
+                "admin_password": "test-password",
+                "domain": "example.com",
+            }
+        )
+
+        mails = [
+            {
+                "id": "mail-domain-digits",
+                "created_at": 220,
+                "from": "OpenAI <noreply@openai.com>",
+                "subject": "OpenAI verification message",
+                "text": "",
+                "raw": (
+                    "To: guakcuwf6sn@a.mail.920508.xyz\n"
+                    "From: OpenAI <noreply@openai.com>\n"
+                    "Subject: OpenAI verification message\n"
+                ),
+            },
+        ]
+
+        def fake_make_request(method, path, **_kwargs):
+            self.assertEqual(method, "GET")
+            self.assertEqual(path, "/admin/mails")
+            return {"results": mails}
+
+        service._make_request = fake_make_request
+
+        code = service.get_verification_code(
+            email="guakcuwf6sn@a.mail.920508.xyz",
+            timeout=1,
+            poll_interval=1,
+            otp_sent_at=200,
+        )
+
+        self.assertIsNone(code)
+
 
 if __name__ == "__main__":
     unittest.main()
