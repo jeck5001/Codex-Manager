@@ -1000,6 +1000,41 @@ class RegisterAddPhoneTests(unittest.TestCase):
             logs,
         )
 
+    def test_register_password_logs_browser_and_http_fallback_failures(self):
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {}
+
+        class FakeSession:
+            def post(self, url, **kwargs):
+                return FakeResponse()
+
+        logs = []
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine._log = lambda message, level="info": logs.append((level, message))
+        engine._generate_password = lambda: "StrongPassw0rd!"
+        engine._current_device_id = "did-missing"
+        engine._current_sentinel_token = ""
+        engine._get_browser_sentinel_payload = lambda flow, referer: None
+        engine._check_sentinel = lambda did, flow="authorize_continue": None
+
+        ok, _password = engine._register_password()
+
+        self.assertTrue(ok)
+        self.assertIn(
+            ("warning", "密码注册浏览器 Sentinel 获取失败，准备回退 HTTP Sentinel"),
+            logs,
+        )
+        self.assertIn(
+            ("warning", "密码注册 HTTP Sentinel 获取失败"),
+            logs,
+        )
+
     def test_create_user_account_prefers_browser_sentinel_token_payload(self):
         captured = {}
 

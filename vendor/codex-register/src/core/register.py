@@ -813,10 +813,19 @@ class RegistrationEngine:
                 "https://auth.openai.com/create-account/password",
             )
             sen_token = ""
-            if did and not sentinel_payload:
+            if sentinel_payload:
+                self._log("密码注册浏览器 Sentinel 获取成功，准备提交注册请求")
+            elif did:
+                self._log("密码注册浏览器 Sentinel 获取失败，准备回退 HTTP Sentinel", "warning")
                 sen_token = self._clean_text(
                     self._check_sentinel(did, flow="username_password_create")
                 )
+                if sen_token:
+                    self._log("密码注册 HTTP Sentinel 获取成功")
+                else:
+                    self._log("密码注册 HTTP Sentinel 获取失败", "warning")
+            else:
+                self._log("密码注册缺少 Device ID，无法获取 Sentinel", "warning")
             if not sen_token:
                 sen_token = self._clean_text(getattr(self, "_current_sentinel_token", ""))
             headers = {
