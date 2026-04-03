@@ -55,6 +55,7 @@ type BrowserbaseFormState = {
   enabled: boolean;
   priority: string;
   ddgToken: string;
+  browserbaseApiKey: string;
   mailInboxUrl: string;
   browserbaseApiBase: string;
   browserTimezone: string;
@@ -71,6 +72,7 @@ const EMPTY_FORM: BrowserbaseFormState = {
   enabled: true,
   priority: "0",
   ddgToken: "",
+  browserbaseApiKey: "",
   mailInboxUrl: "",
   browserbaseApiBase: "https://gemini.browserbase.com",
   browserTimezone: "Asia/Shanghai",
@@ -103,6 +105,7 @@ function createFormState(
     enabled: config?.enabled ?? true,
     priority: String(config?.priority ?? 0),
     ddgToken: readConfigString(source, "ddg_token"),
+    browserbaseApiKey: readConfigString(source, "browserbase_api_key"),
     mailInboxUrl: readConfigString(source, "mail_inbox_url"),
     browserbaseApiBase:
       readConfigString(source, "browserbase_api_base") || EMPTY_FORM.browserbaseApiBase,
@@ -120,6 +123,7 @@ function createFormState(
 function buildBrowserbaseConfigPayload(form: BrowserbaseFormState): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     ddg_token: form.ddgToken.trim(),
+    browserbase_api_key: form.browserbaseApiKey.trim(),
     mail_inbox_url: form.mailInboxUrl.trim(),
     browserbase_api_base: form.browserbaseApiBase.trim(),
     browser_timezone: form.browserTimezone.trim(),
@@ -152,6 +156,9 @@ function summarizeBrowserbaseConfig(config: RegisterBrowserbaseConfig) {
   const source = config.config || {};
   const ddgReady =
     hasConfigFlag(source, "has_ddg_token") || Boolean(readConfigString(source, "ddg_token").trim());
+  const browserbaseReady =
+    hasConfigFlag(source, "has_browserbase_api_key") ||
+    Boolean(readConfigString(source, "browserbase_api_key").trim());
   const inboxReady =
     hasConfigFlag(source, "has_mail_inbox_url") ||
     Boolean(readConfigString(source, "mail_inbox_url").trim());
@@ -159,6 +166,7 @@ function summarizeBrowserbaseConfig(config: RegisterBrowserbaseConfig) {
   const agentModel = readConfigString(source, "agent_model") || "默认";
   return [
     `DDG Token: ${ddgReady ? "已配置" : "未配置"}`,
+    `Browserbase Key: ${browserbaseReady ? "已配置" : "未配置"}`,
     `收件箱: ${inboxReady ? "已配置" : "未配置"}`,
     `时区: ${timezone}`,
     `模型: ${agentModel}`,
@@ -214,6 +222,10 @@ export function BrowserbaseConfigCard() {
     }
     if (!formState.ddgToken.trim()) {
       toast.error("请填写 DDG Token");
+      return;
+    }
+    if (!formState.browserbaseApiKey.trim()) {
+      toast.error("请填写 Browserbase API Key");
       return;
     }
     if (!formState.mailInboxUrl.trim()) {
@@ -455,6 +467,22 @@ export function BrowserbaseConfigCard() {
                   setFormState((current) => ({ ...current, ddgToken: event.target.value }))
                 }
                 placeholder="ddg_xxx"
+                className="h-10 rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Browserbase API Key</Label>
+              <Input
+                type="password"
+                value={formState.browserbaseApiKey}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    browserbaseApiKey: event.target.value,
+                  }))
+                }
+                placeholder="bb_xxx"
                 className="h-10 rounded-xl"
               />
             </div>

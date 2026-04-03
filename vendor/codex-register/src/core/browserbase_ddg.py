@@ -165,6 +165,23 @@ class BrowserbaseDDGRegistrationRunner:
 
         return raw
 
+    def _browserbase_api_key(self) -> str:
+        return self._config_str(
+            "browserbase_api_key",
+            "browserbaseApiKey",
+        )
+
+    def _browserbase_headers(self, *, include_content_type: bool = False) -> Dict[str, str]:
+        headers: Dict[str, str] = {}
+        if include_content_type:
+            headers["Content-Type"] = "application/json"
+
+        api_key = self._browserbase_api_key()
+        if api_key:
+            headers["X-BB-API-Key"] = api_key
+
+        return headers
+
     def _generate_password(self, length: int = 16) -> str:
         return "".join(random.choice(PASSWORD_CHARSET) for _ in range(length)) + "A1!"
 
@@ -230,15 +247,19 @@ class BrowserbaseDDGRegistrationRunner:
         api_base = self._browserbase_api_base()
         timezone = self._config_str("browser_timezone", "browserTimezone", default="HKT")
         self._log(f"正在创建 Browserbase 会话，时区: {timezone}")
+        headers = self._browserbase_headers(include_content_type=True)
         response = self._http(
             "post",
             f"{api_base}/api/session",
             json={"timezone": timezone},
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             timeout=20,
         )
         if response.status_code != 200:
-            raise RuntimeError(f"Browserbase 会话创建失败: HTTP {response.status_code}")
+            api_key_hint = ""
+            if response.status_code in {401, 403} and not self._browserbase_api_key():
+                api_key_hint = "（可能未配置 Browserbase API Key）"
+            raise RuntimeError(f"Browserbase 会话创建失败: HTTP {response.status_code}{api_key_hint}")
         payload = self._parse_json_response(response, "Browserbase 会话创建失败")
         if not payload.get("success"):
             raise RuntimeError("Browserbase 会话创建失败: success=false")
@@ -259,7 +280,13 @@ class BrowserbaseDDGRegistrationRunner:
             f"&goal={quote(goal)}&model={quote(model)}"
         )
         self._log(f"正在下发 Browserbase Agent 目标，模型: {model}")
-        response = self._http("get", url, stream=True, timeout=20)
+        response = self._http(
+            "get",
+            url,
+            headers=self._browserbase_headers(),
+            stream=True,
+            timeout=20,
+        )
         status_code = int(getattr(response, "status_code", 0) or 0)
         if not 200 <= status_code < 300:
             snippet = self._response_text_snippet(response)
