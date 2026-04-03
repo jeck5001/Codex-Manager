@@ -197,7 +197,7 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         account_id: &str,
         err: &str,
     ) -> bool {
-        crate::account_status::mark_account_unavailable_for_deactivation_error(
+        crate::account_status::mark_account_unavailable_for_gateway_error(
             self.storage,
             account_id,
             err,

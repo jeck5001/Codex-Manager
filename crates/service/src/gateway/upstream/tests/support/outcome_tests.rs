@@ -70,11 +70,11 @@ fn custom_status_404_with_more_candidates_triggers_failover() {
     assert!(matches!(decision, UpstreamOutcomeDecision::Failover));
 }
 
-/// 函数 `official_status_429_with_more_candidates_keeps_upstream_response`
+/// 函数 `official_status_429_with_more_candidates_triggers_failover`
 ///
 /// 作者: gaohongshun
 ///
-/// 时间: 2026-04-02
+/// 时间: 2026-04-03
 ///
 /// # 参数
 /// 无
@@ -82,7 +82,7 @@ fn custom_status_404_with_more_candidates_triggers_failover() {
 /// # 返回
 /// 无
 #[test]
-fn official_status_429_with_more_candidates_keeps_upstream_response() {
+fn official_status_429_with_more_candidates_triggers_failover() {
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
     let decision = decide_upstream_outcome(
@@ -94,7 +94,7 @@ fn official_status_429_with_more_candidates_keeps_upstream_response() {
         true,
         |_, _, _| {},
     );
-    assert!(matches!(decision, UpstreamOutcomeDecision::RespondUpstream));
+    assert!(matches!(decision, UpstreamOutcomeDecision::Failover));
 }
 
 /// 函数 `status_429_on_last_candidate_keeps_upstream_response`

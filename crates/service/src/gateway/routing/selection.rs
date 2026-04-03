@@ -269,6 +269,10 @@ pub(super) fn reload_from_env() {
     clear_candidate_cache();
 }
 
+pub(crate) fn invalidate_candidate_cache() {
+    clear_candidate_cache();
+}
+
 /// 函数 `ensure_selection_config_loaded`
 ///
 /// 作者: gaohongshun

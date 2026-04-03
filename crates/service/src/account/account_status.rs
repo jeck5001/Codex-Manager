@@ -42,6 +42,9 @@ pub(crate) fn set_account_status(storage: &Storage, account_id: &str, status: &s
         storage.update_account_status_if_changed(account_id, status),
         Ok(true)
     );
+    if changed {
+        crate::gateway::invalidate_candidate_cache();
+    }
     let account_exists = storage
         .find_account_by_id(account_id)
         .ok()
@@ -210,6 +213,20 @@ pub(crate) fn is_usage_limit_gateway_error(err: &str) -> bool {
     usage_limit_reason_from_message(err).is_some()
 }
 
+pub(crate) fn mark_account_unavailable_for_gateway_error(
+    storage: &Storage,
+    account_id: &str,
+    err: &str,
+) -> bool {
+    if let Some(reason) = deactivation_reason_from_message(err) {
+        return set_account_banned_with_reason(storage, account_id, reason);
+    }
+    if let Some(reason) = usage_limit_reason_from_message(err) {
+        return set_account_unavailable_with_reason(storage, account_id, reason);
+    }
+    false
+}
+
 /// 函数 `set_account_unavailable_with_reason`
 ///
 /// 作者: gaohongshun
@@ -366,8 +383,10 @@ pub(crate) fn mark_account_unavailable_for_refresh_token_error(
 mod tests {
     use super::{
         classify_account_availability_signal, is_usage_limit_gateway_error,
-        should_failover_for_gateway_error, AccountAvailabilitySignal,
+        mark_account_unavailable_for_gateway_error, should_failover_for_gateway_error,
+        AccountAvailabilitySignal,
     };
+    use codexmanager_core::storage::{now_ts, Account, Storage};
 
     /// 函数 `classify_account_availability_signal_separates_usage_refresh_and_deactivation`
     ///
@@ -430,5 +449,50 @@ mod tests {
         assert!(is_usage_limit_gateway_error(
             "You've hit your usage limit. To get more access now, try again at 8:02 PM."
         ));
+    }
+
+    /// 函数 `gateway_usage_limit_error_marks_account_unavailable`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-03
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn gateway_usage_limit_error_marks_account_unavailable() {
+        let _guard = crate::test_env_guard();
+        let storage = Storage::open_in_memory().expect("open storage");
+        storage.init().expect("init storage");
+        let now = now_ts();
+        storage
+            .insert_account(&Account {
+                id: "acc-usage-limit".to_string(),
+                label: "usage-limit".to_string(),
+                issuer: "issuer".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: 0,
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("insert account");
+
+        assert!(mark_account_unavailable_for_gateway_error(
+            &storage,
+            "acc-usage-limit",
+            "You've hit your usage limit. To get more access now, try again at 8:02 PM."
+        ));
+
+        let account = storage
+            .find_account_by_id("acc-usage-limit")
+            .expect("find account")
+            .expect("account exists");
+        assert_eq!(account.status, "unavailable");
     }
 }

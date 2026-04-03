@@ -240,6 +240,23 @@ pub(in super::super) fn execute_candidate_sequence(
                 status_code,
                 message,
             } => {
+                if crate::account_status::should_failover_for_gateway_error(
+                    &message,
+                    context.has_more_candidates(idx),
+                ) {
+                    let _ =
+                        context.mark_account_unavailable_for_gateway_error(&account.id, &message);
+                    if crate::account_status::is_usage_limit_gateway_error(&message) {
+                        super::super::super::mark_account_cooldown(
+                            &account.id,
+                            super::super::super::CooldownReason::Default,
+                        );
+                    }
+                    super::super::super::record_gateway_failover_attempt();
+                    last_attempt_url = attempt_trace.last_attempt_url.take();
+                    last_attempt_error = Some(message);
+                    continue;
+                }
                 let request = request
                     .take()
                     .expect("request should be available before terminal response");

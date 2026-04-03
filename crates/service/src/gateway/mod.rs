@@ -313,6 +313,7 @@ use runtime_config::{
     DEFAULT_GATEWAY_DEBUG,
 };
 use selection::collect_gateway_candidates;
+pub(crate) use selection::invalidate_candidate_cache;
 #[cfg(test)]
 use token_exchange::account_token_exchange_lock;
 use token_exchange::resolve_openai_bearer_token;
