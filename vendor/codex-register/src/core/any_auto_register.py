@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from .register import RegistrationEngine, RegistrationResult
+from .token_refresh import TokenRefreshManager
 
 
 ANY_AUTO_REGISTER_MODE = "any_auto"
@@ -148,6 +149,44 @@ class AnyAutoRegistrationRunner:
             result.metadata = dict(extra_metadata)
         return self._complete_result(result)
 
+    def _recover_chatgpt_access_token(
+        self,
+        session_payload: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        payload = dict(session_payload or {})
+        access_token = self.engine._clean_text(payload.get("accessToken"))
+        if access_token:
+            return payload
+
+        self._log("ChatGPT Session 缺少 accessToken，尝试使用 session_token 刷新", "warning")
+        session_token = (
+            self.engine._clean_text(payload.get("sessionToken"))
+            or self.engine._extract_session_token_from_cookies()
+            or ""
+        )
+        if not session_token:
+            self._log("未找到可用的 session_token，无法补齐 accessToken", "warning")
+            return None
+
+        refresh_manager = TokenRefreshManager(proxy_url=self.engine.proxy_url)
+        refresh_result = refresh_manager.refresh_by_session_token(session_token)
+        if not getattr(refresh_result, "success", False):
+            self._log(
+                f"session_token 刷新失败: {getattr(refresh_result, 'error_message', '') or 'unknown error'}",
+                "warning",
+            )
+            return None
+
+        refreshed_access_token = self.engine._clean_text(getattr(refresh_result, "access_token", ""))
+        if not refreshed_access_token:
+            self._log("session_token 刷新成功但缺少 access_token", "warning")
+            return None
+
+        payload["accessToken"] = refreshed_access_token
+        payload["sessionToken"] = session_token
+        self._log("已通过 session_token 刷新补齐 accessToken")
+        return payload
+
     def _fetch_chatgpt_session_payload(self) -> Tuple[Optional[Dict[str, Any]], str]:
         session = getattr(self.engine, "session", None)
         if session is None:
@@ -192,11 +231,11 @@ class AnyAutoRegistrationRunner:
                     continue
 
                 payload = response.json()
-                access_token = self.engine._clean_text((payload or {}).get("accessToken"))
-                if not access_token:
-                    last_error = "ChatGPT Session 接口未返回 accessToken"
-                    continue
-                return payload, ""
+                recovered_payload = self._recover_chatgpt_access_token(payload)
+                if recovered_payload:
+                    return recovered_payload, ""
+                last_error = "ChatGPT Session 接口未返回 accessToken"
+                continue
             except Exception as exc:
                 last_error = f"读取 ChatGPT Session 失败: {exc}"
                 self._log(last_error, "warning")
