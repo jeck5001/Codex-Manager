@@ -529,10 +529,15 @@ class RegistrationEngine:
 
         return None
 
-    def _check_sentinel(self, did: str) -> Optional[str]:
+    def _check_sentinel(self, did: str, flow: str = "authorize_continue") -> Optional[str]:
         """检查 Sentinel 拦截"""
         try:
-            sen_req_body = f'{{"p":"","id":"{did}","flow":"authorize_continue"}}'
+            normalized_flow = self._clean_text(flow) or "authorize_continue"
+            sen_req_body = json.dumps({
+                "p": "",
+                "id": did,
+                "flow": normalized_flow,
+            }, separators=(",", ":"))
 
             response = self.http_client.post(
                 OPENAI_API_ENDPOINTS["sentinel"],
@@ -546,10 +551,13 @@ class RegistrationEngine:
 
             if response.status_code == 200:
                 sen_token = response.json().get("token")
-                self._log(f"Sentinel token 获取成功")
+                self._log(f"Sentinel token 获取成功 (flow={normalized_flow})")
                 return sen_token
             else:
-                self._log(f"Sentinel 检查失败: {response.status_code}", "warning")
+                self._log(
+                    f"Sentinel 检查失败: {response.status_code} (flow={normalized_flow})",
+                    "warning",
+                )
                 return None
 
         except Exception as e:
@@ -666,7 +674,7 @@ class RegistrationEngine:
         if browser_payload:
             return browser_payload
 
-        fallback_token = self._check_sentinel(did)
+        fallback_token = self._check_sentinel(did, flow=CREATE_ACCOUNT_SENTINEL_FLOWS[-1])
         if not fallback_token:
             return None
 
@@ -762,7 +770,13 @@ class RegistrationEngine:
             })
 
             did = self._clean_text(getattr(self, "_current_device_id", ""))
-            sen_token = self._clean_text(getattr(self, "_current_sentinel_token", ""))
+            sen_token = ""
+            if did:
+                sen_token = self._clean_text(
+                    self._check_sentinel(did, flow="username_password_create")
+                )
+            if not sen_token:
+                sen_token = self._clean_text(getattr(self, "_current_sentinel_token", ""))
             headers = {
                 "referer": "https://auth.openai.com/create-account/password",
                 "accept": "application/json",
