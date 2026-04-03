@@ -185,6 +185,43 @@ OAuthStart = sys.modules["src.core.oauth"].OAuthStart
 
 
 class RegisterAddPhoneTests(unittest.TestCase):
+    def test_session_browser_cookies_preserve_duplicate_names_across_domains(self):
+        class FakeCookie:
+            def __init__(self, name, value, domain, path="/", secure=True, http_only=False):
+                self.name = name
+                self.value = value
+                self.domain = domain
+                self.path = path
+                self.secure = secure
+                self._http_only = http_only
+
+            def has_nonstandard_attr(self, name):
+                return name.lower() == "httponly" and self._http_only
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine._log = lambda *_args, **_kwargs: None
+        engine.session = types.SimpleNamespace(
+            cookies=types.SimpleNamespace(
+                jar=[
+                    FakeCookie("cf_clearance", "openai-cookie", ".openai.com"),
+                    FakeCookie("cf_clearance", "chatgpt-cookie", ".chatgpt.com"),
+                    FakeCookie("__Host-next-auth.csrf-token", "csrf-cookie", "chatgpt.com", http_only=True),
+                ]
+            )
+        )
+
+        cookies = engine._session_browser_cookies()
+
+        self.assertEqual(
+            [cookie["value"] for cookie in cookies if cookie["name"] == "cf_clearance"],
+            ["openai-cookie", "chatgpt-cookie"],
+        )
+        host_cookie = next(
+            cookie for cookie in cookies if cookie["name"] == "__Host-next-auth.csrf-token"
+        )
+        self.assertEqual(host_cookie["url"], "https://chatgpt.com/")
+        self.assertNotIn("domain", host_cookie)
+
     def test_advance_workspace_authorization_uses_consent_response(self):
         class FakeResponse:
             url = "https://auth.openai.com/sign-in-with-chatgpt/codex/consent"

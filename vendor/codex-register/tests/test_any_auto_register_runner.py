@@ -94,6 +94,7 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
         runner.engine = types.SimpleNamespace(
             password="pw-123",
             _serialize_session_cookies=lambda: cookies,
+            _session_browser_cookies=lambda: [{"name": "cf_clearance", "value": "cookie", "domain": ".chatgpt.com", "path": "/"}],
             _is_existing_account=False,
             session_token=None,
             _clean_text=lambda value: str(value or "").strip(),
@@ -198,12 +199,18 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
         original_fetch = ANY_AUTO_MODULE.fetch_browser_chatgpt_session_payload
 
         try:
-            ANY_AUTO_MODULE.fetch_browser_chatgpt_session_payload = lambda **kwargs: {
-                "user": {"id": "user-1"},
-                "account": {"id": "acct-1"},
-                "accessToken": "browser-access",
-                "sessionToken": "browser-session",
-            }
+            captured = {}
+
+            def fake_fetch_browser_chatgpt_session_payload(**kwargs):
+                captured.update(kwargs)
+                return {
+                    "user": {"id": "user-1"},
+                    "account": {"id": "acct-1"},
+                    "accessToken": "browser-access",
+                    "sessionToken": "browser-session",
+                }
+
+            ANY_AUTO_MODULE.fetch_browser_chatgpt_session_payload = fake_fetch_browser_chatgpt_session_payload
 
             payload, error_message = runner._fetch_chatgpt_session_payload()
         finally:
@@ -211,6 +218,10 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
 
         self.assertEqual(payload["accessToken"], "browser-access")
         self.assertEqual(error_message, "")
+        self.assertEqual(
+            captured["cookies"],
+            [{"name": "cf_clearance", "value": "cookie", "domain": ".chatgpt.com", "path": "/"}],
+        )
         self.assertIn(
             ("warning", "HTTP ChatGPT Session 不完整，尝试浏览器会话回退"),
             logs,

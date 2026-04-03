@@ -246,6 +246,7 @@ def _extract_browser_session_token(cookies: list[dict]) -> str:
 def fetch_browser_chatgpt_session_payload(
     *,
     cookies_str: str = "",
+    cookies: Optional[list[dict[str, Any]]] = None,
     proxy_url: Optional[str] = None,
     callback_logger: Optional[Callable[[str], None]] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -275,9 +276,11 @@ def fetch_browser_chatgpt_session_payload(
         )
 
         try:
-            cookies = _parse_cookie_str(cookies_str, ".openai.com")
-            if cookies:
-                context.add_cookies(cookies)
+            context_cookies = list(cookies or [])
+            if not context_cookies and cookies_str:
+                context_cookies.extend(_parse_cookie_str(cookies_str, ".openai.com"))
+            if context_cookies:
+                context.add_cookies(context_cookies)
 
             page = context.new_page()
             page.goto("https://auth.openai.com/", wait_until="domcontentloaded", timeout=30_000)
