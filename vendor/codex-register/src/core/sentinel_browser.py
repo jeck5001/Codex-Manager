@@ -39,6 +39,14 @@ def _log(callback_logger: Optional[Callable[[str], None]], message: str):
 
 def _parse_cookie_str(cookies_str: str, domain: str) -> list[dict]:
     cookies: list[dict] = []
+    normalized_domain = str(domain or "").strip()
+    host_domain = normalized_domain.lstrip(".")
+    host_url = "https://chatgpt.com/"
+    if host_domain == "openai.com":
+        host_url = "https://auth.openai.com/"
+    elif host_domain:
+        host_url = f"https://{host_domain}/"
+
     for chunk in (cookies_str or "").split(";"):
         raw = chunk.strip()
         if not raw or "=" not in raw:
@@ -48,14 +56,18 @@ def _parse_cookie_str(cookies_str: str, domain: str) -> list[dict]:
         value = value.strip()
         if not name or not value:
             continue
-        cookies.append({
+        cookie = {
             "name": name,
             "value": value,
-            "domain": domain,
-            "path": "/",
             "secure": True,
             "httpOnly": False,
-        })
+        }
+        if name.startswith("__Host-"):
+            cookie["url"] = host_url
+        else:
+            cookie["domain"] = normalized_domain
+            cookie["path"] = "/"
+        cookies.append(cookie)
     return cookies
 
 
