@@ -500,6 +500,36 @@ class RegistrationEngine:
         """序列化当前会话 cookie，供支付接口复用"""
         return "; ".join(f"{name}={value}" for name, value in self._session_cookie_items())
 
+    def _resolve_current_device_id(self) -> str:
+        """获取当前 Device ID，优先实例字段，缺失时回退到 cookie。"""
+        current = self._clean_text(getattr(self, "_current_device_id", ""))
+        if current:
+            return current
+
+        cookie_sources = []
+        session = getattr(self, "session", None)
+        if session is not None:
+            cookie_sources.append(getattr(session, "cookies", None))
+        http_client = getattr(self, "http_client", None)
+        if http_client is not None:
+            http_session = getattr(http_client, "session", None)
+            if http_session is not None:
+                cookie_sources.append(getattr(http_session, "cookies", None))
+
+        for cookies in cookie_sources:
+            if cookies is None:
+                continue
+            try:
+                did = self._clean_text(cookies.get("oai-did"))
+            except Exception:
+                did = ""
+            if did:
+                self._current_device_id = did
+                self._log("当前 Device ID 丢失，已从会话 Cookie 恢复", "warning")
+                return did
+
+        return ""
+
     def _extract_session_token_from_cookies(self) -> Optional[str]:
         """兼容 next-auth 分片 cookie，尽量提取完整 session token"""
         items = self._session_cookie_items()
@@ -655,7 +685,7 @@ class RegistrationEngine:
         referer: str,
     ) -> Optional[Dict[str, str]]:
         """按 flow 通过浏览器获取完整 sentinel token。"""
-        did = self._clean_text(getattr(self, "_current_device_id", ""))
+        did = self._resolve_current_device_id()
         normalized_flow = self._clean_text(flow)
         normalized_referer = self._clean_text(referer)
         if not did or not normalized_flow:
@@ -704,7 +734,7 @@ class RegistrationEngine:
 
     def _get_create_account_sentinel_payload(self) -> Optional[Dict[str, str]]:
         """create_account 优先用浏览器获取完整 token，失败再回退纯 HTTP。"""
-        did = self._clean_text(getattr(self, "_current_device_id", ""))
+        did = self._resolve_current_device_id()
         if not did:
             return None
 
@@ -807,7 +837,7 @@ class RegistrationEngine:
                 "username": self.email
             })
 
-            did = self._clean_text(getattr(self, "_current_device_id", ""))
+            did = self._resolve_current_device_id()
             sentinel_payload = self._get_browser_sentinel_payload(
                 "username_password_create",
                 "https://auth.openai.com/create-account/password",

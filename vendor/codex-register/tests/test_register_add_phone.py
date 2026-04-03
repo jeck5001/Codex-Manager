@@ -1035,6 +1035,57 @@ class RegisterAddPhoneTests(unittest.TestCase):
             logs,
         )
 
+    def test_register_password_recovers_device_id_from_session_cookies(self):
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {}
+
+        class FakeSession:
+            def __init__(self):
+                self.cookies = {"oai-did": "did-from-cookie"}
+
+            def post(self, url, **kwargs):
+                captured["url"] = url
+                captured["kwargs"] = kwargs
+                return FakeResponse()
+
+        logs = []
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine.http_client = types.SimpleNamespace(session=engine.session)
+        engine._log = lambda message, level="info": logs.append((level, message))
+        engine._generate_password = lambda: "StrongPassw0rd!"
+        engine._current_device_id = ""
+        engine._current_sentinel_token = ""
+        engine._get_browser_sentinel_payload = lambda flow, referer: (
+            {
+                "p": "browser-p",
+                "t": "browser-t",
+                "c": "browser-c",
+                "id": "did-from-cookie",
+                "flow": flow,
+            }
+            if engine._current_device_id == "did-from-cookie"
+            else None
+        )
+        engine._check_sentinel = lambda did, flow="authorize_continue": None
+
+        ok, _password = engine._register_password()
+
+        self.assertTrue(ok)
+        sentinel = json.loads(captured["kwargs"]["headers"]["openai-sentinel-token"])
+        self.assertEqual(sentinel["id"], "did-from-cookie")
+        self.assertIn(
+            ("warning", "当前 Device ID 丢失，已从会话 Cookie 恢复"),
+            logs,
+        )
+
     def test_create_user_account_prefers_browser_sentinel_token_payload(self):
         captured = {}
 
