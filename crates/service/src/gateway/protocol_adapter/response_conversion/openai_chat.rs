@@ -12,6 +12,25 @@ use super::tool_mapping::{
 };
 use super::{is_response_completed_event_type, parse_openai_sse_event_value, ToolNameRestoreMap};
 
+/// OpenAI Chat Completions 规范使用 `prompt_tokens` / `completion_tokens`；Codex Responses 等上游常只给
+/// `input_tokens` / `output_tokens`。客户端（如 OpenClaw）按 OpenAI 字段读用量时，需补别名否则 UI 恒为 0。
+fn normalize_chat_completion_usage(usage: Value) -> Value {
+    let Value::Object(mut map) = usage else {
+        return usage;
+    };
+    if !map.contains_key("prompt_tokens") {
+        if let Some(v) = map.get("input_tokens").cloned() {
+            map.insert("prompt_tokens".to_string(), v);
+        }
+    }
+    if !map.contains_key("completion_tokens") {
+        if let Some(v) = map.get("output_tokens").cloned() {
+            map.insert("completion_tokens".to_string(), v);
+        }
+    }
+    Value::Object(map)
+}
+
 /// 函数 `extract_chat_content_text`
 ///
 /// 作者: gaohongshun
@@ -322,6 +341,9 @@ pub(super) fn map_openai_response_to_chat_completion(
                 restore_openai_tool_name_in_chat_choice(choice, tool_name_restore_map);
             }
         }
+        if let Some(usage) = cloned.get_mut("usage") {
+            *usage = normalize_chat_completion_usage(usage.clone());
+        }
         return cloned;
     }
     let source = value.get("response").unwrap_or(value);
@@ -442,7 +464,7 @@ pub(super) fn map_openai_response_to_chat_completion(
         })]),
     );
     if let Some(usage) = usage {
-        out.insert("usage".to_string(), usage);
+        out.insert("usage".to_string(), normalize_chat_completion_usage(usage));
     }
     Value::Object(out)
 }
@@ -902,7 +924,7 @@ pub(super) fn convert_openai_sse_to_chat_completions_json(
     }
     if let Some(usage) = usage {
         if let Some(out_obj) = out.as_object_mut() {
-            out_obj.insert("usage".to_string(), usage);
+            out_obj.insert("usage".to_string(), normalize_chat_completion_usage(usage));
         }
     }
 

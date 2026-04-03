@@ -46,6 +46,10 @@ fn openai_chat_response_is_converted_from_responses_json() {
             .and_then(serde_json::Value::as_str),
         Some("hello world")
     );
+    assert_eq!(value["usage"]["input_tokens"], 10);
+    assert_eq!(value["usage"]["output_tokens"], 2);
+    assert_eq!(value["usage"]["prompt_tokens"], 10);
+    assert_eq!(value["usage"]["completion_tokens"], 2);
 }
 
 /// 函数 `openai_chat_response_is_converted_from_output_text_item`
