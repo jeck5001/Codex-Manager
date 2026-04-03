@@ -627,40 +627,56 @@ class RegistrationEngine:
             "userVerifyingCrossPlatformAuthenticator": False,
         }, separators=(",", ":"))
 
-    def _get_browser_create_account_sentinel_payload(self) -> Optional[Dict[str, str]]:
-        """在 create_account 前优先通过浏览器拿完整 sentinel token（含 p/t/c）。"""
+    def _get_browser_sentinel_payload(
+        self,
+        flow: str,
+        referer: str,
+    ) -> Optional[Dict[str, str]]:
+        """按 flow 通过浏览器获取完整 sentinel token。"""
         did = self._clean_text(getattr(self, "_current_device_id", ""))
-        if not did:
+        normalized_flow = self._clean_text(flow)
+        normalized_referer = self._clean_text(referer)
+        if not did or not normalized_flow:
             return None
 
-        for flow in CREATE_ACCOUNT_SENTINEL_FLOWS:
-            try:
-                payload = fetch_browser_sentinel_token(
-                    did=did,
-                    flow=flow,
-                    referer="https://auth.openai.com/about-you",
-                    cookies_str=self._serialize_session_cookies(),
-                    proxy_url=self.proxy_url,
-                    callback_logger=lambda message: self._log(message),
-                )
-            except Exception as e:
-                self._log(f"浏览器 Sentinel token 获取异常: {e}", "warning")
-                payload = None
-
-            normalized = self._normalize_sentinel_payload(
-                payload,
+        try:
+            payload = fetch_browser_sentinel_token(
                 did=did,
-                flow=flow,
+                flow=normalized_flow,
+                referer=normalized_referer,
+                cookies_str=self._serialize_session_cookies(),
+                proxy_url=self.proxy_url,
+                callback_logger=lambda message: self._log(message),
             )
-            if normalized and normalized.get("t"):
-                self._log(f"浏览器 Sentinel token 获取成功，flow={flow}")
-                return normalized
+        except Exception as e:
+            self._log(f"浏览器 Sentinel token 获取异常: {e}", "warning")
+            return None
 
-            if payload:
-                self._log(
-                    f"浏览器 Sentinel token 缺少 Turnstile 字段，flow={flow}，继续尝试下一种 flow",
-                    "warning",
-                )
+        normalized = self._normalize_sentinel_payload(
+            payload,
+            did=did,
+            flow=normalized_flow,
+        )
+        if normalized and normalized.get("t"):
+            self._log(f"浏览器 Sentinel token 获取成功，flow={normalized_flow}")
+            return normalized
+
+        if payload:
+            self._log(
+                f"浏览器 Sentinel token 缺少 Turnstile 字段，flow={normalized_flow}",
+                "warning",
+            )
+        return None
+
+    def _get_browser_create_account_sentinel_payload(self) -> Optional[Dict[str, str]]:
+        """在 create_account 前优先通过浏览器拿完整 sentinel token（含 p/t/c）。"""
+        for flow in CREATE_ACCOUNT_SENTINEL_FLOWS:
+            normalized = self._get_browser_sentinel_payload(
+                flow,
+                "https://auth.openai.com/about-you",
+            )
+            if normalized:
+                return normalized
 
         return None
 
@@ -770,8 +786,12 @@ class RegistrationEngine:
             })
 
             did = self._clean_text(getattr(self, "_current_device_id", ""))
+            sentinel_payload = self._get_browser_sentinel_payload(
+                "username_password_create",
+                "https://auth.openai.com/create-account/password",
+            )
             sen_token = ""
-            if did:
+            if did and not sentinel_payload:
                 sen_token = self._clean_text(
                     self._check_sentinel(did, flow="username_password_create")
                 )
@@ -784,7 +804,7 @@ class RegistrationEngine:
                 "ext-passkey-client-capabilities": self._build_passkey_client_capabilities(),
             }
             sentinel = self._build_sentinel_header(
-                sen_token,
+                sentinel_payload or sen_token,
                 did=did,
                 flow="username_password_create",
             )
