@@ -16,6 +16,8 @@ router = APIRouter()
 SENSITIVE_FIELDS = {
     "ddg_token",
     "ddgToken",
+    "browserbase_api_key",
+    "browserbaseApiKey",
     "mail_inbox_url",
     "mailInboxUrl",
 }

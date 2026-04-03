@@ -118,6 +118,41 @@ class BrowserbaseDDGRunnerTests(unittest.TestCase):
 
         self.assertEqual(email, "alias123@duck.com")
 
+    def test_create_browserbase_session_sends_browserbase_api_key_header(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={
+                "browserbase_api_key": "bb_key_123",
+                "browser_timezone": "Asia/Shanghai",
+            },
+        )
+        captured = {}
+
+        def fake_http(method, url, **kwargs):
+            captured["method"] = method
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            return DummyResponse(
+                200,
+                {
+                    "success": True,
+                    "sessionId": "session-1",
+                    "sessionUrl": "https://session.example?wss=wss%3A%2F%2Fbrowser.example",
+                },
+            )
+
+        runner._http = fake_http
+
+        runner._create_browserbase_session()
+
+        self.assertEqual(captured["method"], "post")
+        self.assertEqual(captured["url"], "https://gemini.browserbase.com/api/session")
+        self.assertEqual(
+            captured["kwargs"]["headers"]["X-BB-API-Key"],
+            "bb_key_123",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -359,6 +394,27 @@ class BrowserbaseDDGRunnerAgentTests(unittest.TestCase):
         self.assertIs(returned, response)
         self.assertFalse(response.closed)
         self.assertIn("google/gemini-2.5-computer-use-preview-10-2025", captured["url"])
+
+    def test_send_agent_goal_sends_browserbase_api_key_header(self):
+        runner = BrowserbaseDDGRegistrationRunner(
+            profile_id=1,
+            profile_name="demo",
+            profile_config={"browserbase_api_key": "bb_key_456"},
+        )
+        captured = {}
+        response = DummyStreamingResponse(200, "")
+
+        def fake_http(method, url, **kwargs):
+            captured["method"] = method
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            return response
+
+        runner._http = fake_http
+
+        runner._send_agent_goal("session-1", "do something")
+
+        self.assertEqual(captured["kwargs"]["headers"]["X-BB-API-Key"], "bb_key_456")
 
 
 class BrowserbaseDDGRunnerPromptTests(unittest.TestCase):
