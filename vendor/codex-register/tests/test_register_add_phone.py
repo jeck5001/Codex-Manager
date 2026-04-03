@@ -960,6 +960,46 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertEqual(sentinel["c"], "http-fallback-token")
         self.assertEqual(sentinel["flow"], "username_password_create")
 
+    def test_register_password_logs_browser_sentinel_source_and_fields(self):
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {}
+
+        class FakeSession:
+            def post(self, url, **kwargs):
+                return FakeResponse()
+
+        logs = []
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine._log = lambda message, level="info": logs.append((level, message))
+        engine._generate_password = lambda: "StrongPassw0rd!"
+        engine._current_device_id = "did-browser"
+        engine._current_sentinel_token = "old-authorize-token"
+        engine._get_browser_sentinel_payload = lambda flow, referer: {
+            "p": "browser-p",
+            "t": "browser-t",
+            "c": "browser-c",
+            "id": "did-browser",
+            "flow": flow,
+        }
+        engine._check_sentinel = lambda did, flow="authorize_continue": "http-fallback-token"
+
+        ok, _password = engine._register_password()
+
+        self.assertTrue(ok)
+        self.assertIn(
+            (
+                "info",
+                "密码注册 Sentinel 来源=browser flow=username_password_create p=yes t=yes c=yes",
+            ),
+            logs,
+        )
+
     def test_create_user_account_prefers_browser_sentinel_token_payload(self):
         captured = {}
 
