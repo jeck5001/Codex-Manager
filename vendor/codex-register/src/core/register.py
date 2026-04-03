@@ -618,6 +618,28 @@ class RegistrationEngine:
             return None
         return json.dumps(normalized, ensure_ascii=False)
 
+    def _log_sentinel_payload_summary(
+        self,
+        stage: str,
+        source: str,
+        payload: Any,
+        *,
+        did: Optional[str],
+        flow: str,
+    ):
+        """输出简明的 Sentinel 载荷诊断信息。"""
+        normalized = self._normalize_sentinel_payload(payload, did=did, flow=flow)
+        if not normalized:
+            self._log(f"{stage} Sentinel 来源={source} flow={flow} payload=missing", "warning")
+            return
+
+        self._log(
+            f"{stage} Sentinel 来源={source} flow={normalized['flow']}"
+            f" p={'yes' if normalized.get('p') else 'no'}"
+            f" t={'yes' if normalized.get('t') else 'no'}"
+            f" c={'yes' if normalized.get('c') else 'no'}"
+        )
+
     @staticmethod
     def _build_passkey_client_capabilities() -> str:
         """为新注册接口补齐 passkey capabilities 头。"""
@@ -803,6 +825,14 @@ class RegistrationEngine:
                 "content-type": "application/json",
                 "ext-passkey-client-capabilities": self._build_passkey_client_capabilities(),
             }
+            sentinel_source = "browser" if sentinel_payload else "http" if sen_token else "missing"
+            self._log_sentinel_payload_summary(
+                "密码注册",
+                sentinel_source,
+                sentinel_payload or sen_token,
+                did=did,
+                flow="username_password_create",
+            )
             sentinel = self._build_sentinel_header(
                 sentinel_payload or sen_token,
                 did=did,
