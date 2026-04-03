@@ -282,6 +282,35 @@ class RegisterAddPhoneTests(unittest.TestCase):
 
         self.assertEqual(engine._cached_workspace_id, "ws-script")
 
+    def test_submit_signup_form_follows_continue_url_for_password_page(self):
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "page": {"type": "create_account_password"},
+                    "continue_url": "https://auth.openai.com/create-account/password",
+                }
+
+        class FakeSession:
+            def post(self, *_args, **_kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        followed = []
+        engine._follow_auth_continue_url = lambda payload, stage: followed.append((payload, stage))
+
+        result = engine._submit_signup_form("did", "sentinel")
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.page_type, "create_account_password")
+        self.assertEqual(len(followed), 1)
+        self.assertEqual(followed[0][0]["continue_url"], "https://auth.openai.com/create-account/password")
+        self.assertEqual(followed[0][1], "注册邮箱")
+
     def test_run_falls_back_to_workspace_flow_when_add_phone_bypass_has_no_callback(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
         engine.logs = []

@@ -588,6 +588,8 @@ class RegistrationEngine:
                 response_data = response.json()
                 page_type = response_data.get("page", {}).get("type", "")
                 self._log(f"响应页面类型: {page_type}")
+                self._log_auth_response_preview("注册邮箱响应摘要", response_data)
+                self._follow_auth_continue_url(response_data, "注册邮箱")
 
                 # 判断是否为已注册账号
                 is_existing = page_type == OPENAI_PAGE_TYPES["EMAIL_OTP_VERIFICATION"]
