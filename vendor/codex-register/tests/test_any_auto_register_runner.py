@@ -51,6 +51,26 @@ def load_any_auto_module():
     register_module.RegistrationResult = RegistrationResult
     sys.modules["src.core.register"] = register_module
 
+    token_refresh_module = types.ModuleType("src.core.token_refresh")
+
+    class TokenRefreshResult:
+        def __init__(self, success=False, access_token="", refresh_token="", error_message=""):
+            self.success = success
+            self.access_token = access_token
+            self.refresh_token = refresh_token
+            self.error_message = error_message
+
+    class TokenRefreshManager:
+        def __init__(self, proxy_url=None):
+            self.proxy_url = proxy_url
+
+        def refresh_by_session_token(self, session_token):
+            return TokenRefreshResult(success=False, error_message=f"unmocked:{session_token}")
+
+    token_refresh_module.TokenRefreshManager = TokenRefreshManager
+    token_refresh_module.TokenRefreshResult = TokenRefreshResult
+    sys.modules["src.core.token_refresh"] = token_refresh_module
+
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -72,6 +92,7 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
             _serialize_session_cookies=lambda: cookies,
             _is_existing_account=False,
             session_token=None,
+            _clean_text=lambda value: str(value or "").strip(),
             _extract_session_token_from_cookies=lambda: extracted_session_token,
             _extract_workspace_id_from_token=lambda _token: "",
             _post_registration_health_check=lambda _token: ("active", True, ""),
@@ -103,6 +124,46 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
         self.assertEqual(
             completed.cookies,
             "cf_clearance=abc; __Secure-next-auth.session-token=existing-token",
+        )
+
+    def test_chatgpt_session_falls_back_to_session_token_refresh(self):
+        runner = self._build_runner(cookies="cf_clearance=abc", extracted_session_token="sess-from-cookie")
+        logs = []
+        runner._log = lambda message, level="info": logs.append((level, message))
+
+        original_manager = ANY_AUTO_MODULE.TokenRefreshManager
+
+        class FakeRefreshResult:
+            success = True
+            access_token = "access-from-refresh"
+            refresh_token = ""
+            error_message = ""
+
+        class FakeTokenRefreshManager:
+            def __init__(self, proxy_url=None):
+                self.proxy_url = proxy_url
+
+            def refresh_by_session_token(self, session_token):
+                self.session_token = session_token
+                return FakeRefreshResult()
+
+        try:
+            ANY_AUTO_MODULE.TokenRefreshManager = FakeTokenRefreshManager
+
+            payload = runner._recover_chatgpt_access_token(
+                {"user": {"id": "user-1"}, "account": {"id": "acct-1"}}
+            )
+        finally:
+            ANY_AUTO_MODULE.TokenRefreshManager = original_manager
+
+        self.assertEqual(payload["accessToken"], "access-from-refresh")
+        self.assertIn(
+            ("warning", "ChatGPT Session 缺少 accessToken，尝试使用 session_token 刷新"),
+            logs,
+        )
+        self.assertIn(
+            ("info", "已通过 session_token 刷新补齐 accessToken"),
+            logs,
         )
 
 
