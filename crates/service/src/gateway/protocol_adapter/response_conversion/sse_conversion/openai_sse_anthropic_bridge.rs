@@ -32,6 +32,28 @@ fn extract_json_int_value_after(payload: &str, key: &str) -> Option<usize> {
     digits.parse().ok()
 }
 
+/// 上游常在 `output_item.added` 里带 `input: {}` / `arguments: "{}"`，若写入后再拼接
+/// `response.function_call_arguments.delta`，会得到 `"{}{\"path\"...` 这类非法 JSON，
+/// `parse_tool_arguments_as_object` 解析失败后会退化成 `{}`，OpenClaw 侧就看到 `edits:[]` 等异常。
+fn is_placeholder_tool_arguments_json(raw: &str) -> bool {
+    matches!(raw.trim(), "" | "{}" | "[]" | "null")
+}
+
+/// 将 `output_item` 上解析出的参数合并进流式缓冲区：占位值不覆盖已累积内容；
+/// 非占位时，空缓冲直接写入，否则仅在快照更长时覆盖（避免 `done` 里的空对象冲掉完整流式参数）。
+fn merge_tool_arguments_from_output_item(arguments: &mut String, arguments_raw: String) {
+    if is_placeholder_tool_arguments_json(&arguments_raw) {
+        return;
+    }
+    if arguments.is_empty() {
+        *arguments = arguments_raw;
+        return;
+    }
+    if arguments_raw.len() > arguments.len() {
+        *arguments = arguments_raw;
+    }
+}
+
 fn salvage_chat_completion_chunk_payload(
     payload: &str,
     response_id: &mut Option<String>,
@@ -323,7 +345,7 @@ pub(super) fn convert_openai_sse_to_anthropic(
                         entry.name = Some(name.to_string());
                     }
                     if let Some(arguments_raw) = extract_function_call_arguments_raw(item_obj) {
-                        entry.arguments = arguments_raw;
+                        merge_tool_arguments_from_output_item(&mut entry.arguments, arguments_raw);
                     }
                     continue;
                 }
@@ -365,7 +387,7 @@ pub(super) fn convert_openai_sse_to_anthropic(
                             entry.name = Some(name.to_string());
                         }
                         if let Some(arguments_raw) = extract_function_call_arguments_raw(item_obj) {
-                            entry.arguments = arguments_raw;
+                            merge_tool_arguments_from_output_item(&mut entry.arguments, arguments_raw);
                         }
                     }
                     continue;

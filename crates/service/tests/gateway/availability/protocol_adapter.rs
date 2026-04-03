@@ -796,3 +796,51 @@ fn anthropic_sse_response_preserves_split_edit_arguments_without_completed_outpu
     assert!(text.contains("newText"));
     assert!(text.contains("THREE"));
 }
+
+/// `output_item.added` 若带 `input: {}`，旧逻辑会先写入 `"{}"` 再拼接 delta，整段参数 JSON 会损坏。
+#[test]
+fn anthropic_sse_response_edit_ignores_placeholder_input_on_added() {
+    let upstream = concat!(
+        "data: {\"type\":\"response.output_item.added\",\"response_id\":\"resp_ph\",\"created\":1,\"model\":\"gpt-5.3-codex\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_ph\",\"name\":\"edit\",\"input\":{}}}\n\n",
+        "data: {\"type\":\"response.function_call_arguments.delta\",\"response_id\":\"resp_ph\",\"created\":1,\"model\":\"gpt-5.3-codex\",\"output_index\":0,\"delta\":\"{\\\"path\\\":\\\"/tmp/placeholder.txt\\\",\\\"edits\\\":[{\\\"oldText\\\":\\\"verylongoldtextprefix\"}\n\n",
+        "data: {\"type\":\"response.function_call_arguments.delta\",\"response_id\":\"resp_ph\",\"created\":1,\"model\":\"gpt-5.3-codex\",\"output_index\":0,\"delta\":\"verylongoldtextsuffix\\\"\"}\n\n",
+        "data: {\"type\":\"response.function_call_arguments.delta\",\"response_id\":\"resp_ph\",\"created\":1,\"model\":\"gpt-5.3-codex\",\"output_index\":0,\"delta\":\",\\\"newText\\\":\\\"replacement\\\"}]}\"}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_ph\",\"created\":1,\"model\":\"gpt-5.3-codex\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
+        "data: [DONE]\n\n",
+    );
+    let (body, content_type) = adapt_upstream_response(
+        ResponseAdapter::AnthropicSse,
+        Some("text/event-stream"),
+        upstream.as_bytes(),
+    )
+    .expect("adapt stream");
+    assert_eq!(content_type, "text/event-stream");
+    let text = String::from_utf8(body).expect("utf8");
+    assert!(text.contains("/tmp/placeholder.txt"));
+    assert!(text.contains("verylongoldtextprefixverylongoldtextsuffix"));
+    assert!(text.contains("replacement"));
+}
+
+/// 流式参数已拼完整后，`output_item.done` 若带占位 `arguments: "{}"`，不得覆盖掉真实内容。
+#[test]
+fn anthropic_sse_response_edit_done_placeholder_does_not_erase_streamed_args() {
+    let upstream = concat!(
+        "data: {\"type\":\"response.output_item.added\",\"response_id\":\"resp_wipe\",\"created\":2,\"model\":\"gpt-5.3-codex\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_wipe\",\"name\":\"edit\"}}\n\n",
+        "data: {\"type\":\"response.function_call_arguments.delta\",\"response_id\":\"resp_wipe\",\"created\":2,\"model\":\"gpt-5.3-codex\",\"output_index\":0,\"delta\":\"{\\\"path\\\":\\\"/tmp/wipe.txt\\\",\\\"edits\\\":[{\\\"oldText\\\":\\\"x\\\"\"}\n\n",
+        "data: {\"type\":\"response.function_call_arguments.delta\",\"response_id\":\"resp_wipe\",\"created\":2,\"model\":\"gpt-5.3-codex\",\"output_index\":0,\"delta\":\",\\\"newText\\\":\\\"y\\\"}]}\"}\n\n",
+        "data: {\"type\":\"response.output_item.done\",\"response_id\":\"resp_wipe\",\"created\":2,\"model\":\"gpt-5.3-codex\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_wipe\",\"name\":\"edit\",\"arguments\":\"{}\"}}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_wipe\",\"created\":2,\"model\":\"gpt-5.3-codex\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
+        "data: [DONE]\n\n",
+    );
+    let (body, content_type) = adapt_upstream_response(
+        ResponseAdapter::AnthropicSse,
+        Some("text/event-stream"),
+        upstream.as_bytes(),
+    )
+    .expect("adapt stream");
+    assert_eq!(content_type, "text/event-stream");
+    let text = String::from_utf8(body).expect("utf8");
+    assert!(text.contains("/tmp/wipe.txt"));
+    assert!(text.contains("oldText"));
+    assert!(text.contains("newText"));
+}
