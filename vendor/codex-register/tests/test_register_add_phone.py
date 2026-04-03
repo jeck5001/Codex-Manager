@@ -168,6 +168,7 @@ def load_register_module():
     load_core_module("register_retry_policy")
     load_core_module("register_token_resolver")
     load_core_module("register_flow_runner")
+    load_core_module("sentinel_browser")
 
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     assert spec and spec.loader
@@ -768,6 +769,150 @@ class RegisterAddPhoneTests(unittest.TestCase):
             ["https://auth.openai.com/add-phone"],
         )
         self.assertEqual(followed_urls, [])
+
+    def test_register_password_sends_updated_sentinel_flow_and_passkey_capabilities(self):
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {}
+
+        class FakeSession:
+            def post(self, url, **kwargs):
+                captured["url"] = url
+                captured["kwargs"] = kwargs
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._generate_password = lambda: "StrongPassw0rd!"
+        engine._current_device_id = "did-123"
+        engine._current_sentinel_token = "sentinel-c"
+
+        ok, password = engine._register_password()
+
+        self.assertTrue(ok)
+        self.assertEqual(password, "StrongPassw0rd!")
+        headers = captured["kwargs"]["headers"]
+        sentinel = json.loads(headers["openai-sentinel-token"])
+        self.assertEqual(sentinel["id"], "did-123")
+        self.assertEqual(sentinel["c"], "sentinel-c")
+        self.assertEqual(sentinel["flow"], "username_password_create")
+        self.assertIn("ext-passkey-client-capabilities", headers)
+        self.assertTrue(headers["ext-passkey-client-capabilities"])
+
+    def test_create_user_account_prefers_browser_sentinel_token_payload(self):
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {}
+
+        class FakeSession:
+            def post(self, url, **kwargs):
+                captured["url"] = url
+                captured["kwargs"] = kwargs
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._current_device_id = "did-123"
+        engine._get_create_account_sentinel_payload = lambda: {
+            "p": "browser-payload",
+            "t": "browser-turnstile",
+            "c": "browser-c",
+            "id": "did-123",
+            "flow": "username_password_create",
+        }
+
+        ok = engine._create_user_account()
+
+        self.assertTrue(ok)
+        headers = captured["kwargs"]["headers"]
+        sentinel = json.loads(headers["openai-sentinel-token"])
+        self.assertEqual(sentinel["p"], "browser-payload")
+        self.assertEqual(sentinel["t"], "browser-turnstile")
+        self.assertEqual(sentinel["c"], "browser-c")
+        self.assertEqual(sentinel["flow"], "username_password_create")
+
+    def test_create_user_account_falls_back_to_http_sentinel_token_payload(self):
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {}
+
+        class FakeSession:
+            def post(self, url, **kwargs):
+                captured["url"] = url
+                captured["kwargs"] = kwargs
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._current_device_id = "did-456"
+        engine._get_create_account_sentinel_payload = lambda: None
+        engine._check_sentinel = lambda did: "http-fallback-token"
+
+        ok = engine._create_user_account()
+
+        self.assertTrue(ok)
+        headers = captured["kwargs"]["headers"]
+        sentinel = json.loads(headers["openai-sentinel-token"])
+        self.assertEqual(sentinel["id"], "did-456")
+        self.assertEqual(sentinel["c"], "http-fallback-token")
+        self.assertEqual(sentinel["p"], "")
+        self.assertEqual(sentinel["t"], "")
+        self.assertEqual(sentinel["flow"], "username_password_create")
+
+    def test_browser_create_account_sentinel_payload_tries_oauth_flow_before_password_flow(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine._log = lambda *_args, **_kwargs: None
+        engine._current_device_id = "did-789"
+        engine.proxy_url = None
+        engine._serialize_session_cookies = lambda: "foo=bar"
+
+        original_fetch = REGISTER_MODULE.fetch_browser_sentinel_token
+        calls = []
+
+        try:
+            def fake_fetch_browser_sentinel_token(**kwargs):
+                calls.append(kwargs["flow"])
+                if kwargs["flow"] == "oauth_create_account":
+                    return None
+                return {
+                    "p": "browser-p",
+                    "t": "browser-t",
+                    "c": "browser-c",
+                    "id": "did-789",
+                    "flow": kwargs["flow"],
+                }
+
+            REGISTER_MODULE.fetch_browser_sentinel_token = fake_fetch_browser_sentinel_token
+
+            payload = engine._get_browser_create_account_sentinel_payload()
+        finally:
+            REGISTER_MODULE.fetch_browser_sentinel_token = original_fetch
+
+        self.assertEqual(
+            calls,
+            ["oauth_create_account", "username_password_create"],
+        )
+        self.assertEqual(payload["flow"], "username_password_create")
+        self.assertEqual(payload["t"], "browser-t")
 
     def test_generate_password_meets_current_policy(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)

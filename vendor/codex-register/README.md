@@ -321,7 +321,7 @@ docker-compose build --no-cache
 - Team Manager 上传始终直连，不经过代理
 - 支付链接生成使用账号 access_token 鉴权，走全局代理配置
 - 无痕浏览器优先使用 playwright（注入 cookie 直达支付页）；未安装时降级为系统 Chrome/Edge 无痕模式
-- 安装完整支付功能：`pip install playwright && playwright install chromium`（可选）
+- Docker 镜像默认已内置 Playwright + Chromium；非 Docker 本地环境如需浏览器能力，执行：`pip install playwright && playwright install chromium`
 - 订阅状态自动检测调用 `chatgpt.com/backend-api/me`，走全局代理
 - 批量注册并发数上限为 50，线程池大小已相应调整
 
