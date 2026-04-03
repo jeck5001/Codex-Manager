@@ -496,6 +496,51 @@ class RegistrationEngine:
 
         return items
 
+    def _session_browser_cookies(self) -> list[dict[str, Any]]:
+        """导出适合 Playwright 注入的结构化 cookie，保留域名维度。"""
+        if not self.session or not getattr(self.session, "cookies", None):
+            return []
+
+        jar = getattr(self.session.cookies, "jar", None)
+        if jar is None:
+            return []
+
+        cookies: list[dict[str, Any]] = []
+        for cookie in jar:
+            name = str(getattr(cookie, "name", "") or "").strip()
+            value = str(getattr(cookie, "value", "") or "").strip()
+            domain = str(getattr(cookie, "domain", "") or "").strip()
+            path = str(getattr(cookie, "path", "") or "").strip() or "/"
+            if not name or not value:
+                continue
+
+            secure = bool(getattr(cookie, "secure", True))
+            http_only = False
+            try:
+                http_only = bool(cookie.has_nonstandard_attr("HttpOnly"))
+            except Exception:
+                http_only = False
+
+            browser_cookie: dict[str, Any] = {
+                "name": name,
+                "value": value,
+                "secure": secure,
+                "httpOnly": http_only,
+            }
+            if name.startswith("__Host-"):
+                host = domain.lstrip(".")
+                if host:
+                    browser_cookie["url"] = f"https://{host}/"
+                else:
+                    browser_cookie["url"] = "https://auth.openai.com/"
+            else:
+                browser_cookie["domain"] = domain or ".openai.com"
+                browser_cookie["path"] = path
+
+            cookies.append(browser_cookie)
+
+        return cookies
+
     def _serialize_session_cookies(self) -> str:
         """序列化当前会话 cookie，供支付接口复用"""
         return "; ".join(f"{name}={value}" for name, value in self._session_cookie_items())

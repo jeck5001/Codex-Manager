@@ -238,6 +238,7 @@ class AnyAutoRegistrationRunner:
                 self._log("HTTP ChatGPT Session 不完整，尝试浏览器会话回退", "warning")
                 browser_payload = fetch_browser_chatgpt_session_payload(
                     cookies_str=self.engine._serialize_session_cookies(),
+                    cookies=self.engine._session_browser_cookies(),
                     proxy_url=self.engine.proxy_url,
                     callback_logger=lambda message: self._log(message),
                 )
