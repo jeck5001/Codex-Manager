@@ -71,6 +71,10 @@ def load_any_auto_module():
     token_refresh_module.TokenRefreshResult = TokenRefreshResult
     sys.modules["src.core.token_refresh"] = token_refresh_module
 
+    sentinel_browser_module = types.ModuleType("src.core.sentinel_browser")
+    sentinel_browser_module.fetch_browser_chatgpt_session_payload = lambda **_kwargs: None
+    sys.modules["src.core.sentinel_browser"] = sentinel_browser_module
+
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -163,6 +167,52 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
         )
         self.assertIn(
             ("info", "已通过 session_token 刷新补齐 accessToken"),
+            logs,
+        )
+
+    def test_fetch_chatgpt_session_uses_browser_fallback_when_http_payload_incomplete(self):
+        class FakeResponse:
+            def __init__(self, status_code, payload=None, url="https://chatgpt.com/"):
+                self.status_code = status_code
+                self._payload = payload or {}
+                self.url = url
+
+            def json(self):
+                return self._payload
+
+        class FakeSession:
+            def __init__(self):
+                self.calls = []
+
+            def get(self, url, **kwargs):
+                self.calls.append(url)
+                if "api/auth/session" in url:
+                    return FakeResponse(200, {"user": {"id": "user-1"}, "account": {"id": "acct-1"}})
+                return FakeResponse(200, url=url)
+
+        runner = self._build_runner(cookies="cf_clearance=abc", extracted_session_token=None)
+        runner.engine.session = FakeSession()
+        logs = []
+        runner._log = lambda message, level="info": logs.append((level, message))
+
+        original_fetch = ANY_AUTO_MODULE.fetch_browser_chatgpt_session_payload
+
+        try:
+            ANY_AUTO_MODULE.fetch_browser_chatgpt_session_payload = lambda **kwargs: {
+                "user": {"id": "user-1"},
+                "account": {"id": "acct-1"},
+                "accessToken": "browser-access",
+                "sessionToken": "browser-session",
+            }
+
+            payload, error_message = runner._fetch_chatgpt_session_payload()
+        finally:
+            ANY_AUTO_MODULE.fetch_browser_chatgpt_session_payload = original_fetch
+
+        self.assertEqual(payload["accessToken"], "browser-access")
+        self.assertEqual(error_message, "")
+        self.assertIn(
+            ("warning", "HTTP ChatGPT Session 不完整，尝试浏览器会话回退"),
             logs,
         )
 
