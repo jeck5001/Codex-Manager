@@ -31,6 +31,7 @@ from .register_token_resolver import (
     build_callback_url_from_page,
     extract_workspace_id_from_token,
 )
+from .sentinel_browser import fetch_browser_sentinel_token
 from .oauth import OAuthManager, OAuthStart
 from .http_client import OpenAIHTTPClient, HTTPClientError
 from ..services import EmailServiceFactory, BaseEmailService, EmailServiceType
@@ -50,6 +51,10 @@ from ..config.settings import get_settings
 
 
 logger = logging.getLogger(__name__)
+CREATE_ACCOUNT_SENTINEL_FLOWS = (
+    "oauth_create_account",
+    "username_password_create",
+)
 
 
 @dataclass
@@ -175,6 +180,8 @@ class RegistrationEngine:
         self._last_otp_error_code: str = ""
         self._last_otp_error_message: str = ""
         self._cached_workspace_id: str = ""
+        self._current_device_id: str = ""
+        self._current_sentinel_token: str = ""
         self.flow_runner = RegisterFlowRunner(self)
 
     def _get_flow_runner(self) -> RegisterFlowRunner:
@@ -549,6 +556,127 @@ class RegistrationEngine:
             self._log(f"Sentinel 检查异常: {e}", "warning")
             return None
 
+    def _normalize_sentinel_payload(
+        self,
+        payload: Any,
+        *,
+        did: Optional[str],
+        flow: str,
+    ) -> Optional[Dict[str, str]]:
+        """归一化 openai-sentinel-token 载荷。"""
+        normalized_did = self._clean_text(did)
+        normalized_flow = self._clean_text(flow)
+
+        if isinstance(payload, str):
+            raw = self._clean_text(payload)
+            if not raw:
+                return None
+            if raw.startswith("{") and raw.endswith("}"):
+                try:
+                    payload = json.loads(raw)
+                except Exception:
+                    payload = {"c": raw}
+            else:
+                payload = {"c": raw}
+
+        if not isinstance(payload, dict):
+            return None
+
+        normalized = {
+            "p": self._clean_text(payload.get("p")),
+            "t": self._clean_text(payload.get("t")),
+            "c": self._clean_text(payload.get("c") or payload.get("token")),
+            "id": self._clean_text(payload.get("id")) or normalized_did,
+            "flow": self._clean_text(payload.get("flow")) or normalized_flow,
+        }
+
+        if not normalized["c"]:
+            return None
+        if not normalized["id"]:
+            return None
+        if not normalized["flow"]:
+            return None
+        return normalized
+
+    def _build_sentinel_header(
+        self,
+        payload: Any,
+        *,
+        did: Optional[str],
+        flow: str,
+    ) -> Optional[str]:
+        normalized = self._normalize_sentinel_payload(payload, did=did, flow=flow)
+        if not normalized:
+            return None
+        return json.dumps(normalized, ensure_ascii=False)
+
+    @staticmethod
+    def _build_passkey_client_capabilities() -> str:
+        """为新注册接口补齐 passkey capabilities 头。"""
+        return json.dumps({
+            "conditionalMediation": False,
+            "userVerifyingPlatformAuthenticator": False,
+            "userVerifyingCrossPlatformAuthenticator": False,
+        }, separators=(",", ":"))
+
+    def _get_browser_create_account_sentinel_payload(self) -> Optional[Dict[str, str]]:
+        """在 create_account 前优先通过浏览器拿完整 sentinel token（含 p/t/c）。"""
+        did = self._clean_text(getattr(self, "_current_device_id", ""))
+        if not did:
+            return None
+
+        for flow in CREATE_ACCOUNT_SENTINEL_FLOWS:
+            try:
+                payload = fetch_browser_sentinel_token(
+                    did=did,
+                    flow=flow,
+                    referer="https://auth.openai.com/about-you",
+                    cookies_str=self._serialize_session_cookies(),
+                    proxy_url=self.proxy_url,
+                    callback_logger=lambda message: self._log(message),
+                )
+            except Exception as e:
+                self._log(f"浏览器 Sentinel token 获取异常: {e}", "warning")
+                payload = None
+
+            normalized = self._normalize_sentinel_payload(
+                payload,
+                did=did,
+                flow=flow,
+            )
+            if normalized and normalized.get("t"):
+                self._log(f"浏览器 Sentinel token 获取成功，flow={flow}")
+                return normalized
+
+            if payload:
+                self._log(
+                    f"浏览器 Sentinel token 缺少 Turnstile 字段，flow={flow}，继续尝试下一种 flow",
+                    "warning",
+                )
+
+        return None
+
+    def _get_create_account_sentinel_payload(self) -> Optional[Dict[str, str]]:
+        """create_account 优先用浏览器获取完整 token，失败再回退纯 HTTP。"""
+        did = self._clean_text(getattr(self, "_current_device_id", ""))
+        if not did:
+            return None
+
+        browser_payload = self._get_browser_create_account_sentinel_payload()
+        if browser_payload:
+            return browser_payload
+
+        fallback_token = self._check_sentinel(did)
+        if not fallback_token:
+            return None
+
+        self._log("create_account 浏览器 Sentinel 失败，已回退纯 HTTP token", "warning")
+        return self._normalize_sentinel_payload(
+            fallback_token,
+            did=did,
+            flow=CREATE_ACCOUNT_SENTINEL_FLOWS[-1],
+        )
+
     def _submit_signup_form(self, did: str, sen_token: Optional[str]) -> SignupFormResult:
         """
         提交注册表单
@@ -566,8 +694,13 @@ class RegistrationEngine:
             }
 
             if sen_token:
-                sentinel = f'{{"p": "", "t": "", "c": "{sen_token}", "id": "{did}", "flow": "authorize_continue"}}'
-                headers["openai-sentinel-token"] = sentinel
+                sentinel = self._build_sentinel_header(
+                    sen_token,
+                    did=did,
+                    flow="authorize_continue",
+                )
+                if sentinel:
+                    headers["openai-sentinel-token"] = sentinel
 
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["signup"],
@@ -628,13 +761,25 @@ class RegistrationEngine:
                 "username": self.email
             })
 
+            did = self._clean_text(getattr(self, "_current_device_id", ""))
+            sen_token = self._clean_text(getattr(self, "_current_sentinel_token", ""))
+            headers = {
+                "referer": "https://auth.openai.com/create-account/password",
+                "accept": "application/json",
+                "content-type": "application/json",
+                "ext-passkey-client-capabilities": self._build_passkey_client_capabilities(),
+            }
+            sentinel = self._build_sentinel_header(
+                sen_token,
+                did=did,
+                flow="username_password_create",
+            )
+            if sentinel:
+                headers["openai-sentinel-token"] = sentinel
+
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["register"],
-                headers={
-                    "referer": "https://auth.openai.com/create-account/password",
-                    "accept": "application/json",
-                    "content-type": "application/json",
-                },
+                headers=headers,
                 data=register_body,
             )
 
@@ -862,14 +1007,31 @@ class RegistrationEngine:
             user_info = generate_random_user_info()
             self._log(f"生成用户信息: {user_info['name']}, 生日: {user_info['birthdate']}")
             create_account_body = json.dumps(user_info)
+            headers = {
+                "referer": "https://auth.openai.com/about-you",
+                "accept": "application/json",
+                "content-type": "application/json",
+            }
+            current_did = self._clean_text(getattr(self, "_current_device_id", ""))
+            sentinel_payload = self._get_create_account_sentinel_payload()
+            if not sentinel_payload and current_did:
+                fallback_token = self._check_sentinel(current_did)
+                sentinel_payload = self._normalize_sentinel_payload(
+                    fallback_token,
+                    did=current_did,
+                    flow="username_password_create",
+                )
+            sentinel = self._build_sentinel_header(
+                sentinel_payload,
+                did=current_did,
+                flow="username_password_create",
+            )
+            if sentinel:
+                headers["openai-sentinel-token"] = sentinel
 
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["create_account"],
-                headers={
-                    "referer": "https://auth.openai.com/about-you",
-                    "accept": "application/json",
-                    "content-type": "application/json",
-                },
+                headers=headers,
                 data=create_account_body,
             )
 
@@ -1165,14 +1327,13 @@ class RegistrationEngine:
             }
 
             if did and sen_token:
-                sentinel = json.dumps({
-                    "p": "",
-                    "t": "",
-                    "c": sen_token,
-                    "id": did,
-                    "flow": "authorize_continue",
-                })
-                headers["openai-sentinel-token"] = sentinel
+                sentinel = self._build_sentinel_header(
+                    sen_token,
+                    did=did,
+                    flow="authorize_continue",
+                )
+                if sentinel:
+                    headers["openai-sentinel-token"] = sentinel
 
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["login"],
@@ -1335,6 +1496,8 @@ class RegistrationEngine:
                 return None, None
 
             sen_token = self._check_sentinel(did)
+            self._current_device_id = self._clean_text(did)
+            self._current_sentinel_token = self._clean_text(sen_token)
             if sen_token:
                 self._log("新会话 Sentinel 检查通过")
             else:
@@ -1456,10 +1619,12 @@ class RegistrationEngine:
             if not did:
                 result.error_message = "获取 Device ID 失败"
                 return result
+            self._current_device_id = self._clean_text(did)
 
             # 6. 检查 Sentinel 拦截
             self._log("6. 检查 Sentinel 拦截...")
             sen_token = self._check_sentinel(did)
+            self._current_sentinel_token = self._clean_text(sen_token)
             if sen_token:
                 self._log("Sentinel 检查通过")
             else:
