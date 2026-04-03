@@ -751,6 +751,24 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertRegex(password, r"\d")
         self.assertRegex(password, r"[^A-Za-z0-9]")
 
+    def test_generate_password_uses_safe_special_characters_only(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        original_choice = REGISTER_MODULE.secrets.choice
+        original_randbelow = REGISTER_MODULE.secrets.randbelow
+
+        try:
+            REGISTER_MODULE.secrets.choice = lambda seq: seq[-1]
+            REGISTER_MODULE.secrets.randbelow = lambda upper: 0
+
+            password = engine._generate_password()
+        finally:
+            REGISTER_MODULE.secrets.choice = original_choice
+            REGISTER_MODULE.secrets.randbelow = original_randbelow
+
+        special_chars = {char for char in password if not char.isalnum()}
+        self.assertTrue(special_chars, password)
+        self.assertTrue(special_chars.issubset({"!"}), password)
+
 
 if __name__ == "__main__":
     unittest.main()

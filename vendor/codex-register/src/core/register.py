@@ -352,14 +352,13 @@ class RegistrationEngine:
         lowercase_chars = string.ascii_lowercase
         uppercase_chars = string.ascii_uppercase
         digit_chars = string.digits
-        special_chars = "!@#$%^&*()-_=+"
-        base_pool = "".join(dict.fromkeys(PASSWORD_CHARSET + special_chars))
+        base_pool = PASSWORD_CHARSET
 
         password_chars = [
             secrets.choice(lowercase_chars),
             secrets.choice(uppercase_chars),
             secrets.choice(digit_chars),
-            secrets.choice(special_chars),
+            "!",
         ]
         while len(password_chars) < normalized_length:
             password_chars.append(secrets.choice(base_pool))
