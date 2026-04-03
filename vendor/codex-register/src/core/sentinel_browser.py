@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import urllib.parse
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 
 logger = logging.getLogger(__name__)
@@ -193,6 +193,140 @@ def fetch_browser_sentinel_token(
             return None
         except Exception as e:
             _log(callback_logger, f"浏览器 Sentinel 异常: {e}")
+            return None
+        finally:
+            try:
+                context.close()
+            finally:
+                browser.close()
+
+
+def _extract_browser_session_token(cookies: list[dict]) -> str:
+    cookie_map = {
+        str(item.get("name") or "").strip(): str(item.get("value") or "").strip()
+        for item in cookies
+        if str(item.get("name") or "").strip() and str(item.get("value") or "").strip()
+    }
+
+    for cookie_name in (
+        "__Secure-next-auth.session-token",
+        "next-auth.session-token",
+    ):
+        direct = cookie_map.get(cookie_name)
+        if direct:
+            return direct
+
+        prefix = f"{cookie_name}."
+        chunks: list[tuple[int, str]] = []
+        for name, value in cookie_map.items():
+            if not name.startswith(prefix):
+                continue
+            suffix = name[len(prefix):]
+            if suffix.isdigit():
+                chunks.append((int(suffix), value))
+        if chunks:
+            chunks.sort(key=lambda item: item[0])
+            return "".join(value for _, value in chunks)
+
+    return ""
+
+
+def fetch_browser_chatgpt_session_payload(
+    *,
+    cookies_str: str = "",
+    proxy_url: Optional[str] = None,
+    callback_logger: Optional[Callable[[str], None]] = None,
+) -> Optional[Dict[str, Any]]:
+    """在浏览器上下文中落地 chatgpt.com 会话并读取 /api/auth/session。"""
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        _log(callback_logger, "playwright 未安装，无法使用浏览器 ChatGPT Session")
+        return None
+
+    proxy = _build_playwright_proxy(proxy_url)
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
+            headless=True,
+            proxy=proxy,
+            args=[
+                "--no-sandbox",
+                "--disable-blink-features=AutomationControlled",
+            ],
+        )
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent=DEFAULT_SENTINEL_USER_AGENT,
+            ignore_https_errors=True,
+        )
+
+        try:
+            cookies = _parse_cookie_str(cookies_str, ".openai.com")
+            if cookies:
+                context.add_cookies(cookies)
+
+            page = context.new_page()
+            page.goto("https://auth.openai.com/", wait_until="domcontentloaded", timeout=30_000)
+            page.wait_for_timeout(1_000)
+            page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=30_000)
+            page.wait_for_timeout(2_000)
+
+            session_payload = page.evaluate(
+                """
+                async () => {
+                    const response = await fetch("https://chatgpt.com/api/auth/session", {
+                        credentials: "include",
+                        headers: { "accept": "application/json" },
+                    });
+                    let payload = null;
+                    try {
+                        payload = await response.json();
+                    } catch (error) {
+                        payload = null;
+                    }
+                    return {
+                        ok: response.ok,
+                        status: response.status,
+                        payload,
+                    };
+                }
+                """
+            )
+            if not isinstance(session_payload, dict):
+                _log(callback_logger, "浏览器 ChatGPT Session 返回值不是对象")
+                return None
+            if not session_payload.get("ok"):
+                _log(
+                    callback_logger,
+                    f"浏览器 ChatGPT Session 失败: HTTP {session_payload.get('status')}",
+                )
+                return None
+
+            payload = session_payload.get("payload")
+            if not isinstance(payload, dict):
+                _log(callback_logger, "浏览器 ChatGPT Session 缺少 JSON payload")
+                return None
+
+            browser_cookies = context.cookies(["https://chatgpt.com", "https://auth.openai.com"])
+            session_token = _extract_browser_session_token(browser_cookies)
+            if session_token and not str(payload.get("sessionToken") or "").strip():
+                payload["sessionToken"] = session_token
+
+            _log(
+                callback_logger,
+                "浏览器 ChatGPT Session 成功"
+                f" | accessToken={'yes' if str(payload.get('accessToken') or '').strip() else 'no'}"
+                f" | sessionToken={'yes' if str(payload.get('sessionToken') or '').strip() else 'no'}"
+                f" | account={'yes' if isinstance(payload.get('account'), dict) else 'no'}",
+            )
+            return payload
+        except PlaywrightTimeoutError:
+            _log(callback_logger, "浏览器 ChatGPT Session 等待超时")
+            return None
+        except Exception as e:
+            _log(callback_logger, f"浏览器 ChatGPT Session 异常: {e}")
             return None
         finally:
             try:

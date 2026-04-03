@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from .register import RegistrationEngine, RegistrationResult
+from .sentinel_browser import fetch_browser_chatgpt_session_payload
 from .token_refresh import TokenRefreshManager
 
 
@@ -232,6 +233,15 @@ class AnyAutoRegistrationRunner:
 
                 payload = response.json()
                 recovered_payload = self._recover_chatgpt_access_token(payload)
+                if recovered_payload:
+                    return recovered_payload, ""
+                self._log("HTTP ChatGPT Session 不完整，尝试浏览器会话回退", "warning")
+                browser_payload = fetch_browser_chatgpt_session_payload(
+                    cookies_str=self.engine._serialize_session_cookies(),
+                    proxy_url=self.engine.proxy_url,
+                    callback_logger=lambda message: self._log(message),
+                )
+                recovered_payload = self._recover_chatgpt_access_token(browser_payload)
                 if recovered_payload:
                     return recovered_payload, ""
                 last_error = "ChatGPT Session 接口未返回 accessToken"
