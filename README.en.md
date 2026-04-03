@@ -89,21 +89,23 @@ If this project has been helpful to you, you are welcome to support the author.
 | Build locally, package, release, and run scripts | [Build, Release, and Script Guide](docs/release/构建发布与脚本说明.md) |
 
 ## Recent Changes
-  - Current latest version: `v0.1.14` (2026-03-30)
-  - This release closes out around two main goals: a more stable service and easier integration. The ingress layer now adds short queue waiting plus fast overload degradation, and the Settings page adds `System Derive` and `Single-account concurrency limit`, so any machine can queue first and degrade more safely instead of getting dragged down.
-  - Plugin center support and integration docs continue to improve: the README now includes a plugin center preview image, and the minimal integration guide, full interface inventory, and system internal interface inventory are all in place, making external integration easier.
-  - Long-term documentation has been normalized by removing date prefixes, and links in the README and docs have been updated to stable filenames for easier maintenance.
-  - The scheduled script entry is now exposed on the Accounts page and runs once per minute by default, while users can still adjust it manually. The system internal interface inventory was also added to help hosts and plugins integrate.
-  - This round of release alignment is also complete: the workspace, frontend package, Tauri desktop app, validation scripts, and README version notes have all been unified to `0.1.14`.
+  - Current latest version: `v0.1.15` (2026-04-03)
+  - This release mainly closes out around two themes: streaming gateway stability and account operation UX. It fixes cases where tool-call arguments could be overwritten, dropped, or cleared by empty `edits` during OpenAI -> Anthropic SSE bridging, and it also aliases `chat.completion` usage fields to OpenAI `prompt/completion tokens`, making tool calls and usage stats more reliable.
+  - Error reporting has been tightened up as well: upstream raw error messages are preserved whenever possible, stream disconnects are surfaced with a clearer "network jitter" style message, and noisy or misleading log prompts are reduced to make troubleshooting easier.
+  - The Accounts page now supports exporting only selected accounts, usage refresh account switching is smoother, and abbreviated token counts now consistently keep two decimal places across the dashboard, logs, and platform key pages.
+  - This round of release alignment is also complete: the workspace, frontend package, Tauri desktop app, runtime guide, and README version notes have all been unified to `0.1.15`.
 
 ### Recent Commit Summary
-- `8c9299f`: bumped the release version to `0.1.14`, aligning the workspace, frontend package, Tauri desktop app, and release validation scripts.
-- `85022b9`: improved high-concurrency protection and documentation. The ingress layer now uses short queue waiting plus fast overload degradation, and the Settings page adds `System Derive` and a single-account concurrency limit.
-- `a6a96d6`: added a plugin center preview image to the README. Both Chinese and English screenshot sections now include `plugin.png`.
-- `ec03f2c`: removed date prefixes from long-term docs. Long-lived documents now use stable filenames, and multiple README links were updated accordingly.
-- `927142a`: adjusted the default interval for the scheduled script. It now runs once per minute by default, while users can still customize it.
-- `028c8c8`: added the scheduled script entry and the internal interface inventory. The Accounts page now includes the scheduled script entry, and docs now include the system interface inventory.
-- `885edd0`: improved plugin center docs and onboarding. The minimal integration guide and full interface inventory are now complete.
+- `be73359`: adjusted abbreviated token displays to keep two decimal places for more stable number formatting across dashboard, logs, and platform key pages.
+- `dfb4494`: merged PR #86, which consolidates fixes for Anthropic SSE tool-call argument compatibility during streaming bridge conversion.
+- `981bc6e`: aliased `chat.completion` usage fields to OpenAI `prompt/completion tokens`, reducing usage accounting mismatches.
+- `480f847`: fixed a case where empty `edits` in completed events could overwrite streamed edit arguments.
+- `7bbc5fc`: fixed `chat/completions` SSE handling so completed tool arguments are merged correctly even when content is non-empty.
+- `aa2c09c`: merged streamed tool arguments before Anthropic SSE conversion to avoid losing arguments at completion time.
+- `29c3b6b`: prevented placeholder tool arguments from wiping real streamed edit payloads, further hardening streaming tool-call stability.
+- `c1844b7`: standardized stream disconnect messaging to a clearer network-jitter style prompt.
+- `a89cd9c`: preserved upstream raw error text and tightened log messaging to make real failures easier to diagnose.
+- `8d619a0`: added export-for-selected-accounts support and improved account switching during usage refresh.
 
 ## Feature Overview
 - Account pool management: groups, tags, sorting, notes, ban detection, and banned-account filtering

@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-04-03
+
+### Changed
+- 发布版本提升到 `0.1.15`，同步更新 workspace、前端包、Tauri 桌面端、运行文档与 README 的版本说明。
+
 ## [0.1.14] - 2026-03-30
 
 ### Added
@@ -157,7 +162,8 @@
 ### Changed
 - 账号管理页操作区整合为单一“账号操作”下拉菜单，替代右侧多按钮堆叠，界面更简洁。
 
-[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.14...HEAD
+[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.15...HEAD
+[0.1.15]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.15
 [0.1.14]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.14
 [0.1.13]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.13
 [0.1.12]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.12
