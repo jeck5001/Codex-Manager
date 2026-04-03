@@ -806,6 +806,49 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertIn("ext-passkey-client-capabilities", headers)
         self.assertTrue(headers["ext-passkey-client-capabilities"])
 
+    def test_register_password_requests_flow_specific_sentinel_token(self):
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {}
+
+        class FakeSession:
+            def post(self, url, **kwargs):
+                captured["url"] = url
+                captured["kwargs"] = kwargs
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._generate_password = lambda: "StrongPassw0rd!"
+        engine._current_device_id = "did-999"
+        engine._current_sentinel_token = "old-authorize-token"
+
+        sentinel_calls = []
+
+        def fake_check_sentinel(did, flow="authorize_continue"):
+            sentinel_calls.append((did, flow))
+            return "fresh-flow-token"
+
+        engine._check_sentinel = fake_check_sentinel
+
+        ok, _password = engine._register_password()
+
+        self.assertTrue(ok)
+        self.assertEqual(
+            sentinel_calls,
+            [("did-999", "username_password_create")],
+        )
+        sentinel = json.loads(captured["kwargs"]["headers"]["openai-sentinel-token"])
+        self.assertEqual(sentinel["c"], "fresh-flow-token")
+        self.assertEqual(sentinel["flow"], "username_password_create")
+
     def test_create_user_account_prefers_browser_sentinel_token_payload(self):
         captured = {}
 
