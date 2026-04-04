@@ -1,4 +1,5 @@
 import unittest
+from pydantic import ValidationError
 
 from src.config import settings as settings_module
 
@@ -33,6 +34,32 @@ class TempMailCloudflareSettingsTests(unittest.TestCase):
             self.assertEqual(updated.temp_mail_domain_base, "mail.example.com")
             self.assertEqual(saved["cloudflare_zone_id"], "zone-1")
             self.assertTrue(saved["temp_mail_require_cloudflare_sync"])
+        finally:
+            settings_module._save_settings_to_db = original_save
+            settings_module._settings = original_settings
+
+    def test_update_settings_rejects_invalid_subdomain_mode(self):
+        original_save = settings_module._save_settings_to_db
+        original_settings = settings_module._settings
+
+        try:
+            settings_module._settings = settings_module.Settings()
+            settings_module._save_settings_to_db = lambda **kwargs: None
+            with self.assertRaises(ValidationError):
+                settings_module.update_settings(temp_mail_subdomain_mode="invalid")
+        finally:
+            settings_module._save_settings_to_db = original_save
+            settings_module._settings = original_settings
+
+    def test_update_settings_rejects_invalid_subdomain_length(self):
+        original_save = settings_module._save_settings_to_db
+        original_settings = settings_module._settings
+
+        try:
+            settings_module._settings = settings_module.Settings()
+            settings_module._save_settings_to_db = lambda **kwargs: None
+            with self.assertRaises(ValidationError):
+                settings_module.update_settings(temp_mail_subdomain_length=100)
         finally:
             settings_module._save_settings_to_db = original_save
             settings_module._settings = original_settings
