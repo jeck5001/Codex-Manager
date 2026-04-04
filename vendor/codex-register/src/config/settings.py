@@ -743,6 +743,25 @@ class Settings(BaseModel):
     temp_mail_sync_cloudflare_enabled: bool = True
     temp_mail_require_cloudflare_sync: bool = True
 
+    @field_validator("temp_mail_subdomain_mode")
+    @classmethod
+    def validate_temp_mail_subdomain_mode(cls, value):
+        if value is None:
+            return None
+        mode = str(value).lower()
+        if mode not in {"random", "sequence"}:
+            raise ValueError("temp_mail_subdomain_mode must be either 'random' or 'sequence'")
+        return mode
+
+    @field_validator("temp_mail_subdomain_length")
+    @classmethod
+    def validate_temp_mail_subdomain_length(cls, value):
+        if value is None:
+            return None
+        if value < 3 or value > 16:
+            raise ValueError("temp_mail_subdomain_length must be between 3 and 16")
+        return value
+
     # 自定义域名邮箱配置
     custom_domain_base_url: str = ""
     custom_domain_api_key: Optional[SecretStr] = None
