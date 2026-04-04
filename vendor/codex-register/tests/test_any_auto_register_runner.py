@@ -71,10 +71,6 @@ def load_any_auto_module():
     token_refresh_module.TokenRefreshResult = TokenRefreshResult
     sys.modules["src.core.token_refresh"] = token_refresh_module
 
-    sentinel_browser_module = types.ModuleType("src.core.sentinel_browser")
-    sentinel_browser_module.fetch_browser_chatgpt_session_payload = lambda **_kwargs: None
-    sys.modules["src.core.sentinel_browser"] = sentinel_browser_module
-
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -172,7 +168,7 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
             logs,
         )
 
-    def test_fetch_chatgpt_session_uses_browser_fallback_when_http_payload_incomplete(self):
+    def test_fetch_chatgpt_session_logs_incomplete_http_payload_summary(self):
         class FakeResponse:
             def __init__(self, status_code, payload=None, url="https://chatgpt.com/"):
                 self.status_code = status_code
