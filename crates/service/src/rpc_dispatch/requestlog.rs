@@ -1,4 +1,6 @@
-use codexmanager_core::rpc::types::{JsonRpcRequest, JsonRpcResponse, RequestLogListParams};
+use codexmanager_core::rpc::types::{
+    GatewayErrorLogListParams, JsonRpcRequest, JsonRpcResponse, RequestLogListParams,
+};
 
 use crate::{
     requestlog_clear, requestlog_error_list, requestlog_list, requestlog_summary,
@@ -42,12 +44,15 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             super::ok_or_error(requestlog_clear::clear_gateway_error_logs())
         }
         "requestlog/error_list" => {
-            let limit = req
+            let params = req
                 .params
-                .as_ref()
-                .and_then(|params| params.get("limit"))
-                .and_then(serde_json::Value::as_i64);
-            super::value_or_error(requestlog_error_list::read_gateway_error_logs(limit))
+                .clone()
+                .map(serde_json::from_value::<GatewayErrorLogListParams>)
+                .transpose()
+                .map(|params| params.unwrap_or_default())
+                .map(GatewayErrorLogListParams::normalized)
+                .map_err(|err| format!("invalid requestlog/error_list params: {err}"));
+            super::value_or_error(params.and_then(requestlog_error_list::read_gateway_error_logs))
         }
         "requestlog/today_summary" => {
             super::value_or_error(requestlog_today_summary::read_requestlog_today_summary())

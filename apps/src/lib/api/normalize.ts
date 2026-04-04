@@ -15,6 +15,7 @@ import {
   DeviceAuthInfo,
   EnvOverrideCatalogItem,
   GatewayErrorLog,
+  GatewayErrorLogListResult,
   InstalledPluginSummary,
   LoginStartResult,
   ModelOption,
@@ -1166,6 +1167,20 @@ export function normalizeGatewayErrorLogs(payload: unknown): GatewayErrorLog[] {
     });
     return result;
   }, []);
+}
+
+export function normalizeGatewayErrorLogListResult(
+  payload: unknown
+): GatewayErrorLogListResult {
+  const source = asObject(payload);
+  const items = normalizeGatewayErrorLogs(source.items ?? payload);
+  return {
+    items,
+    total: asInteger(source.total, items.length, 0),
+    page: asInteger(source.page, 1, 1),
+    pageSize: asInteger(source.pageSize, items.length || 10, 1),
+    stages: asArray(source.stages).map((item) => asString(item)).filter(Boolean),
+  };
 }
 
 /**

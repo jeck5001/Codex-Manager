@@ -283,6 +283,14 @@ export interface GatewayErrorLog {
   createdAt: number | null;
 }
 
+export interface GatewayErrorLogListResult {
+  items: GatewayErrorLog[];
+  total: number;
+  page: number;
+  pageSize: number;
+  stages: string[];
+}
+
 export interface RequestLogFilterSummary {
   totalCount: number;
   filteredCount: number;

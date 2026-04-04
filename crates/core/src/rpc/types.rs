@@ -669,9 +669,46 @@ pub struct GatewayErrorLogSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GatewayErrorLogListParams {
+    pub page: i64,
+    pub page_size: i64,
+    pub stage_filter: Option<String>,
+}
+
+impl Default for GatewayErrorLogListParams {
+    fn default() -> Self {
+        Self {
+            page: 1,
+            page_size: 10,
+            stage_filter: None,
+        }
+    }
+}
+
+impl GatewayErrorLogListParams {
+    pub fn normalized(self) -> Self {
+        Self {
+            page: if self.page < 1 { 1 } else { self.page },
+            page_size: if self.page_size < 1 {
+                10
+            } else {
+                self.page_size
+            },
+            stage_filter: self.stage_filter,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GatewayErrorLogListResult {
     pub items: Vec<GatewayErrorLogSummary>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+    #[serde(default)]
+    pub stages: Vec<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

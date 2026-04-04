@@ -1105,11 +1105,14 @@ function LogsPageContent() {
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [pageSize, setPageSize] = useState("10");
   const [page, setPage] = useState(1);
+  const [gatewayPageSize, setGatewayPageSize] = useState("10");
+  const [gatewayPage, setGatewayPage] = useState(1);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [clearGatewayConfirmOpen, setClearGatewayConfirmOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<LogsTab>("requests");
   const [gatewayStageFilter, setGatewayStageFilter] = useState("all");
   const pageSizeNumber = Number(pageSize) || 10;
+  const gatewayPageSizeNumber = Number(gatewayPageSize) || 10;
   const startupSnapshot = queryClient.getQueryData<StartupSnapshot>(
     buildStartupSnapshotQueryKey(
       serviceStatus.addr,
@@ -1201,9 +1204,20 @@ function LogsPageContent() {
         : undefined),
   });
 
-  const { data: gatewayErrorLogs = [] } = useQuery({
-    queryKey: ["logs", "gateway-error-list"],
-    queryFn: () => serviceClient.listGatewayErrorLogs(50),
+  const { data: gatewayLogsResult } = useQuery({
+    queryKey: [
+      "logs",
+      "gateway-error-list",
+      gatewayStageFilter,
+      gatewayPage,
+      gatewayPageSizeNumber,
+    ],
+    queryFn: () =>
+      serviceClient.listGatewayErrorLogs({
+        page: gatewayPage,
+        pageSize: gatewayPageSizeNumber,
+        stageFilter: gatewayStageFilter,
+      }),
     enabled: areLogQueriesEnabled && isPageActive,
     refetchInterval: 5000,
     retry: 1,
@@ -1227,6 +1241,7 @@ function LogsPageContent() {
   const clearGatewayMutation = useMutation({
     mutationFn: () => serviceClient.clearGatewayErrorLogs(),
     onSuccess: async () => {
+      setGatewayPage(1);
       await queryClient.invalidateQueries({
         queryKey: ["logs", "gateway-error-list"],
       });
@@ -1337,22 +1352,14 @@ function LogsPageContent() {
   const gatewayStageFilterLabel =
     gatewayStageFilter === "all" ? "全部阶段" : gatewayStageFilter;
 
-  const gatewayStageOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        gatewayErrorLogs
-          .map((item) => String(item.stage || "").trim())
-          .filter(Boolean),
-      ),
-    ).sort((left, right) => left.localeCompare(right));
-  }, [gatewayErrorLogs]);
-
-  const filteredGatewayErrorLogs = useMemo(() => {
-    if (gatewayStageFilter === "all") {
-      return gatewayErrorLogs;
-    }
-    return gatewayErrorLogs.filter((item) => item.stage === gatewayStageFilter);
-  }, [gatewayErrorLogs, gatewayStageFilter]);
+  const gatewayErrorLogs = gatewayLogsResult?.items || [];
+  const gatewayStageOptions = gatewayLogsResult?.stages || [];
+  const gatewayCurrentPage = gatewayLogsResult?.page || gatewayPage;
+  const gatewayTotal = gatewayLogsResult?.total || 0;
+  const gatewayTotalPages = Math.max(
+    1,
+    Math.ceil(gatewayTotal / gatewayPageSizeNumber),
+  );
 
   const copyGatewayErrorSummary = async (item: GatewayErrorLog) => {
     const payload = [
@@ -1705,7 +1712,10 @@ function LogsPageContent() {
                   </span>
                   <Select
                     value={gatewayStageFilter}
-                    onValueChange={(value) => setGatewayStageFilter(value || "all")}
+                    onValueChange={(value) => {
+                      setGatewayStageFilter(value || "all");
+                      setGatewayPage(1);
+                    }}
                   >
                     <SelectTrigger className="h-9 min-w-[220px] text-xs">
                       <SelectValue>{gatewayStageFilterLabel}</SelectValue>
@@ -1743,7 +1753,7 @@ function LogsPageContent() {
                     <Trash2 className="mr-1.5 h-4 w-4" /> 清空诊断
                   </Button>
                   <div className="whitespace-nowrap text-xs text-muted-foreground text-right">
-                    当前 {filteredGatewayErrorLogs.length} 条 / 最近 {gatewayErrorLogs.length} 条
+                    当前页 {gatewayErrorLogs.length} 条 / 共 {gatewayTotal} 条
                   </div>
                 </div>
               </div>
@@ -1788,8 +1798,8 @@ function LogsPageContent() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredGatewayErrorLogs.length ? (
-                    filteredGatewayErrorLogs.map((item, index) => {
+                  {gatewayErrorLogs.length ? (
+                    gatewayErrorLogs.map((item, index) => {
                       const gatewayContext = renderGatewayErrorContext(item) || "-";
                       const gatewayIdentity = item.accountId || item.keyId || "-";
                       const gatewayMethod = String(item.method || "-").trim() || "-";
@@ -1946,7 +1956,7 @@ function LogsPageContent() {
                         colSpan={6}
                         className="px-4 py-10 text-center text-sm text-muted-foreground"
                       >
-                        {gatewayErrorLogs.length
+                        {gatewayStageFilter !== "all"
                           ? "当前筛选下没有匹配的诊断日志"
                           : "暂无专门错误诊断日志"}
                       </TableCell>
@@ -1956,6 +1966,66 @@ function LogsPageContent() {
               </Table>
             </CardContent>
           </Card>
+
+          <div className="flex items-center justify-between px-2">
+            <div className="text-xs text-muted-foreground">
+              共 {gatewayTotal} 条匹配诊断日志
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <span className="whitespace-nowrap text-xs text-muted-foreground">
+                  每页显示
+                </span>
+                <Select
+                  value={gatewayPageSize}
+                  onValueChange={(value) => {
+                    setGatewayPageSize(value || "10");
+                    setGatewayPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[78px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["10", "20", "50", "100"].map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  disabled={gatewayCurrentPage <= 1}
+                  onClick={() =>
+                    setGatewayPage(Math.max(1, gatewayCurrentPage - 1))
+                  }
+                >
+                  上一页
+                </Button>
+                <div className="min-w-[68px] text-center text-xs font-medium">
+                  第 {gatewayCurrentPage} / {gatewayTotalPages} 页
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  disabled={gatewayCurrentPage >= gatewayTotalPages}
+                  onClick={() =>
+                    setGatewayPage(
+                      Math.min(gatewayTotalPages, gatewayCurrentPage + 1),
+                    )
+                  }
+                >
+                  下一页
+                </Button>
+              </div>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 

@@ -107,19 +107,74 @@ impl Storage {
     /// # 返回
     /// 返回函数执行结果
     pub fn list_gateway_error_logs(&self, limit: i64) -> Result<Vec<GatewayErrorLog>> {
+        self.list_gateway_error_logs_paginated(None, 0, limit)
+    }
+
+    pub fn list_gateway_error_logs_paginated(
+        &self,
+        stage_filter: Option<&str>,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<GatewayErrorLog>> {
         let normalized_limit = limit.clamp(1, 500);
-        let mut stmt = self.conn.prepare(
-            "SELECT trace_id, key_id, account_id, request_path, method, stage,
-                    error_kind, upstream_url, cf_ray, status_code,
-                    compression_enabled, compression_retry_attempted, message, created_at
-             FROM gateway_error_logs
-             ORDER BY created_at DESC, id DESC
-             LIMIT ?1",
-        )?;
-        let mut rows = stmt.query([normalized_limit])?;
+        let normalized_offset = offset.max(0);
+        let mut stmt = if stage_filter.is_some() {
+            self.conn.prepare(
+                "SELECT trace_id, key_id, account_id, request_path, method, stage,
+                        error_kind, upstream_url, cf_ray, status_code,
+                        compression_enabled, compression_retry_attempted, message, created_at
+                 FROM gateway_error_logs
+                 WHERE stage = ?1
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT ?2 OFFSET ?3",
+            )?
+        } else {
+            self.conn.prepare(
+                "SELECT trace_id, key_id, account_id, request_path, method, stage,
+                        error_kind, upstream_url, cf_ray, status_code,
+                        compression_enabled, compression_retry_attempted, message, created_at
+                 FROM gateway_error_logs
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT ?1 OFFSET ?2",
+            )?
+        };
+        let mut rows = if let Some(stage) = stage_filter {
+            stmt.query(params![stage, normalized_limit, normalized_offset])?
+        } else {
+            stmt.query(params![normalized_limit, normalized_offset])?
+        };
         let mut items = Vec::new();
         while let Some(row) = rows.next()? {
             items.push(map_gateway_error_log_row(row)?);
+        }
+        Ok(items)
+    }
+
+    pub fn count_gateway_error_logs(&self, stage_filter: Option<&str>) -> Result<i64> {
+        let sql = if stage_filter.is_some() {
+            "SELECT COUNT(1) FROM gateway_error_logs WHERE stage = ?1"
+        } else {
+            "SELECT COUNT(1) FROM gateway_error_logs"
+        };
+        let mut stmt = self.conn.prepare(sql)?;
+        if let Some(stage) = stage_filter {
+            stmt.query_row([stage], |row| row.get(0))
+        } else {
+            stmt.query_row([], |row| row.get(0))
+        }
+    }
+
+    pub fn list_gateway_error_log_stages(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT stage
+             FROM gateway_error_logs
+             WHERE stage IS NOT NULL AND TRIM(stage) <> ''
+             ORDER BY stage ASC",
+        )?;
+        let mut rows = stmt.query([])?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next()? {
+            items.push(row.get(0)?);
         }
         Ok(items)
     }
@@ -158,4 +213,68 @@ fn map_gateway_error_log_row(row: &Row<'_>) -> Result<GatewayErrorLog> {
         message: row.get(12)?,
         created_at: row.get(13)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::storage::{GatewayErrorLog, Storage};
+
+    #[test]
+    fn gateway_error_logs_support_stage_filter_and_pagination() {
+        let storage = Storage::open_in_memory().expect("open");
+        storage.init().expect("init");
+
+        for index in 0..5_i64 {
+            storage
+                .insert_gateway_error_log(&GatewayErrorLog {
+                    trace_id: Some(format!("trace-{index}")),
+                    key_id: Some("gk-test".to_string()),
+                    account_id: Some("acc-test".to_string()),
+                    request_path: "/v1/responses".to_string(),
+                    method: "POST".to_string(),
+                    stage: if index % 2 == 0 {
+                        "chatgpt_challenge_retry_without_compression".to_string()
+                    } else {
+                        "compact_challenge_downgrade_retry".to_string()
+                    },
+                    error_kind: Some("cloudflare_challenge".to_string()),
+                    upstream_url: Some("https://chatgpt.com/backend-api/codex/responses".to_string()),
+                    cf_ray: Some(format!("ray-{index}")),
+                    status_code: Some(403),
+                    compression_enabled: true,
+                    compression_retry_attempted: index % 2 == 0,
+                    message: format!("message-{index}"),
+                    created_at: 1_000 + index,
+                })
+                .expect("insert gateway error log");
+        }
+
+        let total = storage
+            .count_gateway_error_logs(Some(
+                "chatgpt_challenge_retry_without_compression",
+            ))
+            .expect("count gateway error logs");
+        assert_eq!(total, 3);
+
+        let page = storage
+            .list_gateway_error_logs_paginated(
+                Some("chatgpt_challenge_retry_without_compression"),
+                0,
+                2,
+            )
+            .expect("list gateway error logs paginated");
+        assert_eq!(page.len(), 2);
+        assert_eq!(page[0].trace_id.as_deref(), Some("trace-4"));
+
+        let stages = storage
+            .list_gateway_error_log_stages()
+            .expect("list gateway error log stages");
+        assert_eq!(
+            stages,
+            vec![
+                "chatgpt_challenge_retry_without_compression".to_string(),
+                "compact_challenge_downgrade_retry".to_string(),
+            ]
+        );
+    }
 }

@@ -40,17 +40,23 @@ pub async fn service_requestlog_list(
 ///
 /// # 参数
 /// - addr: 参数 addr
-/// - limit: 参数 limit
+/// - page: 参数 page
+/// - page_size: 参数 page_size
+/// - stage_filter: 参数 stage_filter
 ///
 /// # 返回
 /// 返回函数执行结果
 #[tauri::command]
 pub async fn service_requestlog_error_list(
     addr: Option<String>,
-    limit: Option<i64>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+    stage_filter: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let params = serde_json::json!({
-        "limit": limit
+        "page": page,
+        "pageSize": page_size,
+        "stageFilter": stage_filter
     });
     rpc_call_in_background("requestlog/error_list", addr, Some(params)).await
 }
