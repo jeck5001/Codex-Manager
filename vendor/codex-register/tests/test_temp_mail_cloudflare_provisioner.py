@@ -47,13 +47,14 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         updated = provisioner._upsert_domains_binding(bindings, "new.example.com")
         binding = next(b for b in updated if b.get("name") == "DOMAINS")
         self.assertEqual(binding.get("type"), "plain_text")
-        parsed = cloudflare_temp_mail.parse_domains_binding(binding["text"])
-        self.assertEqual(parsed, ["exist.example.com", "new.example.com"])
+        expected_text = json.dumps(
+            ["exist.example.com", "new.example.com"]
+        )
+        self.assertEqual(binding["text"], expected_text)
 
         second = provisioner._upsert_domains_binding(updated, "new.example.com")
         binding_again = next(b for b in second if b.get("name") == "DOMAINS")
-        parsed_again = cloudflare_temp_mail.parse_domains_binding(binding_again["text"])
-        self.assertEqual(parsed_again, ["exist.example.com", "new.example.com"])
+        self.assertEqual(binding_again["text"], expected_text)
 
     def test_upsert_domains_binding_creates_plain_text_binding(self):
         settings = self.make_settings()
@@ -62,8 +63,8 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         updated = provisioner._upsert_domains_binding(bindings, "new.example.com")
         binding = next(b for b in updated if b.get("name") == "DOMAINS")
         self.assertEqual(binding.get("type"), "plain_text")
-        parsed = cloudflare_temp_mail.parse_domains_binding(binding["text"])
-        self.assertEqual(parsed, ["new.example.com"])
+        expected_text = json.dumps(["new.example.com"])
+        self.assertEqual(binding["text"], expected_text)
 
     def test_validate_settings_raises_when_required_fields_missing(self):
         settings = Settings(
