@@ -8,6 +8,7 @@ from typing import Any, Callable, List, Optional
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 
 def _load_email_services_module():
@@ -56,8 +57,10 @@ class _FakeDB:
         self._first_results = list(first_results or [])
         self.added: List[Any] = []
         self.commits = 0
+        self.rollbacks = 0
         self.refreshed: List[Any] = []
         self.on_add: Optional[Callable[[], None]] = None
+        self.on_commit: Optional[Callable[[], None]] = None
 
     def pop_first_result(self):
         if self._first_results:
@@ -73,7 +76,12 @@ class _FakeDB:
         self.added.append(obj)
 
     def commit(self):
+        if self.on_commit:
+            self.on_commit()
         self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
 
     def refresh(self, obj):
         if getattr(obj, "id", None) is None:
@@ -94,6 +102,27 @@ class _DBContext:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         return False
+
+
+class _DummyResponse:
+    def __init__(self, status_code: int, payload: Any):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class _RecordingHttpClient:
+    def __init__(self, responses: List[_DummyResponse]):
+        self._responses = list(responses)
+        self.calls: List[dict] = []
+
+    def request(self, method: str, url: str, **kwargs):
+        self.calls.append({"method": method, "url": url, "kwargs": kwargs})
+        if not self._responses:
+            raise AssertionError("No more stub responses configured")
+        return self._responses.pop(0)
 
 
 class EmailServicesTempMailRoutesTests(unittest.TestCase):
@@ -205,6 +234,34 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         self.assertEqual(service.config["domain"], "tm-old.mail.example.com")
         self.assertEqual(fake_db.commits, 0)
 
+    def test_temp_mail_update_rejects_domain_when_only_spacing_case_changes(self):
+        service = self.module.EmailServiceModel(
+            service_type="temp_mail",
+            name="Temp Mail D",
+            config={
+                "base_url": "https://worker.example.com",
+                "admin_password": "secret",
+                "domain": "tm-old.mail.example.com",
+            },
+            enabled=True,
+            priority=0,
+        )
+        service.id = 89
+        service.created_at = datetime.utcnow()
+        service.updated_at = datetime.utcnow()
+
+        fake_db = _FakeDB(first_results=[service])
+        self.module.get_db = lambda: _DBContext(fake_db)
+
+        response = self.client.patch(
+            "/api/email-services/89",
+            json={"config": {"domain": "  TM-OLD.MAIL.EXAMPLE.COM  "}},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(service.config["domain"], "tm-old.mail.example.com")
+        self.assertEqual(fake_db.commits, 0)
+
     def test_non_temp_mail_create_path_is_unchanged(self):
         fake_db = _FakeDB(first_results=[None])
         self.module.get_db = lambda: _DBContext(fake_db)
@@ -228,3 +285,70 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(fake_db.added), 1)
         self.assertEqual(fake_db.added[0].config, payload["config"])
+
+    def test_temp_mail_create_rolls_back_remote_state_when_db_commit_fails(self):
+        cleanup_calls: List[dict] = []
+        fake_db = _FakeDB(first_results=[None])
+        fake_db.on_commit = lambda: (_ for _ in ()).throw(RuntimeError("db commit failed"))
+        self.module.get_db = lambda: _DBContext(fake_db)
+
+        class FakeProvisioner:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def provision_domain(self):
+                return {"domain": "tm-fixed.mail.example.com", "cloudflare_subdomain": {"id": "sub-123"}}
+
+            def cleanup_provisioned_domain(self, provisioned, domain=None):
+                cleanup_calls.append({"provisioned": provisioned, "domain": domain})
+
+        self.module.CloudflareTempMailProvisioner = FakeProvisioner
+        self.module.get_settings = lambda: object()
+
+        response = self.client.post(
+            "/api/email-services",
+            json={
+                "service_type": "temp_mail",
+                "name": "Temp Mail E",
+                "config": {
+                    "base_url": "https://worker.example.com",
+                    "admin_password": "secret",
+                },
+                "enabled": True,
+                "priority": 0,
+            },
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(len(cleanup_calls), 1)
+        self.assertEqual(cleanup_calls[0]["domain"], "tm-fixed.mail.example.com")
+        self.assertEqual(fake_db.rollbacks, 1)
+
+    def test_provisioner_patch_failure_triggers_subdomain_cleanup(self):
+        from src.config.settings import Settings
+
+        settings = Settings(
+            cloudflare_api_token=SecretStr("token"),
+            cloudflare_account_id="account",
+            cloudflare_zone_id="zone",
+            cloudflare_worker_name="worker",
+            temp_mail_domain_base="mail.example.com",
+            temp_mail_subdomain_mode="sequence",
+            temp_mail_subdomain_length=6,
+            temp_mail_subdomain_prefix="tm",
+        )
+        http_client = _RecordingHttpClient(
+            responses=[
+                _DummyResponse(200, {"result": {"id": "sub-1", "name": "tm-abc123.mail.example.com"}}),
+                _DummyResponse(200, {"result": {"settings": {"bindings": []}}}),
+                _DummyResponse(500, {"errors": ["patch failed"]}),
+                _DummyResponse(200, {"result": {"id": "sub-1"}}),
+            ]
+        )
+        provisioner = self.module.CloudflareTempMailProvisioner(settings, http_client=http_client)
+
+        with self.assertRaises(Exception):
+            provisioner.provision_domain()
+
+        methods = [entry["method"] for entry in http_client.calls]
+        self.assertEqual(methods, ["POST", "GET", "PATCH", "DELETE"])

@@ -4,6 +4,7 @@ import json
 import secrets
 import string
 import time
+from urllib.parse import quote
 from typing import Any, Dict, List, Optional
 
 from ..core.http_client import HTTPClient, RequestConfig
@@ -242,6 +243,10 @@ class CloudflareTempMailProvisioner:
             "/email/sending/subdomains"
         )
 
+    def _zones_subdomain_item_url(self, subdomain_identifier: str) -> str:
+        identifier = quote(str(subdomain_identifier or "").strip(), safe="")
+        return f"{self._zones_subdomain_url()}/{identifier}"
+
     def _auth_headers(self) -> Dict[str, str]:
         return {
             "Authorization": f"Bearer {self._api_token}",
@@ -299,18 +304,72 @@ class CloudflareTempMailProvisioner:
         )
         return self._process_response(response, "patch worker settings")
 
+    def delete_subdomain(self, subdomain_identifier: str) -> Dict[str, Any]:
+        response = self.http_client.request(
+            "DELETE",
+            self._zones_subdomain_item_url(subdomain_identifier),
+            headers=self._auth_headers(),
+        )
+        return self._process_response(response, "delete subdomain")
+
+    def _extract_subdomain_identifier(
+        self, subdomain_payload: Optional[Dict[str, Any]], domain: Optional[str]
+    ) -> str:
+        payload = subdomain_payload if isinstance(subdomain_payload, dict) else {}
+        candidates: List[Dict[str, Any]] = [payload]
+        result = payload.get("result")
+        if isinstance(result, dict):
+            candidates.insert(0, result)
+        elif isinstance(result, list):
+            first = result[0] if result else None
+            if isinstance(first, dict):
+                candidates.insert(0, first)
+
+        for candidate in candidates:
+            for key in ("id", "subdomain_id", "name", "domain"):
+                value = self._normalize_str(candidate.get(key))
+                if value:
+                    return value
+
+        return self._normalize_str(domain)
+
+    def cleanup_provisioned_domain(
+        self, provisioned: Optional[Dict[str, Any]], domain: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        subdomain_payload = None
+        if isinstance(provisioned, dict):
+            payload = provisioned.get("cloudflare_subdomain")
+            if isinstance(payload, dict):
+                subdomain_payload = payload
+            elif "result" in provisioned:
+                subdomain_payload = provisioned
+
+        identifier = self._extract_subdomain_identifier(subdomain_payload, domain)
+        if not identifier:
+            return None
+
+        return self.delete_subdomain(identifier)
+
     def provision_domain(self) -> Dict[str, Any]:
         label = self._generate_label()
         domain = self._compose_domain(label)
         subdomain_payload = self.create_subdomain(domain)
-
-        worker_settings_payload = self.get_worker_settings()
-        existing_bindings = self._extract_worker_bindings(worker_settings_payload)
-        updated_bindings = self._upsert_domains_binding(existing_bindings, domain)
-        patched_payload = self.patch_worker_settings(updated_bindings)
-
-        return {
+        provisioned = {
             "domain": domain,
             "cloudflare_subdomain": subdomain_payload,
-            "cloudflare_worker_settings": patched_payload,
         }
+
+        try:
+            worker_settings_payload = self.get_worker_settings()
+            existing_bindings = self._extract_worker_bindings(worker_settings_payload)
+            updated_bindings = self._upsert_domains_binding(existing_bindings, domain)
+            patched_payload = self.patch_worker_settings(updated_bindings)
+        except Exception:
+            try:
+                self.cleanup_provisioned_domain(provisioned, domain=domain)
+            except Exception:
+                pass
+            raise
+
+        provisioned["cloudflare_worker_settings"] = patched_payload
+        return provisioned
