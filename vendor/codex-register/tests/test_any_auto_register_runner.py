@@ -231,6 +231,20 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
             ("warning", "HTTP ChatGPT Session 不完整，尝试浏览器会话回退"),
             logs,
         )
+        self.assertIn(
+            (
+                "warning",
+                'ChatGPT Session 响应摘要: {"has_accessToken": false, "has_sessionToken": false, "authProvider": "", "expires": "", "user_keys": ["id"], "account_keys": ["id"]}',
+            ),
+            logs,
+        )
+        self.assertIn(
+            (
+                "warning",
+                "ChatGPT Session 相关 Cookies: cf_clearance",
+            ),
+            logs,
+        )
 
 
 if __name__ == "__main__":
