@@ -297,7 +297,7 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
     ),
     "cloudflare_worker_name": SettingDefinition(
         db_key="temp_mail.cloudflare_worker_name",
-        default_value="",
+        default_value="temp-email",
         category=SettingCategory.TEMPMAIL,
         description="Cloudflare Worker 名称"
     ),
@@ -321,19 +321,19 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
     ),
     "temp_mail_subdomain_prefix": SettingDefinition(
         db_key="temp_mail.subdomain_prefix",
-        default_value="",
+        default_value="tm",
         category=SettingCategory.TEMPMAIL,
         description="临时子域名前缀"
     ),
     "temp_mail_sync_cloudflare_enabled": SettingDefinition(
         db_key="temp_mail.sync_cloudflare_enabled",
-        default_value=False,
+        default_value=True,
         category=SettingCategory.TEMPMAIL,
         description="启用 Cloudflare 同步临时邮箱子域名"
     ),
     "temp_mail_require_cloudflare_sync": SettingDefinition(
         db_key="temp_mail.require_cloudflare_sync",
-        default_value=False,
+        default_value=True,
         category=SettingCategory.TEMPMAIL,
         description="强制临时邮箱需要 Cloudflare 同步",
     ),
@@ -735,13 +735,13 @@ class Settings(BaseModel):
     cloudflare_api_token: SecretStr = SecretStr("")
     cloudflare_account_id: str = ""
     cloudflare_zone_id: str = ""
-    cloudflare_worker_name: str = ""
+    cloudflare_worker_name: str = "temp-email"
     temp_mail_domain_base: str = ""
     temp_mail_subdomain_mode: str = "random"
     temp_mail_subdomain_length: int = 6
-    temp_mail_subdomain_prefix: str = ""
-    temp_mail_sync_cloudflare_enabled: bool = False
-    temp_mail_require_cloudflare_sync: bool = False
+    temp_mail_subdomain_prefix: str = "tm"
+    temp_mail_sync_cloudflare_enabled: bool = True
+    temp_mail_require_cloudflare_sync: bool = True
 
     # 自定义域名邮箱配置
     custom_domain_base_url: str = ""
