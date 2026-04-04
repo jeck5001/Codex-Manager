@@ -753,7 +753,7 @@ fn responses_applies_fast_service_tier_override_as_priority_for_codex_backend() 
     );
 }
 
-/// 函数 `responses_applies_flex_service_tier_override_as_flex_for_codex_backend`
+/// 函数 `responses_ignores_unsupported_flex_service_tier_override_for_codex_backend`
 ///
 /// 作者: gaohongshun
 ///
@@ -765,7 +765,7 @@ fn responses_applies_fast_service_tier_override_as_priority_for_codex_backend() 
 /// # 返回
 /// 无
 #[test]
-fn responses_applies_flex_service_tier_override_as_flex_for_codex_backend() {
+fn responses_ignores_unsupported_flex_service_tier_override_for_codex_backend() {
     let body = json!({
         "model": "gpt-5.3-codex",
         "input": "hello"
@@ -779,12 +779,7 @@ fn responses_applies_flex_service_tier_override_as_flex_for_codex_backend() {
         Some("https://chatgpt.com/backend-api/codex"),
     );
     let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
-    assert_eq!(
-        value
-            .get("service_tier")
-            .and_then(serde_json::Value::as_str),
-        Some("flex")
-    );
+    assert!(value.get("service_tier").is_none());
 }
 
 /// 函数 `responses_compact_uses_codex_compat_rewrite`

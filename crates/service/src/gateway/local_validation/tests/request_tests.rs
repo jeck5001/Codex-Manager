@@ -1,4 +1,7 @@
 use super::*;
+use crate::gateway::{
+    adapt_request_for_protocol, apply_request_overrides_with_service_tier_and_prompt_cache_key,
+};
 use codexmanager_core::rpc::types::ModelOption;
 use codexmanager_core::storage::{now_ts, Storage};
 use serde_json::Value;
@@ -92,6 +95,78 @@ fn anthropic_key_applies_custom_model_and_reasoning() {
     assert_eq!(model.as_deref(), Some("gpt-5.3-codex"));
     assert_eq!(reasoning.as_deref(), Some("xhigh"));
     assert_eq!(service_tier.as_deref(), Some("fast"));
+}
+
+#[test]
+fn anthropic_key_applies_fast_service_tier_as_priority_on_responses_request() {
+    let api_key = sample_api_key(
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        Some("gpt-5.3-codex"),
+        Some("high"),
+        Some("fast"),
+    );
+    let body = serde_json::json!({
+        "model": "gpt-5.3-codex",
+        "messages": [{ "role": "user", "content": "hi" }],
+        "stream": false
+    });
+    let body = serde_json::to_vec(&body).expect("serialize anthropic request");
+
+    let adapted = adapt_request_for_protocol(
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        "/v1/messages",
+        body,
+    )
+    .expect("adapt anthropic request");
+    let (model, reasoning, service_tier) = resolve_effective_request_overrides(&api_key);
+    let rewritten = apply_request_overrides_with_service_tier_and_prompt_cache_key(
+        adapted.path.as_str(),
+        adapted.body,
+        model.as_deref(),
+        reasoning.as_deref(),
+        service_tier.as_deref(),
+        None,
+        None,
+    );
+    let payload: Value = serde_json::from_slice(&rewritten).expect("json body");
+
+    assert_eq!(payload.get("service_tier").and_then(Value::as_str), Some("priority"));
+}
+
+#[test]
+fn anthropic_key_ignores_unsupported_flex_service_tier_on_responses_request() {
+    let api_key = sample_api_key(
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        Some("gpt-5.3-codex"),
+        Some("high"),
+        Some("flex"),
+    );
+    let body = serde_json::json!({
+        "model": "gpt-5.3-codex",
+        "messages": [{ "role": "user", "content": "hi" }],
+        "stream": false
+    });
+    let body = serde_json::to_vec(&body).expect("serialize anthropic request");
+
+    let adapted = adapt_request_for_protocol(
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        "/v1/messages",
+        body,
+    )
+    .expect("adapt anthropic request");
+    let (model, reasoning, service_tier) = resolve_effective_request_overrides(&api_key);
+    let rewritten = apply_request_overrides_with_service_tier_and_prompt_cache_key(
+        adapted.path.as_str(),
+        adapted.body,
+        model.as_deref(),
+        reasoning.as_deref(),
+        service_tier.as_deref(),
+        None,
+        None,
+    );
+    let payload: Value = serde_json::from_slice(&rewritten).expect("json body");
+
+    assert!(payload.get("service_tier").is_none());
 }
 
 /// 函数 `openai_key_keeps_empty_overrides`

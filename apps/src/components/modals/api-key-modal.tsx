@@ -46,8 +46,12 @@ const REASONING_LABELS: Record<string, string> = {
 const SERVICE_TIER_LABELS: Record<string, string> = {
   auto: "跟随请求",
   fast: "Fast",
-  flex: "Flex",
 };
+
+function normalizeEditableServiceTier(value?: string | null): string {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "fast" ? "fast" : "";
+}
 
 const ROTATION_STRATEGY_LABELS: Record<string, string> = {
   account_rotation: "账号轮转",
@@ -125,7 +129,7 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
     setProtocolType(apiKey.protocol || "openai_compat");
     setModelSlug(apiKey.modelSlug || "");
     setReasoningEffort(apiKey.reasoningEffort || "");
-    setServiceTier(apiKey.serviceTier || "");
+      setServiceTier(normalizeEditableServiceTier(apiKey.serviceTier));
     setRotationStrategy(apiKey.rotationStrategy || "account_rotation");
     setGeneratedKey("");
 
@@ -416,11 +420,10 @@ export function ApiKeyModal({ open, onOpenChange, apiKey }: ApiKeyModalProps) {
                 <SelectContent align="start">
                   <SelectItem value="auto">跟随请求</SelectItem>
                   <SelectItem value="fast">Fast</SelectItem>
-                  <SelectItem value="flex">Flex</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-[11px] text-muted-foreground">
-                Fast 会映射为上游 priority，Flex 会直传为 flex。
+                Fast 会映射为上游 priority；未设置时跟随请求。
               </p>
             </div>
           </div>
