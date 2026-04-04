@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from .register import RegistrationEngine, RegistrationResult
 from .sentinel_browser import fetch_browser_chatgpt_session_payload
 from .token_refresh import TokenRefreshManager
+from urllib.parse import parse_qs, urlparse
 
 
 ANY_AUTO_REGISTER_MODE = "any_auto"
@@ -237,6 +238,34 @@ class AnyAutoRegistrationRunner:
         summary = ", ".join(names[:12]) if names else "(none)"
         self._log(f"ChatGPT Session 相关 Cookies: {summary}", "warning")
 
+    def _should_try_chatgpt_session_first(self) -> bool:
+        page_type = self.engine._clean_text(getattr(self.engine, "_post_create_page_type", ""))
+        continue_url = self.engine._clean_text(getattr(self.engine, "_post_create_continue_url", ""))
+        if page_type in {
+            "sign_in_with_chatgpt_codex_consent",
+            "sign_in_with_chatgpt_codex_org",
+            "workspace",
+            "token_exchange",
+        }:
+            return False
+
+        if continue_url:
+            parsed = urlparse(continue_url)
+            query_params = parse_qs(parsed.query)
+            if query_params.get("code") and query_params.get("state"):
+                return False
+            if parsed.scheme in {"http", "https"} and parsed.hostname == "auth.openai.com":
+                path = parsed.path.rstrip("/")
+                if path in {
+                    "/sign-in-with-chatgpt/codex/consent",
+                    "/sign-in-with-chatgpt/codex/workspace",
+                    "/sign-in-with-chatgpt/codex/token_exchange",
+                    "/workspace",
+                    "/sign-in-with-chatgpt/codex/organization",
+                }:
+                    return False
+        return True
+
     def _fetch_chatgpt_session_payload(self) -> Tuple[Optional[Dict[str, Any]], str]:
         session = getattr(self.engine, "session", None)
         if session is None:
@@ -436,6 +465,7 @@ class AnyAutoRegistrationRunner:
                     result.error_message = "创建用户账户失败"
                     return result
 
+            should_try_session = self._should_try_chatgpt_session_first()
             if (
                 not self.engine._is_existing_account
                 and (
@@ -445,16 +475,22 @@ class AnyAutoRegistrationRunner:
             ):
                 self._log("13. 检测到 add_phone，先尝试登录回退以便复用会话", "warning")
                 callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
-            else:
+            elif should_try_session:
                 self._log("13. 尝试直接复用当前会话")
+            else:
+                self._log("13. 已命中 OAuth 授权页，直接走 OAuth 收敛")
 
-            self._log("14. 尝试复用已登录会话直取 ChatGPT Session...")
-            session_payload, session_error = self._fetch_chatgpt_session_payload()
-            if session_payload:
-                self._log("15. 已通过 ChatGPT Session 提取 Access Token")
-                return self._populate_from_chatgpt_session(result, session_payload)
+            if should_try_session:
+                self._log("14. 尝试复用已登录会话直取 ChatGPT Session...")
+                session_payload, session_error = self._fetch_chatgpt_session_payload()
+                if session_payload:
+                    self._log("15. 已通过 ChatGPT Session 提取 Access Token")
+                    return self._populate_from_chatgpt_session(result, session_payload)
 
-            self._log(f"会话复用未成功，回退 OAuth 收敛: {session_error}", "warning")
+                self._log(f"会话复用未成功，回退 OAuth 收敛: {session_error}", "warning")
+            else:
+                session_payload = None
+                session_error = ""
 
             if not callback_url:
                 redirect_result = self.engine._get_flow_runner().resolve_post_registration_callback(did, sen_token)

@@ -246,6 +246,392 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
             logs,
         )
 
+    def test_run_prefers_oauth_resolution_when_post_create_page_is_consent(self):
+        runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
+        logs = []
+        runner._log = lambda message, level="info": logs.append((level, message))
+
+        engine = types.SimpleNamespace()
+        engine.logs = []
+        engine.email = "demo@example.com"
+        engine.password = "pw-123"
+        engine.proxy_url = None
+        engine.email_service = types.SimpleNamespace(service_type=types.SimpleNamespace(value="temp_mail"))
+        engine._is_existing_account = False
+        engine._post_create_page_type = "sign_in_with_chatgpt_codex_consent"
+        engine._post_create_continue_url = "https://auth.openai.com/sign-in-with-chatgpt/codex/consent"
+        engine._check_ip_location = lambda: (True, "US")
+        engine._create_email = lambda: True
+        engine._init_session = lambda: True
+        engine._start_oauth = lambda: True
+        engine._get_device_id = lambda: "did-1"
+        engine._check_sentinel = lambda _did: "sentinel"
+        engine._submit_signup_form = lambda *_args: types.SimpleNamespace(success=True)
+        engine._register_password = lambda: (True, "pw-123")
+        engine._send_verification_code = lambda: True
+        engine._wait_for_signup_verification_code = lambda: "123456"
+        engine._validate_signup_verification_code_with_retry = lambda _code: True
+        engine._create_user_account = lambda: True
+        engine._handle_oauth_callback = lambda callback_url: {
+            "account_id": "acct-1",
+            "access_token": "access-1",
+            "refresh_token": "refresh-1",
+            "id_token": "id-1",
+        }
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._serialize_session_cookies = lambda: ""
+        engine._extract_session_token_from_cookies = lambda: ""
+        engine._extract_workspace_id_from_token = lambda _token: ""
+        engine._post_registration_health_check = lambda _token: ("active", True, "")
+
+        flow_runner = types.SimpleNamespace(
+            resolve_post_registration_callback=lambda _did, _sen: types.SimpleNamespace(
+                callback_url="http://localhost:1455/auth/callback?code=ok&state=state",
+                workspace_id="acct-1",
+                metadata=None,
+                error_message="",
+            )
+        )
+        engine._get_flow_runner = lambda: flow_runner
+        runner.engine = engine
+
+        original_fetch = runner._fetch_chatgpt_session_payload
+        runner._fetch_chatgpt_session_payload = lambda: (_ for _ in ()).throw(AssertionError("should not probe chatgpt session"))
+
+        try:
+            result = runner.run()
+        finally:
+            runner._fetch_chatgpt_session_payload = original_fetch
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.access_token, "access-1")
+        self.assertIn(("info", "13. 已命中 OAuth 授权页，直接走 OAuth 收敛"), logs)
+
+    def test_run_prefers_oauth_when_continue_url_looks_like_oauth(self):
+        runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
+        logs = []
+        runner._log = lambda message, level="info": logs.append((level, message))
+
+        engine = types.SimpleNamespace()
+        engine.logs = []
+        engine.email = "demo@example.com"
+        engine.password = "pw-123"
+        engine.proxy_url = None
+        engine.email_service = types.SimpleNamespace(service_type=types.SimpleNamespace(value="temp_mail"))
+        engine._is_existing_account = False
+        engine._post_create_page_type = ""
+        engine._post_create_continue_url = "https://auth.openai.com/sign-in-with-chatgpt/codex/workspace?state=abc"
+        engine._check_ip_location = lambda: (True, "US")
+        engine._create_email = lambda: True
+        engine._init_session = lambda: True
+        engine._start_oauth = lambda: True
+        engine._get_device_id = lambda: "did-1"
+        engine._check_sentinel = lambda _did: "sentinel"
+        engine._submit_signup_form = lambda *_args: types.SimpleNamespace(success=True)
+        engine._register_password = lambda: (True, "pw-123")
+        engine._send_verification_code = lambda: True
+        engine._wait_for_signup_verification_code = lambda: "123456"
+        engine._validate_signup_verification_code_with_retry = lambda _code: True
+        engine._create_user_account = lambda: True
+        engine._handle_oauth_callback = lambda callback_url: {
+            "account_id": "acct-1",
+            "access_token": "access-1",
+            "refresh_token": "refresh-1",
+            "id_token": "id-1",
+        }
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._serialize_session_cookies = lambda: ""
+        engine._extract_session_token_from_cookies = lambda: ""
+        engine._extract_workspace_id_from_token = lambda _token: ""
+        engine._post_registration_health_check = lambda _token: ("active", True, "")
+
+        flow_runner = types.SimpleNamespace(
+            resolve_post_registration_callback=lambda _did, _sen: types.SimpleNamespace(
+                callback_url="http://localhost:1455/auth/callback?code=ok&state=state",
+                workspace_id="acct-1",
+                metadata=None,
+                error_message="",
+            )
+        )
+        engine._get_flow_runner = lambda: flow_runner
+        runner.engine = engine
+
+        original_fetch = runner._fetch_chatgpt_session_payload
+        runner._fetch_chatgpt_session_payload = lambda: (_ for _ in ()).throw(AssertionError("should not probe chatgpt session"))
+
+        try:
+            result = runner.run()
+        finally:
+            runner._fetch_chatgpt_session_payload = original_fetch
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.access_token, "access-1")
+        self.assertIn(("info", "13. 已命中 OAuth 授权页，直接走 OAuth 收敛"), logs)
+
+    def test_run_prefers_oauth_when_continue_url_is_callback(self):
+        runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
+        logs = []
+        runner._log = lambda message, level="info": logs.append((level, message))
+
+        engine = types.SimpleNamespace()
+        engine.logs = []
+        engine.email = "demo@example.com"
+        engine.password = "pw-123"
+        engine.proxy_url = None
+        engine.email_service = types.SimpleNamespace(service_type=types.SimpleNamespace(value="temp_mail"))
+        engine._is_existing_account = False
+        engine._post_create_page_type = ""
+        engine._post_create_continue_url = "http://localhost:1455/auth/callback?code=cb123&state=state"
+        engine._check_ip_location = lambda: (True, "US")
+        engine._create_email = lambda: True
+        engine._init_session = lambda: True
+        engine._start_oauth = lambda: True
+        engine._get_device_id = lambda: "did-1"
+        engine._check_sentinel = lambda _did: "sentinel"
+        engine._submit_signup_form = lambda *_args: types.SimpleNamespace(success=True)
+        engine._register_password = lambda: (True, "pw-123")
+        engine._send_verification_code = lambda: True
+        engine._wait_for_signup_verification_code = lambda: "123456"
+        engine._validate_signup_verification_code_with_retry = lambda _code: True
+        engine._create_user_account = lambda: True
+        engine._handle_oauth_callback = lambda callback_url: {
+            "account_id": "acct-1",
+            "access_token": "access-1",
+            "refresh_token": "refresh-1",
+            "id_token": "id-1",
+        }
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._serialize_session_cookies = lambda: ""
+        engine._extract_session_token_from_cookies = lambda: ""
+        engine._extract_workspace_id_from_token = lambda _token: ""
+        engine._post_registration_health_check = lambda _token: ("active", True, "")
+
+        flow_runner = types.SimpleNamespace(
+            resolve_post_registration_callback=lambda _did, _sen: types.SimpleNamespace(
+                callback_url="http://localhost:1455/auth/callback?code=ok&state=state",
+                workspace_id="acct-1",
+                metadata=None,
+                error_message="",
+            )
+        )
+        engine._get_flow_runner = lambda: flow_runner
+        runner.engine = engine
+
+        original_fetch = runner._fetch_chatgpt_session_payload
+        runner._fetch_chatgpt_session_payload = lambda: (_ for _ in ()).throw(AssertionError("should not probe chatgpt session"))
+
+        try:
+            result = runner.run()
+        finally:
+            runner._fetch_chatgpt_session_payload = original_fetch
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.access_token, "access-1")
+        self.assertIn(("info", "13. 已命中 OAuth 授权页，直接走 OAuth 收敛"), logs)
+
+    def test_run_probes_chatgpt_session_when_continue_url_has_wrong_host(self):
+        runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
+        logs = []
+        runner._log = lambda message, level="info": logs.append((level, message))
+
+        engine = types.SimpleNamespace()
+        engine.logs = []
+        engine.email = "demo@example.com"
+        engine.password = "pw-123"
+        engine.proxy_url = None
+        engine.email_service = types.SimpleNamespace(service_type=types.SimpleNamespace(value="temp_mail"))
+        engine._is_existing_account = False
+        engine._post_create_page_type = ""
+        engine._post_create_continue_url = "https://auth.openai.com.evil.test/sign-in-with-chatgpt/codex/consent?state=abc"
+        engine._check_ip_location = lambda: (True, "US")
+        engine._create_email = lambda: True
+        engine._init_session = lambda: True
+        engine._start_oauth = lambda: True
+        engine._get_device_id = lambda: "did-1"
+        engine._check_sentinel = lambda _did: "sentinel"
+        engine._submit_signup_form = lambda *_args: types.SimpleNamespace(success=True)
+        engine._register_password = lambda: (True, "pw-123")
+        engine._send_verification_code = lambda: True
+        engine._wait_for_signup_verification_code = lambda: "123456"
+        engine._validate_signup_verification_code_with_retry = lambda _code: True
+        engine._create_user_account = lambda: True
+        engine._handle_oauth_callback = lambda callback_url: {
+            "account_id": "acct-1",
+            "access_token": "access-1",
+            "refresh_token": "refresh-1",
+            "id_token": "id-1",
+        }
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._serialize_session_cookies = lambda: ""
+        engine._extract_session_token_from_cookies = lambda: ""
+        engine._extract_workspace_id_from_token = lambda _token: ""
+        engine._post_registration_health_check = lambda _token: ("active", True, "")
+
+        flow_runner = types.SimpleNamespace(
+            resolve_post_registration_callback=lambda _did, _sen: types.SimpleNamespace(
+                callback_url="http://localhost:1455/auth/callback?code=ok&state=state",
+                workspace_id="acct-1",
+                metadata=None,
+                error_message="",
+            )
+        )
+        engine._get_flow_runner = lambda: flow_runner
+        runner.engine = engine
+
+        fetch_called = {"count": 0}
+
+        def fake_fetch_chatgpt_session_payload():
+            fetch_called["count"] += 1
+            return None, "chatgpt-error"
+
+        original_fetch = runner._fetch_chatgpt_session_payload
+        runner._fetch_chatgpt_session_payload = fake_fetch_chatgpt_session_payload
+
+        try:
+            result = runner.run()
+        finally:
+            runner._fetch_chatgpt_session_payload = original_fetch
+
+        self.assertTrue(result.success)
+        self.assertEqual(fetch_called["count"], 1)
+        self.assertIn(("info", "13. 尝试直接复用当前会话"), logs)
+        self.assertNotIn(("info", "13. 已命中 OAuth 授权页，直接走 OAuth 收敛"), logs)
+
+    def test_add_phone_login_bypass_runs_before_session_probe(self):
+        runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
+        logs = []
+        runner._log = lambda message, level="info": logs.append((level, message))
+
+        engine = types.SimpleNamespace()
+        engine.logs = []
+        engine.email = "demo@example.com"
+        engine.password = "pw-123"
+        engine.proxy_url = None
+        engine.email_service = types.SimpleNamespace(service_type=types.SimpleNamespace(value="temp_mail"))
+        engine._is_existing_account = False
+        engine._post_create_page_type = "add_phone"
+        engine._post_create_continue_url = ""
+        engine._check_ip_location = lambda: (True, "US")
+        engine._create_email = lambda: True
+        engine._init_session = lambda: True
+        engine._start_oauth = lambda: True
+        engine._get_device_id = lambda: "did-1"
+        engine._check_sentinel = lambda _did: "sentinel"
+        engine._submit_signup_form = lambda *_args: types.SimpleNamespace(success=True)
+        engine._register_password = lambda: (True, "pw-123")
+        engine._send_verification_code = lambda: True
+        engine._wait_for_signup_verification_code = lambda: "123456"
+        engine._validate_signup_verification_code_with_retry = lambda _code: True
+        engine._create_user_account = lambda: True
+        engine._handle_oauth_callback = lambda callback_url: {
+            "account_id": "acct-1",
+            "access_token": "access-1",
+            "refresh_token": "refresh-1",
+            "id_token": "id-1",
+        }
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._serialize_session_cookies = lambda: ""
+        engine._extract_session_token_from_cookies = lambda: ""
+        engine._extract_workspace_id_from_token = lambda _token: ""
+        engine._post_registration_health_check = lambda _token: ("active", True, "")
+
+        flow_runner = types.SimpleNamespace(
+            resolve_post_registration_callback=lambda _did, _sen: types.SimpleNamespace(
+                callback_url="http://localhost:1455/auth/callback?code=ok&state=state",
+                workspace_id="acct-1",
+                metadata=None,
+                error_message="",
+            )
+        )
+        engine._get_flow_runner = lambda: flow_runner
+        call_sequence = []
+        engine._attempt_add_phone_login_bypass = lambda _did, _sen: call_sequence.append("bypass") or "http://localhost:1455/auth/callback?code=ok&state=state"
+        runner.engine = engine
+
+        def fake_fetch_chatgpt_session_payload():
+            call_sequence.append("session")
+            return None, "session-error"
+
+        original_fetch = runner._fetch_chatgpt_session_payload
+        runner._fetch_chatgpt_session_payload = fake_fetch_chatgpt_session_payload
+
+        try:
+            result = runner.run()
+        finally:
+            runner._fetch_chatgpt_session_payload = original_fetch
+
+        self.assertTrue(result.success)
+        self.assertEqual(call_sequence, ["bypass", "session"])
+        self.assertIn(("warning", "13. 检测到 add_phone，先尝试登录回退以便复用会话"), logs)
+        self.assertIn(("info", "14. 尝试复用已登录会话直取 ChatGPT Session..."), logs)
+
+    def test_existing_account_reuses_session_before_oauth(self):
+        runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
+        logs = []
+        runner._log = lambda message, level="info": logs.append((level, message))
+
+        engine = types.SimpleNamespace()
+        engine.logs = []
+        engine.email = "demo@example.com"
+        engine.password = "pw-123"
+        engine.proxy_url = None
+        engine.email_service = types.SimpleNamespace(service_type=types.SimpleNamespace(value="temp_mail"))
+        engine._is_existing_account = True
+        engine._post_create_page_type = ""
+        engine._post_create_continue_url = ""
+        engine._check_ip_location = lambda: (True, "US")
+        engine._create_email = lambda: True
+        engine._init_session = lambda: True
+        engine._start_oauth = lambda: True
+        engine._get_device_id = lambda: "did-1"
+        engine._check_sentinel = lambda _did: "sentinel"
+        engine._submit_signup_form = lambda *_args: types.SimpleNamespace(success=True)
+        engine._register_password = lambda: (True, "pw-123")
+        engine._send_verification_code = lambda: True
+        engine._wait_for_signup_verification_code = lambda: "123456"
+        engine._validate_signup_verification_code_with_retry = lambda _code: True
+        engine._create_user_account = lambda: True
+        engine._handle_oauth_callback = lambda callback_url: {
+            "account_id": "acct-1",
+            "access_token": "access-1",
+            "refresh_token": "refresh-1",
+            "id_token": "id-1",
+        }
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._serialize_session_cookies = lambda: ""
+        engine._extract_session_token_from_cookies = lambda: ""
+        engine._extract_workspace_id_from_token = lambda _token: ""
+        engine._post_registration_health_check = lambda _token: ("active", True, "")
+
+        flow_runner = types.SimpleNamespace(
+            resolve_post_registration_callback=lambda _did, _sen: types.SimpleNamespace(
+                callback_url="http://localhost:1455/auth/callback?code=ok&state=state",
+                workspace_id="acct-1",
+                metadata=None,
+                error_message="",
+            )
+        )
+        engine._get_flow_runner = lambda: flow_runner
+        runner.engine = engine
+        fetch_called = {"count": 0}
+
+        def fake_fetch_chatgpt_session_payload():
+            fetch_called["count"] += 1
+            return None, "session-error"
+
+        original_fetch = runner._fetch_chatgpt_session_payload
+        runner._fetch_chatgpt_session_payload = fake_fetch_chatgpt_session_payload
+
+        try:
+            result = runner.run()
+        finally:
+            runner._fetch_chatgpt_session_payload = original_fetch
+
+        self.assertTrue(result.success)
+        self.assertEqual(fetch_called["count"], 1)
+        self.assertIn(("info", "13. 尝试直接复用当前会话"), logs)
+        self.assertNotIn(("info", "13. 已命中 OAuth 授权页，直接走 OAuth 收敛"), logs)
+
 
 if __name__ == "__main__":
     unittest.main()
