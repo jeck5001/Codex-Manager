@@ -7,6 +7,7 @@ chatgpt.com/api/auth/session 会话复用，失败时再回退现有 OAuth callb
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -188,6 +189,54 @@ class AnyAutoRegistrationRunner:
         self._log("已通过 session_token 刷新补齐 accessToken")
         return payload
 
+    def _log_chatgpt_session_payload_summary(
+        self,
+        session_payload: Optional[Dict[str, Any]],
+    ):
+        payload = dict(session_payload or {})
+        user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+        account = payload.get("account") if isinstance(payload.get("account"), dict) else {}
+        summary = {
+            "has_accessToken": bool(self.engine._clean_text(payload.get("accessToken"))),
+            "has_sessionToken": bool(self.engine._clean_text(payload.get("sessionToken"))),
+            "authProvider": self.engine._clean_text(payload.get("authProvider")),
+            "expires": self.engine._clean_text(payload.get("expires")),
+            "user_keys": sorted(str(key) for key in user.keys()),
+            "account_keys": sorted(str(key) for key in account.keys()),
+        }
+        self._log(
+            f"ChatGPT Session 响应摘要: {json.dumps(summary, ensure_ascii=False)}",
+            "warning",
+        )
+
+    def _log_chatgpt_session_cookie_summary(self):
+        cookie_names = []
+        seen = set()
+        for chunk in (self.engine._serialize_session_cookies() or "").split(";"):
+            raw = str(chunk or "").strip()
+            if not raw or "=" not in raw:
+                continue
+            name = raw.split("=", 1)[0].strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            cookie_names.append(name)
+
+        interesting_cookie_names = [
+            name
+            for name in cookie_names
+            if (
+                "auth" in name.lower()
+                or "session" in name.lower()
+                or "csrf" in name.lower()
+                or "cf_" in name.lower()
+                or "oai-" in name.lower()
+            )
+        ]
+        names = interesting_cookie_names or cookie_names
+        summary = ", ".join(names[:12]) if names else "(none)"
+        self._log(f"ChatGPT Session 相关 Cookies: {summary}", "warning")
+
     def _fetch_chatgpt_session_payload(self) -> Tuple[Optional[Dict[str, Any]], str]:
         session = getattr(self.engine, "session", None)
         if session is None:
@@ -235,6 +284,8 @@ class AnyAutoRegistrationRunner:
                 recovered_payload = self._recover_chatgpt_access_token(payload)
                 if recovered_payload:
                     return recovered_payload, ""
+                self._log_chatgpt_session_payload_summary(payload)
+                self._log_chatgpt_session_cookie_summary()
                 self._log("HTTP ChatGPT Session 不完整，尝试浏览器会话回退", "warning")
                 auth_url = ""
                 if hasattr(self.engine, "_build_authenticated_oauth_url"):
