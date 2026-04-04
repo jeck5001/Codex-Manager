@@ -6,7 +6,7 @@ import logging
 from typing import Optional, Dict, Any, List
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ...database import crud
 from ...database.session import get_db
@@ -380,6 +380,39 @@ class TempmailSettings(BaseModel):
     enabled: bool = True
 
 
+class TempMailCloudflareSettings(BaseModel):
+    """Cloudflare 临时邮箱配置"""
+    cloudflare_api_token: Optional[str] = None
+    cloudflare_account_id: Optional[str] = None
+    cloudflare_zone_id: Optional[str] = None
+    cloudflare_worker_name: Optional[str] = None
+    temp_mail_domain_base: Optional[str] = None
+    temp_mail_subdomain_mode: Optional[str] = None
+    temp_mail_subdomain_length: Optional[int] = None
+    temp_mail_subdomain_prefix: Optional[str] = None
+    temp_mail_sync_cloudflare_enabled: Optional[bool] = None
+    temp_mail_require_cloudflare_sync: Optional[bool] = None
+
+    @field_validator("temp_mail_subdomain_mode")
+    @classmethod
+    def validate_subdomain_mode(cls, value):
+        if value is None:
+            return None
+        mode = value.lower()
+        if mode not in {"random", "sequence"}:
+            raise ValueError("temp_mail_subdomain_mode must be either 'random' or 'sequence'")
+        return mode
+
+    @field_validator("temp_mail_subdomain_length")
+    @classmethod
+    def validate_subdomain_length(cls, value):
+        if value is None:
+            return None
+        if value < 3 or value > 16:
+            raise ValueError("temp_mail_subdomain_length must be between 3 and 16")
+        return value
+
+
 class EmailCodeSettings(BaseModel):
     """验证码等待设置"""
     timeout: int = 120  # 验证码等待超时（秒）
@@ -410,6 +443,57 @@ async def update_tempmail_settings(request: TempmailSettings):
     update_settings(**update_dict)
 
     return {"success": True, "message": "临时邮箱设置已更新"}
+
+
+@router.get("/temp-mail/cloudflare")
+async def get_temp_mail_cloudflare_settings():
+    """获取 Cloudflare 临时邮箱设置"""
+    settings = get_settings()
+    return {
+        "has_api_token": bool(settings.cloudflare_api_token and settings.cloudflare_api_token.get_secret_value()),
+        "cloudflare_account_id": settings.cloudflare_account_id,
+        "cloudflare_zone_id": settings.cloudflare_zone_id,
+        "cloudflare_worker_name": settings.cloudflare_worker_name,
+        "temp_mail_domain_base": settings.temp_mail_domain_base,
+        "temp_mail_subdomain_mode": settings.temp_mail_subdomain_mode,
+        "temp_mail_subdomain_length": settings.temp_mail_subdomain_length,
+        "temp_mail_subdomain_prefix": settings.temp_mail_subdomain_prefix,
+        "temp_mail_sync_cloudflare_enabled": settings.temp_mail_sync_cloudflare_enabled,
+        "temp_mail_require_cloudflare_sync": settings.temp_mail_require_cloudflare_sync,
+    }
+
+
+@router.post("/temp-mail/cloudflare")
+async def update_temp_mail_cloudflare_settings(request: TempMailCloudflareSettings):
+    """更新 Cloudflare 临时邮箱设置"""
+    update_dict = {}
+
+    if request.cloudflare_api_token is not None:
+        update_dict["cloudflare_api_token"] = request.cloudflare_api_token
+    if request.cloudflare_account_id is not None:
+        update_dict["cloudflare_account_id"] = request.cloudflare_account_id
+    if request.cloudflare_zone_id is not None:
+        update_dict["cloudflare_zone_id"] = request.cloudflare_zone_id
+    if request.cloudflare_worker_name is not None:
+        update_dict["cloudflare_worker_name"] = request.cloudflare_worker_name
+    if request.temp_mail_domain_base is not None:
+        update_dict["temp_mail_domain_base"] = request.temp_mail_domain_base
+    if request.temp_mail_subdomain_mode is not None:
+        update_dict["temp_mail_subdomain_mode"] = request.temp_mail_subdomain_mode
+    if request.temp_mail_subdomain_length is not None:
+        update_dict["temp_mail_subdomain_length"] = request.temp_mail_subdomain_length
+    if request.temp_mail_subdomain_prefix is not None:
+        update_dict["temp_mail_subdomain_prefix"] = request.temp_mail_subdomain_prefix
+    if request.temp_mail_sync_cloudflare_enabled is not None:
+        update_dict["temp_mail_sync_cloudflare_enabled"] = request.temp_mail_sync_cloudflare_enabled
+    if request.temp_mail_require_cloudflare_sync is not None:
+        update_dict["temp_mail_require_cloudflare_sync"] = request.temp_mail_require_cloudflare_sync
+
+    if not update_dict:
+        return {"success": True, "message": "Cloudflare 临时邮箱设置未修改"}
+
+    update_settings(**update_dict)
+    return {"success": True, "message": "Cloudflare 临时邮箱设置已更新"}
 
 
 # ============== 验证码等待设置 ==============
