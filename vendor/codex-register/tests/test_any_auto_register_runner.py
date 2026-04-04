@@ -197,37 +197,11 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
         logs = []
         runner._log = lambda message, level="info": logs.append((level, message))
 
-        original_fetch = ANY_AUTO_MODULE.fetch_browser_chatgpt_session_payload
+        payload, error_message = runner._fetch_chatgpt_session_payload()
 
-        try:
-            captured = {}
-
-            def fake_fetch_browser_chatgpt_session_payload(**kwargs):
-                captured.update(kwargs)
-                return {
-                    "user": {"id": "user-1"},
-                    "account": {"id": "acct-1"},
-                    "accessToken": "browser-access",
-                    "sessionToken": "browser-session",
-                }
-
-            ANY_AUTO_MODULE.fetch_browser_chatgpt_session_payload = fake_fetch_browser_chatgpt_session_payload
-
-            payload, error_message = runner._fetch_chatgpt_session_payload()
-        finally:
-            ANY_AUTO_MODULE.fetch_browser_chatgpt_session_payload = original_fetch
-
-        self.assertEqual(payload["accessToken"], "browser-access")
-        self.assertEqual(error_message, "")
-        self.assertEqual(
-            captured["auth_url"],
-            "https://auth.openai.com/oauth/authorize?client_id=test&state=state",
-        )
-        self.assertEqual(
-            captured["cookies"],
-            [{"name": "cf_clearance", "value": "cookie", "domain": ".chatgpt.com", "path": "/"}],
-        )
-        self.assertIn(
+        self.assertIsNone(payload)
+        self.assertEqual(error_message, "ChatGPT Session 接口未返回 accessToken")
+        self.assertNotIn(
             ("warning", "HTTP ChatGPT Session 不完整，尝试浏览器会话回退"),
             logs,
         )
@@ -236,6 +210,51 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
                 "warning",
                 'ChatGPT Session 响应摘要: {"has_accessToken": false, "has_sessionToken": false, "authProvider": "", "expires": "", "user_keys": ["id"], "account_keys": ["id"]}',
             ),
+            logs,
+        )
+        self.assertIn(
+            (
+                "warning",
+                "ChatGPT Session 相关 Cookies: cf_clearance",
+            ),
+            logs,
+        )
+
+    def test_fetch_chatgpt_session_uses_single_http_probe_without_browser_fallback(self):
+        class FakeResponse:
+            def __init__(self, status_code, payload=None, url="https://chatgpt.com/"):
+                self.status_code = status_code
+                self._payload = payload or {}
+                self.url = url
+
+            def json(self):
+                return self._payload
+
+        class FakeSession:
+            def __init__(self):
+                self.calls = []
+
+            def get(self, url, **kwargs):
+                self.calls.append(url)
+                if "api/auth/session" in url:
+                    return FakeResponse(200, {"user": {"id": "user-1"}, "account": {"id": "acct-1"}})
+                return FakeResponse(200, url=url)
+
+        runner = self._build_runner(cookies="cf_clearance=abc", extracted_session_token=None)
+        runner.engine.session = FakeSession()
+        logs = []
+        runner._log = lambda message, level="info": logs.append((level, message))
+
+        payload, error_message = runner._fetch_chatgpt_session_payload()
+
+        self.assertIsNone(payload)
+        self.assertEqual(error_message, "ChatGPT Session 接口未返回 accessToken")
+        self.assertEqual(
+            runner.engine.session.calls,
+            ["https://chatgpt.com/", "https://chatgpt.com/api/auth/session"],
+        )
+        self.assertNotIn(
+            ("warning", "HTTP ChatGPT Session 不完整，尝试浏览器会话回退"),
             logs,
         )
         self.assertIn(
@@ -497,6 +516,29 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
         self.assertIn(("info", "13. 尝试直接复用当前会话"), logs)
         self.assertNotIn(("info", "13. 已命中 OAuth 授权页，直接走 OAuth 收敛"), logs)
 
+    def test_should_try_chatgpt_session_first_skips_known_oauth_shapes(self):
+        runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
+        runner.engine = types.SimpleNamespace(
+            _clean_text=lambda value: str(value or "").strip(),
+            _post_create_page_type="",
+            _post_create_continue_url="",
+        )
+
+        cases = [
+            ("page_type_org", "sign_in_with_chatgpt_codex_org", ""),
+            ("page_type_workspace", "workspace", ""),
+            ("page_type_token_exchange", "token_exchange", ""),
+            ("continue_workspace_root", "", "https://auth.openai.com/workspace"),
+            ("continue_org_path", "", "https://auth.openai.com/sign-in-with-chatgpt/codex/organization"),
+            ("continue_token_exchange_path", "", "https://auth.openai.com/sign-in-with-chatgpt/codex/token_exchange"),
+        ]
+
+        for name, page_type, continue_url in cases:
+            with self.subTest(name=name):
+                runner.engine._post_create_page_type = page_type
+                runner.engine._post_create_continue_url = continue_url
+                self.assertFalse(runner._should_try_chatgpt_session_first())
+
     def test_add_phone_login_bypass_runs_before_session_probe(self):
         runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
         logs = []
@@ -561,9 +603,9 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
             runner._fetch_chatgpt_session_payload = original_fetch
 
         self.assertTrue(result.success)
-        self.assertEqual(call_sequence, ["bypass", "session"])
+        self.assertEqual(call_sequence, ["bypass"])
         self.assertIn(("warning", "13. 检测到 add_phone，先尝试登录回退以便复用会话"), logs)
-        self.assertIn(("info", "14. 尝试复用已登录会话直取 ChatGPT Session..."), logs)
+        self.assertNotIn(("info", "14. 尝试复用已登录会话直取 ChatGPT Session..."), logs)
 
     def test_existing_account_reuses_session_before_oauth(self):
         runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
