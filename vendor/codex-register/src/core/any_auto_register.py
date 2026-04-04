@@ -13,7 +13,6 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from .register import RegistrationEngine, RegistrationResult
-from .sentinel_browser import fetch_browser_chatgpt_session_payload
 from .token_refresh import TokenRefreshManager
 from urllib.parse import parse_qs, urlparse
 
@@ -271,71 +270,43 @@ class AnyAutoRegistrationRunner:
         if session is None:
             return None, "未初始化 HTTP 会话"
 
-        last_error = ""
-        for target_url in (
-            CHATGPT_HOME_URL,
-            f"{CHATGPT_HOME_URL}?model=auto",
-        ):
-            try:
-                self._log(f"尝试落地 ChatGPT 会话: {target_url}")
-                response = session.get(
-                    target_url,
-                    headers={
-                        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        "referer": "https://auth.openai.com/",
-                    },
-                    allow_redirects=True,
-                    timeout=30,
-                )
-                final_url = self.engine._clean_text(getattr(response, "url", ""))
-                if final_url:
-                    self._log(f"ChatGPT 会话落地 URL: {final_url[:120]}...")
-            except Exception as exc:
-                last_error = f"访问 ChatGPT 首页失败: {exc}"
-                self._log(last_error, "warning")
-                continue
+        try:
+            self._log(f"尝试落地 ChatGPT 会话: {CHATGPT_HOME_URL}")
+            response = session.get(
+                CHATGPT_HOME_URL,
+                headers={
+                    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "referer": "https://auth.openai.com/",
+                },
+                allow_redirects=True,
+                timeout=30,
+            )
+            final_url = self.engine._clean_text(getattr(response, "url", ""))
+            if final_url:
+                self._log(f"ChatGPT 会话落地 URL: {final_url[:120]}...")
 
-            try:
-                response = session.get(
-                    CHATGPT_SESSION_URL,
-                    headers={
-                        "accept": "application/json",
-                        "referer": CHATGPT_HOME_URL,
-                    },
-                    timeout=30,
-                )
-                self._log(f"ChatGPT Session 接口状态: {response.status_code}")
-                if response.status_code != 200:
-                    last_error = f"ChatGPT Session 接口返回 HTTP {response.status_code}"
-                    continue
+            response = session.get(
+                CHATGPT_SESSION_URL,
+                headers={
+                    "accept": "application/json",
+                    "referer": CHATGPT_HOME_URL,
+                },
+                timeout=30,
+            )
+            self._log(f"ChatGPT Session 接口状态: {response.status_code}")
+            if response.status_code != 200:
+                return None, f"ChatGPT Session 接口返回 HTTP {response.status_code}"
 
-                payload = response.json()
-                recovered_payload = self._recover_chatgpt_access_token(payload)
-                if recovered_payload:
-                    return recovered_payload, ""
-                self._log_chatgpt_session_payload_summary(payload)
-                self._log_chatgpt_session_cookie_summary()
-                self._log("HTTP ChatGPT Session 不完整，尝试浏览器会话回退", "warning")
-                auth_url = ""
-                if hasattr(self.engine, "_build_authenticated_oauth_url"):
-                    auth_url = self.engine._clean_text(self.engine._build_authenticated_oauth_url())
-                browser_payload = fetch_browser_chatgpt_session_payload(
-                    cookies_str=self.engine._serialize_session_cookies(),
-                    cookies=self.engine._session_browser_cookies(),
-                    auth_url=auth_url,
-                    proxy_url=self.engine.proxy_url,
-                    callback_logger=lambda message: self._log(message),
-                )
-                recovered_payload = self._recover_chatgpt_access_token(browser_payload)
-                if recovered_payload:
-                    return recovered_payload, ""
-                last_error = "ChatGPT Session 接口未返回 accessToken"
-                continue
-            except Exception as exc:
-                last_error = f"读取 ChatGPT Session 失败: {exc}"
-                self._log(last_error, "warning")
+            payload = response.json()
+            recovered_payload = self._recover_chatgpt_access_token(payload)
+            if recovered_payload:
+                return recovered_payload, ""
 
-        return None, last_error or "未能复用 ChatGPT Session"
+            self._log_chatgpt_session_payload_summary(payload)
+            self._log_chatgpt_session_cookie_summary()
+            return None, "ChatGPT Session 接口未返回 accessToken"
+        except Exception as exc:
+            return None, f"读取 ChatGPT Session 失败: {exc}"
 
     def _populate_from_chatgpt_session(
         self,
@@ -475,6 +446,8 @@ class AnyAutoRegistrationRunner:
             ):
                 self._log("13. 检测到 add_phone，先尝试登录回退以便复用会话", "warning")
                 callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
+                if callback_url:
+                    should_try_session = False
             elif should_try_session:
                 self._log("13. 尝试直接复用当前会话")
             else:
