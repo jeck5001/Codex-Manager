@@ -103,6 +103,7 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
             _post_registration_health_check=lambda _token: ("active", True, ""),
             email_service=types.SimpleNamespace(service_type=types.SimpleNamespace(value="temp_mail")),
             proxy_url=None,
+            _build_authenticated_oauth_url=lambda: "https://auth.openai.com/oauth/authorize?client_id=test&state=state",
         )
         runner._log = lambda *_args, **_kwargs: None
         return runner
@@ -218,6 +219,10 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
 
         self.assertEqual(payload["accessToken"], "browser-access")
         self.assertEqual(error_message, "")
+        self.assertEqual(
+            captured["auth_url"],
+            "https://auth.openai.com/oauth/authorize?client_id=test&state=state",
+        )
         self.assertEqual(
             captured["cookies"],
             [{"name": "cf_clearance", "value": "cookie", "domain": ".chatgpt.com", "path": "/"}],

@@ -807,6 +807,39 @@ class RegisterAddPhoneTests(unittest.TestCase):
         )
         self.assertEqual(followed_urls, [])
 
+    def test_add_phone_bypass_does_not_restart_new_oauth_session_after_current_session_hits_add_phone(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.password = "secret"
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+        engine._last_login_recovery_page_type = ""
+        engine.logs = []
+        engine._log = lambda *_args, **_kwargs: None
+
+        engine._submit_login_identifier = lambda did, sen: {"type": "login_password"}
+        engine._verify_login_password = lambda password: {"type": "email_otp_verification"}
+        engine._complete_login_email_otp_verification = lambda: AuthResolutionResult(
+            callback_url=None,
+            page_type="add_phone",
+            continue_url="https://auth.openai.com/add-phone",
+        )
+        engine._advance_workspace_authorization = lambda auth_target: None
+        engine._follow_redirects = lambda url: None
+        engine._resolve_callback_from_auth_page = lambda page, stage: None
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._restart_oauth_session_for_login = (
+            lambda: (_ for _ in ()).throw(AssertionError("should not restart new oauth session"))
+        )
+
+        callback = engine._attempt_add_phone_login_bypass("did", "sentinel")
+
+        self.assertIsNone(callback)
+
     def test_register_password_sends_updated_sentinel_flow_and_passkey_capabilities(self):
         captured = {}
 

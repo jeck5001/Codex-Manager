@@ -247,6 +247,7 @@ def fetch_browser_chatgpt_session_payload(
     *,
     cookies_str: str = "",
     cookies: Optional[list[dict[str, Any]]] = None,
+    auth_url: str = "",
     proxy_url: Optional[str] = None,
     callback_logger: Optional[Callable[[str], None]] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -283,8 +284,27 @@ def fetch_browser_chatgpt_session_payload(
                 context.add_cookies(context_cookies)
 
             page = context.new_page()
+            callback_urls: list[str] = []
+
+            def record_callback_url(raw_url: str):
+                value = str(raw_url or "").strip()
+                if not value:
+                    return
+                if "code=" in value and "state=" in value and value not in callback_urls:
+                    callback_urls.append(value)
+
+            page.on("request", lambda request: record_callback_url(getattr(request, "url", "")))
+            page.on("framenavigated", lambda frame: record_callback_url(getattr(frame, "url", "")))
+
             page.goto("https://auth.openai.com/", wait_until="domcontentloaded", timeout=30_000)
             page.wait_for_timeout(1_000)
+            if auth_url:
+                _log(callback_logger, f"浏览器先跟随已认证 OAuth URL: {auth_url[:120]}...")
+                page.goto(auth_url, wait_until="domcontentloaded", timeout=30_000)
+                page.wait_for_timeout(2_000)
+                final_auth_url = str(page.url or "").strip()
+                if final_auth_url:
+                    _log(callback_logger, f"浏览器 OAuth 落地 URL: {final_auth_url[:120]}...")
             page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=30_000)
             page.wait_for_timeout(2_000)
 
@@ -323,6 +343,8 @@ def fetch_browser_chatgpt_session_payload(
             if not isinstance(payload, dict):
                 _log(callback_logger, "浏览器 ChatGPT Session 缺少 JSON payload")
                 return None
+            if callback_urls and not str(payload.get("callbackUrl") or "").strip():
+                payload["callbackUrl"] = callback_urls[-1]
 
             browser_cookies = context.cookies(["https://chatgpt.com", "https://auth.openai.com"])
             session_token = _extract_browser_session_token(browser_cookies)
