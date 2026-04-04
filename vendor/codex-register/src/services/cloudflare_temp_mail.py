@@ -43,9 +43,14 @@ class CloudflareTempMailProvisioner:
     ]
 
     def __init__(self, settings: Settings, http_client: Optional[HTTPClient] = None):
+        normalized = self.validate_settings(settings)
         self.settings = settings
-        self._api_token = self._extract_token(settings)
-        self.validate_settings(settings)
+        self._api_token = normalized["token"]
+        self._account_id = normalized["account_id"]
+        self._zone_id = normalized["zone_id"]
+        self._worker_name = normalized["worker_name"]
+        self._domain_base = normalized["domain_base"]
+        self._prefix = self._normalize_prefix(settings.temp_mail_subdomain_prefix)
         self.http_client = http_client or HTTPClient(config=RequestConfig())
 
     @staticmethod
@@ -55,34 +60,62 @@ class CloudflareTempMailProvisioner:
             return raw_token.get_secret_value()
         return str(raw_token or "").strip()
 
+    @staticmethod
+    def _normalize_prefix(value: Optional[str]) -> str:
+        prefix = str(value or "").strip()
+        return prefix.rstrip("-")
+
+    @staticmethod
+    def _normalize_str(value: Optional[str]) -> str:
+        return str(value or "").strip()
+
     @classmethod
-    def validate_settings(cls, settings: Settings) -> None:
-        missing: List[str] = []
+    def validate_settings(cls, settings: Settings) -> Dict[str, str]:
+        normalized_token = cls._extract_token(settings)
+        missing_fields: List[str] = []
 
-        if not cls._extract_token(settings):
-            missing.append("cloudflare_api_token")
+        if not normalized_token:
+            missing_fields.append("cloudflare_api_token")
 
-        if not settings.cloudflare_account_id:
-            missing.append("cloudflare_account_id")
-        if not settings.cloudflare_zone_id:
-            missing.append("cloudflare_zone_id")
-        if not settings.cloudflare_worker_name:
-            missing.append("cloudflare_worker_name")
-        if not settings.temp_mail_domain_base:
-            missing.append("temp_mail_domain_base")
+        normalized_account = cls._normalize_str(settings.cloudflare_account_id)
+        normalized_zone = cls._normalize_str(settings.cloudflare_zone_id)
+        normalized_worker = cls._normalize_str(settings.cloudflare_worker_name)
+        normalized_domain = cls._normalize_str(settings.temp_mail_domain_base)
 
-        if missing:
+        mapping = [
+            ("cloudflare_account_id", normalized_account),
+            ("cloudflare_zone_id", normalized_zone),
+            ("cloudflare_worker_name", normalized_worker),
+            ("temp_mail_domain_base", normalized_domain),
+        ]
+
+        for key, value in mapping:
+            if not value:
+                missing_fields.append(key)
+
+        if missing_fields:
             raise CloudflareProvisioningError(
-                f"Missing required Cloudflare settings: {', '.join(missing)}"
+                f"Missing required Cloudflare settings: {', '.join(missing_fields)}"
             )
 
+        return {
+            "token": normalized_token,
+            "account_id": normalized_account,
+            "zone_id": normalized_zone,
+            "worker_name": normalized_worker,
+            "domain_base": normalized_domain,
+        }
+
     def _compose_domain(self, label: str) -> str:
-        prefix = str(self.settings.temp_mail_subdomain_prefix or "").strip().rstrip("-")
-        base = str(self.settings.temp_mail_domain_base or "").strip()
+        label_part = str(label or "").strip()
+        if not label_part:
+            raise CloudflareProvisioningError("Label is required to compose domain")
+        prefix = self._prefix
+        base = self._domain_base
         if not base:
             raise CloudflareProvisioningError("temp_mail_domain_base is required to build domains")
-        label_part = f"{prefix}-{label}" if prefix else label
-        return f"{label_part}.{base}"
+        domain = f"{prefix}-{label_part}" if prefix else label_part
+        return f"{domain}.{base}"
 
     def _upsert_domains_binding(
         self, bindings: List[Dict[str, Any]], domain: str
@@ -90,35 +123,76 @@ class CloudflareTempMailProvisioner:
         updated: List[Dict[str, Any]] = []
         replaced = False
         for binding in bindings:
-            if binding.get("name") == "DOMAINS":
-                domains = parse_domains_binding(binding.get("text"))
-                if domain not in domains:
-                    domains.append(domain)
-                updated.append({**binding, "type": "plain_text", "text": json.dumps(domains)})
-                replaced = True
+            if binding.get("name") != "DOMAINS":
+                updated.append(binding)
                 continue
-            updated.append(binding)
+
+            domains = self._extract_binding_domains(binding)
+            domains.append(domain)
+            normalized = self._dedupe_domains(domains)
+            updated.append({
+                "type": "plain_text",
+                "name": "DOMAINS",
+                "text": json.dumps(normalized),
+            })
+            replaced = True
 
         if not replaced:
             updated.append({
                 "type": "plain_text",
                 "name": "DOMAINS",
-                "text": json.dumps([domain]),
+                "text": json.dumps(self._dedupe_domains([domain])),
             })
         return updated
+
+    @staticmethod
+    def _extract_binding_domains(binding: Dict[str, Any]) -> List[str]:
+        domains: List[str] = []
+        domains.extend(parse_domains_binding(binding.get("text")))
+        raw_json = binding.get("json")
+        if raw_json is not None:
+            if isinstance(raw_json, str):
+                domains.extend(parse_domains_binding(raw_json))
+            elif isinstance(raw_json, list):
+                domains.extend(
+                    str(item).strip() for item in raw_json if str(item).strip()
+                )
+            elif isinstance(raw_json, dict):
+                for value in raw_json.values():
+                    if isinstance(value, (list, tuple)):
+                        domains.extend(
+                            str(item).strip() for item in value if str(item).strip()
+                        )
+                    else:
+                        text_value = str(value).strip()
+                        if text_value:
+                            domains.append(text_value)
+        return [d for d in domains if d]
+
+    @staticmethod
+    def _dedupe_domains(domains: List[str]) -> List[str]:
+        seen = set()
+        result: List[str] = []
+        for item in domains:
+            normalized = str(item or "").strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            result.append(normalized)
+        return result
 
     def _worker_settings_url(self) -> str:
         account_id = self.settings.cloudflare_account_id
         worker_name = self.settings.cloudflare_worker_name
         return (
-            f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-            f"/workers/scripts/{worker_name}/settings"
+            f"https://api.cloudflare.com/client/v4/accounts/{self._account_id}"
+            f"/workers/scripts/{self._worker_name}/settings"
         )
 
     def _zones_subdomain_url(self) -> str:
         zone_id = self.settings.cloudflare_zone_id
         return (
-            f"https://api.cloudflare.com/client/v4/zones/{zone_id}"
+            f"https://api.cloudflare.com/client/v4/zones/{self._zone_id}"
             "/email/sending/subdomains"
         )
 
@@ -128,25 +202,53 @@ class CloudflareTempMailProvisioner:
             "Content-Type": "application/json",
         }
 
-    def create_subdomain(self, domain: str) -> Any:
-        return self.http_client.request(
+    def _process_response(self, response: Any, action: str) -> Dict[str, Any]:
+        payload = None
+        try:
+            payload = response.json()
+        except Exception as exc:
+            if response.status_code >= 400:
+                raise CloudflareProvisioningError(
+                    f"{action} failed with status {response.status_code} and invalid JSON"
+                ) from exc
+            raise CloudflareProvisioningError(
+                f"Failed to parse Cloudflare {action} response: {exc}"
+            ) from exc
+
+        if response.status_code >= 400:
+            raise CloudflareProvisioningError(
+                f"{action} failed with status {response.status_code}: {payload}"
+            )
+
+        if not isinstance(payload, dict):
+            raise CloudflareProvisioningError(
+                f"{action} returned unexpected payload: {payload}"
+            )
+
+        return payload
+
+    def create_subdomain(self, domain: str) -> Dict[str, Any]:
+        response = self.http_client.request(
             "POST",
             self._zones_subdomain_url(),
             json={"name": domain},
             headers=self._auth_headers(),
         )
+        return self._process_response(response, "create subdomain")
 
-    def get_worker_settings(self) -> Any:
-        return self.http_client.request(
+    def get_worker_settings(self) -> Dict[str, Any]:
+        response = self.http_client.request(
             "GET",
             self._worker_settings_url(),
             headers=self._auth_headers(),
         )
+        return self._process_response(response, "get worker settings")
 
-    def patch_worker_settings(self, bindings: List[Dict[str, Any]]) -> Any:
-        return self.http_client.request(
+    def patch_worker_settings(self, bindings: List[Dict[str, Any]]) -> Dict[str, Any]:
+        response = self.http_client.request(
             "PATCH",
             self._worker_settings_url(),
             json={"settings": {"bindings": bindings}},
             headers=self._auth_headers(),
         )
+        return self._process_response(response, "patch worker settings")
