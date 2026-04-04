@@ -163,6 +163,124 @@ fn gateway_claude_protocol_stabilizes_prompt_cache_key_without_conversation_id()
     );
 }
 
+/// 函数 `gateway_claude_messages_stay_on_chatgpt_codex_base`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-04
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn gateway_claude_messages_stay_on_chatgpt_codex_base() {
+    let _lock = test_env_guard();
+    let dir = new_test_dir("codexmanager-gateway-claude-chatgpt-base");
+    let db_path: PathBuf = dir.join("codexmanager.db");
+
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+
+    let upstream_response = serde_json::json!({
+        "id": "resp_claude_chatgpt_base",
+        "model": "gpt-5.4-mini",
+        "output": [{
+            "type": "message",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "text": "ok" }]
+        }],
+        "usage": {
+            "input_tokens": 20,
+            "output_tokens": 4,
+            "total_tokens": 24
+        }
+    });
+    let ok_body = serde_json::to_string(&upstream_response).expect("serialize upstream response");
+    let (upstream_addr, upstream_rx, upstream_join) = start_mock_upstream_once(&ok_body);
+    let upstream_base = format!("http://{upstream_addr}/chatgpt.com/backend-api/codex");
+    let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
+
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init db");
+    let now = now_ts();
+    seed_model_options_cache(&storage, &["gpt-5.4-mini"]);
+
+    storage
+        .insert_account(&Account {
+            id: "acc_claude_chatgpt_base".to_string(),
+            label: "claude-chatgpt-base".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_claude_chatgpt_base".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_claude_chatgpt_base".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_claude_chatgpt_base".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: Some("api_access_token_claude_chatgpt_base".to_string()),
+            last_refresh: now,
+        })
+        .expect("insert token");
+
+    let platform_key = "pk_claude_chatgpt_base";
+    storage
+        .insert_api_key(&ApiKey {
+            id: "gk_claude_chatgpt_base".to_string(),
+            name: Some("claude-chatgpt-base".to_string()),
+            model_slug: Some("gpt-5.4-mini".to_string()),
+            reasoning_effort: Some("high".to_string()),
+            service_tier: None,
+            rotation_strategy: "account_rotation".to_string(),
+            aggregate_api_id: None,
+            aggregate_api_url: None,
+            client_type: "codex".to_string(),
+            protocol_type: "anthropic_native".to_string(),
+            auth_scheme: "x_api_key".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: hash_platform_key_for_test(platform_key),
+            status: "active".to_string(),
+            created_at: now,
+            last_used_at: None,
+        })
+        .expect("insert api key");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let body = serde_json::json!({
+        "model": "gpt-5.4-mini",
+        "messages": [{ "role": "user", "content": "hello" }],
+        "stream": false
+    });
+    let body = serde_json::to_string(&body).expect("serialize request");
+    let (status, response_body) = post_http_raw(
+        &server.addr,
+        "/v1/messages?beta=true",
+        &body,
+        &[
+            ("Content-Type", "application/json"),
+            ("x-api-key", platform_key),
+            ("anthropic-version", "2023-06-01"),
+        ],
+    );
+    server.join();
+    assert_eq!(status, 200, "gateway response: {response_body}");
+
+    let captured = upstream_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive upstream request");
+    upstream_join.join().expect("join upstream");
+    assert_eq!(captured.path, "/chatgpt.com/backend-api/codex/responses");
+}
+
 /// 函数 `gateway_claude_protocol_end_to_end_uses_codex_headers`
 ///
 /// 作者: gaohongshun

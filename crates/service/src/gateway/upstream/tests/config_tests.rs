@@ -18,7 +18,7 @@ use super::{
 /// 无
 #[test]
 fn fallback_status_trigger_is_limited_to_responses_path() {
-    assert!(should_try_openai_fallback_by_status(
+    assert!(!should_try_openai_fallback_by_status(
         "https://chatgpt.com/backend-api/codex",
         "/v1/responses",
         429
@@ -49,7 +49,7 @@ fn fallback_status_trigger_is_limited_to_responses_path() {
 #[test]
 fn fallback_content_type_trigger_is_limited_to_responses_path() {
     let html = HeaderValue::from_static("text/html; charset=utf-8");
-    assert!(should_try_openai_fallback(
+    assert!(!should_try_openai_fallback(
         "https://chatgpt.com/backend-api/codex",
         "/v1/responses",
         Some(&html)
@@ -59,14 +59,14 @@ fn fallback_content_type_trigger_is_limited_to_responses_path() {
         "/v1/responses/compact",
         Some(&html)
     ));
-    assert!(should_try_openai_fallback(
+    assert!(!should_try_openai_fallback(
         "https://chatgpt.com/backend-api/codex",
         "/v1/chat/completions",
         Some(&html)
     ));
 }
 
-/// 函数 `fallback_base_defaults_to_openai_for_chatgpt_backend`
+/// 函数 `fallback_base_is_disabled_by_default_for_chatgpt_backend`
 ///
 /// 作者: gaohongshun
 ///
@@ -78,16 +78,16 @@ fn fallback_content_type_trigger_is_limited_to_responses_path() {
 /// # 返回
 /// 无
 #[test]
-fn fallback_base_defaults_to_openai_for_chatgpt_backend() {
+fn fallback_base_is_disabled_by_default_for_chatgpt_backend() {
     std::env::remove_var("CODEXMANAGER_UPSTREAM_FALLBACK_BASE_URL");
     reload_from_env();
     assert_eq!(
         resolve_upstream_fallback_base_url("https://chatgpt.com/backend-api/codex").as_deref(),
-        Some("https://api.openai.com/v1")
+        None
     );
 }
 
-/// 函数 `fallback_base_honors_env_override_for_chatgpt_backend`
+/// 函数 `fallback_base_ignores_env_override_for_chatgpt_backend`
 ///
 /// 作者: gaohongshun
 ///
@@ -99,7 +99,7 @@ fn fallback_base_defaults_to_openai_for_chatgpt_backend() {
 /// # 返回
 /// 无
 #[test]
-fn fallback_base_honors_env_override_for_chatgpt_backend() {
+fn fallback_base_ignores_env_override_for_chatgpt_backend() {
     std::env::set_var(
         "CODEXMANAGER_UPSTREAM_FALLBACK_BASE_URL",
         "https://api.openai.com/v1",
@@ -107,7 +107,7 @@ fn fallback_base_honors_env_override_for_chatgpt_backend() {
     reload_from_env();
     assert_eq!(
         resolve_upstream_fallback_base_url("https://chatgpt.com/backend-api/codex").as_deref(),
-        Some("https://api.openai.com/v1")
+        None
     );
 
     std::env::remove_var("CODEXMANAGER_UPSTREAM_FALLBACK_BASE_URL");

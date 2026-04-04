@@ -203,7 +203,7 @@ fn models_path_does_not_try_openai_fallback() {
         "/v1/models",
         content_type.as_ref()
     ));
-    assert!(should_try_openai_fallback(
+    assert!(!should_try_openai_fallback(
         "https://chatgpt.com/backend-api/codex",
         "/v1/responses",
         content_type.as_ref()
@@ -228,12 +228,12 @@ fn status_fallback_only_triggers_for_responses_path() {
         "/v1/chat/completions",
         429
     ));
-    assert!(should_try_openai_fallback_by_status(
+    assert!(!should_try_openai_fallback_by_status(
         "https://chatgpt.com/backend-api/codex",
         "/v1/responses",
         429
     ));
-    assert!(should_try_openai_fallback_by_status(
+    assert!(!should_try_openai_fallback_by_status(
         "https://chatgpt.com/backend-api/codex",
         "/v1/responses",
         403
