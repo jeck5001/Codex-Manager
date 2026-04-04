@@ -14,6 +14,7 @@ from .tempmail import TempmailService
 from .outlook import OutlookService
 from .custom_domain import CustomDomainEmailService
 from .temp_mail import TempMailService
+from .cloudflare_temp_mail import CloudflareProvisioningError, CloudflareTempMailProvisioner
 
 # 注册服务
 EmailServiceFactory.register(EmailServiceType.TEMPMAIL, TempmailService)
@@ -50,6 +51,8 @@ __all__ = [
     'OutlookService',
     'CustomDomainEmailService',
     'TempMailService',
+    'CloudflareProvisioningError',
+    'CloudflareTempMailProvisioner',
     # Outlook 模块
     'ProviderType',
     'EmailMessage',
