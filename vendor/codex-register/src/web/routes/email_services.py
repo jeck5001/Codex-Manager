@@ -3,7 +3,7 @@
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -126,13 +126,13 @@ def service_to_response(service: EmailServiceModel) -> EmailServiceResponse:
     )
 
 
-def _prepare_temp_mail_config_for_create(config: Dict[str, Any]) -> Dict[str, Any]:
+def _prepare_temp_mail_config_for_create(config: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """创建 temp_mail 服务前，先在 Cloudflare 预配固定域名并回填配置。"""
     prepared_config = dict(config or {})
     prepared_config.pop("domain", None)
 
+    provisioner = CloudflareTempMailProvisioner(get_settings())
     try:
-        provisioner = CloudflareTempMailProvisioner(get_settings())
         provisioned = provisioner.provision_domain()
     except Exception as exc:
         logger.error(f"Temp-Mail 域名预配失败: {exc}")
@@ -142,11 +142,34 @@ def _prepare_temp_mail_config_for_create(config: Dict[str, Any]) -> Dict[str, An
     if not domain:
         raise HTTPException(status_code=502, detail="Temp-Mail 域名预配失败: 未返回有效 domain")
 
-    return {
+    merged_config = {
         **prepared_config,
         **provisioned,
         "domain": domain,
     }
+    cleanup_context = {
+        "provisioner": provisioner,
+        "provisioned": provisioned,
+        "domain": domain,
+    }
+    return merged_config, cleanup_context
+
+
+def _cleanup_temp_mail_provisioning(cleanup_context: Optional[Dict[str, Any]]) -> None:
+    if not cleanup_context:
+        return
+
+    provisioner = cleanup_context.get("provisioner")
+    provisioned = cleanup_context.get("provisioned")
+    domain = cleanup_context.get("domain")
+    cleanup_fn = getattr(provisioner, "cleanup_provisioned_domain", None)
+    if not callable(cleanup_fn):
+        return
+
+    try:
+        cleanup_fn(provisioned=provisioned, domain=domain)
+    except Exception as exc:
+        logger.error(f"Temp-Mail 远端回滚失败: {exc}")
 
 
 # ============== API Endpoints ==============
@@ -307,8 +330,9 @@ async def create_email_service(request: EmailServiceCreate):
             raise HTTPException(status_code=400, detail="服务名称已存在")
 
         config = dict(request.config or {})
+        cleanup_context = None
         if request.service_type == EmailServiceType.TEMP_MAIL.value:
-            config = _prepare_temp_mail_config_for_create(config)
+            config, cleanup_context = _prepare_temp_mail_config_for_create(config)
 
         service = EmailServiceModel(
             service_type=request.service_type,
@@ -317,9 +341,19 @@ async def create_email_service(request: EmailServiceCreate):
             enabled=request.enabled,
             priority=request.priority
         )
-        db.add(service)
-        db.commit()
-        db.refresh(service)
+
+        try:
+            db.add(service)
+            db.commit()
+            db.refresh(service)
+        except Exception as exc:
+            rollback_fn = getattr(db, "rollback", None)
+            if callable(rollback_fn):
+                rollback_fn()
+            if request.service_type == EmailServiceType.TEMP_MAIL.value:
+                _cleanup_temp_mail_provisioning(cleanup_context)
+            logger.error(f"创建邮箱服务失败: {exc}")
+            raise HTTPException(status_code=500, detail=f"创建邮箱服务失败: {exc}") from exc
 
         return service_to_response(service)
 
@@ -341,13 +375,10 @@ async def update_email_service(service_id: int, request: EmailServiceUpdate):
             incoming_config = dict(request.config)
 
             if service.service_type == EmailServiceType.TEMP_MAIL.value and "domain" in incoming_config:
-                current_domain = str(current_config.get("domain") or "").strip().lower()
-                incoming_domain = str(incoming_config.get("domain") or "").strip().lower()
-                if incoming_domain != current_domain:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="temp_mail 服务不支持修改 config.domain",
-                    )
+                raise HTTPException(
+                    status_code=400,
+                    detail="temp_mail 服务不支持通过更新接口提交 config.domain",
+                )
 
             merged_config = {**current_config, **incoming_config}
             # 移除空值
