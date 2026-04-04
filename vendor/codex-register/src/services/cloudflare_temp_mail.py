@@ -1,6 +1,9 @@
 """Cloudflare Temp Mail provisioning helpers."""
 
 import json
+import secrets
+import string
+import time
 from typing import Any, Dict, List, Optional
 
 from ..core.http_client import HTTPClient, RequestConfig
@@ -116,6 +119,49 @@ class CloudflareTempMailProvisioner:
             raise CloudflareProvisioningError("temp_mail_domain_base is required to build domains")
         domain = f"{prefix}-{label_part}" if prefix else label_part
         return f"{domain}.{base}"
+
+    def _generate_label(self) -> str:
+        mode = self._normalize_str(getattr(self.settings, "temp_mail_subdomain_mode", "random")).lower()
+        length = int(getattr(self.settings, "temp_mail_subdomain_length", 6) or 6)
+        length = max(3, min(16, length))
+
+        if mode == "sequence":
+            sequence = self._to_base36(int(time.time() * 1000))
+            return sequence.rjust(length, "0")[-length:]
+
+        alphabet = string.ascii_lowercase + string.digits
+        return "".join(secrets.choice(alphabet) for _ in range(length))
+
+    @staticmethod
+    def _to_base36(value: int) -> str:
+        digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+        number = int(value)
+        if number <= 0:
+            return "0"
+
+        result: List[str] = []
+        while number:
+            number, rem = divmod(number, 36)
+            result.append(digits[rem])
+        return "".join(reversed(result))
+
+    def _extract_worker_bindings(self, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        if not isinstance(payload, dict):
+            return []
+
+        result = payload.get("result")
+        candidates: List[Any] = [payload]
+        if isinstance(result, dict):
+            candidates.insert(0, result)
+            settings_payload = result.get("settings")
+            if isinstance(settings_payload, dict):
+                candidates.insert(0, settings_payload)
+
+        for candidate in candidates:
+            bindings = candidate.get("bindings")
+            if isinstance(bindings, list):
+                return bindings
+        return []
 
     def _upsert_domains_binding(
         self, bindings: List[Dict[str, Any]], domain: str
@@ -252,3 +298,19 @@ class CloudflareTempMailProvisioner:
             headers=self._auth_headers(),
         )
         return self._process_response(response, "patch worker settings")
+
+    def provision_domain(self) -> Dict[str, Any]:
+        label = self._generate_label()
+        domain = self._compose_domain(label)
+        subdomain_payload = self.create_subdomain(domain)
+
+        worker_settings_payload = self.get_worker_settings()
+        existing_bindings = self._extract_worker_bindings(worker_settings_payload)
+        updated_bindings = self._upsert_domains_binding(existing_bindings, domain)
+        patched_payload = self.patch_worker_settings(updated_bindings)
+
+        return {
+            "domain": domain,
+            "cloudflare_subdomain": subdomain_payload,
+            "cloudflare_worker_settings": patched_payload,
+        }
