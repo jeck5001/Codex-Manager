@@ -1,0 +1,38 @@
+import unittest
+
+from src.config import settings as settings_module
+
+
+class TempMailCloudflareSettingsTests(unittest.TestCase):
+    def test_update_settings_persists_cloudflare_temp_mail_fields(self):
+        original_save = settings_module._save_settings_to_db
+        original_settings = settings_module._settings
+        saved = {}
+
+        try:
+            settings_module._settings = settings_module.Settings()
+            settings_module._save_settings_to_db = lambda **kwargs: saved.update(kwargs)
+
+            updated = settings_module.update_settings(
+                cloudflare_api_token="token-1",
+                cloudflare_account_id="acc-1",
+                cloudflare_zone_id="zone-1",
+                cloudflare_worker_name="temp-email",
+                temp_mail_domain_base="mail.example.com",
+                temp_mail_subdomain_mode="random",
+                temp_mail_subdomain_length=6,
+                temp_mail_subdomain_prefix="tm",
+                temp_mail_sync_cloudflare_enabled=True,
+                temp_mail_require_cloudflare_sync=True,
+            )
+
+            self.assertEqual(
+                updated.cloudflare_api_token.get_secret_value(),
+                "token-1",
+            )
+            self.assertEqual(updated.temp_mail_domain_base, "mail.example.com")
+            self.assertEqual(saved["cloudflare_zone_id"], "zone-1")
+            self.assertTrue(saved["temp_mail_require_cloudflare_sync"])
+        finally:
+            settings_module._save_settings_to_db = original_save
+            settings_module._settings = original_settings
