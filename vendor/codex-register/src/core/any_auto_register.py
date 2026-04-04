@@ -475,6 +475,8 @@ class AnyAutoRegistrationRunner:
             ):
                 self._log("13. 检测到 add_phone，先尝试登录回退以便复用会话", "warning")
                 callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
+                if callback_url:
+                    should_try_session = False
             elif should_try_session:
                 self._log("13. 尝试直接复用当前会话")
             else:
