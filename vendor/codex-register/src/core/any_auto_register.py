@@ -236,9 +236,13 @@ class AnyAutoRegistrationRunner:
                 if recovered_payload:
                     return recovered_payload, ""
                 self._log("HTTP ChatGPT Session 不完整，尝试浏览器会话回退", "warning")
+                auth_url = ""
+                if hasattr(self.engine, "_build_authenticated_oauth_url"):
+                    auth_url = self.engine._clean_text(self.engine._build_authenticated_oauth_url())
                 browser_payload = fetch_browser_chatgpt_session_payload(
                     cookies_str=self.engine._serialize_session_cookies(),
                     cookies=self.engine._session_browser_cookies(),
+                    auth_url=auth_url,
                     proxy_url=self.engine.proxy_url,
                     callback_logger=lambda message: self._log(message),
                 )

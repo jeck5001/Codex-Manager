@@ -336,6 +336,26 @@ class RegisterFlowRunnerTests(unittest.TestCase):
         self.assertEqual(followed_urls, [engine._build_authenticated_oauth_url()])
         self.assertEqual(engine._last_login_recovery_page_type, "")
 
+    def test_complete_login_email_otp_verification_only_resends_once(self):
+        engine = EngineStub()
+        engine._otp_sent_at = None
+        engine.oauth_start = types.SimpleNamespace(auth_url="https://auth.openai.com/oauth/authorize?client_id=test")
+        get_code_calls = []
+        resend_calls = []
+        engine._get_verification_code = lambda: get_code_calls.append(True) or None
+        engine._validate_verification_code_with_payload = lambda code: None
+        engine._resend_email_verification_code = lambda: resend_calls.append(True) or True
+        engine._is_wrong_email_otp_code_error = lambda: False
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+
+        result = runner.complete_login_email_otp_verification()
+
+        self.assertEqual(result.callback_url, None)
+        self.assertEqual(result.page_type, "")
+        self.assertEqual(result.continue_url, "")
+        self.assertEqual(len(resend_calls), 1)
+        self.assertEqual(len(get_code_calls), 2)
+
     def test_resolve_post_registration_callback_short_circuits_when_bypass_returns_callback(self):
         engine = EngineStub()
         engine._post_create_page_type = "add_phone"
@@ -391,6 +411,27 @@ class RegisterFlowRunnerTests(unittest.TestCase):
             "http://localhost:1455/auth/callback?code=oauth&state=state",
         )
         self.assertEqual(result.workspace_id, "")
+        self.assertEqual(followed_urls, [engine._build_authenticated_oauth_url()])
+
+    def test_resolve_post_registration_callback_skips_duplicate_add_phone_bypass_after_prior_attempt(self):
+        engine = EngineStub()
+        engine._post_create_page_type = "add_phone"
+        engine._post_create_continue_url = "https://auth.openai.com/add-phone"
+        engine._add_phone_login_bypass_attempted = True
+        engine._attempt_add_phone_login_bypass = (
+            lambda did, sen: (_ for _ in ()).throw(AssertionError("should not retry bypass"))
+        )
+        engine._get_workspace_id = lambda: None
+        followed_urls = []
+        engine._follow_redirects = lambda url: followed_urls.append(url) or "http://localhost:1455/auth/callback?code=oauth&state=state"
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+
+        result = runner.resolve_post_registration_callback("did", "sentinel")
+
+        self.assertEqual(
+            result.callback_url,
+            "http://localhost:1455/auth/callback?code=oauth&state=state",
+        )
         self.assertEqual(followed_urls, [engine._build_authenticated_oauth_url()])
 
     def test_resolve_post_registration_callback_reports_add_phone_requirement_when_oauth_still_blocked(self):

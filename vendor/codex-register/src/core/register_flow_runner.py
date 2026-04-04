@@ -251,7 +251,7 @@ class RegisterFlowRunner:
         self.engine._log("登录后触发邮箱二次验证，开始获取验证码...", "warning")
         self.engine._otp_sent_at = time.time()
 
-        max_attempts = 3
+        max_attempts = 2
         code: Optional[str] = None
         validate_payload: Optional[dict[str, Any]] = None
 
@@ -310,7 +310,10 @@ class RegisterFlowRunner:
                 getattr(self.engine, "_post_create_page_type", "") == "add_phone"
                 or "add-phone" in getattr(self.engine, "_post_create_continue_url", "")
             ):
-                callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
+                if getattr(self.engine, "_add_phone_login_bypass_attempted", False):
+                    self.engine._log("add_phone 登录回退已执行过，跳过重复登录链路", "warning")
+                else:
+                    callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
                 if not callback_url:
                     result.metadata = {
                         "blocked_step": "add_phone",
@@ -355,6 +358,7 @@ class RegisterFlowRunner:
         if not getattr(self.engine, "email", None) or not getattr(self.engine, "password", None):
             self.engine._log("缺少邮箱或密码，无法执行 add_phone 登录回退", "error")
             return None
+        self.engine._add_phone_login_bypass_attempted = True
 
         attempts = [
             ("当前会话", did, sen_token, False),
@@ -422,7 +426,8 @@ class RegisterFlowRunner:
                 if recreate_session:
                     self.engine._log("新 OAuth 会话登录后仍停留在 add_phone", "warning")
                 else:
-                    self.engine._log("当前会话登录后仍停留在 add_phone，切换新 OAuth 会话重试", "warning")
+                    self.engine._log("当前会话登录后仍停留在 add_phone，停止重复登录链路，交由后续浏览器/会话恢复处理", "warning")
+                    break
                 continue
 
             if getattr(self.engine, "oauth_start", None):
