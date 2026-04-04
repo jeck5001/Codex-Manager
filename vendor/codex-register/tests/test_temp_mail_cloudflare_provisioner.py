@@ -1,5 +1,6 @@
 import json
 import unittest
+from typing import Any, List
 
 from pydantic.types import SecretStr
 
@@ -29,6 +30,25 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         raw = "alpha.example.com, beta.example.com , gamma.example.com"
         parsed = cloudflare_temp_mail.parse_domains_binding(raw)
         self.assertEqual(parsed, ["alpha.example.com", "beta.example.com", "gamma.example.com"])
+
+    def test_cloudflare_wrapper_returns_parsed_json(self):
+        settings = self.make_settings()
+        response = self._make_response(200, {"id": "subdomain"})
+        http_client = self._DummyHttpClient([response])
+        provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings, http_client=http_client)
+
+        result = provisioner.create_subdomain("new.example.com")
+        self.assertEqual(result, {"id": "subdomain"})
+
+    def test_cloudflare_wrapper_raises_on_http_error(self):
+        settings = self.make_settings()
+        response = self._make_response(500, {"errors": ["oops"]})
+        http_client = self._DummyHttpClient([response])
+        provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings, http_client=http_client)
+
+        with self.assertRaises(cloudflare_temp_mail.CloudflareProvisioningError) as ctx:
+            provisioner.patch_worker_settings([])
+        self.assertIn("failed with status 500", str(ctx.exception))
 
     def test_compose_domain_uses_prefix_label_and_base(self):
         settings = self.make_settings(
@@ -66,6 +86,18 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         expected_text = json.dumps(["new.example.com"])
         self.assertEqual(binding["text"], expected_text)
 
+    def test_upsert_domains_binding_preserves_json_binding(self):
+        settings = self.make_settings()
+        provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings)
+        binding = {
+            "name": "DOMAINS",
+            "json": ["alpha.example.com", "beta.example.com"],
+        }
+        updated = provisioner._upsert_domains_binding([binding], "beta.example.com")
+        binding_result = next(b for b in updated if b.get("name") == "DOMAINS")
+        self.assertEqual(binding_result.get("type"), "plain_text")
+        self.assertEqual(binding_result["text"], json.dumps(["alpha.example.com", "beta.example.com"]))
+
     def test_validate_settings_raises_when_required_fields_missing(self):
         settings = Settings(
             cloudflare_api_token=SecretStr(""),
@@ -77,3 +109,28 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         with self.assertRaises(cloudflare_temp_mail.CloudflareProvisioningError) as ctx:
             cloudflare_temp_mail.CloudflareTempMailProvisioner.validate_settings(settings)
         self.assertIn("Missing required Cloudflare settings", str(ctx.exception))
+
+    def test_validate_settings_rejects_whitespace_values(self):
+        settings = self.make_settings(cloudflare_account_id="   ")
+        with self.assertRaises(cloudflare_temp_mail.CloudflareProvisioningError) as ctx:
+            cloudflare_temp_mail.CloudflareTempMailProvisioner.validate_settings(settings)
+        self.assertIn("cloudflare_account_id", str(ctx.exception))
+
+    class _DummyHttpClient:
+        def __init__(self, responses: List[Any]):
+            self._responses = responses
+
+        def request(self, method: str, url: str, **kwargs) -> Any:
+            return self._responses.pop(0)
+
+    @staticmethod
+    def _make_response(status: int, payload: Any) -> Any:
+        class Response:
+            def __init__(self, status_code: int, payload: Any):
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        return Response(status, payload)
