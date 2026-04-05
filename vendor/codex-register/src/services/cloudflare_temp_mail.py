@@ -336,6 +336,21 @@ class CloudflareTempMailProvisioner:
     def cleanup_provisioned_domain(
         self, provisioned: Optional[Dict[str, Any]], domain: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
+        cleanup_result: Dict[str, Any] = {}
+        cleanup_errors: List[str] = []
+
+        previous_bindings = None
+        if isinstance(provisioned, dict):
+            bindings = provisioned.get("cloudflare_worker_previous_bindings")
+            if isinstance(bindings, list):
+                previous_bindings = bindings
+
+        if previous_bindings is not None:
+            try:
+                cleanup_result["cloudflare_worker_restore"] = self.patch_worker_settings(previous_bindings)
+            except Exception as exc:
+                cleanup_errors.append(f"restore worker settings failed: {exc}")
+
         subdomain_payload = None
         if isinstance(provisioned, dict):
             payload = provisioned.get("cloudflare_subdomain")
@@ -345,10 +360,17 @@ class CloudflareTempMailProvisioner:
                 subdomain_payload = provisioned
 
         identifier = self._extract_subdomain_identifier(subdomain_payload, domain)
-        if not identifier:
-            return None
+        if identifier:
+            try:
+                cleanup_result["cloudflare_subdomain_delete"] = self.delete_subdomain(identifier)
+            except Exception as exc:
+                cleanup_errors.append(f"delete subdomain failed: {exc}")
 
-        return self.delete_subdomain(identifier)
+        if cleanup_errors:
+            raise CloudflareProvisioningError("; ".join(cleanup_errors))
+        if cleanup_result:
+            return cleanup_result
+        return None
 
     def provision_domain(self) -> Dict[str, Any]:
         label = self._generate_label()
@@ -362,6 +384,7 @@ class CloudflareTempMailProvisioner:
         try:
             worker_settings_payload = self.get_worker_settings()
             existing_bindings = self._extract_worker_bindings(worker_settings_payload)
+            provisioned["cloudflare_worker_previous_bindings"] = existing_bindings
             updated_bindings = self._upsert_domains_binding(existing_bindings, domain)
             patched_payload = self.patch_worker_settings(updated_bindings)
         except Exception:
