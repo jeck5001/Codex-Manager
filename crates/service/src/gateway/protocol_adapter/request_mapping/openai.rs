@@ -5,6 +5,28 @@ const DEFAULT_COMPLETIONS_PROMPT: &str = "Complete this:";
 const DEFAULT_OPENAI_REASONING: &str = "medium";
 pub(super) const MAX_OPENAI_TOOL_NAME_LEN: usize = 64;
 
+fn sanitize_openai_tool_name(name: &str) -> String {
+    let mut sanitized = String::with_capacity(name.len());
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-') {
+            sanitized.push(ch);
+        } else {
+            sanitized.push('_');
+        }
+    }
+    if sanitized.is_empty() {
+        return "_".to_string();
+    }
+    if sanitized
+        .chars()
+        .next()
+        .is_some_and(|ch| !ch.is_ascii_alphabetic() && ch != '_')
+    {
+        sanitized.insert(0, '_');
+    }
+    sanitized
+}
+
 /// 函数 `shorten_openai_tool_name_candidate`
 ///
 /// 作者: gaohongshun
@@ -17,13 +39,14 @@ pub(super) const MAX_OPENAI_TOOL_NAME_LEN: usize = 64;
 /// # 返回
 /// 返回函数执行结果
 pub(super) fn shorten_openai_tool_name_candidate(name: &str) -> String {
-    if name.len() <= MAX_OPENAI_TOOL_NAME_LEN {
-        return name.to_string();
+    let sanitized = sanitize_openai_tool_name(name);
+    if sanitized.len() <= MAX_OPENAI_TOOL_NAME_LEN {
+        return sanitized;
     }
-    if name.starts_with("mcp__") {
-        if let Some(idx) = name.rfind("__") {
+    if sanitized.starts_with("mcp__") {
+        if let Some(idx) = sanitized.rfind("__") {
             if idx > 0 {
-                let mut candidate = format!("mcp__{}", &name[idx + 2..]);
+                let mut candidate = format!("mcp__{}", &sanitized[idx + 2..]);
                 if candidate.len() > MAX_OPENAI_TOOL_NAME_LEN {
                     candidate.truncate(MAX_OPENAI_TOOL_NAME_LEN);
                 }
@@ -31,7 +54,7 @@ pub(super) fn shorten_openai_tool_name_candidate(name: &str) -> String {
             }
         }
     }
-    name.chars().take(MAX_OPENAI_TOOL_NAME_LEN).collect()
+    sanitized.chars().take(MAX_OPENAI_TOOL_NAME_LEN).collect()
 }
 
 /// 函数 `collect_openai_tool_names`

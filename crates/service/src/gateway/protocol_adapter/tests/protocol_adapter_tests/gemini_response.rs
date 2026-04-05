@@ -55,6 +55,49 @@ fn gemini_json_response_maps_from_openai_responses_shape() {
 }
 
 #[test]
+fn gemini_json_response_restores_sanitized_mcp_tool_names() {
+    let original_tool_name =
+        "mcp_browser_server_extremely_long_tool_name_that_gemini_cli_would_truncate...take_snapshot";
+    let sanitized_tool_name =
+        "mcp_browser_server_extremely_long_tool_name_that_gemini_cli_w";
+    let mut restore_map = super::ToolNameRestoreMap::new();
+    restore_map.insert(
+        sanitized_tool_name.to_string(),
+        original_tool_name.to_string(),
+    );
+
+    let upstream = serde_json::json!({
+        "id": "resp_gemini_mcp_1",
+        "model": "gpt-5.4",
+        "status": "completed",
+        "output": [
+            {
+                "type": "function_call",
+                "call_id": "call_mcp_1",
+                "name": sanitized_tool_name,
+                "arguments": "{\"uid\":\"87_4\"}"
+            }
+        ]
+    });
+    let upstream = serde_json::to_vec(&upstream).expect("serialize upstream");
+    let (body, content_type) = adapt_upstream_response_with_tool_name_restore_map(
+        ResponseAdapter::GeminiJson,
+        Some("application/json"),
+        &upstream,
+        Some(&restore_map),
+    )
+    .expect("adapt response");
+    assert_eq!(content_type, "application/json");
+
+    let value: serde_json::Value = serde_json::from_slice(&body).expect("gemini response");
+    assert_eq!(
+        value["candidates"][0]["content"]["parts"][0]["functionCall"]["name"],
+        original_tool_name
+    );
+    assert_eq!(value["functionCalls"][0]["name"], original_tool_name);
+}
+
+#[test]
 fn gemini_sse_response_maps_openai_responses_event_stream() {
     let upstream = concat!(
         "data: {\"type\":\"response.output_text.delta\",\"response_id\":\"resp_gemini_stream\",\"model\":\"gpt-5.4\",\"delta\":\"你好\"}\n\n",
