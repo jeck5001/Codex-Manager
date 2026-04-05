@@ -112,10 +112,23 @@ class EmailServicesTempMailFormLogicTests(unittest.TestCase):
             self.template_text,
             r'<button[^>]*id="save-cf-settings-btn"[^>]*disabled[^>]*>',
         )
+        load_body = self.js_text.split("async function loadCloudflareSettings() {", 1)[1].split(
+            "// 保存 Cloudflare Temp-Mail 设置", 1
+        )[0]
+        save_body = self.js_text.split("async function handleSaveCloudflareSettings(e) {", 1)[1].split(
+            "// 更新批量按钮", 1
+        )[0]
+
         self.assertIn("let cloudflareSettingsReady = false;", self.js_text)
-        self.assertIn("cloudflareSettingsReady = true;", self.js_text)
-        self.assertIn("cloudflareSettingsReady = false;", self.js_text)
-        self.assertIn("if (!cloudflareSettingsReady)", self.js_text)
+        self.assertIn("cloudflareSettingsReady = true;", load_body)
+        self.assertIn("elements.saveCfSettingsBtn.disabled = false;", load_body)
+        self.assertIn("if (!cloudflareSettingsReady)", save_body)
+        self.assertIn("await loadCloudflareSettings();", save_body)
+        self.assertNotIn("elements.saveCfSettingsBtn.disabled = false;", save_body)
+        self.assertNotRegex(
+            save_body,
+            r"finally\s*\{[\s\S]*elements\.saveCfSettingsBtn\.disabled\s*=\s*false",
+        )
 
     def test_temp_mail_type_metadata_no_longer_marks_domain_as_required_user_input(self):
         payload = asyncio.run(self.routes_module.get_service_types())
