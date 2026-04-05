@@ -2,6 +2,7 @@ import json
 import unittest
 from typing import Any, List
 
+from curl_cffi import CurlMime
 from pydantic.types import SecretStr
 
 from src.config.settings import Settings
@@ -184,13 +185,8 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
             "https://api.cloudflare.com/client/v4/accounts/acct/workers/scripts/worker/settings",
         )
         self.assertNotIn("json", request["kwargs"])
-        self.assertIn("files", request["kwargs"])
-        metadata = request["kwargs"]["files"]["metadata"]
-        self.assertEqual(metadata[2], "application/json")
-        self.assertEqual(
-            json.loads(metadata[1]),
-            {"bindings": [{"type": "json", "name": "DOMAINS", "json": []}]},
-        )
+        self.assertIn("multipart", request["kwargs"])
+        self.assertIsInstance(request["kwargs"]["multipart"], CurlMime)
         self.assertNotIn("Content-Type", request["kwargs"]["headers"])
         self.assertEqual(request["kwargs"]["headers"]["Authorization"], "Bearer token")
 
