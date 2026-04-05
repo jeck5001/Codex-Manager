@@ -1,6 +1,8 @@
 import asyncio
 import importlib.util
+import json
 import re
+import subprocess
 import sys
 import types
 import unittest
@@ -9,23 +11,23 @@ from pathlib import Path
 
 def _load_email_services_module():
     src_dir = Path(__file__).resolve().parents[1] / "src"
-    if "src" not in sys.modules:
-        src_pkg = types.ModuleType("src")
-        src_pkg.__path__ = [str(src_dir)]
-        sys.modules["src"] = src_pkg
+    for module_name in list(sys.modules):
+        if module_name == "src" or module_name.startswith("src."):
+            sys.modules.pop(module_name, None)
 
     web_dir = src_dir / "web"
-    if "src.web" not in sys.modules:
-        web_pkg = types.ModuleType("src.web")
-        web_pkg.__path__ = [str(web_dir)]
-        sys.modules["src.web"] = web_pkg
-
     routes_dir = src_dir / "web" / "routes"
-    pkg_name = "src.web.routes"
-    if pkg_name not in sys.modules:
-        routes_pkg = types.ModuleType(pkg_name)
-        routes_pkg.__path__ = [str(routes_dir)]
-        sys.modules[pkg_name] = routes_pkg
+    src_pkg = types.ModuleType("src")
+    src_pkg.__path__ = [str(src_dir)]
+    sys.modules["src"] = src_pkg
+
+    web_pkg = types.ModuleType("src.web")
+    web_pkg.__path__ = [str(web_dir)]
+    sys.modules["src.web"] = web_pkg
+
+    routes_pkg = types.ModuleType("src.web.routes")
+    routes_pkg.__path__ = [str(routes_dir)]
+    sys.modules["src.web.routes"] = routes_pkg
 
     spec = importlib.util.spec_from_file_location(
         "src.web.routes.email_services",
@@ -107,28 +109,243 @@ class EmailServicesTempMailFormLogicTests(unittest.TestCase):
         self.assertIn("api.get('/settings/temp-mail/cloudflare')", self.js_text)
         self.assertIn("api.post('/settings/temp-mail/cloudflare'", self.js_text)
 
-    def test_cloudflare_settings_save_is_blocked_until_load_success(self):
+    def _run_cloudflare_button_lifecycle_scenario(self, reload_result: str):
+        self.assertIn(reload_result, {"success", "failure"})
+        export_snippet = """
+;globalThis.__testExports = {
+  loadCloudflareSettings,
+  handleSaveCloudflareSettings,
+  elements,
+  getCloudflareSettingsReady: () => cloudflareSettingsReady,
+};
+"""
+        script = f"""
+const vm = require('vm');
+
+const source = {json.dumps(self.js_text + export_snippet)};
+const reloadResult = {json.dumps(reload_result)};
+const elementIds = [
+  'outlook-count', 'custom-count', 'tempmail-status', 'total-enabled',
+  'toggle-outlook-import', 'outlook-import-body', 'outlook-import-data', 'outlook-import-enabled',
+  'outlook-import-priority', 'outlook-import-btn', 'clear-import-btn', 'import-result',
+  'outlook-accounts-table', 'select-all-outlook', 'batch-delete-outlook-btn',
+  'custom-services-table', 'add-custom-btn', 'select-all-custom',
+  'tempmail-form', 'tempmail-api', 'tempmail-enabled', 'test-tempmail-btn',
+  'cf-settings-form', 'cf-api-token', 'cf-api-token-hint', 'cf-account-id', 'cf-zone-id',
+  'cf-worker-name', 'cf-domain-base', 'cf-subdomain-mode', 'cf-subdomain-length',
+  'cf-subdomain-prefix', 'cf-sync-enabled', 'cf-require-sync', 'save-cf-settings-btn',
+  'add-custom-modal', 'add-custom-form', 'close-custom-modal', 'cancel-add-custom',
+  'custom-sub-type', 'add-moemail-fields', 'add-tempmail-fields',
+  'edit-custom-modal', 'edit-custom-form', 'close-edit-custom-modal', 'cancel-edit-custom',
+  'edit-moemail-fields', 'edit-tempmail-fields', 'edit-custom-type-badge',
+  'edit-custom-sub-type-hidden', 'edit-tm-domain',
+  'edit-outlook-modal', 'edit-outlook-form', 'close-edit-outlook-modal', 'cancel-edit-outlook',
+];
+
+function createElement(id) {{
+  return {{
+    id,
+    value: '',
+    checked: false,
+    disabled: false,
+    textContent: '',
+    innerHTML: '',
+    style: {{}},
+    dataset: {{}},
+    classList: {{
+      add() {{}},
+      remove() {{}},
+      contains() {{ return false; }},
+    }},
+    addEventListener() {{}},
+    querySelectorAll() {{ return []; }},
+    querySelector() {{ return null; }},
+    appendChild() {{}},
+    removeChild() {{}},
+    focus() {{}},
+  }};
+}}
+
+const elementsById = new Map(elementIds.map((id) => [id, createElement(id)]));
+elementsById.get('save-cf-settings-btn').textContent = '保存设置';
+elementsById.get('cf-subdomain-mode').value = 'random';
+elementsById.get('cf-subdomain-length').value = '6';
+
+const document = {{
+  getElementById(id) {{
+    if (!elementsById.has(id)) {{
+      elementsById.set(id, createElement(id));
+    }}
+    return elementsById.get(id);
+  }},
+  addEventListener() {{}},
+  createElement() {{
+    return createElement('generated');
+  }},
+}};
+
+let getCallCount = 0;
+const postPayloads = [];
+const toastMessages = [];
+let resolveReload;
+let rejectReload;
+
+const settingsPayload = {{
+  has_api_token: true,
+  cloudflare_account_id: 'acc-1',
+  cloudflare_zone_id: 'zone-1',
+  cloudflare_worker_name: 'temp-email',
+  temp_mail_domain_base: 'mail.example.com',
+  temp_mail_subdomain_mode: 'random',
+  temp_mail_subdomain_length: 6,
+  temp_mail_subdomain_prefix: 'tm',
+  temp_mail_sync_cloudflare_enabled: true,
+  temp_mail_require_cloudflare_sync: true,
+}};
+
+const api = {{
+  async get(url) {{
+    if (url !== '/settings/temp-mail/cloudflare') {{
+      throw new Error(`Unexpected GET ${{url}}`);
+    }}
+    getCallCount += 1;
+    if (getCallCount === 1) {{
+      return settingsPayload;
+    }}
+    return new Promise((resolve, reject) => {{
+      resolveReload = () => resolve(settingsPayload);
+      rejectReload = () => reject(new Error('reload failed'));
+    }});
+  }},
+  async post(url, payload) {{
+    if (url !== '/settings/temp-mail/cloudflare') {{
+      throw new Error(`Unexpected POST ${{url}}`);
+    }}
+    postPayloads.push(payload);
+    return {{ success: true }};
+  }},
+}};
+
+const toast = {{
+  success(message) {{
+    toastMessages.push({{ level: 'success', message }});
+  }},
+  error(message) {{
+    toastMessages.push({{ level: 'error', message }});
+  }},
+}};
+
+const context = {{
+  api,
+  console,
+  document,
+  format: {{ date: () => '' }},
+  Map,
+  parseInt,
+  Promise,
+  Set,
+  toast,
+}};
+context.globalThis = context;
+
+vm.createContext(context);
+vm.runInContext(source, context);
+
+const {{
+  loadCloudflareSettings,
+  handleSaveCloudflareSettings,
+  elements,
+  getCloudflareSettingsReady,
+}} = context.__testExports;
+
+(async () => {{
+  await loadCloudflareSettings();
+  const initialState = {{
+    ready: getCloudflareSettingsReady(),
+    disabled: elements.saveCfSettingsBtn.disabled,
+    label: elements.saveCfSettingsBtn.textContent,
+  }};
+
+  const savePromise = handleSaveCloudflareSettings({{
+    preventDefault() {{}},
+  }});
+  await Promise.resolve();
+  await Promise.resolve();
+  if (!resolveReload && !rejectReload) {{
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }}
+  if (!resolveReload || !rejectReload) {{
+    throw new Error('reload promise was not created');
+  }}
+
+  const duringReload = {{
+    ready: getCloudflareSettingsReady(),
+    disabled: elements.saveCfSettingsBtn.disabled,
+    label: elements.saveCfSettingsBtn.textContent,
+    getCallCount,
+    postCallCount: postPayloads.length,
+  }};
+
+  if (reloadResult === 'success') {{
+    resolveReload();
+  }} else {{
+    rejectReload();
+  }}
+
+  await savePromise;
+
+  const finalState = {{
+    ready: getCloudflareSettingsReady(),
+    disabled: elements.saveCfSettingsBtn.disabled,
+    label: elements.saveCfSettingsBtn.textContent,
+    hint: elements.cfApiTokenHint.textContent,
+    getCallCount,
+    postCallCount: postPayloads.length,
+    toastMessages,
+  }};
+
+  process.stdout.write(JSON.stringify({{
+    initialState,
+    duringReload,
+    finalState,
+  }}));
+}})().catch((error) => {{
+  process.stderr.write(String(error.stack || error));
+  process.exit(1);
+}});
+"""
+        completed = subprocess.run(
+            ["node", "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return json.loads(completed.stdout)
+
+    def test_cloudflare_settings_save_is_blocked_until_reload_completes(self):
         self.assertRegex(
             self.template_text,
             r'<button[^>]*id="save-cf-settings-btn"[^>]*disabled[^>]*>',
         )
-        load_body = self.js_text.split("async function loadCloudflareSettings() {", 1)[1].split(
-            "// 保存 Cloudflare Temp-Mail 设置", 1
-        )[0]
-        save_body = self.js_text.split("async function handleSaveCloudflareSettings(e) {", 1)[1].split(
-            "// 更新批量按钮", 1
-        )[0]
+        states = self._run_cloudflare_button_lifecycle_scenario("success")
+        self.assertTrue(states["initialState"]["ready"])
+        self.assertFalse(states["initialState"]["disabled"])
+        self.assertEqual(states["duringReload"]["postCallCount"], 1)
+        self.assertEqual(states["duringReload"]["getCallCount"], 2)
+        self.assertTrue(states["duringReload"]["disabled"])
+        self.assertEqual(states["duringReload"]["label"], "保存中...")
+        self.assertTrue(states["finalState"]["ready"])
+        self.assertFalse(states["finalState"]["disabled"])
+        self.assertEqual(states["finalState"]["label"], "保存设置")
 
-        self.assertIn("let cloudflareSettingsReady = false;", self.js_text)
-        self.assertIn("cloudflareSettingsReady = true;", load_body)
-        self.assertIn("elements.saveCfSettingsBtn.disabled = false;", load_body)
-        self.assertIn("if (!cloudflareSettingsReady)", save_body)
-        self.assertIn("await loadCloudflareSettings();", save_body)
-        self.assertNotIn("elements.saveCfSettingsBtn.disabled = false;", save_body)
-        self.assertNotRegex(
-            save_body,
-            r"finally\s*\{[\s\S]*elements\.saveCfSettingsBtn\.disabled\s*=\s*false",
-        )
+    def test_cloudflare_settings_save_stays_blocked_when_reload_fails(self):
+        states = self._run_cloudflare_button_lifecycle_scenario("failure")
+        self.assertTrue(states["duringReload"]["disabled"])
+        self.assertEqual(states["duringReload"]["label"], "保存中...")
+        self.assertFalse(states["finalState"]["ready"])
+        self.assertTrue(states["finalState"]["disabled"])
+        self.assertEqual(states["finalState"]["label"], "保存设置")
+        self.assertEqual(states["finalState"]["hint"], "加载失败，请稍后重试")
 
     def test_temp_mail_type_metadata_no_longer_marks_domain_as_required_user_input(self):
         payload = asyncio.run(self.routes_module.get_service_types())
