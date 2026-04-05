@@ -188,6 +188,76 @@
                     </form>
                 </div>
             </div>
+
+            <!-- Cloudflare Temp Mail 设置 -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>☁️ Cloudflare Temp Mail 设置</h3>
+                </div>
+                <div class="card-body">
+                    <form id="cf-settings-form">
+                        <div class="form-group">
+                            <label for="cf-api-token">API Token</label>
+                            <input type="password" id="cf-api-token" autocomplete="off" placeholder="留空则保持原值不变">
+                            <small id="cf-api-token-hint" style="color: var(--text-muted);"></small>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="cf-account-id">Account ID</label>
+                                <input type="text" id="cf-account-id" placeholder="Cloudflare Account ID">
+                            </div>
+                            <div class="form-group">
+                                <label for="cf-zone-id">Zone ID</label>
+                                <input type="text" id="cf-zone-id" placeholder="Cloudflare Zone ID">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="cf-worker-name">Worker Name</label>
+                                <input type="text" id="cf-worker-name" placeholder="temp-email">
+                            </div>
+                            <div class="form-group">
+                                <label for="cf-domain-base">Domain Base</label>
+                                <input type="text" id="cf-domain-base" placeholder="mail.example.com">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="cf-subdomain-mode">Subdomain Mode</label>
+                                <select id="cf-subdomain-mode">
+                                    <option value="random">random</option>
+                                    <option value="sequence">sequence</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="cf-subdomain-length">Subdomain Length</label>
+                                <input type="number" id="cf-subdomain-length" min="3" max="16" step="1">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="cf-subdomain-prefix">Subdomain Prefix</label>
+                            <input type="text" id="cf-subdomain-prefix" placeholder="tm">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="cf-sync-enabled">
+                                    启用 Cloudflare 同步
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="cf-require-sync">
+                                    要求同步成功后才可创建
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="save-cf-settings-btn">💾 保存 Cloudflare 设置</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -237,8 +307,8 @@
                             <input type="password" id="custom-tm-admin-password" name="tm_admin_password" placeholder="x-admin-auth 密码">
                         </div>
                         <div class="form-group">
-                            <label for="custom-tm-domain">邮箱域名</label>
-                            <input type="text" id="custom-tm-domain" name="tm_domain" placeholder="example.com">
+                            <label>邮箱域名</label>
+                            <small style="color: var(--text-muted);">创建时自动生成固定子域名</small>
                         </div>
                     </div>
                     <div class="form-row">
@@ -311,7 +381,8 @@
                         </div>
                         <div class="form-group">
                             <label for="edit-tm-domain">邮箱域名</label>
-                            <input type="text" id="edit-tm-domain" name="tm_domain" placeholder="example.com">
+                            <input type="text" id="edit-tm-domain" name="tm_domain" placeholder="创建时自动生成" readonly>
+                            <small style="color: var(--text-muted);">由 Cloudflare 自动生成，不可编辑</small>
                         </div>
                     </div>
                     <div class="form-row">

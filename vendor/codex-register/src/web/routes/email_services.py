@@ -265,7 +265,13 @@ async def get_service_types():
                 "config_fields": [
                     {"name": "base_url", "label": "Worker 地址", "required": True, "placeholder": "https://mail.example.com"},
                     {"name": "admin_password", "label": "Admin 密码", "required": True, "secret": True},
-                    {"name": "domain", "label": "邮箱域名", "required": True, "placeholder": "example.com"},
+                    {
+                        "name": "domain",
+                        "label": "邮箱域名（自动生成）",
+                        "required": False,
+                        "read_only": True,
+                        "description": "创建时由服务端自动生成固定子域名",
+                    },
                     {"name": "enable_prefix", "label": "启用前缀", "required": False, "default": True},
                 ]
             }
