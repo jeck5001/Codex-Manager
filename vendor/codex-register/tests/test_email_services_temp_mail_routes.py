@@ -13,23 +13,23 @@ from pydantic import SecretStr
 
 def _load_email_services_module():
     src_dir = Path(__file__).resolve().parents[1] / "src"
-    if "src" not in sys.modules:
-        src_pkg = types.ModuleType("src")
-        src_pkg.__path__ = [str(src_dir)]
-        sys.modules["src"] = src_pkg
+    for module_name in list(sys.modules):
+        if module_name == "src" or module_name.startswith("src."):
+            sys.modules.pop(module_name, None)
 
     web_dir = src_dir / "web"
-    if "src.web" not in sys.modules:
-        web_pkg = types.ModuleType("src.web")
-        web_pkg.__path__ = [str(web_dir)]
-        sys.modules["src.web"] = web_pkg
-
     routes_dir = Path(__file__).resolve().parents[1] / "src" / "web" / "routes"
-    pkg_name = "src.web.routes"
-    if pkg_name not in sys.modules:
-        routes_pkg = types.ModuleType(pkg_name)
-        routes_pkg.__path__ = [str(routes_dir)]
-        sys.modules[pkg_name] = routes_pkg
+    src_pkg = types.ModuleType("src")
+    src_pkg.__path__ = [str(src_dir)]
+    sys.modules["src"] = src_pkg
+
+    web_pkg = types.ModuleType("src.web")
+    web_pkg.__path__ = [str(web_dir)]
+    sys.modules["src.web"] = web_pkg
+
+    routes_pkg = types.ModuleType("src.web.routes")
+    routes_pkg.__path__ = [str(routes_dir)]
+    sys.modules["src.web.routes"] = routes_pkg
 
     spec = importlib.util.spec_from_file_location(
         "src.web.routes.email_services",
