@@ -185,17 +185,17 @@ class CloudflareTempMailProvisioner:
             domains.append(domain)
             normalized = self._dedupe_domains(domains)
             updated.append({
-                "type": "plain_text",
+                "type": "json",
                 "name": "DOMAINS",
-                "text": json.dumps(normalized),
+                "json": normalized,
             })
             replaced = True
 
         if not replaced:
             updated.append({
-                "type": "plain_text",
+                "type": "json",
                 "name": "DOMAINS",
-                "text": json.dumps(self._dedupe_domains([domain])),
+                "json": self._dedupe_domains([domain]),
             })
         return updated
 

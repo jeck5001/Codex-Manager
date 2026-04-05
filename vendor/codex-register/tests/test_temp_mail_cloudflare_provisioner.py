@@ -72,25 +72,22 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         bindings = [existing]
         updated = provisioner._upsert_domains_binding(bindings, "new.example.com")
         binding = next(b for b in updated if b.get("name") == "DOMAINS")
-        self.assertEqual(binding.get("type"), "plain_text")
-        expected_text = json.dumps(
-            ["exist.example.com", "new.example.com"]
-        )
-        self.assertEqual(binding["text"], expected_text)
+        self.assertEqual(binding.get("type"), "json")
+        expected_json = ["exist.example.com", "new.example.com"]
+        self.assertEqual(binding["json"], expected_json)
 
         second = provisioner._upsert_domains_binding(updated, "new.example.com")
         binding_again = next(b for b in second if b.get("name") == "DOMAINS")
-        self.assertEqual(binding_again["text"], expected_text)
+        self.assertEqual(binding_again["json"], expected_json)
 
-    def test_upsert_domains_binding_creates_plain_text_binding(self):
+    def test_upsert_domains_binding_creates_json_binding(self):
         settings = self.make_settings()
         provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings)
         bindings: list[dict[str, str]] = []
         updated = provisioner._upsert_domains_binding(bindings, "new.example.com")
         binding = next(b for b in updated if b.get("name") == "DOMAINS")
-        self.assertEqual(binding.get("type"), "plain_text")
-        expected_text = json.dumps(["new.example.com"])
-        self.assertEqual(binding["text"], expected_text)
+        self.assertEqual(binding.get("type"), "json")
+        self.assertEqual(binding["json"], ["new.example.com"])
 
     def test_upsert_domains_binding_preserves_json_binding(self):
         settings = self.make_settings()
@@ -101,8 +98,8 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         }
         updated = provisioner._upsert_domains_binding([binding], "beta.example.com")
         binding_result = next(b for b in updated if b.get("name") == "DOMAINS")
-        self.assertEqual(binding_result.get("type"), "plain_text")
-        self.assertEqual(binding_result["text"], json.dumps(["alpha.example.com", "beta.example.com"]))
+        self.assertEqual(binding_result.get("type"), "json")
+        self.assertEqual(binding_result["json"], ["alpha.example.com", "beta.example.com"])
 
     def test_validate_settings_raises_when_required_fields_missing(self):
         settings = Settings(
@@ -179,7 +176,7 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         http_client = self._DummyHttpClient([response])
         provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings, http_client=http_client)
 
-        provisioner.patch_worker_settings([{"type": "plain_text", "name": "DOMAINS", "text": "[]"}])
+        provisioner.patch_worker_settings([{"type": "json", "name": "DOMAINS", "json": []}])
 
         request = http_client.requests[0]
         self.assertEqual(
@@ -192,7 +189,7 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         self.assertEqual(metadata[2], "application/json")
         self.assertEqual(
             json.loads(metadata[1]),
-            {"bindings": [{"type": "plain_text", "name": "DOMAINS", "text": "[]"}]},
+            {"bindings": [{"type": "json", "name": "DOMAINS", "json": []}]},
         )
         self.assertNotIn("Content-Type", request["kwargs"]["headers"])
         self.assertEqual(request["kwargs"]["headers"]["Authorization"], "Bearer token")
