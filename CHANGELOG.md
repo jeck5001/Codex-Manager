@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-04-05
+
+### Added
+- 请求日志新增“最终生效服务等级”口径，HTTP / WS 日志现在会同时保留客户端显式 `service_tier` 和请求改写后的最终值，方便核对平台 Key 默认 `Fast` 是否真正发往上游。
+- 设置页新增全局“模型转发规则”，支持使用 `pattern=target` 形式做模型名改写，并在运行时请求改写阶段生效。
+
+### Changed
+- 普通平台 Key 的协议类型收敛为“通配兼容 (Codex / Claude Code)”，默认按请求路径自动选择 Claude 或 Codex / OpenAI 语义，减少重复维护多套 Key 的成本。
+- 发布版本提升到 `0.1.17`，同步更新 workspace、前端包、Tauri 桌面端、锁文件、README 与 CHANGELOG 的版本说明。
+
 ## [0.1.16] - 2026-04-05
 
 ### Added
@@ -176,7 +186,8 @@
 ### Changed
 - 账号管理页操作区整合为单一“账号操作”下拉菜单，替代右侧多按钮堆叠，界面更简洁。
 
-[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.16...HEAD
+[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.1.17...HEAD
+[0.1.17]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.17
 [0.1.16]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.16
 [0.1.15]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.15
 [0.1.14]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.14
