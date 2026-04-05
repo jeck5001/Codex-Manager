@@ -91,6 +91,7 @@ If this project has been helpful to you, you are welcome to support the author.
   - Request logs now distinguish between the client-explicit service tier and the effective service tier that actually goes upstream after platform-key overrides, so `auto` no longer obscures whether a default `Fast` setting was really applied.
   - Regular platform keys now use a wildcard-compatible protocol mode for Codex and Claude Code. The gateway routes `/v1/messages*` with Claude semantics and other standard paths with Codex / OpenAI semantics, so separate keys are no longer required for those clients.
   - The settings page now includes model forward rules with `pattern=target` syntax, for example `spark*=gpt-5.4-mini`. Platform-key bound models still take precedence over global forwarding rules.
+  - The account-page quota detail popup has also been realigned so it now sits on the vertical midpoint of the quota overview card, making the 5-hour, 7-day, and extra quota details feel anchored to the correct hover target instead of floating too high.
   - Version alignment for this round is complete too: the workspace, frontend package, Tauri desktop app, lockfile, README, and CHANGELOG have all been updated to `0.1.17`.
 
 ### Recent Commit Summary

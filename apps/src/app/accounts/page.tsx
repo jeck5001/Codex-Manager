@@ -331,7 +331,7 @@ function QuotaOverviewCell({ items }: { items: QuotaSummaryItem[] }) {
       </TooltipTrigger>
       <TooltipContent
         side="right"
-        align="start"
+        align="center"
         sideOffset={10}
         className="max-w-[340px] rounded-2xl bg-background p-3 text-foreground shadow-2xl"
       >
