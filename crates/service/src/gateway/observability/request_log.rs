@@ -17,6 +17,7 @@ pub(crate) struct RequestLogTraceContext<'a> {
     pub adapted_path: Option<&'a str>,
     pub request_type: Option<&'a str>,
     pub service_tier: Option<&'a str>,
+    pub effective_service_tier: Option<&'a str>,
     pub response_adapter: Option<super::ResponseAdapter>,
     pub aggregate_api_supplier_name: Option<&'a str>,
     pub aggregate_api_url: Option<&'a str>,
@@ -337,6 +338,10 @@ pub(crate) fn write_request_log_with_attempts(
         .service_tier
         .map(str::trim)
         .filter(|value| !value.is_empty());
+    let effective_service_tier = trace_context
+        .effective_service_tier
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     super::trace_log::log_failed_request(
         created_at,
         trace_context.trace_id,
@@ -398,6 +403,7 @@ pub(crate) fn write_request_log_with_attempts(
             model: model.map(|v| v.to_string()),
             reasoning_effort: reasoning_effort.map(|v| v.to_string()),
             service_tier: service_tier.map(str::to_string),
+            effective_service_tier: effective_service_tier.map(str::to_string),
             response_adapter: trace_context
                 .response_adapter
                 .map(response_adapter_label)

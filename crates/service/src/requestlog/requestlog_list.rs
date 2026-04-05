@@ -207,6 +207,7 @@ fn to_request_log_summary(item: RequestLog) -> RequestLogSummary {
         model: item.model,
         reasoning_effort: item.reasoning_effort,
         service_tier: item.service_tier,
+        effective_service_tier: item.effective_service_tier,
         response_adapter: item.response_adapter,
         upstream_url: normalize_upstream_url(item.upstream_url.as_deref()),
         aggregate_api_supplier_name: item.aggregate_api_supplier_name,

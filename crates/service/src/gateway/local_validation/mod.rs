@@ -32,6 +32,7 @@ pub(super) struct LocalValidationResult {
     pub(super) model_for_log: Option<String>,
     pub(super) reasoning_for_log: Option<String>,
     pub(super) service_tier_for_log: Option<String>,
+    pub(super) effective_service_tier_for_log: Option<String>,
     pub(super) method: Method,
 }
 

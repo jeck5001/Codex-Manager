@@ -569,6 +569,7 @@ pub struct RequestLogSummary {
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
+    pub effective_service_tier: Option<String>,
     pub response_adapter: Option<String>,
     pub upstream_url: Option<String>,
     pub aggregate_api_supplier_name: Option<String>,

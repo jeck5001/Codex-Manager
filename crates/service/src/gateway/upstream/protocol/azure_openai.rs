@@ -111,6 +111,7 @@ pub(in super::super) fn proxy_azure_request(
     tool_name_restore_map: &super::super::super::ToolNameRestoreMap,
     model_for_log: Option<&str>,
     reasoning_for_log: Option<&str>,
+    effective_service_tier_for_log: Option<&str>,
     upstream_base_url: Option<&str>,
     static_headers_json: Option<&str>,
     request_deadline: Option<Instant>,
@@ -137,6 +138,7 @@ pub(in super::super) fn proxy_azure_request(
                 original_path: Some(original_path),
                 adapted_path: Some(path),
                 response_adapter: Some(response_adapter),
+                effective_service_tier: effective_service_tier_for_log,
                 ..Default::default()
             },
             Some(key_id),
@@ -178,6 +180,7 @@ pub(in super::super) fn proxy_azure_request(
                     original_path: Some(original_path),
                     adapted_path: Some(path),
                     response_adapter: Some(response_adapter),
+                    effective_service_tier: effective_service_tier_for_log,
                     ..Default::default()
                 },
                 Some(key_id),
@@ -223,6 +226,7 @@ pub(in super::super) fn proxy_azure_request(
                         original_path: Some(original_path),
                         adapted_path: Some(path),
                         response_adapter: Some(response_adapter),
+                        effective_service_tier: effective_service_tier_for_log,
                         ..Default::default()
                     },
                     Some(key_id),
@@ -262,6 +266,7 @@ pub(in super::super) fn proxy_azure_request(
                         original_path: Some(original_path),
                         adapted_path: Some(path),
                         response_adapter: Some(response_adapter),
+                        effective_service_tier: effective_service_tier_for_log,
                         ..Default::default()
                     },
                     Some(key_id),
@@ -386,6 +391,7 @@ pub(in super::super) fn proxy_azure_request(
                             original_path: Some(original_path),
                             adapted_path: Some(path),
                             response_adapter: Some(response_adapter),
+                            effective_service_tier: effective_service_tier_for_log,
                             ..Default::default()
                         },
                         Some(key_id),
@@ -457,6 +463,7 @@ pub(in super::super) fn proxy_azure_request(
             original_path: Some(original_path),
             adapted_path: Some(path),
             response_adapter: Some(response_adapter),
+            effective_service_tier: effective_service_tier_for_log,
             ..Default::default()
         },
         Some(key_id),

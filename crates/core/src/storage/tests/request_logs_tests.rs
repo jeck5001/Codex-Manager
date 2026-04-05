@@ -112,6 +112,7 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
         model: Some("gpt-5".to_string()),
         reasoning_effort: Some("medium".to_string()),
         service_tier: Some("fast".to_string()),
+        effective_service_tier: Some("priority".to_string()),
         response_adapter: Some("OpenAIChatCompletionsJson".to_string()),
         upstream_url: Some("https://example.test".to_string()),
         aggregate_api_supplier_name: None,
@@ -164,6 +165,7 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
     assert_eq!(row.adapted_path.as_deref(), Some("/v1/responses"));
     assert_eq!(row.request_type.as_deref(), Some("http"));
     assert_eq!(row.service_tier.as_deref(), Some("fast"));
+    assert_eq!(row.effective_service_tier.as_deref(), Some("priority"));
     assert_eq!(
         row.response_adapter.as_deref(),
         Some("OpenAIChatCompletionsJson")

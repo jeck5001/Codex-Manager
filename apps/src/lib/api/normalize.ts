@@ -1061,6 +1061,9 @@ export function normalizeRequestLog(item: unknown): RequestLog | null {
     model: asString(source.model),
     reasoningEffort: asString(source.reasoningEffort ?? source.reasoning_effort),
     serviceTier: asString(source.serviceTier ?? source.service_tier),
+    effectiveServiceTier: asString(
+      source.effectiveServiceTier ?? source.effective_service_tier
+    ),
     responseAdapter: asString(source.responseAdapter ?? source.response_adapter),
     upstreamUrl: asString(source.upstreamUrl ?? source.upstream_url),
     aggregateApiSupplierName:

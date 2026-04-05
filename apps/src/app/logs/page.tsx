@@ -1075,7 +1075,12 @@ function ModelEffortCell({
 }) {
   const model = String(log.model || "").trim();
   const effort = String(log.reasoningEffort || "").trim();
-  const serviceTier = resolveDisplayServiceTier(log.serviceTier);
+  const clientServiceTier = resolveDisplayServiceTier(log.serviceTier);
+  const effectiveServiceTier = resolveDisplayServiceTier(
+    log.effectiveServiceTier || log.serviceTier,
+  );
+  const badgeServiceTier =
+    effectiveServiceTier !== "auto" ? effectiveServiceTier : clientServiceTier;
   const display = formatModelEffortDisplay(log);
 
   return (
@@ -1085,11 +1090,11 @@ function ModelEffortCell({
           <span className="block max-w-[160px] truncate font-medium text-foreground">
             {display}
           </span>
-          <ServiceTierBadge serviceTier={serviceTier} />
+          <ServiceTierBadge serviceTier={badgeServiceTier} />
         </div>
       </TooltipTrigger>
       <TooltipContent className="max-w-sm">
-        <div className="flex min-w-[200px] flex-col gap-2">
+        <div className="flex min-w-[220px] flex-col gap-2">
           <div className="space-y-0.5">
             <div className="text-[10px] text-background/70">模型</div>
             <div className="break-all font-mono text-[11px]">
@@ -1103,9 +1108,19 @@ function ModelEffortCell({
             </div>
           </div>
           <div className="space-y-0.5">
-            <div className="text-[10px] text-background/70">服务等级</div>
+            <div className="text-[10px] text-background/70">
+              客户端显式服务等级
+            </div>
             <div className="break-all font-mono text-[11px]">
-              {serviceTier}
+              {clientServiceTier}
+            </div>
+          </div>
+          <div className="space-y-0.5">
+            <div className="text-[10px] text-background/70">
+              最终生效服务等级
+            </div>
+            <div className="break-all font-mono text-[11px]">
+              {effectiveServiceTier}
             </div>
           </div>
         </div>

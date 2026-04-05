@@ -245,6 +245,7 @@ export interface RequestLog {
   model: string;
   reasoningEffort: string;
   serviceTier: string;
+  effectiveServiceTier: string;
   responseAdapter: string;
   upstreamUrl: string;
   aggregateApiSupplierName: string | null;

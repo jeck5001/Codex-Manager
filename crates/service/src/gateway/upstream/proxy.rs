@@ -105,6 +105,7 @@ pub(in super::super) fn proxy_validated_request(
         model_for_log,
         reasoning_for_log,
         service_tier_for_log,
+        effective_service_tier_for_log,
         method,
     } = validated;
     let started_at = Instant::now();
@@ -156,13 +157,14 @@ pub(in super::super) fn proxy_validated_request(
                     );
                     super::super::write_request_log(
                         &storage,
-                        super::super::request_log::RequestLogTraceContext {
-                            trace_id: Some(trace_id.as_str()),
-                            original_path: Some(original_path.as_str()),
-                            adapted_path: Some(path.as_str()),
-                            response_adapter: Some(super::super::ResponseAdapter::Passthrough),
-                            ..Default::default()
-                        },
+                    super::super::request_log::RequestLogTraceContext {
+                        trace_id: Some(trace_id.as_str()),
+                        original_path: Some(original_path.as_str()),
+                        adapted_path: Some(path.as_str()),
+                        response_adapter: Some(super::super::ResponseAdapter::Passthrough),
+                        effective_service_tier: effective_service_tier_for_log.as_deref(),
+                        ..Default::default()
+                    },
                         Some(key_id.as_str()),
                         None,
                         path.as_str(),
@@ -206,6 +208,7 @@ pub(in super::super) fn proxy_validated_request(
             super::super::ResponseAdapter::Passthrough,
             model_for_log.as_deref(),
             reasoning_for_log.as_deref(),
+            effective_service_tier_for_log.as_deref(),
             aggregate_api_candidates,
             request_deadline,
             started_at,
@@ -228,6 +231,7 @@ pub(in super::super) fn proxy_validated_request(
             &tool_name_restore_map,
             model_for_log.as_deref(),
             reasoning_for_log.as_deref(),
+            effective_service_tier_for_log.as_deref(),
             upstream_base_url.as_deref(),
             static_headers_json.as_deref(),
             request_deadline,
@@ -281,6 +285,7 @@ pub(in super::super) fn proxy_validated_request(
         model_for_log.as_deref(),
         reasoning_for_log.as_deref(),
         service_tier_for_log.as_deref(),
+        effective_service_tier_for_log.as_deref(),
         setup.candidate_count,
         setup.account_max_inflight,
     );

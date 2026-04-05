@@ -223,6 +223,15 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
         )
         .expect("count 035 migration");
     assert_eq!(applied_035, 1);
+    let applied_043: i64 = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '043_request_logs_effective_service_tier'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count 043 migration");
+    assert_eq!(applied_043, 1);
 
     assert!(!storage
         .has_column("accounts", "note")
@@ -266,6 +275,9 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
     assert!(storage
         .has_column("request_logs", "attempted_aggregate_api_ids_json")
         .expect("check request_logs.attempted_aggregate_api_ids_json"));
+    assert!(storage
+        .has_column("request_logs", "effective_service_tier")
+        .expect("check request_logs.effective_service_tier"));
     assert!(storage
         .has_column("app_settings", "value")
         .expect("check app_settings.value"));
@@ -766,13 +778,16 @@ fn request_logs_compact_migration_drops_legacy_usage_columns_and_preserves_rows(
     assert!(storage
         .has_column("request_logs", "duration_ms")
         .expect("check compact duration_ms"));
+    assert!(storage
+        .has_column("request_logs", "effective_service_tier")
+        .expect("check compact effective_service_tier"));
 
-    let request_log_row: (i64, String, Option<String>, Option<i64>) = storage
+    let request_log_row: (i64, String, Option<String>, Option<String>, Option<i64>) = storage
         .conn
         .query_row(
-            "SELECT id, request_path, response_adapter, duration_ms FROM request_logs WHERE id = 7",
+            "SELECT id, request_path, response_adapter, effective_service_tier, duration_ms FROM request_logs WHERE id = 7",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         )
         .expect("load compacted request log row");
     assert_eq!(request_log_row.0, 7);
@@ -782,6 +797,7 @@ fn request_logs_compact_migration_drops_legacy_usage_columns_and_preserves_rows(
         Some("OpenAIChatCompletionsJson")
     );
     assert_eq!(request_log_row.3, None);
+    assert_eq!(request_log_row.4, None);
 
     let token_row: (Option<i64>, Option<i64>, Option<f64>, Option<i64>, Option<i64>) = storage
         .conn

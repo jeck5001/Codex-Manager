@@ -748,6 +748,7 @@ fn request_logs_support_prefixed_query_filters() {
             method: "POST".to_string(),
             model: Some("gpt-5.1".to_string()),
             reasoning_effort: Some("low".to_string()),
+            effective_service_tier: Some("priority".to_string()),
             response_adapter: Some("OpenAIChatCompletionsJson".to_string()),
             upstream_url: Some("https://chatgpt.com/backend-api/codex/v1/responses".to_string()),
             aggregate_api_supplier_name: None,
@@ -873,6 +874,15 @@ fn request_logs_support_prefixed_query_filters() {
     assert_eq!(
         adapter_filtered[0].response_adapter.as_deref(),
         Some("OpenAIChatCompletionsJson")
+    );
+
+    let effective_tier_filtered = storage
+        .list_request_logs(Some("effective_tier:=priority"), 100)
+        .expect("filter by effective service tier");
+    assert_eq!(effective_tier_filtered.len(), 1);
+    assert_eq!(
+        effective_tier_filtered[0].effective_service_tier.as_deref(),
+        Some("priority")
     );
 
     let fallback_filtered = storage

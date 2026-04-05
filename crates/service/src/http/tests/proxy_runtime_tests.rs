@@ -648,8 +648,21 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
         "expected websocket request log to keep explicit fast service tier"
     );
     assert!(
+        ws_logs
+            .iter()
+            .any(|item| item.effective_service_tier.as_deref() == Some("fast")),
+        "expected websocket request log to persist effective fast service tier"
+    );
+    assert!(
         ws_logs.iter().any(|item| item.service_tier.is_none()),
         "expected follow-up websocket request without explicit service tier to stay empty"
+    );
+    assert!(
+        ws_logs
+            .iter()
+            .filter(|item| item.service_tier.is_none())
+            .any(|item| item.effective_service_tier.as_deref() == Some("fast")),
+        "expected follow-up websocket request to keep effective fast service tier"
     );
 
     client_ws.close(None).await.expect("close client websocket");

@@ -190,6 +190,7 @@ fn apply_passthrough_request_overrides(
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<String>,
     bool,
     Option<String>,
 ) {
@@ -213,6 +214,7 @@ fn apply_passthrough_request_overrides(
             .reasoning_effort
             .or(api_key.reasoning_effort.clone()),
         explicit_service_tier_for_log,
+        request_meta.service_tier,
         request_meta.has_prompt_cache_key,
         request_meta.request_shape,
     )
@@ -265,6 +267,7 @@ pub(super) fn build_local_validation_result(
             model_for_log,
             reasoning_for_log,
             service_tier_for_log,
+            effective_service_tier_for_log,
             has_prompt_cache_key,
             request_shape,
         ) = apply_passthrough_request_overrides(
@@ -300,6 +303,7 @@ pub(super) fn build_local_validation_result(
             model_for_log,
             reasoning_for_log,
             service_tier_for_log,
+            effective_service_tier_for_log,
             method,
         });
     }
@@ -381,6 +385,7 @@ pub(super) fn build_local_validation_result(
         .reasoning_effort
         .or(api_key.reasoning_effort.clone());
     let service_tier_for_log = client_request_meta.service_tier;
+    let effective_service_tier_for_log = request_meta.service_tier;
     let is_stream = client_request_meta.is_stream;
     let has_prompt_cache_key = client_request_meta.has_prompt_cache_key;
     let request_shape = client_request_meta.request_shape;
@@ -416,6 +421,7 @@ pub(super) fn build_local_validation_result(
         model_for_log,
         reasoning_for_log,
         service_tier_for_log,
+        effective_service_tier_for_log,
         method,
     })
 }

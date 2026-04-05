@@ -30,6 +30,7 @@ struct PreparedClientFrame {
     model: Option<String>,
     reasoning_effort: Option<String>,
     service_tier: Option<String>,
+    effective_service_tier: Option<String>,
     raw_service_tier: Option<String>,
     has_service_tier_field: bool,
 }
@@ -47,6 +48,7 @@ struct PendingWsRequestLog {
     model: Option<String>,
     reasoning_effort: Option<String>,
     service_tier: Option<String>,
+    effective_service_tier: Option<String>,
     started_at: Instant,
 }
 
@@ -534,6 +536,9 @@ fn rewrite_client_frame(
             "rewritten websocket payload must stay a JSON object",
         ));
     };
+    let effective_service_tier_for_log =
+        crate::gateway::inspect_service_tier_value(rewritten_object.get("service_tier"))
+            .normalized_value;
     rewritten_object.insert("type".to_string(), Value::String(message_type));
     if let Some(value) = previous_response_id {
         rewritten_object.insert("previous_response_id".to_string(), value);
@@ -562,6 +567,7 @@ fn rewrite_client_frame(
                     .map(str::to_string)
             }),
         service_tier: explicit_service_tier_for_log,
+        effective_service_tier: effective_service_tier_for_log,
         raw_service_tier: service_tier_diagnostic.raw_value,
         has_service_tier_field: service_tier_diagnostic.has_field,
         text: serde_json::to_string(&Value::Object(rewritten_object)).map_err(|err| {
@@ -798,6 +804,7 @@ fn begin_ws_request_log(
         model: prepared.model.clone(),
         reasoning_effort: prepared.reasoning_effort.clone(),
         service_tier: prepared.service_tier.clone(),
+        effective_service_tier: prepared.effective_service_tier.clone(),
         started_at: Instant::now(),
     }
 }
@@ -822,6 +829,7 @@ fn finalize_ws_request_log(
             adapted_path: Some(RESPONSES_PATH),
             request_type: Some("ws"),
             service_tier: pending.service_tier.as_deref(),
+            effective_service_tier: pending.effective_service_tier.as_deref(),
             ..Default::default()
         },
         Some(context.api_key.id.as_str()),
