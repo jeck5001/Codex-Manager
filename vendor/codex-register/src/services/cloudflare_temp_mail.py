@@ -448,23 +448,9 @@ class CloudflareTempMailProvisioner:
             "cloudflare_subdomain": subdomain_payload,
         }
 
-        try:
-            worker_settings_payload = self.get_worker_settings()
-            existing_bindings = self._extract_worker_bindings(worker_settings_payload)
-            cleanup_context["cloudflare_worker_previous_bindings"] = existing_bindings
-            updated_bindings = self._upsert_domains_binding(existing_bindings, domain)
-            patched_payload = self.patch_worker_settings(updated_bindings)
-        except Exception:
-            try:
-                self.cleanup_provisioned_domain(cleanup_context, domain=domain)
-            except Exception:
-                pass
-            raise
-
         persisted_config = {
             "domain": domain,
             "cloudflare_subdomain": subdomain_payload,
-            "cloudflare_worker_settings": patched_payload,
         }
         return {
             "persisted_config": persisted_config,
