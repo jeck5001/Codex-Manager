@@ -427,33 +427,25 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         http_client = _RecordingHttpClient(
             responses=[
                 _DummyResponse(200, {"result": {"id": "sub-1", "name": "tm-abc123.mail.example.com"}}),
-                _DummyResponse(200, {"result": {"settings": {"bindings": []}}}),
-                _DummyResponse(500, {"errors": ["patch failed"]}),
-                _DummyResponse(200, {"success": True}),
-                _DummyResponse(200, {"result": {"id": "sub-1"}}),
             ]
         )
         provisioner = self.module.CloudflareTempMailProvisioner(settings, http_client=http_client)
 
-        with self.assertRaises(Exception):
-            provisioner.provision_domain()
+        result = provisioner.provision_domain()
 
         methods = [entry["method"] for entry in http_client.calls]
-        self.assertEqual(methods, ["POST", "GET", "PATCH", "PATCH", "POST"])
+        self.assertEqual(methods, ["POST"])
         self.assertEqual(
             http_client.calls[0]["url"],
             "https://api.cloudflare.com/client/v4/zones/zone/email/routing/enable",
         )
+        self.assertNotIn("cloudflare_worker_settings", result["persisted_config"])
         self.assertEqual(
-            http_client.calls[4]["url"],
-            "https://api.cloudflare.com/client/v4/zones/zone/email/routing/disable",
-        )
-        self.assertEqual(
-            http_client.calls[4]["kwargs"]["json"],
-            {"name": http_client.calls[0]["kwargs"]["json"]["name"]},
+            result["persisted_config"]["cloudflare_subdomain"]["result"]["id"],
+            "sub-1",
         )
 
-    def test_provisioner_cleanup_restores_worker_bindings_then_deletes_subdomain(self):
+    def test_provisioner_cleanup_deletes_subdomain_without_worker_restore(self):
         from src.config.settings import Settings
 
         settings = Settings(
@@ -473,21 +465,19 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         provisioner = self.module.CloudflareTempMailProvisioner(settings, http_client=http_client)
         provisioned = {
             "cloudflare_subdomain": {"result": {"id": "sub-1"}},
-            "cloudflare_worker_previous_bindings": [
-                {"type": "plain_text", "name": "DOMAINS", "text": '["old.mail.example.com"]'}
-            ],
         }
 
         provisioner.cleanup_provisioned_domain(provisioned, domain="tm-abc123.mail.example.com")
 
-        self.assertEqual(http_client.calls[0]["method"], "PATCH")
-        self.assertIn("multipart", http_client.calls[0]["kwargs"])
-        self.assertEqual(http_client.calls[1]["method"], "POST")
         self.assertEqual(
-            http_client.calls[1]["url"],
+            http_client.calls[0]["method"],
+            "POST",
+        )
+        self.assertEqual(
+            http_client.calls[0]["url"],
             "https://api.cloudflare.com/client/v4/zones/zone/email/routing/disable",
         )
         self.assertEqual(
-            http_client.calls[1]["kwargs"]["json"],
+            http_client.calls[0]["kwargs"]["json"],
             {"name": "tm-abc123.mail.example.com"},
         )
