@@ -283,6 +283,19 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         description="Cloudflare API Token，用于临时邮箱 Worker 同步",
         is_secret=True
     ),
+    "cloudflare_api_email": SettingDefinition(
+        db_key="temp_mail.cloudflare_api_email",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="Cloudflare API Email，用于需要 Global API Key 的邮箱接口"
+    ),
+    "cloudflare_global_api_key": SettingDefinition(
+        db_key="temp_mail.cloudflare_global_api_key",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="Cloudflare Global API Key，用于需要 X-Auth-Email/X-Auth-Key 的邮箱接口",
+        is_secret=True
+    ),
     "cloudflare_account_id": SettingDefinition(
         db_key="temp_mail.cloudflare_account_id",
         default_value="",
@@ -733,6 +746,8 @@ class Settings(BaseModel):
     tempmail_timeout: int = 30
     tempmail_max_retries: int = 3
     cloudflare_api_token: SecretStr = SecretStr("")
+    cloudflare_api_email: str = ""
+    cloudflare_global_api_key: SecretStr = SecretStr("")
     cloudflare_account_id: str = ""
     cloudflare_zone_id: str = ""
     cloudflare_worker_name: str = "temp-email"

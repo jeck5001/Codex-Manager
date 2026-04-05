@@ -16,6 +16,8 @@ class TempMailCloudflareSettingsTests(unittest.TestCase):
 
             updated = settings_module.update_settings(
                 cloudflare_api_token="token-1",
+                cloudflare_api_email="admin@example.com",
+                cloudflare_global_api_key="global-key-1",
                 cloudflare_account_id="acc-1",
                 cloudflare_zone_id="zone-1",
                 cloudflare_worker_name="temp-email",
@@ -31,8 +33,11 @@ class TempMailCloudflareSettingsTests(unittest.TestCase):
                 updated.cloudflare_api_token.get_secret_value(),
                 "token-1",
             )
+            self.assertEqual(updated.cloudflare_api_email, "admin@example.com")
+            self.assertEqual(updated.cloudflare_global_api_key.get_secret_value(), "global-key-1")
             self.assertEqual(updated.temp_mail_domain_base, "mail.example.com")
             self.assertEqual(saved["cloudflare_zone_id"], "zone-1")
+            self.assertEqual(saved["cloudflare_api_email"], "admin@example.com")
             self.assertTrue(saved["temp_mail_require_cloudflare_sync"])
         finally:
             settings_module._save_settings_to_db = original_save

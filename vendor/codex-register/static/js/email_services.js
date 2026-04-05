@@ -45,6 +45,9 @@ const elements = {
     cfSettingsForm: document.getElementById('cf-settings-form'),
     cfApiToken: document.getElementById('cf-api-token'),
     cfApiTokenHint: document.getElementById('cf-api-token-hint'),
+    cfApiEmail: document.getElementById('cf-api-email'),
+    cfGlobalApiKey: document.getElementById('cf-global-api-key'),
+    cfGlobalApiKeyHint: document.getElementById('cf-global-api-key-hint'),
     cfAccountId: document.getElementById('cf-account-id'),
     cfZoneId: document.getElementById('cf-zone-id'),
     cfWorkerName: document.getElementById('cf-worker-name'),
@@ -523,6 +526,9 @@ async function loadCloudflareSettings() {
         const settings = await api.get('/settings/temp-mail/cloudflare');
         elements.cfApiToken.value = '';
         elements.cfApiTokenHint.textContent = settings.has_api_token ? '已配置 API Token，留空表示保持不变' : '尚未配置 API Token';
+        elements.cfApiEmail.value = settings.cloudflare_api_email || '';
+        elements.cfGlobalApiKey.value = '';
+        elements.cfGlobalApiKeyHint.textContent = settings.has_global_api_key ? '已配置 Global API Key，留空表示保持不变' : '尚未配置 Global API Key';
         elements.cfAccountId.value = settings.cloudflare_account_id || '';
         elements.cfZoneId.value = settings.cloudflare_zone_id || '';
         elements.cfWorkerName.value = settings.cloudflare_worker_name || '';
@@ -545,6 +551,9 @@ async function loadCloudflareSettings() {
         if (elements.cfApiTokenHint) {
             elements.cfApiTokenHint.textContent = '加载失败，请稍后重试';
         }
+        if (elements.cfGlobalApiKeyHint) {
+            elements.cfGlobalApiKeyHint.textContent = '加载失败，请稍后重试';
+        }
     }
 }
 
@@ -558,6 +567,7 @@ async function handleSaveCloudflareSettings(e) {
     }
 
     const payload = {
+        cloudflare_api_email: elements.cfApiEmail.value.trim(),
         cloudflare_account_id: elements.cfAccountId.value.trim(),
         cloudflare_zone_id: elements.cfZoneId.value.trim(),
         cloudflare_worker_name: elements.cfWorkerName.value.trim(),
@@ -572,6 +582,10 @@ async function handleSaveCloudflareSettings(e) {
     const apiToken = elements.cfApiToken.value.trim();
     if (apiToken) {
         payload.cloudflare_api_token = apiToken;
+    }
+    const globalApiKey = elements.cfGlobalApiKey.value.trim();
+    if (globalApiKey) {
+        payload.cloudflare_global_api_key = globalApiKey;
     }
 
     elements.saveCfSettingsBtn.disabled = true;

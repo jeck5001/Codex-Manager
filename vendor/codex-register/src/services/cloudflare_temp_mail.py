@@ -39,7 +39,6 @@ class CloudflareTempMailProvisioner:
     """Encapsulates Cloudflare Temp Mail provisioning operations."""
 
     REQUIRED_FIELDS = [
-        "cloudflare_api_token",
         "cloudflare_account_id",
         "cloudflare_zone_id",
         "cloudflare_worker_name",
@@ -50,6 +49,8 @@ class CloudflareTempMailProvisioner:
         normalized = self.validate_settings(settings)
         self.settings = settings
         self._api_token = normalized["token"]
+        self._api_email = normalized["api_email"]
+        self._global_api_key = normalized["global_api_key"]
         self._account_id = normalized["account_id"]
         self._zone_id = normalized["zone_id"]
         self._worker_name = normalized["worker_name"]
@@ -58,11 +59,10 @@ class CloudflareTempMailProvisioner:
         self.http_client = http_client or HTTPClient(config=RequestConfig())
 
     @staticmethod
-    def _extract_token(settings: Settings) -> str:
-        raw_token = settings.cloudflare_api_token
-        if isinstance(raw_token, SecretStr):
-            return raw_token.get_secret_value()
-        return str(raw_token or "").strip()
+    def _extract_secret(value: Any) -> str:
+        if isinstance(value, SecretStr):
+            return value.get_secret_value().strip()
+        return str(value or "").strip()
 
     @staticmethod
     def _normalize_prefix(value: Optional[str]) -> str:
@@ -75,11 +75,17 @@ class CloudflareTempMailProvisioner:
 
     @classmethod
     def validate_settings(cls, settings: Settings) -> Dict[str, str]:
-        normalized_token = cls._extract_token(settings)
+        normalized_token = cls._extract_secret(settings.cloudflare_api_token)
+        normalized_api_email = cls._normalize_str(getattr(settings, "cloudflare_api_email", ""))
+        normalized_global_api_key = cls._extract_secret(
+            getattr(settings, "cloudflare_global_api_key", "")
+        )
         missing_fields: List[str] = []
 
-        if not normalized_token:
-            missing_fields.append("cloudflare_api_token")
+        has_token_auth = bool(normalized_token)
+        has_global_key_auth = bool(normalized_api_email and normalized_global_api_key)
+        if not has_token_auth and not has_global_key_auth:
+            missing_fields.append("cloudflare_api_token or cloudflare_api_email+cloudflare_global_api_key")
 
         normalized_account = cls._normalize_str(settings.cloudflare_account_id)
         normalized_zone = cls._normalize_str(settings.cloudflare_zone_id)
@@ -104,6 +110,8 @@ class CloudflareTempMailProvisioner:
 
         return {
             "token": normalized_token,
+            "api_email": normalized_api_email,
+            "global_api_key": normalized_global_api_key,
             "account_id": normalized_account,
             "zone_id": normalized_zone,
             "worker_name": normalized_worker,
@@ -247,11 +255,31 @@ class CloudflareTempMailProvisioner:
         identifier = quote(str(subdomain_identifier or "").strip(), safe="")
         return f"{self._zones_subdomain_url()}/{identifier}"
 
-    def _auth_headers(self) -> Dict[str, str]:
+    def _bearer_headers(self) -> Dict[str, str]:
+        if not self._api_token:
+            raise CloudflareProvisioningError("cloudflare_api_token is required for bearer authentication")
         return {
             "Authorization": f"Bearer {self._api_token}",
             "Content-Type": "application/json",
         }
+
+    def _global_key_headers(self) -> Dict[str, str]:
+        if not self._api_email or not self._global_api_key:
+            raise CloudflareProvisioningError(
+                "cloudflare_api_email and cloudflare_global_api_key are required for global key authentication"
+            )
+        return {
+            "X-Auth-Email": self._api_email,
+            "X-Auth-Key": self._global_api_key,
+            "Content-Type": "application/json",
+        }
+
+    def _auth_headers(self, *, prefer_global_key: bool = False) -> Dict[str, str]:
+        if prefer_global_key and self._api_email and self._global_api_key:
+            return self._global_key_headers()
+        if self._api_token:
+            return self._bearer_headers()
+        return self._global_key_headers()
 
     def _process_response(self, response: Any, action: str) -> Dict[str, Any]:
         payload = None
@@ -267,6 +295,11 @@ class CloudflareTempMailProvisioner:
             ) from exc
 
         if response.status_code >= 400:
+            if self._is_email_auth_error(response.status_code, payload, action):
+                raise CloudflareProvisioningError(
+                    f"{action} failed with status {response.status_code}: {payload}. "
+                    "Cloudflare 邮箱子域名接口鉴权失败，请优先配置 cloudflare_api_email + cloudflare_global_api_key。"
+                )
             raise CloudflareProvisioningError(
                 f"{action} failed with status {response.status_code}: {payload}"
             )
@@ -278,12 +311,26 @@ class CloudflareTempMailProvisioner:
 
         return payload
 
+    @staticmethod
+    def _is_email_auth_error(status_code: int, payload: Any, action: str) -> bool:
+        if status_code != 403 or action not in {"create subdomain", "delete subdomain"}:
+            return False
+        if not isinstance(payload, dict):
+            return False
+        errors = payload.get("errors")
+        if not isinstance(errors, list):
+            return False
+        return any(
+            isinstance(item, dict) and item.get("code") == 10000
+            for item in errors
+        )
+
     def create_subdomain(self, domain: str) -> Dict[str, Any]:
         response = self.http_client.request(
             "POST",
             self._zones_subdomain_url(),
             json={"name": domain},
-            headers=self._auth_headers(),
+            headers=self._auth_headers(prefer_global_key=True),
         )
         return self._process_response(response, "create subdomain")
 
@@ -308,7 +355,7 @@ class CloudflareTempMailProvisioner:
         response = self.http_client.request(
             "DELETE",
             self._zones_subdomain_item_url(subdomain_identifier),
-            headers=self._auth_headers(),
+            headers=self._auth_headers(prefer_global_key=True),
         )
         return self._process_response(response, "delete subdomain")
 
