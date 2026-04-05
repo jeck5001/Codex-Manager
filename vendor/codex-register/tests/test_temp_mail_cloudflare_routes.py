@@ -50,15 +50,22 @@ class TempMailCloudflareRoutesTests(unittest.TestCase):
 
     def test_get_cloudflare_settings_hides_raw_token(self):
         settings_module._settings.cloudflare_api_token = SecretStr("secret-value")
+        settings_module._settings.cloudflare_global_api_key = SecretStr("global-key")
+        settings_module._settings.cloudflare_api_email = "admin@example.com"
         response = self.client.get("/api/settings/temp-mail/cloudflare")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(payload["has_api_token"])
+        self.assertTrue(payload["has_global_api_key"])
+        self.assertEqual(payload["cloudflare_api_email"], "admin@example.com")
         self.assertNotIn("cloudflare_api_token", payload)
+        self.assertNotIn("cloudflare_global_api_key", payload)
 
     def test_post_cloudflare_settings_updates_values(self):
         payload = {
             "cloudflare_api_token": "token-1",
+            "cloudflare_api_email": "admin@example.com",
+            "cloudflare_global_api_key": "global-key-1",
             "cloudflare_account_id": "acc-1",
             "cloudflare_zone_id": "zone-1",
             "cloudflare_worker_name": "temp-email",
@@ -74,10 +81,13 @@ class TempMailCloudflareRoutesTests(unittest.TestCase):
         self.assertEqual(settings_module._settings.temp_mail_domain_base, payload["temp_mail_domain_base"])
         self.assertTrue(settings_module._settings.temp_mail_sync_cloudflare_enabled)
         self.assertEqual(self.updated_values["cloudflare_zone_id"], payload["cloudflare_zone_id"])
+        self.assertEqual(self.updated_values["cloudflare_api_email"], payload["cloudflare_api_email"])
         self.assertEqual(self.updated_values["temp_mail_require_cloudflare_sync"], True)
         get_response = self.client.get("/api/settings/temp-mail/cloudflare")
         self.assertTrue(get_response.json()["has_api_token"])
+        self.assertTrue(get_response.json()["has_global_api_key"])
         self.assertNotIn("cloudflare_api_token", get_response.json())
+        self.assertNotIn("cloudflare_global_api_key", get_response.json())
 
     def test_post_invalid_subdomain_mode_is_rejected(self):
         response = self.client.post(

@@ -12,6 +12,8 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
     def make_settings(self, **overrides) -> Settings:
         base_kwargs = {
             "cloudflare_api_token": SecretStr("token"),
+            "cloudflare_api_email": "",
+            "cloudflare_global_api_key": SecretStr(""),
             "cloudflare_account_id": "acct",
             "cloudflare_zone_id": "zone",
             "cloudflare_worker_name": "worker",
@@ -39,6 +41,10 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
 
         result = provisioner.create_subdomain("new.example.com")
         self.assertEqual(result, {"id": "subdomain"})
+        self.assertEqual(
+            http_client.requests[0]["kwargs"]["headers"]["Authorization"],
+            "Bearer token",
+        )
 
     def test_cloudflare_wrapper_raises_on_http_error(self):
         settings = self.make_settings()
@@ -101,6 +107,8 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
     def test_validate_settings_raises_when_required_fields_missing(self):
         settings = Settings(
             cloudflare_api_token=SecretStr(""),
+            cloudflare_api_email="",
+            cloudflare_global_api_key=SecretStr(""),
             cloudflare_account_id="",
             cloudflare_zone_id="",
             cloudflare_worker_name="",
@@ -116,11 +124,54 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
             cloudflare_temp_mail.CloudflareTempMailProvisioner.validate_settings(settings)
         self.assertIn("cloudflare_account_id", str(ctx.exception))
 
+    def test_validate_settings_accepts_global_api_key_without_token(self):
+        settings = self.make_settings(
+            cloudflare_api_token=SecretStr(""),
+            cloudflare_api_email="admin@example.com",
+            cloudflare_global_api_key=SecretStr("global-key"),
+        )
+        normalized = cloudflare_temp_mail.CloudflareTempMailProvisioner.validate_settings(settings)
+        self.assertEqual(normalized["api_email"], "admin@example.com")
+        self.assertEqual(normalized["global_api_key"], "global-key")
+
+    def test_create_subdomain_prefers_global_api_key_for_email_api(self):
+        settings = self.make_settings(
+            cloudflare_api_email="admin@example.com",
+            cloudflare_global_api_key=SecretStr("global-key"),
+        )
+        response = self._make_response(200, {"id": "subdomain"})
+        http_client = self._DummyHttpClient([response])
+        provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings, http_client=http_client)
+
+        provisioner.create_subdomain("new.example.com")
+
+        headers = http_client.requests[0]["kwargs"]["headers"]
+        self.assertEqual(headers["X-Auth-Email"], "admin@example.com")
+        self.assertEqual(headers["X-Auth-Key"], "global-key")
+        self.assertNotIn("Authorization", headers)
+
+    def test_worker_settings_prefers_api_token_when_available(self):
+        settings = self.make_settings(
+            cloudflare_api_email="admin@example.com",
+            cloudflare_global_api_key=SecretStr("global-key"),
+        )
+        response = self._make_response(200, {"result": {"bindings": []}})
+        http_client = self._DummyHttpClient([response])
+        provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings, http_client=http_client)
+
+        provisioner.get_worker_settings()
+
+        headers = http_client.requests[0]["kwargs"]["headers"]
+        self.assertEqual(headers["Authorization"], "Bearer token")
+        self.assertNotIn("X-Auth-Key", headers)
+
     class _DummyHttpClient:
         def __init__(self, responses: List[Any]):
             self._responses = responses
+            self.requests: List[dict[str, Any]] = []
 
         def request(self, method: str, url: str, **kwargs) -> Any:
+            self.requests.append({"method": method, "url": url, "kwargs": kwargs})
             return self._responses.pop(0)
 
     @staticmethod

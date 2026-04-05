@@ -188,6 +188,8 @@ interface RegisterEmailServiceReorderPayload {
 
 interface RegisterTempMailCloudflareSettingsPayload {
   cloudflareApiToken?: string | null;
+  cloudflareApiEmail?: string | null;
+  cloudflareGlobalApiKey?: string | null;
   cloudflareAccountId?: string | null;
   cloudflareZoneId?: string | null;
   cloudflareWorkerName?: string | null;
@@ -740,6 +742,14 @@ function normalizeRegisterTempMailCloudflareSettings(
   const source = asRecord(value) ?? {};
   return {
     hasApiToken: source.hasApiToken === true || source.has_api_token === true,
+    cloudflareApiEmail:
+      typeof source.cloudflareApiEmail === "string"
+        ? source.cloudflareApiEmail
+        : typeof source.cloudflare_api_email === "string"
+          ? source.cloudflare_api_email
+          : "",
+    hasGlobalApiKey:
+      source.hasGlobalApiKey === true || source.has_global_api_key === true,
     cloudflareAccountId:
       typeof source.cloudflareAccountId === "string"
         ? source.cloudflareAccountId
@@ -1026,6 +1036,7 @@ export const accountClient = {
     params: RegisterTempMailCloudflareSettingsPayload
   ): Promise<RegisterTempMailCloudflareSettings> {
     const payload: Record<string, unknown> = {
+      cloudflare_api_email: params.cloudflareApiEmail ?? "",
       cloudflare_account_id: params.cloudflareAccountId ?? "",
       cloudflare_zone_id: params.cloudflareZoneId ?? "",
       cloudflare_worker_name: params.cloudflareWorkerName ?? "",
@@ -1038,6 +1049,12 @@ export const accountClient = {
     };
     if (typeof params.cloudflareApiToken === "string" && params.cloudflareApiToken.trim()) {
       payload.cloudflare_api_token = params.cloudflareApiToken.trim();
+    }
+    if (
+      typeof params.cloudflareGlobalApiKey === "string" &&
+      params.cloudflareGlobalApiKey.trim()
+    ) {
+      payload.cloudflare_global_api_key = params.cloudflareGlobalApiKey.trim();
     }
     await invoke<unknown>(
       "service_account_register_temp_mail_cloudflare_settings_set",

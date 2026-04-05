@@ -383,6 +383,8 @@ class TempmailSettings(BaseModel):
 class TempMailCloudflareSettings(BaseModel):
     """Cloudflare 临时邮箱配置"""
     cloudflare_api_token: Optional[str] = None
+    cloudflare_api_email: Optional[str] = None
+    cloudflare_global_api_key: Optional[str] = None
     cloudflare_account_id: Optional[str] = None
     cloudflare_zone_id: Optional[str] = None
     cloudflare_worker_name: Optional[str] = None
@@ -451,6 +453,10 @@ async def get_temp_mail_cloudflare_settings():
     settings = get_settings()
     return {
         "has_api_token": bool(settings.cloudflare_api_token and settings.cloudflare_api_token.get_secret_value()),
+        "cloudflare_api_email": settings.cloudflare_api_email,
+        "has_global_api_key": bool(
+            settings.cloudflare_global_api_key and settings.cloudflare_global_api_key.get_secret_value()
+        ),
         "cloudflare_account_id": settings.cloudflare_account_id,
         "cloudflare_zone_id": settings.cloudflare_zone_id,
         "cloudflare_worker_name": settings.cloudflare_worker_name,
@@ -470,6 +476,10 @@ async def update_temp_mail_cloudflare_settings(request: TempMailCloudflareSettin
 
     if request.cloudflare_api_token is not None:
         update_dict["cloudflare_api_token"] = request.cloudflare_api_token
+    if request.cloudflare_api_email is not None:
+        update_dict["cloudflare_api_email"] = request.cloudflare_api_email
+    if request.cloudflare_global_api_key is not None:
+        update_dict["cloudflare_global_api_key"] = request.cloudflare_global_api_key
     if request.cloudflare_account_id is not None:
         update_dict["cloudflare_account_id"] = request.cloudflare_account_id
     if request.cloudflare_zone_id is not None:

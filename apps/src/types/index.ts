@@ -771,6 +771,8 @@ export interface RegisterEmailServiceTestResult {
 
 export interface RegisterTempMailCloudflareSettings {
   hasApiToken: boolean;
+  cloudflareApiEmail: string;
+  hasGlobalApiKey: boolean;
   cloudflareAccountId: string;
   cloudflareZoneId: string;
   cloudflareWorkerName: string;

@@ -85,6 +85,8 @@ type DeleteState =
 
 type CloudflareSettingsFormState = {
   cloudflareApiToken: string;
+  cloudflareApiEmail: string;
+  cloudflareGlobalApiKey: string;
   cloudflareAccountId: string;
   cloudflareZoneId: string;
   cloudflareWorkerName: string;
@@ -108,6 +110,8 @@ const EMPTY_FORM: ServiceFormState = {
 
 const EMPTY_CLOUDFLARE_FORM: CloudflareSettingsFormState = {
   cloudflareApiToken: "",
+  cloudflareApiEmail: "",
+  cloudflareGlobalApiKey: "",
   cloudflareAccountId: "",
   cloudflareZoneId: "",
   cloudflareWorkerName: "temp-email",
@@ -127,6 +131,8 @@ function createCloudflareFormState(
   }
   return {
     cloudflareApiToken: "",
+    cloudflareApiEmail: settings.cloudflareApiEmail,
+    cloudflareGlobalApiKey: "",
     cloudflareAccountId: settings.cloudflareAccountId,
     cloudflareZoneId: settings.cloudflareZoneId,
     cloudflareWorkerName: settings.cloudflareWorkerName || "temp-email",
@@ -650,6 +656,8 @@ export default function EmailServicesPage() {
     try {
       await saveCloudflareSettings({
         cloudflareApiToken: cloudflareForm.cloudflareApiToken.trim() || null,
+        cloudflareApiEmail: cloudflareForm.cloudflareApiEmail.trim(),
+        cloudflareGlobalApiKey: cloudflareForm.cloudflareGlobalApiKey.trim() || null,
         cloudflareAccountId: cloudflareForm.cloudflareAccountId.trim(),
         cloudflareZoneId: cloudflareForm.cloudflareZoneId.trim(),
         cloudflareWorkerName: cloudflareForm.cloudflareWorkerName.trim(),
@@ -663,6 +671,7 @@ export default function EmailServicesPage() {
       setCloudflareForm((current) => ({
         ...current,
         cloudflareApiToken: "",
+        cloudflareGlobalApiKey: "",
         tempMailSubdomainLength: String(tempMailSubdomainLength),
       }));
     } catch {
@@ -756,8 +765,51 @@ export default function EmailServicesPage() {
               />
               <p className="text-xs text-muted-foreground">
                 {cloudflareSettings?.hasApiToken
-                  ? "当前已经保存 API Token。留空不会覆盖现有值。"
-                  : "建议使用具备 Email Routing 与 Workers 配置权限的 Token。"}
+                  ? "当前已经保存 API Token。留空不会覆盖现有值，主要用于 Worker 设置同步。"
+                  : "可选。主要用于 Worker 设置同步。"}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Cloudflare API Email</Label>
+              <Input
+                value={cloudflareForm.cloudflareApiEmail}
+                placeholder="用于 Global API Key 鉴权"
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    cloudflareApiEmail: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Email Routing 的子域名接口会优先使用 `API Email + Global API Key`。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Cloudflare Global API Key</Label>
+              <Input
+                type="password"
+                value={cloudflareForm.cloudflareGlobalApiKey}
+                placeholder={
+                  cloudflareSettings?.hasGlobalApiKey
+                    ? "已配置 Global API Key，留空表示保持不变"
+                    : "输入 Cloudflare Global API Key"
+                }
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    cloudflareGlobalApiKey: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {cloudflareSettings?.hasGlobalApiKey
+                  ? "当前已经保存 Global API Key。留空不会覆盖现有值。"
+                  : "如果子域名创建接口返回 403，通常需要填写这里。"}
               </p>
             </div>
 
