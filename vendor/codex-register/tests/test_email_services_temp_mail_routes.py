@@ -148,8 +148,17 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
             def provision_domain(self):
                 events.append("provision")
                 return {
-                    "domain": "tm-fixed.mail.example.com",
-                    "cloudflare_subdomain_id": "subdomain-123",
+                    "persisted_config": {
+                        "domain": "tm-fixed.mail.example.com",
+                        "cloudflare_subdomain_id": "subdomain-123",
+                    },
+                    "cleanup_context": {
+                        "domain": "tm-fixed.mail.example.com",
+                        "cloudflare_subdomain_id": "subdomain-123",
+                        "cloudflare_worker_previous_bindings": [
+                            {"type": "plain_text", "name": "DOMAINS", "text": '["old.mail.example.com"]'}
+                        ],
+                    },
                 }
 
         self.module.CloudflareTempMailProvisioner = FakeProvisioner
@@ -174,6 +183,7 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         self.assertEqual(len(fake_db.added), 1)
         self.assertEqual(fake_db.added[0].config["domain"], "tm-fixed.mail.example.com")
         self.assertEqual(fake_db.added[0].config["cloudflare_subdomain_id"], "subdomain-123")
+        self.assertNotIn("cloudflare_worker_previous_bindings", fake_db.added[0].config)
         self.assertEqual(events, ["provision", "add"])
 
     def test_temp_mail_create_provisioning_failure_returns_http_error_and_skips_insert(self):

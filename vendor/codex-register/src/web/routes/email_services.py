@@ -130,26 +130,39 @@ def _prepare_temp_mail_config_for_create(config: Dict[str, Any]) -> Tuple[Dict[s
     """创建 temp_mail 服务前，先在 Cloudflare 预配固定域名并回填配置。"""
     prepared_config = dict(config or {})
     prepared_config.pop("domain", None)
+    rollback_only_keys = {"cloudflare_worker_previous_bindings"}
 
     try:
         provisioner = CloudflareTempMailProvisioner(get_settings())
-        provisioned = provisioner.provision_domain()
+        provision_result = provisioner.provision_domain()
     except Exception as exc:
         logger.error(f"Temp-Mail 域名预配失败: {exc}")
         raise HTTPException(status_code=502, detail=f"Temp-Mail 域名预配失败: {exc}") from exc
 
-    domain = str((provisioned or {}).get("domain") or "").strip()
+    if isinstance(provision_result, dict) and "persisted_config" in provision_result:
+        persisted_config = dict(provision_result.get("persisted_config") or {})
+        cleanup_payload = dict(provision_result.get("cleanup_context") or {})
+    else:
+        # backward-compatible shape
+        persisted_config = dict(provision_result or {})
+        cleanup_payload = dict(provision_result or {})
+
+    for key in rollback_only_keys:
+        persisted_config.pop(key, None)
+
+    domain = str(persisted_config.get("domain") or "").strip()
     if not domain:
         raise HTTPException(status_code=502, detail="Temp-Mail 域名预配失败: 未返回有效 domain")
 
     merged_config = {
         **prepared_config,
-        **provisioned,
+        **persisted_config,
         "domain": domain,
     }
+    cleanup_payload.setdefault("domain", domain)
     cleanup_context = {
         "provisioner": provisioner,
-        "provisioned": provisioned,
+        "provisioned": cleanup_payload,
         "domain": domain,
     }
     return merged_config, cleanup_context
