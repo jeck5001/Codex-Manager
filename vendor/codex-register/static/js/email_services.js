@@ -7,6 +7,7 @@ let outlookServices = [];
 let customServices = [];  // 合并 custom_domain + temp_mail
 let selectedOutlook = new Set();
 let selectedCustom = new Set();
+let cloudflareSettingsReady = false;
 
 // DOM 元素
 const elements = {
@@ -514,6 +515,10 @@ async function handleTestTempmail() {
 // 加载 Cloudflare Temp-Mail 设置
 async function loadCloudflareSettings() {
     if (!elements.cfSettingsForm) return;
+    cloudflareSettingsReady = false;
+    if (elements.saveCfSettingsBtn) {
+        elements.saveCfSettingsBtn.disabled = true;
+    }
     try {
         const settings = await api.get('/settings/temp-mail/cloudflare');
         elements.cfApiToken.value = '';
@@ -527,8 +532,16 @@ async function loadCloudflareSettings() {
         elements.cfSubdomainPrefix.value = settings.temp_mail_subdomain_prefix || '';
         elements.cfSyncEnabled.checked = settings.temp_mail_sync_cloudflare_enabled !== false;
         elements.cfRequireSync.checked = settings.temp_mail_require_cloudflare_sync !== false;
+        cloudflareSettingsReady = true;
+        if (elements.saveCfSettingsBtn) {
+            elements.saveCfSettingsBtn.disabled = false;
+        }
     } catch (error) {
         console.error('加载 Cloudflare Temp-Mail 设置失败:', error);
+        cloudflareSettingsReady = false;
+        if (elements.saveCfSettingsBtn) {
+            elements.saveCfSettingsBtn.disabled = true;
+        }
         if (elements.cfApiTokenHint) {
             elements.cfApiTokenHint.textContent = '加载失败，请稍后重试';
         }
@@ -539,6 +552,10 @@ async function loadCloudflareSettings() {
 async function handleSaveCloudflareSettings(e) {
     e.preventDefault();
     if (!elements.saveCfSettingsBtn) return;
+    if (!cloudflareSettingsReady) {
+        toast.error('Cloudflare 设置加载失败，请刷新页面后重试');
+        return;
+    }
 
     const payload = {
         cloudflare_account_id: elements.cfAccountId.value.trim(),
