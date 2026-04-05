@@ -61,6 +61,7 @@ class _FakeDB:
         self.refreshed: List[Any] = []
         self.on_add: Optional[Callable[[], None]] = None
         self.on_commit: Optional[Callable[[], None]] = None
+        self.on_refresh: Optional[Callable[[], None]] = None
 
     def pop_first_result(self):
         if self._first_results:
@@ -84,6 +85,8 @@ class _FakeDB:
         self.rollbacks += 1
 
     def refresh(self, obj):
+        if self.on_refresh:
+            self.on_refresh()
         if getattr(obj, "id", None) is None:
             obj.id = len(self.added)
         now = datetime.utcnow()
@@ -205,6 +208,35 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         self.assertEqual(len(fake_db.added), 0)
         self.assertEqual(fake_db.commits, 0)
 
+    def test_temp_mail_create_provisioner_init_failure_returns_controlled_http_error(self):
+        fake_db = _FakeDB(first_results=[None])
+        self.module.get_db = lambda: _DBContext(fake_db)
+
+        class InitFailProvisioner:
+            def __init__(self, *_args, **_kwargs):
+                raise ValueError("missing cloudflare settings")
+
+        self.module.CloudflareTempMailProvisioner = InitFailProvisioner
+        self.module.get_settings = lambda: object()
+
+        response = self.client.post(
+            "/api/email-services",
+            json={
+                "service_type": "temp_mail",
+                "name": "Temp Mail Init Error",
+                "config": {
+                    "base_url": "https://worker.example.com",
+                    "admin_password": "secret",
+                },
+                "enabled": True,
+                "priority": 0,
+            },
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(len(fake_db.added), 0)
+        self.assertEqual(fake_db.commits, 0)
+
     def test_temp_mail_update_rejects_domain_override(self):
         service = self.module.EmailServiceModel(
             service_type="temp_mail",
@@ -297,7 +329,13 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
                 pass
 
             def provision_domain(self):
-                return {"domain": "tm-fixed.mail.example.com", "cloudflare_subdomain": {"id": "sub-123"}}
+                return {
+                    "domain": "tm-fixed.mail.example.com",
+                    "cloudflare_subdomain": {"id": "sub-123"},
+                    "cloudflare_worker_previous_bindings": [
+                        {"type": "plain_text", "name": "DOMAINS", "text": '["old.mail.example.com"]'}
+                    ],
+                }
 
             def cleanup_provisioned_domain(self, provisioned, domain=None):
                 cleanup_calls.append({"provisioned": provisioned, "domain": domain})
@@ -322,7 +360,45 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertEqual(len(cleanup_calls), 1)
         self.assertEqual(cleanup_calls[0]["domain"], "tm-fixed.mail.example.com")
+        self.assertIn("cloudflare_worker_previous_bindings", cleanup_calls[0]["provisioned"])
         self.assertEqual(fake_db.rollbacks, 1)
+
+    def test_temp_mail_create_refresh_failure_after_commit_does_not_cleanup_remote(self):
+        cleanup_calls: List[dict] = []
+        fake_db = _FakeDB(first_results=[None])
+        fake_db.on_refresh = lambda: (_ for _ in ()).throw(RuntimeError("db refresh failed"))
+        self.module.get_db = lambda: _DBContext(fake_db)
+
+        class FakeProvisioner:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def provision_domain(self):
+                return {"domain": "tm-fixed.mail.example.com", "cloudflare_subdomain": {"id": "sub-123"}}
+
+            def cleanup_provisioned_domain(self, provisioned, domain=None):
+                cleanup_calls.append({"provisioned": provisioned, "domain": domain})
+
+        self.module.CloudflareTempMailProvisioner = FakeProvisioner
+        self.module.get_settings = lambda: object()
+
+        response = self.client.post(
+            "/api/email-services",
+            json={
+                "service_type": "temp_mail",
+                "name": "Temp Mail Refresh Error",
+                "config": {
+                    "base_url": "https://worker.example.com",
+                    "admin_password": "secret",
+                },
+                "enabled": True,
+                "priority": 0,
+            },
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(fake_db.commits, 1)
+        self.assertEqual(len(cleanup_calls), 0)
 
     def test_provisioner_patch_failure_triggers_subdomain_cleanup(self):
         from src.config.settings import Settings
@@ -342,6 +418,7 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
                 _DummyResponse(200, {"result": {"id": "sub-1", "name": "tm-abc123.mail.example.com"}}),
                 _DummyResponse(200, {"result": {"settings": {"bindings": []}}}),
                 _DummyResponse(500, {"errors": ["patch failed"]}),
+                _DummyResponse(200, {"success": True}),
                 _DummyResponse(200, {"result": {"id": "sub-1"}}),
             ]
         )
@@ -351,4 +428,35 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
             provisioner.provision_domain()
 
         methods = [entry["method"] for entry in http_client.calls]
-        self.assertEqual(methods, ["POST", "GET", "PATCH", "DELETE"])
+        self.assertEqual(methods, ["POST", "GET", "PATCH", "PATCH", "DELETE"])
+
+    def test_provisioner_cleanup_restores_worker_bindings_then_deletes_subdomain(self):
+        from src.config.settings import Settings
+
+        settings = Settings(
+            cloudflare_api_token=SecretStr("token"),
+            cloudflare_account_id="account",
+            cloudflare_zone_id="zone",
+            cloudflare_worker_name="worker",
+            temp_mail_domain_base="mail.example.com",
+            temp_mail_subdomain_prefix="tm",
+        )
+        http_client = _RecordingHttpClient(
+            responses=[
+                _DummyResponse(200, {"success": True}),
+                _DummyResponse(200, {"result": {"id": "sub-1"}}),
+            ]
+        )
+        provisioner = self.module.CloudflareTempMailProvisioner(settings, http_client=http_client)
+        provisioned = {
+            "cloudflare_subdomain": {"result": {"id": "sub-1"}},
+            "cloudflare_worker_previous_bindings": [
+                {"type": "plain_text", "name": "DOMAINS", "text": '["old.mail.example.com"]'}
+            ],
+        }
+
+        provisioner.cleanup_provisioned_domain(provisioned, domain="tm-abc123.mail.example.com")
+
+        self.assertEqual(http_client.calls[0]["method"], "PATCH")
+        self.assertEqual(http_client.calls[0]["kwargs"]["json"]["settings"]["bindings"], provisioned["cloudflare_worker_previous_bindings"])
+        self.assertEqual(http_client.calls[1]["method"], "DELETE")

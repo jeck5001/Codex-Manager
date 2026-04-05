@@ -131,8 +131,8 @@ def _prepare_temp_mail_config_for_create(config: Dict[str, Any]) -> Tuple[Dict[s
     prepared_config = dict(config or {})
     prepared_config.pop("domain", None)
 
-    provisioner = CloudflareTempMailProvisioner(get_settings())
     try:
+        provisioner = CloudflareTempMailProvisioner(get_settings())
         provisioned = provisioner.provision_domain()
     except Exception as exc:
         logger.error(f"Temp-Mail 域名预配失败: {exc}")
@@ -345,7 +345,6 @@ async def create_email_service(request: EmailServiceCreate):
         try:
             db.add(service)
             db.commit()
-            db.refresh(service)
         except Exception as exc:
             rollback_fn = getattr(db, "rollback", None)
             if callable(rollback_fn):
@@ -354,6 +353,12 @@ async def create_email_service(request: EmailServiceCreate):
                 _cleanup_temp_mail_provisioning(cleanup_context)
             logger.error(f"创建邮箱服务失败: {exc}")
             raise HTTPException(status_code=500, detail=f"创建邮箱服务失败: {exc}") from exc
+
+        try:
+            db.refresh(service)
+        except Exception as exc:
+            logger.error(f"创建邮箱服务后刷新失败: {exc}")
+            raise HTTPException(status_code=500, detail=f"创建邮箱服务后刷新失败: {exc}") from exc
 
         return service_to_response(service)
 
