@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import types
 import unittest
@@ -480,7 +481,11 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         provisioner.cleanup_provisioned_domain(provisioned, domain="tm-abc123.mail.example.com")
 
         self.assertEqual(http_client.calls[0]["method"], "PATCH")
-        self.assertEqual(http_client.calls[0]["kwargs"]["json"]["settings"]["bindings"], provisioned["cloudflare_worker_previous_bindings"])
+        metadata = http_client.calls[0]["kwargs"]["files"]["metadata"]
+        self.assertEqual(
+            json.loads(metadata[1])["bindings"],
+            provisioned["cloudflare_worker_previous_bindings"],
+        )
         self.assertEqual(http_client.calls[1]["method"], "POST")
         self.assertEqual(
             http_client.calls[1]["url"],
