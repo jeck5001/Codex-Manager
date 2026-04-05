@@ -295,19 +295,66 @@ fn build_gemini_response(
     finish_reason: Option<&str>,
     usage: Option<&Map<String, Value>>,
 ) -> Value {
-    let candidate = json!({
-        "index": 0,
-        "content": { "role": "model", "parts": parts },
-        "finishReason": finish_reason.unwrap_or("STOP"),
-    });
+    let mut candidate = serde_json::Map::new();
+    candidate.insert("index".to_string(), Value::from(0));
+    candidate.insert(
+        "content".to_string(),
+        json!({ "role": "model", "parts": parts.clone() }),
+    );
+    if let Some(reason) = finish_reason {
+        candidate.insert("finishReason".to_string(), Value::String(reason.to_string()));
+    }
     let mut payload = serde_json::Map::new();
     payload.insert("responseId".to_string(), Value::String(response_id.to_string()));
     payload.insert("modelVersion".to_string(), Value::String(model.to_string()));
-    payload.insert("candidates".to_string(), Value::Array(vec![candidate]));
+    payload.insert("candidates".to_string(), Value::Array(vec![Value::Object(candidate)]));
+    if let Some(function_calls) = build_gemini_function_calls(&parts) {
+        payload.insert("functionCalls".to_string(), function_calls);
+    }
     if let Some(usage_metadata) = build_gemini_usage_metadata(usage) {
         payload.insert("usageMetadata".to_string(), usage_metadata);
     }
     Value::Object(payload)
+}
+
+fn build_gemini_function_calls(parts: &[Value]) -> Option<Value> {
+    let mut function_calls = Vec::new();
+    for part in parts {
+        let Some(function_call) = part.get("functionCall").and_then(Value::as_object) else {
+            continue;
+        };
+        let Some(name) = function_call
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        let mut item = serde_json::Map::new();
+        item.insert("name".to_string(), Value::String(name.to_string()));
+        item.insert(
+            "args".to_string(),
+            function_call
+                .get("args")
+                .cloned()
+                .unwrap_or_else(|| json!({})),
+        );
+        if let Some(call_id) = function_call
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            item.insert("id".to_string(), Value::String(call_id.to_string()));
+        }
+        function_calls.push(Value::Object(item));
+    }
+    if function_calls.is_empty() {
+        None
+    } else {
+        Some(Value::Array(function_calls))
+    }
 }
 
 fn build_gemini_usage_metadata(usage: Option<&Map<String, Value>>) -> Option<Value> {
@@ -532,7 +579,12 @@ fn inject_synthesized_sse_parts(
         return;
     };
     if parts.is_empty() {
-        *parts = synthesized;
+        *parts = synthesized.clone();
+    }
+    if let Some(function_calls) = build_gemini_function_calls(parts) {
+        if let Some(payload) = response_value.as_object_mut() {
+            payload.insert("functionCalls".to_string(), function_calls);
+        }
     }
 }
 
@@ -577,7 +629,12 @@ fn convert_openai_event_to_gemini_chunks(
             let fragment = value.get("delta").and_then(Value::as_str).unwrap_or_default();
             if !fragment.is_empty() {
                 state.output_text.push_str(fragment);
-                chunks.push(build_gemini_chunk(state, vec![json!({ "text": fragment })], None));
+                chunks.push(build_gemini_chunk(
+                    state,
+                    vec![json!({ "text": fragment })],
+                    None,
+                    None,
+                ));
             }
         }
         "response.output_item.added" | "response.output_item.done" => {
@@ -666,13 +723,16 @@ fn convert_openai_event_to_gemini_chunks(
         }
         _ if is_response_completed_event_type(event_type) => {
             if let Some(response) = value.get("response") {
-                if let Ok(mut response_value) =
-                    build_gemini_response_from_responses(response, tool_name_restore_map)
-                {
-                    inject_synthesized_sse_parts(&mut response_value, state, tool_name_restore_map);
-                    if let Some(usage_metadata) = response_value.get("usageMetadata") {
-                        chunks.push(json!({ "usageMetadata": usage_metadata }));
-                    }
+                if let Some(response_obj) = response.as_object() {
+                    let finish_reason = map_responses_finish_reason_to_gemini(response);
+                    let usage_metadata =
+                        build_gemini_usage_metadata(response_obj.get("usage").and_then(Value::as_object));
+                    chunks.push(build_gemini_chunk(
+                        state,
+                        Vec::new(),
+                        Some(finish_reason),
+                        usage_metadata,
+                    ));
                 }
             }
         }
@@ -685,16 +745,21 @@ fn build_gemini_chunk(
     state: &GeminiSseAggregationState,
     parts: Vec<Value>,
     finish_reason: Option<&str>,
+    usage_metadata: Option<Value>,
 ) -> Value {
-    json!({
-        "responseId": state.response_id.as_deref().unwrap_or("resp_codexmanager"),
-        "modelVersion": state.model.as_deref().unwrap_or("unknown"),
-        "candidates": [{
-            "index": 0,
-            "content": { "role": "model", "parts": parts },
-            "finishReason": finish_reason.unwrap_or("STOP"),
-        }]
-    })
+    let mut payload = build_gemini_response(
+        state.response_id.as_deref().unwrap_or("resp_codexmanager"),
+        state.model.as_deref().unwrap_or("unknown"),
+        parts,
+        finish_reason,
+        None,
+    );
+    if let Some(usage_metadata) = usage_metadata {
+        if let Some(obj) = payload.as_object_mut() {
+            obj.insert("usageMetadata".to_string(), usage_metadata);
+        }
+    }
+    payload
 }
 
 fn build_gemini_function_call_chunk(
@@ -730,6 +795,7 @@ fn build_gemini_function_call_chunk(
     Some(build_gemini_chunk(
         state,
         vec![json!({ "functionCall": Value::Object(function_call) })],
+        None,
         None,
     ))
 }

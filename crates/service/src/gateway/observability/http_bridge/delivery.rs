@@ -11,9 +11,10 @@ use super::super::{
 use super::{
     collect_non_stream_json_from_sse_bytes, extract_error_hint_from_body,
     extract_error_message_from_json, looks_like_sse_payload, merge_usage, parse_usage_from_json,
-    push_trace_id_header, usage_has_signal, AnthropicSseReader, OpenAIChatCompletionsSseReader,
-    OpenAICompletionsSseReader, PassthroughSseCollector, PassthroughSseUsageReader,
-    SseKeepAliveFrame, UpstreamResponseBridgeResult, UpstreamResponseUsage,
+    push_trace_id_header, usage_has_signal, AnthropicSseReader, GeminiSseReader,
+    OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader, PassthroughSseCollector,
+    PassthroughSseUsageReader, SseKeepAliveFrame, UpstreamResponseBridgeResult,
+    UpstreamResponseUsage,
 };
 
 const REQUEST_ID_HEADER_CANDIDATES: &[&str] = &["x-request-id", "x-oai-request-id"];
@@ -1449,6 +1450,58 @@ pub(crate) fn respond_with_upstream(
                     status,
                     headers,
                     AnthropicSseReader::new(upstream, Arc::clone(&usage_collector)),
+                    None,
+                    None,
+                );
+                let delivery_error = request.respond(response).err().map(|err| err.to_string());
+                let usage = usage_collector
+                    .lock()
+                    .map(|guard| guard.clone())
+                    .unwrap_or_default();
+                return Ok(with_bridge_debug_meta(
+                    UpstreamResponseBridgeResult {
+                        usage,
+                        stream_terminal_seen: true,
+                        stream_terminal_error: None,
+                        delivery_error,
+                        upstream_error_hint: None,
+                        delivered_status_code: None,
+                        upstream_request_id: None,
+                        upstream_cf_ray: None,
+                        upstream_auth_error: None,
+                        upstream_identity_error_code: None,
+                        upstream_content_type: None,
+                        last_sse_event_type: None,
+                    },
+                    &upstream_request_id,
+                    &upstream_cf_ray,
+                    &upstream_auth_error,
+                    &upstream_identity_error_code,
+                    &upstream_content_type,
+                    None,
+                ));
+            }
+            if response_adapter == ResponseAdapter::GeminiSse
+                && (is_stream
+                    || upstream_content_type
+                        .as_deref()
+                        .map(|value| value.to_ascii_lowercase().starts_with("text/event-stream"))
+                        .unwrap_or(false))
+            {
+                if let Ok(content_type_header) =
+                    Header::from_bytes(b"Content-Type".as_slice(), b"text/event-stream".as_slice())
+                {
+                    headers.push(content_type_header);
+                }
+                let usage_collector = Arc::new(Mutex::new(UpstreamResponseUsage::default()));
+                let response = Response::new(
+                    status,
+                    headers,
+                    GeminiSseReader::new(
+                        upstream,
+                        Arc::clone(&usage_collector),
+                        tool_name_restore_map.cloned(),
+                    ),
                     None,
                     None,
                 );

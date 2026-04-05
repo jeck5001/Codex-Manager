@@ -83,3 +83,60 @@ fn gemini_stream_generate_content_request_uses_sse_adapter_and_maps_tools() {
     assert_eq!(value["tool_choice"]["name"], "list_files");
     assert_eq!(value["stream"], true);
 }
+
+#[test]
+fn gemini_tools_preserve_parameters_json_schema_required_fields() {
+    let body = serde_json::json!({
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{ "text": "在桌面创建文件" }]
+            }
+        ],
+        "tools": [{
+            "functionDeclarations": [{
+                "name": "run_shell_command",
+                "description": "运行命令",
+                "parametersJsonSchema": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string" },
+                        "dir_path": { "type": "string" }
+                    },
+                    "required": ["command"]
+                }
+            }, {
+                "name": "write_file",
+                "description": "写入文件",
+                "parametersJsonSchema": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": { "type": "string" },
+                        "content": { "type": "string" }
+                    },
+                    "required": ["file_path", "content"]
+                }
+            }]
+        }]
+    });
+    let body = serde_json::to_vec(&body).expect("serialize request");
+
+    let adapted = adapt_request_for_protocol(
+        "gemini_native",
+        "/v1beta/models/gemini-2.5-pro:generateContent",
+        body,
+    )
+    .expect("adapt request");
+
+    let value: serde_json::Value = serde_json::from_slice(&adapted.body).expect("adapted json");
+    assert_eq!(value["tools"][0]["name"], "run_shell_command");
+    assert_eq!(
+        value["tools"][0]["parameters"]["required"],
+        serde_json::json!(["command"])
+    );
+    assert_eq!(value["tools"][1]["name"], "write_file");
+    assert_eq!(
+        value["tools"][1]["parameters"]["required"],
+        serde_json::json!(["file_path", "content"])
+    );
+}

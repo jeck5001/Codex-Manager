@@ -151,8 +151,9 @@ pub(super) fn respond_with_upstream(
     )
 }
 pub(super) use stream_readers::{
-    AnthropicSseReader, OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader,
-    PassthroughSseCollector, PassthroughSseUsageReader, SseKeepAliveFrame,
+    AnthropicSseReader, GeminiSseReader, OpenAIChatCompletionsSseReader,
+    OpenAICompletionsSseReader, PassthroughSseCollector, PassthroughSseUsageReader,
+    SseKeepAliveFrame,
 };
 
 #[cfg(test)]

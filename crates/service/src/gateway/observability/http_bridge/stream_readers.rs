@@ -20,6 +20,8 @@ use super::{
 mod anthropic;
 #[path = "stream_readers/common.rs"]
 mod common;
+#[path = "stream_readers/gemini.rs"]
+mod gemini;
 #[path = "stream_readers/openai_chat.rs"]
 mod openai_chat;
 #[path = "stream_readers/openai_completions.rs"]
@@ -28,6 +30,7 @@ mod openai_completions;
 mod passthrough;
 
 pub(crate) use anthropic::AnthropicSseReader;
+pub(crate) use gemini::GeminiSseReader;
 use common::{
     classify_upstream_stream_read_error, collector_output_text_trimmed,
     mark_collector_terminal_success, sse_keepalive_interval, stream_reader_disconnected_message,

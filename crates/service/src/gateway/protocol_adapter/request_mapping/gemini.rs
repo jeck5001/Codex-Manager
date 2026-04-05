@@ -438,7 +438,8 @@ fn map_gemini_tools_to_responses(
                 mapped.insert("description".to_string(), description.clone());
             }
             let parameters = declaration
-                .get("parameters")
+                .get("parametersJsonSchema")
+                .or_else(|| declaration.get("parameters"))
                 .cloned()
                 .unwrap_or_else(|| json!({ "type": "object", "properties": {} }));
             mapped.insert(
