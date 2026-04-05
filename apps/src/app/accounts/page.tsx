@@ -333,23 +333,65 @@ function getAccountSizeGroup(account: Account): "large" | "standard" | "small" {
   }
 }
 
+function hasAccountRemainingQuota(account: Account): boolean {
+  if (!account.isAvailable) {
+    return false;
+  }
+
+  return [account.primaryRemainPercent, account.secondaryRemainPercent].some(
+    (value) => typeof value === "number" && value > 0,
+  );
+}
+
+function buildAccountsByQuotaOrder(orderedAccounts: Account[]) {
+  const withQuota: Account[] = [];
+  const withoutQuota: Account[] = [];
+
+  for (const account of orderedAccounts) {
+    if (hasAccountRemainingQuota(account)) {
+      withQuota.push(account);
+      continue;
+    }
+
+    withoutQuota.push(account);
+  }
+
+  return [...withQuota, ...withoutQuota];
+}
+
 function buildAccountsBySizeOrder(
   orderedAccounts: Account[],
   mode: AccountSizeSortMode,
 ) {
   const buckets = {
-    large: [] as Account[],
-    standard: [] as Account[],
-    small: [] as Account[],
+    withQuota: {
+      large: [] as Account[],
+      standard: [] as Account[],
+      small: [] as Account[],
+    },
+    withoutQuota: {
+      large: [] as Account[],
+      standard: [] as Account[],
+      small: [] as Account[],
+    },
   };
 
   for (const account of orderedAccounts) {
-    buckets[getAccountSizeGroup(account)].push(account);
+    const quotaBucket = hasAccountRemainingQuota(account)
+      ? buckets.withQuota
+      : buckets.withoutQuota;
+    quotaBucket[getAccountSizeGroup(account)].push(account);
   }
 
-  return mode === "large-first"
-    ? [...buckets.large, ...buckets.standard, ...buckets.small]
-    : [...buckets.small, ...buckets.standard, ...buckets.large];
+  const sizeOrder =
+    mode === "large-first"
+      ? (["large", "standard", "small"] as const)
+      : (["small", "standard", "large"] as const);
+
+  return [
+    ...sizeOrder.flatMap((group) => buckets.withQuota[group]),
+    ...sizeOrder.flatMap((group) => buckets.withoutQuota[group]),
+  ];
 }
 
 function AccountInfoCell({
@@ -756,9 +798,29 @@ export default function AccountsPage() {
     if (!updates.length) {
       toast.info(
         mode === "large-first"
-          ? "当前已经是大号优先顺序"
-          : "当前已经是小号优先顺序",
+          ? "当前已经是有额度优先的大号顺序"
+          : "当前已经是有额度优先的小号顺序",
       );
+      return;
+    }
+
+    try {
+      await reorderAccounts(updates);
+    } catch {
+      // hook 已统一处理 toast，这里保持静默即可
+    }
+  };
+
+  const handleApplyAccountQuotaSort = async () => {
+    if (accounts.length < 2) {
+      toast.info("账号数量不足，无需重新排序");
+      return;
+    }
+
+    const reorderedAccounts = buildAccountsByQuotaOrder(accounts);
+    const updates = buildAccountOrderUpdates(reorderedAccounts);
+    if (!updates.length) {
+      toast.info("当前已经是有额度优先顺序");
       return;
     }
 
@@ -992,10 +1054,23 @@ export default function AccountsPage() {
                       isReorderingAccounts ||
                       accounts.length < 2
                     }
+                    onClick={() => void handleApplyAccountQuotaSort()}
+                  >
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    有额度优先排序
+                    <DropdownMenuShortcut>QUOTA</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={
+                      !isServiceReady ||
+                      isReorderingAccounts ||
+                      accounts.length < 2
+                    }
                     onClick={() => void handleApplyAccountSizeSort("large-first")}
                   >
                     <ArrowUpDown className="mr-2 h-4 w-4" />
-                    大号优先排序
+                    大号优先排序（额度前置）
                     <DropdownMenuShortcut>BIZ</DropdownMenuShortcut>
                   </DropdownMenuItem>
                   <DropdownMenuItem
@@ -1008,7 +1083,7 @@ export default function AccountsPage() {
                     onClick={() => void handleApplyAccountSizeSort("small-first")}
                   >
                     <ArrowDown className="mr-2 h-4 w-4" />
-                    小号优先排序
+                    小号优先排序（额度前置）
                     <DropdownMenuShortcut>FREE</DropdownMenuShortcut>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
