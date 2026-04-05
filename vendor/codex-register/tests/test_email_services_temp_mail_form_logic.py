@@ -107,6 +107,16 @@ class EmailServicesTempMailFormLogicTests(unittest.TestCase):
         self.assertIn("api.get('/settings/temp-mail/cloudflare')", self.js_text)
         self.assertIn("api.post('/settings/temp-mail/cloudflare'", self.js_text)
 
+    def test_cloudflare_settings_save_is_blocked_until_load_success(self):
+        self.assertRegex(
+            self.template_text,
+            r'<button[^>]*id="save-cf-settings-btn"[^>]*disabled[^>]*>',
+        )
+        self.assertIn("let cloudflareSettingsReady = false;", self.js_text)
+        self.assertIn("cloudflareSettingsReady = true;", self.js_text)
+        self.assertIn("cloudflareSettingsReady = false;", self.js_text)
+        self.assertIn("if (!cloudflareSettingsReady)", self.js_text)
+
     def test_temp_mail_type_metadata_no_longer_marks_domain_as_required_user_input(self):
         payload = asyncio.run(self.routes_module.get_service_types())
         temp_mail_type = next(item for item in payload["types"] if item["value"] == "temp_mail")
