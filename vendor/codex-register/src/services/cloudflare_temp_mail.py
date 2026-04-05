@@ -255,31 +255,40 @@ class CloudflareTempMailProvisioner:
             "/email/routing/disable"
         )
 
-    def _bearer_headers(self) -> Dict[str, str]:
+    def _bearer_headers(self, *, include_json_content_type: bool = True) -> Dict[str, str]:
         if not self._api_token:
             raise CloudflareProvisioningError("cloudflare_api_token is required for bearer authentication")
-        return {
+        headers = {
             "Authorization": f"Bearer {self._api_token}",
-            "Content-Type": "application/json",
         }
+        if include_json_content_type:
+            headers["Content-Type"] = "application/json"
+        return headers
 
-    def _global_key_headers(self) -> Dict[str, str]:
+    def _global_key_headers(self, *, include_json_content_type: bool = True) -> Dict[str, str]:
         if not self._api_email or not self._global_api_key:
             raise CloudflareProvisioningError(
                 "cloudflare_api_email and cloudflare_global_api_key are required for global key authentication"
             )
-        return {
+        headers = {
             "X-Auth-Email": self._api_email,
             "X-Auth-Key": self._global_api_key,
-            "Content-Type": "application/json",
         }
+        if include_json_content_type:
+            headers["Content-Type"] = "application/json"
+        return headers
 
-    def _auth_headers(self, *, prefer_global_key: bool = False) -> Dict[str, str]:
+    def _auth_headers(
+        self,
+        *,
+        prefer_global_key: bool = False,
+        include_json_content_type: bool = True,
+    ) -> Dict[str, str]:
         if prefer_global_key and self._api_email and self._global_api_key:
-            return self._global_key_headers()
+            return self._global_key_headers(include_json_content_type=include_json_content_type)
         if self._api_token:
-            return self._bearer_headers()
-        return self._global_key_headers()
+            return self._bearer_headers(include_json_content_type=include_json_content_type)
+        return self._global_key_headers(include_json_content_type=include_json_content_type)
 
     def _process_response(self, response: Any, action: str) -> Dict[str, Any]:
         payload = None
@@ -346,8 +355,14 @@ class CloudflareTempMailProvisioner:
         response = self.http_client.request(
             "PATCH",
             self._worker_settings_url(),
-            json={"settings": {"bindings": bindings}},
-            headers=self._auth_headers(),
+            files={
+                "metadata": (
+                    "metadata",
+                    json.dumps({"bindings": bindings}),
+                    "application/json",
+                )
+            },
+            headers=self._auth_headers(include_json_content_type=False),
         )
         return self._process_response(response, "patch worker settings")
 

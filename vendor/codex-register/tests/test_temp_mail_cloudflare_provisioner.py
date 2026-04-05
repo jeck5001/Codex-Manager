@@ -173,6 +173,30 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         self.assertEqual(headers["Authorization"], "Bearer token")
         self.assertNotIn("X-Auth-Key", headers)
 
+    def test_patch_worker_settings_uses_multipart_metadata_payload(self):
+        settings = self.make_settings()
+        response = self._make_response(200, {"result": {"bindings": []}})
+        http_client = self._DummyHttpClient([response])
+        provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings, http_client=http_client)
+
+        provisioner.patch_worker_settings([{"type": "plain_text", "name": "DOMAINS", "text": "[]"}])
+
+        request = http_client.requests[0]
+        self.assertEqual(
+            request["url"],
+            "https://api.cloudflare.com/client/v4/accounts/acct/workers/scripts/worker/settings",
+        )
+        self.assertNotIn("json", request["kwargs"])
+        self.assertIn("files", request["kwargs"])
+        metadata = request["kwargs"]["files"]["metadata"]
+        self.assertEqual(metadata[2], "application/json")
+        self.assertEqual(
+            json.loads(metadata[1]),
+            {"bindings": [{"type": "plain_text", "name": "DOMAINS", "text": "[]"}]},
+        )
+        self.assertNotIn("Content-Type", request["kwargs"]["headers"])
+        self.assertEqual(request["kwargs"]["headers"]["Authorization"], "Bearer token")
+
     def test_delete_subdomain_uses_email_routing_disable_with_domain_name(self):
         settings = self.make_settings(
             cloudflare_api_email="admin@example.com",
