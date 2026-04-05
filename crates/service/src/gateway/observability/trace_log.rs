@@ -613,18 +613,22 @@ pub(crate) fn log_request_start(
     path: &str,
     model: Option<&str>,
     reasoning: Option<&str>,
+    service_tier: Option<&str>,
     is_stream: bool,
+    request_type: &str,
     protocol_type: &str,
 ) {
     let line = format!(
-        "ts={} event=REQUEST_START trace_id={} key_id={} method={} path={} model={} reasoning={} stream={} protocol={}",
+        "ts={} event=REQUEST_START trace_id={} key_id={} method={} path={} request_type={} model={} reasoning={} service_tier={} stream={} protocol={}",
         current_trace_ts(),
         sanitize_text(trace_id),
         sanitize_text(key_id),
         sanitize_text(method),
         sanitize_text(path),
+        sanitize_text(request_type),
         sanitize_text(model.unwrap_or("-")),
         sanitize_text(reasoning.unwrap_or("-")),
+        sanitize_text(service_tier.unwrap_or("-")),
         if is_stream { "true" } else { "false" },
         sanitize_text(protocol_type),
     );
@@ -998,8 +1002,10 @@ pub(crate) fn log_failed_request(
     request_path: &str,
     original_path: Option<&str>,
     adapted_path: Option<&str>,
+    request_type: Option<&str>,
     model: Option<&str>,
     reasoning_effort: Option<&str>,
+    service_tier: Option<&str>,
     upstream_url: Option<&str>,
     status_code: Option<u16>,
     error: Option<&str>,
@@ -1013,7 +1019,7 @@ pub(crate) fn log_failed_request(
     }
     let code = crate::error_codes::code_or_dash(error);
     let line = format!(
-        "ts={ts} event=FAILED_REQUEST trace_id={} key_id={} account_id={} method={} request_path={} original_path={} adapted_path={} model={} reasoning={} upstream_url={} status={} elapsed_ms={} code={} error={}",
+        "ts={ts} event=FAILED_REQUEST trace_id={} key_id={} account_id={} method={} request_path={} original_path={} adapted_path={} request_type={} model={} reasoning={} service_tier={} upstream_url={} status={} elapsed_ms={} code={} error={}",
         sanitize_text(trace_id.unwrap_or("-")),
         sanitize_text(key_id.unwrap_or("-")),
         sanitize_text(account_id.unwrap_or("-")),
@@ -1021,8 +1027,10 @@ pub(crate) fn log_failed_request(
         sanitize_text(request_path),
         sanitize_text(original_path.unwrap_or("-")),
         sanitize_text(adapted_path.unwrap_or("-")),
+        sanitize_text(request_type.unwrap_or("http")),
         sanitize_text(model.unwrap_or("-")),
         sanitize_text(reasoning_effort.unwrap_or("-")),
+        sanitize_text(service_tier.unwrap_or("-")),
         sanitize_text(upstream_url.unwrap_or("-")),
         status_code
             .map(|value| value.to_string())
@@ -1109,8 +1117,10 @@ mod tests {
             "/v1/responses",
             Some("/v1/responses"),
             Some("/v1/responses"),
+            Some("http"),
             Some("gpt-5.4"),
             Some("high"),
+            Some("fast"),
             Some("https://chatgpt.com/backend-api/codex/responses"),
             Some(200),
             None,

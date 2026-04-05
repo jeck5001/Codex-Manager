@@ -68,3 +68,24 @@ fn prefixed_account_query_supports_alias() {
         } if pattern == "%acc-1%"
     ));
 }
+
+#[test]
+fn prefixed_request_type_and_service_tier_queries_are_supported() {
+    let request_type_query = parse_request_log_query(Some("type:=ws"));
+    assert!(matches!(
+        request_type_query,
+        RequestLogQuery::FieldExact {
+            column: "request_type",
+            value
+        } if value == "ws"
+    ));
+
+    let service_tier_query = parse_request_log_query(Some("tier:fast"));
+    assert!(matches!(
+        service_tier_query,
+        RequestLogQuery::FieldLike {
+            column: "service_tier",
+            pattern
+        } if pattern == "%fast%"
+    ));
+}

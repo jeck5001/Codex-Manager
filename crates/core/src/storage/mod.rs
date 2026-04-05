@@ -115,8 +115,10 @@ pub struct RequestLog {
     pub original_path: Option<String>,
     pub adapted_path: Option<String>,
     pub method: String,
+    pub request_type: Option<String>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub service_tier: Option<String>,
     pub response_adapter: Option<String>,
     pub upstream_url: Option<String>,
     pub aggregate_api_supplier_name: Option<String>,
@@ -540,11 +542,17 @@ impl Storage {
             include_str!("../../migrations/041_gateway_error_logs.sql"),
             |s| s.ensure_gateway_error_logs_table(),
         )?;
+        self.apply_sql_or_compat_migration(
+            "042_request_logs_request_type_service_tier",
+            include_str!("../../migrations/042_request_logs_request_type_service_tier.sql"),
+            |s| s.ensure_request_log_request_type_and_service_tier_columns(),
+        )?;
         self.ensure_api_key_rotation_columns()?;
         self.ensure_aggregate_apis_table()?;
         self.ensure_aggregate_api_secrets_table()?;
         self.ensure_request_token_stats_table()?;
         self.ensure_gateway_error_logs_table()?;
+        self.ensure_request_log_request_type_and_service_tier_columns()?;
         Ok(())
     }
 

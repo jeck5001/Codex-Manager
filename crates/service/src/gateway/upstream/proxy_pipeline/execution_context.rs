@@ -12,6 +12,7 @@ pub(in super::super) struct GatewayUpstreamExecutionContext<'a> {
     protocol_type: &'a str,
     model_for_log: Option<&'a str>,
     reasoning_for_log: Option<&'a str>,
+    service_tier_for_log: Option<&'a str>,
     candidate_count: usize,
     account_max_inflight: usize,
 }
@@ -40,6 +41,7 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         protocol_type: &'a str,
         model_for_log: Option<&'a str>,
         reasoning_for_log: Option<&'a str>,
+        service_tier_for_log: Option<&'a str>,
         candidate_count: usize,
         account_max_inflight: usize,
     ) -> Self {
@@ -54,6 +56,7 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
             protocol_type,
             model_for_log,
             reasoning_for_log,
+            service_tier_for_log,
             candidate_count,
             account_max_inflight,
         }
@@ -267,6 +270,8 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
                 original_path: Some(self.original_path),
                 adapted_path: Some(self.path),
                 response_adapter: Some(self.response_adapter),
+                request_type: Some("http"),
+                service_tier: self.service_tier_for_log,
                 ..Default::default()
             },
             Some(self.key_id),

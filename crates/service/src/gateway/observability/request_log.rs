@@ -2,7 +2,7 @@ use codexmanager_core::storage::{now_ts, RequestLog, RequestTokenStat, Storage};
 use crate::gateway::error_log::GatewayErrorLogInput;
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(super) struct RequestLogUsage {
+pub(crate) struct RequestLogUsage {
     pub input_tokens: Option<i64>,
     pub cached_input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
@@ -11,10 +11,12 @@ pub(super) struct RequestLogUsage {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(super) struct RequestLogTraceContext<'a> {
+pub(crate) struct RequestLogTraceContext<'a> {
     pub trace_id: Option<&'a str>,
     pub original_path: Option<&'a str>,
     pub adapted_path: Option<&'a str>,
+    pub request_type: Option<&'a str>,
+    pub service_tier: Option<&'a str>,
     pub response_adapter: Option<super::ResponseAdapter>,
     pub aggregate_api_supplier_name: Option<&'a str>,
     pub aggregate_api_url: Option<&'a str>,
@@ -240,7 +242,7 @@ fn response_adapter_label(value: super::ResponseAdapter) -> &'static str {
 ///
 /// # 返回
 /// 无
-pub(super) fn write_request_log(
+pub(crate) fn write_request_log(
     storage: &Storage,
     trace_context: RequestLogTraceContext<'_>,
     key_id: Option<&str>,
@@ -285,7 +287,7 @@ pub(super) fn write_request_log(
 /// # 返回
 /// 无
 #[allow(clippy::too_many_arguments)]
-pub(super) fn write_request_log_with_attempts(
+pub(crate) fn write_request_log_with_attempts(
     storage: &Storage,
     trace_context: RequestLogTraceContext<'_>,
     key_id: Option<&str>,
@@ -326,6 +328,15 @@ pub(super) fn write_request_log_with_attempts(
     let created_at = now_ts();
     let estimated_cost_usd =
         estimate_cost_usd(model, input_tokens, cached_input_tokens, output_tokens);
+    let request_type = trace_context
+        .request_type
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("http");
+    let service_tier = trace_context
+        .service_tier
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     super::trace_log::log_failed_request(
         created_at,
         trace_context.trace_id,
@@ -335,8 +346,10 @@ pub(super) fn write_request_log_with_attempts(
         request_path,
         Some(original_path),
         Some(adapted_path),
+        Some(request_type),
         model,
         reasoning_effort,
+        service_tier,
         upstream_url,
         status_code,
         error,
@@ -381,8 +394,10 @@ pub(super) fn write_request_log_with_attempts(
             original_path: Some(original_path.to_string()),
             adapted_path: Some(adapted_path.to_string()),
             method: method.to_string(),
+            request_type: Some(request_type.to_string()),
             model: model.map(|v| v.to_string()),
             reasoning_effort: reasoning_effort.map(|v| v.to_string()),
+            service_tier: service_tier.map(str::to_string),
             response_adapter: trace_context
                 .response_adapter
                 .map(response_adapter_label)

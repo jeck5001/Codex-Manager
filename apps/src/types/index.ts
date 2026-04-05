@@ -240,9 +240,11 @@ export interface RequestLog {
   originalPath: string;
   adaptedPath: string;
   method: string;
+  requestType: string;
   path: string;
   model: string;
   reasoningEffort: string;
+  serviceTier: string;
   responseAdapter: string;
   upstreamUrl: string;
   aggregateApiSupplierName: string | null;

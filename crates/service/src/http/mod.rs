@@ -11,3 +11,4 @@ pub(crate) mod header_filter;
 pub(crate) mod proxy_request;
 pub(crate) mod proxy_response;
 pub(crate) mod proxy_runtime;
+pub(crate) mod responses_websocket;

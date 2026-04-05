@@ -210,8 +210,14 @@ fn aggregate_passthrough_applies_model_reasoning_and_service_tier_overrides() {
     );
     let body = br#"{"model":"gpt-4.1","input":"hi","reasoning":{"effort":"low"}}"#.to_vec();
 
-    let (rewritten_body, model_for_log, reasoning_for_log, _has_prompt_cache_key, _request_shape) =
-        apply_passthrough_request_overrides("/v1/responses", body, &api_key);
+    let (
+        rewritten_body,
+        model_for_log,
+        reasoning_for_log,
+        service_tier_for_log,
+        _has_prompt_cache_key,
+        _request_shape,
+    ) = apply_passthrough_request_overrides("/v1/responses", body, &api_key);
     let payload: Value = serde_json::from_slice(&rewritten_body).expect("json body");
 
     assert_eq!(
@@ -232,6 +238,7 @@ fn aggregate_passthrough_applies_model_reasoning_and_service_tier_overrides() {
     );
     assert_eq!(model_for_log.as_deref(), Some("gpt-5.4"));
     assert_eq!(reasoning_for_log.as_deref(), Some("high"));
+    assert_eq!(service_tier_for_log.as_deref(), Some("fast"));
 }
 
 /// 函数 `anthropic_model_must_exist_in_cached_model_options`

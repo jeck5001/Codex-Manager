@@ -17,6 +17,94 @@ pub(crate) struct IncomingHeaderSnapshot {
 }
 
 impl IncomingHeaderSnapshot {
+    /// 函数 `from_http_headers`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-05
+    ///
+    /// # 参数
+    /// - headers: 参数 headers
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(crate) fn from_http_headers(headers: &axum::http::HeaderMap) -> Self {
+        let mut snapshot = IncomingHeaderSnapshot::default();
+        for (name, value) in headers.iter() {
+            let Ok(raw_value) = value.to_str() else {
+                continue;
+            };
+            let name = name.as_str();
+            let value = raw_value.trim();
+            if name.eq_ignore_ascii_case("Authorization") {
+                snapshot.authorization_present = true;
+                if snapshot.authorization_bearer_strict.is_none() {
+                    snapshot.authorization_bearer_strict = strict_bearer_token(value);
+                }
+                if snapshot.authorization_bearer_case_insensitive.is_none() {
+                    snapshot.authorization_bearer_case_insensitive =
+                        case_insensitive_bearer_token(value);
+                }
+                continue;
+            }
+            if name.eq_ignore_ascii_case("x-api-key") {
+                snapshot.x_api_key_present = true;
+                if snapshot.x_api_key.is_none() && !value.is_empty() {
+                    snapshot.x_api_key = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.session_id.is_none() && name.eq_ignore_ascii_case("session_id") {
+                if !value.is_empty() {
+                    snapshot.session_id = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.client_request_id.is_none()
+                && name.eq_ignore_ascii_case("x-client-request-id")
+            {
+                if !value.is_empty() {
+                    snapshot.client_request_id = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.subagent.is_none() && name.eq_ignore_ascii_case("x-openai-subagent") {
+                if !value.is_empty() {
+                    snapshot.subagent = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.beta_features.is_none()
+                && name.eq_ignore_ascii_case("x-codex-beta-features")
+            {
+                if !value.is_empty() {
+                    snapshot.beta_features = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.turn_metadata.is_none()
+                && name.eq_ignore_ascii_case("x-codex-turn-metadata")
+            {
+                if !value.is_empty() {
+                    snapshot.turn_metadata = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.turn_state.is_none() && name.eq_ignore_ascii_case("x-codex-turn-state") {
+                if !value.is_empty() {
+                    snapshot.turn_state = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.conversation_id.is_none() && name.eq_ignore_ascii_case("conversation_id") {
+                if !value.is_empty() {
+                    snapshot.conversation_id = Some(value.to_string());
+                }
+            }
+        }
+        snapshot
+    }
+
     /// 函数 `from_request`
     ///
     /// 作者: gaohongshun

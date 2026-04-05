@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 pub(crate) struct ParsedRequestMetadata {
     pub(crate) model: Option<String>,
     pub(crate) reasoning_effort: Option<String>,
+    pub(crate) service_tier: Option<String>,
     pub(crate) is_stream: bool,
     pub(crate) request_shape: Option<String>,
     pub(crate) has_prompt_cache_key: bool,
@@ -62,10 +63,16 @@ pub(crate) fn parse_request_metadata(body: &[u8]) -> ParsedRequestMetadata {
         .and_then(Value::as_str)
         .map(str::trim)
         .is_some_and(|v| !v.is_empty());
+    let service_tier = value
+        .get("service_tier")
+        .and_then(Value::as_str)
+        .and_then(crate::apikey::service_tier::normalize_service_tier)
+        .map(str::to_string);
 
     ParsedRequestMetadata {
         model,
         reasoning_effort,
+        service_tier,
         is_stream: value
             .get("stream")
             .and_then(Value::as_bool)

@@ -66,8 +66,8 @@ impl Storage {
             "INSERT INTO request_logs (
                 trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json, initial_aggregate_api_id, attempted_aggregate_api_ids_json,
                 request_path, original_path, adapted_path,
-                method, model, reasoning_effort, response_adapter, upstream_url, aggregate_api_supplier_name, aggregate_api_url, status_code, duration_ms, error, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                method, request_type, model, reasoning_effort, service_tier, response_adapter, upstream_url, aggregate_api_supplier_name, aggregate_api_url, status_code, duration_ms, error, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
             params![
                 &log.trace_id,
                 &log.key_id,
@@ -80,8 +80,10 @@ impl Storage {
                 &log.original_path,
                 &log.adapted_path,
                 &log.method,
+                &log.request_type,
                 &log.model,
                 &log.reasoning_effort,
+                &log.service_tier,
                 &log.response_adapter,
                 &log.upstream_url,
                 &log.aggregate_api_supplier_name,
@@ -118,8 +120,8 @@ impl Storage {
             "INSERT INTO request_logs (
                 trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json, initial_aggregate_api_id, attempted_aggregate_api_ids_json,
                 request_path, original_path, adapted_path,
-                method, model, reasoning_effort, response_adapter, upstream_url, aggregate_api_supplier_name, aggregate_api_url, status_code, duration_ms, error, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                method, request_type, model, reasoning_effort, service_tier, response_adapter, upstream_url, aggregate_api_supplier_name, aggregate_api_url, status_code, duration_ms, error, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
             params![
                 &log.trace_id,
                 &log.key_id,
@@ -132,8 +134,10 @@ impl Storage {
                 &log.original_path,
                 &log.adapted_path,
                 &log.method,
+                &log.request_type,
                 &log.model,
                 &log.reasoning_effort,
+                &log.service_tier,
                 &log.response_adapter,
                 &log.upstream_url,
                 &log.aggregate_api_supplier_name,
@@ -222,7 +226,7 @@ impl Storage {
             "SELECT
                 r.trace_id, r.key_id, r.account_id, r.initial_account_id, r.attempted_account_ids_json, r.initial_aggregate_api_id, r.attempted_aggregate_api_ids_json,
                 r.request_path, r.original_path, r.adapted_path,
-                r.method, r.model, r.reasoning_effort, r.response_adapter, r.upstream_url, r.aggregate_api_supplier_name, r.aggregate_api_url, r.status_code, r.duration_ms,
+                r.method, r.request_type, r.model, r.reasoning_effort, r.service_tier, r.response_adapter, r.upstream_url, r.aggregate_api_supplier_name, r.aggregate_api_url, r.status_code, r.duration_ms,
                 t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
                 r.error, r.created_at
              FROM request_logs r
@@ -395,8 +399,10 @@ impl Storage {
                 original_path TEXT,
                 adapted_path TEXT,
                 method TEXT NOT NULL,
+                request_type TEXT,
                 model TEXT,
                 reasoning_effort TEXT,
+                service_tier TEXT,
                 response_adapter TEXT,
                 upstream_url TEXT,
                 aggregate_api_supplier_name TEXT,
@@ -557,6 +563,12 @@ impl Storage {
         Ok(())
     }
 
+    pub(super) fn ensure_request_log_request_type_and_service_tier_columns(&self) -> Result<()> {
+        self.ensure_column("request_logs", "request_type", "TEXT")?;
+        self.ensure_column("request_logs", "service_tier", "TEXT")?;
+        Ok(())
+    }
+
     /// 函数 `compact_request_logs_legacy_usage_columns`
     ///
     /// 作者: gaohongshun
@@ -608,8 +620,10 @@ impl Storage {
                 original_path TEXT,
                 adapted_path TEXT,
                 method TEXT NOT NULL,
+                request_type TEXT,
                 model TEXT,
                 reasoning_effort TEXT,
+                service_tier TEXT,
                 response_adapter TEXT,
                 upstream_url TEXT,
                 aggregate_api_supplier_name TEXT,
@@ -622,11 +636,11 @@ impl Storage {
              INSERT INTO request_logs (
                 id, trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json, initial_aggregate_api_id, attempted_aggregate_api_ids_json,
                 request_path, original_path, adapted_path,
-                method, model, reasoning_effort, response_adapter, upstream_url, aggregate_api_supplier_name, aggregate_api_url, status_code, duration_ms, error, created_at
+                method, request_type, model, reasoning_effort, service_tier, response_adapter, upstream_url, aggregate_api_supplier_name, aggregate_api_url, status_code, duration_ms, error, created_at
              )
              SELECT
                 id, trace_id, key_id, account_id, NULL, NULL, NULL, NULL, request_path, original_path, adapted_path,
-                method, model, reasoning_effort, response_adapter, upstream_url, NULL, NULL, status_code, NULL, error, created_at
+                method, NULL, model, reasoning_effort, NULL, response_adapter, upstream_url, NULL, NULL, status_code, NULL, error, created_at
              FROM request_logs_legacy_028;
              DROP TABLE request_logs_legacy_028;",
         )?;
@@ -661,22 +675,24 @@ fn map_request_log_row(row: &Row<'_>) -> Result<RequestLog> {
         original_path: row.get(8)?,
         adapted_path: row.get(9)?,
         method: row.get(10)?,
-        model: row.get(11)?,
-        reasoning_effort: row.get(12)?,
-        response_adapter: row.get(13)?,
-        upstream_url: row.get(14)?,
-        aggregate_api_supplier_name: row.get(15)?,
-        aggregate_api_url: row.get(16)?,
-        status_code: row.get(17)?,
-        duration_ms: row.get(18)?,
-        input_tokens: row.get(19)?,
-        cached_input_tokens: row.get(20)?,
-        output_tokens: row.get(21)?,
-        total_tokens: row.get(22)?,
-        reasoning_output_tokens: row.get(23)?,
-        estimated_cost_usd: row.get(24)?,
-        error: row.get(25)?,
-        created_at: row.get(26)?,
+        request_type: row.get(11)?,
+        model: row.get(12)?,
+        reasoning_effort: row.get(13)?,
+        service_tier: row.get(14)?,
+        response_adapter: row.get(15)?,
+        upstream_url: row.get(16)?,
+        aggregate_api_supplier_name: row.get(17)?,
+        aggregate_api_url: row.get(18)?,
+        status_code: row.get(19)?,
+        duration_ms: row.get(20)?,
+        input_tokens: row.get(21)?,
+        cached_input_tokens: row.get(22)?,
+        output_tokens: row.get(23)?,
+        total_tokens: row.get(24)?,
+        reasoning_output_tokens: row.get(25)?,
+        estimated_cost_usd: row.get(26)?,
+        error: row.get(27)?,
+        created_at: row.get(28)?,
     })
 }
 
@@ -789,9 +805,11 @@ fn append_request_log_query_clause(
                     OR IFNULL(r.original_path,'') LIKE ?
                     OR IFNULL(r.adapted_path,'') LIKE ?
                     OR r.method LIKE ?
+                    OR IFNULL(r.request_type,'') LIKE ?
                     OR IFNULL(r.account_id,'') LIKE ?
                     OR IFNULL(r.model,'') LIKE ?
                     OR IFNULL(r.reasoning_effort,'') LIKE ?
+                    OR IFNULL(r.service_tier,'') LIKE ?
                     OR IFNULL(r.response_adapter,'') LIKE ?
                     OR IFNULL(r.error,'') LIKE ?
                     OR IFNULL(r.key_id,'') LIKE ?
@@ -806,7 +824,7 @@ fn append_request_log_query_clause(
                     OR IFNULL(CAST(t.estimated_cost_usd AS TEXT),'') LIKE ?)"
                     .to_string(),
             );
-            for _ in 0..25 {
+            for _ in 0..27 {
                 params.push(Value::Text(pattern.clone()));
             }
         }

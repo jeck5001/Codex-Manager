@@ -595,6 +595,36 @@ function formatModelEffortDisplay(log: RequestLog): string {
   return model || effort || "-";
 }
 
+function normalizeRequestType(value: string): "ws" | "http" {
+  return String(value || "").trim().toLowerCase() === "ws" ? "ws" : "http";
+}
+
+function RequestTypeBadge({ requestType }: { requestType: string }) {
+  const normalized = normalizeRequestType(requestType);
+  const label = normalized.toUpperCase();
+  const toneClass =
+    normalized === "ws"
+      ? "border-cyan-500/20 bg-cyan-500/10 text-cyan-500"
+      : "border-slate-500/20 bg-slate-500/10 text-slate-500";
+  return (
+    <Badge className={cn("h-5 rounded-full px-1.5 text-[10px] font-medium", toneClass)}>
+      {label}
+    </Badge>
+  );
+}
+
+function ServiceTierBadge({ serviceTier }: { serviceTier: string }) {
+  const normalized = String(serviceTier || "").trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return (
+    <Badge className="h-5 rounded-full border-amber-500/20 bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-500">
+      {normalized}
+    </Badge>
+  );
+}
+
 /**
  * 函数 `AccountKeyInfoCell`
  *
@@ -847,12 +877,16 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
   const adaptedPath = String(log.adaptedPath || "").trim();
   const upstreamUrl = String(log.upstreamUrl || "").trim();
   const upstreamDisplay = resolveUpstreamDisplay(upstreamUrl);
+  const requestType = normalizeRequestType(log.requestType);
 
   return (
     <Tooltip>
       <TooltipTrigger render={<div />} className="block text-left">
         <div className="flex flex-col gap-0.5">
-          <span className="font-bold text-primary">{log.method || "-"}</span>
+          <div className="flex items-center gap-1.5">
+            <RequestTypeBadge requestType={requestType} />
+            <span className="font-bold text-primary">{log.method || "-"}</span>
+          </div>
           <span className="max-w-[200px] truncate text-muted-foreground">
             {displayPath}
           </span>
@@ -860,6 +894,10 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
       </TooltipTrigger>
       <TooltipContent className="max-w-md">
         <div className="flex min-w-[280px] flex-col gap-2">
+          <div className="space-y-0.5">
+            <div className="text-[10px] text-background/70">请求类型</div>
+            <div className="font-mono text-[11px] uppercase">{requestType}</div>
+          </div>
           <div className="space-y-0.5">
             <div className="text-[10px] text-background/70">方法</div>
             <div className="font-mono text-[11px]">{log.method || "-"}</div>
@@ -1011,14 +1049,18 @@ function GatewayTooltipCell({
 function ModelEffortCell({ log }: { log: RequestLog }) {
   const model = String(log.model || "").trim();
   const effort = String(log.reasoningEffort || "").trim();
+  const serviceTier = String(log.serviceTier || "").trim();
   const display = formatModelEffortDisplay(log);
 
   return (
     <Tooltip>
       <TooltipTrigger render={<div />} className="block text-left">
-        <span className="block max-w-[160px] truncate font-medium text-foreground">
-          {display}
-        </span>
+        <div className="flex flex-col gap-1">
+          <span className="block max-w-[160px] truncate font-medium text-foreground">
+            {display}
+          </span>
+          <ServiceTierBadge serviceTier={serviceTier} />
+        </div>
       </TooltipTrigger>
       <TooltipContent className="max-w-sm">
         <div className="flex min-w-[200px] flex-col gap-2">
@@ -1032,6 +1074,12 @@ function ModelEffortCell({ log }: { log: RequestLog }) {
             <div className="text-[10px] text-background/70">推理</div>
             <div className="break-all font-mono text-[11px]">
               {effort || "-"}
+            </div>
+          </div>
+          <div className="space-y-0.5">
+            <div className="text-[10px] text-background/70">服务等级</div>
+            <div className="break-all font-mono text-[11px]">
+              {serviceTier || "-"}
             </div>
           </div>
         </div>
@@ -1521,13 +1569,13 @@ function LogsPageContent() {
                   时间
                 </TableHead>
                 <TableHead className="w-[120px] px-4 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-                  方法 / 路径
+                  类型 / 方法 / 路径
                 </TableHead>
                 <TableHead className="w-[224px] px-4 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                   账号 / 密钥
                 </TableHead>
                 <TableHead className="w-[180px] px-4 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-                  模型 / 推理
+                  模型 / 推理 / 等级
                 </TableHead>
                 <TableHead className="w-[92px] px-4 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                   状态

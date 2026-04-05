@@ -42,7 +42,9 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
                     request_path_for_log.as_str(),
                     None,
                     None,
+                    None,
                     false,
+                    "http",
                     "-",
                 );
                 super::trace_log::log_request_final(

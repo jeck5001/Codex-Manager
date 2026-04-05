@@ -104,6 +104,7 @@ pub(in super::super) fn proxy_validated_request(
         conversation_binding,
         model_for_log,
         reasoning_for_log,
+        service_tier_for_log,
         method,
     } = validated;
     let started_at = Instant::now();
@@ -123,7 +124,9 @@ pub(in super::super) fn proxy_validated_request(
         path.as_str(),
         model_for_log.as_deref(),
         reasoning_for_log.as_deref(),
+        service_tier_for_log.as_deref(),
         client_is_stream,
+        "http",
         protocol_type.as_str(),
     );
     super::super::trace_log::log_request_body_preview(trace_id.as_str(), body.as_ref());
@@ -277,6 +280,7 @@ pub(in super::super) fn proxy_validated_request(
         protocol_type.as_str(),
         model_for_log.as_deref(),
         reasoning_for_log.as_deref(),
+        service_tier_for_log.as_deref(),
         setup.candidate_count,
         setup.account_max_inflight,
     );

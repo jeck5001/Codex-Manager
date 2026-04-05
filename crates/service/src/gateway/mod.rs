@@ -62,6 +62,8 @@ use metrics::{
 pub(crate) use metrics::{
     begin_rpc_request, duration_to_millis, gateway_metrics_prometheus, record_usage_refresh_outcome,
 };
+pub(crate) use request_log::{RequestLogTraceContext, RequestLogUsage};
+pub(crate) use trace_log::{log_request_final, log_request_start, next_trace_id};
 use protocol_adapter::{
     adapt_request_for_protocol, adapt_upstream_response,
     adapt_upstream_response_with_tool_name_restore_map, build_anthropic_error_body,
@@ -304,7 +306,7 @@ pub(crate) use model_picker::fetch_models_for_picker;
 use openai_fallback::try_openai_fallback;
 pub(crate) use request_entry::handle_gateway_request;
 use request_gate::{request_gate_lock, RequestGateAcquireError};
-use request_log::write_request_log;
+pub(crate) use request_log::write_request_log;
 use route_hint::apply_route_strategy;
 use route_quality::record_route_quality;
 pub(crate) use runtime_config::fresh_upstream_client;
@@ -734,6 +736,156 @@ pub(crate) fn clear_manual_preferred_account() {
 /// 返回函数执行结果
 pub(crate) fn clear_manual_preferred_account_if(account_id: &str) -> bool {
     route_hint::clear_manual_preferred_account_if(account_id)
+}
+
+/// 函数 `gateway_resolve_effective_upstream_base`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-05
+///
+/// # 参数
+/// - api_key: 参数 api_key
+///
+/// # 返回
+/// 返回函数执行结果
+pub(crate) fn gateway_resolve_effective_upstream_base(
+    api_key: &codexmanager_core::storage::ApiKey,
+) -> String {
+    api_key
+        .upstream_base_url
+        .as_deref()
+        .map(upstream::config::normalize_upstream_base_url)
+        .unwrap_or_else(resolve_upstream_base_url)
+}
+
+/// 函数 `gateway_supports_official_responses_websocket`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-05
+///
+/// # 参数
+/// - api_key: 参数 api_key
+///
+/// # 返回
+/// 返回函数执行结果
+pub(crate) fn gateway_supports_official_responses_websocket(
+    api_key: &codexmanager_core::storage::ApiKey,
+) -> bool {
+    if api_key.protocol_type != crate::apikey_profile::PROTOCOL_OPENAI_COMPAT {
+        return false;
+    }
+    if api_key.rotation_strategy == crate::apikey_profile::ROTATION_AGGREGATE_API {
+        return false;
+    }
+    upstream::config::is_chatgpt_backend_base(&gateway_resolve_effective_upstream_base(api_key))
+}
+
+/// 函数 `gateway_collect_routed_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-05
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - key_id: 参数 key_id
+/// - model: 参数 model
+///
+/// # 返回
+/// 返回函数执行结果
+pub(crate) fn gateway_collect_routed_candidates(
+    storage: &codexmanager_core::storage::Storage,
+    key_id: &str,
+    model: Option<&str>,
+) -> Result<Vec<(codexmanager_core::storage::Account, codexmanager_core::storage::Token)>, String>
+{
+    let mut candidates = collect_gateway_candidates(storage)?;
+    apply_route_strategy(&mut candidates, key_id, model);
+    Ok(candidates)
+}
+
+/// 函数 `gateway_resolve_openai_bearer_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-05
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - account: 参数 account
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
+pub(crate) fn gateway_resolve_openai_bearer_token(
+    storage: &codexmanager_core::storage::Storage,
+    account: &codexmanager_core::storage::Account,
+    token: &mut codexmanager_core::storage::Token,
+) -> Result<String, String> {
+    resolve_openai_bearer_token(storage, account, token)
+}
+
+/// 函数 `gateway_rewrite_ws_responses_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-05
+///
+/// # 参数
+/// - path: 参数 path
+/// - body: 参数 body
+/// - api_key: 参数 api_key
+///
+/// # 返回
+/// 返回函数执行结果
+pub(crate) fn gateway_rewrite_ws_responses_body(
+    path: &str,
+    body: Vec<u8>,
+    api_key: &codexmanager_core::storage::ApiKey,
+) -> Vec<u8> {
+    let normalized_model = api_key
+        .model_slug
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let normalized_reasoning = api_key
+        .reasoning_effort
+        .as_deref()
+        .and_then(crate::reasoning_effort::normalize_reasoning_effort);
+    let normalized_service_tier = api_key
+        .service_tier
+        .as_deref()
+        .and_then(crate::apikey::service_tier::normalize_service_tier);
+    apply_request_overrides_with_service_tier_and_prompt_cache_key(
+        path,
+        body,
+        normalized_model,
+        normalized_reasoning,
+        normalized_service_tier,
+        api_key.upstream_base_url.as_deref(),
+        None,
+    )
+}
+
+/// 函数 `gateway_compute_upstream_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-05
+///
+/// # 参数
+/// - upstream_base_url: 参数 upstream_base_url
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
+pub(crate) fn gateway_compute_upstream_url(
+    upstream_base_url: &str,
+    path: &str,
+) -> (String, Option<String>) {
+    compute_upstream_url(upstream_base_url, path)
 }
 
 #[cfg(test)]

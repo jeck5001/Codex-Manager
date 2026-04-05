@@ -156,6 +156,18 @@ async fn proxy_handler(
     }
 }
 
+async fn responses_handler(
+    State(state): State<ProxyState>,
+    request: HttpRequest<Body>,
+) -> Response<Body> {
+    if request.method() == axum::http::Method::GET
+        && crate::http::responses_websocket::is_websocket_upgrade_request(request.headers())
+    {
+        return crate::http::responses_websocket::upgrade_responses_websocket(request).await;
+    }
+    proxy_handler(State(state), request).await
+}
+
 /// 函数 `build_front_proxy_app`
 ///
 /// 作者: gaohongshun
@@ -170,6 +182,7 @@ async fn proxy_handler(
 fn build_front_proxy_app(state: ProxyState) -> Router {
     Router::new()
         .route("/rpc", post(crate::http::rpc_endpoint::handle_rpc_http))
+        .route("/v1/responses", any(responses_handler))
         .fallback(any(proxy_handler))
         .with_state(state)
 }

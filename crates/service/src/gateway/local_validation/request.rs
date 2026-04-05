@@ -188,6 +188,7 @@ fn apply_passthrough_request_overrides(
     Vec<u8>,
     Option<String>,
     Option<String>,
+    Option<String>,
     bool,
     Option<String>,
 ) {
@@ -210,6 +211,7 @@ fn apply_passthrough_request_overrides(
         request_meta
             .reasoning_effort
             .or(api_key.reasoning_effort.clone()),
+        request_meta.service_tier.or(effective_service_tier),
         request_meta.has_prompt_cache_key,
         request_meta.request_shape,
     )
@@ -248,7 +250,14 @@ pub(super) fn build_local_validation_result(
     );
 
     if api_key.rotation_strategy == ROTATION_AGGREGATE_API {
-        let (rewritten_body, model_for_log, reasoning_for_log, has_prompt_cache_key, request_shape) =
+        let (
+            rewritten_body,
+            model_for_log,
+            reasoning_for_log,
+            service_tier_for_log,
+            has_prompt_cache_key,
+            request_shape,
+        ) =
             apply_passthrough_request_overrides(&normalized_path, body, &api_key);
         let incoming_headers = incoming_headers
             .with_conversation_id_override(initial_local_conversation_id.as_deref());
@@ -276,6 +285,7 @@ pub(super) fn build_local_validation_result(
             conversation_binding: None,
             model_for_log,
             reasoning_for_log,
+            service_tier_for_log,
             method,
         });
     }
@@ -356,6 +366,7 @@ pub(super) fn build_local_validation_result(
     let reasoning_for_log = request_meta
         .reasoning_effort
         .or(api_key.reasoning_effort.clone());
+    let service_tier_for_log = request_meta.service_tier.or(effective_service_tier);
     let is_stream = client_request_meta.is_stream;
     let has_prompt_cache_key = client_request_meta.has_prompt_cache_key;
     let request_shape = client_request_meta.request_shape;
@@ -390,6 +401,7 @@ pub(super) fn build_local_validation_result(
         aggregate_api_id: api_key.aggregate_api_id,
         model_for_log,
         reasoning_for_log,
+        service_tier_for_log,
         method,
     })
 }
