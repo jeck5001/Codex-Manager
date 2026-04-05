@@ -1361,6 +1361,18 @@ pub(crate) fn register_email_service_stats() -> Result<Value, String> {
     register_get_json("/api/email-services/stats")
 }
 
+pub(crate) fn get_register_temp_mail_cloudflare_settings() -> Result<Value, String> {
+    register_get_json("/api/settings/temp-mail/cloudflare")
+}
+
+pub(crate) fn update_register_temp_mail_cloudflare_settings(payload: Value) -> Result<Value, String> {
+    let normalized = match payload {
+        Value::Object(map) => Value::Object(map),
+        _ => Value::Object(serde_json::Map::new()),
+    };
+    register_post_json("/api/settings/temp-mail/cloudflare", &normalized)
+}
+
 pub(crate) fn read_register_email_service_full(service_id: i64) -> Result<Value, String> {
     if service_id < 1 {
         return Err("serviceId is required".to_string());

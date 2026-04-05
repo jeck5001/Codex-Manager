@@ -58,6 +58,7 @@ import {
   RegisterOutlookBatchImportResult,
   RegisterServiceGroup,
   RegisterStats,
+  RegisterTempMailCloudflareSettings,
   RegisterTaskBatchDeleteResult,
   RegisterTaskListResult,
   RegisterTaskSnapshot,
@@ -183,6 +184,19 @@ interface RegisterOutlookBatchImportPayload {
 
 interface RegisterEmailServiceReorderPayload {
   serviceIds: number[];
+}
+
+interface RegisterTempMailCloudflareSettingsPayload {
+  cloudflareApiToken?: string | null;
+  cloudflareAccountId?: string | null;
+  cloudflareZoneId?: string | null;
+  cloudflareWorkerName?: string | null;
+  tempMailDomainBase?: string | null;
+  tempMailSubdomainMode?: string | null;
+  tempMailSubdomainLength?: number | null;
+  tempMailSubdomainPrefix?: string | null;
+  tempMailSyncCloudflareEnabled?: boolean;
+  tempMailRequireCloudflareSync?: boolean;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -569,6 +583,8 @@ function normalizeRegisterEmailServiceField(value: unknown): RegisterEmailServic
         ? rawDefault
         : null,
     placeholder: typeof source.placeholder === "string" ? source.placeholder : "",
+    description: typeof source.description === "string" ? source.description : "",
+    readOnly: source.readOnly === true || source.read_only === true,
     secret:
       source.secret === true ||
       ["password", "api_key", "refresh_token", "access_token", "admin_password"].includes(name),
@@ -715,6 +731,67 @@ function normalizeRegisterEmailServiceStats(value: unknown): RegisterEmailServic
         : typeof source.enabled_count === "number" && Number.isFinite(source.enabled_count)
           ? source.enabled_count
           : 0,
+  };
+}
+
+function normalizeRegisterTempMailCloudflareSettings(
+  value: unknown
+): RegisterTempMailCloudflareSettings {
+  const source = asRecord(value) ?? {};
+  return {
+    hasApiToken: source.hasApiToken === true || source.has_api_token === true,
+    cloudflareAccountId:
+      typeof source.cloudflareAccountId === "string"
+        ? source.cloudflareAccountId
+        : typeof source.cloudflare_account_id === "string"
+          ? source.cloudflare_account_id
+          : "",
+    cloudflareZoneId:
+      typeof source.cloudflareZoneId === "string"
+        ? source.cloudflareZoneId
+        : typeof source.cloudflare_zone_id === "string"
+          ? source.cloudflare_zone_id
+          : "",
+    cloudflareWorkerName:
+      typeof source.cloudflareWorkerName === "string"
+        ? source.cloudflareWorkerName
+        : typeof source.cloudflare_worker_name === "string"
+          ? source.cloudflare_worker_name
+          : "",
+    tempMailDomainBase:
+      typeof source.tempMailDomainBase === "string"
+        ? source.tempMailDomainBase
+        : typeof source.temp_mail_domain_base === "string"
+          ? source.temp_mail_domain_base
+          : "",
+    tempMailSubdomainMode:
+      typeof source.tempMailSubdomainMode === "string"
+        ? source.tempMailSubdomainMode
+        : typeof source.temp_mail_subdomain_mode === "string"
+          ? source.temp_mail_subdomain_mode
+          : "random",
+    tempMailSubdomainLength:
+      typeof source.tempMailSubdomainLength === "number" &&
+      Number.isFinite(source.tempMailSubdomainLength)
+        ? source.tempMailSubdomainLength
+        : typeof source.temp_mail_subdomain_length === "number" &&
+            Number.isFinite(source.temp_mail_subdomain_length)
+          ? source.temp_mail_subdomain_length
+          : 6,
+    tempMailSubdomainPrefix:
+      typeof source.tempMailSubdomainPrefix === "string"
+        ? source.tempMailSubdomainPrefix
+        : typeof source.temp_mail_subdomain_prefix === "string"
+          ? source.temp_mail_subdomain_prefix
+          : "",
+    tempMailSyncCloudflareEnabled:
+      source.tempMailSyncCloudflareEnabled === true ||
+      source.temp_mail_sync_cloudflare_enabled === true ||
+      source.temp_mail_sync_cloudflare_enabled === undefined,
+    tempMailRequireCloudflareSync:
+      source.tempMailRequireCloudflareSync === true ||
+      source.temp_mail_require_cloudflare_sync === true ||
+      source.temp_mail_require_cloudflare_sync === undefined,
   };
 }
 
@@ -937,6 +1014,36 @@ export const accountClient = {
       withAddr()
     );
     return normalizeRegisterEmailServiceStats(result);
+  },
+  async getRegisterTempMailCloudflareSettings(): Promise<RegisterTempMailCloudflareSettings> {
+    const result = await invoke<unknown>(
+      "service_account_register_temp_mail_cloudflare_settings_get",
+      withAddr()
+    );
+    return normalizeRegisterTempMailCloudflareSettings(result);
+  },
+  async setRegisterTempMailCloudflareSettings(
+    params: RegisterTempMailCloudflareSettingsPayload
+  ): Promise<RegisterTempMailCloudflareSettings> {
+    const payload: Record<string, unknown> = {
+      cloudflare_account_id: params.cloudflareAccountId ?? "",
+      cloudflare_zone_id: params.cloudflareZoneId ?? "",
+      cloudflare_worker_name: params.cloudflareWorkerName ?? "",
+      temp_mail_domain_base: params.tempMailDomainBase ?? "",
+      temp_mail_subdomain_mode: params.tempMailSubdomainMode ?? "random",
+      temp_mail_subdomain_length: params.tempMailSubdomainLength ?? 6,
+      temp_mail_subdomain_prefix: params.tempMailSubdomainPrefix ?? "",
+      temp_mail_sync_cloudflare_enabled: params.tempMailSyncCloudflareEnabled ?? true,
+      temp_mail_require_cloudflare_sync: params.tempMailRequireCloudflareSync ?? true,
+    };
+    if (typeof params.cloudflareApiToken === "string" && params.cloudflareApiToken.trim()) {
+      payload.cloudflare_api_token = params.cloudflareApiToken.trim();
+    }
+    await invoke<unknown>(
+      "service_account_register_temp_mail_cloudflare_settings_set",
+      withAddr(payload)
+    );
+    return this.getRegisterTempMailCloudflareSettings();
   },
   async readRegisterEmailServiceFull(serviceId: number): Promise<RegisterEmailService> {
     const result = await invoke<unknown>(

@@ -137,6 +137,12 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_account_register_email_services_test_tempmail: {
     rpcMethod: "account/register/emailServices/testTempmail",
   },
+  service_account_register_temp_mail_cloudflare_settings_get: {
+    rpcMethod: "account/register/tempMailCloudflareSettings/get",
+  },
+  service_account_register_temp_mail_cloudflare_settings_set: {
+    rpcMethod: "account/register/tempMailCloudflareSettings/set",
+  },
   service_account_register_task: { rpcMethod: "account/register/task" },
   service_account_register_import: { rpcMethod: "account/register/import" },
   service_account_register_import_by_email: {
