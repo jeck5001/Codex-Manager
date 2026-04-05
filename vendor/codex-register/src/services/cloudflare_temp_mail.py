@@ -6,6 +6,7 @@ import string
 import time
 from typing import Any, Dict, List, Optional
 
+from curl_cffi import CurlMime
 from ..core.http_client import HTTPClient, RequestConfig
 from ..config.settings import Settings
 from pydantic.types import SecretStr
@@ -352,16 +353,17 @@ class CloudflareTempMailProvisioner:
         return self._process_response(response, "get worker settings")
 
     def patch_worker_settings(self, bindings: List[Dict[str, Any]]) -> Dict[str, Any]:
+        multipart = CurlMime.from_list([
+            {
+                "name": "metadata",
+                "content_type": "application/json",
+                "data": json.dumps({"bindings": bindings}).encode(),
+            }
+        ])
         response = self.http_client.request(
             "PATCH",
             self._worker_settings_url(),
-            files={
-                "metadata": (
-                    "metadata",
-                    json.dumps({"bindings": bindings}),
-                    "application/json",
-                )
-            },
+            multipart=multipart,
             headers=self._auth_headers(include_json_content_type=False),
         )
         return self._process_response(response, "patch worker settings")

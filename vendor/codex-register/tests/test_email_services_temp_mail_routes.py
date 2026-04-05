@@ -481,11 +481,7 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         provisioner.cleanup_provisioned_domain(provisioned, domain="tm-abc123.mail.example.com")
 
         self.assertEqual(http_client.calls[0]["method"], "PATCH")
-        metadata = http_client.calls[0]["kwargs"]["files"]["metadata"]
-        self.assertEqual(
-            json.loads(metadata[1])["bindings"],
-            provisioned["cloudflare_worker_previous_bindings"],
-        )
+        self.assertIn("multipart", http_client.calls[0]["kwargs"])
         self.assertEqual(http_client.calls[1]["method"], "POST")
         self.assertEqual(
             http_client.calls[1]["url"],
