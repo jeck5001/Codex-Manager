@@ -550,6 +550,18 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "account/register/emailServices/stats" => {
             super::value_or_error(account_register::register_email_service_stats())
         }
+        "account/register/tempMailCloudflareSettings/get" => {
+            super::value_or_error(account_register::get_register_temp_mail_cloudflare_settings())
+        }
+        "account/register/tempMailCloudflareSettings/set" => {
+            let payload = req
+                .params
+                .clone()
+                .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+            super::value_or_error(account_register::update_register_temp_mail_cloudflare_settings(
+                payload,
+            ))
+        }
         "account/register/emailServices/readFull" => {
             let service_id = req
                 .params

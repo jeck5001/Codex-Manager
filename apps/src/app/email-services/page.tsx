@@ -63,6 +63,7 @@ import type {
   RegisterEmailService,
   RegisterEmailServiceField,
   RegisterEmailServiceType,
+  RegisterTempMailCloudflareSettings,
 } from "@/types";
 
 type ServiceFormMode = "create" | "edit";
@@ -82,6 +83,19 @@ type DeleteState =
   | { kind: "outlook-batch"; ids: number[]; count: number }
   | null;
 
+type CloudflareSettingsFormState = {
+  cloudflareApiToken: string;
+  cloudflareAccountId: string;
+  cloudflareZoneId: string;
+  cloudflareWorkerName: string;
+  tempMailDomainBase: string;
+  tempMailSubdomainMode: string;
+  tempMailSubdomainLength: string;
+  tempMailSubdomainPrefix: string;
+  tempMailSyncCloudflareEnabled: boolean;
+  tempMailRequireCloudflareSync: boolean;
+};
+
 const EMPTY_FORM: ServiceFormState = {
   mode: "create",
   serviceId: null,
@@ -91,6 +105,39 @@ const EMPTY_FORM: ServiceFormState = {
   priority: "0",
   config: {},
 };
+
+const EMPTY_CLOUDFLARE_FORM: CloudflareSettingsFormState = {
+  cloudflareApiToken: "",
+  cloudflareAccountId: "",
+  cloudflareZoneId: "",
+  cloudflareWorkerName: "temp-email",
+  tempMailDomainBase: "",
+  tempMailSubdomainMode: "random",
+  tempMailSubdomainLength: "6",
+  tempMailSubdomainPrefix: "",
+  tempMailSyncCloudflareEnabled: true,
+  tempMailRequireCloudflareSync: true,
+};
+
+function createCloudflareFormState(
+  settings: RegisterTempMailCloudflareSettings | null
+): CloudflareSettingsFormState {
+  if (!settings) {
+    return EMPTY_CLOUDFLARE_FORM;
+  }
+  return {
+    cloudflareApiToken: "",
+    cloudflareAccountId: settings.cloudflareAccountId,
+    cloudflareZoneId: settings.cloudflareZoneId,
+    cloudflareWorkerName: settings.cloudflareWorkerName || "temp-email",
+    tempMailDomainBase: settings.tempMailDomainBase,
+    tempMailSubdomainMode: settings.tempMailSubdomainMode || "random",
+    tempMailSubdomainLength: String(settings.tempMailSubdomainLength || 6),
+    tempMailSubdomainPrefix: settings.tempMailSubdomainPrefix,
+    tempMailSyncCloudflareEnabled: settings.tempMailSyncCloudflareEnabled,
+    tempMailRequireCloudflareSync: settings.tempMailRequireCloudflareSync,
+  };
+}
 
 function formatServiceTypeLabel(type: RegisterEmailServiceType | undefined, value: string) {
   return type?.label || value || "未命名类型";
@@ -164,6 +211,9 @@ function buildConfigPayload(
 
   for (const [key, rawValue] of Object.entries(form.config || {})) {
     const field = fieldMap.get(key);
+    if (field?.readOnly) {
+      continue;
+    }
 
     if (typeof rawValue === "boolean") {
       payload[key] = rawValue;
@@ -270,17 +320,24 @@ export default function EmailServicesPage() {
   const [importResultText, setImportResultText] = useState("");
   const [tempmailTestOpen, setTempmailTestOpen] = useState(false);
   const [tempmailTestUrl, setTempmailTestUrl] = useState("");
+  const [cloudflareForm, setCloudflareForm] = useState<CloudflareSettingsFormState>(
+    EMPTY_CLOUDFLARE_FORM
+  );
 
   const {
     serviceTypes,
     services,
     stats,
+    cloudflareSettings,
     isLoading,
     isTypesLoading,
     isStatsLoading,
+    isCloudflareSettingsLoading,
     refetchServices,
+    refetchCloudflareSettings,
     createEmailService,
     updateEmailService,
+    saveCloudflareSettings,
     deleteEmailService,
     readEmailServiceFull,
     testEmailService,
@@ -299,6 +356,7 @@ export default function EmailServicesPage() {
     isBatchDeletingOutlook,
     isReordering,
     isTestingTempmail,
+    isSavingCloudflareSettings,
   } = useRegisterEmailServices({
     serviceType: serviceTypeFilter === "all" ? null : serviceTypeFilter,
     enabledOnly,
@@ -370,6 +428,10 @@ export default function EmailServicesPage() {
       current.filter((id) => outlookServices.some((service) => service.id === id))
     );
   }, [outlookServices]);
+
+  useEffect(() => {
+    setCloudflareForm(createCloudflareFormState(cloudflareSettings));
+  }, [cloudflareSettings]);
 
   const openCreateDialog = () => {
     const nextType = serviceTypes[0];
@@ -579,6 +641,35 @@ export default function EmailServicesPage() {
     }
   };
 
+  const handleSaveCloudflareSettings = async () => {
+    const parsedLength = Number(cloudflareForm.tempMailSubdomainLength || 6);
+    const tempMailSubdomainLength = Number.isFinite(parsedLength)
+      ? Math.max(3, Math.min(16, Math.trunc(parsedLength)))
+      : 6;
+
+    try {
+      await saveCloudflareSettings({
+        cloudflareApiToken: cloudflareForm.cloudflareApiToken.trim() || null,
+        cloudflareAccountId: cloudflareForm.cloudflareAccountId.trim(),
+        cloudflareZoneId: cloudflareForm.cloudflareZoneId.trim(),
+        cloudflareWorkerName: cloudflareForm.cloudflareWorkerName.trim(),
+        tempMailDomainBase: cloudflareForm.tempMailDomainBase.trim(),
+        tempMailSubdomainMode: cloudflareForm.tempMailSubdomainMode,
+        tempMailSubdomainLength,
+        tempMailSubdomainPrefix: cloudflareForm.tempMailSubdomainPrefix.trim(),
+        tempMailSyncCloudflareEnabled: cloudflareForm.tempMailSyncCloudflareEnabled,
+        tempMailRequireCloudflareSync: cloudflareForm.tempMailRequireCloudflareSync,
+      });
+      setCloudflareForm((current) => ({
+        ...current,
+        cloudflareApiToken: "",
+        tempMailSubdomainLength: String(tempMailSubdomainLength),
+      }));
+    } catch {
+      // mutation 已统一 toast
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -622,6 +713,222 @@ export default function EmailServicesPage() {
           </Card>
         ))}
       </div>
+
+      <Card className="glass-card border-none shadow-md">
+        <CardHeader className="border-b border-border/60">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>Cloudflare Temp-Mail 设置</CardTitle>
+              <CardDescription>
+                `Temp-Mail（自部署）` 创建时会使用这里的全局配置，自动生成固定域名并同步
+                Cloudflare Email Routing 与 Worker `temp-email` 的 `DOMAINS`。
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              className="h-10 rounded-xl"
+              onClick={() => void refetchCloudflareSettings()}
+            >
+              <RefreshCw className={cn("h-4 w-4", isCloudflareSettingsLoading && "animate-spin")} />
+              刷新设置
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-0">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Cloudflare API Token</Label>
+              <Input
+                type="password"
+                value={cloudflareForm.cloudflareApiToken}
+                placeholder={
+                  cloudflareSettings?.hasApiToken
+                    ? "已配置 API Token，留空表示保持不变"
+                    : "输入新的 Cloudflare API Token"
+                }
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    cloudflareApiToken: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {cloudflareSettings?.hasApiToken
+                  ? "当前已经保存 API Token。留空不会覆盖现有值。"
+                  : "建议使用具备 Email Routing 与 Workers 配置权限的 Token。"}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Account ID</Label>
+              <Input
+                value={cloudflareForm.cloudflareAccountId}
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    cloudflareAccountId: event.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Zone ID</Label>
+              <Input
+                value={cloudflareForm.cloudflareZoneId}
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    cloudflareZoneId: event.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Worker 名称</Label>
+              <Input
+                value={cloudflareForm.cloudflareWorkerName}
+                placeholder="temp-email"
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    cloudflareWorkerName: event.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>域名后缀</Label>
+              <Input
+                value={cloudflareForm.tempMailDomainBase}
+                placeholder="mail.example.com"
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    tempMailDomainBase: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                例如 `mail.example.com`，创建服务时会生成 `xxxx.mail.example.com`。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>子域名模式</Label>
+              <Select
+                value={cloudflareForm.tempMailSubdomainMode}
+                onValueChange={(value) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    tempMailSubdomainMode: value || "random",
+                  }))
+                }
+              >
+                <SelectTrigger className="h-10 rounded-xl">
+                  <SelectValue placeholder="选择子域名生成模式" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="random">随机</SelectItem>
+                  <SelectItem value="sequence">顺序</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>随机长度</Label>
+              <Input
+                type="number"
+                min="3"
+                max="16"
+                value={cloudflareForm.tempMailSubdomainLength}
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    tempMailSubdomainLength: event.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>子域名前缀</Label>
+              <Input
+                value={cloudflareForm.tempMailSubdomainPrefix}
+                placeholder="tm"
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    tempMailSubdomainPrefix: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                顺序模式下会在前缀后追加编号；随机模式下会拼接随机段。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>同步 Cloudflare</Label>
+              <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
+                <span className="text-sm text-muted-foreground">
+                  创建 `Temp-Mail（自部署）` 时自动更新子域名和 Worker 绑定
+                </span>
+                <Switch
+                  checked={cloudflareForm.tempMailSyncCloudflareEnabled}
+                  onCheckedChange={(checked) =>
+                    setCloudflareForm((current) => ({
+                      ...current,
+                      tempMailSyncCloudflareEnabled: checked,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>要求同步成功</Label>
+              <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
+                <span className="text-sm text-muted-foreground">
+                  开启后，Cloudflare 同步失败会阻止服务创建
+                </span>
+                <Switch
+                  checked={cloudflareForm.tempMailRequireCloudflareSync}
+                  onCheckedChange={(checked) =>
+                    setCloudflareForm((current) => ({
+                      ...current,
+                      tempMailRequireCloudflareSync: checked,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-3">
+            <p className="text-sm text-muted-foreground">
+              这里的配置是全局的。一个 `Temp-Mail（自部署）` 服务会绑定一个固定自动生成域名；如果需要其他域名，请新建一个服务。
+            </p>
+            <Button
+              className="h-10 rounded-xl"
+              disabled={isCloudflareSettingsLoading || isSavingCloudflareSettings}
+              onClick={() => void handleSaveCloudflareSettings()}
+            >
+              {isSavingCloudflareSettings ? "保存中..." : "保存 Cloudflare 设置"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="glass-card border-none shadow-md">
         <CardHeader className="border-b border-border/60">
@@ -969,6 +1276,9 @@ export default function EmailServicesPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             {(selectedType?.configFields || []).map((field) => {
+              if (formState.mode === "create" && field.readOnly) {
+                return null;
+              }
               const fieldValue = formState.config[field.name];
               const isBoolean = isBooleanField(field, fieldValue);
               const isNumber = isNumberField(field, fieldValue);
@@ -994,10 +1304,17 @@ export default function EmailServicesPage() {
                       type={isNumber ? "number" : field.secret ? "password" : "text"}
                       value={stringifyFieldValue(fieldValue)}
                       placeholder={field.placeholder || field.label}
-                      className="h-10 rounded-xl"
+                      className={cn(
+                        "h-10 rounded-xl",
+                        field.readOnly && "bg-muted/40 text-muted-foreground"
+                      )}
+                      readOnly={field.readOnly}
                       onChange={(event) => handleConfigChange(field.name, event.target.value)}
                     />
                   )}
+                  {field.description ? (
+                    <p className="text-xs text-muted-foreground">{field.description}</p>
+                  ) : null}
                 </div>
               );
             })}

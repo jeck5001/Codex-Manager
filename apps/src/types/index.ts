@@ -723,6 +723,8 @@ export interface RegisterEmailServiceField {
   defaultValue: string | number | boolean | null;
   placeholder: string;
   secret: boolean;
+  readOnly: boolean;
+  description: string;
 }
 
 export interface RegisterEmailServiceType {
@@ -765,6 +767,19 @@ export interface RegisterEmailServiceTestResult {
   success: boolean;
   message: string;
   details: Record<string, unknown> | null;
+}
+
+export interface RegisterTempMailCloudflareSettings {
+  hasApiToken: boolean;
+  cloudflareAccountId: string;
+  cloudflareZoneId: string;
+  cloudflareWorkerName: string;
+  tempMailDomainBase: string;
+  tempMailSubdomainMode: string;
+  tempMailSubdomainLength: number;
+  tempMailSubdomainPrefix: string;
+  tempMailSyncCloudflareEnabled: boolean;
+  tempMailRequireCloudflareSync: boolean;
 }
 
 export interface RegisterEmailServiceBatchDeleteResult {
