@@ -171,7 +171,7 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         self.assertEqual(headers["Authorization"], "Bearer token")
         self.assertNotIn("X-Auth-Key", headers)
 
-    def test_patch_worker_settings_uses_multipart_metadata_payload(self):
+    def test_patch_worker_settings_uses_settings_part_first(self):
         settings = self.make_settings()
         response = self._make_response(200, {"result": {"bindings": []}})
         http_client = self._DummyHttpClient([response])
@@ -189,6 +189,55 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         self.assertIsInstance(request["kwargs"]["multipart"], CurlMime)
         self.assertNotIn("Content-Type", request["kwargs"]["headers"])
         self.assertEqual(request["kwargs"]["headers"]["Authorization"], "Bearer token")
+
+    def test_patch_worker_settings_falls_back_to_metadata_part_when_settings_part_rejected(self):
+        settings = self.make_settings()
+        http_client = self._DummyHttpClient([
+            self._make_response(
+                400,
+                {
+                    "result": None,
+                    "success": False,
+                    "errors": [{"code": 10201, "message": "Missing settings part in multipart upload."}],
+                    "messages": [],
+                },
+            ),
+            self._make_response(200, {"result": {"bindings": []}}),
+        ])
+        provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings, http_client=http_client)
+
+        provisioner.patch_worker_settings([{"type": "json", "name": "DOMAINS", "json": []}])
+
+        self.assertEqual(len(http_client.requests), 2)
+        self.assertEqual(http_client.requests[0]["method"], "PATCH")
+        self.assertEqual(http_client.requests[1]["method"], "PATCH")
+
+    def test_patch_worker_settings_raises_when_settings_and_metadata_parts_both_fail(self):
+        settings = self.make_settings()
+        http_client = self._DummyHttpClient([
+            self._make_response(
+                400,
+                {
+                    "result": None,
+                    "success": False,
+                    "errors": [{"code": 10201, "message": "Missing settings part in multipart upload."}],
+                    "messages": [],
+                },
+            ),
+            self._make_response(
+                400,
+                {
+                    "result": None,
+                    "success": False,
+                    "errors": [{"code": 10001, "message": "Content-Type must be one of: multipart/form-data"}],
+                    "messages": [],
+                },
+            ),
+        ])
+        provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings, http_client=http_client)
+
+        with self.assertRaises(cloudflare_temp_mail.CloudflareProvisioningError):
+            provisioner.patch_worker_settings([{"type": "json", "name": "DOMAINS", "json": []}])
 
     def test_delete_subdomain_uses_email_routing_disable_with_domain_name(self):
         settings = self.make_settings(

@@ -352,20 +352,49 @@ class CloudflareTempMailProvisioner:
         )
         return self._process_response(response, "get worker settings")
 
-    def patch_worker_settings(self, bindings: List[Dict[str, Any]]) -> Dict[str, Any]:
-        multipart = CurlMime.from_list([
+    def _build_worker_settings_multipart(self, part_name: str, bindings: List[Dict[str, Any]]) -> CurlMime:
+        return CurlMime.from_list([
             {
-                "name": "metadata",
+                "name": part_name,
                 "content_type": "application/json",
                 "data": json.dumps({"bindings": bindings}).encode(),
             }
         ])
+
+    @staticmethod
+    def _is_missing_settings_part_error(response: Any) -> bool:
+        try:
+            payload = response.json()
+        except Exception:
+            return False
+        if response.status_code != 400 or not isinstance(payload, dict):
+            return False
+        errors = payload.get("errors")
+        if not isinstance(errors, list):
+            return False
+        return any(
+            isinstance(item, dict)
+            and item.get("code") == 10201
+            and "Missing settings part" in str(item.get("message", ""))
+            for item in errors
+        )
+
+    def patch_worker_settings(self, bindings: List[Dict[str, Any]]) -> Dict[str, Any]:
+        headers = self._auth_headers(include_json_content_type=False)
         response = self.http_client.request(
             "PATCH",
             self._worker_settings_url(),
-            multipart=multipart,
-            headers=self._auth_headers(include_json_content_type=False),
+            multipart=self._build_worker_settings_multipart("settings", bindings),
+            headers=headers,
         )
+        if self._is_missing_settings_part_error(response):
+            response = self.http_client.request(
+                "PATCH",
+                self._worker_settings_url(),
+                multipart=self._build_worker_settings_multipart("metadata", bindings),
+                headers=headers,
+            )
+
         return self._process_response(response, "patch worker settings")
 
     def delete_subdomain(self, subdomain_identifier: str) -> Dict[str, Any]:
@@ -448,9 +477,23 @@ class CloudflareTempMailProvisioner:
             "cloudflare_subdomain": subdomain_payload,
         }
 
+        try:
+            worker_settings_payload = self.get_worker_settings()
+            existing_bindings = self._extract_worker_bindings(worker_settings_payload)
+            cleanup_context["cloudflare_worker_previous_bindings"] = existing_bindings
+            updated_bindings = self._upsert_domains_binding(existing_bindings, domain)
+            patched_payload = self.patch_worker_settings(updated_bindings)
+        except Exception:
+            try:
+                self.cleanup_provisioned_domain(cleanup_context, domain=domain)
+            except Exception:
+                pass
+            raise
+
         persisted_config = {
             "domain": domain,
             "cloudflare_subdomain": subdomain_payload,
+            "cloudflare_worker_settings": patched_payload,
         }
         return {
             "persisted_config": persisted_config,
