@@ -438,7 +438,19 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
             provisioner.provision_domain()
 
         methods = [entry["method"] for entry in http_client.calls]
-        self.assertEqual(methods, ["POST", "GET", "PATCH", "PATCH", "DELETE"])
+        self.assertEqual(methods, ["POST", "GET", "PATCH", "PATCH", "POST"])
+        self.assertEqual(
+            http_client.calls[0]["url"],
+            "https://api.cloudflare.com/client/v4/zones/zone/email/routing/enable",
+        )
+        self.assertEqual(
+            http_client.calls[4]["url"],
+            "https://api.cloudflare.com/client/v4/zones/zone/email/routing/disable",
+        )
+        self.assertEqual(
+            http_client.calls[4]["kwargs"]["json"],
+            {"name": http_client.calls[0]["kwargs"]["json"]["name"]},
+        )
 
     def test_provisioner_cleanup_restores_worker_bindings_then_deletes_subdomain(self):
         from src.config.settings import Settings
@@ -469,4 +481,12 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
 
         self.assertEqual(http_client.calls[0]["method"], "PATCH")
         self.assertEqual(http_client.calls[0]["kwargs"]["json"]["settings"]["bindings"], provisioned["cloudflare_worker_previous_bindings"])
-        self.assertEqual(http_client.calls[1]["method"], "DELETE")
+        self.assertEqual(http_client.calls[1]["method"], "POST")
+        self.assertEqual(
+            http_client.calls[1]["url"],
+            "https://api.cloudflare.com/client/v4/zones/zone/email/routing/disable",
+        )
+        self.assertEqual(
+            http_client.calls[1]["kwargs"]["json"],
+            {"name": "tm-abc123.mail.example.com"},
+        )

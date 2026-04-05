@@ -145,6 +145,14 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
 
         provisioner.create_subdomain("new.example.com")
 
+        self.assertEqual(
+            http_client.requests[0]["url"],
+            "https://api.cloudflare.com/client/v4/zones/zone/email/routing/enable",
+        )
+        self.assertEqual(
+            http_client.requests[0]["kwargs"]["json"],
+            {"name": "new.example.com"},
+        )
         headers = http_client.requests[0]["kwargs"]["headers"]
         self.assertEqual(headers["X-Auth-Email"], "admin@example.com")
         self.assertEqual(headers["X-Auth-Key"], "global-key")
@@ -164,6 +172,27 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         headers = http_client.requests[0]["kwargs"]["headers"]
         self.assertEqual(headers["Authorization"], "Bearer token")
         self.assertNotIn("X-Auth-Key", headers)
+
+    def test_delete_subdomain_uses_email_routing_disable_with_domain_name(self):
+        settings = self.make_settings(
+            cloudflare_api_email="admin@example.com",
+            cloudflare_global_api_key=SecretStr("global-key"),
+        )
+        response = self._make_response(200, {"success": True})
+        http_client = self._DummyHttpClient([response])
+        provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings, http_client=http_client)
+
+        provisioner.delete_subdomain("tm-abc.mail.example.com")
+
+        self.assertEqual(http_client.requests[0]["method"], "POST")
+        self.assertEqual(
+            http_client.requests[0]["url"],
+            "https://api.cloudflare.com/client/v4/zones/zone/email/routing/disable",
+        )
+        self.assertEqual(
+            http_client.requests[0]["kwargs"]["json"],
+            {"name": "tm-abc.mail.example.com"},
+        )
 
     class _DummyHttpClient:
         def __init__(self, responses: List[Any]):

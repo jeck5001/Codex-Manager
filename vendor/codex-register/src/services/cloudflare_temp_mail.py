@@ -4,7 +4,6 @@ import json
 import secrets
 import string
 import time
-from urllib.parse import quote
 from typing import Any, Dict, List, Optional
 
 from ..core.http_client import HTTPClient, RequestConfig
@@ -245,15 +244,16 @@ class CloudflareTempMailProvisioner:
         )
 
     def _zones_subdomain_url(self) -> str:
-        zone_id = self.settings.cloudflare_zone_id
         return (
             f"https://api.cloudflare.com/client/v4/zones/{self._zone_id}"
-            "/email/sending/subdomains"
+            "/email/routing/enable"
         )
 
-    def _zones_subdomain_item_url(self, subdomain_identifier: str) -> str:
-        identifier = quote(str(subdomain_identifier or "").strip(), safe="")
-        return f"{self._zones_subdomain_url()}/{identifier}"
+    def _zones_subdomain_disable_url(self) -> str:
+        return (
+            f"https://api.cloudflare.com/client/v4/zones/{self._zone_id}"
+            "/email/routing/disable"
+        )
 
     def _bearer_headers(self) -> Dict[str, str]:
         if not self._api_token:
@@ -353,8 +353,9 @@ class CloudflareTempMailProvisioner:
 
     def delete_subdomain(self, subdomain_identifier: str) -> Dict[str, Any]:
         response = self.http_client.request(
-            "DELETE",
-            self._zones_subdomain_item_url(subdomain_identifier),
+            "POST",
+            self._zones_subdomain_disable_url(),
+            json={"name": subdomain_identifier},
             headers=self._auth_headers(prefer_global_key=True),
         )
         return self._process_response(response, "delete subdomain")
@@ -406,10 +407,12 @@ class CloudflareTempMailProvisioner:
             elif "result" in provisioned:
                 subdomain_payload = provisioned
 
-        identifier = self._extract_subdomain_identifier(subdomain_payload, domain)
-        if identifier:
+        disable_target = self._normalize_str(domain) or self._extract_subdomain_identifier(
+            subdomain_payload, domain
+        )
+        if disable_target:
             try:
-                cleanup_result["cloudflare_subdomain_delete"] = self.delete_subdomain(identifier)
+                cleanup_result["cloudflare_subdomain_delete"] = self.delete_subdomain(disable_target)
             except Exception as exc:
                 cleanup_errors.append(f"delete subdomain failed: {exc}")
 
