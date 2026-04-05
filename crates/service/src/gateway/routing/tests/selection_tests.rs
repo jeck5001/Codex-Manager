@@ -249,7 +249,11 @@ fn gateway_error_status_change_invalidates_candidate_snapshot_cache() {
     ));
 
     let second = collect_gateway_candidates(&storage).expect("second candidates");
-    assert_eq!(second.len(), 1, "usage-limit cooldown should not evict cached candidate");
+    assert_eq!(
+        second.len(),
+        1,
+        "usage-limit cooldown should not evict cached candidate"
+    );
 
     clear_candidate_cache_for_tests();
     if let Some(value) = previous_ttl {
@@ -337,7 +341,10 @@ fn gateway_deactivation_status_change_invalidates_candidate_snapshot_cache() {
     ));
 
     let second = collect_gateway_candidates(&storage).expect("second candidates");
-    assert!(second.is_empty(), "deactivation should invalidate cached candidate");
+    assert!(
+        second.is_empty(),
+        "deactivation should invalidate cached candidate"
+    );
 
     clear_candidate_cache_for_tests();
     if let Some(value) = previous_ttl {
@@ -439,7 +446,10 @@ fn gateway_usage_limit_with_exhausted_snapshot_invalidates_candidate_snapshot_ca
     ));
 
     let second = collect_gateway_candidates(&storage).expect("second candidates");
-    assert!(second.is_empty(), "confirmed exhausted snapshot should invalidate cached candidate");
+    assert!(
+        second.is_empty(),
+        "confirmed exhausted snapshot should invalidate cached candidate"
+    );
 
     clear_candidate_cache_for_tests();
     if let Some(value) = previous_ttl {

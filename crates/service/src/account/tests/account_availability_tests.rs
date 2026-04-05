@@ -88,7 +88,10 @@ fn availability_marks_missing_secondary_available_when_both_secondary_fields_abs
 #[test]
 fn availability_marks_partial_secondary_missing_available() {
     let record = snap(Some(10.0), Some(300), None, Some(10080));
-    assert!(matches!(evaluate_snapshot(&record), Availability::Available));
+    assert!(matches!(
+        evaluate_snapshot(&record),
+        Availability::Available
+    ));
 }
 
 /// 函数 `availability_marks_exhausted_secondary_unavailable`

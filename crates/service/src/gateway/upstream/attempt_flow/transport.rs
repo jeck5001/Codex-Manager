@@ -435,8 +435,9 @@ fn send_upstream_request_with_compression_override(
         // 对 localhost/127.0.0.1 强制 close，避免请求落到已失效连接。
         force_connection_close(&mut upstream_headers);
     }
-    let request_compression = compression_override
-        .unwrap_or_else(|| resolve_request_compression(target_url, request_ctx.request_path, is_stream));
+    let request_compression = compression_override.unwrap_or_else(|| {
+        resolve_request_compression(target_url, request_ctx.request_path, is_stream)
+    });
     let body_for_request = encode_request_body(
         request_ctx.request_path,
         body,

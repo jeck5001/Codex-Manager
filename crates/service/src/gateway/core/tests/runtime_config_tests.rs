@@ -354,8 +354,10 @@ fn set_originator_updates_env_and_dynamic_user_agent() {
         std::env::var(ENV_ORIGINATOR).ok().as_deref(),
         Some("codex_cli_rs_windows")
     );
-    let expected_prefix =
-        format!("codex_cli_rs_windows/{}", current_codex_user_agent_version());
+    let expected_prefix = format!(
+        "codex_cli_rs_windows/{}",
+        current_codex_user_agent_version()
+    );
     assert!(current_codex_user_agent().contains(expected_prefix.as_str()));
 }
 
@@ -467,7 +469,10 @@ fn terminal_user_agent_prefers_term_program_over_wt_session() {
     let _vte = EnvGuard::clear("VTE_VERSION");
     let _term = EnvGuard::clear("TERM");
 
-    assert_eq!(current_codex_terminal_user_agent_token(), "WindowsTerminal/1.21");
+    assert_eq!(
+        current_codex_terminal_user_agent_token(),
+        "WindowsTerminal/1.21"
+    );
 }
 
 #[test]

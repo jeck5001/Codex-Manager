@@ -12,10 +12,7 @@ use super::fallback_branch::{handle_openai_fallback_branch, FallbackBranchResult
 use super::stateless_retry::{retry_stateless_then_optional_alt, StatelessRetryResult};
 use super::transport::UpstreamRequestContext;
 
-fn first_header_value<'a>(
-    headers: &'a reqwest::header::HeaderMap,
-    name: &str,
-) -> Option<&'a str> {
+fn first_header_value<'a>(headers: &'a reqwest::header::HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name).and_then(|value| value.to_str().ok())
 }
 
@@ -905,8 +902,8 @@ mod tests {
                     request.respond(response).expect("respond first");
                 } else {
                     assert_eq!(content_encoding, None);
-                    let response = Response::from_string("{\"ok\":true}")
-                        .with_status_code(StatusCode(200));
+                    let response =
+                        Response::from_string("{\"ok\":true}").with_status_code(StatusCode(200));
                     request.respond(response).expect("respond second");
                 }
             }
@@ -1008,8 +1005,8 @@ mod tests {
                     request.respond(response).expect("respond first");
                 } else {
                     assert_eq!(content_encoding, None);
-                    let response = Response::from_string("{\"ok\":true}")
-                        .with_status_code(StatusCode(200));
+                    let response =
+                        Response::from_string("{\"ok\":true}").with_status_code(StatusCode(200));
                     request.respond(response).expect("respond second");
                 }
             }

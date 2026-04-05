@@ -234,8 +234,7 @@ fn upstream_base_url_cell() -> &'static RwLock<String> {
 /// # 返回
 /// 返回函数执行结果
 fn upstream_fallback_base_url_cell() -> &'static RwLock<Option<String>> {
-    UPSTREAM_FALLBACK_BASE_URL
-        .get_or_init(|| RwLock::new(None))
+    UPSTREAM_FALLBACK_BASE_URL.get_or_init(|| RwLock::new(None))
 }
 
 /// 函数 `env_non_empty`

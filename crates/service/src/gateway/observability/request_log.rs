@@ -1,5 +1,5 @@
-use codexmanager_core::storage::{now_ts, RequestLog, RequestTokenStat, Storage};
 use crate::gateway::error_log::GatewayErrorLogInput;
+use codexmanager_core::storage::{now_ts, RequestLog, RequestTokenStat, Storage};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct RequestLogUsage {

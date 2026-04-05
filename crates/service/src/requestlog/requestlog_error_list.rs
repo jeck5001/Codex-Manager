@@ -39,7 +39,10 @@ pub(crate) fn read_gateway_error_logs(
         .map_err(|err| format!("list gateway error log stages failed: {err}"))?;
 
     Ok(GatewayErrorLogListResult {
-        items: items.into_iter().map(to_gateway_error_log_summary).collect(),
+        items: items
+            .into_iter()
+            .map(to_gateway_error_log_summary)
+            .collect(),
         total,
         page,
         page_size,
@@ -115,10 +118,7 @@ mod tests {
     #[test]
     fn gateway_error_log_page_size_is_bounded() {
         assert_eq!(normalize_page_size(0), DEFAULT_GATEWAY_ERROR_LOG_PAGE_SIZE);
-        assert_eq!(
-            normalize_page_size(999),
-            MAX_GATEWAY_ERROR_LOG_PAGE_SIZE
-        );
+        assert_eq!(normalize_page_size(999), MAX_GATEWAY_ERROR_LOG_PAGE_SIZE);
     }
 
     #[test]
