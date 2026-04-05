@@ -580,12 +580,12 @@ async function handleSaveCloudflareSettings(e) {
     try {
         await api.post('/settings/temp-mail/cloudflare', payload);
         toast.success('Cloudflare Temp-Mail 设置已保存');
-        loadCloudflareSettings();
+        await loadCloudflareSettings();
+        elements.saveCfSettingsBtn.textContent = originalLabel;
     } catch (error) {
         toast.error('保存 Cloudflare 设置失败: ' + error.message);
-    } finally {
-        elements.saveCfSettingsBtn.disabled = false;
         elements.saveCfSettingsBtn.textContent = originalLabel;
+        elements.saveCfSettingsBtn.disabled = !cloudflareSettingsReady;
     }
 }
 
