@@ -121,6 +121,7 @@ fn run_auto_register_pool_fill(
                 .map_err(|_| "concurrency overflow".to_string())?,
             mode: "parallel",
         },
+        None,
     )?;
 
     let task_uuids = extract_task_uuids(&started);
