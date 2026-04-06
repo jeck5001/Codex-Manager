@@ -1155,7 +1155,7 @@ fn gemini_sse_reader_waits_for_completed_full_arguments_before_emitting_tool_cal
         concat!(
             "data: {\"type\":\"response.output_item.added\",\"response_id\":\"resp_gemini_reader_1\",\"model\":\"gpt-5.4\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_linux_do_1\",\"name\":\"chrome_devtools_new_page\"}}\n\n",
             "data: {\"type\":\"response.output_item.done\",\"response_id\":\"resp_gemini_reader_1\",\"model\":\"gpt-5.4\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_linux_do_1\",\"call_id\":\"call_linux_do_1\",\"name\":\"chrome_devtools_new_page\",\"arguments\":\"{}\"}}\n\n",
-            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gemini_reader_1\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[{\"type\":\"function_call\",\"id\":\"fc_linux_do_1\",\"call_id\":\"call_linux_do_1\",\"name\":\"chrome_devtools_new_page\",\"arguments\":\"{\\\"url\\\":\\\"https://linux.do\\\"}\"}],\"usage\":{\"input_tokens\":4,\"output_tokens\":5,\"total_tokens\":9}}}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gemini_reader_1\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[{\"type\":\"function_call\",\"id\":\"fc_linux_do_1\",\"call_id\":\"call_linux_do_1\",\"name\":\"chrome_devtools_new_page\",\"arguments\":\"{\\\"url\\\":\\\"https://linux.do\\\"}\"}],\"usage\":{\"input_tokens\":4,\"input_tokens_details\":{\"cached_tokens\":2},\"output_tokens\":5,\"total_tokens\":9,\"output_tokens_details\":{\"reasoning_tokens\":1}}}}\n\n",
             "data: [DONE]\n\n"
         ),
     );
@@ -1190,6 +1190,10 @@ fn gemini_sse_reader_waits_for_completed_full_arguments_before_emitting_tool_cal
         .lock()
         .expect("lock usage collector")
         .clone();
+    assert_eq!(usage.input_tokens, Some(4));
+    assert_eq!(usage.cached_input_tokens, Some(2));
+    assert_eq!(usage.output_tokens, Some(5));
+    assert_eq!(usage.reasoning_output_tokens, Some(1));
     assert_eq!(usage.total_tokens, Some(9));
 }
 

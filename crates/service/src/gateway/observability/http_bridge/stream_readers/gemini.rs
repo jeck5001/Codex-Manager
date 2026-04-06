@@ -19,8 +19,10 @@ struct GeminiSseState {
     response_id: Option<String>,
     model: Option<String>,
     input_tokens: i64,
+    cached_input_tokens: i64,
     output_tokens: i64,
     total_tokens: Option<i64>,
+    reasoning_output_tokens: i64,
     output_text: String,
     completed_seen: bool,
     pending_tool_calls: BTreeMap<i64, PendingToolCall>,
@@ -349,6 +351,13 @@ impl GeminiSseReader {
                     .and_then(Value::as_i64)
                     .or_else(|| usage.get("prompt_tokens").and_then(Value::as_i64))
                     .unwrap_or(self.state.input_tokens);
+                self.state.cached_input_tokens = usage
+                    .get("input_tokens_details")
+                    .and_then(Value::as_object)
+                    .and_then(|details| details.get("cached_tokens"))
+                    .and_then(Value::as_i64)
+                    .or_else(|| usage.get("cached_input_tokens").and_then(Value::as_i64))
+                    .unwrap_or(self.state.cached_input_tokens);
                 self.state.output_tokens = usage
                     .get("output_tokens")
                     .and_then(Value::as_i64)
@@ -358,6 +367,13 @@ impl GeminiSseReader {
                     .get("total_tokens")
                     .and_then(Value::as_i64)
                     .or(self.state.total_tokens);
+                self.state.reasoning_output_tokens = usage
+                    .get("output_tokens_details")
+                    .and_then(Value::as_object)
+                    .and_then(|details| details.get("reasoning_tokens"))
+                    .and_then(Value::as_i64)
+                    .or_else(|| usage.get("reasoning_output_tokens").and_then(Value::as_i64))
+                    .unwrap_or(self.state.reasoning_output_tokens);
             }
         }
     }
@@ -419,8 +435,10 @@ impl GeminiSseReader {
         self.state.finished = true;
         if let Ok(mut usage) = self.usage_collector.lock() {
             usage.input_tokens = Some(self.state.input_tokens.max(0));
+            usage.cached_input_tokens = Some(self.state.cached_input_tokens.max(0));
             usage.output_tokens = Some(self.state.output_tokens.max(0));
             usage.total_tokens = self.state.total_tokens.map(|value| value.max(0));
+            usage.reasoning_output_tokens = Some(self.state.reasoning_output_tokens.max(0));
             if !self.state.output_text.trim().is_empty() {
                 usage.output_text = Some(self.state.output_text.clone());
             }
