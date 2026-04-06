@@ -267,6 +267,86 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         self.assertEqual(fake_db.added[0].config["admin_password"], "secret")
         self.assertEqual(fake_db.added[0].config["domain"], "tm-fixed.mail.example.com")
 
+    def test_temp_mail_create_uses_selected_domain_config_snapshot(self):
+        fake_db = _FakeDB(first_results=[None])
+        self.module.get_db = lambda: _DBContext(fake_db)
+        provisioner_inits: List[dict] = []
+
+        class FakeProvisioner:
+            def __init__(self, settings, *_args, **kwargs):
+                overrides = kwargs.get("overrides") or {}
+                provisioner_inits.append(
+                    {
+                        "zone_id": overrides.get("cloudflare_zone_id", settings.cloudflare_zone_id),
+                        "domain_base": overrides.get("temp_mail_domain_base", settings.temp_mail_domain_base),
+                        "mode": overrides.get("temp_mail_subdomain_mode", settings.temp_mail_subdomain_mode),
+                        "length": overrides.get("temp_mail_subdomain_length", settings.temp_mail_subdomain_length),
+                        "prefix": overrides.get("temp_mail_subdomain_prefix", settings.temp_mail_subdomain_prefix),
+                    }
+                )
+
+            def provision_domain(self):
+                return {
+                    "persisted_config": {
+                        "domain": "tm-fixed.mail.example.com",
+                    },
+                    "cleanup_context": {
+                        "domain": "tm-fixed.mail.example.com",
+                    },
+                }
+
+        self.module.CloudflareTempMailProvisioner = FakeProvisioner
+        self.module.get_settings = lambda: types.SimpleNamespace(
+            temp_mail_base_url="https://worker.example.com",
+            temp_mail_admin_password=SecretStr("secret"),
+            cloudflare_api_token=SecretStr("token"),
+            cloudflare_api_email="",
+            cloudflare_global_api_key=SecretStr(""),
+            cloudflare_account_id="acc-1",
+            cloudflare_zone_id="zone-global",
+            cloudflare_worker_name="temp-email",
+            temp_mail_domain_base="global.example.com",
+            temp_mail_subdomain_mode="random",
+            temp_mail_subdomain_length=6,
+            temp_mail_subdomain_prefix="tm",
+            temp_mail_sync_cloudflare_enabled=True,
+            temp_mail_require_cloudflare_sync=True,
+            temp_mail_domain_configs=[
+                {
+                    "id": "cfg-2",
+                    "name": "备用域名",
+                    "zone_id": "zone-2",
+                    "domain_base": "backup.example.com",
+                    "subdomain_mode": "sequence",
+                    "subdomain_length": 8,
+                    "subdomain_prefix": "bk",
+                    "sync_cloudflare_enabled": False,
+                    "require_cloudflare_sync": False,
+                }
+            ],
+        )
+
+        response = self.client.post(
+            "/api/email-services",
+            json={
+                "service_type": "temp_mail",
+                "name": "Temp Mail Configured",
+                "config": {"domain_config_id": "cfg-2"},
+                "enabled": True,
+                "priority": 0,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(provisioner_inits), 1)
+        self.assertEqual(provisioner_inits[0]["zone_id"], "zone-2")
+        self.assertEqual(provisioner_inits[0]["domain_base"], "backup.example.com")
+        self.assertEqual(provisioner_inits[0]["mode"], "sequence")
+        self.assertEqual(provisioner_inits[0]["length"], 8)
+        self.assertEqual(provisioner_inits[0]["prefix"], "bk")
+        self.assertEqual(fake_db.added[0].config["domain_config_id"], "cfg-2")
+        self.assertEqual(fake_db.added[0].config["domain_config_name"], "备用域名")
+
     def test_temp_mail_create_provisioning_failure_returns_http_error_and_skips_insert(self):
         fake_db = _FakeDB(first_results=[None])
         self.module.get_db = lambda: _DBContext(fake_db)
