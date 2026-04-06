@@ -85,6 +85,116 @@ fn gemini_stream_generate_content_request_uses_sse_adapter_and_maps_tools() {
 }
 
 #[test]
+fn gemini_auto_tool_config_filters_to_allowed_function_names() {
+    let body = serde_json::json!({
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{ "text": "只允许 browser tool" }]
+            }
+        ],
+        "tools": [{
+            "functionDeclarations": [{
+                "name": "list_files",
+                "parameters": { "type": "object", "properties": {} }
+            }, {
+                "name": "mcp__browser__take_screenshot",
+                "parameters": { "type": "object", "properties": {} }
+            }]
+        }],
+        "toolConfig": {
+            "functionCallingConfig": {
+                "mode": "AUTO",
+                "allowedFunctionNames": ["mcp__browser__take_screenshot"]
+            }
+        }
+    });
+    let body = serde_json::to_vec(&body).expect("serialize request");
+
+    let adapted = adapt_request_for_protocol(
+        "gemini_native",
+        "/v1beta/models/gemini-2.5-pro:generateContent",
+        body,
+    )
+    .expect("adapt request");
+
+    let value: serde_json::Value = serde_json::from_slice(&adapted.body).expect("adapted json");
+    let tools = value["tools"].as_array().expect("tools array");
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0]["name"], "mcp__browser__take_screenshot");
+    assert_eq!(
+        value.get("tool_choice").and_then(serde_json::Value::as_str),
+        Some("auto")
+    );
+}
+
+#[test]
+fn gemini_function_response_with_inline_data_maps_to_function_call_output_items() {
+    let body = serde_json::json!({
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{ "text": "帮我看截图" }]
+            },
+            {
+                "role": "model",
+                "parts": [{
+                    "functionCall": {
+                        "name": "mcp__browser__take_screenshot",
+                        "id": "call_browser_1",
+                        "args": { "uid": "node-1" }
+                    }
+                }]
+            },
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "functionResponse": {
+                            "name": "mcp__browser__take_screenshot",
+                            "id": "call_browser_1",
+                            "response": { "output": "截图已生成" }
+                        }
+                    },
+                    {
+                        "inlineData": {
+                            "mimeType": "image/png",
+                            "data": "ZmFrZS1pbWFnZQ=="
+                        }
+                    }
+                ]
+            }
+        ]
+    });
+    let body = serde_json::to_vec(&body).expect("serialize request");
+
+    let adapted = adapt_request_for_protocol(
+        "gemini_native",
+        "/v1beta/models/gemini-2.5-pro:generateContent",
+        body,
+    )
+    .expect("adapt request");
+
+    let value: serde_json::Value = serde_json::from_slice(&adapted.body).expect("adapted json");
+    let input_items = value["input"].as_array().expect("input array");
+    let tool_output = input_items
+        .iter()
+        .find(|item| {
+            item.get("type").and_then(serde_json::Value::as_str) == Some("function_call_output")
+        })
+        .expect("function_call_output item");
+    assert_eq!(tool_output["call_id"], "call_browser_1");
+    let output_items = tool_output["output"].as_array().expect("tool output array");
+    assert_eq!(output_items[0]["type"], "input_text");
+    assert_eq!(output_items[0]["text"], "截图已生成");
+    assert_eq!(output_items[1]["type"], "input_image");
+    assert_eq!(
+        output_items[1]["image_url"],
+        "data:image/png;base64,ZmFrZS1pbWFnZQ=="
+    );
+}
+
+#[test]
 fn gemini_tools_preserve_parameters_json_schema_required_fields() {
     let body = serde_json::json!({
         "contents": [

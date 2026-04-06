@@ -1,8 +1,7 @@
 use super::{
     append_output_text, collect_output_text_from_event_fields, collect_response_output_text, json,
-    sse_keepalive_interval, Arc, Cursor, Map, Mutex, Read, SseKeepAliveFrame,
-    ToolNameRestoreMap, UpstreamResponseUsage, UpstreamSseFramePump, UpstreamSseFramePumpItem,
-    Value,
+    sse_keepalive_interval, Arc, Cursor, Map, Mutex, Read, SseKeepAliveFrame, ToolNameRestoreMap,
+    UpstreamResponseUsage, UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
 };
 use std::collections::BTreeMap;
 
@@ -102,7 +101,10 @@ impl GeminiSseReader {
         let mut out = String::new();
         match event_type {
             "response.output_text.delta" => {
-                let fragment = value.get("delta").and_then(Value::as_str).unwrap_or_default();
+                let fragment = value
+                    .get("delta")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 if fragment.is_empty() {
                     return Vec::new();
                 }
@@ -125,11 +127,17 @@ impl GeminiSseReader {
                     collect_output_text_from_event_fields(value, &mut self.state.output_text);
                     return Vec::new();
                 }
-                let output_index = value.get("output_index").and_then(Value::as_i64).unwrap_or(0);
-                let entry = self.state.pending_tool_calls.entry(output_index).or_default();
+                let output_index = value
+                    .get("output_index")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                let entry = self
+                    .state
+                    .pending_tool_calls
+                    .entry(output_index)
+                    .or_default();
                 if let Some(call_id) = item
                     .get("call_id")
-                    .or_else(|| item.get("id"))
                     .and_then(Value::as_str)
                     .map(str::trim)
                     .filter(|current| !current.is_empty())
@@ -147,16 +155,24 @@ impl GeminiSseReader {
                 if let Some(arguments) = extract_function_call_arguments(item) {
                     merge_arguments(&mut entry.arguments, arguments.as_str());
                 }
-                if event_type == "response.output_item.done" {
+                if event_type == "response.output_item.done"
+                    && has_meaningful_tool_arguments(&entry.arguments)
+                {
                     self.emit_pending_tool_call(&mut out, output_index);
                 }
             }
             "response.function_call_arguments.delta" | "response.function_call_arguments.done" => {
-                let output_index = value.get("output_index").and_then(Value::as_i64).unwrap_or(0);
-                let entry = self.state.pending_tool_calls.entry(output_index).or_default();
+                let output_index = value
+                    .get("output_index")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                let entry = self
+                    .state
+                    .pending_tool_calls
+                    .entry(output_index)
+                    .or_default();
                 if let Some(call_id) = value
                     .get("call_id")
-                    .or_else(|| value.get("item_id"))
                     .and_then(Value::as_str)
                     .map(str::trim)
                     .filter(|current| !current.is_empty())
@@ -170,7 +186,10 @@ impl GeminiSseReader {
                 {
                     merge_arguments(&mut entry.arguments, delta);
                 }
-                if event_type == "response.function_call_arguments.done" {
+                if event_type == "response.function_call_arguments.done"
+                    && entry.call_id.is_some()
+                    && has_meaningful_tool_arguments(&entry.arguments)
+                {
                     self.emit_pending_tool_call(&mut out, output_index);
                 }
             }
@@ -246,12 +265,19 @@ impl GeminiSseReader {
                 let Some(item_obj) = item.as_object() else {
                     continue;
                 };
-                let item_type = item_obj.get("type").and_then(Value::as_str).unwrap_or_default();
+                let item_type = item_obj
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 if !matches!(item_type, "function_call" | "custom_tool_call") {
                     continue;
                 }
                 let output_index = index as i64;
-                let entry = self.state.pending_tool_calls.entry(output_index).or_default();
+                let entry = self
+                    .state
+                    .pending_tool_calls
+                    .entry(output_index)
+                    .or_default();
                 if entry.name.is_none() {
                     entry.name = item_obj
                         .get("name")
@@ -263,13 +289,12 @@ impl GeminiSseReader {
                 if entry.call_id.is_none() {
                     entry.call_id = item_obj
                         .get("call_id")
-                        .or_else(|| item_obj.get("id"))
                         .and_then(Value::as_str)
                         .map(str::trim)
                         .filter(|current| !current.is_empty())
                         .map(str::to_string);
                 }
-                if entry.arguments.is_empty() {
+                if !has_meaningful_tool_arguments(&entry.arguments) {
                     if let Some(arguments) = extract_function_call_arguments(item_obj) {
                         entry.arguments = arguments;
                     }
@@ -277,11 +302,23 @@ impl GeminiSseReader {
                 self.emit_pending_tool_call(out, output_index);
             }
         }
+        let pending_indices = self
+            .state
+            .pending_tool_calls
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        for output_index in pending_indices {
+            self.emit_pending_tool_call(out, output_index);
+        }
         let usage_metadata = response
             .get("usage")
             .and_then(Value::as_object)
             .and_then(build_gemini_usage_metadata);
-        append_gemini_sse_event(out, &self.build_chunk(Vec::new(), Some("STOP"), usage_metadata));
+        append_gemini_sse_event(
+            out,
+            &self.build_chunk(Vec::new(), Some("STOP"), usage_metadata),
+        );
     }
 
     fn capture_response_meta(&mut self, value: &Value) {
@@ -334,7 +371,10 @@ impl GeminiSseReader {
             json!({ "role": "model", "parts": parts.clone() }),
         );
         if let Some(reason) = finish_reason {
-            candidate.insert("finishReason".to_string(), Value::String(reason.to_string()));
+            candidate.insert(
+                "finishReason".to_string(),
+                Value::String(reason.to_string()),
+            );
         }
         let mut payload = serde_json::Map::new();
         payload.insert(
@@ -355,7 +395,10 @@ impl GeminiSseReader {
                     .unwrap_or_else(|| "unknown".to_string()),
             ),
         );
-        payload.insert("candidates".to_string(), Value::Array(vec![Value::Object(candidate)]));
+        payload.insert(
+            "candidates".to_string(),
+            Value::Array(vec![Value::Object(candidate)]),
+        );
         if let Some(function_calls) = build_function_calls(&parts) {
             payload.insert("functionCalls".to_string(), function_calls);
         }
@@ -466,7 +509,13 @@ fn extract_usage_i64(usage: &Map<String, Value>, keys: &[&str]) -> Option<i64> {
 }
 
 fn extract_function_call_arguments(item_obj: &Map<String, Value>) -> Option<String> {
-    const ARGUMENT_KEYS: [&str; 5] = ["arguments", "input", "arguments_json", "parsed_arguments", "args"];
+    const ARGUMENT_KEYS: [&str; 5] = [
+        "arguments",
+        "input",
+        "arguments_json",
+        "parsed_arguments",
+        "args",
+    ];
     for key in ARGUMENT_KEYS {
         let Some(value) = item_obj.get(key) else {
             continue;
@@ -493,6 +542,12 @@ fn parse_json_object_or_empty(raw: &str) -> Value {
         .ok()
         .filter(Value::is_object)
         .unwrap_or_else(|| json!({}))
+}
+
+fn has_meaningful_tool_arguments(raw: &str) -> bool {
+    parse_json_object_or_empty(raw)
+        .as_object()
+        .is_some_and(|obj| !obj.is_empty())
 }
 
 fn merge_arguments(existing: &mut String, fragment: &str) {

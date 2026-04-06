@@ -58,9 +58,7 @@ pub(super) fn convert_openai_json_to_gemini(
         .map_err(|err| format!("serialize gemini response failed: {err}"))
 }
 
-pub(super) fn convert_gemini_json_to_sse(
-    body: &[u8],
-) -> Result<(Vec<u8>, &'static str), String> {
+pub(super) fn convert_gemini_json_to_sse(body: &[u8]) -> Result<(Vec<u8>, &'static str), String> {
     let value: Value =
         serde_json::from_slice(body).map_err(|_| "invalid gemini json response".to_string())?;
     let mut out = String::new();
@@ -106,7 +104,8 @@ pub(super) fn convert_openai_sse_to_gemini(
         let Some(value) = parse_openai_sse_event_value(&data, event_name.as_deref()) else {
             continue;
         };
-        for chunk in convert_openai_event_to_gemini_chunks(&value, &mut state, tool_name_restore_map)
+        for chunk in
+            convert_openai_event_to_gemini_chunks(&value, &mut state, tool_name_restore_map)
         {
             append_gemini_sse_event(&mut out, &chunk);
         }
@@ -140,7 +139,10 @@ fn build_gemini_response_from_chat_completions(
     value: &Value,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
 ) -> Result<Value, String> {
-    let model = value.get("model").and_then(Value::as_str).unwrap_or("unknown");
+    let model = value
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
     let response_id = value
         .get("id")
         .and_then(Value::as_str)
@@ -156,7 +158,8 @@ fn build_gemini_response_from_chat_completions(
         .ok_or_else(|| "missing upstream message object".to_string())?;
 
     let mut parts = Vec::new();
-    if let Some(text) = extract_openai_chat_text_content(message.get("content").unwrap_or(&Value::Null))
+    if let Some(text) =
+        extract_openai_chat_text_content(message.get("content").unwrap_or(&Value::Null))
     {
         if !text.trim().is_empty() {
             parts.push(json!({ "text": text }));
@@ -216,7 +219,10 @@ fn build_gemini_response_from_responses(
     value: &Value,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
 ) -> Result<Value, String> {
-    let model = value.get("model").and_then(Value::as_str).unwrap_or("unknown");
+    let model = value
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
     let response_id = value
         .get("id")
         .and_then(Value::as_str)
@@ -227,7 +233,10 @@ fn build_gemini_response_from_responses(
             let Some(item_obj) = output_item.as_object() else {
                 continue;
             };
-            let item_type = item_obj.get("type").and_then(Value::as_str).unwrap_or_default();
+            let item_type = item_obj
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             match item_type {
                 "message" => {
                     if let Some(content) = item_obj.get("content").and_then(Value::as_array) {
@@ -302,12 +311,21 @@ fn build_gemini_response(
         json!({ "role": "model", "parts": parts.clone() }),
     );
     if let Some(reason) = finish_reason {
-        candidate.insert("finishReason".to_string(), Value::String(reason.to_string()));
+        candidate.insert(
+            "finishReason".to_string(),
+            Value::String(reason.to_string()),
+        );
     }
     let mut payload = serde_json::Map::new();
-    payload.insert("responseId".to_string(), Value::String(response_id.to_string()));
+    payload.insert(
+        "responseId".to_string(),
+        Value::String(response_id.to_string()),
+    );
     payload.insert("modelVersion".to_string(), Value::String(model.to_string()));
-    payload.insert("candidates".to_string(), Value::Array(vec![Value::Object(candidate)]));
+    payload.insert(
+        "candidates".to_string(),
+        Value::Array(vec![Value::Object(candidate)]),
+    );
     if let Some(function_calls) = build_gemini_function_calls(&parts) {
         payload.insert("functionCalls".to_string(), function_calls);
     }
@@ -360,8 +378,7 @@ fn build_gemini_function_calls(parts: &[Value]) -> Option<Value> {
 fn build_gemini_usage_metadata(usage: Option<&Map<String, Value>>) -> Option<Value> {
     let usage = usage?;
     let prompt = extract_usage_i64(usage, &["input_tokens", "prompt_tokens"])?;
-    let candidates =
-        extract_usage_i64(usage, &["output_tokens", "completion_tokens"]).unwrap_or(0);
+    let candidates = extract_usage_i64(usage, &["output_tokens", "completion_tokens"]).unwrap_or(0);
     let total = extract_usage_i64(usage, &["total_tokens"]).unwrap_or(prompt + candidates);
     Some(json!({
         "promptTokenCount": prompt,
@@ -407,7 +424,6 @@ fn map_response_function_call_to_gemini_part(
     function_call.insert("args".to_string(), args);
     if let Some(call_id) = item_obj
         .get("call_id")
-        .or_else(|| item_obj.get("id"))
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -626,7 +642,10 @@ fn convert_openai_event_to_gemini_chunks(
     };
     match event_type {
         "response.output_text.delta" => {
-            let fragment = value.get("delta").and_then(Value::as_str).unwrap_or_default();
+            let fragment = value
+                .get("delta")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             if !fragment.is_empty() {
                 state.output_text.push_str(fragment);
                 chunks.push(build_gemini_chunk(
@@ -647,11 +666,13 @@ fn convert_openai_event_to_gemini_chunks(
             };
             let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
             if matches!(item_type, "function_call" | "custom_tool_call") {
-                let output_index = value.get("output_index").and_then(Value::as_i64).unwrap_or(0);
+                let output_index = value
+                    .get("output_index")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
                 let entry = state.pending_tool_calls.entry(output_index).or_default();
                 if let Some(call_id) = item
                     .get("call_id")
-                    .or_else(|| item.get("id"))
                     .and_then(Value::as_str)
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
@@ -669,7 +690,9 @@ fn convert_openai_event_to_gemini_chunks(
                 if let Some(arguments) = extract_function_call_arguments_raw(item) {
                     merge_arguments(&mut entry.arguments, arguments.as_str());
                 }
-                if event_type == "response.output_item.done" {
+                if event_type == "response.output_item.done"
+                    && has_meaningful_tool_arguments(&entry.arguments)
+                {
                     let emitted = PendingToolCall {
                         call_id: entry.call_id.clone(),
                         name: entry.name.clone(),
@@ -687,11 +710,13 @@ fn convert_openai_event_to_gemini_chunks(
             }
         }
         "response.function_call_arguments.delta" | "response.function_call_arguments.done" => {
-            let output_index = value.get("output_index").and_then(Value::as_i64).unwrap_or(0);
+            let output_index = value
+                .get("output_index")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
             let entry = state.pending_tool_calls.entry(output_index).or_default();
             if let Some(call_id) = value
                 .get("call_id")
-                .or_else(|| value.get("item_id"))
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
@@ -705,7 +730,10 @@ fn convert_openai_event_to_gemini_chunks(
             {
                 merge_arguments(&mut entry.arguments, delta);
             }
-            if event_type == "response.function_call_arguments.done" {
+            if event_type == "response.function_call_arguments.done"
+                && entry.call_id.is_some()
+                && has_meaningful_tool_arguments(&entry.arguments)
+            {
                 let emitted = PendingToolCall {
                     call_id: entry.call_id.clone(),
                     name: entry.name.clone(),
@@ -724,9 +752,82 @@ fn convert_openai_event_to_gemini_chunks(
         _ if is_response_completed_event_type(event_type) => {
             if let Some(response) = value.get("response") {
                 if let Some(response_obj) = response.as_object() {
+                    if let Some(output_items) = response.get("output").and_then(Value::as_array) {
+                        for (index, item) in output_items.iter().enumerate() {
+                            let Some(item_obj) = item.as_object() else {
+                                continue;
+                            };
+                            let item_type = item_obj
+                                .get("type")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default();
+                            if !matches!(item_type, "function_call" | "custom_tool_call") {
+                                continue;
+                            }
+                            let output_index = index as i64;
+                            let entry = state.pending_tool_calls.entry(output_index).or_default();
+                            if entry.name.is_none() {
+                                entry.name = item_obj
+                                    .get("name")
+                                    .and_then(Value::as_str)
+                                    .map(str::trim)
+                                    .filter(|value| !value.is_empty())
+                                    .map(str::to_string);
+                            }
+                            if entry.call_id.is_none() {
+                                entry.call_id = item_obj
+                                    .get("call_id")
+                                    .and_then(Value::as_str)
+                                    .map(str::trim)
+                                    .filter(|value| !value.is_empty())
+                                    .map(str::to_string);
+                            }
+                            if !has_meaningful_tool_arguments(&entry.arguments) {
+                                if let Some(arguments) =
+                                    extract_function_call_arguments_raw(item_obj)
+                                {
+                                    entry.arguments = arguments;
+                                }
+                            }
+                            let emitted = PendingToolCall {
+                                call_id: entry.call_id.clone(),
+                                name: entry.name.clone(),
+                                arguments: entry.arguments.clone(),
+                            };
+                            if let Some(chunk) = build_gemini_function_call_chunk(
+                                &emitted,
+                                state,
+                                output_index,
+                                tool_name_restore_map,
+                            ) {
+                                chunks.push(chunk);
+                            }
+                        }
+                    }
+                    let pending_indices =
+                        state.pending_tool_calls.keys().copied().collect::<Vec<_>>();
+                    for output_index in pending_indices {
+                        let emitted = match state.pending_tool_calls.get(&output_index) {
+                            Some(entry) => PendingToolCall {
+                                call_id: entry.call_id.clone(),
+                                name: entry.name.clone(),
+                                arguments: entry.arguments.clone(),
+                            },
+                            None => continue,
+                        };
+                        if let Some(chunk) = build_gemini_function_call_chunk(
+                            &emitted,
+                            state,
+                            output_index,
+                            tool_name_restore_map,
+                        ) {
+                            chunks.push(chunk);
+                        }
+                    }
                     let finish_reason = map_responses_finish_reason_to_gemini(response);
-                    let usage_metadata =
-                        build_gemini_usage_metadata(response_obj.get("usage").and_then(Value::as_object));
+                    let usage_metadata = build_gemini_usage_metadata(
+                        response_obj.get("usage").and_then(Value::as_object),
+                    );
                     chunks.push(build_gemini_chunk(
                         state,
                         Vec::new(),
@@ -800,6 +901,13 @@ fn build_gemini_function_call_chunk(
     ))
 }
 
+fn has_meaningful_tool_arguments(raw: &str) -> bool {
+    matches!(
+        parse_tool_arguments_as_object(raw),
+        Value::Object(ref obj) if !obj.is_empty()
+    )
+}
+
 fn merge_arguments(existing: &mut String, fragment: &str) {
     let trimmed = fragment.trim();
     if trimmed.is_empty() {
@@ -838,13 +946,11 @@ fn capture_sse_meta(value: &Value, state: &mut GeminiSseAggregationState) {
             state.model = Some(model.to_string());
         }
         if let Some(usage) = response.get("usage").and_then(Value::as_object) {
-            state.prompt_tokens =
-                extract_usage_i64(usage, &["input_tokens", "prompt_tokens"]).unwrap_or(state.prompt_tokens);
-            state.output_tokens =
-                extract_usage_i64(usage, &["output_tokens", "completion_tokens"])
-                    .unwrap_or(state.output_tokens);
-            state.total_tokens =
-                extract_usage_i64(usage, &["total_tokens"]).or(state.total_tokens);
+            state.prompt_tokens = extract_usage_i64(usage, &["input_tokens", "prompt_tokens"])
+                .unwrap_or(state.prompt_tokens);
+            state.output_tokens = extract_usage_i64(usage, &["output_tokens", "completion_tokens"])
+                .unwrap_or(state.output_tokens);
+            state.total_tokens = extract_usage_i64(usage, &["total_tokens"]).or(state.total_tokens);
         }
     }
 }
@@ -873,7 +979,10 @@ fn collect_sse_text_and_tools(value: &Value, state: &mut GeminiSseAggregationSta
             ) {
                 return;
             }
-            let output_index = value.get("output_index").and_then(Value::as_i64).unwrap_or(0);
+            let output_index = value
+                .get("output_index")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
             let entry = state.pending_tool_calls.entry(output_index).or_default();
             if let Some(name) = item
                 .get("name")
@@ -885,7 +994,6 @@ fn collect_sse_text_and_tools(value: &Value, state: &mut GeminiSseAggregationSta
             }
             if let Some(call_id) = item
                 .get("call_id")
-                .or_else(|| item.get("id"))
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
@@ -897,7 +1005,10 @@ fn collect_sse_text_and_tools(value: &Value, state: &mut GeminiSseAggregationSta
             }
         }
         "response.function_call_arguments.delta" | "response.function_call_arguments.done" => {
-            let output_index = value.get("output_index").and_then(Value::as_i64).unwrap_or(0);
+            let output_index = value
+                .get("output_index")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
             let entry = state.pending_tool_calls.entry(output_index).or_default();
             if let Some(delta) = value
                 .get("delta")

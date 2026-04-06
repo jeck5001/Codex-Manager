@@ -653,6 +653,32 @@ fn responses_defaults_tool_choice_and_reasoning_include_for_codex_backend() {
     }));
 }
 
+#[test]
+fn responses_preserve_specific_function_tool_choice_object() {
+    let body = json!({
+        "model": "gpt-5.3-codex",
+        "input": [{ "type": "message", "role": "user", "content": [{ "type": "input_text", "text": "hello" }] }],
+        "tools": [{ "type": "function", "name": "mcp__browser__take_screenshot", "parameters": { "type": "object", "properties": {} } }],
+        "tool_choice": {
+            "type": "function",
+            "name": "mcp__browser__take_screenshot"
+        }
+    });
+    let out = apply_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert_eq!(value["tool_choice"]["type"], "function");
+    assert_eq!(
+        value["tool_choice"]["name"],
+        "mcp__browser__take_screenshot"
+    );
+}
+
 /// 函数 `responses_defaults_empty_include_without_reasoning_for_codex_backend`
 ///
 /// 作者: gaohongshun

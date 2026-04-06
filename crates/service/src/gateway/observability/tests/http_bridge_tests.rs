@@ -4,8 +4,8 @@ use super::{
     parse_sse_frame_json, parse_usage_from_json, parse_usage_from_sse_frame,
     should_skip_chat_live_text_event, should_skip_completion_live_text_event,
     synthesize_chat_completion_sse_from_json, synthesize_completions_sse_from_json,
-    OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader, OpenAIStreamMeta,
-    PassthroughSseCollector, PassthroughSseUsageReader, SseKeepAliveFrame,
+    GeminiSseReader, OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader, OpenAIStreamMeta,
+    PassthroughSseCollector, PassthroughSseUsageReader, SseKeepAliveFrame, UpstreamResponseUsage,
 };
 use serde_json::json;
 use std::io::{Read, Write};
@@ -1146,6 +1146,51 @@ fn openai_completions_sse_reader_requires_terminal_event_before_success() {
     assert!(!mapped.contains("data: [DONE]"));
     assert!(!collector.saw_terminal);
     assert_eq!(collector.terminal_error.as_deref(), Some("网络抖动"));
+}
+
+#[test]
+fn gemini_sse_reader_waits_for_completed_full_arguments_before_emitting_tool_call() {
+    let upstream = open_mock_http_response(
+        "text/event-stream",
+        concat!(
+            "data: {\"type\":\"response.output_item.added\",\"response_id\":\"resp_gemini_reader_1\",\"model\":\"gpt-5.4\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_linux_do_1\",\"name\":\"chrome_devtools_new_page\"}}\n\n",
+            "data: {\"type\":\"response.output_item.done\",\"response_id\":\"resp_gemini_reader_1\",\"model\":\"gpt-5.4\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_linux_do_1\",\"call_id\":\"call_linux_do_1\",\"name\":\"chrome_devtools_new_page\",\"arguments\":\"{}\"}}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gemini_reader_1\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[{\"type\":\"function_call\",\"id\":\"fc_linux_do_1\",\"call_id\":\"call_linux_do_1\",\"name\":\"chrome_devtools_new_page\",\"arguments\":\"{\\\"url\\\":\\\"https://linux.do\\\"}\"}],\"usage\":{\"input_tokens\":4,\"output_tokens\":5,\"total_tokens\":9}}}\n\n",
+            "data: [DONE]\n\n"
+        ),
+    );
+    let usage_collector = Arc::new(Mutex::new(UpstreamResponseUsage::default()));
+    let mut reader = GeminiSseReader::new(upstream, Arc::clone(&usage_collector), None);
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read gemini mapped sse");
+
+    let events = mapped
+        .split("\n\n")
+        .filter_map(|frame| frame.strip_prefix("data: "))
+        .filter(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
+        .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
+        .collect::<Vec<_>>();
+    let tool_events = events
+        .iter()
+        .filter(|event| event["functionCalls"].is_array())
+        .collect::<Vec<_>>();
+    assert_eq!(tool_events.len(), 1);
+    assert_eq!(
+        tool_events[0]["functionCalls"][0]["name"],
+        "chrome_devtools_new_page"
+    );
+    assert_eq!(
+        tool_events[0]["functionCalls"][0]["args"]["url"],
+        "https://linux.do"
+    );
+
+    let usage = usage_collector
+        .lock()
+        .expect("lock usage collector")
+        .clone();
+    assert_eq!(usage.total_tokens, Some(9));
 }
 
 /// 函数 `passthrough_sse_reader_emits_keepalive_for_responses_stream`

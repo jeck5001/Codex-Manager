@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// 函数 `convert_gemini_generate_content_request`
 ///
@@ -23,11 +23,14 @@ pub(crate) fn convert_gemini_generate_content_request(
         return Err("gemini request body must be an object".to_string());
     };
 
-    let model = extract_model_from_path(path).ok_or_else(|| "gemini model is required".to_string())?;
+    let model =
+        extract_model_from_path(path).ok_or_else(|| "gemini model is required".to_string())?;
     let request_stream = normalized_request_path(path).contains(":streamGenerateContent");
     let tool_names = collect_gemini_tool_names(obj);
+    let allowed_function_names = collect_gemini_allowed_function_names(obj);
     let (tool_name_map, tool_name_restore_map) = super::build_shortened_tool_name_maps(tool_names);
-    let (instructions, input_items) = convert_gemini_contents_to_responses_input(obj, &tool_name_map)?;
+    let (instructions, input_items) =
+        convert_gemini_contents_to_responses_input(obj, &tool_name_map)?;
 
     let mut out = serde_json::Map::new();
     out.insert("model".to_string(), Value::String(model));
@@ -44,10 +47,13 @@ pub(crate) fn convert_gemini_generate_content_request(
     );
     out.insert(
         "tool_choice".to_string(),
-        resolve_tool_choice(obj, &tool_name_map).unwrap_or_else(|| Value::String("auto".to_string())),
+        resolve_tool_choice(obj, &tool_name_map, allowed_function_names.as_ref())
+            .unwrap_or_else(|| Value::String("auto".to_string())),
     );
 
-    if let Some(tools) = map_gemini_tools_to_responses(obj, &tool_name_map) {
+    if let Some(tools) =
+        map_gemini_tools_to_responses(obj, &tool_name_map, allowed_function_names.as_ref())
+    {
         out.insert("tools".to_string(), Value::Array(tools));
     }
 
@@ -56,7 +62,12 @@ pub(crate) fn convert_gemini_generate_content_request(
         copy_optional_field(generation_config, &mut out, "topP", "top_p");
         copy_optional_field(generation_config, &mut out, "topK", "top_k");
         copy_optional_field(generation_config, &mut out, "candidateCount", "n");
-        copy_optional_field(generation_config, &mut out, "maxOutputTokens", "max_output_tokens");
+        copy_optional_field(
+            generation_config,
+            &mut out,
+            "maxOutputTokens",
+            "max_output_tokens",
+        );
         if let Some(stop_sequences) = generation_config.get("stopSequences") {
             out.insert("stop".to_string(), stop_sequences.clone());
         }
@@ -174,6 +185,29 @@ fn collect_gemini_tool_names(source: &serde_json::Map<String, Value>) -> Vec<Str
     names
 }
 
+fn collect_gemini_allowed_function_names(
+    source: &serde_json::Map<String, Value>,
+) -> Option<BTreeSet<String>> {
+    let allowed_items = source
+        .get("toolConfig")
+        .and_then(|value| value.get("functionCallingConfig"))
+        .and_then(|value| value.get("allowedFunctionNames"))?;
+    let mut names = BTreeSet::new();
+    if let Some(items) = allowed_items.as_array() {
+        for item in items {
+            let Some(name) = item
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            names.insert(name.to_string());
+        }
+    }
+    Some(names)
+}
+
 fn convert_gemini_contents_to_responses_input(
     source: &serde_json::Map<String, Value>,
     tool_name_map: &BTreeMap<String, String>,
@@ -212,8 +246,10 @@ fn convert_gemini_contents_to_responses_input(
         let mut pending_user_parts = Vec::new();
         let mut pending_model_parts = Vec::new();
 
-        for part in parts {
-            let Some(part_obj) = part.as_object() else {
+        let mut part_index = 0usize;
+        while part_index < parts.len() {
+            let Some(part_obj) = parts[part_index].as_object() else {
+                part_index += 1;
                 continue;
             };
             if let Some(text) = part_obj
@@ -232,11 +268,13 @@ fn convert_gemini_contents_to_responses_input(
                         "text": text,
                     })),
                 }
+                part_index += 1;
                 continue;
             }
 
             if let Some(image_item) = map_gemini_image_part_to_responses_item(part_obj) {
                 pending_user_parts.push(image_item);
+                part_index += 1;
                 continue;
             }
 
@@ -256,7 +294,8 @@ fn convert_gemini_contents_to_responses_input(
                 else {
                     continue;
                 };
-                let mapped_name = super::openai::shorten_openai_tool_name_with_map(name, tool_name_map);
+                let mapped_name =
+                    super::openai::shorten_openai_tool_name_with_map(name, tool_name_map);
                 let call_id = function_call
                     .get("id")
                     .and_then(Value::as_str)
@@ -284,6 +323,7 @@ fn convert_gemini_contents_to_responses_input(
                         "input": arguments,
                     }],
                 }));
+                part_index += 1;
                 continue;
             }
 
@@ -305,7 +345,8 @@ fn convert_gemini_contents_to_responses_input(
                 else {
                     continue;
                 };
-                let mapped_name = super::openai::shorten_openai_tool_name_with_map(name, tool_name_map);
+                let mapped_name =
+                    super::openai::shorten_openai_tool_name_with_map(name, tool_name_map);
                 let call_id = function_response
                     .get("id")
                     .and_then(Value::as_str)
@@ -328,9 +369,13 @@ fn convert_gemini_contents_to_responses_input(
                 messages.push(json!({
                     "role": "tool",
                     "tool_call_id": call_id,
-                    "content": output,
+                    "content": collect_gemini_function_response_content(parts, part_index, output),
                 }));
+                part_index = advance_gemini_function_response_index(parts, part_index);
+                continue;
             }
+
+            part_index += 1;
         }
 
         if !pending_user_parts.is_empty() {
@@ -350,6 +395,123 @@ fn convert_gemini_contents_to_responses_input(
     super::convert_chat_messages_to_responses_input(&messages, tool_name_map)
 }
 
+fn advance_gemini_function_response_index(parts: &[Value], start_index: usize) -> usize {
+    let mut index = start_index + 1;
+    while index < parts.len() {
+        let Some(part_obj) = parts[index].as_object() else {
+            break;
+        };
+        if part_obj.get("functionResponse").is_some() || part_obj.get("functionCall").is_some() {
+            break;
+        }
+        if part_obj
+            .get("text")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some()
+            || map_gemini_image_part_to_responses_item(part_obj).is_some()
+        {
+            index += 1;
+            continue;
+        }
+        break;
+    }
+    index
+}
+
+fn collect_gemini_function_response_content(
+    parts: &[Value],
+    start_index: usize,
+    output: Value,
+) -> Value {
+    let mut content_items = map_gemini_function_response_output_items(&output);
+    let mut index = start_index + 1;
+    while index < parts.len() {
+        let Some(part_obj) = parts[index].as_object() else {
+            break;
+        };
+        if part_obj.get("functionResponse").is_some() || part_obj.get("functionCall").is_some() {
+            break;
+        }
+        if let Some(text) = part_obj
+            .get("text")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            content_items.push(json!({
+                "type": "input_text",
+                "text": text,
+            }));
+            index += 1;
+            continue;
+        }
+        if let Some(image_item) = map_gemini_image_part_to_responses_item(part_obj) {
+            content_items.push(image_item);
+            index += 1;
+            continue;
+        }
+        break;
+    }
+    if content_items.is_empty() {
+        output
+    } else {
+        Value::Array(content_items)
+    }
+}
+
+fn map_gemini_function_response_output_items(output: &Value) -> Vec<Value> {
+    match output {
+        Value::Null => Vec::new(),
+        Value::String(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                Vec::new()
+            } else {
+                vec![json!({
+                    "type": "input_text",
+                    "text": trimmed,
+                })]
+            }
+        }
+        Value::Array(items) => items
+            .iter()
+            .flat_map(map_gemini_function_response_output_items)
+            .collect(),
+        Value::Object(obj) => {
+            if let Some(output_value) = obj.get("output") {
+                let nested_items = map_gemini_function_response_output_items(output_value);
+                if !nested_items.is_empty() {
+                    return nested_items;
+                }
+            }
+            let serialized = serde_json::to_string(output).unwrap_or_default();
+            let trimmed = serialized.trim();
+            if trimmed.is_empty() {
+                Vec::new()
+            } else {
+                vec![json!({
+                    "type": "input_text",
+                    "text": trimmed,
+                })]
+            }
+        }
+        other => {
+            let serialized = serde_json::to_string(other).unwrap_or_default();
+            let trimmed = serialized.trim();
+            if trimmed.is_empty() {
+                Vec::new()
+            } else {
+                vec![json!({
+                    "type": "input_text",
+                    "text": trimmed,
+                })]
+            }
+        }
+    }
+}
+
 fn resolve_parallel_tool_calls(source: &serde_json::Map<String, Value>) -> bool {
     source
         .get("toolConfig")
@@ -363,6 +525,7 @@ fn resolve_parallel_tool_calls(source: &serde_json::Map<String, Value>) -> bool 
 fn resolve_tool_choice(
     source: &serde_json::Map<String, Value>,
     tool_name_map: &BTreeMap<String, String>,
+    allowed_function_names: Option<&BTreeSet<String>>,
 ) -> Option<Value> {
     let config = source
         .get("toolConfig")
@@ -373,21 +536,29 @@ fn resolve_tool_choice(
         .and_then(Value::as_str)
         .map(|value| value.trim().to_ascii_uppercase())
         .unwrap_or_else(|| "AUTO".to_string());
+    let allowed = config
+        .get("allowedFunctionNames")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .filter(|value| {
+                    allowed_function_names
+                        .map(|allowed_names| allowed_names.contains(*value))
+                        .unwrap_or(true)
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     match mode.as_str() {
         "NONE" => Some(Value::String("none".to_string())),
         "ANY" => {
-            let allowed = config
-                .get("allowedFunctionNames")
-                .and_then(Value::as_array)
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
+            if allowed.is_empty() && allowed_function_names.is_some() {
+                return Some(Value::String("none".to_string()));
+            }
             if allowed.len() == 1 {
                 let mapped_name =
                     super::openai::shorten_openai_tool_name_with_map(allowed[0], tool_name_map);
@@ -406,6 +577,7 @@ fn resolve_tool_choice(
 fn map_gemini_tools_to_responses(
     source: &serde_json::Map<String, Value>,
     tool_name_map: &BTreeMap<String, String>,
+    allowed_function_names: Option<&BTreeSet<String>>,
 ) -> Option<Vec<Value>> {
     let mut out = Vec::new();
     let Some(tools) = source.get("tools").and_then(Value::as_array) else {
@@ -430,6 +602,9 @@ fn map_gemini_tools_to_responses(
             else {
                 continue;
             };
+            if allowed_function_names.is_some_and(|items| !items.contains(name)) {
+                continue;
+            }
             let mapped_name = super::openai::shorten_openai_tool_name_with_map(name, tool_name_map);
             let mut mapped = serde_json::Map::new();
             mapped.insert("type".to_string(), Value::String("function".to_string()));
@@ -456,7 +631,9 @@ fn map_gemini_tools_to_responses(
     }
 }
 
-fn map_gemini_image_part_to_responses_item(part_obj: &serde_json::Map<String, Value>) -> Option<Value> {
+fn map_gemini_image_part_to_responses_item(
+    part_obj: &serde_json::Map<String, Value>,
+) -> Option<Value> {
     if let Some(inline_data) = part_obj.get("inlineData").and_then(Value::as_object) {
         let mime_type = inline_data
             .get("mimeType")

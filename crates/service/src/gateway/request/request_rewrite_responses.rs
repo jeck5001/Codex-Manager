@@ -272,7 +272,9 @@ pub(super) fn ensure_tool_choice_auto(
         return false;
     }
     match obj.get("tool_choice") {
+        Some(Value::Object(_)) => return false,
         Some(Value::String(existing)) if existing.eq_ignore_ascii_case("auto") => return false,
+        Some(Value::String(existing)) if !existing.trim().is_empty() => return false,
         Some(_) => {}
         None => {}
     }
