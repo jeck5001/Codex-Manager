@@ -73,7 +73,7 @@ def load_custom_domain_module():
     settings_module = types.ModuleType("src.config.settings")
 
     class Settings:
-        email_code_timeout = 120
+        email_code_timeout = 240
         email_code_poll_interval = 3
 
     settings_module.get_settings = lambda: Settings()

@@ -152,7 +152,7 @@ def load_register_module():
         openai_token_url = "https://auth.openai.com/oauth/token"
         openai_redirect_uri = "http://localhost/callback"
         openai_scope = "openid"
-        email_code_timeout = 120
+        email_code_timeout = 240
         email_code_poll_interval = 3
 
     settings_module.get_settings = lambda: Settings()

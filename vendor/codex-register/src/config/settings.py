@@ -795,7 +795,7 @@ class Settings(BaseModel):
     cpa_api_token: SecretStr = SecretStr("")
 
     # 验证码配置
-    email_code_timeout: int = 120
+    email_code_timeout: int = 240
     email_code_poll_interval: int = 3
 
     # Outlook 配置
