@@ -1193,6 +1193,101 @@ fn gemini_sse_reader_waits_for_completed_full_arguments_before_emitting_tool_cal
     assert_eq!(usage.total_tokens, Some(9));
 }
 
+#[test]
+fn gemini_sse_reader_does_not_treat_function_call_output_as_final_text() {
+    let upstream = open_mock_http_response(
+        "text/event-stream",
+        concat!(
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gemini_reader_tool_output_1\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[{\"type\":\"function_call_output\",\"call_id\":\"call_edit_1\",\"output\":\"已修改 Desktop\\\\gemini.txt。\"}],\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"total_tokens\":5}}}\n\n",
+            "data: [DONE]\n\n"
+        ),
+    );
+    let usage_collector = Arc::new(Mutex::new(UpstreamResponseUsage::default()));
+    let mut reader = GeminiSseReader::new(upstream, Arc::clone(&usage_collector), None);
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read gemini mapped sse");
+
+    let events = mapped
+        .split("\n\n")
+        .filter_map(|frame| frame.strip_prefix("data: "))
+        .filter(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
+        .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
+        .collect::<Vec<_>>();
+    let text_events = events
+        .iter()
+        .filter(|event| {
+            event["candidates"][0]["content"]["parts"]
+                .as_array()
+                .is_some_and(|parts| {
+                    parts.iter().any(|part| {
+                        part.get("text")
+                            .and_then(serde_json::Value::as_str)
+                            .is_some_and(|text| !text.is_empty())
+                    })
+                })
+        })
+        .collect::<Vec<_>>();
+    assert!(text_events.is_empty());
+    assert_eq!(
+        events.last().expect("finish event present")["candidates"][0]["finishReason"],
+        serde_json::Value::String("STOP".to_string())
+    );
+
+    let usage = usage_collector
+        .lock()
+        .expect("lock usage collector")
+        .clone();
+    assert_eq!(usage.output_text, None);
+    assert_eq!(usage.total_tokens, Some(5));
+}
+
+#[test]
+fn gemini_sse_reader_completed_message_output_still_emits_final_text() {
+    let upstream = open_mock_http_response(
+        "text/event-stream",
+        concat!(
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gemini_reader_message_1\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"已修改 Desktop\\\\gemini.txt。\"}]}],\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"total_tokens\":5}}}\n\n",
+            "data: [DONE]\n\n"
+        ),
+    );
+    let usage_collector = Arc::new(Mutex::new(UpstreamResponseUsage::default()));
+    let mut reader = GeminiSseReader::new(upstream, Arc::clone(&usage_collector), None);
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read gemini mapped sse");
+
+    let events = mapped
+        .split("\n\n")
+        .filter_map(|frame| frame.strip_prefix("data: "))
+        .filter(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
+        .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
+        .collect::<Vec<_>>();
+    let text_events = events
+        .iter()
+        .filter_map(|event| {
+            event["candidates"][0]["content"]["parts"]
+                .as_array()
+                .and_then(|parts| parts.first())
+                .and_then(|part| part.get("text"))
+                .and_then(serde_json::Value::as_str)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(text_events, vec!["已修改 Desktop\\gemini.txt。"]);
+
+    let usage = usage_collector
+        .lock()
+        .expect("lock usage collector")
+        .clone();
+    assert_eq!(
+        usage.output_text.as_deref(),
+        Some("已修改 Desktop\\gemini.txt。")
+    );
+    assert_eq!(usage.total_tokens, Some(5));
+}
+
 /// 函数 `passthrough_sse_reader_emits_keepalive_for_responses_stream`
 ///
 /// 作者: gaohongshun

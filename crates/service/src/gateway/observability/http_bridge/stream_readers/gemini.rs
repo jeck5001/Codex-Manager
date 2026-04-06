@@ -1,7 +1,7 @@
 use super::{
-    append_output_text, collect_output_text_from_event_fields, collect_response_output_text, json,
-    sse_keepalive_interval, Arc, Cursor, Map, Mutex, Read, SseKeepAliveFrame, ToolNameRestoreMap,
-    UpstreamResponseUsage, UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
+    append_output_text, collect_output_text_from_event_fields, json, sse_keepalive_interval, Arc,
+    Cursor, Map, Mutex, Read, SseKeepAliveFrame, ToolNameRestoreMap, UpstreamResponseUsage,
+    UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
 };
 use std::collections::BTreeMap;
 
@@ -251,9 +251,13 @@ impl GeminiSseReader {
     }
 
     fn emit_completed_response(&mut self, out: &mut String, response: &Value) {
-        let mut extracted_output_text = String::new();
-        collect_response_output_text(response, &mut extracted_output_text);
-        if self.state.output_text.trim().is_empty() && !extracted_output_text.trim().is_empty() {
+        let extracted_message_text = extract_completed_response_message_text(response);
+        if self.state.output_text.trim().is_empty()
+            && extracted_message_text
+                .as_deref()
+                .is_some_and(|text| !text.trim().is_empty())
+        {
+            let extracted_output_text = extracted_message_text.unwrap_or_default();
             append_output_text(&mut self.state.output_text, extracted_output_text.as_str());
             append_gemini_sse_event(
                 out,
@@ -578,4 +582,51 @@ fn restore_tool_name(name: &str, tool_name_restore_map: Option<&ToolNameRestoreM
 
 fn is_response_completed_event_type(event_type: &str) -> bool {
     matches!(event_type, "response.completed" | "response.done")
+}
+
+fn extract_completed_response_message_text(response: &Value) -> Option<String> {
+    let mut segments = Vec::new();
+    if let Some(output_items) = response.get("output").and_then(Value::as_array) {
+        for item in output_items {
+            let Some(item_obj) = item.as_object() else {
+                continue;
+            };
+            if item_obj.get("type").and_then(Value::as_str) != Some("message") {
+                continue;
+            }
+            let Some(content_items) = item_obj.get("content").and_then(Value::as_array) else {
+                continue;
+            };
+            for content_item in content_items {
+                let Some(content_obj) = content_item.as_object() else {
+                    continue;
+                };
+                let content_type = content_obj
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if !matches!(content_type, "output_text" | "text") {
+                    continue;
+                }
+                let Some(text) = content_obj
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|text| !text.is_empty())
+                else {
+                    continue;
+                };
+                segments.push(text.to_string());
+            }
+        }
+    }
+    if !segments.is_empty() {
+        return Some(segments.join("\n"));
+    }
+    response
+        .get("output_text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
 }
