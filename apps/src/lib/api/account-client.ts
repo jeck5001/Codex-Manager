@@ -129,6 +129,7 @@ interface RegisterStartPayload {
   registerMode?: string | null;
   browserbaseConfigId?: number | null;
   proxy?: string | null;
+  autoCreateTempMailService?: boolean;
 }
 
 interface RegisterBatchStartPayload extends RegisterStartPayload {
@@ -1158,6 +1159,7 @@ export const accountClient = {
         registerMode: params.registerMode ?? "standard",
         browserbaseConfigId: params.browserbaseConfigId ?? null,
         proxy: params.proxy ?? null,
+        autoCreateTempMailService: params.autoCreateTempMailService === true,
       })
     );
     return normalizeRegisterTaskSnapshot(result);
@@ -1173,6 +1175,7 @@ export const accountClient = {
         registerMode: params.registerMode ?? "standard",
         browserbaseConfigId: params.browserbaseConfigId ?? null,
         proxy: params.proxy ?? null,
+        autoCreateTempMailService: params.autoCreateTempMailService === true,
         count: params.count,
         intervalMin: params.intervalMin,
         intervalMax: params.intervalMax,
