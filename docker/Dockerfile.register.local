@@ -1,5 +1,7 @@
 FROM docker-codexmanager-register:latest
 
+ARG PLAYWRIGHT_BROWSER_INSTALL_ARGS="chromium --only-shell"
+
 WORKDIR /app
 
 COPY vendor/codex-register/ /app/
@@ -7,7 +9,7 @@ COPY vendor/codex-register/ /app/
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 RUN pip install --no-cache-dir -r requirements.txt \
-    && python -m playwright install chromium
+    && python -m playwright install ${PLAYWRIGHT_BROWSER_INSTALL_ARGS}
 
 RUN mkdir -p /app/data /app/logs
 
