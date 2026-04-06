@@ -7,8 +7,11 @@ mod response_conversion;
 mod types;
 
 pub(super) use self::request_router::adapt_request_for_protocol;
-pub(super) use self::types::{AdaptedGatewayRequest, ResponseAdapter, ToolNameRestoreMap};
+pub(super) use self::types::{
+    AdaptedGatewayRequest, GeminiStreamOutputMode, ResponseAdapter, ToolNameRestoreMap,
+};
 
+#[cfg(test)]
 /// 函数 `adapt_upstream_response`
 ///
 /// 作者: gaohongshun

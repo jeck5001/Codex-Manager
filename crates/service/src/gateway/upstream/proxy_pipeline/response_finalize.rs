@@ -144,6 +144,7 @@ pub(super) fn finalize_upstream_response(
     last_attempt_url: Option<&str>,
     last_attempt_error: Option<&str>,
     response_adapter: super::super::super::ResponseAdapter,
+    gemini_stream_output_mode: Option<super::super::super::GeminiStreamOutputMode>,
     tool_name_restore_map: &super::super::super::ToolNameRestoreMap,
     client_is_stream: bool,
     path: &str,
@@ -161,6 +162,7 @@ pub(super) fn finalize_upstream_response(
         response,
         inflight_guard,
         response_adapter,
+        gemini_stream_output_mode,
         path,
         Some(tool_name_restore_map),
         client_is_stream,
@@ -193,6 +195,26 @@ pub(super) fn finalize_upstream_response(
         bridge.upstream_content_type.as_deref(),
         bridge.last_sse_event_type.as_deref(),
     );
+    if matches!(
+        response_adapter,
+        super::super::super::ResponseAdapter::GeminiJson
+            | super::super::super::ResponseAdapter::GeminiSse
+            | super::super::super::ResponseAdapter::GeminiCliJson
+            | super::super::super::ResponseAdapter::GeminiCliSse
+    ) {
+        super::super::super::trace_log::log_gemini_bridge_diagnostics(
+            trace_id,
+            format!("{response_adapter:?}").as_str(),
+            gemini_stream_output_mode.map(|mode| match mode {
+                super::super::super::GeminiStreamOutputMode::Sse => "sse",
+                super::super::super::GeminiStreamOutputMode::Raw => "raw",
+            }),
+            bridge.stream_terminal_seen,
+            bridge.stream_terminal_error.as_deref(),
+            bridge.last_sse_event_type.as_deref(),
+            bridge.upstream_content_type.as_deref(),
+        );
+    }
 
     if let Some(upstream_hint) = bridge.upstream_error_hint.as_deref() {
         final_error = Some(upstream_hint.to_string());

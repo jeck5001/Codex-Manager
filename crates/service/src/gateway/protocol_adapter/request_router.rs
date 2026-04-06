@@ -4,7 +4,7 @@ use crate::apikey_profile::{
 };
 
 use super::request_mapping;
-use super::{AdaptedGatewayRequest, ResponseAdapter, ToolNameRestoreMap};
+use super::{AdaptedGatewayRequest, GeminiStreamOutputMode, ResponseAdapter, ToolNameRestoreMap};
 
 /// 函数 `adapt_request_for_protocol`
 ///
@@ -22,6 +22,8 @@ pub(crate) fn adapt_request_for_protocol(
     path: &str,
     body: Vec<u8>,
 ) -> Result<AdaptedGatewayRequest, String> {
+    let normalized_path = path.split('?').next().unwrap_or(path);
+
     if protocol_type == PROTOCOL_OPENAI_COMPAT
         && (path == "/v1/chat/completions" || path.starts_with("/v1/chat/completions?"))
     {
@@ -35,6 +37,7 @@ pub(crate) fn adapt_request_for_protocol(
             } else {
                 ResponseAdapter::OpenAIChatCompletionsJson
             },
+            gemini_stream_output_mode: None,
             tool_name_restore_map,
         });
     }
@@ -53,6 +56,7 @@ pub(crate) fn adapt_request_for_protocol(
             } else {
                 ResponseAdapter::OpenAICompletionsJson
             },
+            gemini_stream_output_mode: None,
             tool_name_restore_map,
         });
     }
@@ -72,6 +76,7 @@ pub(crate) fn adapt_request_for_protocol(
             } else {
                 ResponseAdapter::AnthropicJson
             },
+            gemini_stream_output_mode: None,
             tool_name_restore_map,
         });
     }
@@ -79,14 +84,22 @@ pub(crate) fn adapt_request_for_protocol(
     if protocol_type == PROTOCOL_GEMINI_NATIVE && is_gemini_generate_content_request_path(path) {
         let (adapted_body, request_stream, tool_name_restore_map) =
             request_mapping::convert_gemini_generate_content_request(path, &body)?;
+        let response_adapter = if normalized_path.starts_with("/v1internal:") {
+            if request_stream {
+                ResponseAdapter::GeminiCliSse
+            } else {
+                ResponseAdapter::GeminiCliJson
+            }
+        } else if request_stream {
+            ResponseAdapter::GeminiSse
+        } else {
+            ResponseAdapter::GeminiJson
+        };
         return Ok(AdaptedGatewayRequest {
             path: "/v1/responses".to_string(),
             body: adapted_body,
-            response_adapter: if request_stream {
-                ResponseAdapter::GeminiSse
-            } else {
-                ResponseAdapter::GeminiJson
-            },
+            response_adapter,
+            gemini_stream_output_mode: resolve_gemini_stream_output_mode(path, request_stream),
             tool_name_restore_map,
         });
     }
@@ -95,8 +108,36 @@ pub(crate) fn adapt_request_for_protocol(
         path: path.to_string(),
         body,
         response_adapter: ResponseAdapter::Passthrough,
+        gemini_stream_output_mode: None,
         tool_name_restore_map: ToolNameRestoreMap::new(),
     })
+}
+
+fn resolve_gemini_stream_output_mode(
+    path: &str,
+    request_stream: bool,
+) -> Option<GeminiStreamOutputMode> {
+    if !request_stream {
+        return None;
+    }
+    let query = path
+        .split_once('?')
+        .map(|(_, query)| query)
+        .unwrap_or_default();
+    for item in query.split('&') {
+        let Some((key, value)) = item.split_once('=') else {
+            continue;
+        };
+        if !key.eq_ignore_ascii_case("alt") {
+            continue;
+        }
+        let normalized = value.trim().to_ascii_lowercase();
+        if normalized.is_empty() || normalized == "sse" {
+            return Some(GeminiStreamOutputMode::Sse);
+        }
+        return Some(GeminiStreamOutputMode::Raw);
+    }
+    Some(GeminiStreamOutputMode::Sse)
 }
 
 /// 函数 `rewrite_responses_path`

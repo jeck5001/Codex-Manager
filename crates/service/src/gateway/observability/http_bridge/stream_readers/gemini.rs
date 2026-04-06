@@ -1,16 +1,21 @@
 use super::{
-    append_output_text, collect_output_text_from_event_fields, json, sse_keepalive_interval, Arc,
-    Cursor, Map, Mutex, Read, SseKeepAliveFrame, ToolNameRestoreMap, UpstreamResponseUsage,
-    UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
+    append_output_text, classify_upstream_stream_read_error, collect_output_text_from_event_fields,
+    json, mark_collector_terminal_success, sse_keepalive_interval,
+    stream_reader_disconnected_message, upstream_hint_or_stream_incomplete_message, Arc, Cursor,
+    Map, Mutex, PassthroughSseCollector, Read, ToolNameRestoreMap, UpstreamSseFramePump,
+    UpstreamSseFramePumpItem, Value,
 };
+use crate::gateway::{build_gemini_error_body, GeminiStreamOutputMode};
 use std::collections::BTreeMap;
 
 pub(crate) struct GeminiSseReader {
     upstream: UpstreamSseFramePump,
     out_cursor: Cursor<Vec<u8>>,
     state: GeminiSseState,
-    usage_collector: Arc<Mutex<UpstreamResponseUsage>>,
+    usage_collector: Arc<Mutex<PassthroughSseCollector>>,
     tool_name_restore_map: Option<ToolNameRestoreMap>,
+    output_mode: GeminiStreamOutputMode,
+    wrap_response_envelope: bool,
 }
 
 #[derive(Default)]
@@ -39,8 +44,10 @@ struct PendingToolCall {
 impl GeminiSseReader {
     pub(crate) fn new(
         upstream: reqwest::blocking::Response,
-        usage_collector: Arc<Mutex<UpstreamResponseUsage>>,
+        usage_collector: Arc<Mutex<PassthroughSseCollector>>,
         tool_name_restore_map: Option<ToolNameRestoreMap>,
+        output_mode: GeminiStreamOutputMode,
+        wrap_response_envelope: bool,
     ) -> Self {
         Self {
             upstream: UpstreamSseFramePump::new(upstream),
@@ -48,6 +55,8 @@ impl GeminiSseReader {
             state: GeminiSseState::default(),
             usage_collector,
             tool_name_restore_map,
+            output_mode,
+            wrap_response_envelope,
         }
     }
 
@@ -61,12 +70,17 @@ impl GeminiSseReader {
                     }
                     continue;
                 }
-                Ok(UpstreamSseFramePumpItem::Eof) => return Ok(self.finish_stream()),
-                Ok(UpstreamSseFramePumpItem::Error(_)) => return Ok(self.finish_stream()),
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    return Ok(SseKeepAliveFrame::Comment.bytes().to_vec());
+                Ok(UpstreamSseFramePumpItem::Eof) => {
+                    self.mark_stream_incomplete_if_needed();
+                    return Ok(self.finish_stream());
                 }
+                Ok(UpstreamSseFramePumpItem::Error(err)) => {
+                    self.mark_stream_read_error(classify_upstream_stream_read_error(&err));
+                    return Ok(self.finish_stream());
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    self.mark_stream_read_error(stream_reader_disconnected_message());
                     return Ok(self.finish_stream());
                 }
             }
@@ -86,6 +100,7 @@ impl GeminiSseReader {
         }
         let data = data_lines.join("\n");
         if data.trim() == "[DONE]" {
+            self.mark_stream_incomplete_if_needed();
             return self.finish_stream();
         }
         let value = match serde_json::from_str::<Value>(&data) {
@@ -100,6 +115,7 @@ impl GeminiSseReader {
         let Some(event_type) = value.get("type").and_then(Value::as_str) else {
             return Vec::new();
         };
+        self.record_last_event_type(event_type);
         let mut out = String::new();
         match event_type {
             "response.output_text.delta" => {
@@ -111,7 +127,7 @@ impl GeminiSseReader {
                     return Vec::new();
                 }
                 append_output_text(&mut self.state.output_text, fragment);
-                append_gemini_sse_event(
+                self.append_sse_event(
                     &mut out,
                     &self.build_chunk(vec![json!({ "text": fragment })], None, None),
                 );
@@ -202,6 +218,7 @@ impl GeminiSseReader {
             }
             _ if is_response_completed_event_type(event_type) => {
                 self.state.completed_seen = true;
+                mark_collector_terminal_success(&self.usage_collector);
                 if let Some(response) = value.get("response") {
                     self.emit_completed_response(&mut out, response);
                 }
@@ -242,7 +259,7 @@ impl GeminiSseReader {
         if let Some(call_id) = entry.call_id.as_deref() {
             function_call.insert("id".to_string(), Value::String(call_id.to_string()));
         }
-        append_gemini_sse_event(
+        self.append_sse_event(
             out,
             &self.build_chunk(
                 vec![json!({ "functionCall": Value::Object(function_call) })],
@@ -261,7 +278,7 @@ impl GeminiSseReader {
         {
             let extracted_output_text = extracted_message_text.unwrap_or_default();
             append_output_text(&mut self.state.output_text, extracted_output_text.as_str());
-            append_gemini_sse_event(
+            self.append_sse_event(
                 out,
                 &self.build_chunk(vec![json!({ "text": extracted_output_text })], None, None),
             );
@@ -321,7 +338,7 @@ impl GeminiSseReader {
             .get("usage")
             .and_then(Value::as_object)
             .and_then(build_gemini_usage_metadata);
-        append_gemini_sse_event(
+        self.append_sse_event(
             out,
             &self.build_chunk(Vec::new(), Some("STOP"), usage_metadata),
         );
@@ -428,22 +445,62 @@ impl GeminiSseReader {
         Value::Object(payload)
     }
 
+    fn append_sse_event(&self, out: &mut String, payload: &Value) {
+        append_gemini_event(out, payload, self.output_mode, self.wrap_response_envelope);
+    }
+
     fn finish_stream(&mut self) -> Vec<u8> {
         if self.state.finished {
             return Vec::new();
         }
         self.state.finished = true;
-        if let Ok(mut usage) = self.usage_collector.lock() {
-            usage.input_tokens = Some(self.state.input_tokens.max(0));
-            usage.cached_input_tokens = Some(self.state.cached_input_tokens.max(0));
-            usage.output_tokens = Some(self.state.output_tokens.max(0));
-            usage.total_tokens = self.state.total_tokens.map(|value| value.max(0));
-            usage.reasoning_output_tokens = Some(self.state.reasoning_output_tokens.max(0));
+        if let Ok(mut collector) = self.usage_collector.lock() {
+            collector.usage.input_tokens = Some(self.state.input_tokens.max(0));
+            collector.usage.cached_input_tokens = Some(self.state.cached_input_tokens.max(0));
+            collector.usage.output_tokens = Some(self.state.output_tokens.max(0));
+            collector.usage.total_tokens = self.state.total_tokens.map(|value| value.max(0));
+            collector.usage.reasoning_output_tokens =
+                Some(self.state.reasoning_output_tokens.max(0));
             if !self.state.output_text.trim().is_empty() {
-                usage.output_text = Some(self.state.output_text.clone());
+                collector.usage.output_text = Some(self.state.output_text.clone());
+            }
+            if !collector.saw_terminal {
+                if let Some(message) = collector.terminal_error.clone() {
+                    return build_terminal_error_event(
+                        self.output_mode,
+                        build_gemini_error_body(message.as_str()),
+                    );
+                }
             }
         }
         Vec::new()
+    }
+
+    fn mark_stream_incomplete_if_needed(&self) {
+        if self.state.completed_seen {
+            return;
+        }
+        if let Ok(mut collector) = self.usage_collector.lock() {
+            let hint = collector.upstream_error_hint.clone();
+            collector
+                .terminal_error
+                .get_or_insert_with(|| upstream_hint_or_stream_incomplete_message(hint.as_deref()));
+        }
+    }
+
+    fn mark_stream_read_error(&self, message: String) {
+        if self.state.completed_seen {
+            return;
+        }
+        if let Ok(mut collector) = self.usage_collector.lock() {
+            collector.terminal_error.get_or_insert(message);
+        }
+    }
+
+    fn record_last_event_type(&self, event_type: &str) {
+        if let Ok(mut collector) = self.usage_collector.lock() {
+            collector.last_event_type = Some(event_type.to_string());
+        }
     }
 }
 
@@ -468,6 +525,41 @@ fn append_gemini_sse_event(buffer: &mut String, payload: &Value) {
     buffer.push_str("data: ");
     buffer.push_str(&data);
     buffer.push_str("\n\n");
+}
+
+fn append_gemini_cli_sse_event(buffer: &mut String, payload: &Value) {
+    append_gemini_sse_event(buffer, &json!({ "response": payload }));
+}
+
+fn append_gemini_event(
+    buffer: &mut String,
+    payload: &Value,
+    output_mode: GeminiStreamOutputMode,
+    wrap_response_envelope: bool,
+) {
+    match (output_mode, wrap_response_envelope) {
+        (GeminiStreamOutputMode::Sse, true) => append_gemini_cli_sse_event(buffer, payload),
+        (GeminiStreamOutputMode::Sse, false) => append_gemini_sse_event(buffer, payload),
+        (GeminiStreamOutputMode::Raw, true) => {
+            let wrapped = json!({ "response": payload });
+            buffer.push_str(&serde_json::to_string(&wrapped).unwrap_or_else(|_| "{}".to_string()));
+        }
+        (GeminiStreamOutputMode::Raw, false) => {
+            buffer.push_str(&serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string()));
+        }
+    }
+}
+
+fn build_terminal_error_event(output_mode: GeminiStreamOutputMode, body: Vec<u8>) -> Vec<u8> {
+    match output_mode {
+        GeminiStreamOutputMode::Sse => {
+            let mut out = Vec::from("event: error\ndata: ".as_bytes());
+            out.extend_from_slice(&body);
+            out.extend_from_slice(b"\n\n");
+            out
+        }
+        GeminiStreamOutputMode::Raw => body,
+    }
 }
 
 fn build_function_calls(parts: &[Value]) -> Option<Value> {

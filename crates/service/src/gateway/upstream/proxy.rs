@@ -96,6 +96,7 @@ pub(in super::super) fn proxy_validated_request(
         upstream_base_url,
         static_headers_json,
         response_adapter,
+        gemini_stream_output_mode,
         tool_name_restore_map,
         request_method,
         key_id,
@@ -131,6 +132,19 @@ pub(in super::super) fn proxy_validated_request(
         protocol_type.as_str(),
     );
     super::super::trace_log::log_request_body_preview(trace_id.as_str(), body.as_ref());
+    if protocol_type == crate::apikey_profile::PROTOCOL_GEMINI_NATIVE {
+        super::super::trace_log::log_gemini_request_diagnostics(
+            trace_id.as_str(),
+            original_path.as_str(),
+            path.as_str(),
+            format!("{response_adapter:?}").as_str(),
+            gemini_stream_output_mode.map(|mode| match mode {
+                super::super::GeminiStreamOutputMode::Sse => "sse",
+                super::super::GeminiStreamOutputMode::Raw => "raw",
+            }),
+            body.as_ref(),
+        );
+    }
 
     if rotation_strategy == ROTATION_AGGREGATE_API {
         let mut aggregate_api_candidates =
@@ -313,6 +327,7 @@ pub(in super::super) fn proxy_validated_request(
             trace_id: trace_id.as_str(),
             model_for_log: model_for_log.as_deref(),
             response_adapter,
+            gemini_stream_output_mode,
             tool_name_restore_map: &tool_name_restore_map,
             context: &context,
             setup: &setup,

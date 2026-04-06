@@ -1,5 +1,19 @@
+use rand::{distributions::Alphanumeric, Rng};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GeminiThinkingLevel {
+    Disabled,
+    Auto,
+    Effort(&'static str),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GeminiReasoningDecision {
+    effort: Option<&'static str>,
+    include_reasoning: bool,
+}
 
 /// 函数 `convert_gemini_generate_content_request`
 ///
@@ -19,93 +33,512 @@ pub(crate) fn convert_gemini_generate_content_request(
 ) -> Result<(Vec<u8>, bool, super::ToolNameRestoreMap), String> {
     let payload: Value =
         serde_json::from_slice(body).map_err(|_| "invalid gemini request json".to_string())?;
-    let Some(obj) = payload.as_object() else {
-        return Err("gemini request body must be an object".to_string());
-    };
+    let (source, body_model) = extract_gemini_request_source(payload)?;
+    let obj = &source;
 
-    let model =
-        extract_model_from_path(path).ok_or_else(|| "gemini model is required".to_string())?;
+    let model = extract_model_from_path(path)
+        .or(body_model)
+        .ok_or_else(|| "gemini model is required".to_string())?;
     let request_stream = normalized_request_path(path).contains(":streamGenerateContent");
-    let tool_names = collect_gemini_tool_names(obj);
-    let allowed_function_names = collect_gemini_allowed_function_names(obj);
-    let (tool_name_map, tool_name_restore_map) = super::build_shortened_tool_name_maps(tool_names);
-    let (instructions, input_items) =
-        convert_gemini_contents_to_responses_input(obj, &tool_name_map)?;
+    let tool_names = collect_gemini_declared_tool_names(obj);
+    let (tool_name_map, tool_name_restore_map) = build_gemini_cpa_tool_name_maps(tool_names);
+    let mut input_items = convert_gemini_contents_to_cpa_responses_input(obj, &tool_name_map)?;
+    if let Some(system_message) = build_gemini_system_instruction_message(obj) {
+        input_items.insert(0, system_message);
+    }
 
     let mut out = serde_json::Map::new();
     out.insert("model".to_string(), Value::String(model));
-    out.insert(
-        "instructions".to_string(),
-        Value::String(instructions.unwrap_or_default()),
-    );
+    out.insert("instructions".to_string(), Value::String(String::new()));
     out.insert("input".to_string(), Value::Array(input_items));
-    out.insert("stream".to_string(), Value::Bool(request_stream));
+    out.insert("stream".to_string(), Value::Bool(true));
     out.insert("store".to_string(), Value::Bool(false));
-    out.insert(
-        "parallel_tool_calls".to_string(),
-        Value::Bool(resolve_parallel_tool_calls(obj)),
-    );
-    out.insert(
-        "tool_choice".to_string(),
-        resolve_tool_choice(obj, &tool_name_map, allowed_function_names.as_ref())
-            .unwrap_or_else(|| Value::String("auto".to_string())),
-    );
+    out.insert("parallel_tool_calls".to_string(), Value::Bool(true));
 
-    if let Some(tools) =
-        map_gemini_tools_to_responses(obj, &tool_name_map, allowed_function_names.as_ref())
-    {
+    if let Some(tools) = map_gemini_tools_to_cpa_responses(obj, &tool_name_map) {
         out.insert("tools".to_string(), Value::Array(tools));
+        out.insert("tool_choice".to_string(), Value::String("auto".to_string()));
     }
 
-    if let Some(generation_config) = get_object_field(obj, &["generationConfig", "generation_config"])
-    {
-        copy_optional_field_alias(
-            generation_config,
-            &mut out,
-            &["temperature"],
-            "temperature",
-        );
-        copy_optional_field_alias(generation_config, &mut out, &["topP", "top_p"], "top_p");
-        copy_optional_field_alias(generation_config, &mut out, &["topK", "top_k"], "top_k");
-        copy_optional_field_alias(
-            generation_config,
-            &mut out,
-            &["candidateCount", "candidate_count"],
-            "n",
-        );
-        copy_optional_field_alias(
-            generation_config,
-            &mut out,
-            &["maxOutputTokens", "max_output_tokens"],
-            "max_output_tokens",
-        );
-        if let Some(stop_sequences) =
-            get_value_field(generation_config, &["stopSequences", "stop_sequences"])
-        {
-            out.insert("stop".to_string(), stop_sequences.clone());
-        }
-    }
-
-    if let Some(reasoning) = resolve_gemini_reasoning_payload(obj) {
-        out.insert("reasoning".to_string(), reasoning);
-        out.insert(
-            "include".to_string(),
-            Value::Array(vec![Value::String(
-                "reasoning.encrypted_content".to_string(),
-            )]),
-        );
-    }
-
-    if let Some(prompt_cache_key) = super::resolve_prompt_cache_key(obj, out.get("model")) {
-        out.insert(
-            "prompt_cache_key".to_string(),
-            Value::String(prompt_cache_key),
-        );
-    }
+    let effort = resolve_gemini_cpa_reasoning_effort(obj);
+    out.insert(
+        "reasoning".to_string(),
+        json!({ "effort": effort, "summary": "auto" }),
+    );
+    out.insert(
+        "include".to_string(),
+        Value::Array(vec![Value::String(
+            "reasoning.encrypted_content".to_string(),
+        )]),
+    );
 
     serde_json::to_vec(&Value::Object(out))
         .map(|bytes| (bytes, request_stream, tool_name_restore_map))
         .map_err(|err| format!("convert gemini request failed: {err}"))
+}
+
+fn extract_gemini_request_source(
+    payload: Value,
+) -> Result<(serde_json::Map<String, Value>, Option<String>), String> {
+    let Some(root) = payload.as_object() else {
+        return Err("gemini request body must be an object".to_string());
+    };
+    let body_model = root
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let mut source = root
+        .get("request")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_else(|| root.clone());
+    if source.contains_key("systemInstruction") && !source.contains_key("system_instruction") {
+        if let Some(value) = source.remove("systemInstruction") {
+            source.insert("system_instruction".to_string(), value);
+        }
+    }
+    Ok((source, body_model))
+}
+
+fn build_gemini_system_instruction_message(
+    source: &serde_json::Map<String, Value>,
+) -> Option<Value> {
+    let system = get_value_field(source, &["system_instruction", "systemInstruction"])?;
+    let parts = system.get("parts").and_then(Value::as_array)?;
+    let mut content_parts = Vec::new();
+    for part in parts {
+        let Some(text) = part
+            .get("text")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        content_parts.push(json!({ "type": "input_text", "text": text }));
+    }
+    if content_parts.is_empty() {
+        return None;
+    }
+    Some(json!({
+        "type": "message",
+        "role": "developer",
+        "content": content_parts,
+    }))
+}
+
+fn convert_gemini_contents_to_cpa_responses_input(
+    source: &serde_json::Map<String, Value>,
+    tool_name_map: &BTreeMap<String, String>,
+) -> Result<Vec<Value>, String> {
+    let mut items = Vec::new();
+    let mut pending_call_ids: VecDeque<String> = VecDeque::new();
+    let contents = source
+        .get("contents")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "gemini contents field is required".to_string())?;
+    for content in contents {
+        let role = content
+            .get("role")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let role = if role == "model" { "assistant" } else { role };
+        let Some(parts) = content.get("parts").and_then(Value::as_array) else {
+            continue;
+        };
+        for part in parts {
+            if let Some(text) = part
+                .get("text")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let part_type = if role == "assistant" {
+                    "output_text"
+                } else {
+                    "input_text"
+                };
+                items.push(json!({
+                    "type": "message",
+                    "role": role,
+                    "content": [{ "type": part_type, "text": text }],
+                }));
+                continue;
+            }
+
+            if let Some(function_call) = part.get("functionCall").and_then(Value::as_object) {
+                let Some(name) = function_call
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                else {
+                    continue;
+                };
+                let mapped = map_gemini_cpa_tool_name(name, tool_name_map);
+                let call_id = generate_gemini_call_id();
+                pending_call_ids.push_back(call_id.clone());
+                let arguments = function_call
+                    .get("args")
+                    .and_then(|value| serde_json::to_string(value).ok())
+                    .unwrap_or_else(|| "{}".to_string());
+                items.push(json!({
+                    "type": "function_call",
+                    "name": mapped,
+                    "arguments": arguments,
+                    "call_id": call_id,
+                }));
+                continue;
+            }
+
+            if let Some(function_response) = part.get("functionResponse").and_then(Value::as_object)
+            {
+                let output = if let Some(result) = function_response
+                    .get("response")
+                    .and_then(|value| value.get("result"))
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    result.to_string()
+                } else if let Some(response) = function_response.get("response") {
+                    serde_json::to_string(response).unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                let call_id = pending_call_ids
+                    .pop_front()
+                    .unwrap_or_else(generate_gemini_call_id);
+                items.push(json!({
+                    "type": "function_call_output",
+                    "output": output,
+                    "call_id": call_id,
+                }));
+            }
+        }
+    }
+    Ok(items)
+}
+
+fn generate_gemini_call_id() -> String {
+    let rand_text: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(24)
+        .map(char::from)
+        .collect();
+    format!("call_{rand_text}")
+}
+
+fn collect_gemini_declared_tool_names(source: &serde_json::Map<String, Value>) -> Vec<String> {
+    let mut names = Vec::new();
+    let Some(tools) = source.get("tools").and_then(Value::as_array) else {
+        return names;
+    };
+    for tool in tools {
+        let Some(tool_obj) = tool.as_object() else {
+            continue;
+        };
+        let Some(function_declarations) =
+            get_array_field(tool_obj, &["functionDeclarations", "function_declarations"])
+        else {
+            continue;
+        };
+        for declaration in function_declarations {
+            let Some(name) = declaration
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
+fn build_gemini_cpa_tool_name_maps(
+    names: Vec<String>,
+) -> (BTreeMap<String, String>, super::ToolNameRestoreMap) {
+    let mut ordered = Vec::new();
+    let mut seen = BTreeSet::new();
+    for name in names {
+        let trimmed = name.trim();
+        if trimmed.is_empty() || seen.contains(trimmed) {
+            continue;
+        }
+        seen.insert(trimmed.to_string());
+        ordered.push(trimmed.to_string());
+    }
+
+    let mut used = BTreeSet::new();
+    let mut tool_name_map = BTreeMap::new();
+    let mut restore_map = super::ToolNameRestoreMap::new();
+    for original in ordered {
+        let base = gemini_cpa_short_candidate(original.as_str());
+        let unique = gemini_cpa_make_unique(&base, &mut used);
+        if original != unique {
+            restore_map.insert(unique.clone(), original.clone());
+        }
+        tool_name_map.insert(original, unique);
+    }
+    (tool_name_map, restore_map)
+}
+
+fn gemini_cpa_short_candidate(name: &str) -> String {
+    const LIMIT: usize = 64;
+    if name.len() <= LIMIT {
+        return name.to_string();
+    }
+    if name.starts_with("mcp__") {
+        if let Some(idx) = name.rfind("__") {
+            if idx > 0 {
+                let mut candidate = format!("mcp__{}", &name[idx + 2..]);
+                if candidate.len() > LIMIT {
+                    candidate.truncate(LIMIT);
+                }
+                return candidate;
+            }
+        }
+    }
+    name.chars().take(LIMIT).collect()
+}
+
+fn gemini_cpa_make_unique(base: &str, used: &mut BTreeSet<String>) -> String {
+    const LIMIT: usize = 64;
+    if !used.contains(base) {
+        used.insert(base.to_string());
+        return base.to_string();
+    }
+    for idx in 1usize.. {
+        let suffix = format!("_{idx}");
+        let allowed = LIMIT.saturating_sub(suffix.len());
+        let mut prefix = base.to_string();
+        if prefix.len() > allowed {
+            prefix.truncate(allowed);
+        }
+        let candidate = format!("{prefix}{suffix}");
+        if !used.contains(&candidate) {
+            used.insert(candidate.clone());
+            return candidate;
+        }
+    }
+    base.to_string()
+}
+
+fn map_gemini_cpa_tool_name(name: &str, tool_name_map: &BTreeMap<String, String>) -> String {
+    tool_name_map
+        .get(name)
+        .cloned()
+        .unwrap_or_else(|| gemini_cpa_short_candidate(name))
+}
+
+fn map_gemini_tools_to_cpa_responses(
+    source: &serde_json::Map<String, Value>,
+    tool_name_map: &BTreeMap<String, String>,
+) -> Option<Vec<Value>> {
+    let Some(tools) = source.get("tools").and_then(Value::as_array) else {
+        return None;
+    };
+    let mut out = Vec::new();
+    for tool in tools {
+        let Some(tool_obj) = tool.as_object() else {
+            continue;
+        };
+        let Some(function_declarations) =
+            get_array_field(tool_obj, &["functionDeclarations", "function_declarations"])
+        else {
+            continue;
+        };
+        for declaration in function_declarations {
+            let Some(name) = declaration
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            let mapped_name = map_gemini_cpa_tool_name(name, tool_name_map);
+            let mut mapped = serde_json::Map::new();
+            mapped.insert("type".to_string(), Value::String("function".to_string()));
+            mapped.insert("name".to_string(), Value::String(mapped_name));
+            if let Some(description) = declaration.get("description") {
+                mapped.insert("description".to_string(), description.clone());
+            }
+            if let Some(parameters) = get_value_field(
+                declaration.as_object().expect("declaration object"),
+                &[
+                    "parameters",
+                    "parametersJsonSchema",
+                    "parameters_json_schema",
+                ],
+            ) {
+                let cleaned = clean_gemini_tool_schema(parameters);
+                mapped.insert("parameters".to_string(), cleaned);
+            }
+            mapped.insert("strict".to_string(), Value::Bool(false));
+            let mut tool_value = Value::Object(mapped);
+            lowercase_type_fields(&mut tool_value);
+            out.push(tool_value);
+        }
+    }
+    Some(out)
+}
+
+fn clean_gemini_tool_schema(value: &Value) -> Value {
+    let mut schema = value.clone();
+    if let Value::Object(obj) = &mut schema {
+        obj.remove("$schema");
+        obj.insert("additionalProperties".to_string(), Value::Bool(false));
+    }
+    schema
+}
+
+fn lowercase_type_fields(value: &mut Value) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                lowercase_type_fields(item);
+            }
+        }
+        Value::Object(obj) => {
+            if let Some(Value::String(text)) = obj.get_mut("type") {
+                *text = text.to_ascii_lowercase();
+            }
+            for value in obj.values_mut() {
+                lowercase_type_fields(value);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn resolve_gemini_cpa_reasoning_effort(source: &serde_json::Map<String, Value>) -> String {
+    let mut effort: Option<String> = None;
+    if let Some(gen_config) = get_object_field(source, &["generationConfig"]) {
+        if let Some(thinking_config) = get_object_field(gen_config, &["thinkingConfig"]) {
+            if let Some(level) =
+                get_value_field(thinking_config, &["thinkingLevel", "thinking_level"])
+                    .and_then(Value::as_str)
+            {
+                let normalized = level.trim().to_ascii_lowercase();
+                if !normalized.is_empty() {
+                    effort = Some(normalized);
+                }
+            } else if let Some(budget) =
+                get_value_field(thinking_config, &["thinkingBudget", "thinking_budget"])
+                    .and_then(Value::as_i64)
+            {
+                if let Some(mapped) = gemini_cpa_budget_to_level(budget) {
+                    effort = Some(mapped.to_string());
+                }
+            }
+        }
+    }
+    effort.unwrap_or_else(|| "medium".to_string())
+}
+
+fn gemini_cpa_budget_to_level(budget: i64) -> Option<&'static str> {
+    match budget {
+        i64::MIN..=-2 => None,
+        -1 => Some("auto"),
+        0 => Some("none"),
+        1..=512 => Some("minimal"),
+        513..=1024 => Some("low"),
+        1025..=8192 => Some("medium"),
+        8193..=24576 => Some("high"),
+        24577..=i64::MAX => Some("xhigh"),
+    }
+}
+
+fn normalize_gemini_request_source(
+    mut source: serde_json::Map<String, Value>,
+) -> serde_json::Map<String, Value> {
+    if let Some(contents) = source.get("contents").and_then(Value::as_array) {
+        source.insert(
+            "contents".to_string(),
+            Value::Array(normalize_gemini_contents(contents)),
+        );
+    }
+    source
+}
+
+fn normalize_gemini_contents(contents: &[Value]) -> Vec<Value> {
+    let mut normalized = Vec::new();
+    let mut previous_conversation_role: Option<&'static str> = None;
+    for content in contents {
+        let Some(content_obj) = content.as_object() else {
+            continue;
+        };
+        let Some(parts) = content_obj.get("parts").and_then(Value::as_array) else {
+            continue;
+        };
+        let filtered_parts = parts
+            .iter()
+            .filter(|part| is_meaningful_gemini_part(part))
+            .cloned()
+            .collect::<Vec<_>>();
+        if filtered_parts.is_empty() {
+            continue;
+        }
+        let normalized_role = normalize_gemini_content_role(
+            content_obj.get("role").and_then(Value::as_str),
+            previous_conversation_role,
+        );
+        if matches!(normalized_role, "user" | "model") {
+            previous_conversation_role = Some(normalized_role);
+        }
+        let mut normalized_content = content_obj.clone();
+        normalized_content.insert(
+            "role".to_string(),
+            Value::String(normalized_role.to_string()),
+        );
+        normalized_content.insert("parts".to_string(), Value::Array(filtered_parts));
+        normalized.push(Value::Object(normalized_content));
+    }
+    normalized
+}
+
+fn normalize_gemini_content_role(
+    role: Option<&str>,
+    previous_role: Option<&'static str>,
+) -> &'static str {
+    match role.map(str::trim) {
+        Some("user") => "user",
+        Some("model") => "model",
+        Some("function") => "function",
+        _ => match previous_role {
+            None => "user",
+            Some("user") => "model",
+            Some("model") => "user",
+            Some(_) => "user",
+        },
+    }
+}
+
+fn is_meaningful_gemini_part(part: &Value) -> bool {
+    let Some(part_obj) = part.as_object() else {
+        return false;
+    };
+    if part_obj
+        .get("text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+    {
+        return true;
+    }
+    if map_gemini_image_part_to_responses_item(part_obj).is_some() {
+        return true;
+    }
+    if get_object_field(part_obj, &["functionCall", "function_call"]).is_some() {
+        return true;
+    }
+    get_object_field(part_obj, &["functionResponse", "function_response"]).is_some()
 }
 
 fn normalized_request_path(path: &str) -> &str {
@@ -158,10 +591,9 @@ fn collect_gemini_tool_names(source: &serde_json::Map<String, Value>) -> Vec<Str
         }
     }
 
-    if let Some(allowed_function_names) = get_tool_config_field_array(source, &[
-        "allowedFunctionNames",
-        "allowed_function_names",
-    ]) {
+    if let Some(allowed_function_names) =
+        get_tool_config_field_array(source, &["allowedFunctionNames", "allowed_function_names"])
+    {
         for name in allowed_function_names {
             let Some(name) = name
                 .as_str()
@@ -180,8 +612,7 @@ fn collect_gemini_tool_names(source: &serde_json::Map<String, Value>) -> Vec<Str
                 continue;
             };
             for part in parts {
-                if let Some(name) = part
-                    .get("functionCall")
+                if let Some(name) = get_part_object_field(part, &["functionCall", "function_call"])
                     .and_then(|value| value.get("name"))
                     .and_then(Value::as_str)
                     .map(str::trim)
@@ -189,12 +620,12 @@ fn collect_gemini_tool_names(source: &serde_json::Map<String, Value>) -> Vec<Str
                 {
                     names.push(name.to_string());
                 }
-                if let Some(name) = part
-                    .get("functionResponse")
-                    .and_then(|value| value.get("name"))
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
+                if let Some(name) =
+                    get_part_object_field(part, &["functionResponse", "function_response"])
+                        .and_then(|value| value.get("name"))
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
                 {
                     names.push(name.to_string());
                 }
@@ -212,8 +643,12 @@ fn collect_gemini_allowed_function_names(
         .get("toolConfig")
         .or_else(|| source.get("tool_config"))
         .and_then(Value::as_object)
-        .and_then(|value| get_object_field(value, &["functionCallingConfig", "function_calling_config"]))
-        .and_then(|value| get_value_field(value, &["allowedFunctionNames", "allowed_function_names"]))?;
+        .and_then(|value| {
+            get_object_field(value, &["functionCallingConfig", "function_calling_config"])
+        })
+        .and_then(|value| {
+            get_value_field(value, &["allowedFunctionNames", "allowed_function_names"])
+        })?;
     let mut names = BTreeSet::new();
     if let Some(items) = allowed_items.as_array() {
         for item in items {
@@ -236,9 +671,11 @@ fn convert_gemini_contents_to_responses_input(
 ) -> Result<(Option<String>, Vec<Value>), String> {
     let mut messages = Vec::new();
     let mut pending_tool_calls: BTreeMap<String, VecDeque<String>> = BTreeMap::new();
+    let mut pending_tool_call_names = VecDeque::new();
     let mut synthetic_call_index = 0usize;
 
-    if let Some(system_instruction) = get_value_field(source, &["systemInstruction", "system_instruction"])
+    if let Some(system_instruction) =
+        get_value_field(source, &["systemInstruction", "system_instruction"])
     {
         let system_text = extract_text_from_content_like(system_instruction);
         if !system_text.trim().is_empty() {
@@ -331,6 +768,7 @@ fn convert_gemini_contents_to_responses_input(
                         synthetic_call_index += 1;
                         format!("call_gemini_{synthetic_call_index}")
                     });
+                pending_tool_call_names.push_back(mapped_name.clone());
                 pending_tool_calls
                     .entry(mapped_name.clone())
                     .or_default()
@@ -362,16 +800,22 @@ fn convert_gemini_contents_to_responses_input(
                     }));
                     pending_user_parts.clear();
                 }
-                let Some(name) = function_response
+                let mapped_name = function_response
                     .get("name")
                     .and_then(Value::as_str)
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
-                else {
-                    continue;
-                };
-                let mapped_name =
-                    super::openai::shorten_openai_tool_name_with_map(name, tool_name_map);
+                    .map(|name| {
+                        super::openai::shorten_openai_tool_name_with_map(name, tool_name_map)
+                    })
+                    .map(|mapped_name| {
+                        consume_pending_tool_call_name(
+                            &mut pending_tool_call_names,
+                            Some(mapped_name.as_str()),
+                        )
+                        .unwrap_or(mapped_name)
+                    })
+                    .or_else(|| consume_pending_tool_call_name(&mut pending_tool_call_names, None));
                 let call_id = function_response
                     .get("id")
                     .and_then(Value::as_str)
@@ -379,9 +823,11 @@ fn convert_gemini_contents_to_responses_input(
                     .filter(|value| !value.is_empty())
                     .map(str::to_string)
                     .or_else(|| {
-                        pending_tool_calls
-                            .get_mut(mapped_name.as_str())
-                            .and_then(VecDeque::pop_front)
+                        mapped_name.as_deref().and_then(|mapped_name| {
+                            pending_tool_calls
+                                .get_mut(mapped_name)
+                                .and_then(VecDeque::pop_front)
+                        })
                     })
                     .unwrap_or_else(|| {
                         synthetic_call_index += 1;
@@ -538,10 +984,13 @@ fn map_gemini_function_response_output_items(output: &Value) -> Vec<Value> {
 }
 
 fn resolve_parallel_tool_calls(source: &serde_json::Map<String, Value>) -> bool {
-    get_tool_config_field_value(source, &["disableParallelToolUse", "disable_parallel_tool_use"])
-        .and_then(Value::as_bool)
-        .map(|disabled| !disabled)
-        .unwrap_or(true)
+    get_tool_config_field_value(
+        source,
+        &["disableParallelToolUse", "disable_parallel_tool_use"],
+    )
+    .and_then(Value::as_bool)
+    .map(|disabled| !disabled)
+    .unwrap_or(true)
 }
 
 fn resolve_tool_choice(
@@ -553,7 +1002,9 @@ fn resolve_tool_choice(
         .get("toolConfig")
         .or_else(|| source.get("tool_config"))
         .and_then(Value::as_object)
-        .and_then(|value| get_object_field(value, &["functionCallingConfig", "function_calling_config"]))?;
+        .and_then(|value| {
+            get_object_field(value, &["functionCallingConfig", "function_calling_config"])
+        })?;
     let mode = config
         .get("mode")
         .and_then(Value::as_str)
@@ -635,10 +1086,14 @@ fn map_gemini_tools_to_responses(
             }
             let parameters = get_value_field(
                 declaration.as_object().expect("declaration object"),
-                &["parametersJsonSchema", "parameters_json_schema", "parameters"],
+                &[
+                    "parametersJsonSchema",
+                    "parameters_json_schema",
+                    "parameters",
+                ],
             )
-                .cloned()
-                .unwrap_or_else(|| json!({ "type": "object", "properties": {} }));
+            .cloned()
+            .unwrap_or_else(|| json!({ "type": "object", "properties": {} }));
             mapped.insert(
                 "parameters".to_string(),
                 super::fix_array_items_in_schema(parameters),
@@ -650,6 +1105,29 @@ fn map_gemini_tools_to_responses(
         None
     } else {
         Some(out)
+    }
+}
+
+fn get_part_object_field<'a>(
+    part: &'a Value,
+    keys: &[&str],
+) -> Option<&'a serde_json::Map<String, Value>> {
+    part.as_object()
+        .and_then(|part_obj| get_object_field(part_obj, keys))
+}
+
+fn consume_pending_tool_call_name(
+    pending_tool_call_names: &mut VecDeque<String>,
+    expected_name: Option<&str>,
+) -> Option<String> {
+    match expected_name {
+        Some(expected_name) => {
+            let position = pending_tool_call_names
+                .iter()
+                .position(|item| item == expected_name)?;
+            pending_tool_call_names.remove(position)
+        }
+        None => pending_tool_call_names.pop_front(),
     }
 }
 
@@ -755,7 +1233,9 @@ fn get_tool_config_field_value<'a>(
         .get("toolConfig")
         .or_else(|| source.get("tool_config"))
         .and_then(Value::as_object)
-        .and_then(|value| get_object_field(value, &["functionCallingConfig", "function_calling_config"]))
+        .and_then(|value| {
+            get_object_field(value, &["functionCallingConfig", "function_calling_config"])
+        })
         .and_then(|value| get_value_field(value, keys))
 }
 
@@ -766,32 +1246,69 @@ fn get_tool_config_field_array<'a>(
     get_tool_config_field_value(source, keys).and_then(Value::as_array)
 }
 
-fn resolve_gemini_reasoning_payload(
+fn resolve_gemini_reasoning_decision(
     source: &serde_json::Map<String, Value>,
-) -> Option<Value> {
+) -> Option<GeminiReasoningDecision> {
     let generation_config = get_object_field(source, &["generationConfig", "generation_config"])?;
     let thinking_config =
         get_object_field(generation_config, &["thinkingConfig", "thinking_config"])?;
+    let include_thoughts =
+        get_value_field(thinking_config, &["includeThoughts", "include_thoughts"])
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
 
     if let Some(level) = get_value_field(thinking_config, &["thinkingLevel", "thinking_level"])
         .and_then(Value::as_str)
-        .and_then(crate::reasoning_effort::normalize_reasoning_effort)
+        .and_then(normalize_gemini_thinking_level)
     {
-        return Some(json!({ "effort": level }));
+        return Some(build_gemini_reasoning_decision(level, include_thoughts));
     }
 
     let budget = get_value_field(thinking_config, &["thinkingBudget", "thinking_budget"])
         .and_then(Value::as_i64)?;
-    let effort = map_gemini_thinking_budget_to_effort(budget)?;
-    Some(json!({ "effort": effort }))
+    Some(build_gemini_reasoning_decision(
+        map_gemini_thinking_budget_to_level(budget)?,
+        include_thoughts,
+    ))
 }
 
-fn map_gemini_thinking_budget_to_effort(budget: i64) -> Option<&'static str> {
+fn build_gemini_reasoning_decision(
+    level: GeminiThinkingLevel,
+    include_thoughts: bool,
+) -> GeminiReasoningDecision {
+    match level {
+        GeminiThinkingLevel::Disabled | GeminiThinkingLevel::Auto => GeminiReasoningDecision {
+            effort: None,
+            include_reasoning: false,
+        },
+        GeminiThinkingLevel::Effort(effort) => GeminiReasoningDecision {
+            effort: Some(effort),
+            include_reasoning: include_thoughts,
+        },
+    }
+}
+
+fn normalize_gemini_thinking_level(value: &str) -> Option<GeminiThinkingLevel> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "none" => Some(GeminiThinkingLevel::Disabled),
+        "auto" => Some(GeminiThinkingLevel::Auto),
+        "minimal" => Some(GeminiThinkingLevel::Effort("low")),
+        "low" => Some(GeminiThinkingLevel::Effort("low")),
+        "medium" => Some(GeminiThinkingLevel::Effort("medium")),
+        "high" => Some(GeminiThinkingLevel::Effort("high")),
+        "xhigh" | "extra_high" => Some(GeminiThinkingLevel::Effort("xhigh")),
+        _ => None,
+    }
+}
+
+fn map_gemini_thinking_budget_to_level(budget: i64) -> Option<GeminiThinkingLevel> {
     match budget {
-        i64::MIN..=-1 => None,
-        0..=1024 => Some("low"),
-        1025..=8192 => Some("medium"),
-        8193..=24576 => Some("high"),
-        24577..=i64::MAX => Some("xhigh"),
+        i64::MIN..=-2 => None,
+        -1 => Some(GeminiThinkingLevel::Auto),
+        0 => Some(GeminiThinkingLevel::Disabled),
+        1..=1024 => Some(GeminiThinkingLevel::Effort("low")),
+        1025..=8192 => Some(GeminiThinkingLevel::Effort("medium")),
+        8193..=24576 => Some(GeminiThinkingLevel::Effort("high")),
+        24577..=i64::MAX => Some(GeminiThinkingLevel::Effort("xhigh")),
     }
 }

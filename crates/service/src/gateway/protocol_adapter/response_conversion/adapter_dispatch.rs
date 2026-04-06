@@ -4,7 +4,9 @@ use crate::gateway::request_helpers::is_html_content_type;
 
 use super::super::ResponseAdapter;
 use super::gemini::{
-    convert_gemini_json_to_sse, convert_openai_json_to_gemini, convert_openai_sse_to_gemini,
+    convert_gemini_cli_json_to_sse, convert_gemini_json_to_sse, convert_openai_json_to_gemini,
+    convert_openai_json_to_gemini_cli, convert_openai_sse_to_gemini,
+    convert_openai_sse_to_gemini_cli, convert_openai_sse_to_gemini_cli_json,
     convert_openai_sse_to_gemini_json,
 };
 use super::json_conversion::convert_openai_json_to_anthropic;
@@ -70,6 +72,22 @@ pub(super) fn adapt_upstream_response(
                 return convert_gemini_json_to_sse(&gemini_json);
             }
             convert_openai_sse_to_gemini(body, tool_name_restore_map)
+        }
+        ResponseAdapter::GeminiCliJson => {
+            reject_html_challenge(upstream_content_type)?;
+            if is_sse_payload(upstream_content_type, body) {
+                return convert_openai_sse_to_gemini_cli_json(body, tool_name_restore_map);
+            }
+            convert_openai_json_to_gemini_cli(body, tool_name_restore_map)
+        }
+        ResponseAdapter::GeminiCliSse => {
+            reject_html_challenge(upstream_content_type)?;
+            if is_json_payload(upstream_content_type) {
+                let (gemini_cli_json, _) =
+                    convert_openai_json_to_gemini_cli(body, tool_name_restore_map)?;
+                return convert_gemini_cli_json_to_sse(&gemini_cli_json);
+            }
+            convert_openai_sse_to_gemini_cli(body, tool_name_restore_map)
         }
         ResponseAdapter::OpenAIChatCompletionsJson | ResponseAdapter::OpenAIChatCompletionsSse => {
             reject_html_challenge(upstream_content_type)?;

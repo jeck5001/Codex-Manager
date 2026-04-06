@@ -100,6 +100,44 @@ fn gemini_json_response_restores_sanitized_mcp_tool_names() {
 }
 
 #[test]
+fn gemini_cli_json_response_wraps_gemini_payload_in_response_field() {
+    let upstream = serde_json::json!({
+        "id": "resp_gemini_cli_1",
+        "model": "gpt-5.4",
+        "status": "completed",
+        "output": [{
+            "type": "message",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "text": "已完成" }]
+        }],
+        "usage": {
+            "input_tokens": 3,
+            "output_tokens": 2,
+            "total_tokens": 5
+        }
+    });
+    let upstream = serde_json::to_vec(&upstream).expect("serialize upstream");
+    let (body, content_type) = adapt_upstream_response(
+        ResponseAdapter::GeminiCliJson,
+        Some("application/json"),
+        &upstream,
+    )
+    .expect("adapt response");
+    assert_eq!(content_type, "application/json");
+
+    let value: serde_json::Value = serde_json::from_slice(&body).expect("gemini cli response");
+    assert_eq!(
+        value["response"]["candidates"][0]["content"]["role"],
+        "model"
+    );
+    assert_eq!(
+        value["response"]["candidates"][0]["content"]["parts"][0]["text"],
+        "已完成"
+    );
+    assert_eq!(value["response"]["usageMetadata"]["totalTokenCount"], 5);
+}
+
+#[test]
 fn gemini_sse_response_maps_openai_responses_event_stream() {
     let upstream = concat!(
         "data: {\"type\":\"response.output_text.delta\",\"response_id\":\"resp_gemini_stream\",\"model\":\"gpt-5.4\",\"delta\":\"你好\"}\n\n",
@@ -138,6 +176,39 @@ fn gemini_sse_response_maps_openai_responses_event_stream() {
         serde_json::Value::String("STOP".to_string())
     );
     assert_eq!(events[2]["usageMetadata"]["totalTokenCount"], 3);
+}
+
+#[test]
+fn gemini_cli_sse_response_wraps_each_chunk_in_response_field() {
+    let upstream = concat!(
+        "data: {\"type\":\"response.output_text.delta\",\"response_id\":\"resp_gemini_cli_stream\",\"model\":\"gpt-5.4\",\"delta\":\"你好\"}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gemini_cli_stream\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"total_tokens\":3}}}\n\n",
+        "data: [DONE]\n\n",
+    );
+    let (body, content_type) = adapt_upstream_response(
+        ResponseAdapter::GeminiCliSse,
+        Some("text/event-stream"),
+        upstream.as_bytes(),
+    )
+    .expect("adapt stream");
+    assert_eq!(content_type, "text/event-stream");
+
+    let text = String::from_utf8(body).expect("utf8");
+    let events = text
+        .split("\n\n")
+        .filter_map(|frame| frame.strip_prefix("data: "))
+        .filter(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
+        .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        events[0]["response"]["candidates"][0]["content"]["parts"][0]["text"],
+        "你好"
+    );
+    assert_eq!(
+        events[1]["response"]["candidates"][0]["finishReason"],
+        serde_json::Value::String("STOP".to_string())
+    );
+    assert_eq!(events[1]["response"]["usageMetadata"]["totalTokenCount"], 3);
 }
 
 #[test]

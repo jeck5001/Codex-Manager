@@ -5,8 +5,9 @@ use super::{
     should_skip_chat_live_text_event, should_skip_completion_live_text_event,
     synthesize_chat_completion_sse_from_json, synthesize_completions_sse_from_json,
     GeminiSseReader, OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader, OpenAIStreamMeta,
-    PassthroughSseCollector, PassthroughSseUsageReader, SseKeepAliveFrame, UpstreamResponseUsage,
+    PassthroughSseCollector, PassthroughSseUsageReader, SseKeepAliveFrame,
 };
+use crate::gateway::GeminiStreamOutputMode;
 use serde_json::json;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -1159,8 +1160,14 @@ fn gemini_sse_reader_waits_for_completed_full_arguments_before_emitting_tool_cal
             "data: [DONE]\n\n"
         ),
     );
-    let usage_collector = Arc::new(Mutex::new(UpstreamResponseUsage::default()));
-    let mut reader = GeminiSseReader::new(upstream, Arc::clone(&usage_collector), None);
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = GeminiSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        None,
+        GeminiStreamOutputMode::Sse,
+        false,
+    );
     let mut mapped = String::new();
     reader
         .read_to_string(&mut mapped)
@@ -1186,10 +1193,13 @@ fn gemini_sse_reader_waits_for_completed_full_arguments_before_emitting_tool_cal
         "https://linux.do"
     );
 
-    let usage = usage_collector
+    let collector = usage_collector
         .lock()
         .expect("lock usage collector")
         .clone();
+    let usage = collector.usage;
+    assert!(collector.saw_terminal);
+    assert_eq!(collector.terminal_error, None);
     assert_eq!(usage.input_tokens, Some(4));
     assert_eq!(usage.cached_input_tokens, Some(2));
     assert_eq!(usage.output_tokens, Some(5));
@@ -1206,8 +1216,14 @@ fn gemini_sse_reader_does_not_treat_function_call_output_as_final_text() {
             "data: [DONE]\n\n"
         ),
     );
-    let usage_collector = Arc::new(Mutex::new(UpstreamResponseUsage::default()));
-    let mut reader = GeminiSseReader::new(upstream, Arc::clone(&usage_collector), None);
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = GeminiSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        None,
+        GeminiStreamOutputMode::Sse,
+        false,
+    );
     let mut mapped = String::new();
     reader
         .read_to_string(&mut mapped)
@@ -1239,10 +1255,13 @@ fn gemini_sse_reader_does_not_treat_function_call_output_as_final_text() {
         serde_json::Value::String("STOP".to_string())
     );
 
-    let usage = usage_collector
+    let collector = usage_collector
         .lock()
         .expect("lock usage collector")
         .clone();
+    let usage = collector.usage;
+    assert!(collector.saw_terminal);
+    assert_eq!(collector.terminal_error, None);
     assert_eq!(usage.output_text, None);
     assert_eq!(usage.total_tokens, Some(5));
 }
@@ -1256,8 +1275,14 @@ fn gemini_sse_reader_completed_message_output_still_emits_final_text() {
             "data: [DONE]\n\n"
         ),
     );
-    let usage_collector = Arc::new(Mutex::new(UpstreamResponseUsage::default()));
-    let mut reader = GeminiSseReader::new(upstream, Arc::clone(&usage_collector), None);
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = GeminiSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        None,
+        GeminiStreamOutputMode::Sse,
+        false,
+    );
     let mut mapped = String::new();
     reader
         .read_to_string(&mut mapped)
@@ -1281,15 +1306,221 @@ fn gemini_sse_reader_completed_message_output_still_emits_final_text() {
         .collect::<Vec<_>>();
     assert_eq!(text_events, vec!["已修改 Desktop\\gemini.txt。"]);
 
-    let usage = usage_collector
+    let collector = usage_collector
         .lock()
         .expect("lock usage collector")
         .clone();
+    let usage = collector.usage;
+    assert!(collector.saw_terminal);
+    assert_eq!(collector.terminal_error, None);
     assert_eq!(
         usage.output_text.as_deref(),
         Some("已修改 Desktop\\gemini.txt。")
     );
     assert_eq!(usage.total_tokens, Some(5));
+}
+
+#[test]
+fn gemini_cli_sse_reader_wraps_chunks_in_response_field() {
+    let upstream = open_mock_http_response(
+        "text/event-stream",
+        concat!(
+            "data: {\"type\":\"response.output_text.delta\",\"response_id\":\"resp_gemini_cli_reader_1\",\"model\":\"gpt-5.4\",\"delta\":\"已完成\"}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gemini_cli_reader_1\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"total_tokens\":5}}}\n\n",
+            "data: [DONE]\n\n"
+        ),
+    );
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = GeminiSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        None,
+        GeminiStreamOutputMode::Sse,
+        true,
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read gemini cli mapped sse");
+
+    let events = mapped
+        .split("\n\n")
+        .filter_map(|frame| frame.strip_prefix("data: "))
+        .filter(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
+        .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        events[0]["response"]["candidates"][0]["content"]["parts"][0]["text"],
+        "已完成"
+    );
+    assert_eq!(
+        events[1]["response"]["usageMetadata"]["totalTokenCount"],
+        serde_json::Value::from(5)
+    );
+
+    let collector = usage_collector
+        .lock()
+        .expect("lock usage collector")
+        .clone();
+    assert!(collector.saw_terminal);
+    assert_eq!(collector.terminal_error, None);
+    assert_eq!(collector.usage.output_text.as_deref(), Some("已完成"));
+}
+
+#[test]
+fn gemini_cli_sse_reader_does_not_emit_comment_keepalive_frames() {
+    let _guard = crate::test_env_guard();
+    let _keepalive_guard = EnvGuard::set("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS", "5");
+    super::reload_from_env();
+
+    let (upstream, server) = open_streaming_mock_http_response(
+        "text/event-stream",
+        &[(
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gemini_cli_keepalive_1\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n\
+             data: [DONE]\n\n",
+            30,
+        )],
+    );
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = GeminiSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        None,
+        GeminiStreamOutputMode::Sse,
+        true,
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read gemini cli keepalive stream");
+    server.join().expect("join streaming mock upstream");
+
+    assert!(!mapped.contains(": keep-alive"));
+    assert!(mapped.contains("\"response\""));
+}
+
+#[test]
+fn gemini_sse_reader_requires_response_completed_before_done() {
+    let upstream = open_mock_http_response("text/event-stream", "data: [DONE]\n\n");
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = GeminiSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        None,
+        GeminiStreamOutputMode::Sse,
+        false,
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read gemini done-only stream");
+
+    let collector = usage_collector
+        .lock()
+        .expect("lock usage collector")
+        .clone();
+    assert!(mapped.starts_with("event: error\ndata: "));
+    assert!(!collector.saw_terminal);
+    assert_eq!(collector.terminal_error.as_deref(), Some("网络抖动"));
+    assert_eq!(collector.last_event_type, None);
+}
+
+#[test]
+fn gemini_sse_reader_marks_incomplete_trailing_json_as_stream_error() {
+    let upstream = open_mock_http_response(
+        "text/event-stream",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gemini_partial_1\"",
+    );
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = GeminiSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        None,
+        GeminiStreamOutputMode::Sse,
+        false,
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read gemini partial stream");
+
+    let collector = usage_collector
+        .lock()
+        .expect("lock usage collector")
+        .clone();
+    assert!(mapped.starts_with("event: error\ndata: "));
+    assert!(!collector.saw_terminal);
+    assert_eq!(collector.terminal_error.as_deref(), Some("网络抖动"));
+    assert_eq!(collector.last_event_type, None);
+}
+
+#[test]
+fn gemini_raw_reader_outputs_plain_json_chunks() {
+    let upstream = open_mock_http_response(
+        "text/event-stream",
+        concat!(
+            "data: {\"type\":\"response.output_text.delta\",\"response_id\":\"resp_gemini_raw_1\",\"model\":\"gpt-5.4\",\"delta\":\"你好\"}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gemini_raw_1\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"total_tokens\":3}}}\n\n",
+            "data: [DONE]\n\n"
+        ),
+    );
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = GeminiSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        None,
+        GeminiStreamOutputMode::Raw,
+        false,
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read gemini raw stream");
+
+    assert!(!mapped.contains("data: "));
+    assert!(mapped.contains("\"candidates\""));
+    assert!(mapped.contains("\"usageMetadata\""));
+}
+
+#[test]
+fn gemini_sse_reader_emits_structured_error_frame_for_incomplete_stream() {
+    let upstream = open_mock_http_response("text/event-stream", "data: [DONE]\n\n");
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = GeminiSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        None,
+        GeminiStreamOutputMode::Sse,
+        false,
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read gemini incomplete sse");
+
+    assert!(mapped.starts_with("event: error\ndata: "));
+    assert!(mapped.contains("\"error\""));
+}
+
+#[test]
+fn gemini_raw_reader_emits_plain_json_error_for_incomplete_stream() {
+    let upstream = open_mock_http_response("text/event-stream", "data: [DONE]\n\n");
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = GeminiSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        None,
+        GeminiStreamOutputMode::Raw,
+        true,
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read gemini incomplete raw");
+
+    assert!(!mapped.starts_with("data: "));
+    let value: serde_json::Value = serde_json::from_str(&mapped).expect("parse raw error json");
+    assert!(value.get("error").is_some());
 }
 
 /// 函数 `passthrough_sse_reader_emits_keepalive_for_responses_stream`

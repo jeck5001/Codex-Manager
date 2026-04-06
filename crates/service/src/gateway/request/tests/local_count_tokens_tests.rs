@@ -80,3 +80,19 @@ fn estimate_gemini_input_tokens_rejects_invalid_json() {
         .expect_err("should reject invalid json");
     assert_eq!(err, "invalid gemini request json");
 }
+
+#[test]
+fn estimate_gemini_cli_wrapped_input_tokens_uses_nested_request() {
+    let body = br#"{
+        "model":"gemini-2.5-pro",
+        "request":{
+            "system_instruction":{"parts":[{"text":"abcdabcd"}]},
+            "contents":[
+                {"parts":[{"text":"abcd"}]},
+                {"parts":[{"text":"abcdabcd"}]}
+            ]
+        }
+    }"#;
+    let count = estimate_input_tokens_from_gemini_request(body).expect("estimate failed");
+    assert_eq!(count, 5);
+}

@@ -58,11 +58,31 @@ pub(super) fn convert_openai_json_to_gemini(
         .map_err(|err| format!("serialize gemini response failed: {err}"))
 }
 
+pub(super) fn convert_openai_json_to_gemini_cli(
+    body: &[u8],
+    tool_name_restore_map: Option<&ToolNameRestoreMap>,
+) -> Result<(Vec<u8>, &'static str), String> {
+    let (gemini_body, _) = convert_openai_json_to_gemini(body, tool_name_restore_map)?;
+    let wrapped = wrap_gemini_cli_response_bytes(&gemini_body)?;
+    Ok((wrapped, "application/json"))
+}
+
 pub(super) fn convert_gemini_json_to_sse(body: &[u8]) -> Result<(Vec<u8>, &'static str), String> {
     let value: Value =
         serde_json::from_slice(body).map_err(|_| "invalid gemini json response".to_string())?;
     let mut out = String::new();
     append_gemini_sse_event(&mut out, &value);
+    Ok((out.into_bytes(), "text/event-stream"))
+}
+
+pub(super) fn convert_gemini_cli_json_to_sse(
+    body: &[u8],
+) -> Result<(Vec<u8>, &'static str), String> {
+    let value: Value =
+        serde_json::from_slice(body).map_err(|_| "invalid gemini cli json response".to_string())?;
+    let payload = value.get("response").cloned().unwrap_or(value);
+    let mut out = String::new();
+    append_gemini_cli_sse_event(&mut out, &payload);
     Ok((out.into_bytes(), "text/event-stream"))
 }
 
@@ -74,6 +94,15 @@ pub(super) fn convert_openai_sse_to_gemini_json(
     serde_json::to_vec(&payload)
         .map(|bytes| (bytes, "application/json"))
         .map_err(|err| format!("serialize gemini response failed: {err}"))
+}
+
+pub(super) fn convert_openai_sse_to_gemini_cli_json(
+    body: &[u8],
+    tool_name_restore_map: Option<&ToolNameRestoreMap>,
+) -> Result<(Vec<u8>, &'static str), String> {
+    let (gemini_body, _) = convert_openai_sse_to_gemini_json(body, tool_name_restore_map)?;
+    let wrapped = wrap_gemini_cli_response_bytes(&gemini_body)?;
+    Ok((wrapped, "application/json"))
 }
 
 pub(super) fn convert_openai_sse_to_gemini(
@@ -111,6 +140,14 @@ pub(super) fn convert_openai_sse_to_gemini(
         }
     }
     Ok((out.into_bytes(), "text/event-stream"))
+}
+
+pub(super) fn convert_openai_sse_to_gemini_cli(
+    body: &[u8],
+    tool_name_restore_map: Option<&ToolNameRestoreMap>,
+) -> Result<(Vec<u8>, &'static str), String> {
+    let (gemini_sse, _) = convert_openai_sse_to_gemini(body, tool_name_restore_map)?;
+    wrap_gemini_sse_frames(&gemini_sse)
 }
 
 fn map_openai_error_to_gemini(value: &Value) -> Option<Value> {
@@ -484,6 +521,47 @@ fn append_gemini_sse_event(buffer: &mut String, payload: &Value) {
     buffer.push_str("data: ");
     buffer.push_str(&data);
     buffer.push_str("\n\n");
+}
+
+fn append_gemini_cli_sse_event(buffer: &mut String, payload: &Value) {
+    let wrapped = wrap_gemini_cli_response_value(payload.clone());
+    append_gemini_sse_event(buffer, &wrapped);
+}
+
+fn wrap_gemini_cli_response_bytes(body: &[u8]) -> Result<Vec<u8>, String> {
+    let value: Value =
+        serde_json::from_slice(body).map_err(|_| "invalid gemini json response".to_string())?;
+    serde_json::to_vec(&wrap_gemini_cli_response_value(value))
+        .map_err(|err| format!("serialize gemini cli response failed: {err}"))
+}
+
+fn wrap_gemini_cli_response_value(payload: Value) -> Value {
+    json!({ "response": payload })
+}
+
+fn wrap_gemini_sse_frames(body: &[u8]) -> Result<(Vec<u8>, &'static str), String> {
+    let text = std::str::from_utf8(body).map_err(|_| "invalid gemini sse body".to_string())?;
+    let mut out = String::new();
+    for frame in split_sse_frames(text) {
+        let mut data_lines = Vec::new();
+        for line in frame {
+            let trimmed = line.trim_end_matches(['\r', '\n']);
+            if let Some(rest) = trimmed.strip_prefix("data:") {
+                data_lines.push(rest.trim_start().to_string());
+            }
+        }
+        if data_lines.is_empty() {
+            continue;
+        }
+        let data = data_lines.join("\n");
+        if data.trim() == "[DONE]" {
+            continue;
+        }
+        let payload: Value =
+            serde_json::from_str(&data).map_err(|_| "invalid gemini sse json frame".to_string())?;
+        append_gemini_cli_sse_event(&mut out, &payload);
+    }
+    Ok((out.into_bytes(), "text/event-stream"))
 }
 
 fn split_sse_frames(text: &str) -> Vec<Vec<String>> {

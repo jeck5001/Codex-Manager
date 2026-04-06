@@ -546,6 +546,7 @@ pub(in super::super) fn proxy_aggregate_request(
                 upstream,
                 inflight_guard,
                 response_adapter,
+                None,
                 path,
                 None,
                 is_stream,

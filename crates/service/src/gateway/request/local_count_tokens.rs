@@ -74,12 +74,19 @@ fn estimate_input_tokens_from_anthropic_messages(body: &[u8]) -> Result<u64, Str
 fn estimate_input_tokens_from_gemini_request(body: &[u8]) -> Result<u64, String> {
     let payload: Value =
         serde_json::from_slice(body).map_err(|_| "invalid gemini request json".to_string())?;
-    let Some(object) = payload.as_object() else {
+    let Some(root) = payload.as_object() else {
         return Err("gemini request body must be an object".to_string());
     };
+    let object = root
+        .get("request")
+        .and_then(Value::as_object)
+        .unwrap_or(root);
 
     let mut char_count = 0usize;
-    if let Some(system_instruction) = object.get("systemInstruction") {
+    if let Some(system_instruction) = object
+        .get("systemInstruction")
+        .or_else(|| object.get("system_instruction"))
+    {
         char_count += accumulate_text_len(system_instruction);
     }
     if let Some(contents) = object.get("contents").and_then(Value::as_array) {

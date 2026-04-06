@@ -43,8 +43,18 @@ fn normalized_request_path(path: &str) -> &str {
     path.split('?').next().unwrap_or(path)
 }
 
+fn is_gemini_internal_generate_content_request_path(path: &str) -> bool {
+    matches!(
+        normalized_request_path(path),
+        "/v1internal:generateContent" | "/v1internal:streamGenerateContent"
+    )
+}
+
 pub(crate) fn is_gemini_generate_content_request_path(path: &str) -> bool {
     let normalized = normalized_request_path(path);
+    if is_gemini_internal_generate_content_request_path(normalized) {
+        return true;
+    }
     ["/v1/models/", "/v1beta/models/", "/v1alpha/models/"]
         .iter()
         .any(|prefix| {
@@ -56,6 +66,9 @@ pub(crate) fn is_gemini_generate_content_request_path(path: &str) -> bool {
 
 pub(crate) fn is_gemini_count_tokens_request_path(path: &str) -> bool {
     let normalized = normalized_request_path(path);
+    if normalized == "/v1internal:countTokens" {
+        return true;
+    }
     ["/v1/models/", "/v1beta/models/", "/v1alpha/models/"]
         .iter()
         .any(|prefix| normalized.starts_with(prefix) && normalized.contains(":countTokens"))
@@ -282,6 +295,31 @@ mod tests {
                 PROTOCOL_OPENAI_COMPAT,
                 "/v1beta/models/gemini-2.5-pro:countTokens?alt=json"
             ),
+            PROTOCOL_GEMINI_NATIVE
+        );
+    }
+
+    #[test]
+    fn wildcard_protocol_routes_gemini_cli_internal_generate_content_path_to_gemini() {
+        assert!(is_gemini_generate_content_request_path(
+            "/v1internal:streamGenerateContent?alt=sse"
+        ));
+        assert_eq!(
+            resolve_gateway_protocol_type(
+                PROTOCOL_OPENAI_COMPAT,
+                "/v1internal:streamGenerateContent?alt=sse"
+            ),
+            PROTOCOL_GEMINI_NATIVE
+        );
+    }
+
+    #[test]
+    fn wildcard_protocol_routes_gemini_cli_internal_count_tokens_path_to_gemini() {
+        assert!(is_gemini_count_tokens_request_path(
+            "/v1internal:countTokens"
+        ));
+        assert_eq!(
+            resolve_gateway_protocol_type(PROTOCOL_OPENAI_COMPAT, "/v1internal:countTokens"),
             PROTOCOL_GEMINI_NATIVE
         );
     }

@@ -11,6 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const DEFAULT_TRACE_QUEUE_CAPACITY: usize = 2048;
 const TRACE_FLUSH_WAIT_TIMEOUT_MS: u64 = 200;
 const ENV_TRACE_QUEUE_CAPACITY: &str = "CODEXMANAGER_TRACE_QUEUE_CAPACITY";
+const ENV_GEMINI_TRACE_DIAGNOSTICS: &str = "CODEXMANAGER_GEMINI_TRACE_DIAGNOSTICS";
 const TRACE_PENDING_LINE_LIMIT: usize = 32;
 
 static TRACE_WRITER: OnceLock<TraceAsyncWriter> = OnceLock::new();
@@ -271,6 +272,18 @@ fn short_fingerprint(value: &str) -> String {
         hash = hash.wrapping_mul(1099511628211);
     }
     format!("{hash:016x}")
+}
+
+fn gemini_trace_diagnostics_enabled() -> bool {
+    std::env::var(ENV_GEMINI_TRACE_DIAGNOSTICS)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 /// 函数 `append_trace_line`
@@ -671,6 +684,39 @@ pub(crate) fn log_request_body_preview(trace_id: &str, body: &[u8]) {
     let _ = (trace_id, body, super::trace_body_preview_max_bytes());
 }
 
+pub(crate) fn log_gemini_request_diagnostics(
+    trace_id: &str,
+    original_path: &str,
+    adapted_path: &str,
+    response_adapter: &str,
+    output_mode: Option<&str>,
+    body: &[u8],
+) {
+    if !gemini_trace_diagnostics_enabled() {
+        return;
+    }
+    let preview_len = body.len().min(super::trace_body_preview_max_bytes());
+    let preview = String::from_utf8_lossy(&body[..preview_len]);
+    let truncated = if body.len() > preview_len {
+        "true"
+    } else {
+        "false"
+    };
+    let line = format!(
+        "ts={} event=GEMINI_REQUEST trace_id={} original_path={} adapted_path={} adapter={} output_mode={} body_len={} preview_truncated={} body_preview={}",
+        current_trace_ts(),
+        sanitize_text(trace_id),
+        sanitize_text(original_path),
+        sanitize_text(adapted_path),
+        sanitize_text(response_adapter),
+        sanitize_text(output_mode.unwrap_or("-")),
+        body.len(),
+        truncated,
+        sanitize_text(preview.as_ref()),
+    );
+    buffer_trace_line(trace_id, line);
+}
+
 /// 函数 `log_request_gate_wait`
 ///
 /// 作者: gaohongshun
@@ -922,6 +968,32 @@ pub(crate) fn log_bridge_result(
         sanitize_text(upstream_identity_error_code.unwrap_or("-")),
         sanitize_text(upstream_content_type.unwrap_or("-")),
         sanitize_text(last_sse_event_type.unwrap_or("-")),
+    );
+    buffer_trace_line(trace_id, line);
+}
+
+pub(crate) fn log_gemini_bridge_diagnostics(
+    trace_id: &str,
+    adapter: &str,
+    output_mode: Option<&str>,
+    stream_terminal_seen: bool,
+    stream_terminal_error: Option<&str>,
+    last_sse_event_type: Option<&str>,
+    upstream_content_type: Option<&str>,
+) {
+    if !gemini_trace_diagnostics_enabled() {
+        return;
+    }
+    let line = format!(
+        "ts={} event=GEMINI_BRIDGE trace_id={} adapter={} output_mode={} terminal_seen={} terminal_error={} last_sse_event={} upstream_content_type={}",
+        current_trace_ts(),
+        sanitize_text(trace_id),
+        sanitize_text(adapter),
+        sanitize_text(output_mode.unwrap_or("-")),
+        if stream_terminal_seen { "true" } else { "false" },
+        sanitize_text(stream_terminal_error.unwrap_or("-")),
+        sanitize_text(last_sse_event_type.unwrap_or("-")),
+        sanitize_text(upstream_content_type.unwrap_or("-")),
     );
     buffer_trace_line(trace_id, line);
 }

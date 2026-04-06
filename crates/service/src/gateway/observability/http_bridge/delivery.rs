@@ -5,8 +5,8 @@ use tiny_http::{Header, Request, Response, StatusCode};
 use crate::gateway::error_log::GatewayErrorLogInput;
 
 use super::super::{
-    adapt_upstream_response, adapt_upstream_response_with_tool_name_restore_map,
-    build_anthropic_error_body, build_gemini_error_body, ResponseAdapter, ToolNameRestoreMap,
+    adapt_upstream_response_with_tool_name_restore_map, build_anthropic_error_body,
+    build_gemini_error_body, GeminiStreamOutputMode, ResponseAdapter, ToolNameRestoreMap,
 };
 use super::{
     collect_non_stream_json_from_sse_bytes, extract_error_hint_from_body,
@@ -753,6 +753,7 @@ pub(crate) fn respond_with_upstream(
     upstream: reqwest::blocking::Response,
     _inflight_guard: super::super::AccountInFlightGuard,
     response_adapter: ResponseAdapter,
+    gemini_stream_output_mode: Option<GeminiStreamOutputMode>,
     request_path: &str,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
     is_stream: bool,
@@ -1414,7 +1415,9 @@ pub(crate) fn respond_with_upstream(
         ResponseAdapter::AnthropicJson
         | ResponseAdapter::AnthropicSse
         | ResponseAdapter::GeminiJson
-        | ResponseAdapter::GeminiSse => {
+        | ResponseAdapter::GeminiSse
+        | ResponseAdapter::GeminiCliJson
+        | ResponseAdapter::GeminiCliSse => {
             let status = StatusCode(upstream.status().as_u16());
             let mut headers = Vec::new();
             for (name, value) in upstream.headers().iter() {
@@ -1481,19 +1484,30 @@ pub(crate) fn respond_with_upstream(
                     None,
                 ));
             }
-            if response_adapter == ResponseAdapter::GeminiSse
-                && (is_stream
-                    || upstream_content_type
-                        .as_deref()
-                        .map(|value| value.to_ascii_lowercase().starts_with("text/event-stream"))
-                        .unwrap_or(false))
+            if matches!(
+                response_adapter,
+                ResponseAdapter::GeminiSse | ResponseAdapter::GeminiCliSse
+            ) && (is_stream
+                || upstream_content_type
+                    .as_deref()
+                    .map(|value| value.to_ascii_lowercase().starts_with("text/event-stream"))
+                    .unwrap_or(false))
             {
-                if let Ok(content_type_header) =
-                    Header::from_bytes(b"Content-Type".as_slice(), b"text/event-stream".as_slice())
+                let gemini_stream_output_mode =
+                    gemini_stream_output_mode.unwrap_or(GeminiStreamOutputMode::Sse);
+                if gemini_stream_output_mode == GeminiStreamOutputMode::Sse {
+                    if let Ok(content_type_header) = Header::from_bytes(
+                        b"Content-Type".as_slice(),
+                        b"text/event-stream".as_slice(),
+                    ) {
+                        headers.push(content_type_header);
+                    }
+                } else if let Ok(content_type_header) =
+                    Header::from_bytes(b"Content-Type".as_slice(), b"application/json".as_slice())
                 {
                     headers.push(content_type_header);
                 }
-                let usage_collector = Arc::new(Mutex::new(UpstreamResponseUsage::default()));
+                let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
                 let response = Response::new(
                     status,
                     headers,
@@ -1501,36 +1515,39 @@ pub(crate) fn respond_with_upstream(
                         upstream,
                         Arc::clone(&usage_collector),
                         tool_name_restore_map.cloned(),
+                        gemini_stream_output_mode,
+                        response_adapter == ResponseAdapter::GeminiCliSse,
                     ),
                     None,
                     None,
                 );
                 let delivery_error = request.respond(response).err().map(|err| err.to_string());
-                let usage = usage_collector
+                let collector = usage_collector
                     .lock()
                     .map(|guard| guard.clone())
                     .unwrap_or_default();
+                let last_sse_event_type = collector.last_event_type.clone();
                 return Ok(with_bridge_debug_meta(
                     UpstreamResponseBridgeResult {
-                        usage,
-                        stream_terminal_seen: true,
-                        stream_terminal_error: None,
+                        usage: collector.usage,
+                        stream_terminal_seen: collector.saw_terminal,
+                        stream_terminal_error: collector.terminal_error,
                         delivery_error,
-                        upstream_error_hint: None,
+                        upstream_error_hint: collector.upstream_error_hint,
                         delivered_status_code: None,
                         upstream_request_id: None,
                         upstream_cf_ray: None,
                         upstream_auth_error: None,
                         upstream_identity_error_code: None,
                         upstream_content_type: None,
-                        last_sse_event_type: None,
+                        last_sse_event_type: last_sse_event_type.clone(),
                     },
                     &upstream_request_id,
                     &upstream_cf_ray,
                     &upstream_auth_error,
                     &upstream_identity_error_code,
                     &upstream_content_type,
-                    None,
+                    last_sse_event_type,
                 ));
             }
 
@@ -1542,16 +1559,20 @@ pub(crate) fn respond_with_upstream(
                 .map(|value| parse_usage_from_json(&value))
                 .unwrap_or_default();
 
-            let (body, content_type) = match adapt_upstream_response(
+            let (body, content_type) = match adapt_upstream_response_with_tool_name_restore_map(
                 response_adapter,
                 upstream_content_type.as_deref(),
                 upstream_body.as_ref(),
+                tool_name_restore_map,
             ) {
                 Ok(result) => result,
                 Err(err) => (
                     if matches!(
                         response_adapter,
-                        ResponseAdapter::GeminiJson | ResponseAdapter::GeminiSse
+                        ResponseAdapter::GeminiJson
+                            | ResponseAdapter::GeminiSse
+                            | ResponseAdapter::GeminiCliJson
+                            | ResponseAdapter::GeminiCliSse
                     ) {
                         build_gemini_error_body(&format!("response conversion failed: {err}"))
                     } else {
@@ -1656,11 +1677,12 @@ fn resolve_stream_keepalive_frame(
         ResponseAdapter::OpenAIChatCompletionsSse => SseKeepAliveFrame::OpenAIChatCompletions,
         ResponseAdapter::OpenAICompletionsSse => SseKeepAliveFrame::OpenAICompletions,
         ResponseAdapter::AnthropicSse => SseKeepAliveFrame::Anthropic,
-        ResponseAdapter::GeminiSse => SseKeepAliveFrame::Comment,
+        ResponseAdapter::GeminiSse | ResponseAdapter::GeminiCliSse => SseKeepAliveFrame::Comment,
         ResponseAdapter::OpenAIChatCompletionsJson
         | ResponseAdapter::OpenAICompletionsJson
         | ResponseAdapter::AnthropicJson
-        | ResponseAdapter::GeminiJson => SseKeepAliveFrame::Comment,
+        | ResponseAdapter::GeminiJson
+        | ResponseAdapter::GeminiCliJson => SseKeepAliveFrame::Comment,
     }
 }
 
