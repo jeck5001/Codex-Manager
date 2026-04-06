@@ -55,6 +55,7 @@ pub(crate) struct RegisterProxyItem {
 pub(crate) struct StartRegisterBatchInput<'a> {
     pub email_service_type: &'a str,
     pub email_service_id: Option<i64>,
+    pub email_service_config: Option<Value>,
     pub register_mode: Option<&'a str>,
     pub browserbase_config_id: Option<i64>,
     pub proxy: Option<String>,
@@ -923,6 +924,7 @@ pub(crate) fn available_register_services() -> Result<Value, String> {
 pub(crate) fn start_register_task(
     email_service_type: &str,
     email_service_id: Option<i64>,
+    email_service_config: Option<Value>,
     register_mode: Option<&str>,
     browserbase_config_id: Option<i64>,
     proxy: Option<String>,
@@ -943,6 +945,13 @@ pub(crate) fn start_register_task(
         "browserbase_config_id": browserbase_config_id,
         "proxy": proxy,
     });
+    if let Some(config) = email_service_config {
+        if config.is_object() {
+            if let Some(object) = payload.as_object_mut() {
+                object.insert("email_service_config".to_string(), config);
+            }
+        }
+    }
     if let Some(flag) = auto_create_temp_mail_service {
         if let Some(object) = payload.as_object_mut() {
             object.insert("auto_create_temp_mail_service".to_string(), json!(flag));
@@ -958,6 +967,7 @@ pub(crate) fn start_register_batch(
     let StartRegisterBatchInput {
         email_service_type,
         email_service_id,
+        email_service_config,
         register_mode,
         browserbase_config_id,
         proxy,
@@ -1001,6 +1011,13 @@ pub(crate) fn start_register_batch(
         "concurrency": concurrency,
         "mode": normalized_mode,
     });
+    if let Some(config) = email_service_config {
+        if config.is_object() {
+            if let Some(object) = payload.as_object_mut() {
+                object.insert("email_service_config".to_string(), config);
+            }
+        }
+    }
     if let Some(flag) = auto_create_temp_mail_service {
         if let Some(object) = payload.as_object_mut() {
             object.insert("auto_create_temp_mail_service".to_string(), json!(flag));

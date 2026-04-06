@@ -250,6 +250,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                         .or_else(|| params.get("email_service_id"))
                 })
                 .and_then(|value| value.as_i64());
+            let email_service_config = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("emailServiceConfig")
+                        .or_else(|| params.get("email_service_config"))
+                })
+                .cloned()
+                .filter(|value| value.is_object());
             let browserbase_config_id = req
                 .params
                 .as_ref()
@@ -267,6 +277,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             super::value_or_error(account_register::start_register_task(
                 email_service_type,
                 email_service_id,
+                email_service_config,
                 register_mode,
                 browserbase_config_id,
                 proxy,
@@ -288,6 +299,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                         .or_else(|| params.get("email_service_id"))
                 })
                 .and_then(|value| value.as_i64());
+            let email_service_config = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("emailServiceConfig")
+                        .or_else(|| params.get("email_service_config"))
+                })
+                .cloned()
+                .filter(|value| value.is_object());
             let browserbase_config_id = req
                 .params
                 .as_ref()
@@ -339,6 +360,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 account_register::StartRegisterBatchInput {
                     email_service_type,
                     email_service_id,
+                    email_service_config,
                     register_mode,
                     browserbase_config_id,
                     proxy,
