@@ -349,6 +349,62 @@ class TempMailServiceTests(unittest.TestCase):
 
         self.assertEqual(code, "654321")
 
+    def test_scans_multiple_admin_mail_pages_until_target_mail_is_found(self):
+        service = TempMailService(
+            config={
+                "base_url": "https://mail.example.com",
+                "admin_password": "test-password",
+                "domain": "example.com",
+            }
+        )
+
+        first_page = [
+            {
+                "id": f"other-{index}",
+                "address": f"other-{index}@example.com",
+                "created_at": 200 + index,
+                "from": "OpenAI <noreply@openai.com>",
+                "subject": "Your verification code",
+                "text": f"{100000 + index}",
+            }
+            for index in range(100)
+        ]
+        second_page = [
+            {
+                "id": "target-mail",
+                "address": "user@example.com",
+                "created_at": 400,
+                "from": "OpenAI <noreply@openai.com>",
+                "subject": "Your verification code",
+                "text": "654321",
+            }
+        ]
+        requested_offsets = []
+
+        def fake_make_request(method, path, **kwargs):
+            self.assertEqual(method, "GET")
+            self.assertEqual(path, "/admin/mails")
+            params = kwargs.get("params", {})
+            offset = int(params.get("offset", 0))
+            requested_offsets.append(offset)
+            if offset == 0:
+                return {"results": first_page}
+            if offset == 100:
+                return {"results": second_page}
+            return {"results": []}
+
+        service._make_request = fake_make_request
+
+        code = service.get_verification_code(
+            email="user@example.com",
+            timeout=1,
+            poll_interval=1,
+            otp_sent_at=200,
+        )
+
+        self.assertEqual(code, "654321")
+        self.assertEqual(requested_offsets[:2], [0, 100])
+
     def test_ignores_six_digits_inside_recipient_email_domain(self):
         service = TempMailService(
             config={

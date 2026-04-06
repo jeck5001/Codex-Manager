@@ -343,19 +343,26 @@ async def create_email_service(request: EmailServiceCreate):
         raise HTTPException(status_code=400, detail=f"无效的服务类型: {request.service_type}")
 
     with get_db() as db:
-        # 检查名称是否重复
-        existing = db.query(EmailServiceModel).filter(EmailServiceModel.name == request.name).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="服务名称已存在")
+        service_name = str(request.name or "").strip()
+        if service_name:
+            existing = db.query(EmailServiceModel).filter(EmailServiceModel.name == service_name).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="服务名称已存在")
 
         config = dict(request.config or {})
         cleanup_context = None
         if request.service_type == EmailServiceType.TEMP_MAIL.value:
             config, cleanup_context = _prepare_temp_mail_config_for_create(config)
+            if not service_name:
+                service_name = str(config.get("domain") or "").strip()
+                existing = db.query(EmailServiceModel).filter(EmailServiceModel.name == service_name).first()
+                if existing:
+                    _cleanup_temp_mail_provisioning(cleanup_context)
+                    raise HTTPException(status_code=400, detail="服务名称已存在")
 
         service = EmailServiceModel(
             service_type=request.service_type,
-            name=request.name,
+            name=service_name,
             config=config,
             enabled=request.enabled,
             priority=request.priority
