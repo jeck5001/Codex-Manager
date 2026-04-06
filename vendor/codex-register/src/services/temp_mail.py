@@ -163,6 +163,37 @@ class TempMailService(BaseEmailService):
             "raw": raw,
         }
 
+    def _extract_mail_recipient_text(self, mail: Dict[str, Any]) -> str:
+        """提取收件人上下文，用于在共享收件箱场景下本地二次过滤目标地址。"""
+        parts: List[str] = []
+        for key in (
+            "address",
+            "to",
+            "recipient",
+            "recipients",
+            "delivered_to",
+            "deliveredTo",
+            "x_original_to",
+            "xOriginalTo",
+        ):
+            value = str(mail.get(key) or "").strip()
+            if value:
+                parts.append(value)
+
+        raw = str(mail.get("raw") or "").strip()
+        if raw:
+            try:
+                message = message_from_string(raw, policy=email_policy)
+                for header_name in ("To", "Delivered-To", "X-Original-To", "Cc", "Bcc"):
+                    for header_value in message.get_all(header_name, []):
+                        value = str(header_value or "").strip()
+                        if value:
+                            parts.append(value)
+            except Exception:
+                parts.append(raw)
+
+        return "\n".join(parts).strip()
+
     @staticmethod
     def _sanitize_otp_search_text(value: str) -> str:
         """移除邮箱地址等高噪声片段，避免把域名数字误识别成 OTP。"""
@@ -413,7 +444,7 @@ class TempMailService(BaseEmailService):
                 response = self._make_request(
                     "GET",
                     "/admin/mails",
-                    params={"limit": 20, "offset": 0, "address": email},
+                    params={"limit": 100, "offset": 0, "address": email},
                 )
 
                 # admin/mails 返回格式: {"results": [...], "total": N}
@@ -432,6 +463,10 @@ class TempMailService(BaseEmailService):
 
                     message_timestamp = self._extract_mail_timestamp(mail)
                     if message_timestamp and message_timestamp < min_timestamp:
+                        continue
+
+                    recipient_text = self._extract_mail_recipient_text(mail)
+                    if recipient_text and email.lower() not in recipient_text.lower():
                         continue
 
                     parsed = self._extract_mail_fields(mail)

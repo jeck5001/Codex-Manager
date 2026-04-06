@@ -301,6 +301,54 @@ class TempMailServiceTests(unittest.TestCase):
 
         self.assertEqual(code, "654321")
 
+    def test_finds_target_mail_when_admin_mail_list_is_shared_and_busy(self):
+        service = TempMailService(
+            config={
+                "base_url": "https://mail.example.com",
+                "admin_password": "test-password",
+                "domain": "example.com",
+            }
+        )
+
+        mails = []
+        for index in range(30):
+            mails.append(
+                {
+                    "id": f"other-{index}",
+                    "address": f"other-{index}@example.com",
+                    "created_at": 200 + index,
+                    "from": "OpenAI <noreply@openai.com>",
+                    "subject": "Your verification code",
+                    "text": f"{100000 + index}",
+                }
+            )
+        mails[24] = {
+            "id": "target-mail",
+            "address": "user@example.com",
+            "created_at": 260,
+            "from": "OpenAI <noreply@openai.com>",
+            "subject": "Your verification code",
+            "text": "654321",
+        }
+
+        def fake_make_request(method, path, **kwargs):
+            self.assertEqual(method, "GET")
+            self.assertEqual(path, "/admin/mails")
+            params = kwargs.get("params", {})
+            limit = int(params.get("limit", 0))
+            return {"results": mails[:limit]}
+
+        service._make_request = fake_make_request
+
+        code = service.get_verification_code(
+            email="user@example.com",
+            timeout=1,
+            poll_interval=1,
+            otp_sent_at=200,
+        )
+
+        self.assertEqual(code, "654321")
+
     def test_ignores_six_digits_inside_recipient_email_domain(self):
         service = TempMailService(
             config={
