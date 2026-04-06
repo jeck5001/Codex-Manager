@@ -127,6 +127,7 @@ interface ApiKeyPayload {
 interface RegisterStartPayload {
   emailServiceType: string;
   emailServiceId?: number | null;
+  emailServiceConfig?: Record<string, unknown> | null;
   registerMode?: string | null;
   browserbaseConfigId?: number | null;
   proxy?: string | null;
@@ -257,6 +258,11 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function normalizeRegisterServiceGroup(value: unknown): RegisterServiceGroup {
   const source = asRecord(value) ?? {};
   const services = Array.isArray(source.services) ? source.services : [];
+  const rawDomainConfigs = Array.isArray(source.domainConfigs)
+    ? source.domainConfigs
+    : Array.isArray(source.domain_configs)
+      ? source.domain_configs
+      : [];
   return {
     available: source.available === true,
     count: typeof source.count === "number" && Number.isFinite(source.count)
@@ -271,6 +277,9 @@ function normalizeRegisterServiceGroup(value: unknown): RegisterServiceGroup {
         description: typeof service.description === "string" ? service.description : "",
       };
     }),
+    domainConfigs: rawDomainConfigs
+      .map(normalizeRegisterTempMailDomainConfig)
+      .filter((item) => item.id),
   };
 }
 
@@ -1231,6 +1240,7 @@ export const accountClient = {
       withAddr({
         emailServiceType: params.emailServiceType,
         emailServiceId: params.emailServiceId ?? null,
+        emailServiceConfig: params.emailServiceConfig ?? null,
         registerMode: params.registerMode ?? "standard",
         browserbaseConfigId: params.browserbaseConfigId ?? null,
         proxy: params.proxy ?? null,
@@ -1247,6 +1257,7 @@ export const accountClient = {
       withAddr({
         emailServiceType: params.emailServiceType,
         emailServiceId: params.emailServiceId ?? null,
+        emailServiceConfig: params.emailServiceConfig ?? null,
         registerMode: params.registerMode ?? "standard",
         browserbaseConfigId: params.browserbaseConfigId ?? null,
         proxy: params.proxy ?? null,

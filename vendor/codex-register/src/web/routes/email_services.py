@@ -3,6 +3,7 @@
 """
 
 import logging
+import random
 from typing import List, Optional, Dict, Any, Tuple
 
 from fastapi import APIRouter, HTTPException, Query
@@ -205,7 +206,13 @@ def _apply_temp_mail_domain_config(config: Dict[str, Any], settings) -> Dict[str
         selected_config = domain_configs[0]
         prepared_config.setdefault("domain_config_id", str(selected_config.get("id") or "").strip())
     elif len(domain_configs) > 1:
-        raise HTTPException(status_code=400, detail="存在多条 Temp-Mail 域名配置，请先选择一条域名配置")
+        selected_config = random.choice(domain_configs)
+        prepared_config.setdefault("domain_config_id", str(selected_config.get("id") or "").strip())
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="当前没有可用的 Temp-Mail 域名配置，请先在 Cloudflare Temp-Mail 设置中新增一条域名配置",
+        )
 
     if not selected_config:
         return prepared_config

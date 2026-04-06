@@ -817,6 +817,7 @@ export interface RegisterServiceGroup {
   available: boolean;
   count: number;
   services: RegisterServiceItem[];
+  domainConfigs: RegisterTempMailDomainConfig[];
 }
 
 export interface RegisterAvailableServicesResult {

@@ -1829,8 +1829,10 @@ async def get_available_email_services():
     """
     from ...database.models import EmailService as EmailServiceModel
     from ...config.settings import get_settings
+    from .email_services import _load_temp_mail_domain_configs
 
     settings = get_settings()
+    temp_mail_domain_configs = _load_temp_mail_domain_configs(settings)
     result = {
         "tempmail": {
             "available": True,
@@ -1855,7 +1857,8 @@ async def get_available_email_services():
         "temp_mail": {
             "available": False,
             "count": 0,
-            "services": []
+            "services": [],
+            "domain_configs": temp_mail_domain_configs,
         }
     }
 
@@ -1926,8 +1929,8 @@ async def get_available_email_services():
                 "priority": service.priority
             })
 
-        result["temp_mail"]["count"] = len(temp_mail_services)
-        result["temp_mail"]["available"] = len(temp_mail_services) > 0
+        result["temp_mail"]["count"] = len(temp_mail_services) or len(temp_mail_domain_configs)
+        result["temp_mail"]["available"] = len(temp_mail_services) > 0 or len(temp_mail_domain_configs) > 0
 
     return result
 
