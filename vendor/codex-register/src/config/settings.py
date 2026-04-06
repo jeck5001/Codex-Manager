@@ -327,6 +327,12 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         description="自部署 Temp-Mail Admin 密码",
         is_secret=True
     ),
+    "temp_mail_domain_configs": SettingDefinition(
+        db_key="temp_mail.domain_configs",
+        default_value=[],
+        category=SettingCategory.TEMPMAIL,
+        description="Cloudflare Temp-Mail 域名配置列表"
+    ),
     "temp_mail_domain_base": SettingDefinition(
         db_key="temp_mail.domain_base",
         default_value="",
@@ -766,6 +772,7 @@ class Settings(BaseModel):
     cloudflare_worker_name: str = "temp-email"
     temp_mail_base_url: str = ""
     temp_mail_admin_password: SecretStr = SecretStr("")
+    temp_mail_domain_configs: List[Dict[str, Any]] = []
     temp_mail_domain_base: str = ""
     temp_mail_subdomain_mode: str = "random"
     temp_mail_subdomain_length: int = 6

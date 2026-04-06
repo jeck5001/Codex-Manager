@@ -390,6 +390,7 @@ class TempMailCloudflareSettings(BaseModel):
     cloudflare_worker_name: Optional[str] = None
     temp_mail_base_url: Optional[str] = None
     temp_mail_admin_password: Optional[str] = None
+    temp_mail_domain_configs: Optional[list[dict]] = None
     temp_mail_domain_base: Optional[str] = None
     temp_mail_subdomain_mode: Optional[str] = None
     temp_mail_subdomain_length: Optional[int] = None
@@ -415,6 +416,75 @@ class TempMailCloudflareSettings(BaseModel):
         if value < 3 or value > 16:
             raise ValueError("temp_mail_subdomain_length must be between 3 and 16")
         return value
+
+
+class TempMailDomainConfig(BaseModel):
+    id: str
+    name: str
+    zone_id: str
+    domain_base: str
+    subdomain_mode: str = "random"
+    subdomain_length: int = 6
+    subdomain_prefix: str = "tm"
+    sync_cloudflare_enabled: bool = True
+    require_cloudflare_sync: bool = True
+
+    @field_validator("id", "name", "zone_id", "domain_base")
+    @classmethod
+    def validate_required_text(cls, value):
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("must not be empty")
+        return text
+
+    @field_validator("subdomain_mode")
+    @classmethod
+    def validate_mode(cls, value):
+        mode = str(value or "").strip().lower()
+        if mode not in {"random", "sequence"}:
+            raise ValueError("subdomain_mode must be either 'random' or 'sequence'")
+        return mode
+
+    @field_validator("subdomain_length")
+    @classmethod
+    def validate_length(cls, value):
+        number = int(value or 0)
+        if number < 3 or number > 16:
+            raise ValueError("subdomain_length must be between 3 and 16")
+        return number
+
+
+def _build_legacy_temp_mail_domain_config(settings) -> Optional[dict]:
+    domain_base = str(getattr(settings, "temp_mail_domain_base", "") or "").strip()
+    zone_id = str(getattr(settings, "cloudflare_zone_id", "") or "").strip()
+    if not domain_base or not zone_id:
+        return None
+    return {
+        "id": "legacy-default",
+        "name": "默认域名配置",
+        "zone_id": zone_id,
+        "domain_base": domain_base,
+        "subdomain_mode": str(getattr(settings, "temp_mail_subdomain_mode", "random") or "random"),
+        "subdomain_length": int(getattr(settings, "temp_mail_subdomain_length", 6) or 6),
+        "subdomain_prefix": str(getattr(settings, "temp_mail_subdomain_prefix", "tm") or "tm"),
+        "sync_cloudflare_enabled": bool(getattr(settings, "temp_mail_sync_cloudflare_enabled", True)),
+        "require_cloudflare_sync": bool(getattr(settings, "temp_mail_require_cloudflare_sync", True)),
+    }
+
+
+def _normalize_temp_mail_domain_configs(settings) -> list[dict]:
+    raw_configs = getattr(settings, "temp_mail_domain_configs", None)
+    normalized: list[dict] = []
+    if isinstance(raw_configs, list):
+        for item in raw_configs:
+            try:
+                normalized.append(TempMailDomainConfig.model_validate(item).model_dump())
+            except Exception:
+                continue
+    if normalized:
+        return normalized
+    legacy = _build_legacy_temp_mail_domain_config(settings)
+    return [legacy] if legacy else []
 
 
 class EmailCodeSettings(BaseModel):
@@ -467,6 +537,7 @@ async def get_temp_mail_cloudflare_settings():
             settings.temp_mail_admin_password
             and settings.temp_mail_admin_password.get_secret_value()
         ),
+        "temp_mail_domain_configs": _normalize_temp_mail_domain_configs(settings),
         "temp_mail_domain_base": settings.temp_mail_domain_base,
         "temp_mail_subdomain_mode": settings.temp_mail_subdomain_mode,
         "temp_mail_subdomain_length": settings.temp_mail_subdomain_length,
@@ -497,6 +568,11 @@ async def update_temp_mail_cloudflare_settings(request: TempMailCloudflareSettin
         update_dict["temp_mail_base_url"] = request.temp_mail_base_url
     if request.temp_mail_admin_password is not None:
         update_dict["temp_mail_admin_password"] = request.temp_mail_admin_password
+    if request.temp_mail_domain_configs is not None:
+        update_dict["temp_mail_domain_configs"] = [
+            TempMailDomainConfig.model_validate(item).model_dump()
+            for item in request.temp_mail_domain_configs
+        ]
     if request.temp_mail_domain_base is not None:
         update_dict["temp_mail_domain_base"] = request.temp_mail_domain_base
     if request.temp_mail_subdomain_mode is not None:

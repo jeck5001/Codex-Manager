@@ -59,6 +59,7 @@ import {
   RegisterServiceGroup,
   RegisterStats,
   RegisterTempMailCloudflareSettings,
+  RegisterTempMailDomainConfig,
   RegisterTaskBatchDeleteResult,
   RegisterTaskListResult,
   RegisterTaskSnapshot,
@@ -196,12 +197,55 @@ interface RegisterTempMailCloudflareSettingsPayload {
   cloudflareWorkerName?: string | null;
   tempMailBaseUrl?: string | null;
   tempMailAdminPassword?: string | null;
+  domainConfigs?: RegisterTempMailDomainConfig[] | null;
   tempMailDomainBase?: string | null;
   tempMailSubdomainMode?: string | null;
   tempMailSubdomainLength?: number | null;
   tempMailSubdomainPrefix?: string | null;
   tempMailSyncCloudflareEnabled?: boolean;
   tempMailRequireCloudflareSync?: boolean;
+}
+
+function normalizeRegisterTempMailDomainConfig(value: unknown): RegisterTempMailDomainConfig {
+  const source = asRecord(value) ?? {};
+  return {
+    id: typeof source.id === "string" ? source.id : "",
+    name: typeof source.name === "string" ? source.name : "",
+    zoneId:
+      typeof source.zoneId === "string"
+        ? source.zoneId
+        : typeof source.zone_id === "string"
+          ? source.zone_id
+          : "",
+    domainBase:
+      typeof source.domainBase === "string"
+        ? source.domainBase
+        : typeof source.domain_base === "string"
+          ? source.domain_base
+          : "",
+    subdomainMode:
+      typeof source.subdomainMode === "string"
+        ? source.subdomainMode
+        : typeof source.subdomain_mode === "string"
+          ? source.subdomain_mode
+          : "random",
+    subdomainLength:
+      typeof source.subdomainLength === "number" && Number.isFinite(source.subdomainLength)
+        ? source.subdomainLength
+        : typeof source.subdomain_length === "number" && Number.isFinite(source.subdomain_length)
+          ? source.subdomain_length
+          : 6,
+    subdomainPrefix:
+      typeof source.subdomainPrefix === "string"
+        ? source.subdomainPrefix
+        : typeof source.subdomain_prefix === "string"
+          ? source.subdomain_prefix
+          : "",
+    syncCloudflareEnabled:
+      source.syncCloudflareEnabled === true || source.sync_cloudflare_enabled === true,
+    requireCloudflareSync:
+      source.requireCloudflareSync === true || source.require_cloudflare_sync === true,
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -743,6 +787,11 @@ function normalizeRegisterTempMailCloudflareSettings(
   value: unknown
 ): RegisterTempMailCloudflareSettings {
   const source = asRecord(value) ?? {};
+  const rawDomainConfigs = Array.isArray(source.domainConfigs)
+    ? source.domainConfigs
+    : Array.isArray(source.temp_mail_domain_configs)
+      ? source.temp_mail_domain_configs
+      : [];
   return {
     hasApiToken: source.hasApiToken === true || source.has_api_token === true,
     cloudflareApiEmail:
@@ -780,6 +829,9 @@ function normalizeRegisterTempMailCloudflareSettings(
     hasTempMailAdminPassword:
       source.hasTempMailAdminPassword === true ||
       source.has_temp_mail_admin_password === true,
+    domainConfigs: rawDomainConfigs
+      .map(normalizeRegisterTempMailDomainConfig)
+      .filter((item) => item.id),
     tempMailDomainBase:
       typeof source.tempMailDomainBase === "string"
         ? source.tempMailDomainBase
@@ -1053,12 +1105,17 @@ export const accountClient = {
       cloudflare_zone_id: params.cloudflareZoneId ?? "",
       cloudflare_worker_name: params.cloudflareWorkerName ?? "",
       temp_mail_base_url: params.tempMailBaseUrl ?? "",
-      temp_mail_domain_base: params.tempMailDomainBase ?? "",
-      temp_mail_subdomain_mode: params.tempMailSubdomainMode ?? "random",
-      temp_mail_subdomain_length: params.tempMailSubdomainLength ?? 6,
-      temp_mail_subdomain_prefix: params.tempMailSubdomainPrefix ?? "",
-      temp_mail_sync_cloudflare_enabled: params.tempMailSyncCloudflareEnabled ?? true,
-      temp_mail_require_cloudflare_sync: params.tempMailRequireCloudflareSync ?? true,
+      temp_mail_domain_configs: (params.domainConfigs ?? []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        zone_id: item.zoneId,
+        domain_base: item.domainBase,
+        subdomain_mode: item.subdomainMode,
+        subdomain_length: item.subdomainLength,
+        subdomain_prefix: item.subdomainPrefix,
+        sync_cloudflare_enabled: item.syncCloudflareEnabled,
+        require_cloudflare_sync: item.requireCloudflareSync,
+      })),
     };
     if (typeof params.cloudflareApiToken === "string" && params.cloudflareApiToken.trim()) {
       payload.cloudflare_api_token = params.cloudflareApiToken.trim();

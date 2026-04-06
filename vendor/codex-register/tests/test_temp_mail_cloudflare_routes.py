@@ -67,27 +67,68 @@ class TempMailCloudflareRoutesTests(unittest.TestCase):
             "cloudflare_api_email": "admin@example.com",
             "cloudflare_global_api_key": "global-key-1",
             "cloudflare_account_id": "acc-1",
-            "cloudflare_zone_id": "zone-1",
             "cloudflare_worker_name": "temp-email",
-            "temp_mail_domain_base": "mail.example.com",
-            "temp_mail_subdomain_mode": "random",
-            "temp_mail_subdomain_length": 6,
-            "temp_mail_subdomain_prefix": "tm",
-            "temp_mail_sync_cloudflare_enabled": True,
-            "temp_mail_require_cloudflare_sync": True,
+            "temp_mail_base_url": "https://worker.example.com",
+            "temp_mail_admin_password": "admin-pass",
+            "temp_mail_domain_configs": [
+                {
+                    "id": "cfg-1",
+                    "name": "主域名",
+                    "zone_id": "zone-1",
+                    "domain_base": "mail.example.com",
+                    "subdomain_mode": "random",
+                    "subdomain_length": 6,
+                    "subdomain_prefix": "tm",
+                    "sync_cloudflare_enabled": True,
+                    "require_cloudflare_sync": True,
+                },
+                {
+                    "id": "cfg-2",
+                    "name": "备用域名",
+                    "zone_id": "zone-2",
+                    "domain_base": "mail.backup.example.com",
+                    "subdomain_mode": "sequence",
+                    "subdomain_length": 8,
+                    "subdomain_prefix": "bk",
+                    "sync_cloudflare_enabled": False,
+                    "require_cloudflare_sync": False,
+                },
+            ],
         }
         response = self.client.post("/api/settings/temp-mail/cloudflare", json=payload)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(settings_module._settings.temp_mail_domain_base, payload["temp_mail_domain_base"])
-        self.assertTrue(settings_module._settings.temp_mail_sync_cloudflare_enabled)
-        self.assertEqual(self.updated_values["cloudflare_zone_id"], payload["cloudflare_zone_id"])
+        self.assertEqual(settings_module._settings.temp_mail_base_url, payload["temp_mail_base_url"])
         self.assertEqual(self.updated_values["cloudflare_api_email"], payload["cloudflare_api_email"])
-        self.assertEqual(self.updated_values["temp_mail_require_cloudflare_sync"], True)
+        self.assertEqual(self.updated_values["temp_mail_domain_configs"][0]["domain_base"], "mail.example.com")
+        self.assertEqual(self.updated_values["temp_mail_domain_configs"][1]["zone_id"], "zone-2")
         get_response = self.client.get("/api/settings/temp-mail/cloudflare")
         self.assertTrue(get_response.json()["has_api_token"])
         self.assertTrue(get_response.json()["has_global_api_key"])
+        self.assertTrue(get_response.json()["has_temp_mail_admin_password"])
+        self.assertEqual(len(get_response.json()["temp_mail_domain_configs"]), 2)
         self.assertNotIn("cloudflare_api_token", get_response.json())
         self.assertNotIn("cloudflare_global_api_key", get_response.json())
+
+    def test_get_cloudflare_settings_exposes_domain_configs(self):
+        settings_module._settings.temp_mail_domain_configs = [
+            {
+                "id": "cfg-1",
+                "name": "主域名",
+                "zone_id": "zone-1",
+                "domain_base": "mail.example.com",
+                "subdomain_mode": "random",
+                "subdomain_length": 6,
+                "subdomain_prefix": "tm",
+                "sync_cloudflare_enabled": True,
+                "require_cloudflare_sync": True,
+            }
+        ]
+        response = self.client.get("/api/settings/temp-mail/cloudflare")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["temp_mail_domain_configs"]), 1)
+        self.assertEqual(payload["temp_mail_domain_configs"][0]["id"], "cfg-1")
+        self.assertEqual(payload["temp_mail_domain_configs"][0]["domain_base"], "mail.example.com")
 
     def test_post_invalid_subdomain_mode_is_rejected(self):
         response = self.client.post(

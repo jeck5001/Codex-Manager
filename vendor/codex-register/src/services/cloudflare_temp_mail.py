@@ -45,9 +45,19 @@ class CloudflareTempMailProvisioner:
         "temp_mail_domain_base",
     ]
 
-    def __init__(self, settings: Settings, http_client: Optional[HTTPClient] = None):
-        normalized = self.validate_settings(settings)
-        self.settings = settings
+    def __init__(
+        self,
+        settings: Settings,
+        http_client: Optional[HTTPClient] = None,
+        overrides: Optional[Dict[str, Any]] = None,
+    ):
+        effective_settings = (
+            settings.model_copy(update=overrides or {})
+            if overrides
+            else settings
+        )
+        normalized = self.validate_settings(effective_settings)
+        self.settings = effective_settings
         self._api_token = normalized["token"]
         self._api_email = normalized["api_email"]
         self._global_api_key = normalized["global_api_key"]
@@ -237,8 +247,6 @@ class CloudflareTempMailProvisioner:
         return result
 
     def _worker_settings_url(self) -> str:
-        account_id = self.settings.cloudflare_account_id
-        worker_name = self.settings.cloudflare_worker_name
         return (
             f"https://api.cloudflare.com/client/v4/accounts/{self._account_id}"
             f"/workers/scripts/{self._worker_name}/settings"

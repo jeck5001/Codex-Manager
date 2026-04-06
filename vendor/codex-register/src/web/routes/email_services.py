@@ -153,14 +153,119 @@ def _build_temp_mail_worker_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     return prepared_config
 
 
+def _load_temp_mail_domain_configs(settings) -> List[Dict[str, Any]]:
+    raw_configs = getattr(settings, "temp_mail_domain_configs", None)
+    configs: List[Dict[str, Any]] = []
+    if isinstance(raw_configs, list):
+        for item in raw_configs:
+            if isinstance(item, dict):
+                configs.append(dict(item))
+
+    if configs:
+        return configs
+
+    legacy_domain_base = str(getattr(settings, "temp_mail_domain_base", "") or "").strip()
+    legacy_zone_id = str(getattr(settings, "cloudflare_zone_id", "") or "").strip()
+    if not legacy_domain_base or not legacy_zone_id:
+        return []
+
+    return [
+        {
+            "id": "legacy-default",
+            "name": "默认域名配置",
+            "zone_id": legacy_zone_id,
+            "domain_base": legacy_domain_base,
+            "subdomain_mode": str(getattr(settings, "temp_mail_subdomain_mode", "random") or "random"),
+            "subdomain_length": int(getattr(settings, "temp_mail_subdomain_length", 6) or 6),
+            "subdomain_prefix": str(getattr(settings, "temp_mail_subdomain_prefix", "tm") or "tm"),
+            "sync_cloudflare_enabled": bool(getattr(settings, "temp_mail_sync_cloudflare_enabled", True)),
+            "require_cloudflare_sync": bool(getattr(settings, "temp_mail_require_cloudflare_sync", True)),
+        }
+    ]
+
+
+def _apply_temp_mail_domain_config(config: Dict[str, Any], settings) -> Dict[str, Any]:
+    prepared_config = dict(config or {})
+    explicit_domain_base = str(prepared_config.get("temp_mail_domain_base") or "").strip()
+    explicit_zone_id = str(prepared_config.get("cloudflare_zone_id") or "").strip()
+    if explicit_domain_base and explicit_zone_id:
+        return prepared_config
+
+    domain_configs = _load_temp_mail_domain_configs(settings)
+    requested_id = str(prepared_config.get("domain_config_id") or "").strip()
+    selected_config: Optional[Dict[str, Any]] = None
+    if requested_id:
+        selected_config = next(
+            (item for item in domain_configs if str(item.get("id") or "").strip() == requested_id),
+            None,
+        )
+        if not selected_config:
+            raise HTTPException(status_code=400, detail=f"域名配置不存在: {requested_id}")
+    elif len(domain_configs) == 1:
+        selected_config = domain_configs[0]
+        prepared_config.setdefault("domain_config_id", str(selected_config.get("id") or "").strip())
+    elif len(domain_configs) > 1:
+        raise HTTPException(status_code=400, detail="存在多条 Temp-Mail 域名配置，请先选择一条域名配置")
+
+    if not selected_config:
+        return prepared_config
+
+    prepared_config.setdefault("domain_config_name", str(selected_config.get("name") or "").strip())
+    prepared_config.setdefault("cloudflare_zone_id", str(selected_config.get("zone_id") or "").strip())
+    prepared_config.setdefault("temp_mail_domain_base", str(selected_config.get("domain_base") or "").strip())
+    prepared_config.setdefault(
+        "temp_mail_subdomain_mode",
+        str(selected_config.get("subdomain_mode") or "random").strip() or "random",
+    )
+    prepared_config.setdefault(
+        "temp_mail_subdomain_length",
+        int(selected_config.get("subdomain_length") or 6),
+    )
+    prepared_config.setdefault(
+        "temp_mail_subdomain_prefix",
+        str(selected_config.get("subdomain_prefix") or "").strip(),
+    )
+    prepared_config.setdefault(
+        "temp_mail_sync_cloudflare_enabled",
+        bool(selected_config.get("sync_cloudflare_enabled", True)),
+    )
+    prepared_config.setdefault(
+        "temp_mail_require_cloudflare_sync",
+        bool(selected_config.get("require_cloudflare_sync", True)),
+    )
+    return prepared_config
+
+
+def _build_temp_mail_provisioner_overrides(config: Dict[str, Any]) -> Dict[str, Any]:
+    overrides: Dict[str, Any] = {}
+    field_names = (
+        "cloudflare_zone_id",
+        "temp_mail_domain_base",
+        "temp_mail_subdomain_mode",
+        "temp_mail_subdomain_length",
+        "temp_mail_subdomain_prefix",
+        "temp_mail_sync_cloudflare_enabled",
+        "temp_mail_require_cloudflare_sync",
+    )
+    for field_name in field_names:
+        if field_name in config and config.get(field_name) not in (None, ""):
+            overrides[field_name] = config.get(field_name)
+    return overrides
+
+
 def _prepare_temp_mail_config_for_create(config: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """创建 temp_mail 服务前，先在 Cloudflare 预配固定域名并回填配置。"""
+    settings = get_settings()
     prepared_config = _build_temp_mail_worker_defaults(config)
+    prepared_config = _apply_temp_mail_domain_config(prepared_config, settings)
     prepared_config.pop("domain", None)
     rollback_only_keys = {"cloudflare_worker_previous_bindings"}
 
     try:
-        provisioner = CloudflareTempMailProvisioner(get_settings())
+        provisioner = CloudflareTempMailProvisioner(
+            settings,
+            overrides=_build_temp_mail_provisioner_overrides(prepared_config),
+        )
         provision_result = provisioner.provision_domain()
     except Exception as exc:
         logger.error(f"Temp-Mail 域名预配失败: {exc}")

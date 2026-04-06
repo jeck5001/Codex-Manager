@@ -769,6 +769,18 @@ export interface RegisterEmailServiceTestResult {
   details: Record<string, unknown> | null;
 }
 
+export interface RegisterTempMailDomainConfig {
+  id: string;
+  name: string;
+  zoneId: string;
+  domainBase: string;
+  subdomainMode: string;
+  subdomainLength: number;
+  subdomainPrefix: string;
+  syncCloudflareEnabled: boolean;
+  requireCloudflareSync: boolean;
+}
+
 export interface RegisterTempMailCloudflareSettings {
   hasApiToken: boolean;
   cloudflareApiEmail: string;
@@ -778,6 +790,7 @@ export interface RegisterTempMailCloudflareSettings {
   cloudflareWorkerName: string;
   tempMailBaseUrl: string;
   hasTempMailAdminPassword: boolean;
+  domainConfigs: RegisterTempMailDomainConfig[];
   tempMailDomainBase: string;
   tempMailSubdomainMode: string;
   tempMailSubdomainLength: number;
