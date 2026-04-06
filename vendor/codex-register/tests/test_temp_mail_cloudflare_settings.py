@@ -5,6 +5,11 @@ from src.config import settings as settings_module
 
 
 class TempMailCloudflareSettingsTests(unittest.TestCase):
+    def test_settings_default_email_code_timeout_is_240_seconds(self):
+        settings = settings_module.Settings()
+
+        self.assertEqual(settings.email_code_timeout, 240)
+
     def test_update_settings_persists_cloudflare_temp_mail_fields(self):
         original_save = settings_module._save_settings_to_db
         original_settings = settings_module._settings

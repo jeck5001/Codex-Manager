@@ -417,7 +417,7 @@ class TempMailCloudflareSettings(BaseModel):
 
 class EmailCodeSettings(BaseModel):
     """验证码等待设置"""
-    timeout: int = 120  # 验证码等待超时（秒）
+    timeout: int = 240  # 验证码等待超时（秒）
     poll_interval: int = 3  # 验证码轮询间隔（秒）
 
 
