@@ -404,7 +404,6 @@ class TempMailService(BaseEmailService):
         )
 
         start_time = time.time()
-        seen_mail_ids: set = set()
         used_mail_ids = self._used_mail_ids.setdefault(email.lower(), set())
         min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
@@ -428,10 +427,9 @@ class TempMailService(BaseEmailService):
 
                 for index, mail in enumerate(mails):
                     mail_id = self._extract_mail_identity(mail)
-                    if not mail_id or mail_id in seen_mail_ids or mail_id in used_mail_ids:
+                    if not mail_id or mail_id in used_mail_ids:
                         continue
 
-                    seen_mail_ids.add(mail_id)
                     message_timestamp = self._extract_mail_timestamp(mail)
                     if message_timestamp and message_timestamp < min_timestamp:
                         continue
