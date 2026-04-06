@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   Copy,
@@ -352,6 +352,7 @@ export default function EmailServicesPage() {
   );
   const [selectedDomainConfigId, setSelectedDomainConfigId] = useState<string | null>(null);
   const [isCloudflareDirty, setIsCloudflareDirty] = useState(false);
+  const domainConfigDetailRef = useRef<HTMLDivElement | null>(null);
 
   const {
     serviceTypes,
@@ -578,6 +579,18 @@ export default function EmailServicesPage() {
     }));
     setSelectedDomainConfigId(result.selectedId);
     setIsCloudflareDirty(true);
+  };
+
+  const handleSelectDomainConfig = (id: string, options?: { focusDetail?: boolean }) => {
+    setSelectedDomainConfigId(id);
+    if (options?.focusDetail) {
+      requestAnimationFrame(() => {
+        domainConfigDetailRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    }
   };
 
   const handleDuplicateDomainConfig = (sourceId: string) => {
@@ -1027,218 +1040,233 @@ export default function EmailServicesPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium">Temp-Mail 域名配置</p>
-                    <p className="text-xs text-muted-foreground">
-                      账号级鉴权共用上面的全局配置，这里只维护不同域名对应的 Zone 和生成规则。
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="h-9 rounded-xl"
-                    onClick={handleAddDomainConfig}
-                  >
-                    新增域名配置
-                  </Button>
-                </div>
+          <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Temp-Mail 域名配置</p>
+                <p className="text-xs text-muted-foreground">
+                  账号级鉴权共用上面的全局配置，这里只维护不同域名对应的 Zone 和生成规则。
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                className="h-9 rounded-xl"
+                onClick={handleAddDomainConfig}
+              >
+                新增域名配置
+              </Button>
+            </div>
 
-                <div className="space-y-2">
+            <div className="overflow-hidden rounded-xl border border-border/60 bg-background/70">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[160px]">配置名</TableHead>
+                    <TableHead className="min-w-[180px]">域名后缀</TableHead>
+                    <TableHead className="min-w-[180px]">Zone ID</TableHead>
+                    <TableHead className="min-w-[180px]">同步状态</TableHead>
+                    <TableHead className="w-[72px] text-right">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {cloudflareForm.domainConfigs.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">
-                      还没有域名配置。
-                    </div>
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                        还没有域名配置。至少添加一条后，`Temp-Mail（自部署）`
+                        服务才能按不同域名生成固定子域名。
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     cloudflareForm.domainConfigs.map((item) => {
                       const isSelected = item.id === selectedDomainConfigId;
                       return (
-                        <div
+                        <TableRow
                           key={item.id}
-                          className={cn(
-                            "flex items-start gap-2 rounded-xl border p-2 transition",
-                            isSelected
-                              ? "border-primary/50 bg-primary/10"
-                              : "border-border/60 bg-background/70"
-                          )}
+                          className={cn("cursor-pointer", isSelected && "bg-primary/5")}
+                          onClick={() => handleSelectDomainConfig(item.id)}
                         >
-                          <button
-                            type="button"
-                            className="flex flex-1 flex-col gap-1 rounded-lg px-3 py-2 text-left hover:bg-background/60"
-                            onClick={() => setSelectedDomainConfigId(item.id)}
-                          >
-                            <span className="text-sm font-medium">
-                              {item.name.trim() || "未命名配置"}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              域名后缀：{item.domainBase.trim() || "未填写"}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              Zone ID：{item.zoneId.trim() || "未填写"}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {formatDomainConfigSyncSummary(item)}
-                            </span>
-                          </button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger render={<span />} nativeButton={false}>
-                              <Button variant="ghost" size="icon-sm">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-40">
-                              <DropdownMenuItem onClick={() => handleDuplicateDomainConfig(item.id)}>
-                                <Copy className="mr-2 h-4 w-4" />
-                                复制为新建
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={() => handleRemoveDomainConfig(item.id)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                删除
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
+                          <TableCell className="font-medium">
+                            {item.name.trim() || "未命名配置"}
+                          </TableCell>
+                          <TableCell>{item.domainBase.trim() || "未填写"}</TableCell>
+                          <TableCell>{item.zoneId.trim() || "未填写"}</TableCell>
+                          <TableCell>{formatDomainConfigSyncSummary(item)}</TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger render={<span />} nativeButton={false}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-40">
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleSelectDomainConfig(item.id, { focusDetail: true })
+                                  }
+                                >
+                                  <Wrench className="mr-2 h-4 w-4" />
+                                  编辑
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleDuplicateDomainConfig(item.id)}
+                                >
+                                  <Copy className="mr-2 h-4 w-4" />
+                                  复制为新建
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => handleRemoveDomainConfig(item.id)}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  删除
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
                       );
                     })
                   )}
-                </div>
-              </div>
+                </TableBody>
+              </Table>
+            </div>
 
-              <div className="space-y-4 rounded-xl border border-border/60 bg-background/70 p-4">
-                {selectedDomainConfig ? (
-                  <>
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">配置详情</p>
-                      <p className="text-xs text-muted-foreground">
-                        编辑当前选中的域名配置规则。
-                      </p>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                      <div className="space-y-2">
-                        <Label>配置名</Label>
-                        <Input
-                          value={selectedDomainConfig.name}
-                          placeholder="例如：主域名"
-                          className="h-10 rounded-xl"
-                          onChange={(event) =>
-                            handleUpdateDomainConfig(selectedDomainConfig.id, { name: event.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Zone ID</Label>
-                        <Input
-                          value={selectedDomainConfig.zoneId}
-                          className="h-10 rounded-xl"
-                          onChange={(event) =>
-                            handleUpdateDomainConfig(selectedDomainConfig.id, { zoneId: event.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>域名后缀</Label>
-                        <Input
-                          value={selectedDomainConfig.domainBase}
-                          placeholder="mail.example.com"
-                          className="h-10 rounded-xl"
-                          onChange={(event) =>
-                            handleUpdateDomainConfig(selectedDomainConfig.id, { domainBase: event.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>子域名模式</Label>
-                        <Select
-                          value={selectedDomainConfig.subdomainMode}
-                          onValueChange={(value) =>
-                            handleUpdateDomainConfig(selectedDomainConfig.id, {
-                              subdomainMode: value || "random",
-                            })
-                          }
-                        >
-                          <SelectTrigger className="h-10 rounded-xl">
-                            <SelectValue placeholder="选择子域名生成模式" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="random">随机</SelectItem>
-                            <SelectItem value="sequence">顺序</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>随机长度</Label>
-                        <Input
-                          type="number"
-                          min="3"
-                          max="16"
-                          value={selectedDomainConfig.subdomainLength}
-                          className="h-10 rounded-xl"
-                          onChange={(event) =>
-                            handleUpdateDomainConfig(selectedDomainConfig.id, {
-                              subdomainLength: event.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>子域名前缀</Label>
-                        <Input
-                          value={selectedDomainConfig.subdomainPrefix}
-                          placeholder="tm"
-                          className="h-10 rounded-xl"
-                          onChange={(event) =>
-                            handleUpdateDomainConfig(selectedDomainConfig.id, {
-                              subdomainPrefix: event.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>同步 Cloudflare</Label>
-                        <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
-                          <span className="text-sm text-muted-foreground">
-                            自动更新子域名和 Worker 绑定
-                          </span>
-                          <Switch
-                            checked={selectedDomainConfig.syncCloudflareEnabled}
-                            onCheckedChange={(checked) =>
-                              handleUpdateDomainConfig(selectedDomainConfig.id, {
-                                syncCloudflareEnabled: checked,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>要求同步成功</Label>
-                        <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
-                          <span className="text-sm text-muted-foreground">
-                            同步失败时阻止服务创建
-                          </span>
-                          <Switch
-                            checked={selectedDomainConfig.requireCloudflareSync}
-                            onCheckedChange={(checked) =>
-                              handleUpdateDomainConfig(selectedDomainConfig.id, {
-                                requireCloudflareSync: checked,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">
-                    还没有域名配置。至少添加一条后，`Temp-Mail（自部署）`
-                    服务才能按不同域名生成固定子域名。
+            <div
+              ref={domainConfigDetailRef}
+              className="space-y-4 rounded-xl border border-border/60 bg-background/70 p-4"
+            >
+              {selectedDomainConfig ? (
+                <>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">配置详情</p>
+                    <p className="text-xs text-muted-foreground">
+                      编辑当前选中的域名配置规则。
+                    </p>
                   </div>
-                )}
-              </div>
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>配置名</Label>
+                      <Input
+                        value={selectedDomainConfig.name}
+                        placeholder="例如：主域名"
+                        className="h-10 rounded-xl"
+                        onChange={(event) =>
+                          handleUpdateDomainConfig(selectedDomainConfig.id, { name: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Zone ID</Label>
+                      <Input
+                        value={selectedDomainConfig.zoneId}
+                        className="h-10 rounded-xl"
+                        onChange={(event) =>
+                          handleUpdateDomainConfig(selectedDomainConfig.id, { zoneId: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>域名后缀</Label>
+                      <Input
+                        value={selectedDomainConfig.domainBase}
+                        placeholder="mail.example.com"
+                        className="h-10 rounded-xl"
+                        onChange={(event) =>
+                          handleUpdateDomainConfig(selectedDomainConfig.id, { domainBase: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>子域名模式</Label>
+                      <Select
+                        value={selectedDomainConfig.subdomainMode}
+                        onValueChange={(value) =>
+                          handleUpdateDomainConfig(selectedDomainConfig.id, {
+                            subdomainMode: value || "random",
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-10 rounded-xl">
+                          <SelectValue placeholder="选择子域名生成模式" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="random">随机</SelectItem>
+                          <SelectItem value="sequence">顺序</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>随机长度</Label>
+                      <Input
+                        type="number"
+                        min="3"
+                        max="16"
+                        value={selectedDomainConfig.subdomainLength}
+                        className="h-10 rounded-xl"
+                        onChange={(event) =>
+                          handleUpdateDomainConfig(selectedDomainConfig.id, {
+                            subdomainLength: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>子域名前缀</Label>
+                      <Input
+                        value={selectedDomainConfig.subdomainPrefix}
+                        placeholder="tm"
+                        className="h-10 rounded-xl"
+                        onChange={(event) =>
+                          handleUpdateDomainConfig(selectedDomainConfig.id, {
+                            subdomainPrefix: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>同步 Cloudflare</Label>
+                      <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
+                        <span className="text-sm text-muted-foreground">
+                          自动更新子域名和 Worker 绑定
+                        </span>
+                        <Switch
+                          checked={selectedDomainConfig.syncCloudflareEnabled}
+                          onCheckedChange={(checked) =>
+                            handleUpdateDomainConfig(selectedDomainConfig.id, {
+                              syncCloudflareEnabled: checked,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>要求同步成功</Label>
+                      <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
+                        <span className="text-sm text-muted-foreground">
+                          同步失败时阻止服务创建
+                        </span>
+                        <Switch
+                          checked={selectedDomainConfig.requireCloudflareSync}
+                          onCheckedChange={(checked) =>
+                            handleUpdateDomainConfig(selectedDomainConfig.id, {
+                              requireCloudflareSync: checked,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">
+                  还没有域名配置。至少添加一条后，`Temp-Mail（自部署）`
+                  服务才能按不同域名生成固定子域名。
+                </div>
+              )}
             </div>
           </div>
 

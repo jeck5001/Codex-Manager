@@ -25,6 +25,16 @@ test("selectInitialDomainConfigId picks first config when selection is missing",
   assert.equal(selectInitialDomainConfigId(configs, null), "cfg-1");
 });
 
+test("selectInitialDomainConfigId keeps an existing valid selection", () => {
+  const configs = [baseConfig, { ...baseConfig, id: "cfg-2" }];
+  assert.equal(selectInitialDomainConfigId(configs, "cfg-2"), "cfg-2");
+});
+
+test("selectInitialDomainConfigId falls back to the first config when selection is stale", () => {
+  const configs = [baseConfig, { ...baseConfig, id: "cfg-2" }];
+  assert.equal(selectInitialDomainConfigId(configs, "missing"), "cfg-1");
+});
+
 test("addDomainConfig appends an empty config and selects it", () => {
   const result = addDomainConfig([baseConfig], () => "cfg-new");
   assert.equal(result.selectedId, "cfg-new");
