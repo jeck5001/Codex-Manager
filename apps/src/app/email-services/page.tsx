@@ -90,6 +90,8 @@ type CloudflareSettingsFormState = {
   cloudflareAccountId: string;
   cloudflareZoneId: string;
   cloudflareWorkerName: string;
+  tempMailBaseUrl: string;
+  tempMailAdminPassword: string;
   tempMailDomainBase: string;
   tempMailSubdomainMode: string;
   tempMailSubdomainLength: string;
@@ -115,6 +117,8 @@ const EMPTY_CLOUDFLARE_FORM: CloudflareSettingsFormState = {
   cloudflareAccountId: "",
   cloudflareZoneId: "",
   cloudflareWorkerName: "temp-email",
+  tempMailBaseUrl: "",
+  tempMailAdminPassword: "",
   tempMailDomainBase: "",
   tempMailSubdomainMode: "random",
   tempMailSubdomainLength: "6",
@@ -136,6 +140,8 @@ function createCloudflareFormState(
     cloudflareAccountId: settings.cloudflareAccountId,
     cloudflareZoneId: settings.cloudflareZoneId,
     cloudflareWorkerName: settings.cloudflareWorkerName || "temp-email",
+    tempMailBaseUrl: settings.tempMailBaseUrl,
+    tempMailAdminPassword: "",
     tempMailDomainBase: settings.tempMailDomainBase,
     tempMailSubdomainMode: settings.tempMailSubdomainMode || "random",
     tempMailSubdomainLength: String(settings.tempMailSubdomainLength || 6),
@@ -661,6 +667,8 @@ export default function EmailServicesPage() {
         cloudflareAccountId: cloudflareForm.cloudflareAccountId.trim(),
         cloudflareZoneId: cloudflareForm.cloudflareZoneId.trim(),
         cloudflareWorkerName: cloudflareForm.cloudflareWorkerName.trim(),
+        tempMailBaseUrl: cloudflareForm.tempMailBaseUrl.trim(),
+        tempMailAdminPassword: cloudflareForm.tempMailAdminPassword.trim() || null,
         tempMailDomainBase: cloudflareForm.tempMailDomainBase.trim(),
         tempMailSubdomainMode: cloudflareForm.tempMailSubdomainMode,
         tempMailSubdomainLength,
@@ -672,6 +680,7 @@ export default function EmailServicesPage() {
         ...current,
         cloudflareApiToken: "",
         cloudflareGlobalApiKey: "",
+        tempMailAdminPassword: "",
         tempMailSubdomainLength: String(tempMailSubdomainLength),
       }));
     } catch {
@@ -854,6 +863,49 @@ export default function EmailServicesPage() {
                   }))
                 }
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Temp-Mail Worker 地址</Label>
+              <Input
+                value={cloudflareForm.tempMailBaseUrl}
+                placeholder="https://mail.example.com"
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    tempMailBaseUrl: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                新建 `Temp-Mail（自部署）` 服务时默认使用这个 Worker 地址，单个服务里也可以覆盖。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Temp-Mail Admin 密码</Label>
+              <Input
+                type="password"
+                value={cloudflareForm.tempMailAdminPassword}
+                placeholder={
+                  cloudflareSettings?.hasTempMailAdminPassword
+                    ? "已配置 Admin 密码，留空表示保持不变"
+                    : "输入 Temp-Mail Admin 密码"
+                }
+                className="h-10 rounded-xl"
+                onChange={(event) =>
+                  setCloudflareForm((current) => ({
+                    ...current,
+                    tempMailAdminPassword: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {cloudflareSettings?.hasTempMailAdminPassword
+                  ? "当前已经保存 Admin 密码。留空不会覆盖现有值。"
+                  : "用于 Temp-Mail Worker 的 `x-admin-auth` 鉴权。"}
+              </p>
             </div>
 
             <div className="space-y-2">

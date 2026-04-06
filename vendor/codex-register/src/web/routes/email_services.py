@@ -89,7 +89,7 @@ class OutlookBatchImportResponse(BaseModel):
 # ============== Helper Functions ==============
 
 # 敏感字段列表，返回响应时需要过滤
-SENSITIVE_FIELDS = {'password', 'api_key', 'refresh_token', 'access_token'}
+SENSITIVE_FIELDS = {'password', 'api_key', 'refresh_token', 'access_token', 'admin_password'}
 
 def filter_sensitive_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """过滤敏感配置信息"""
@@ -126,9 +126,36 @@ def service_to_response(service: EmailServiceModel) -> EmailServiceResponse:
     )
 
 
+def _build_temp_mail_worker_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
+    prepared_config = dict(config or {})
+    settings = get_settings()
+
+    if not str(prepared_config.get("base_url") or "").strip():
+        prepared_config["base_url"] = str(getattr(settings, "temp_mail_base_url", "") or "").strip()
+
+    if not str(prepared_config.get("admin_password") or "").strip():
+        admin_password = getattr(settings, "temp_mail_admin_password", None)
+        if admin_password is not None and hasattr(admin_password, "get_secret_value"):
+            prepared_config["admin_password"] = admin_password.get_secret_value()
+        else:
+            prepared_config["admin_password"] = str(admin_password or "").strip()
+
+    missing_keys = [
+        key for key in ("base_url", "admin_password")
+        if not str(prepared_config.get(key) or "").strip()
+    ]
+    if missing_keys:
+        raise HTTPException(
+            status_code=400,
+            detail=f"缺少必需配置: {missing_keys}。请在 Cloudflare Temp-Mail 设置中补全全局 Worker 配置，或在当前服务里单独填写。",
+        )
+
+    return prepared_config
+
+
 def _prepare_temp_mail_config_for_create(config: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """创建 temp_mail 服务前，先在 Cloudflare 预配固定域名并回填配置。"""
-    prepared_config = dict(config or {})
+    prepared_config = _build_temp_mail_worker_defaults(config)
     prepared_config.pop("domain", None)
     rollback_only_keys = {"cloudflare_worker_previous_bindings"}
 
@@ -285,8 +312,20 @@ async def get_service_types():
                 "label": "Temp-Mail（自部署）",
                 "description": "自部署 Cloudflare Worker 临时邮箱，admin 模式管理",
                 "config_fields": [
-                    {"name": "base_url", "label": "Worker 地址", "required": True, "placeholder": "https://mail.example.com"},
-                    {"name": "admin_password", "label": "Admin 密码", "required": True, "secret": True},
+                    {
+                        "name": "base_url",
+                        "label": "Worker 地址",
+                        "required": False,
+                        "placeholder": "https://mail.example.com",
+                        "description": "留空时使用上方 Cloudflare Temp-Mail 设置里的全局 Worker 地址",
+                    },
+                    {
+                        "name": "admin_password",
+                        "label": "Admin 密码",
+                        "required": False,
+                        "secret": True,
+                        "description": "留空时使用上方 Cloudflare Temp-Mail 设置里的全局 Admin 密码",
+                    },
                     {
                         "name": "domain",
                         "label": "邮箱域名（自动生成）",
