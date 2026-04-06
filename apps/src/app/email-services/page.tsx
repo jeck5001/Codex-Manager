@@ -65,6 +65,13 @@ import type {
   RegisterEmailServiceType,
   RegisterTempMailCloudflareSettings,
 } from "@/types";
+import {
+  addDomainConfig,
+  duplicateDomainConfig,
+  removeDomainConfig,
+  selectInitialDomainConfigId,
+  TempMailDomainConfigFormValue,
+} from "./temp-mail-domain-config-state";
 
 type ServiceFormMode = "create" | "edit";
 
@@ -91,17 +98,7 @@ type CloudflareSettingsFormState = {
   cloudflareWorkerName: string;
   tempMailBaseUrl: string;
   tempMailAdminPassword: string;
-  domainConfigs: Array<{
-    id: string;
-    name: string;
-    zoneId: string;
-    domainBase: string;
-    subdomainMode: string;
-    subdomainLength: string;
-    subdomainPrefix: string;
-    syncCloudflareEnabled: boolean;
-    requireCloudflareSync: boolean;
-  }>;
+  domainConfigs: TempMailDomainConfigFormValue[];
 };
 
 const EMPTY_FORM: ServiceFormState = {
@@ -125,21 +122,11 @@ const EMPTY_CLOUDFLARE_FORM: CloudflareSettingsFormState = {
   domainConfigs: [],
 };
 
-function createEmptyDomainConfig(): CloudflareSettingsFormState["domainConfigs"][number] {
-  return {
-    id:
-      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `domcfg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: "",
-    zoneId: "",
-    domainBase: "",
-    subdomainMode: "random",
-    subdomainLength: "6",
-    subdomainPrefix: "tm",
-    syncCloudflareEnabled: true,
-    requireCloudflareSync: true,
-  };
+function createDomainConfigId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `domcfg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function createCloudflareFormState(
@@ -335,6 +322,15 @@ function summarizeConfig(
     .join(" · ");
 }
 
+function formatDomainConfigSyncSummary(item: TempMailDomainConfigFormValue) {
+  if (!item.syncCloudflareEnabled) {
+    return "不同步 Cloudflare";
+  }
+  return item.requireCloudflareSync
+    ? "同步 Cloudflare · 失败阻止创建"
+    : "同步 Cloudflare · 失败可继续";
+}
+
 export default function EmailServicesPage() {
   const [search, setSearch] = useState("");
   const [serviceTypeFilter, setServiceTypeFilter] = useState("all");
@@ -354,6 +350,8 @@ export default function EmailServicesPage() {
   const [cloudflareForm, setCloudflareForm] = useState<CloudflareSettingsFormState>(
     EMPTY_CLOUDFLARE_FORM
   );
+  const [selectedDomainConfigId, setSelectedDomainConfigId] = useState<string | null>(null);
+  const [isCloudflareDirty, setIsCloudflareDirty] = useState(false);
 
   const {
     serviceTypes,
@@ -441,6 +439,14 @@ export default function EmailServicesPage() {
 
   const selectedType = serviceTypeMap.get(formState.serviceType);
   const availableTempMailDomainConfigs = cloudflareSettings?.domainConfigs ?? [];
+  const selectedDomainConfig = useMemo(() => {
+    if (!selectedDomainConfigId) {
+      return null;
+    }
+    return (
+      cloudflareForm.domainConfigs.find((item) => item.id === selectedDomainConfigId) ?? null
+    );
+  }, [cloudflareForm.domainConfigs, selectedDomainConfigId]);
   const isSubmittingForm = isCreating || isUpdating || isReadingFull || isOpeningEdit;
 
   useEffect(() => {
@@ -462,8 +468,15 @@ export default function EmailServicesPage() {
   }, [outlookServices]);
 
   useEffect(() => {
-    setCloudflareForm(createCloudflareFormState(cloudflareSettings));
-  }, [cloudflareSettings]);
+    if (isCloudflareDirty) {
+      return;
+    }
+    const nextForm = createCloudflareFormState(cloudflareSettings);
+    setCloudflareForm(nextForm);
+    setSelectedDomainConfigId((current) =>
+      selectInitialDomainConfigId(nextForm.domainConfigs, current)
+    );
+  }, [cloudflareSettings, isCloudflareDirty]);
 
   useEffect(() => {
     if (
@@ -558,16 +571,32 @@ export default function EmailServicesPage() {
   };
 
   const handleAddDomainConfig = () => {
+    const result = addDomainConfig(cloudflareForm.domainConfigs, createDomainConfigId);
     setCloudflareForm((current) => ({
       ...current,
-      domainConfigs: [...current.domainConfigs, createEmptyDomainConfig()],
+      domainConfigs: result.domainConfigs,
     }));
+    setSelectedDomainConfigId(result.selectedId);
+    setIsCloudflareDirty(true);
   };
 
-  const handleUpdateDomainConfig = (
-    id: string,
-    patch: Partial<CloudflareSettingsFormState["domainConfigs"][number]>
-  ) => {
+  const handleDuplicateDomainConfig = (sourceId: string) => {
+    const result = duplicateDomainConfig(
+      cloudflareForm.domainConfigs,
+      sourceId,
+      createDomainConfigId,
+      selectedDomainConfigId
+    );
+    setCloudflareForm((current) => ({
+      ...current,
+      domainConfigs: result.domainConfigs,
+    }));
+    setSelectedDomainConfigId(result.selectedId);
+    setIsCloudflareDirty(true);
+  };
+
+  const handleUpdateDomainConfig = (id: string, patch: Partial<TempMailDomainConfigFormValue>) => {
+    setIsCloudflareDirty(true);
     setCloudflareForm((current) => ({
       ...current,
       domainConfigs: current.domainConfigs.map((item) =>
@@ -577,14 +606,27 @@ export default function EmailServicesPage() {
   };
 
   const handleRemoveDomainConfig = (id: string) => {
+    const result = removeDomainConfig(cloudflareForm.domainConfigs, id, selectedDomainConfigId);
     setCloudflareForm((current) => ({
       ...current,
-      domainConfigs: current.domainConfigs.filter((item) => item.id !== id),
+      domainConfigs: result.domainConfigs,
     }));
+    setSelectedDomainConfigId(result.selectedId);
+    setIsCloudflareDirty(true);
   };
 
   const handleFilterTypeChange = (value: string | null) => {
     setServiceTypeFilter(value || "all");
+  };
+
+  const handleRefreshCloudflareSettings = () => {
+    setIsCloudflareDirty(false);
+    const nextForm = createCloudflareFormState(cloudflareSettings);
+    setCloudflareForm(nextForm);
+    setSelectedDomainConfigId((current) =>
+      selectInitialDomainConfigId(nextForm.domainConfigs, current)
+    );
+    void refetchCloudflareSettings();
   };
 
   const handleSubmitForm = async () => {
@@ -759,6 +801,7 @@ export default function EmailServicesPage() {
           requireCloudflareSync: item.requireCloudflareSync,
         })),
       });
+      setIsCloudflareDirty(false);
       setCloudflareForm((current) => ({
         ...current,
         cloudflareApiToken: "",
@@ -827,7 +870,7 @@ export default function EmailServicesPage() {
             <Button
               variant="outline"
               className="h-10 rounded-xl"
-              onClick={() => void refetchCloudflareSettings()}
+              onClick={handleRefreshCloudflareSettings}
             >
               <RefreshCw className={cn("h-4 w-4", isCloudflareSettingsLoading && "animate-spin")} />
               刷新设置
@@ -847,12 +890,13 @@ export default function EmailServicesPage() {
                     : "输入新的 Cloudflare API Token"
                 }
                 className="h-10 rounded-xl"
-                onChange={(event) =>
+                onChange={(event) => {
+                  setIsCloudflareDirty(true);
                   setCloudflareForm((current) => ({
                     ...current,
                     cloudflareApiToken: event.target.value,
-                  }))
-                }
+                  }));
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 {cloudflareSettings?.hasApiToken
@@ -867,12 +911,13 @@ export default function EmailServicesPage() {
                 value={cloudflareForm.cloudflareApiEmail}
                 placeholder="用于 Global API Key 鉴权"
                 className="h-10 rounded-xl"
-                onChange={(event) =>
+                onChange={(event) => {
+                  setIsCloudflareDirty(true);
                   setCloudflareForm((current) => ({
                     ...current,
                     cloudflareApiEmail: event.target.value,
-                  }))
-                }
+                  }));
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 Email Routing 的子域名接口会优先使用 `API Email + Global API Key`。
@@ -890,12 +935,13 @@ export default function EmailServicesPage() {
                     : "输入 Cloudflare Global API Key"
                 }
                 className="h-10 rounded-xl"
-                onChange={(event) =>
+                onChange={(event) => {
+                  setIsCloudflareDirty(true);
                   setCloudflareForm((current) => ({
                     ...current,
                     cloudflareGlobalApiKey: event.target.value,
-                  }))
-                }
+                  }));
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 {cloudflareSettings?.hasGlobalApiKey
@@ -909,12 +955,13 @@ export default function EmailServicesPage() {
               <Input
                 value={cloudflareForm.cloudflareAccountId}
                 className="h-10 rounded-xl"
-                onChange={(event) =>
+                onChange={(event) => {
+                  setIsCloudflareDirty(true);
                   setCloudflareForm((current) => ({
                     ...current,
                     cloudflareAccountId: event.target.value,
-                  }))
-                }
+                  }));
+                }}
               />
             </div>
 
@@ -924,12 +971,13 @@ export default function EmailServicesPage() {
                 value={cloudflareForm.cloudflareWorkerName}
                 placeholder="temp-email"
                 className="h-10 rounded-xl"
-                onChange={(event) =>
+                onChange={(event) => {
+                  setIsCloudflareDirty(true);
                   setCloudflareForm((current) => ({
                     ...current,
                     cloudflareWorkerName: event.target.value,
-                  }))
-                }
+                  }));
+                }}
               />
             </div>
 
@@ -939,12 +987,13 @@ export default function EmailServicesPage() {
                 value={cloudflareForm.tempMailBaseUrl}
                 placeholder="https://mail.example.com"
                 className="h-10 rounded-xl"
-                onChange={(event) =>
+                onChange={(event) => {
+                  setIsCloudflareDirty(true);
                   setCloudflareForm((current) => ({
                     ...current,
                     tempMailBaseUrl: event.target.value,
-                  }))
-                }
+                  }));
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 新建 `Temp-Mail（自部署）` 服务时默认使用这个 Worker 地址，单个服务里也可以覆盖。
@@ -962,12 +1011,13 @@ export default function EmailServicesPage() {
                     : "输入 Temp-Mail Admin 密码"
                 }
                 className="h-10 rounded-xl"
-                onChange={(event) =>
+                onChange={(event) => {
+                  setIsCloudflareDirty(true);
                   setCloudflareForm((current) => ({
                     ...current,
                     tempMailAdminPassword: event.target.value,
-                  }))
-                }
+                  }));
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 {cloudflareSettings?.hasTempMailAdminPassword
@@ -977,70 +1027,138 @@ export default function EmailServicesPage() {
             </div>
           </div>
 
-          <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">Temp-Mail 域名配置</p>
-                <p className="text-xs text-muted-foreground">
-                  账号级鉴权共用上面的全局配置，这里只维护不同域名对应的 Zone 和生成规则。
-                </p>
-              </div>
-              <Button variant="outline" className="h-9 rounded-xl" onClick={handleAddDomainConfig}>
-                新增域名配置
-              </Button>
-            </div>
-            <div className="space-y-4">
-              {cloudflareForm.domainConfigs.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">
-                  还没有域名配置。至少添加一条后，`Temp-Mail（自部署）` 服务才能按不同域名生成固定子域名。
+          <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Temp-Mail 域名配置</p>
+                    <p className="text-xs text-muted-foreground">
+                      账号级鉴权共用上面的全局配置，这里只维护不同域名对应的 Zone 和生成规则。
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="h-9 rounded-xl"
+                    onClick={handleAddDomainConfig}
+                  >
+                    新增域名配置
+                  </Button>
                 </div>
-              ) : (
-                cloudflareForm.domainConfigs.map((item, index) => (
-                  <div key={item.id} className="space-y-4 rounded-xl border border-border/60 bg-background/70 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-sm font-medium">域名配置 {index + 1}</p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 rounded-lg text-destructive"
-                        onClick={() => handleRemoveDomainConfig(item.id)}
-                      >
-                        删除
-                      </Button>
+
+                <div className="space-y-2">
+                  {cloudflareForm.domainConfigs.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">
+                      还没有域名配置。
+                    </div>
+                  ) : (
+                    cloudflareForm.domainConfigs.map((item) => {
+                      const isSelected = item.id === selectedDomainConfigId;
+                      return (
+                        <div
+                          key={item.id}
+                          className={cn(
+                            "flex items-start gap-2 rounded-xl border p-2 transition",
+                            isSelected
+                              ? "border-primary/50 bg-primary/10"
+                              : "border-border/60 bg-background/70"
+                          )}
+                        >
+                          <button
+                            type="button"
+                            className="flex flex-1 flex-col gap-1 rounded-lg px-3 py-2 text-left hover:bg-background/60"
+                            onClick={() => setSelectedDomainConfigId(item.id)}
+                          >
+                            <span className="text-sm font-medium">
+                              {item.name.trim() || "未命名配置"}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              域名后缀：{item.domainBase.trim() || "未填写"}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              Zone ID：{item.zoneId.trim() || "未填写"}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatDomainConfigSyncSummary(item)}
+                            </span>
+                          </button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger render={<span />} nativeButton={false}>
+                              <Button variant="ghost" size="icon-sm">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem onClick={() => handleDuplicateDomainConfig(item.id)}>
+                                <Copy className="mr-2 h-4 w-4" />
+                                复制为新建
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => handleRemoveDomainConfig(item.id)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                删除
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4 rounded-xl border border-border/60 bg-background/70 p-4">
+                {selectedDomainConfig ? (
+                  <>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">配置详情</p>
+                      <p className="text-xs text-muted-foreground">
+                        编辑当前选中的域名配置规则。
+                      </p>
                     </div>
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                       <div className="space-y-2">
                         <Label>配置名</Label>
                         <Input
-                          value={item.name}
+                          value={selectedDomainConfig.name}
                           placeholder="例如：主域名"
                           className="h-10 rounded-xl"
-                          onChange={(event) => handleUpdateDomainConfig(item.id, { name: event.target.value })}
+                          onChange={(event) =>
+                            handleUpdateDomainConfig(selectedDomainConfig.id, { name: event.target.value })
+                          }
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>Zone ID</Label>
                         <Input
-                          value={item.zoneId}
+                          value={selectedDomainConfig.zoneId}
                           className="h-10 rounded-xl"
-                          onChange={(event) => handleUpdateDomainConfig(item.id, { zoneId: event.target.value })}
+                          onChange={(event) =>
+                            handleUpdateDomainConfig(selectedDomainConfig.id, { zoneId: event.target.value })
+                          }
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>域名后缀</Label>
                         <Input
-                          value={item.domainBase}
+                          value={selectedDomainConfig.domainBase}
                           placeholder="mail.example.com"
                           className="h-10 rounded-xl"
-                          onChange={(event) => handleUpdateDomainConfig(item.id, { domainBase: event.target.value })}
+                          onChange={(event) =>
+                            handleUpdateDomainConfig(selectedDomainConfig.id, { domainBase: event.target.value })
+                          }
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>子域名模式</Label>
                         <Select
-                          value={item.subdomainMode}
+                          value={selectedDomainConfig.subdomainMode}
                           onValueChange={(value) =>
-                            handleUpdateDomainConfig(item.id, { subdomainMode: value || "random" })
+                            handleUpdateDomainConfig(selectedDomainConfig.id, {
+                              subdomainMode: value || "random",
+                            })
                           }
                         >
                           <SelectTrigger className="h-10 rounded-xl">
@@ -1058,32 +1176,40 @@ export default function EmailServicesPage() {
                           type="number"
                           min="3"
                           max="16"
-                          value={item.subdomainLength}
+                          value={selectedDomainConfig.subdomainLength}
                           className="h-10 rounded-xl"
                           onChange={(event) =>
-                            handleUpdateDomainConfig(item.id, { subdomainLength: event.target.value })
+                            handleUpdateDomainConfig(selectedDomainConfig.id, {
+                              subdomainLength: event.target.value,
+                            })
                           }
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>子域名前缀</Label>
                         <Input
-                          value={item.subdomainPrefix}
+                          value={selectedDomainConfig.subdomainPrefix}
                           placeholder="tm"
                           className="h-10 rounded-xl"
                           onChange={(event) =>
-                            handleUpdateDomainConfig(item.id, { subdomainPrefix: event.target.value })
+                            handleUpdateDomainConfig(selectedDomainConfig.id, {
+                              subdomainPrefix: event.target.value,
+                            })
                           }
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>同步 Cloudflare</Label>
                         <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
-                          <span className="text-sm text-muted-foreground">自动更新子域名和 Worker 绑定</span>
+                          <span className="text-sm text-muted-foreground">
+                            自动更新子域名和 Worker 绑定
+                          </span>
                           <Switch
-                            checked={item.syncCloudflareEnabled}
+                            checked={selectedDomainConfig.syncCloudflareEnabled}
                             onCheckedChange={(checked) =>
-                              handleUpdateDomainConfig(item.id, { syncCloudflareEnabled: checked })
+                              handleUpdateDomainConfig(selectedDomainConfig.id, {
+                                syncCloudflareEnabled: checked,
+                              })
                             }
                           />
                         </div>
@@ -1091,19 +1217,28 @@ export default function EmailServicesPage() {
                       <div className="space-y-2">
                         <Label>要求同步成功</Label>
                         <div className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
-                          <span className="text-sm text-muted-foreground">同步失败时阻止服务创建</span>
+                          <span className="text-sm text-muted-foreground">
+                            同步失败时阻止服务创建
+                          </span>
                           <Switch
-                            checked={item.requireCloudflareSync}
+                            checked={selectedDomainConfig.requireCloudflareSync}
                             onCheckedChange={(checked) =>
-                              handleUpdateDomainConfig(item.id, { requireCloudflareSync: checked })
+                              handleUpdateDomainConfig(selectedDomainConfig.id, {
+                                requireCloudflareSync: checked,
+                              })
                             }
                           />
                         </div>
                       </div>
                     </div>
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">
+                    还没有域名配置。至少添加一条后，`Temp-Mail（自部署）`
+                    服务才能按不同域名生成固定子域名。
                   </div>
-                ))
-              )}
+                )}
+              </div>
             </div>
           </div>
 
