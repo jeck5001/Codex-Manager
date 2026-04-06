@@ -25,6 +25,9 @@ from ..config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+TEMP_MAIL_ADMIN_PAGE_SIZE = 100
+TEMP_MAIL_ADMIN_MAX_SCAN_PAGES = 5
+
 
 class TempMailService(BaseEmailService):
     """
@@ -440,65 +443,71 @@ class TempMailService(BaseEmailService):
 
         while time.time() - start_time < actual_timeout:
             try:
-                # 使用 admin API 查询邮件，通过 address 参数过滤
-                response = self._make_request(
-                    "GET",
-                    "/admin/mails",
-                    params={"limit": 100, "offset": 0, "address": email},
-                )
-
-                # admin/mails 返回格式: {"results": [...], "total": N}
-                mails = response.get("results", [])
-                if not isinstance(mails, list):
-                    time.sleep(actual_poll_interval)
-                    continue
-
                 latest_match = None
                 latest_match_key = None
 
-                for index, mail in enumerate(mails):
-                    mail_id = self._extract_mail_identity(mail)
-                    if not mail_id or mail_id in used_mail_ids:
-                        continue
+                for page_index in range(TEMP_MAIL_ADMIN_MAX_SCAN_PAGES):
+                    offset = page_index * TEMP_MAIL_ADMIN_PAGE_SIZE
+                    response = self._make_request(
+                        "GET",
+                        "/admin/mails",
+                        params={
+                            "limit": TEMP_MAIL_ADMIN_PAGE_SIZE,
+                            "offset": offset,
+                            "address": email,
+                        },
+                    )
 
-                    message_timestamp = self._extract_mail_timestamp(mail)
-                    if message_timestamp and message_timestamp < min_timestamp:
-                        continue
+                    mails = response.get("results", [])
+                    if not isinstance(mails, list):
+                        break
 
-                    recipient_text = self._extract_mail_recipient_text(mail)
-                    if recipient_text and email.lower() not in recipient_text.lower():
-                        continue
+                    for index, mail in enumerate(mails):
+                        mail_id = self._extract_mail_identity(mail)
+                        if not mail_id or mail_id in used_mail_ids:
+                            continue
 
-                    parsed = self._extract_mail_fields(mail)
-                    sender = parsed["sender"].lower()
-                    subject = parsed["subject"]
-                    body_text = parsed["body"]
-                    raw_text = parsed["raw"]
-                    content = "\n".join(
-                        part
-                        for part in (
-                            self._sanitize_otp_search_text(sender),
-                            self._sanitize_otp_search_text(subject),
-                            self._sanitize_otp_search_text(body_text),
-                            self._sanitize_otp_search_text(raw_text),
-                        )
-                        if part
-                    ).strip()
+                        message_timestamp = self._extract_mail_timestamp(mail)
+                        if message_timestamp and message_timestamp < min_timestamp:
+                            continue
 
-                    # 只处理 OpenAI 邮件
-                    if "openai" not in sender and "openai" not in content.lower():
-                        continue
+                        recipient_text = self._extract_mail_recipient_text(mail)
+                        if recipient_text and email.lower() not in recipient_text.lower():
+                            continue
 
-                    match = re.search(pattern, content)
-                    if match:
-                        code = match.group(1)
-                        candidate_key = (
-                            message_timestamp if message_timestamp is not None else float("-inf"),
-                            index,
-                        )
-                        if latest_match_key is None or candidate_key > latest_match_key:
-                            latest_match_key = candidate_key
-                            latest_match = (mail_id, code)
+                        parsed = self._extract_mail_fields(mail)
+                        sender = parsed["sender"].lower()
+                        subject = parsed["subject"]
+                        body_text = parsed["body"]
+                        raw_text = parsed["raw"]
+                        content = "\n".join(
+                            part
+                            for part in (
+                                self._sanitize_otp_search_text(sender),
+                                self._sanitize_otp_search_text(subject),
+                                self._sanitize_otp_search_text(body_text),
+                                self._sanitize_otp_search_text(raw_text),
+                            )
+                            if part
+                        ).strip()
+
+                        # 只处理 OpenAI 邮件
+                        if "openai" not in sender and "openai" not in content.lower():
+                            continue
+
+                        match = re.search(pattern, content)
+                        if match:
+                            code = match.group(1)
+                            candidate_key = (
+                                message_timestamp if message_timestamp is not None else float("-inf"),
+                                offset + index,
+                            )
+                            if latest_match_key is None or candidate_key > latest_match_key:
+                                latest_match_key = candidate_key
+                                latest_match = (mail_id, code)
+
+                    if len(mails) < TEMP_MAIL_ADMIN_PAGE_SIZE:
+                        break
 
                 if latest_match:
                     mail_id, code = latest_match
