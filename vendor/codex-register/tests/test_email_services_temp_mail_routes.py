@@ -368,6 +368,48 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         self.assertEqual(len(fake_db.added), 1)
         self.assertEqual(fake_db.added[0].config, payload["config"])
 
+    def test_build_temp_mail_service_for_registration_includes_metadata(self):
+        class FakeProvisioner:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def provision_domain(self):
+                return {
+                    "persisted_config": {
+                        "domain": "tm-fixed.mail.example.com",
+                        "cloudflare_subdomain_id": "subdomain-123",
+                        "cloudflare_worker_previous_bindings": [
+                            {"type": "plain_text", "name": "DOMAINS", "text": '["old.mail.example.com"]'}
+                        ],
+                    },
+                    "cleanup_context": {
+                        "domain": "tm-fixed.mail.example.com",
+                        "cloudflare_subdomain_id": "subdomain-123",
+                    },
+                }
+
+        self.module.CloudflareTempMailProvisioner = FakeProvisioner
+        self.module.get_settings = lambda: object()
+
+        config, cleanup_context, service_name = self.module.build_temp_mail_service_for_registration(
+            {
+                "base_url": "https://worker.example.com",
+                "admin_password": "secret",
+                "domain": "manual.invalid.example",
+            },
+            owner_task_uuid="task-temp-1",
+            owner_batch_id="batch-5",
+        )
+
+        self.assertEqual(service_name, "tm-fixed.mail.example.com")
+        self.assertEqual(config["domain"], "tm-fixed.mail.example.com")
+        self.assertTrue(config["auto_created_for_registration"])
+        self.assertTrue(config["auto_cleanup"])
+        self.assertEqual(config["owner_task_uuid"], "task-temp-1")
+        self.assertEqual(config["owner_batch_id"], "batch-5")
+        self.assertNotIn("cloudflare_worker_previous_bindings", config)
+        self.assertEqual(cleanup_context["domain"], "tm-fixed.mail.example.com")
+
     def test_temp_mail_create_rolls_back_remote_state_when_db_commit_fails(self):
         cleanup_calls: List[dict] = []
         fake_db = _FakeDB(first_results=[None])

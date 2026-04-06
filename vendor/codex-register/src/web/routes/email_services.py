@@ -168,6 +168,28 @@ def _prepare_temp_mail_config_for_create(config: Dict[str, Any]) -> Tuple[Dict[s
     return merged_config, cleanup_context
 
 
+def build_temp_mail_service_for_registration(
+    config: Dict[str, Any],
+    *,
+    owner_task_uuid: Optional[str] = None,
+    owner_batch_id: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
+    """Prepare a temp-mail service config for automatic registration use."""
+    merged_config, cleanup_context = _prepare_temp_mail_config_for_create(config)
+    domain = str(merged_config.get("domain") or "").strip()
+    if not domain:
+        raise HTTPException(status_code=502, detail="Temp-Mail 域名预配失败: 未返回有效 domain")
+
+    merged_config["auto_created_for_registration"] = True
+    merged_config["auto_cleanup"] = True
+    if owner_task_uuid:
+        merged_config["owner_task_uuid"] = owner_task_uuid
+    if owner_batch_id:
+        merged_config["owner_batch_id"] = owner_batch_id
+
+    return merged_config, cleanup_context, domain
+
+
 def _cleanup_temp_mail_provisioning(cleanup_context: Optional[Dict[str, Any]]) -> None:
     if not cleanup_context:
         return
