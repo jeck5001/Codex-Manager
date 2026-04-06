@@ -194,6 +194,8 @@ interface RegisterTempMailCloudflareSettingsPayload {
   cloudflareAccountId?: string | null;
   cloudflareZoneId?: string | null;
   cloudflareWorkerName?: string | null;
+  tempMailBaseUrl?: string | null;
+  tempMailAdminPassword?: string | null;
   tempMailDomainBase?: string | null;
   tempMailSubdomainMode?: string | null;
   tempMailSubdomainLength?: number | null;
@@ -769,6 +771,15 @@ function normalizeRegisterTempMailCloudflareSettings(
         : typeof source.cloudflare_worker_name === "string"
           ? source.cloudflare_worker_name
           : "",
+    tempMailBaseUrl:
+      typeof source.tempMailBaseUrl === "string"
+        ? source.tempMailBaseUrl
+        : typeof source.temp_mail_base_url === "string"
+          ? source.temp_mail_base_url
+          : "",
+    hasTempMailAdminPassword:
+      source.hasTempMailAdminPassword === true ||
+      source.has_temp_mail_admin_password === true,
     tempMailDomainBase:
       typeof source.tempMailDomainBase === "string"
         ? source.tempMailDomainBase
@@ -1041,6 +1052,7 @@ export const accountClient = {
       cloudflare_account_id: params.cloudflareAccountId ?? "",
       cloudflare_zone_id: params.cloudflareZoneId ?? "",
       cloudflare_worker_name: params.cloudflareWorkerName ?? "",
+      temp_mail_base_url: params.tempMailBaseUrl ?? "",
       temp_mail_domain_base: params.tempMailDomainBase ?? "",
       temp_mail_subdomain_mode: params.tempMailSubdomainMode ?? "random",
       temp_mail_subdomain_length: params.tempMailSubdomainLength ?? 6,
@@ -1056,6 +1068,12 @@ export const accountClient = {
       params.cloudflareGlobalApiKey.trim()
     ) {
       payload.cloudflare_global_api_key = params.cloudflareGlobalApiKey.trim();
+    }
+    if (
+      typeof params.tempMailAdminPassword === "string" &&
+      params.tempMailAdminPassword.trim()
+    ) {
+      payload.temp_mail_admin_password = params.tempMailAdminPassword.trim();
     }
     await invoke<unknown>(
       "service_account_register_temp_mail_cloudflare_settings_set",

@@ -388,6 +388,8 @@ class TempMailCloudflareSettings(BaseModel):
     cloudflare_account_id: Optional[str] = None
     cloudflare_zone_id: Optional[str] = None
     cloudflare_worker_name: Optional[str] = None
+    temp_mail_base_url: Optional[str] = None
+    temp_mail_admin_password: Optional[str] = None
     temp_mail_domain_base: Optional[str] = None
     temp_mail_subdomain_mode: Optional[str] = None
     temp_mail_subdomain_length: Optional[int] = None
@@ -460,6 +462,11 @@ async def get_temp_mail_cloudflare_settings():
         "cloudflare_account_id": settings.cloudflare_account_id,
         "cloudflare_zone_id": settings.cloudflare_zone_id,
         "cloudflare_worker_name": settings.cloudflare_worker_name,
+        "temp_mail_base_url": settings.temp_mail_base_url,
+        "has_temp_mail_admin_password": bool(
+            settings.temp_mail_admin_password
+            and settings.temp_mail_admin_password.get_secret_value()
+        ),
         "temp_mail_domain_base": settings.temp_mail_domain_base,
         "temp_mail_subdomain_mode": settings.temp_mail_subdomain_mode,
         "temp_mail_subdomain_length": settings.temp_mail_subdomain_length,
@@ -486,6 +493,10 @@ async def update_temp_mail_cloudflare_settings(request: TempMailCloudflareSettin
         update_dict["cloudflare_zone_id"] = request.cloudflare_zone_id
     if request.cloudflare_worker_name is not None:
         update_dict["cloudflare_worker_name"] = request.cloudflare_worker_name
+    if request.temp_mail_base_url is not None:
+        update_dict["temp_mail_base_url"] = request.temp_mail_base_url
+    if request.temp_mail_admin_password is not None:
+        update_dict["temp_mail_admin_password"] = request.temp_mail_admin_password
     if request.temp_mail_domain_base is not None:
         update_dict["temp_mail_domain_base"] = request.temp_mail_domain_base
     if request.temp_mail_subdomain_mode is not None:

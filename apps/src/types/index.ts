@@ -776,6 +776,8 @@ export interface RegisterTempMailCloudflareSettings {
   cloudflareAccountId: string;
   cloudflareZoneId: string;
   cloudflareWorkerName: string;
+  tempMailBaseUrl: string;
+  hasTempMailAdminPassword: boolean;
   tempMailDomainBase: string;
   tempMailSubdomainMode: string;
   tempMailSubdomainLength: number;

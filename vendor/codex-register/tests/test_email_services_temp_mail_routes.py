@@ -226,6 +226,47 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         self.assertEqual(len(fake_db.added), 1)
         self.assertEqual(fake_db.added[0].name, "tm-fixed.mail.example.com")
 
+    def test_temp_mail_create_uses_global_worker_settings_when_request_config_is_blank(self):
+        fake_db = _FakeDB(first_results=[None])
+        self.module.get_db = lambda: _DBContext(fake_db)
+
+        class FakeProvisioner:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def provision_domain(self):
+                return {
+                    "persisted_config": {
+                        "domain": "tm-fixed.mail.example.com",
+                    },
+                    "cleanup_context": {
+                        "domain": "tm-fixed.mail.example.com",
+                    },
+                }
+
+        self.module.CloudflareTempMailProvisioner = FakeProvisioner
+        self.module.get_settings = lambda: types.SimpleNamespace(
+            temp_mail_base_url="https://worker.example.com",
+            temp_mail_admin_password=SecretStr("secret"),
+        )
+
+        response = self.client.post(
+            "/api/email-services",
+            json={
+                "service_type": "temp_mail",
+                "name": "Temp Mail Global",
+                "config": {},
+                "enabled": True,
+                "priority": 0,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(fake_db.added), 1)
+        self.assertEqual(fake_db.added[0].config["base_url"], "https://worker.example.com")
+        self.assertEqual(fake_db.added[0].config["admin_password"], "secret")
+        self.assertEqual(fake_db.added[0].config["domain"], "tm-fixed.mail.example.com")
+
     def test_temp_mail_create_provisioning_failure_returns_http_error_and_skips_insert(self):
         fake_db = _FakeDB(first_results=[None])
         self.module.get_db = lambda: _DBContext(fake_db)
