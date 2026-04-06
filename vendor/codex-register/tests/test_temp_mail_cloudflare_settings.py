@@ -10,6 +10,21 @@ class TempMailCloudflareSettingsTests(unittest.TestCase):
 
         self.assertEqual(settings.email_code_timeout, 240)
 
+    def test_settings_accepts_json_string_for_temp_mail_domain_configs(self):
+        settings = settings_module.Settings(
+            temp_mail_domain_configs='[{"id":"cfg-1","domain_base":"a.example.com"}]'
+        )
+
+        self.assertEqual(
+            settings.temp_mail_domain_configs,
+            [{"id": "cfg-1", "domain_base": "a.example.com"}],
+        )
+
+    def test_settings_accepts_empty_json_string_for_temp_mail_domain_configs(self):
+        settings = settings_module.Settings(temp_mail_domain_configs="[]")
+
+        self.assertEqual(settings.temp_mail_domain_configs, [])
+
     def test_update_settings_persists_cloudflare_temp_mail_fields(self):
         original_save = settings_module._save_settings_to_db
         original_settings = settings_module._settings

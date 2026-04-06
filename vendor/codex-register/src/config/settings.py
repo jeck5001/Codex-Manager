@@ -6,7 +6,7 @@
 import os
 from typing import Optional, Dict, Any, Type, List
 from enum import Enum
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Json, field_validator
 from pydantic.types import SecretStr
 from dataclasses import dataclass
 
@@ -772,7 +772,7 @@ class Settings(BaseModel):
     cloudflare_worker_name: str = "temp-email"
     temp_mail_base_url: str = ""
     temp_mail_admin_password: SecretStr = SecretStr("")
-    temp_mail_domain_configs: List[Dict[str, Any]] = []
+    temp_mail_domain_configs: List[Dict[str, Any]] | Json[List[Dict[str, Any]]] = []
     temp_mail_domain_base: str = ""
     temp_mail_subdomain_mode: str = "random"
     temp_mail_subdomain_length: int = 6
