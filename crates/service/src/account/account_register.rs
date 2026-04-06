@@ -926,6 +926,7 @@ pub(crate) fn start_register_task(
     register_mode: Option<&str>,
     browserbase_config_id: Option<i64>,
     proxy: Option<String>,
+    auto_create_temp_mail_service: Option<bool>,
 ) -> Result<Value, String> {
     let service_type = email_service_type.trim();
     let register_mode = register_mode
@@ -935,19 +936,25 @@ pub(crate) fn start_register_task(
     if service_type.is_empty() && register_mode != "browserbase_ddg" {
         return Err("emailServiceType is required".to_string());
     }
-    register_post_json(
-        "/api/registration/start",
-        &json!({
-            "email_service_type": service_type,
-            "email_service_id": email_service_id,
-            "register_mode": register_mode,
-            "browserbase_config_id": browserbase_config_id,
-            "proxy": proxy,
-        }),
-    )
+    let mut payload = json!({
+        "email_service_type": service_type,
+        "email_service_id": email_service_id,
+        "register_mode": register_mode,
+        "browserbase_config_id": browserbase_config_id,
+        "proxy": proxy,
+    });
+    if let Some(flag) = auto_create_temp_mail_service {
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("auto_create_temp_mail_service".to_string(), json!(flag));
+        }
+    }
+    register_post_json("/api/registration/start", &payload)
 }
 
-pub(crate) fn start_register_batch(input: StartRegisterBatchInput<'_>) -> Result<Value, String> {
+pub(crate) fn start_register_batch(
+    input: StartRegisterBatchInput<'_>,
+    auto_create_temp_mail_service: Option<bool>,
+) -> Result<Value, String> {
     let StartRegisterBatchInput {
         email_service_type,
         email_service_id,
@@ -982,21 +989,24 @@ pub(crate) fn start_register_batch(input: StartRegisterBatchInput<'_>) -> Result
         return Err("mode must be pipeline or parallel".to_string());
     }
 
-    let mut payload = register_post_json(
-        "/api/registration/batch",
-        &json!({
-            "email_service_type": service_type,
-            "email_service_id": email_service_id,
-            "register_mode": register_mode,
-            "browserbase_config_id": browserbase_config_id,
-            "proxy": proxy,
-            "count": count,
-            "interval_min": interval_min,
-            "interval_max": interval_max,
-            "concurrency": concurrency,
-            "mode": normalized_mode,
-        }),
-    )?;
+    let mut payload = json!({
+        "email_service_type": service_type,
+        "email_service_id": email_service_id,
+        "register_mode": register_mode,
+        "browserbase_config_id": browserbase_config_id,
+        "proxy": proxy,
+        "count": count,
+        "interval_min": interval_min,
+        "interval_max": interval_max,
+        "concurrency": concurrency,
+        "mode": normalized_mode,
+    });
+    if let Some(flag) = auto_create_temp_mail_service {
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("auto_create_temp_mail_service".to_string(), json!(flag));
+        }
+    }
+    let mut payload = register_post_json("/api/registration/batch", &payload)?;
     let task_uuids = payload
         .get("tasks")
         .and_then(Value::as_array)

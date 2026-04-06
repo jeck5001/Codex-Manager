@@ -260,12 +260,17 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 })
                 .and_then(|value| value.as_i64());
             let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            let auto_create_temp_mail_service = first_bool_param(
+                req,
+                &["autoCreateTempMailService", "auto_create_temp_mail_service"],
+            );
             super::value_or_error(account_register::start_register_task(
                 email_service_type,
                 email_service_id,
                 register_mode,
                 browserbase_config_id,
                 proxy,
+                auto_create_temp_mail_service,
             ))
         }
         "account/register/batch/start" => {
@@ -293,6 +298,10 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 })
                 .and_then(|value| value.as_i64());
             let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            let auto_create_temp_mail_service = first_bool_param(
+                req,
+                &["autoCreateTempMailService", "auto_create_temp_mail_service"],
+            );
             let count = req
                 .params
                 .as_ref()
@@ -339,6 +348,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     concurrency,
                     mode,
                 },
+                auto_create_temp_mail_service,
             ))
         }
         "account/register/batch/read" => {
