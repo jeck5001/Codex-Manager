@@ -239,6 +239,24 @@ class CloudflareTempMailProvisionerTests(unittest.TestCase):
         with self.assertRaises(cloudflare_temp_mail.CloudflareProvisioningError):
             provisioner.patch_worker_settings([{"type": "json", "name": "DOMAINS", "json": []}])
 
+    def test_provision_domain_honors_requested_domain(self):
+        settings = self.make_settings()
+        http_client = self._DummyHttpClient([
+            self._make_response(200, {"result": {"id": "subdomain-1"}}),
+            self._make_response(200, {"result": {"bindings": []}}),
+            self._make_response(200, {"result": {"bindings": []}}),
+        ])
+        provisioner = cloudflare_temp_mail.CloudflareTempMailProvisioner(settings, http_client=http_client)
+        provisioner._generate_label = lambda: (_ for _ in ()).throw(AssertionError("should not generate label"))
+
+        result = provisioner.provision_domain(requested_domain="manual.mail.example.com")
+
+        self.assertEqual(result["persisted_config"]["domain"], "manual.mail.example.com")
+        self.assertEqual(
+            http_client.requests[0]["kwargs"]["json"],
+            {"name": "manual.mail.example.com"},
+        )
+
     def test_delete_subdomain_uses_email_routing_disable_with_domain_name(self):
         settings = self.make_settings(
             cloudflare_api_email="admin@example.com",

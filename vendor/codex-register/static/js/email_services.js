@@ -404,6 +404,10 @@ async function handleAddCustom(e) {
             admin_password: formData.get('tm_admin_password'),
             enable_prefix: true
         };
+        const requestedDomain = String(formData.get('tm_domain') || '').trim();
+        if (requestedDomain) {
+            config.domain = requestedDomain;
+        }
     }
 
     const data = {

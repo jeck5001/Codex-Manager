@@ -211,6 +211,49 @@ def _normalize_temp_mail_domain_config(config: Dict[str, Any]) -> Dict[str, Any]
     return item
 
 
+def _normalize_requested_temp_mail_domain(value: Any) -> str:
+    return str(value or "").strip().strip(".").lower()
+
+
+def _temp_mail_domain_matches_base(domain: str, domain_base: str) -> bool:
+    normalized_domain = _normalize_requested_temp_mail_domain(domain)
+    normalized_base = _normalize_requested_temp_mail_domain(domain_base)
+    if not normalized_domain or not normalized_base:
+        return False
+    return normalized_domain == normalized_base or normalized_domain.endswith(f".{normalized_base}")
+
+
+def _match_temp_mail_domain_config_for_domain(
+    domain: str,
+    domain_configs: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    normalized_domain = _normalize_requested_temp_mail_domain(domain)
+    if not normalized_domain:
+        return None
+
+    normalized_configs = [
+        _normalize_temp_mail_domain_config(item)
+        for item in domain_configs
+        if isinstance(item, dict)
+    ]
+    matches = [
+        item
+        for item in normalized_configs
+        if _temp_mail_domain_matches_base(normalized_domain, item.get("domain_base") or "")
+    ]
+    if not matches:
+        return None
+
+    return sorted(
+        matches,
+        key=lambda item: (
+            -len(str(item.get("domain_base") or "")),
+            int(item.get("priority") or 0),
+            str(item.get("id") or ""),
+        ),
+    )[0]
+
+
 def _parse_temp_mail_domain_cooldown(value: Any) -> Optional[datetime]:
     text = str(value or "").strip()
     if not text:
@@ -310,21 +353,51 @@ def record_temp_mail_domain_registration_outcome(
 
 def _apply_temp_mail_domain_config(config: Dict[str, Any], settings) -> Dict[str, Any]:
     prepared_config = dict(config or {})
+    requested_domain = _normalize_requested_temp_mail_domain(prepared_config.get("domain"))
+    if requested_domain:
+        prepared_config["domain"] = requested_domain
+
     explicit_domain_base = str(prepared_config.get("temp_mail_domain_base") or "").strip()
     explicit_zone_id = str(prepared_config.get("cloudflare_zone_id") or "").strip()
     if explicit_domain_base and explicit_zone_id:
+        if requested_domain and not _temp_mail_domain_matches_base(requested_domain, explicit_domain_base):
+            raise HTTPException(
+                status_code=400,
+                detail=f"指定域名不属于当前基础域名: {requested_domain}",
+            )
         return prepared_config
 
     domain_configs = _load_temp_mail_domain_configs(settings)
     requested_id = str(prepared_config.get("domain_config_id") or "").strip()
-    selected_config = _choose_temp_mail_domain_config(
-        domain_configs,
-        requested_id=requested_id,
-    )
+    selected_config = None
+
     if requested_id:
+        selected_config = _choose_temp_mail_domain_config(
+            domain_configs,
+            requested_id=requested_id,
+        )
         if not selected_config:
             raise HTTPException(status_code=400, detail=f"域名配置不存在: {requested_id}")
+        if requested_domain and not _temp_mail_domain_matches_base(
+            requested_domain,
+            str(selected_config.get("domain_base") or ""),
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=f"指定域名不属于所选域名配置: {requested_domain}",
+            )
+    elif requested_domain:
+        selected_config = _match_temp_mail_domain_config_for_domain(requested_domain, domain_configs)
+        if len(domain_configs) > 0 and not selected_config:
+            raise HTTPException(
+                status_code=400,
+                detail=f"指定域名未匹配任何 Temp-Mail 域名配置: {requested_domain}",
+            )
     else:
+        selected_config = _choose_temp_mail_domain_config(
+            domain_configs,
+            requested_id=requested_id,
+        )
         if len(domain_configs) == 0:
             return prepared_config
         prepared_config.setdefault("domain_config_id", str((selected_config or {}).get("id") or "").strip())
@@ -332,6 +405,7 @@ def _apply_temp_mail_domain_config(config: Dict[str, Any], settings) -> Dict[str
     if not selected_config:
         return prepared_config
 
+    prepared_config.setdefault("domain_config_id", str(selected_config.get("id") or "").strip())
     prepared_config.setdefault("domain_config_name", str(selected_config.get("name") or "").strip())
     prepared_config.setdefault("cloudflare_zone_id", str(selected_config.get("zone_id") or "").strip())
     prepared_config.setdefault("temp_mail_domain_base", str(selected_config.get("domain_base") or "").strip())
@@ -380,15 +454,20 @@ def _prepare_temp_mail_config_for_create(config: Dict[str, Any]) -> Tuple[Dict[s
     settings = get_settings()
     prepared_config = _build_temp_mail_worker_defaults(config)
     prepared_config = _apply_temp_mail_domain_config(prepared_config, settings)
-    prepared_config.pop("domain", None)
     rollback_only_keys = {"cloudflare_worker_previous_bindings"}
+    requested_domain = _normalize_requested_temp_mail_domain(prepared_config.get("domain"))
+    if requested_domain:
+        prepared_config["domain"] = requested_domain
 
     try:
         provisioner = CloudflareTempMailProvisioner(
             settings,
             overrides=_build_temp_mail_provisioner_overrides(prepared_config),
         )
-        provision_result = provisioner.provision_domain()
+        if requested_domain:
+            provision_result = provisioner.provision_domain(requested_domain=requested_domain)
+        else:
+            provision_result = provisioner.provision_domain()
     except Exception as exc:
         logger.error(f"Temp-Mail 域名预配失败: {exc}")
         raise HTTPException(status_code=502, detail=f"Temp-Mail 域名预配失败: {exc}") from exc
@@ -555,10 +634,9 @@ async def get_service_types():
                     },
                     {
                         "name": "domain",
-                        "label": "邮箱域名（自动生成）",
+                        "label": "邮箱域名（可选）",
                         "required": False,
-                        "read_only": True,
-                        "description": "创建时由服务端自动生成固定子域名",
+                        "description": "可直接填写完整域名；留空时由服务端自动生成固定子域名",
                     },
                     {"name": "enable_prefix", "label": "启用前缀", "required": False, "default": True},
                 ]

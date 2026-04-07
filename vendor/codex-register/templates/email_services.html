@@ -332,8 +332,9 @@
                             <input type="password" id="custom-tm-admin-password" name="tm_admin_password" placeholder="x-admin-auth 密码">
                         </div>
                         <div class="form-group">
-                            <label>邮箱域名</label>
-                            <small style="color: var(--text-muted);">创建时自动生成固定子域名</small>
+                            <label for="custom-tm-domain">邮箱域名</label>
+                            <input type="text" id="custom-tm-domain" name="tm_domain" placeholder="例如：mail-01.a.example.com">
+                            <small style="color: var(--text-muted);">可直接指定完整域名，不填则自动生成固定子域名</small>
                         </div>
                     </div>
                     <div class="form-row">
