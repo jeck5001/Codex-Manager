@@ -8,6 +8,9 @@ const AGGREGATE_API_SELECT_SQL: &str = "SELECT
     supplier_name,
     sort,
     url,
+    auth_type,
+    auth_params_json,
+    action,
     status,
     created_at,
     updated_at,
@@ -37,19 +40,25 @@ impl Storage {
                 supplier_name,
                 sort,
                 url,
+                auth_type,
+                auth_params_json,
+                action,
                 status,
                 created_at,
                 updated_at,
                 last_test_at,
                 last_test_status,
                 last_test_error
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             (
                 &api.id,
                 &api.provider_type,
                 &api.supplier_name,
                 api.sort,
                 &api.url,
+                &api.auth_type,
+                &api.auth_params_json,
+                &api.action,
                 &api.status,
                 api.created_at,
                 api.updated_at,
@@ -198,6 +207,34 @@ impl Storage {
         Ok(())
     }
 
+    pub fn update_aggregate_api_auth_type(&self, api_id: &str, auth_type: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE aggregate_apis SET auth_type = ?1, updated_at = ?2 WHERE id = ?3",
+            (auth_type, now_ts(), api_id),
+        )?;
+        Ok(())
+    }
+
+    pub fn update_aggregate_api_auth_params_json(
+        &self,
+        api_id: &str,
+        auth_params_json: Option<&str>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE aggregate_apis SET auth_params_json = ?1, updated_at = ?2 WHERE id = ?3",
+            (auth_params_json, now_ts(), api_id),
+        )?;
+        Ok(())
+    }
+
+    pub fn update_aggregate_api_action(&self, api_id: &str, action: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE aggregate_apis SET action = ?1, updated_at = ?2 WHERE id = ?3",
+            (action, now_ts(), api_id),
+        )?;
+        Ok(())
+    }
+
     /// 函数 `delete_aggregate_api`
     ///
     /// 作者: gaohongshun
@@ -334,6 +371,9 @@ impl Storage {
                 supplier_name TEXT,
                 sort INTEGER NOT NULL DEFAULT 0,
                 url TEXT NOT NULL,
+                auth_type TEXT NOT NULL DEFAULT 'apikey',
+                auth_params_json TEXT,
+                action TEXT,
                 status TEXT NOT NULL DEFAULT 'active',
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
@@ -350,10 +390,19 @@ impl Storage {
         self.ensure_column("aggregate_apis", "provider_type", "TEXT")?;
         self.ensure_column("aggregate_apis", "supplier_name", "TEXT")?;
         self.ensure_column("aggregate_apis", "sort", "INTEGER DEFAULT 0")?;
+        self.ensure_column("aggregate_apis", "auth_type", "TEXT NOT NULL DEFAULT 'apikey'")?;
+        self.ensure_column("aggregate_apis", "auth_params_json", "TEXT")?;
+        self.ensure_column("aggregate_apis", "action", "TEXT")?;
         self.conn.execute(
             "UPDATE aggregate_apis
              SET provider_type = COALESCE(NULLIF(TRIM(provider_type), ''), 'codex')
              WHERE provider_type IS NULL OR TRIM(provider_type) = ''",
+            [],
+        )?;
+        self.conn.execute(
+            "UPDATE aggregate_apis
+             SET auth_type = COALESCE(NULLIF(TRIM(auth_type), ''), 'apikey')
+             WHERE auth_type IS NULL OR TRIM(auth_type) = ''",
             [],
         )?;
         self.conn.execute(
@@ -412,11 +461,14 @@ fn map_aggregate_api_row(row: &Row<'_>) -> Result<AggregateApi> {
         supplier_name: row.get(2)?,
         sort: row.get(3)?,
         url: row.get(4)?,
-        status: row.get(5)?,
-        created_at: row.get(6)?,
-        updated_at: row.get(7)?,
-        last_test_at: row.get(8)?,
-        last_test_status: row.get(9)?,
-        last_test_error: row.get(10)?,
+        auth_type: row.get(5)?,
+        auth_params_json: row.get(6)?,
+        action: row.get(7)?,
+        status: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
+        last_test_at: row.get(11)?,
+        last_test_status: row.get(12)?,
+        last_test_error: row.get(13)?,
     })
 }

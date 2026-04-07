@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { accountClient } from "@/lib/api/account-client";
 import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { useAppStore } from "@/lib/store/useAppStore";
@@ -71,6 +72,24 @@ export function AggregateApiModal({
   const [supplierName, setSupplierName] = useState("");
   const [sortDraft, setSortDraft] = useState("0");
   const [url, setUrl] = useState("");
+  const [authType, setAuthType] = useState<"apikey" | "userpass">("apikey");
+  const [authCustomEnabled, setAuthCustomEnabled] = useState(false);
+  const [apiKeyLocation, setApiKeyLocation] = useState<"header" | "query">(
+    "header"
+  );
+  const [apiKeyName, setApiKeyName] = useState("authorization");
+  const [apiKeyHeaderValueFormat, setApiKeyHeaderValueFormat] = useState<
+    "bearer" | "raw"
+  >("bearer");
+  const [userpassMode, setUserpassMode] = useState<
+    "basic" | "headerPair" | "queryPair"
+  >("basic");
+  const [userpassUsernameName, setUserpassUsernameName] = useState("username");
+  const [userpassPasswordName, setUserpassPasswordName] = useState("password");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [actionCustomEnabled, setActionCustomEnabled] = useState(false);
+  const [action, setAction] = useState("");
   const [key, setKey] = useState("");
   const [generatedKey, setGeneratedKey] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -87,7 +106,55 @@ export function AggregateApiModal({
     setSupplierName(aggregateApi?.supplierName || "");
     setSortDraft(String(aggregateApi?.sort ?? defaultSort));
     setUrl(aggregateApi?.url || "");
+    const nextAuthType =
+      aggregateApi?.authType === "userpass" ? "userpass" : "apikey";
+    setAuthType(nextAuthType);
+    const authParams =
+      aggregateApi?.authParams && typeof aggregateApi.authParams === "object"
+        ? aggregateApi.authParams
+        : null;
+    setAuthCustomEnabled(Boolean(authParams));
+    if (nextAuthType === "apikey") {
+      const location =
+        authParams && authParams["location"] === "query" ? "query" : "header";
+      setApiKeyLocation(location);
+      const name =
+        authParams && typeof authParams["name"] === "string"
+          ? String(authParams["name"])
+          : location === "query"
+            ? "api_key"
+            : "authorization";
+      setApiKeyName(name);
+      const format =
+        authParams && typeof authParams["headerValueFormat"] === "string"
+          ? String(authParams["headerValueFormat"]).toLowerCase()
+          : "bearer";
+      setApiKeyHeaderValueFormat(format === "raw" ? "raw" : "bearer");
+    } else {
+      const mode =
+        authParams && typeof authParams["mode"] === "string"
+          ? String(authParams["mode"])
+          : "basic";
+      setUserpassMode(
+        mode === "headerPair" || mode === "queryPair" ? mode : "basic"
+      );
+      setUserpassUsernameName(
+        authParams && typeof authParams["usernameName"] === "string"
+          ? String(authParams["usernameName"])
+          : "username"
+      );
+      setUserpassPasswordName(
+        authParams && typeof authParams["passwordName"] === "string"
+          ? String(authParams["passwordName"])
+          : "password"
+      );
+    }
+    const nextAction = aggregateApi?.action ?? "";
+    setAction(nextAction);
+    setActionCustomEnabled(aggregateApi?.action !== null && aggregateApi?.action !== undefined);
     setKey("");
+    setUsername("");
+    setPassword("");
     setGeneratedKey("");
   }, [aggregateApi, defaultSort, open]);
 
@@ -132,10 +199,68 @@ export function AggregateApiModal({
       return;
     }
     if (!aggregateApi?.id && !key.trim()) {
-      toast.error("请输入聚合 API 密钥");
-      return;
+      if (authType === "apikey") {
+        toast.error("请输入聚合 API 密钥");
+        return;
+      }
+    }
+    if (!aggregateApi?.id && authType === "userpass") {
+      if (!username.trim() || !password.trim()) {
+        toast.error("请输入账号密码");
+        return;
+      }
+    }
+    if (authType === "userpass" && (username.trim() || password.trim())) {
+      if (!username.trim() || !password.trim()) {
+        toast.error("账号和密码必须同时填写");
+        return;
+      }
+    }
+    if (aggregateApi?.id && aggregateApi.authType !== authType) {
+      if (authType === "apikey" && !key.trim()) {
+        toast.error("切换为 APIKey 认证时必须填写密钥");
+        return;
+      }
+      if (authType === "userpass" && (!username.trim() || !password.trim())) {
+        toast.error("切换为账号密码认证时必须填写账号密码");
+        return;
+      }
     }
 
+    const authParams =
+      authCustomEnabled && authType === "apikey"
+        ? {
+            location: apiKeyLocation,
+            name: apiKeyName.trim(),
+            headerValueFormat:
+              apiKeyLocation === "header" ? apiKeyHeaderValueFormat : undefined,
+          }
+        : authCustomEnabled && authType === "userpass"
+          ? {
+              mode: userpassMode,
+              usernameName:
+                userpassMode === "headerPair" || userpassMode === "queryPair"
+                  ? userpassUsernameName.trim()
+                  : undefined,
+              passwordName:
+                userpassMode === "headerPair" || userpassMode === "queryPair"
+                  ? userpassPasswordName.trim()
+                  : undefined,
+            }
+          : null;
+    if (authCustomEnabled) {
+      if (authType === "apikey") {
+        if (!apiKeyName.trim()) {
+          toast.error("请输入认证参数名称");
+          return;
+        }
+      } else if (userpassMode !== "basic") {
+        if (!userpassUsernameName.trim() || !userpassPasswordName.trim()) {
+          toast.error("请输入账号密码参数名称");
+          return;
+        }
+      }
+    }
     setIsLoading(true);
     try {
       if (aggregateApi?.id) {
@@ -144,7 +269,14 @@ export function AggregateApiModal({
           supplierName,
           sort: parsedSort,
           url,
-          key: key || null,
+          key: authType === "apikey" ? key || null : null,
+          authType,
+          authCustomEnabled,
+          authParams,
+          actionCustomEnabled,
+          action: actionCustomEnabled ? action.trim() : null,
+          username: authType === "userpass" ? username.trim() || null : null,
+          password: authType === "userpass" ? password.trim() || null : null,
         });
         toast.success("聚合 API 已更新");
         await Promise.all([
@@ -161,7 +293,14 @@ export function AggregateApiModal({
         supplierName,
         sort: parsedSort,
         url,
-        key,
+        key: authType === "apikey" ? key : null,
+        authType,
+        authCustomEnabled,
+        authParams,
+        actionCustomEnabled,
+        action: actionCustomEnabled ? action.trim() : null,
+        username: authType === "userpass" ? username.trim() : null,
+        password: authType === "userpass" ? password.trim() : null,
       });
       setGeneratedKey(result.key);
       toast.success("聚合 API 已创建");
@@ -204,138 +343,397 @@ export function AggregateApiModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] glass-card border-none">
-        <DialogHeader>
-          <div className="mb-2 flex items-center gap-3">
-            <div className="rounded-full bg-primary/10 p-2">
-              <Database className="h-5 w-5 text-primary" />
-            </div>
-            <DialogTitle>
-              {aggregateApi?.id ? "编辑聚合 API" : "创建聚合 API"}
-            </DialogTitle>
-          </div>
-          <DialogDescription>
-            配置一个最小转发上游，保存 URL 和密钥后即可用于平台密钥轮转。
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-5 py-4">
-          {!isServiceReady ? (
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
-              {unavailableMessage}
-            </div>
-          ) : null}
-
-          <div className="grid gap-2">
-            <Label htmlFor="aggregate-api-supplier-name">供应商名称 *</Label>
-            <Input
-              id="aggregate-api-supplier-name"
-              placeholder="例如：官方中转、XX 供应商"
-              value={supplierName}
-              disabled={!isServiceReady}
-              onChange={(event) => setSupplierName(event.target.value)}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="aggregate-api-sort">顺序值</Label>
-            <Input
-              id="aggregate-api-sort"
-              type="number"
-              min={0}
-              step={1}
-              value={sortDraft}
-              disabled={!isServiceReady}
-              onChange={(event) => setSortDraft(event.target.value)}
-            />
-            <p className="text-[11px] leading-4 text-muted-foreground">
-              值越小越靠前，用于聚合 API 轮转优先级
-            </p>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="aggregate-api-provider">类型</Label>
-            <Select
-              value={providerType}
-              disabled={!isServiceReady}
-              onValueChange={(value) => {
-                if (!value) return;
-                setProviderType(value);
-              }}
-            >
-              <SelectTrigger id="aggregate-api-provider" className="w-full">
-                <SelectValue>
-                  {(value) => AGGREGATE_API_PROVIDER_LABELS[String(value || "")] || "Codex"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="codex">Codex</SelectItem>
-                <SelectItem value="claude">Claude</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="aggregate-api-url">URL</Label>
-            <Input
-              id="aggregate-api-url"
-              placeholder={AGGREGATE_API_URL_PLACEHOLDERS[providerType] || "请输入 URL"}
-              value={url}
-              disabled={!isServiceReady}
-              onChange={(event) => setUrl(event.target.value)}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="aggregate-api-key">密钥</Label>
-            <Input
-              id="aggregate-api-key"
-              type="password"
-              placeholder={aggregateApi?.id ? "留空则保持原值" : "请输入密钥"}
-              value={key}
-              disabled={!isServiceReady}
-              onChange={(event) => setKey(event.target.value)}
-            />
-          </div>
-
-          {generatedKey ? (
-            <div className="space-y-2 pt-2 border-t">
-              <Label className="text-xs text-primary flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5" /> 新密钥已生成
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  value={generatedKey}
-                  readOnly
-                  className="bg-primary/5 font-mono text-sm"
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => void copyKey()}
-                  disabled={!generatedKey}
-                >
-                  <Clipboard className="h-4 w-4" />
-                </Button>
+      <DialogContent className="glass-card w-[calc(100%-2rem)] max-w-[calc(100%-2rem)] overflow-hidden border-none p-0 sm:max-w-[92vw] md:max-w-[640px] lg:max-w-[720px] xl:max-w-[760px]">
+        <div className="flex max-h-[92vh] flex-col">
+          <div className="border-b border-border/50 px-5 pt-5 pb-3">
+            <DialogHeader>
+              <div className="mb-2 flex items-center gap-3">
+                <div className="rounded-full bg-primary/10 p-2">
+                  <Database className="h-5 w-5 text-primary" />
+                </div>
+                <DialogTitle>
+                  {aggregateApi?.id ? "编辑聚合 API" : "创建聚合 API"}
+                </DialogTitle>
               </div>
-            </div>
-          ) : null}
-        </div>
+              <DialogDescription>
+                配置一个最小转发上游，保存 URL 和密钥后即可用于平台密钥轮转。
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
-        <DialogFooter>
-          {!generatedKey ? (
-            <DialogClose
-              className={buttonVariants({ variant: "ghost" })}
-              type="button"
-            >
-              取消
-            </DialogClose>
-          ) : null}
-          {!generatedKey ? (
-            <Button onClick={() => void handleSave()} disabled={!isServiceReady || isLoading}>
-              {isLoading ? "保存中..." : "完成"}
-            </Button>
-          ) : null}
-        </DialogFooter>
+          <div className="overflow-y-auto px-5 py-3">
+            <div className="grid gap-4">
+              {!isServiceReady ? (
+                <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
+                  {unavailableMessage}
+                </div>
+              ) : null}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="aggregate-api-supplier-name">供应商名称 *</Label>
+                  <Input
+                    id="aggregate-api-supplier-name"
+                    placeholder="例如：官方中转、XX 供应商"
+                    value={supplierName}
+                    disabled={!isServiceReady}
+                    onChange={(event) => setSupplierName(event.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="aggregate-api-sort">顺序值</Label>
+                  <Input
+                    id="aggregate-api-sort"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={sortDraft}
+                    disabled={!isServiceReady}
+                    onChange={(event) => setSortDraft(event.target.value)}
+                  />
+                  <p className="text-[11px] leading-4 text-muted-foreground">
+                    值越小越靠前，用于聚合 API 轮转优先级
+                  </p>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="aggregate-api-provider">类型</Label>
+                  <Select
+                    value={providerType}
+                    disabled={!isServiceReady}
+                    onValueChange={(value) => {
+                      if (!value) return;
+                      setProviderType(value);
+                    }}
+                  >
+                    <SelectTrigger id="aggregate-api-provider" className="w-full">
+                      <SelectValue>
+                        {(value) =>
+                          AGGREGATE_API_PROVIDER_LABELS[String(value || "")] ||
+                          "Codex"
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="codex">Codex</SelectItem>
+                      <SelectItem value="claude">Claude</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="aggregate-api-auth-type">认证类型</Label>
+                  <Select
+                    value={authType}
+                    disabled={!isServiceReady}
+                    onValueChange={(value) => {
+                      const next = value === "userpass" ? "userpass" : "apikey";
+                      setAuthType(next);
+                      setGeneratedKey("");
+                      setKey("");
+                      setUsername("");
+                      setPassword("");
+                    }}
+                  >
+                    <SelectTrigger
+                      id="aggregate-api-auth-type"
+                      className="w-full"
+                    >
+                      <SelectValue>
+                        {(value) =>
+                          String(value || "") === "userpass"
+                            ? "账号密码"
+                            : "APIKey"
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="apikey">APIKey</SelectItem>
+                      <SelectItem value="userpass">账号密码</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="aggregate-api-url">URL</Label>
+                <Input
+                  id="aggregate-api-url"
+                  placeholder={
+                    AGGREGATE_API_URL_PLACEHOLDERS[providerType] || "请输入 URL"
+                  }
+                  value={url}
+                  disabled={!isServiceReady}
+                  onChange={(event) => setUrl(event.target.value)}
+                />
+              </div>
+
+              {authType === "apikey" ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="aggregate-api-key">密钥</Label>
+                  <Input
+                    id="aggregate-api-key"
+                    type="password"
+                    placeholder={aggregateApi?.id ? "留空则保持原值" : "请输入密钥"}
+                    value={key}
+                    disabled={!isServiceReady}
+                    onChange={(event) => setKey(event.target.value)}
+                  />
+                </div>
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="aggregate-api-username">账号</Label>
+                    <Input
+                      id="aggregate-api-username"
+                      placeholder={aggregateApi?.id ? "留空则保持原值" : "请输入账号"}
+                      value={username}
+                      disabled={!isServiceReady}
+                      onChange={(event) => setUsername(event.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="aggregate-api-password">密码</Label>
+                    <Input
+                      id="aggregate-api-password"
+                      type="password"
+                      placeholder={aggregateApi?.id ? "留空则保持原值" : "请输入密码"}
+                      value={password}
+                      disabled={!isServiceReady}
+                      onChange={(event) => setPassword(event.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="grid gap-3 rounded-xl border border-border/60 bg-muted/20 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="text-sm">自定义认证参数</Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        关闭则按默认规则注入认证（APIKey=Bearer，账号密码=Basic）。
+                      </p>
+                    </div>
+                    <Switch
+                      checked={authCustomEnabled}
+                      disabled={!isServiceReady}
+                      onCheckedChange={(checked) =>
+                        setAuthCustomEnabled(Boolean(checked))
+                      }
+                    />
+                  </div>
+
+                  {authCustomEnabled && authType === "apikey" ? (
+                    <div className="grid gap-3">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="grid gap-2">
+                          <Label className="text-xs">位置</Label>
+                          <Select
+                            value={apiKeyLocation}
+                            onValueChange={(value) =>
+                              setApiKeyLocation(
+                                value === "query" ? "query" : "header"
+                              )
+                            }
+                            disabled={!isServiceReady}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue>
+                                {(value) =>
+                                  String(value || "") === "query"
+                                    ? "Query"
+                                    : "Header"
+                                }
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="header">Header</SelectItem>
+                              <SelectItem value="query">Query</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label className="text-xs">参数名</Label>
+                          <Input
+                            value={apiKeyName}
+                            disabled={!isServiceReady}
+                            placeholder={
+                              apiKeyLocation === "query"
+                                ? "api_key"
+                                : "authorization"
+                            }
+                            onChange={(e) => setApiKeyName(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      {apiKeyLocation === "header" ? (
+                        <div className="grid gap-2">
+                          <Label className="text-xs">Header 格式</Label>
+                          <Select
+                            value={apiKeyHeaderValueFormat}
+                            onValueChange={(value) =>
+                              setApiKeyHeaderValueFormat(
+                                value === "raw" ? "raw" : "bearer"
+                              )
+                            }
+                            disabled={!isServiceReady}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue>
+                                {(value) =>
+                                  String(value || "") === "raw"
+                                    ? "Raw"
+                                    : "Bearer"
+                                }
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="bearer">Bearer</SelectItem>
+                              <SelectItem value="raw">Raw</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {authCustomEnabled && authType === "userpass" ? (
+                    <div className="grid gap-3">
+                      <div className="grid gap-2">
+                        <Label className="text-xs">发送模式</Label>
+                        <Select
+                          value={userpassMode}
+                          onValueChange={(value) => {
+                            const next =
+                              value === "headerPair" || value === "queryPair"
+                                ? value
+                                : "basic";
+                            setUserpassMode(next);
+                          }}
+                          disabled={!isServiceReady}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue>
+                              {(value) => {
+                                const v = String(value || "");
+                                if (v === "headerPair") return "Header 双字段";
+                                if (v === "queryPair") return "Query 双字段";
+                                return "HTTP Basic";
+                              }}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="basic">HTTP Basic</SelectItem>
+                            <SelectItem value="headerPair">Header 双字段</SelectItem>
+                            <SelectItem value="queryPair">Query 双字段</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {userpassMode !== "basic" ? (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-2">
+                            <Label className="text-xs">账号字段名</Label>
+                            <Input
+                              value={userpassUsernameName}
+                              disabled={!isServiceReady}
+                              onChange={(e) =>
+                                setUserpassUsernameName(e.target.value)
+                              }
+                            />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label className="text-xs">密码字段名</Label>
+                            <Input
+                              value={userpassPasswordName}
+                              disabled={!isServiceReady}
+                              onChange={(e) =>
+                                setUserpassPasswordName(e.target.value)
+                              }
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-3 rounded-xl border border-border/60 bg-muted/20 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="text-sm">自定义 action</Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        开启后将用该 path 覆盖转发 action（例如 GLM 前缀路径）。
+                      </p>
+                    </div>
+                    <Switch
+                      checked={actionCustomEnabled}
+                      disabled={!isServiceReady}
+                      onCheckedChange={(checked) =>
+                        setActionCustomEnabled(Boolean(checked))
+                      }
+                    />
+                  </div>
+                  {actionCustomEnabled ? (
+                    <div className="grid gap-2">
+                      <Label className="text-xs">action path</Label>
+                      <Input
+                        value={action}
+                        disabled={!isServiceReady}
+                        placeholder="例如：/api/paas/v4/chat/completions"
+                        onChange={(e) => setAction(e.target.value)}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {generatedKey ? (
+                <div className="space-y-2 border-t pt-2">
+                  <Label className="flex items-center gap-1.5 text-xs text-primary">
+                    <ShieldCheck className="h-3.5 w-3.5" /> 新密钥已生成
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={generatedKey}
+                      readOnly
+                      className="bg-primary/5 font-mono text-sm"
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => void copyKey()}
+                      disabled={!generatedKey}
+                    >
+                      <Clipboard className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="border-t border-border/50 px-5 py-3">
+            <DialogFooter>
+              {!generatedKey ? (
+                <DialogClose
+                  className={buttonVariants({ variant: "ghost" })}
+                  type="button"
+                >
+                  取消
+                </DialogClose>
+              ) : null}
+              {!generatedKey ? (
+                <Button
+                  onClick={() => void handleSave()}
+                  disabled={!isServiceReady || isLoading}
+                >
+                  {isLoading ? "保存中..." : "完成"}
+                </Button>
+              ) : null}
+            </DialogFooter>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

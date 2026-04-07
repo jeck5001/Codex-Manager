@@ -3,6 +3,7 @@ import {
   normalizeAccountList,
   normalizeAggregateApiCreateResult,
   normalizeAggregateApiList,
+  normalizeAggregateApiSecretResult,
   normalizeAggregateApiTestResult,
   normalizeApiKeyCreateResult,
   normalizeApiKeyList,
@@ -18,6 +19,7 @@ import {
   AccountUsage,
   AggregateApi,
   AggregateApiCreateResult,
+  AggregateApiSecretResult,
   AggregateApiTestResult,
   ApiKey,
   ApiKeyCreateResult,
@@ -105,6 +107,13 @@ interface AggregateApiPayload {
   sort?: number | null;
   url?: string | null;
   key?: string | null;
+  authType?: string | null;
+  authCustomEnabled?: boolean | null;
+  authParams?: Record<string, unknown> | null;
+  actionCustomEnabled?: boolean | null;
+  action?: string | null;
+  username?: string | null;
+  password?: string | null;
 }
 
 const MAX_IMPORT_RPC_BODY_BYTES = 4 * 1024 * 1024;
@@ -457,6 +466,19 @@ export const accountClient = {
         sort: typeof params.sort === "number" ? params.sort : null,
         url: params.url || null,
         key: params.key || null,
+        authType: params.authType || null,
+        authCustomEnabled:
+          typeof params.authCustomEnabled === "boolean"
+            ? params.authCustomEnabled
+            : null,
+        authParams: params.authParams || null,
+        actionCustomEnabled:
+          typeof params.actionCustomEnabled === "boolean"
+            ? params.actionCustomEnabled
+            : null,
+        action: params.action || null,
+        username: params.username || null,
+        password: params.password || null,
       })
     );
     return normalizeAggregateApiCreateResult(result);
@@ -471,16 +493,29 @@ export const accountClient = {
         sort: typeof params.sort === "number" ? params.sort : null,
         url: params.url || null,
         key: params.key || null,
+        authType: params.authType || null,
+        authCustomEnabled:
+          typeof params.authCustomEnabled === "boolean"
+            ? params.authCustomEnabled
+            : null,
+        authParams: params.authParams || null,
+        actionCustomEnabled:
+          typeof params.actionCustomEnabled === "boolean"
+            ? params.actionCustomEnabled
+            : null,
+        action: params.action || null,
+        username: params.username || null,
+        password: params.password || null,
       })
     ),
   deleteAggregateApi: (apiId: string) =>
     invoke("service_aggregate_api_delete", withAddr({ id: apiId })),
-  async readAggregateApiSecret(apiId: string): Promise<string> {
-    const result = await invoke<{ key?: string }>(
+  async readAggregateApiSecret(apiId: string): Promise<AggregateApiSecretResult> {
+    const result = await invoke<unknown>(
       "service_aggregate_api_read_secret",
       withAddr({ id: apiId })
     );
-    return String(result?.key || "").trim();
+    return normalizeAggregateApiSecretResult(result);
   },
   async testAggregateApiConnection(apiId: string): Promise<AggregateApiTestResult> {
     const result = await invoke<unknown>(

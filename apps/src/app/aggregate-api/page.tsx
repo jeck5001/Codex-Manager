@@ -55,7 +55,7 @@ import { useDesktopPageActive } from "@/hooks/useDesktopPageActive";
 import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
-import { AggregateApi } from "@/types";
+import { AggregateApi, AggregateApiSecretResult } from "@/types";
 
 const AGGREGATE_API_PROVIDER_LABELS: Record<string, string> = {
   codex: "Codex",
@@ -111,7 +111,7 @@ export default function AggregateApiPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [providerFilter, setProviderFilter] = useState("all");
   const [revealedSecrets, setRevealedSecrets] = useState<
-    Record<string, string>
+    Record<string, AggregateApiSecretResult>
   >({});
   const [loadingSecretId, setLoadingSecretId] = useState<string | null>(null);
   const [testingApiId, setTestingApiId] = useState<string | null>(null);
@@ -190,10 +190,14 @@ export default function AggregateApiPage() {
       setTestingApiId(apiId);
     },
     onSuccess: async (result) => {
-      toast.success(
-        result.ok
-          ? "连通性测试成功"
-          : `连通性测试失败: ${result.message || result.statusCode || ""}`,
+      if (result.ok) {
+        toast.success("连通性测试成功");
+        return;
+      }
+      toast.error(
+        `连通性测试失败: ${
+          result.message || result.statusCode || "未返回具体错误信息"
+        }`,
       );
     },
     onSettled: async (_result, _error, apiId) => {
@@ -314,12 +318,17 @@ export default function AggregateApiPage() {
     }
     setLoadingSecretId(apiId);
     try {
-      const secret = await accountClient.readAggregateApiSecret(apiId);
-      if (!secret) {
+      const secretResult = await accountClient.readAggregateApiSecret(apiId);
+      const authType = String(secretResult.authType || "").trim().toLowerCase();
+      if (authType === "userpass") {
+        if (!secretResult.username || !secretResult.password) {
+          throw new Error("后端未返回账号密码明文");
+        }
+      } else if (!secretResult.key) {
         throw new Error("后端未返回密钥明文");
       }
-      setRevealedSecrets((current) => ({ ...current, [apiId]: secret }));
-      return secret;
+      setRevealedSecrets((current) => ({ ...current, [apiId]: secretResult }));
+      return secretResult;
     } finally {
       setLoadingSecretId(null);
     }
@@ -367,14 +376,39 @@ export default function AggregateApiPage() {
    * # 返回
    * 返回函数执行结果
    */
-  const copySecret = async (apiId: string) => {
+  const copySecret = async (
+    apiId: string,
+    target: "key" | "username" | "password"
+  ) => {
     try {
       const secret = await ensureSecretLoaded(apiId);
-      await copyTextToClipboard(secret);
+      const authType = String(secret.authType || "").trim().toLowerCase();
+      const value =
+        target === "username"
+          ? secret.username
+          : target === "password"
+            ? secret.password
+            : secret.key;
+      if (authType === "userpass") {
+        if (!value) {
+          throw new Error("账号密码字段为空");
+        }
+      } else if (!value) {
+        throw new Error("密钥为空");
+      }
+      await copyTextToClipboard(value);
       toast.success("已复制到剪贴板");
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
+  };
+
+  const secretPreview = (secret: AggregateApiSecretResult) => {
+    const authType = String(secret.authType || "").trim().toLowerCase();
+    if (authType === "userpass") {
+      return `${secret.username || ""}:${secret.password || ""}`;
+    }
+    return secret.key || "";
   };
 
   return (
@@ -548,14 +582,14 @@ export default function AggregateApiPage() {
                               >
                                 <code className="block min-w-0 flex-1 truncate rounded border border-primary/5 bg-muted/50 px-2 py-1 font-mono text-[10px] leading-4 text-primary">
                                   {revealed
-                                    ? revealed
+                                    ? secretPreview(revealed)
                                     : loadingSecretId === api.id
                                       ? "读取中..."
                                       : api.id}
                                 </code>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-sm whitespace-pre-wrap break-words">
-                                {revealed || api.id}
+                                {revealed ? secretPreview(revealed) : api.id}
                               </TooltipContent>
                             </Tooltip>
                             <Button
@@ -571,15 +605,46 @@ export default function AggregateApiPage() {
                                 <Eye className="h-3.5 w-3.5" />
                               )}
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-primary"
-                              disabled={!isServiceReady}
-                              onClick={() => void copySecret(api.id)}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
+                            {String(api.authType || "")
+                              .trim()
+                              .toLowerCase() === "userpass" ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                    render={<span />}
+                                    nativeButton={false}
+                                    disabled={!isServiceReady}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() => void copySecret(api.id, "username")}
+                                  >
+                                    复制用户名
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => void copySecret(api.id, "password")}
+                                  >
+                                    复制密码
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                disabled={!isServiceReady}
+                                onClick={() => void copySecret(api.id, "key")}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-center font-mono text-xs text-muted-foreground">
@@ -613,6 +678,21 @@ export default function AggregateApiPage() {
                             <p className="mt-1 text-[10px] text-muted-foreground">
                               {formatTsFromSeconds(api.lastTestAt, "未知时间")}
                             </p>
+                          ) : null}
+                          {api.lastTestStatus === "failed" && api.lastTestError ? (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={<div />}
+                                className="mt-1 block max-w-full cursor-help text-left"
+                              >
+                                <p className="max-w-[220px] truncate text-[10px] text-red-500/90">
+                                  {api.lastTestError}
+                                </p>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-sm whitespace-pre-wrap break-words">
+                                {api.lastTestError}
+                              </TooltipContent>
+                            </Tooltip>
                           ) : null}
                         </TableCell>
                         <TableCell>

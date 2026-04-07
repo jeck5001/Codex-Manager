@@ -42,12 +42,30 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let sort = super::i64_param(req, "sort");
             let url = super::string_param(req, "url");
             let key = super::string_param(req, "key");
+            let auth_type = super::string_param(req, "authType");
+            let auth_custom_enabled = super::bool_param(req, "authCustomEnabled");
+            let auth_params = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("authParams"))
+                .cloned();
+            let action_custom_enabled = super::bool_param(req, "actionCustomEnabled");
+            let action = super::string_param(req, "action");
+            let username = super::string_param(req, "username");
+            let password = super::string_param(req, "password");
             super::value_or_error(create_aggregate_api(
                 url,
                 key,
                 provider_type,
                 supplier_name,
                 sort,
+                auth_type,
+                auth_custom_enabled,
+                auth_params,
+                action_custom_enabled,
+                action,
+                username,
+                password,
             ))
         }
         "aggregateApi/update" => {
@@ -57,6 +75,17 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let sort = super::i64_param(req, "sort");
             let url = super::string_param(req, "url");
             let key = super::string_param(req, "key");
+            let auth_type = super::string_param(req, "authType");
+            let auth_custom_enabled = super::bool_param(req, "authCustomEnabled");
+            let auth_params = req
+                .params
+                .as_ref()
+                .and_then(|v| v.get("authParams"))
+                .cloned();
+            let action_custom_enabled = super::bool_param(req, "actionCustomEnabled");
+            let action = super::string_param(req, "action");
+            let username = super::string_param(req, "username");
+            let password = super::string_param(req, "password");
             super::ok_or_error(update_aggregate_api(
                 api_id,
                 url,
@@ -64,6 +93,13 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 provider_type,
                 supplier_name,
                 sort,
+                auth_type,
+                auth_custom_enabled,
+                auth_params,
+                action_custom_enabled,
+                action,
+                username,
+                password,
             ))
         }
         "aggregateApi/readSecret" => {

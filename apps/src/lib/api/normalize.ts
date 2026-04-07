@@ -6,6 +6,7 @@ import {
   AccountUsage,
   AggregateApi,
   AggregateApiCreateResult,
+  AggregateApiSecretResult,
   AggregateApiTestResult,
   ApiKey,
   ApiKeyCreateResult,
@@ -577,6 +578,17 @@ export function normalizeAggregateApi(item: unknown): AggregateApi | null {
     supplierName: asString(source.supplierName ?? source.supplier_name) || null,
     sort: asInteger(source.sort ?? source.priority, 0, 0),
     url: asString(source.url),
+    authType: asString(source.authType ?? source.auth_type) || "apikey",
+    authParams:
+      source.authParams && typeof source.authParams === "object"
+        ? asObject(source.authParams)
+        : source.auth_params && typeof source.auth_params === "object"
+          ? asObject(source.auth_params)
+          : null,
+    action:
+      typeof source.action === "string"
+        ? source.action
+        : asString(source.action) || null,
     status: asString(source.status) || "active",
     createdAt: toNullableNumber(source.createdAt ?? source.created_at),
     updatedAt: toNullableNumber(source.updatedAt ?? source.updated_at),
@@ -625,6 +637,17 @@ export function normalizeAggregateApiCreateResult(payload: unknown): AggregateAp
   return {
     id: asString(source.id),
     key: asString(source.key),
+  };
+}
+
+export function normalizeAggregateApiSecretResult(payload: unknown): AggregateApiSecretResult {
+  const source = asObject(payload);
+  return {
+    id: asString(source.id),
+    key: asString(source.key),
+    authType: asString(source.authType ?? source.auth_type) || "apikey",
+    username: asString(source.username) || null,
+    password: asString(source.password) || null,
   };
 }
 
