@@ -4,6 +4,7 @@
 
 import asyncio
 import logging
+import re
 import uuid
 import random
 from datetime import datetime
@@ -117,6 +118,40 @@ def _pick_outlook_service_for_registration(db) -> Optional[EmailServiceModel]:
 def _mark_email_service_used(db, service_id: Optional[int]):
     if service_id:
         crud.update_email_service_last_used(db, service_id)
+
+
+def _extract_temp_mail_domain_failure_http_status(result: Any) -> Optional[int]:
+    logs = getattr(result, "logs", None) or []
+    if not isinstance(logs, list):
+        return None
+
+    for entry in reversed(logs):
+        text = str(entry or "")
+        match = re.search(r"提交密码状态:\s*(\d+)", text)
+        if match:
+            try:
+                return int(match.group(1))
+            except Exception:
+                return None
+    return None
+
+
+def _record_temp_mail_domain_result(domain_config_id: Optional[str], result: Any) -> None:
+    normalized_id = str(domain_config_id or "").strip()
+    if not normalized_id or result is None:
+        return
+
+    try:
+        from .email_services import record_temp_mail_domain_registration_outcome
+
+        record_temp_mail_domain_registration_outcome(
+            normalized_id,
+            success=bool(getattr(result, "success", False)),
+            failure_http_status=_extract_temp_mail_domain_failure_http_status(result),
+            error_message=str(getattr(result, "error_message", "") or "").strip(),
+        )
+    except Exception as exc:
+        logger.warning(f"记录 Temp-Mail 域名质量结果失败({normalized_id}): {exc}")
 
 
 def _list_outlook_services_for_registration(db) -> List[EmailServiceModel]:
@@ -690,6 +725,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
 
             normalized_register_mode = _normalize_register_mode(register_mode)
             settings = get_settings()
+            temp_mail_domain_config_id: Optional[str] = None
 
             if normalized_register_mode == BROWSERBASE_DDG_REGISTER_MODE:
                 profile_id = browserbase_config_id
@@ -752,6 +788,8 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                     service_type = EmailServiceType(db_service.service_type)
                     config = _normalize_email_service_config(service_type, db_service.config, actual_proxy_url)
                     config = _merge_runtime_email_service_config(config, email_service_config)
+                    if service_type == EmailServiceType.TEMP_MAIL:
+                        temp_mail_domain_config_id = str(config.get("domain_config_id") or "").strip() or None
                     # 更新任务关联的邮箱服务
                     crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
                     _mark_email_service_used(db, db_service.id)
@@ -790,6 +828,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                     if db_service and db_service.config:
                         config = _normalize_email_service_config(service_type, db_service.config, actual_proxy_url)
                         config = _merge_runtime_email_service_config(config, email_service_config)
+                        temp_mail_domain_config_id = str(config.get("domain_config_id") or "").strip() or None
                         crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
                         _mark_email_service_used(db, db_service.id)
                         logger.info(f"使用数据库 Temp Mail 服务: {db_service.name}")
@@ -824,6 +863,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                     email_code_poll_interval_override=config.get("email_code_poll_interval_override"),
                 )
                 result = runner.run()
+                _record_temp_mail_domain_result(temp_mail_domain_config_id, result)
 
                 if result.success:
                     runner.save_to_database(result)
@@ -866,6 +906,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
 
             # 执行注册
             result = engine.run()
+            _record_temp_mail_domain_result(temp_mail_domain_config_id, result)
 
             if result.success:
                 # 保存到数据库

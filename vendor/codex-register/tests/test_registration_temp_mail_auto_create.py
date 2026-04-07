@@ -117,6 +117,7 @@ def load_registration_module():
     email_services_module = types.ModuleType("src.web.routes.email_services")
     email_services_module.build_calls: List[dict] = []
     email_services_module.cleanup_calls: List[Optional[Dict[str, Any]]] = []
+    email_services_module.record_calls: List[dict] = []
 
     def build_temp_mail_service_for_registration(config: Dict[str, Any], *, owner_task_uuid=None, owner_batch_id=None):
         email_services_module.build_calls.append(
@@ -130,8 +131,26 @@ def load_registration_module():
     def _cleanup_temp_mail_provisioning(cleanup_context):
         email_services_module.cleanup_calls.append(cleanup_context)
 
+    def record_temp_mail_domain_registration_outcome(
+        domain_config_id: str,
+        *,
+        success: bool,
+        failure_http_status=None,
+        error_message: str = "",
+    ):
+        email_services_module.record_calls.append(
+            {
+                "domain_config_id": domain_config_id,
+                "success": success,
+                "failure_http_status": failure_http_status,
+                "error_message": error_message,
+            }
+        )
+        return None
+
     email_services_module.build_temp_mail_service_for_registration = build_temp_mail_service_for_registration
     email_services_module._cleanup_temp_mail_provisioning = _cleanup_temp_mail_provisioning
+    email_services_module.record_temp_mail_domain_registration_outcome = record_temp_mail_domain_registration_outcome
     sys.modules["src.web.routes.email_services"] = email_services_module
 
     # ---- stubs: crud/db ----
@@ -313,6 +332,7 @@ class RegistrationTempMailAutoCreateTests(unittest.TestCase):
         email_services = sys.modules["src.web.routes.email_services"]
         email_services.build_calls[:] = []
         email_services.cleanup_calls[:] = []
+        email_services.record_calls[:] = []
         crud = sys.modules["src.database.crud"]
         crud.created_email_services[:] = []
         crud.deleted_email_services[:] = []
@@ -596,6 +616,32 @@ class RegistrationTempMailAutoCreateTests(unittest.TestCase):
         self.assertEqual(len(email_services.build_calls), 2)
         self.assertNotEqual(retry_response.task_uuid, task_uuid)
         self.assertEqual(retry_response.email_service_id, 123)
+
+    def test_record_temp_mail_domain_result_marks_password_400_as_domain_penalty(self):
+        result = types.SimpleNamespace(
+            success=False,
+            error_message="注册密码失败",
+            logs=[
+                "[10:13:03] 密码注册会话摘要: count=14 cf_clearance=no",
+                "[10:13:04] 提交密码状态: 400",
+                "[10:13:04] 密码注册失败: {\"error\":{\"message\":\"Failed to create account.\"}}",
+            ],
+        )
+
+        REGISTRATION_MODULE._record_temp_mail_domain_result("cfg-1", result)
+
+        email_services = sys.modules["src.web.routes.email_services"]
+        self.assertEqual(
+            email_services.record_calls,
+            [
+                {
+                    "domain_config_id": "cfg-1",
+                    "success": False,
+                    "failure_http_status": 400,
+                    "error_message": "注册密码失败",
+                }
+            ],
+        )
 
 
 if __name__ == "__main__":

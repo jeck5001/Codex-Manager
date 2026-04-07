@@ -3,7 +3,7 @@
 """
 
 import logging
-import random
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
 
 from fastapi import APIRouter, HTTPException, Query
@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from ...database import crud
 from ...database.session import get_db
 from ...database.models import EmailService as EmailServiceModel
-from ...config.settings import get_settings
+from ...config.settings import get_settings, update_settings
 from ...services import (
     CloudflareTempMailProvisioner,
     EmailServiceFactory,
@@ -21,6 +21,9 @@ from ...services import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+TEMP_MAIL_DOMAIN_FAIL_400_COOLDOWN_THRESHOLD = 2
+TEMP_MAIL_DOMAIN_FAIL_400_COOLDOWN_HOURS = 6
 
 
 # ============== Pydantic Models ==============
@@ -160,7 +163,7 @@ def _load_temp_mail_domain_configs(settings) -> List[Dict[str, Any]]:
     if isinstance(raw_configs, list):
         for item in raw_configs:
             if isinstance(item, dict):
-                configs.append(dict(item))
+                configs.append(_normalize_temp_mail_domain_config(item))
 
     if configs:
         return configs
@@ -171,18 +174,138 @@ def _load_temp_mail_domain_configs(settings) -> List[Dict[str, Any]]:
         return []
 
     return [
-        {
-            "id": "legacy-default",
-            "name": "默认域名配置",
-            "zone_id": legacy_zone_id,
-            "domain_base": legacy_domain_base,
-            "subdomain_mode": str(getattr(settings, "temp_mail_subdomain_mode", "random") or "random"),
-            "subdomain_length": int(getattr(settings, "temp_mail_subdomain_length", 6) or 6),
-            "subdomain_prefix": str(getattr(settings, "temp_mail_subdomain_prefix", "tm") or "tm"),
-            "sync_cloudflare_enabled": bool(getattr(settings, "temp_mail_sync_cloudflare_enabled", True)),
-            "require_cloudflare_sync": bool(getattr(settings, "temp_mail_require_cloudflare_sync", True)),
-        }
+        _normalize_temp_mail_domain_config(
+            {
+                "id": "legacy-default",
+                "name": "默认域名配置",
+                "zone_id": legacy_zone_id,
+                "domain_base": legacy_domain_base,
+                "subdomain_mode": str(getattr(settings, "temp_mail_subdomain_mode", "random") or "random"),
+                "subdomain_length": int(getattr(settings, "temp_mail_subdomain_length", 6) or 6),
+                "subdomain_prefix": str(getattr(settings, "temp_mail_subdomain_prefix", "tm") or "tm"),
+                "sync_cloudflare_enabled": bool(getattr(settings, "temp_mail_sync_cloudflare_enabled", True)),
+                "require_cloudflare_sync": bool(getattr(settings, "temp_mail_require_cloudflare_sync", True)),
+            }
+        )
     ]
+
+
+def _normalize_temp_mail_domain_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    item = dict(config or {})
+    item["id"] = str(item.get("id") or "").strip()
+    item["name"] = str(item.get("name") or "").strip()
+    item["zone_id"] = str(item.get("zone_id") or "").strip()
+    item["domain_base"] = str(item.get("domain_base") or "").strip()
+    item["subdomain_mode"] = str(item.get("subdomain_mode") or "random").strip() or "random"
+    item["subdomain_length"] = int(item.get("subdomain_length") or 6)
+    item["subdomain_prefix"] = str(item.get("subdomain_prefix") or "tm").strip() or "tm"
+    item["sync_cloudflare_enabled"] = bool(item.get("sync_cloudflare_enabled", True))
+    item["require_cloudflare_sync"] = bool(item.get("require_cloudflare_sync", True))
+    item["enabled"] = bool(item.get("enabled", True))
+    item["priority"] = int(item.get("priority") or 0)
+    item["register_success_count"] = max(0, int(item.get("register_success_count") or 0))
+    item["register_fail_400_count"] = max(0, int(item.get("register_fail_400_count") or 0))
+    item["register_consecutive_fail_400"] = max(0, int(item.get("register_consecutive_fail_400") or 0))
+    item["last_register_error"] = str(item.get("last_register_error") or "").strip()
+    item["cooldown_until"] = str(item.get("cooldown_until") or "").strip()
+    return item
+
+
+def _parse_temp_mail_domain_cooldown(value: Any) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def _choose_temp_mail_domain_config(
+    domain_configs: List[Dict[str, Any]],
+    *,
+    requested_id: str = "",
+) -> Optional[Dict[str, Any]]:
+    normalized = [_normalize_temp_mail_domain_config(item) for item in domain_configs if isinstance(item, dict)]
+    if not normalized:
+        return None
+
+    requested = str(requested_id or "").strip()
+    if requested:
+        return next((item for item in normalized if item["id"] == requested), None)
+
+    enabled_configs = [item for item in normalized if item.get("enabled", True)]
+    candidates = enabled_configs or normalized
+    now = datetime.utcnow()
+    ready_configs = []
+    for item in candidates:
+        cooldown_until = _parse_temp_mail_domain_cooldown(item.get("cooldown_until"))
+        if cooldown_until and cooldown_until > now:
+            continue
+        ready_configs.append(item)
+    candidates = ready_configs or candidates
+
+    return sorted(
+        candidates,
+        key=lambda item: (
+            int(item.get("priority") or 0),
+            -int(item.get("register_success_count") or 0),
+            int(item.get("register_fail_400_count") or 0),
+            int(item.get("register_consecutive_fail_400") or 0),
+            str(item.get("id") or ""),
+        ),
+    )[0]
+
+
+def record_temp_mail_domain_registration_outcome(
+    domain_config_id: str,
+    *,
+    success: bool,
+    failure_http_status: Optional[int] = None,
+    error_message: str = "",
+) -> Optional[Dict[str, Any]]:
+    normalized_id = str(domain_config_id or "").strip()
+    if not normalized_id:
+        return None
+
+    settings = get_settings()
+    configs = _load_temp_mail_domain_configs(settings)
+    if not configs:
+        return None
+
+    updated_configs: List[Dict[str, Any]] = []
+    updated_target: Optional[Dict[str, Any]] = None
+    now = datetime.utcnow()
+
+    for item in configs:
+        normalized = _normalize_temp_mail_domain_config(item)
+        if normalized["id"] != normalized_id:
+            updated_configs.append(normalized)
+            continue
+
+        if success:
+            normalized["register_success_count"] += 1
+            normalized["register_consecutive_fail_400"] = 0
+            normalized["cooldown_until"] = ""
+            normalized["last_register_error"] = ""
+        else:
+            normalized["last_register_error"] = str(error_message or "").strip()
+            if int(failure_http_status or 0) == 400:
+                normalized["register_fail_400_count"] += 1
+                normalized["register_consecutive_fail_400"] += 1
+                if normalized["register_consecutive_fail_400"] >= TEMP_MAIL_DOMAIN_FAIL_400_COOLDOWN_THRESHOLD:
+                    normalized["cooldown_until"] = (
+                        now + timedelta(hours=TEMP_MAIL_DOMAIN_FAIL_400_COOLDOWN_HOURS)
+                    ).isoformat(timespec="seconds")
+
+        updated_target = normalized
+        updated_configs.append(normalized)
+
+    if updated_target is None:
+        return None
+
+    update_settings(temp_mail_domain_configs=updated_configs)
+    return updated_target
 
 
 def _apply_temp_mail_domain_config(config: Dict[str, Any], settings) -> Dict[str, Any]:
@@ -194,25 +317,17 @@ def _apply_temp_mail_domain_config(config: Dict[str, Any], settings) -> Dict[str
 
     domain_configs = _load_temp_mail_domain_configs(settings)
     requested_id = str(prepared_config.get("domain_config_id") or "").strip()
-    selected_config: Optional[Dict[str, Any]] = None
+    selected_config = _choose_temp_mail_domain_config(
+        domain_configs,
+        requested_id=requested_id,
+    )
     if requested_id:
-        selected_config = next(
-            (item for item in domain_configs if str(item.get("id") or "").strip() == requested_id),
-            None,
-        )
         if not selected_config:
             raise HTTPException(status_code=400, detail=f"域名配置不存在: {requested_id}")
-    elif len(domain_configs) == 1:
-        selected_config = domain_configs[0]
-        prepared_config.setdefault("domain_config_id", str(selected_config.get("id") or "").strip())
-    elif len(domain_configs) > 1:
-        selected_config = random.choice(domain_configs)
-        prepared_config.setdefault("domain_config_id", str(selected_config.get("id") or "").strip())
     else:
-        raise HTTPException(
-            status_code=400,
-            detail="当前没有可用的 Temp-Mail 域名配置，请先在 Cloudflare Temp-Mail 设置中新增一条域名配置",
-        )
+        if len(domain_configs) == 0:
+            return prepared_config
+        prepared_config.setdefault("domain_config_id", str((selected_config or {}).get("id") or "").strip())
 
     if not selected_config:
         return prepared_config
