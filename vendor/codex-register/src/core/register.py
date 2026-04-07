@@ -496,6 +496,38 @@ class RegistrationEngine:
 
         return items
 
+    def _session_cookie_debug_summary(self) -> str:
+        """输出当前会话关键 cookie 摘要，便于定位认证状态丢失。"""
+        items = self._session_cookie_items()
+        names = [name for name, _value in items]
+        name_set = set(names)
+        has_csrf = any("csrf" in name.lower() for name in names)
+        has_session = any("session-token" in name.lower() for name in names)
+        return (
+            f"count={len(names)} "
+            f"cf_clearance={'yes' if 'cf_clearance' in name_set else 'no'} "
+            f"oai-did={'yes' if 'oai-did' in name_set else 'no'} "
+            f"csrf={'yes' if has_csrf else 'no'} "
+            f"session={'yes' if has_session else 'no'} "
+            f"names={','.join(names)}"
+        )
+
+    def _auth_response_debug_summary(self, response: Any) -> str:
+        """输出认证跳转响应摘要，观察会话是否在 continue_url 阶段发生变化。"""
+        headers = getattr(response, "headers", None) or {}
+        status_code = getattr(response, "status_code", "")
+        url = self._clean_text(getattr(response, "url", ""))
+        content_type = self._clean_text(headers.get("content-type"))
+        location = self._clean_text(headers.get("location"))
+        has_set_cookie = bool(self._clean_text(headers.get("set-cookie")))
+        return (
+            f"status={status_code} "
+            f"url={url or '-'} "
+            f"content-type={content_type or '-'} "
+            f"location={location or '-'} "
+            f"set-cookie={'yes' if has_set_cookie else 'no'}"
+        )
+
     def _session_browser_cookies(self) -> list[dict[str, Any]]:
         """导出适合 Playwright 注入的结构化 cookie，保留域名维度。"""
         if not self.session or not getattr(self.session, "cookies", None):
@@ -925,6 +957,7 @@ class RegistrationEngine:
             if sentinel:
                 headers["openai-sentinel-token"] = sentinel
 
+            self._log(f"密码注册会话摘要: {self._session_cookie_debug_summary()}", "warning")
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["register"],
                 headers=headers,
@@ -936,6 +969,7 @@ class RegistrationEngine:
             if response.status_code != 200:
                 error_text = response.text[:500]
                 self._log(f"密码注册失败: {error_text}", "warning")
+                self._log(f"密码注册响应摘要: {self._auth_response_debug_summary(response)}", "warning")
 
                 # 解析错误信息，判断是否是邮箱已注册
                 try:
@@ -1558,6 +1592,7 @@ class RegistrationEngine:
                 continue_url,
                 timeout=15,
             )
+            self._log(f"{stage} continue_url 响应: {self._auth_response_debug_summary(response)}", "warning")
             workspace_id = self._extract_workspace_id_from_response(
                 response=response,
                 html=str(getattr(response, "text", "") or ""),
