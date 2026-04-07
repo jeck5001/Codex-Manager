@@ -222,11 +222,57 @@ fn normalize_auth_params_json(
 fn normalize_action_override(
     enabled: Option<bool>,
     action: Option<String>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<Option<String>>, String> {
     match enabled {
         None => Ok(None),
-        Some(false) => Ok(Some(String::new())),
-        Some(true) => normalize_action(action).map(|value| Some(value.unwrap_or_default())),
+        Some(false) => Ok(Some(None)),
+        Some(true) => normalize_action(action).map(|value| Some(Some(value.unwrap_or_default()))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use codexmanager_core::storage::AggregateApi;
+
+    use super::{action_path_or_default, normalize_action_override};
+
+    fn aggregate_api_with_action(action: Option<&str>) -> AggregateApi {
+        AggregateApi {
+            id: "agg-test".to_string(),
+            provider_type: "claude".to_string(),
+            supplier_name: Some("test".to_string()),
+            sort: 0,
+            url: "https://open.bigmodel.cn/api/anthropic".to_string(),
+            auth_type: "apikey".to_string(),
+            auth_params_json: None,
+            action: action.map(str::to_string),
+            status: "active".to_string(),
+            created_at: 0,
+            updated_at: 0,
+            last_test_at: None,
+            last_test_status: None,
+            last_test_error: None,
+        }
+    }
+
+    #[test]
+    fn action_override_disabled_stays_none() {
+        let value =
+            normalize_action_override(Some(false), Some("/v1/messages".to_string())).unwrap();
+        assert_eq!(value, Some(None));
+    }
+
+    #[test]
+    fn action_override_enabled_and_empty_preserves_empty_string() {
+        let value = normalize_action_override(Some(true), Some("   ".to_string())).unwrap();
+        assert_eq!(value, Some(Some(String::new())));
+    }
+
+    #[test]
+    fn empty_action_uses_default_path() {
+        let api = aggregate_api_with_action(Some(""));
+        let path = action_path_or_default(&api, "/v1/messages?beta=true");
+        assert_eq!(path, "/v1/messages?beta=true");
     }
 }
 
@@ -240,7 +286,7 @@ fn serialize_userpass_secret(username: &str, password: &str) -> Result<String, S
 
 fn action_path_or_default(api: &AggregateApi, default: &str) -> String {
     match api.action.as_deref().map(str::trim) {
-        Some("") => String::new(),
+        Some("") => default.to_string(),
         Some(value) => {
             if value.starts_with('/') {
                 value.to_string()
@@ -856,7 +902,7 @@ pub(crate) fn create_aggregate_api(
     let normalized_auth_type = normalize_auth_type(auth_type)?;
     let normalized_auth_params_json =
         normalize_auth_params_json(normalized_auth_type.as_str(), auth_custom_enabled, auth_params)?;
-    let normalized_action = normalize_action_override(action_custom_enabled, action)?;
+    let normalized_action = normalize_action_override(action_custom_enabled, action)?.unwrap_or(None);
     let normalized_secret = if normalized_auth_type == AGGREGATE_API_AUTH_APIKEY {
         normalize_secret(key).ok_or_else(|| "key is required".to_string())?
     } else {
@@ -1000,11 +1046,17 @@ pub(crate) fn update_aggregate_api(
         }
     }
 
-    if let Some(action) = normalize_action_override(action_custom_enabled, action)? {
-        let normalized = action.trim().to_string();
-        storage
-            .update_aggregate_api_action(api_id, Some(normalized.as_str()))
-            .map_err(|err| err.to_string())?;
+    if let Some(action_override) = normalize_action_override(action_custom_enabled, action)? {
+        if let Some(action) = action_override {
+            let normalized = action.trim().to_string();
+            storage
+                .update_aggregate_api_action(api_id, Some(normalized.as_str()))
+                .map_err(|err| err.to_string())?;
+        } else {
+            storage
+                .update_aggregate_api_action(api_id, None)
+                .map_err(|err| err.to_string())?;
+        }
     }
 
     if next_auth_type == AGGREGATE_API_AUTH_APIKEY {

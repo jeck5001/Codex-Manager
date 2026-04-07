@@ -74,10 +74,33 @@ fn normalize_action_path(action: &str) -> String {
 
 fn effective_action_path(candidate: &AggregateApi, path: &str) -> String {
     match candidate.action.as_deref().map(str::trim) {
-        Some("") => String::new(),
+        Some("") => path.to_string(),
         Some(value) => normalize_action_path(value),
         None => path.to_string(),
     }
+}
+
+fn build_upstream_url(base_url: &str, effective_path: &str) -> Result<reqwest::Url, ()> {
+    let mut url = reqwest::Url::parse(base_url).map_err(|_| ())?;
+    let trimmed_path = effective_path.trim();
+    if trimmed_path.is_empty() {
+        return Ok(url);
+    }
+    let (path_part, query_part) = trimmed_path
+        .split_once('?')
+        .map_or((trimmed_path, None), |(path, query)| (path, Some(query)));
+    let suffix = path_part.trim_start_matches('/');
+    let base_path = url.path().trim_end_matches('/').to_string();
+    let combined_path = if base_path.is_empty() || base_path == "/" {
+        format!("/{}", suffix)
+    } else if suffix.is_empty() {
+        base_path
+    } else {
+        format!("{}/{}", base_path, suffix)
+    };
+    url.set_path(combined_path.as_str());
+    url.set_query(query_part.filter(|query| !query.trim().is_empty()));
+    Ok(url)
 }
 
 fn replace_query_param(mut url: reqwest::Url, name: &str, value: &str) -> reqwest::Url {
@@ -98,6 +121,22 @@ fn replace_query_param(mut url: reqwest::Url, name: &str, value: &str) -> reqwes
         qp.append_pair(name_trimmed, value);
     }
     url
+}
+
+fn is_partial_stream_success(
+    is_stream: bool,
+    stream_terminal_seen: bool,
+    stream_terminal_error: bool,
+    delivery_error: bool,
+    output_text_len: usize,
+    output_tokens: Option<i64>,
+    total_tokens: Option<i64>,
+) -> bool {
+    is_stream
+        && !stream_terminal_seen
+        && !stream_terminal_error
+        && !delivery_error
+        && (output_text_len > 0 || output_tokens.unwrap_or(0) > 0 || total_tokens.unwrap_or(0) > 0)
 }
 
 fn parse_auth_config(candidate: &AggregateApi) -> Result<(AggregateApiAuthConfig, HashSet<String>), String> {
@@ -727,18 +766,16 @@ pub(in super::super) fn proxy_aggregate_request(
                 return Ok(());
             }
 
-            let mut url = match reqwest::Url::parse(candidate_url.as_str())
-                .and_then(|url| url.join(effective_path.as_str()))
-            {
-                    Ok(url) => url,
-                    Err(_) => {
-                        last_attempt_url = Some(candidate_url.clone());
-                        last_attempt_supplier_name = candidate_supplier_name.clone();
-                        last_attempt_error = Some("invalid aggregate api url".to_string());
-                        last_failure_status = 502;
-                        break;
-                    }
-                };
+            let mut url = match build_upstream_url(candidate_url.as_str(), effective_path.as_str()) {
+                Ok(url) => url,
+                Err(_) => {
+                    last_attempt_url = Some(candidate_url.clone());
+                    last_attempt_supplier_name = candidate_supplier_name.clone();
+                    last_attempt_error = Some("invalid aggregate api url".to_string());
+                    last_failure_status = 502;
+                    break;
+                }
+            };
 
             match &auth_config {
                 AggregateApiAuthConfig::ApiKeyQuery { name } => {
@@ -872,8 +909,21 @@ pub(in super::super) fn proxy_aggregate_request(
                 bridge.upstream_content_type.as_deref(),
                 bridge.last_sse_event_type.as_deref(),
             );
-            let bridge_ok = bridge.is_ok(is_stream);
-            let mut final_error = bridge.upstream_error_hint.clone();
+            let has_partial_stream_success = is_partial_stream_success(
+                is_stream,
+                bridge.stream_terminal_seen,
+                bridge.stream_terminal_error.is_some(),
+                bridge.delivery_error.is_some(),
+                bridge_output_text_len,
+                bridge.usage.output_tokens,
+                bridge.usage.total_tokens,
+            );
+            let bridge_ok = bridge.is_ok(is_stream) || has_partial_stream_success;
+            let mut final_error = if has_partial_stream_success {
+                None
+            } else {
+                bridge.upstream_error_hint.clone()
+            };
             if final_error.is_none() && !bridge_ok {
                 final_error =
                     Some(bridge.error_message(is_stream).unwrap_or_else(|| {
@@ -1149,6 +1199,82 @@ mod bridge_tests {
 
 #[cfg(test)]
 mod tests {
+    use codexmanager_core::storage::AggregateApi;
+
+    use super::{build_upstream_url, effective_action_path, is_partial_stream_success};
+
+    fn aggregate_api_with_action(action: Option<&str>) -> AggregateApi {
+        AggregateApi {
+            id: "agg-path-test".to_string(),
+            provider_type: "claude".to_string(),
+            supplier_name: Some("test".to_string()),
+            sort: 0,
+            url: "https://open.bigmodel.cn/api/anthropic".to_string(),
+            auth_type: "apikey".to_string(),
+            auth_params_json: None,
+            action: action.map(str::to_string),
+            status: "active".to_string(),
+            created_at: 0,
+            updated_at: 0,
+            last_test_at: None,
+            last_test_status: None,
+            last_test_error: None,
+        }
+    }
+
+    #[test]
+    fn empty_custom_action_falls_back_to_original_path() {
+        let api = aggregate_api_with_action(Some(""));
+        let path = effective_action_path(&api, "/v1/messages?beta=true");
+        assert_eq!(path, "/v1/messages?beta=true");
+    }
+
+    #[test]
+    fn partial_stream_with_output_is_treated_as_success_signal() {
+        assert!(is_partial_stream_success(
+            true,
+            false,
+            false,
+            false,
+            12,
+            Some(0),
+            Some(0),
+        ));
+    }
+
+    #[test]
+    fn partial_stream_without_signal_is_not_treated_as_success() {
+        assert!(!is_partial_stream_success(
+            true,
+            false,
+            false,
+            false,
+            0,
+            Some(0),
+            Some(0),
+        ));
+    }
+
+    #[test]
+    fn build_upstream_url_preserves_base_path_prefix() {
+        let url = build_upstream_url(
+            "https://open.bigmodel.cn/api/anthropic",
+            "/v1/messages?beta=true",
+        )
+        .expect("build upstream url");
+        assert_eq!(
+            url.as_str(),
+            "https://open.bigmodel.cn/api/anthropic/v1/messages?beta=true"
+        );
+    }
+
+    #[test]
+    fn build_upstream_url_keeps_root_base_behavior() {
+        let url = build_upstream_url("https://api.example.com", "/v1/messages?beta=true")
+            .expect("build upstream url");
+        assert_eq!(url.as_str(), "https://api.example.com/v1/messages?beta=true");
+    }
+
     /// 函数 `final_error_promotes_success_status_to_bad_gateway`
     ///
     /// 作者: gaohongshun
