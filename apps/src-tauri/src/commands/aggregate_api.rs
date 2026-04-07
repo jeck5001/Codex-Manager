@@ -42,6 +42,13 @@ pub async fn service_aggregate_api_create(
     sort: Option<i64>,
     url: Option<String>,
     key: Option<String>,
+    auth_type: Option<String>,
+    auth_custom_enabled: Option<bool>,
+    auth_params: Option<serde_json::Value>,
+    action_custom_enabled: Option<bool>,
+    action: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let params = serde_json::json!({
         "providerType": provider_type,
@@ -49,6 +56,13 @@ pub async fn service_aggregate_api_create(
         "sort": sort,
         "url": url,
         "key": key,
+        "authType": auth_type,
+        "authCustomEnabled": auth_custom_enabled,
+        "authParams": auth_params,
+        "actionCustomEnabled": action_custom_enabled,
+        "action": action,
+        "username": username,
+        "password": password,
     });
     rpc_call_in_background("aggregateApi/create", addr, Some(params)).await
 }
@@ -79,6 +93,13 @@ pub async fn service_aggregate_api_update(
     sort: Option<i64>,
     url: Option<String>,
     key: Option<String>,
+    auth_type: Option<String>,
+    auth_custom_enabled: Option<bool>,
+    auth_params: Option<serde_json::Value>,
+    action_custom_enabled: Option<bool>,
+    action: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let params = serde_json::json!({
         "id": id,
@@ -87,6 +108,13 @@ pub async fn service_aggregate_api_update(
         "sort": sort,
         "url": url,
         "key": key,
+        "authType": auth_type,
+        "authCustomEnabled": auth_custom_enabled,
+        "authParams": auth_params,
+        "actionCustomEnabled": action_custom_enabled,
+        "action": action,
+        "username": username,
+        "password": password,
     });
     rpc_call_in_background("aggregateApi/update", addr, Some(params)).await
 }

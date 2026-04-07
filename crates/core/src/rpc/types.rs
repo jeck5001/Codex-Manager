@@ -407,6 +407,9 @@ pub struct AggregateApiSummary {
     pub supplier_name: Option<String>,
     pub sort: i64,
     pub url: String,
+    pub auth_type: String,
+    pub auth_params: Option<serde_json::Value>,
+    pub action: Option<String>,
     pub status: String,
     pub created_at: i64,
     pub updated_at: i64,
@@ -524,6 +527,11 @@ pub struct AggregateApiCreateResult {
 pub struct AggregateApiSecretResult {
     pub id: String,
     pub key: String,
+    pub auth_type: String,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

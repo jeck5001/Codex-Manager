@@ -3,6 +3,7 @@ use codexmanager_core::rpc::types::{
 };
 use codexmanager_core::storage::{now_ts, AggregateApi};
 use reqwest::header::{HeaderName, HeaderValue};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::Read;
 use std::time::Instant;
@@ -13,6 +14,34 @@ use crate::storage_helpers::{generate_aggregate_api_id, open_storage};
 
 pub(crate) const AGGREGATE_API_PROVIDER_CODEX: &str = "codex";
 pub(crate) const AGGREGATE_API_PROVIDER_CLAUDE: &str = "claude";
+pub(crate) const AGGREGATE_API_AUTH_APIKEY: &str = "apikey";
+pub(crate) const AGGREGATE_API_AUTH_USERPASS: &str = "userpass";
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UserPassSecret {
+    username: String,
+    password: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiKeyAuthParams {
+    location: String,
+    name: String,
+    #[serde(default)]
+    header_value_format: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UserPassAuthParams {
+    mode: String,
+    #[serde(default)]
+    username_name: Option<String>,
+    #[serde(default)]
+    password_name: Option<String>,
+}
 
 /// 函数 `normalize_secret`
 ///
@@ -67,6 +96,274 @@ fn normalize_supplier_name(value: Option<String>) -> Result<String, String> {
 /// 返回函数执行结果
 fn normalize_sort(value: Option<i64>) -> i64 {
     value.unwrap_or(0)
+}
+
+fn normalize_auth_type(value: Option<String>) -> Result<String, String> {
+    match value {
+        Some(raw) => {
+            let normalized = raw.trim().to_ascii_lowercase().replace('-', "_");
+            match normalized.as_str() {
+                "apikey" | "api_key" | "key" => Ok(AGGREGATE_API_AUTH_APIKEY.to_string()),
+                "userpass"
+                | "username_password"
+                | "account_password"
+                | "basic"
+                | "http_basic" => Ok(AGGREGATE_API_AUTH_USERPASS.to_string()),
+                other => Err(format!("unsupported aggregate api auth type: {other}")),
+            }
+        }
+        None => Ok(AGGREGATE_API_AUTH_APIKEY.to_string()),
+    }
+}
+
+fn normalize_action(value: Option<String>) -> Result<Option<String>, String> {
+    let Some(raw) = value else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let normalized = trimmed.to_string();
+    let lower = normalized.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return Err("aggregate api action must be a path, not a full url".to_string());
+    }
+    if normalized.contains("://") {
+        return Err("aggregate api action is invalid".to_string());
+    }
+    let with_slash = if normalized.starts_with('/') {
+        normalized
+    } else {
+        format!("/{normalized}")
+    };
+    Ok(Some(with_slash))
+}
+
+fn normalize_auth_params_json(
+    auth_type: &str,
+    enabled: Option<bool>,
+    auth_params: Option<serde_json::Value>,
+) -> Result<Option<String>, String> {
+    match enabled {
+        None => Ok(None),
+        Some(false) => Ok(Some(String::new())),
+        Some(true) => {
+            let value = auth_params.ok_or_else(|| "authParams is required".to_string())?;
+            let obj = value
+                .as_object()
+                .ok_or_else(|| "authParams must be a JSON object".to_string())?;
+            if obj.is_empty() {
+                return Err("authParams must not be empty".to_string());
+            }
+            if auth_type == AGGREGATE_API_AUTH_APIKEY {
+                let parsed: ApiKeyAuthParams = serde_json::from_value(value.clone())
+                    .map_err(|_| "authParams is invalid".to_string())?;
+                let location = parsed.location.trim().to_ascii_lowercase();
+                if location != "header" && location != "query" {
+                    return Err("authParams.location must be header or query".to_string());
+                }
+                if parsed.name.trim().is_empty() {
+                    return Err("authParams.name is required".to_string());
+                }
+                if location == "header" {
+                    let format = parsed
+                        .header_value_format
+                        .as_deref()
+                        .unwrap_or("bearer")
+                        .trim()
+                        .to_ascii_lowercase();
+                    if format != "bearer" && format != "raw" {
+                        return Err(
+                            "authParams.headerValueFormat must be bearer or raw".to_string()
+                        );
+                    }
+                }
+            } else if auth_type == AGGREGATE_API_AUTH_USERPASS {
+                let parsed: UserPassAuthParams = serde_json::from_value(value.clone())
+                    .map_err(|_| "authParams is invalid".to_string())?;
+                let mode = parsed.mode.trim().to_ascii_lowercase();
+                match mode.as_str() {
+                    "basic" => {}
+                    "headerpair" | "querypair" => {
+                        if parsed
+                            .username_name
+                            .as_deref()
+                            .map(str::trim)
+                            .unwrap_or("")
+                            .is_empty()
+                        {
+                            return Err("authParams.usernameName is required".to_string());
+                        }
+                        if parsed
+                            .password_name
+                            .as_deref()
+                            .map(str::trim)
+                            .unwrap_or("")
+                            .is_empty()
+                        {
+                            return Err("authParams.passwordName is required".to_string());
+                        }
+                    }
+                    _ => {
+                        return Err(
+                            "authParams.mode must be basic, headerPair, or queryPair".to_string()
+                        );
+                    }
+                }
+            }
+            serde_json::to_string(&value).map(Some).map_err(|_| {
+                "authParams must be a valid JSON object".to_string()
+            })
+        }
+    }
+}
+
+fn normalize_action_override(
+    enabled: Option<bool>,
+    action: Option<String>,
+) -> Result<Option<String>, String> {
+    match enabled {
+        None => Ok(None),
+        Some(false) => Ok(Some(String::new())),
+        Some(true) => normalize_action(action).and_then(|value| {
+            value.ok_or_else(|| "action is required".to_string()).map(Some)
+        }),
+    }
+}
+
+fn serialize_userpass_secret(username: &str, password: &str) -> Result<String, String> {
+    let secret = UserPassSecret {
+        username: username.trim().to_string(),
+        password: password.trim().to_string(),
+    };
+    serde_json::to_string(&secret).map_err(|_| "invalid username/password".to_string())
+}
+
+fn action_path_or_default(api: &AggregateApi, default: &str) -> String {
+    api.action
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            if value.starts_with('/') {
+                value.to_string()
+            } else {
+                format!("/{value}")
+            }
+        })
+        .unwrap_or_else(|| default.to_string())
+}
+
+fn with_query_param(url: &str, name: &str, value: &str) -> String {
+    let mut parsed = match reqwest::Url::parse(url) {
+        Ok(value) => value,
+        Err(_) => return url.to_string(),
+    };
+    let existing = parsed.query_pairs().into_owned().collect::<Vec<_>>();
+    parsed.set_query(None);
+    {
+        let mut query = parsed.query_pairs_mut();
+        for (key, val) in existing {
+            if key == name {
+                continue;
+            }
+            query.append_pair(key.as_str(), val.as_str());
+        }
+        query.append_pair(name, value);
+    }
+    parsed.to_string()
+}
+
+fn apply_probe_auth(
+    mut builder: reqwest::blocking::RequestBuilder,
+    mut url: String,
+    api: &AggregateApi,
+    secret: &str,
+) -> Result<(reqwest::blocking::RequestBuilder, String), String> {
+    let auth_type = normalize_auth_type(Some(api.auth_type.clone()))?;
+    let auth_params = api
+        .auth_params_json
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    if auth_type == AGGREGATE_API_AUTH_USERPASS {
+        let parsed: UserPassSecret = serde_json::from_str(secret.trim())
+            .map_err(|_| "invalid aggregate api secret".to_string())?;
+        if let Some(raw) = auth_params {
+            let params: UserPassAuthParams = serde_json::from_str(raw)
+                .map_err(|_| "invalid authParams".to_string())?;
+            let mode = params.mode.trim().to_ascii_lowercase();
+            if mode == "headerpair" {
+                let username_name = params
+                    .username_name
+                    .as_deref()
+                    .unwrap_or("username")
+                    .trim();
+                let password_name = params
+                    .password_name
+                    .as_deref()
+                    .unwrap_or("password")
+                    .trim();
+                builder = builder
+                    .header(username_name, parsed.username.as_str())
+                    .header(password_name, parsed.password.as_str());
+                return Ok((builder, url));
+            }
+            if mode == "querypair" {
+                let username_name = params
+                    .username_name
+                    .as_deref()
+                    .unwrap_or("username")
+                    .trim();
+                let password_name = params
+                    .password_name
+                    .as_deref()
+                    .unwrap_or("password")
+                    .trim();
+                url = with_query_param(url.as_str(), username_name, parsed.username.as_str());
+                url = with_query_param(url.as_str(), password_name, parsed.password.as_str());
+                return Ok((builder, url));
+            }
+        }
+        builder = builder.basic_auth(parsed.username, Some(parsed.password));
+        return Ok((builder, url));
+    }
+
+    if let Some(raw) = auth_params {
+        let params: ApiKeyAuthParams =
+            serde_json::from_str(raw).map_err(|_| "invalid authParams".to_string())?;
+        let location = params.location.trim().to_ascii_lowercase();
+        if location == "query" {
+            url = with_query_param(url.as_str(), params.name.trim(), secret.trim());
+            return Ok((builder, url));
+        }
+        let value_format = params
+            .header_value_format
+            .as_deref()
+            .unwrap_or("bearer")
+            .trim()
+            .to_ascii_lowercase();
+        let header_value = if value_format == "raw" {
+            secret.trim().to_string()
+        } else {
+            format!("Bearer {}", secret.trim())
+        };
+        builder = builder.header(params.name.trim(), header_value);
+        return Ok((builder, url));
+    }
+
+    let auth_value = format!("Bearer {}", secret.trim());
+    builder = builder
+        .header(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_str(auth_value.as_str())
+                .map_err(|_| "invalid aggregate api key".to_string())?,
+        )
+        .header("x-api-key", secret.trim())
+        .header("api-key", secret.trim());
+    Ok((builder, url))
 }
 
 /// 函数 `normalize_provider_type`
@@ -278,17 +575,8 @@ fn probe_codex_only_for_provider(provider_type: &str) -> bool {
 /// 返回函数执行结果
 fn add_codex_probe_headers(
     builder: reqwest::blocking::RequestBuilder,
-    secret: &str,
 ) -> Result<reqwest::blocking::RequestBuilder, String> {
-    let auth_value = format!("Bearer {}", secret.trim());
     Ok(builder
-        .header(
-            HeaderName::from_static("authorization"),
-            HeaderValue::from_str(auth_value.as_str())
-                .map_err(|_| "invalid aggregate api key".to_string())?,
-        )
-        .header("x-api-key", secret.trim())
-        .header("api-key", secret.trim())
         .header("accept", "application/json")
         .header("user-agent", gateway::current_codex_user_agent())
         .header("originator", gateway::current_wire_originator())
@@ -310,11 +598,22 @@ fn add_codex_probe_headers(
 /// 返回函数执行结果
 fn probe_codex_models_endpoint(
     client: &reqwest::blocking::Client,
-    base_url: &str,
+    api: &AggregateApi,
     secret: &str,
 ) -> Result<i64, String> {
-    let url = append_client_version_query(&normalize_probe_url(base_url, "/models"));
-    let response = add_codex_probe_headers(client.get(url), secret)?
+    let probe_path = action_path_or_default(api, "/models");
+    let base_url = normalize_probe_url(api.url.as_str(), probe_path.as_str());
+    let url = append_client_version_query(base_url.as_str());
+    let builder = client.get(url.as_str());
+    let (builder, updated_url) = apply_probe_auth(builder, url.clone(), api, secret)?;
+    let builder = if updated_url != url {
+        let rebuilt = client.get(updated_url.as_str());
+        let (rebuilt, _) = apply_probe_auth(rebuilt, updated_url, api, secret)?;
+        rebuilt
+    } else {
+        builder
+    };
+    let response = add_codex_probe_headers(builder)?
         .send()
         .map_err(|err| err.to_string())?;
 
@@ -341,14 +640,46 @@ fn probe_codex_models_endpoint(
 /// 返回函数执行结果
 fn probe_codex_responses_endpoint(
     client: &reqwest::blocking::Client,
-    base_url: &str,
+    api: &AggregateApi,
     secret: &str,
 ) -> Result<i64, String> {
-    let url = normalize_probe_url(base_url, "/responses");
-    let response = add_codex_probe_headers(client.post(url), secret)?
+    let action_hint = api
+        .action
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("/responses")
+        .to_ascii_lowercase();
+    let default_path = if action_hint.contains("chat/completions") {
+        "/chat/completions"
+    } else if action_hint.contains("responses") {
+        "/responses"
+    } else {
+        "/responses"
+    };
+    let probe_path = action_path_or_default(api, default_path);
+    let url = normalize_probe_url(api.url.as_str(), probe_path.as_str());
+    let builder = client.post(url.as_str());
+    let (builder, updated_url) = apply_probe_auth(builder, url.clone(), api, secret)?;
+    let builder = if updated_url != url {
+        let rebuilt = client.post(updated_url.as_str());
+        let (rebuilt, _) = apply_probe_auth(rebuilt, updated_url, api, secret)?;
+        rebuilt
+    } else {
+        builder
+    };
+    let request_body = if probe_path.to_ascii_lowercase().contains("chat/completions") {
+        json!({
+            "model": "gpt-4o-mini",
+            "messages": [{"role":"user","content":"hi"}],
+            "stream": false
+        })
+    } else {
+        build_codex_probe_body()
+    };
+    let response = add_codex_probe_headers(builder)?
         .header("content-type", "application/json")
         .header("accept", "text/event-stream")
-        .json(&build_codex_probe_body())
+        .json(&request_body)
         .send()
         .map_err(|err| err.to_string())?;
 
@@ -375,10 +706,10 @@ fn probe_codex_responses_endpoint(
 /// 返回函数执行结果
 fn probe_codex_endpoint(
     client: &reqwest::blocking::Client,
-    base_url: &str,
+    api: &AggregateApi,
     secret: &str,
 ) -> Result<i64, String> {
-    let models_result = probe_codex_models_endpoint(client, base_url, secret);
+    let models_result = probe_codex_models_endpoint(client, api, secret);
     if let Ok(code) = models_result {
         return Ok(code);
     }
@@ -386,7 +717,7 @@ fn probe_codex_endpoint(
     let models_err = models_result
         .err()
         .unwrap_or_else(|| "codex models probe failed".to_string());
-    let responses_result = probe_codex_responses_endpoint(client, base_url, secret);
+    let responses_result = probe_codex_responses_endpoint(client, api, secret);
     if let Ok(code) = responses_result {
         return Ok(code);
     }
@@ -412,19 +743,21 @@ fn probe_codex_endpoint(
 /// 返回函数执行结果
 fn probe_claude_endpoint(
     client: &reqwest::blocking::Client,
-    base_url: &str,
+    api: &AggregateApi,
     secret: &str,
 ) -> Result<i64, String> {
-    let url = normalize_probe_url(base_url, "/messages?beta=true");
-    let auth_value = format!("Bearer {}", secret.trim());
-    let response = client
-        .post(url)
-        .header(
-            HeaderName::from_static("authorization"),
-            HeaderValue::from_str(auth_value.as_str())
-                .map_err(|_| "invalid aggregate api key".to_string())?,
-        )
-        .header("x-api-key", secret.trim())
+    let probe_path = action_path_or_default(api, "/messages?beta=true");
+    let url = normalize_probe_url(api.url.as_str(), probe_path.as_str());
+    let builder = client.post(url.as_str());
+    let (builder, updated_url) = apply_probe_auth(builder, url.clone(), api, secret)?;
+    let builder = if updated_url != url {
+        let rebuilt = client.post(updated_url.as_str());
+        let (rebuilt, _) = apply_probe_auth(rebuilt, updated_url, api, secret)?;
+        rebuilt
+    } else {
+        builder
+    };
+    let response = builder
         .header("anthropic-version", "2023-06-01")
         .header(
             "anthropic-beta",
@@ -471,6 +804,14 @@ pub(crate) fn list_aggregate_apis() -> Result<Vec<AggregateApiSummary>, String> 
             supplier_name: item.supplier_name,
             sort: item.sort,
             url: item.url,
+            auth_type: item.auth_type,
+            auth_params: item
+                .auth_params_json
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok()),
+            action: item.action,
             status: item.status,
             created_at: item.created_at,
             updated_at: item.updated_at,
@@ -498,6 +839,13 @@ pub(crate) fn create_aggregate_api(
     provider_type: Option<String>,
     supplier_name: Option<String>,
     sort: Option<i64>,
+    auth_type: Option<String>,
+    auth_custom_enabled: Option<bool>,
+    auth_params: Option<serde_json::Value>,
+    action_custom_enabled: Option<bool>,
+    action: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
 ) -> Result<AggregateApiCreateResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let normalized_provider_type = normalize_provider_type(provider_type)?;
@@ -505,7 +853,25 @@ pub(crate) fn create_aggregate_api(
     let normalized_sort = normalize_sort(sort);
     let normalized_url = normalize_upstream_base_url(url)?
         .unwrap_or_else(|| provider_default_url(normalized_provider_type.as_str()).to_string());
-    let normalized_key = normalize_secret(key).ok_or_else(|| "key is required".to_string())?;
+    let normalized_auth_type = normalize_auth_type(auth_type)?;
+    let normalized_auth_params_json =
+        normalize_auth_params_json(normalized_auth_type.as_str(), auth_custom_enabled, auth_params)?;
+    let normalized_action = normalize_action_override(action_custom_enabled, action)?;
+    let normalized_secret = if normalized_auth_type == AGGREGATE_API_AUTH_APIKEY {
+        normalize_secret(key).ok_or_else(|| "key is required".to_string())?
+    } else {
+        let username = username
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| "username is required".to_string())?;
+        let password = password
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| "password is required".to_string())?;
+        serialize_userpass_secret(username, password)?
+    };
     let id = generate_aggregate_api_id();
     let created_at = now_ts();
     let record = AggregateApi {
@@ -514,6 +880,13 @@ pub(crate) fn create_aggregate_api(
         supplier_name: Some(normalized_supplier_name),
         sort: normalized_sort,
         url: normalized_url,
+        auth_type: normalized_auth_type,
+        auth_params_json: normalized_auth_params_json
+            .map(|value| if value.is_empty() { None } else { Some(value) })
+            .unwrap_or(None),
+        action: normalized_action
+            .map(|value| if value.is_empty() { None } else { Some(value) })
+            .unwrap_or(None),
         status: "active".to_string(),
         created_at,
         updated_at: created_at,
@@ -524,13 +897,17 @@ pub(crate) fn create_aggregate_api(
     storage
         .insert_aggregate_api(&record)
         .map_err(|err| err.to_string())?;
-    if let Err(err) = storage.upsert_aggregate_api_secret(&id, &normalized_key) {
+    if let Err(err) = storage.upsert_aggregate_api_secret(&id, &normalized_secret) {
         let _ = storage.delete_aggregate_api(&id);
         return Err(format!("persist aggregate api secret failed: {err}"));
     }
     Ok(AggregateApiCreateResult {
         id,
-        key: normalized_key,
+        key: if record.auth_type == AGGREGATE_API_AUTH_APIKEY {
+            normalized_secret
+        } else {
+            String::new()
+        },
     })
 }
 
@@ -552,11 +929,41 @@ pub(crate) fn update_aggregate_api(
     provider_type: Option<String>,
     supplier_name: Option<String>,
     sort: Option<i64>,
+    auth_type: Option<String>,
+    auth_custom_enabled: Option<bool>,
+    auth_params: Option<serde_json::Value>,
+    action_custom_enabled: Option<bool>,
+    action: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
 ) -> Result<(), String> {
     if api_id.is_empty() {
         return Err("aggregate api id required".to_string());
     }
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let existing = storage
+        .find_aggregate_api_by_id(api_id)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "aggregate api not found".to_string())?;
+    let existing_auth_type =
+        normalize_auth_type(Some(existing.auth_type.clone())).unwrap_or_else(|_| {
+            AGGREGATE_API_AUTH_APIKEY.to_string()
+        });
+    let normalized_auth_type = match auth_type {
+        Some(raw) => Some(normalize_auth_type(Some(raw))?),
+        None => None,
+    };
+    let next_auth_type = normalized_auth_type
+        .as_deref()
+        .unwrap_or(existing_auth_type.as_str())
+        .to_string();
+    let auth_type_changed = next_auth_type != existing_auth_type;
+
+    if let Some(next) = normalized_auth_type.as_deref() {
+        storage
+            .update_aggregate_api_auth_type(api_id, next)
+            .map_err(|err| err.to_string())?;
+    }
     if let Some(provider_type) = provider_type {
         let normalized_provider_type = normalize_provider_type(Some(provider_type))?;
         storage
@@ -579,10 +986,62 @@ pub(crate) fn update_aggregate_api(
             .update_aggregate_api(api_id, normalized_url.as_str())
             .map_err(|err| err.to_string())?;
     }
-    if let Some(secret) = normalize_secret(key) {
-        storage
-            .upsert_aggregate_api_secret(api_id, &secret)
-            .map_err(|err| err.to_string())?;
+
+    if let Some(auth_params_json) =
+        normalize_auth_params_json(next_auth_type.as_str(), auth_custom_enabled, auth_params)?
+    {
+        let normalized = auth_params_json.trim().to_string();
+        if normalized.is_empty() {
+            storage
+                .update_aggregate_api_auth_params_json(api_id, None)
+                .map_err(|err| err.to_string())?;
+        } else {
+            storage
+                .update_aggregate_api_auth_params_json(api_id, Some(normalized.as_str()))
+                .map_err(|err| err.to_string())?;
+        }
+    }
+
+    if let Some(action) = normalize_action_override(action_custom_enabled, action)? {
+        let normalized = action.trim().to_string();
+        if normalized.is_empty() {
+            storage
+                .update_aggregate_api_action(api_id, None)
+                .map_err(|err| err.to_string())?;
+        } else {
+            storage
+                .update_aggregate_api_action(api_id, Some(normalized.as_str()))
+                .map_err(|err| err.to_string())?;
+        }
+    }
+
+    if next_auth_type == AGGREGATE_API_AUTH_APIKEY {
+        let normalized_secret = normalize_secret(key);
+        if auth_type_changed && normalized_secret.is_none() {
+            return Err("key is required when switching authType to apikey".to_string());
+        }
+        if let Some(secret) = normalized_secret {
+            storage
+                .upsert_aggregate_api_secret(api_id, &secret)
+                .map_err(|err| err.to_string())?;
+        }
+    } else {
+        let username = username.as_deref().map(str::trim).unwrap_or("");
+        let password = password.as_deref().map(str::trim).unwrap_or("");
+        let has_user = !username.is_empty();
+        let has_pass = !password.is_empty();
+        if (has_user && !has_pass) || (!has_user && has_pass) {
+            return Err("username and password must be provided together".to_string());
+        }
+        if auth_type_changed && (!has_user || !has_pass) {
+            return Err("username and password are required when switching authType to userpass".to_string());
+        }
+        if has_user && has_pass {
+            let secret = serialize_userpass_secret(username, password)?;
+            storage
+                .upsert_aggregate_api_secret(api_id, &secret)
+                .map_err(|err| err.to_string())?;
+        }
     }
     Ok(())
 }
@@ -624,13 +1083,32 @@ pub(crate) fn read_aggregate_api_secret(api_id: &str) -> Result<AggregateApiSecr
         return Err("aggregate api id required".to_string());
     }
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let api = storage
+        .find_aggregate_api_by_id(api_id)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "aggregate api not found".to_string())?;
     let key = storage
         .find_aggregate_api_secret_by_id(api_id)
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "aggregate api secret not found".to_string())?;
+    let auth_type = normalize_auth_type(Some(api.auth_type))?;
+    if auth_type == AGGREGATE_API_AUTH_USERPASS {
+        let parsed: UserPassSecret = serde_json::from_str(key.as_str())
+            .map_err(|_| "invalid aggregate api secret".to_string())?;
+        return Ok(AggregateApiSecretResult {
+            id: api_id.to_string(),
+            key: String::new(),
+            auth_type,
+            username: Some(parsed.username),
+            password: Some(parsed.password),
+        });
+    }
     Ok(AggregateApiSecretResult {
         id: api_id.to_string(),
         key,
+        auth_type,
+        username: None,
+        password: None,
     })
 }
 
@@ -666,9 +1144,9 @@ pub(crate) fn test_aggregate_api_connection(
     let started_at = Instant::now();
     let provider_type = normalize_provider_type_value(api.provider_type.as_str());
     let result = if probe_codex_only_for_provider(provider_type.as_str()) {
-        probe_codex_endpoint(&client, api.url.as_str(), &secret)
+        probe_codex_endpoint(&client, &api, &secret)
     } else {
-        probe_claude_endpoint(&client, api.url.as_str(), &secret)
+        probe_claude_endpoint(&client, &api, &secret)
     };
     let (ok, status_code, last_error) = match result {
         Ok(code) => (true, Some(code), None),

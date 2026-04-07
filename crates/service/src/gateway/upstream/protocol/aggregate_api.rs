@@ -1,13 +1,225 @@
 use bytes::Bytes;
 use codexmanager_core::storage::{AggregateApi, Storage};
 use reqwest::header::{HeaderName, HeaderValue};
+use serde::Deserialize;
+use std::collections::HashSet;
 use std::time::Instant;
 use tiny_http::Request;
 
-use crate::aggregate_api::{AGGREGATE_API_PROVIDER_CLAUDE, AGGREGATE_API_PROVIDER_CODEX};
+use crate::aggregate_api::{
+    AGGREGATE_API_AUTH_APIKEY, AGGREGATE_API_AUTH_USERPASS, AGGREGATE_API_PROVIDER_CLAUDE,
+    AGGREGATE_API_PROVIDER_CODEX,
+};
 use crate::gateway::request_log::RequestLogUsage;
 
 const AGGREGATE_API_RETRY_ATTEMPTS_PER_CHANNEL: usize = 3;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiKeyAuthParams {
+    location: String,
+    name: String,
+    #[serde(default)]
+    header_value_format: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UserPassAuthParams {
+    mode: String,
+    #[serde(default)]
+    username_name: Option<String>,
+    #[serde(default)]
+    password_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UserPassSecret {
+    username: String,
+    password: String,
+}
+
+#[derive(Debug, Clone)]
+enum AggregateApiAuthConfig {
+    ApiKeyDefaultBearer,
+    ApiKeyHeader { name: String, format: String },
+    ApiKeyQuery { name: String },
+    UserPassBasic,
+    UserPassHeaderPair {
+        username_name: String,
+        password_name: String,
+    },
+    UserPassQueryPair {
+        username_name: String,
+        password_name: String,
+    },
+}
+
+fn normalize_header_key(name: &str) -> String {
+    name.trim().to_ascii_lowercase()
+}
+
+fn merge_action_query(original_path: &str, action: &str) -> String {
+    let action_trimmed = action.trim();
+    if action_trimmed.is_empty() {
+        return original_path.to_string();
+    }
+    let mut normalized = if action_trimmed.starts_with('/') {
+        action_trimmed.to_string()
+    } else {
+        format!("/{action_trimmed}")
+    };
+    if normalized.contains('?') {
+        return normalized;
+    }
+    let Some((_, query)) = original_path.split_once('?') else {
+        return normalized;
+    };
+    let query = query.trim();
+    if query.is_empty() {
+        return normalized;
+    }
+    normalized.push('?');
+    normalized.push_str(query);
+    normalized
+}
+
+fn effective_action_path(candidate: &AggregateApi, path: &str) -> String {
+    candidate
+        .action
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|action| merge_action_query(path, action))
+        .unwrap_or_else(|| path.to_string())
+}
+
+fn replace_query_param(mut url: reqwest::Url, name: &str, value: &str) -> reqwest::Url {
+    let name_trimmed = name.trim();
+    if name_trimmed.is_empty() {
+        return url;
+    }
+    let existing = url.query_pairs().into_owned().collect::<Vec<_>>();
+    url.set_query(None);
+    {
+        let mut qp = url.query_pairs_mut();
+        for (k, v) in existing {
+            if k == name_trimmed {
+                continue;
+            }
+            qp.append_pair(k.as_str(), v.as_str());
+        }
+        qp.append_pair(name_trimmed, value);
+    }
+    url
+}
+
+fn parse_auth_config(candidate: &AggregateApi) -> Result<(AggregateApiAuthConfig, HashSet<String>), String> {
+    let auth_type = candidate.auth_type.trim().to_ascii_lowercase();
+    let raw_params = candidate
+        .auth_params_json
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    let mut injected_headers = HashSet::new();
+
+    if raw_params.is_none() {
+        if auth_type == AGGREGATE_API_AUTH_USERPASS {
+            return Ok((AggregateApiAuthConfig::UserPassBasic, injected_headers));
+        }
+        return Ok((AggregateApiAuthConfig::ApiKeyDefaultBearer, injected_headers));
+    }
+
+    let value: serde_json::Value = serde_json::from_str(raw_params.unwrap())
+        .map_err(|_| "invalid aggregate api authParams".to_string())?;
+
+    if auth_type == AGGREGATE_API_AUTH_APIKEY {
+        let parsed: ApiKeyAuthParams = serde_json::from_value(value)
+            .map_err(|_| "invalid aggregate api authParams".to_string())?;
+        let location = parsed.location.trim().to_ascii_lowercase();
+        if location == "query" {
+            return Ok((
+                AggregateApiAuthConfig::ApiKeyQuery {
+                    name: parsed.name.trim().to_string(),
+                },
+                injected_headers,
+            ));
+        }
+        let header_name = parsed.name.trim().to_string();
+        injected_headers.insert(normalize_header_key(header_name.as_str()));
+        let format = parsed
+            .header_value_format
+            .as_deref()
+            .unwrap_or("bearer")
+            .trim()
+            .to_ascii_lowercase();
+        return Ok((
+            AggregateApiAuthConfig::ApiKeyHeader {
+                name: header_name,
+                format,
+            },
+            injected_headers,
+        ));
+    }
+
+    if auth_type == AGGREGATE_API_AUTH_USERPASS {
+        let parsed: UserPassAuthParams = serde_json::from_value(value)
+            .map_err(|_| "invalid aggregate api authParams".to_string())?;
+        let mode = parsed.mode.trim().to_ascii_lowercase();
+        match mode.as_str() {
+            "basic" => return Ok((AggregateApiAuthConfig::UserPassBasic, injected_headers)),
+            "headerpair" => {
+                let username_name = parsed
+                    .username_name
+                    .as_deref()
+                    .unwrap_or("username")
+                    .trim()
+                    .to_string();
+                let password_name = parsed
+                    .password_name
+                    .as_deref()
+                    .unwrap_or("password")
+                    .trim()
+                    .to_string();
+                injected_headers.insert(normalize_header_key(username_name.as_str()));
+                injected_headers.insert(normalize_header_key(password_name.as_str()));
+                return Ok((
+                    AggregateApiAuthConfig::UserPassHeaderPair {
+                        username_name,
+                        password_name,
+                    },
+                    injected_headers,
+                ));
+            }
+            "querypair" => {
+                let username_name = parsed
+                    .username_name
+                    .as_deref()
+                    .unwrap_or("username")
+                    .trim()
+                    .to_string();
+                let password_name = parsed
+                    .password_name
+                    .as_deref()
+                    .unwrap_or("password")
+                    .trim()
+                    .to_string();
+                return Ok((
+                    AggregateApiAuthConfig::UserPassQueryPair {
+                        username_name,
+                        password_name,
+                    },
+                    injected_headers,
+                ));
+            }
+            _ => return Err("invalid aggregate api authParams".to_string()),
+        }
+    }
+
+    Ok((AggregateApiAuthConfig::ApiKeyDefaultBearer, injected_headers))
+}
 
 /// 函数 `should_skip_forward_header`
 ///
@@ -36,6 +248,13 @@ fn should_skip_forward_header(name: &str) -> bool {
             | "upgrade"
             | "host"
     )
+}
+
+fn should_skip_forward_header_with_overrides(name: &str, injected: &HashSet<String>) -> bool {
+    if should_skip_forward_header(name) {
+        return true;
+    }
+    injected.contains(normalize_header_key(name).as_str())
 }
 
 /// 函数 `respond_error`
@@ -246,6 +465,8 @@ fn build_aggregate_api_request(
     url: reqwest::Url,
     body: &Bytes,
     secret: &str,
+    auth_config: &AggregateApiAuthConfig,
+    injected_headers: &HashSet<String>,
     request_deadline: Option<Instant>,
     is_stream: bool,
 ) -> Result<reqwest::blocking::RequestBuilder, String> {
@@ -257,7 +478,10 @@ fn build_aggregate_api_request(
     }
     let request_headers = request.headers().to_vec();
     for header in &request_headers {
-        if should_skip_forward_header(header.field.as_str().into()) {
+        if should_skip_forward_header_with_overrides(
+            header.field.as_str().into(),
+            injected_headers,
+        ) {
             continue;
         }
         if let (Ok(name), Ok(value)) = (
@@ -267,11 +491,64 @@ fn build_aggregate_api_request(
             builder = builder.header(name, value);
         }
     }
-    builder = builder.header(
-        HeaderName::from_static("authorization"),
-        HeaderValue::from_str(format!("Bearer {}", secret).as_str())
-            .map_err(|_| "invalid aggregate api secret".to_string())?,
-    );
+
+    let secret_trimmed = secret.trim();
+    match auth_config {
+        AggregateApiAuthConfig::ApiKeyDefaultBearer => {
+            builder = builder.header(
+                HeaderName::from_static("authorization"),
+                HeaderValue::from_str(format!("Bearer {}", secret_trimmed).as_str())
+                    .map_err(|_| "invalid aggregate api secret".to_string())?,
+            );
+        }
+        AggregateApiAuthConfig::ApiKeyHeader { name, format } => {
+            let header_name = HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_| "invalid aggregate api auth header".to_string())?;
+            let value = if format == "raw" {
+                secret_trimmed.to_string()
+            } else {
+                format!("Bearer {}", secret_trimmed)
+            };
+            builder = builder.header(
+                header_name,
+                HeaderValue::from_str(value.as_str())
+                    .map_err(|_| "invalid aggregate api secret".to_string())?,
+            );
+        }
+        AggregateApiAuthConfig::ApiKeyQuery { .. } => {}
+        AggregateApiAuthConfig::UserPassBasic
+        | AggregateApiAuthConfig::UserPassHeaderPair { .. }
+        | AggregateApiAuthConfig::UserPassQueryPair { .. } => {
+            let parsed: UserPassSecret = serde_json::from_str(secret_trimmed)
+                .map_err(|_| "invalid aggregate api secret".to_string())?;
+            match auth_config {
+                AggregateApiAuthConfig::UserPassBasic => {
+                    builder = builder.basic_auth(parsed.username, Some(parsed.password));
+                }
+                AggregateApiAuthConfig::UserPassHeaderPair {
+                    username_name,
+                    password_name,
+                } => {
+                    let user_header = HeaderName::from_bytes(username_name.as_bytes())
+                        .map_err(|_| "invalid aggregate api auth header".to_string())?;
+                    let pass_header = HeaderName::from_bytes(password_name.as_bytes())
+                        .map_err(|_| "invalid aggregate api auth header".to_string())?;
+                    builder = builder.header(
+                        user_header,
+                        HeaderValue::from_str(parsed.username.as_str())
+                            .map_err(|_| "invalid aggregate api secret".to_string())?,
+                    );
+                    builder = builder.header(
+                        pass_header,
+                        HeaderValue::from_str(parsed.password.as_str())
+                            .map_err(|_| "invalid aggregate api secret".to_string())?,
+                    );
+                }
+                AggregateApiAuthConfig::UserPassQueryPair { .. } => {}
+                _ => {}
+            }
+        }
+    }
     if !body.is_empty() {
         builder = builder.body(body.clone());
     }
@@ -404,6 +681,18 @@ pub(in super::super) fn proxy_aggregate_request(
             continue;
         };
 
+        let effective_path = effective_action_path(&candidate, path);
+        let (auth_config, injected_headers) = match parse_auth_config(&candidate) {
+            Ok(value) => value,
+            Err(err) => {
+                last_attempt_url = Some(candidate_url.clone());
+                last_attempt_supplier_name = candidate_supplier_name.clone();
+                last_attempt_error = Some(err);
+                last_failure_status = 502;
+                continue;
+            }
+        };
+
         let mut succeeded = false;
         for attempt_idx in 0..=AGGREGATE_API_RETRY_ATTEMPTS_PER_CHANNEL {
             if super::super::support::deadline::is_expired(request_deadline) {
@@ -453,8 +742,9 @@ pub(in super::super) fn proxy_aggregate_request(
                 return Ok(());
             }
 
-            let url =
-                match reqwest::Url::parse(candidate_url.as_str()).and_then(|url| url.join(path)) {
+            let mut url = match reqwest::Url::parse(candidate_url.as_str())
+                .and_then(|url| url.join(effective_path.as_str()))
+            {
                     Ok(url) => url,
                     Err(_) => {
                         last_attempt_url = Some(candidate_url.clone());
@@ -465,6 +755,22 @@ pub(in super::super) fn proxy_aggregate_request(
                     }
                 };
 
+            match &auth_config {
+                AggregateApiAuthConfig::ApiKeyQuery { name } => {
+                    url = replace_query_param(url, name.as_str(), secret.trim());
+                }
+                AggregateApiAuthConfig::UserPassQueryPair {
+                    username_name,
+                    password_name,
+                } => {
+                    let parsed: UserPassSecret = serde_json::from_str(secret.trim())
+                        .map_err(|_| "invalid aggregate api secret".to_string())?;
+                    url = replace_query_param(url, username_name.as_str(), parsed.username.as_str());
+                    url = replace_query_param(url, password_name.as_str(), parsed.password.as_str());
+                }
+                _ => {}
+            }
+
             let builder = build_aggregate_api_request(
                 &client,
                 request.as_ref().expect("request should still be available"),
@@ -472,6 +778,8 @@ pub(in super::super) fn proxy_aggregate_request(
                 url.clone(),
                 body,
                 secret.as_str(),
+                &auth_config,
+                &injected_headers,
                 request_deadline,
                 is_stream,
             )?;
@@ -722,6 +1030,9 @@ mod bridge_tests {
             supplier_name: None,
             sort,
             url: format!("https://{id}.example.com"),
+            auth_type: AGGREGATE_API_AUTH_APIKEY.to_string(),
+            auth_params_json: None,
+            action: None,
             status: "active".to_string(),
             created_at: sort,
             updated_at: sort,

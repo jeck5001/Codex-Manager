@@ -107,6 +107,9 @@ export interface AggregateApi {
   supplierName: string | null;
   sort: number;
   url: string;
+  authType: string;
+  authParams: Record<string, unknown> | null;
+  action: string | null;
   status: string;
   createdAt: number | null;
   updatedAt: number | null;
@@ -118,6 +121,14 @@ export interface AggregateApi {
 export interface AggregateApiCreateResult {
   id: string;
   key: string;
+}
+
+export interface AggregateApiSecretResult {
+  id: string;
+  key: string;
+  authType: string;
+  username: string | null;
+  password: string | null;
 }
 
 export interface AggregateApiTestResult {
