@@ -494,6 +494,16 @@ def _normalize_temp_mail_domain_configs(settings) -> list[dict]:
     return [legacy] if legacy else []
 
 
+def _reset_temp_mail_domain_health_fields(config: dict) -> dict:
+    normalized = dict(config or {})
+    normalized["register_success_count"] = 0
+    normalized["register_fail_400_count"] = 0
+    normalized["register_consecutive_fail_400"] = 0
+    normalized["last_register_error"] = ""
+    normalized["cooldown_until"] = ""
+    return normalized
+
+
 class EmailCodeSettings(BaseModel):
     """验证码等待设置"""
     timeout: int = 240  # 验证码等待超时（秒）
@@ -598,6 +608,29 @@ async def update_temp_mail_cloudflare_settings(request: TempMailCloudflareSettin
 
     update_settings(**update_dict)
     return {"success": True, "message": "Cloudflare 临时邮箱设置已更新"}
+
+
+@router.post("/temp-mail/cloudflare/domain-configs/{config_id}/reset-stats")
+async def reset_temp_mail_domain_stats(config_id: str):
+    """重置单个 Temp-Mail 域名配置的健康统计。"""
+    settings = get_settings()
+    normalized_id = str(config_id or "").strip()
+    domain_configs = _normalize_temp_mail_domain_configs(settings)
+
+    updated_configs: list[dict] = []
+    found = False
+    for item in domain_configs:
+        normalized = dict(item or {})
+        if str(normalized.get("id") or "").strip() == normalized_id:
+            normalized = _reset_temp_mail_domain_health_fields(normalized)
+            found = True
+        updated_configs.append(normalized)
+
+    if not found:
+        raise HTTPException(status_code=404, detail=f"域名配置不存在: {normalized_id}")
+
+    update_settings(temp_mail_domain_configs=updated_configs)
+    return {"success": True, "message": "域名统计已重置", "config_id": normalized_id}
 
 
 # ============== 验证码等待设置 ==============

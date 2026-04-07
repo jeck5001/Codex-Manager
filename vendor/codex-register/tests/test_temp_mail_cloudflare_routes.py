@@ -130,6 +130,45 @@ class TempMailCloudflareRoutesTests(unittest.TestCase):
         self.assertEqual(payload["temp_mail_domain_configs"][0]["id"], "cfg-1")
         self.assertEqual(payload["temp_mail_domain_configs"][0]["domain_base"], "mail.example.com")
 
+    def test_reset_domain_stats_resets_health_fields(self):
+        settings_module._settings.temp_mail_domain_configs = [
+            {
+                "id": "cfg-1",
+                "name": "主域名",
+                "zone_id": "zone-1",
+                "domain_base": "mail.example.com",
+                "subdomain_mode": "random",
+                "subdomain_length": 6,
+                "subdomain_prefix": "tm",
+                "sync_cloudflare_enabled": True,
+                "require_cloudflare_sync": True,
+                "enabled": True,
+                "priority": 1,
+                "register_success_count": 7,
+                "register_fail_400_count": 3,
+                "register_consecutive_fail_400": 2,
+                "last_register_error": "注册密码失败",
+                "cooldown_until": "2099-01-01T00:00:00",
+            }
+        ]
+
+        response = self.client.post("/api/settings/temp-mail/cloudflare/domain-configs/cfg-1/reset-stats")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("temp_mail_domain_configs", self.updated_values)
+        reset_config = self.updated_values["temp_mail_domain_configs"][0]
+        self.assertEqual(reset_config["register_success_count"], 0)
+        self.assertEqual(reset_config["register_fail_400_count"], 0)
+        self.assertEqual(reset_config["register_consecutive_fail_400"], 0)
+        self.assertEqual(reset_config["last_register_error"], "")
+        self.assertEqual(reset_config["cooldown_until"], "")
+        self.assertTrue(reset_config["enabled"])
+        self.assertEqual(reset_config["priority"], 1)
+
+    def test_reset_domain_stats_missing_config_returns_404(self):
+        response = self.client.post("/api/settings/temp-mail/cloudflare/domain-configs/not-found/reset-stats")
+        self.assertEqual(response.status_code, 404)
+
     def test_post_invalid_subdomain_mode_is_rejected(self):
         response = self.client.post(
             "/api/settings/temp-mail/cloudflare",
