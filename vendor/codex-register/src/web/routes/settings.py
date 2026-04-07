@@ -428,6 +428,13 @@ class TempMailDomainConfig(BaseModel):
     subdomain_prefix: str = "tm"
     sync_cloudflare_enabled: bool = True
     require_cloudflare_sync: bool = True
+    enabled: bool = True
+    priority: int = 0
+    register_success_count: int = 0
+    register_fail_400_count: int = 0
+    register_consecutive_fail_400: int = 0
+    last_register_error: str = ""
+    cooldown_until: str = ""
 
     @field_validator("id", "name", "zone_id", "domain_base")
     @classmethod

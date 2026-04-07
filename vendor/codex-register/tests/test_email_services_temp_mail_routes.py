@@ -348,7 +348,7 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         self.assertEqual(fake_db.added[0].config["domain_config_id"], "cfg-2")
         self.assertEqual(fake_db.added[0].config["domain_config_name"], "备用域名")
 
-    def test_temp_mail_create_randomly_selects_domain_config_when_multiple_exist(self):
+    def test_temp_mail_create_prefers_stable_best_domain_config_when_multiple_exist(self):
         fake_db = _FakeDB(first_results=[None])
         self.module.get_db = lambda: _DBContext(fake_db)
         provisioner_inits: List[dict] = []
@@ -418,28 +418,131 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
             ],
         )
 
-        with patch.object(self.module, "random", create=True) as random_module:
-            random_module.choice.side_effect = lambda items: items[1]
-            response = self.client.post(
-                "/api/email-services",
-                json={
-                    "service_type": "temp_mail",
-                    "name": "",
-                    "config": {},
-                    "enabled": True,
-                    "priority": 0,
-                },
-            )
+        response = self.client.post(
+            "/api/email-services",
+            json={
+                "service_type": "temp_mail",
+                "name": "",
+                "config": {},
+                "enabled": True,
+                "priority": 0,
+            },
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(provisioner_inits), 1)
-        self.assertEqual(provisioner_inits[0]["zone_id"], "zone-2")
-        self.assertEqual(provisioner_inits[0]["domain_base"], "backup.example.com")
-        self.assertEqual(provisioner_inits[0]["mode"], "sequence")
-        self.assertEqual(provisioner_inits[0]["length"], 8)
-        self.assertEqual(provisioner_inits[0]["prefix"], "bk")
-        self.assertEqual(fake_db.added[0].config["domain_config_id"], "cfg-2")
-        self.assertEqual(fake_db.added[0].config["domain_config_name"], "备用域名")
+        self.assertEqual(provisioner_inits[0]["zone_id"], "zone-1")
+        self.assertEqual(provisioner_inits[0]["domain_base"], "primary.example.com")
+        self.assertEqual(provisioner_inits[0]["mode"], "random")
+        self.assertEqual(provisioner_inits[0]["length"], 6)
+        self.assertEqual(provisioner_inits[0]["prefix"], "tm")
+        self.assertEqual(fake_db.added[0].config["domain_config_id"], "cfg-1")
+        self.assertEqual(fake_db.added[0].config["domain_config_name"], "主域名")
+
+    def test_apply_temp_mail_domain_config_prefers_healthy_domain_over_cooled_down_one(self):
+        settings = types.SimpleNamespace(
+            temp_mail_domain_configs=[
+                {
+                    "id": "cfg-1",
+                    "name": "主域名",
+                    "zone_id": "zone-1",
+                    "domain_base": "primary.example.com",
+                    "subdomain_mode": "random",
+                    "subdomain_length": 6,
+                    "subdomain_prefix": "tm",
+                    "sync_cloudflare_enabled": True,
+                    "require_cloudflare_sync": True,
+                    "enabled": True,
+                    "priority": 0,
+                    "register_success_count": 0,
+                    "register_fail_400_count": 3,
+                    "register_consecutive_fail_400": 2,
+                    "cooldown_until": "2099-01-01T00:00:00",
+                },
+                {
+                    "id": "cfg-2",
+                    "name": "备用域名",
+                    "zone_id": "zone-2",
+                    "domain_base": "backup.example.com",
+                    "subdomain_mode": "sequence",
+                    "subdomain_length": 8,
+                    "subdomain_prefix": "bk",
+                    "sync_cloudflare_enabled": False,
+                    "require_cloudflare_sync": False,
+                    "enabled": True,
+                    "priority": 0,
+                    "register_success_count": 5,
+                    "register_fail_400_count": 0,
+                    "register_consecutive_fail_400": 0,
+                    "cooldown_until": "",
+                },
+            ],
+            temp_mail_domain_base="global.example.com",
+            cloudflare_zone_id="zone-global",
+            temp_mail_subdomain_mode="random",
+            temp_mail_subdomain_length=6,
+            temp_mail_subdomain_prefix="tm",
+            temp_mail_sync_cloudflare_enabled=True,
+            temp_mail_require_cloudflare_sync=True,
+        )
+
+        prepared = self.module._apply_temp_mail_domain_config({}, settings)
+
+        self.assertEqual(prepared["domain_config_id"], "cfg-2")
+        self.assertEqual(prepared["domain_config_name"], "备用域名")
+        self.assertEqual(prepared["cloudflare_zone_id"], "zone-2")
+        self.assertEqual(prepared["temp_mail_domain_base"], "backup.example.com")
+
+    def test_record_temp_mail_domain_registration_outcome_persists_400_penalty_and_cooldown(self):
+        settings = types.SimpleNamespace(
+            temp_mail_domain_configs=[
+                {
+                    "id": "cfg-1",
+                    "name": "主域名",
+                    "zone_id": "zone-1",
+                    "domain_base": "primary.example.com",
+                    "subdomain_mode": "random",
+                    "subdomain_length": 6,
+                    "subdomain_prefix": "tm",
+                    "sync_cloudflare_enabled": True,
+                    "require_cloudflare_sync": True,
+                    "enabled": True,
+                    "priority": 0,
+                    "register_success_count": 1,
+                    "register_fail_400_count": 1,
+                    "register_consecutive_fail_400": 1,
+                    "cooldown_until": "",
+                    "last_register_error": "",
+                }
+            ],
+            temp_mail_domain_base="global.example.com",
+            cloudflare_zone_id="zone-global",
+            temp_mail_subdomain_mode="random",
+            temp_mail_subdomain_length=6,
+            temp_mail_subdomain_prefix="tm",
+            temp_mail_sync_cloudflare_enabled=True,
+            temp_mail_require_cloudflare_sync=True,
+        )
+        captured = {}
+        self.module.get_settings = lambda: settings
+        self.module.update_settings = lambda **kwargs: captured.update(kwargs)
+
+        updated = self.module.record_temp_mail_domain_registration_outcome(
+            "cfg-1",
+            success=False,
+            failure_http_status=400,
+            error_message="注册密码失败",
+        )
+
+        self.assertEqual(updated["register_fail_400_count"], 2)
+        self.assertEqual(updated["register_consecutive_fail_400"], 2)
+        self.assertEqual(updated["last_register_error"], "注册密码失败")
+        self.assertTrue(updated["cooldown_until"])
+        self.assertIn("temp_mail_domain_configs", captured)
+        persisted = captured["temp_mail_domain_configs"][0]
+        self.assertEqual(persisted["id"], "cfg-1")
+        self.assertEqual(persisted["register_fail_400_count"], 2)
+        self.assertTrue(persisted["cooldown_until"])
 
     def test_temp_mail_create_provisioning_failure_returns_http_error_and_skips_insert(self):
         fake_db = _FakeDB(first_results=[None])
