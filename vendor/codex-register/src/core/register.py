@@ -528,6 +528,56 @@ class RegistrationEngine:
             f"set-cookie={'yes' if has_set_cookie else 'no'}"
         )
 
+    def _sync_browser_cookies_to_session(self, cookies: Any) -> int:
+        """将浏览器上下文中的关键 cookie 回灌到当前 HTTP 会话。"""
+        session = getattr(self, "session", None)
+        cookie_store = getattr(session, "cookies", None) if session else None
+        if cookie_store is None or not isinstance(cookies, list):
+            return 0
+
+        synced: list[str] = []
+        for item in cookies:
+            if not isinstance(item, dict):
+                continue
+
+            name = self._clean_text(item.get("name"))
+            value = self._clean_text(item.get("value"))
+            if not name or not value:
+                continue
+
+            domain = self._clean_text(item.get("domain"))
+            if not domain:
+                raw_url = self._clean_text(item.get("url"))
+                if raw_url:
+                    try:
+                        domain = self._clean_text(urllib.parse.urlsplit(raw_url).hostname)
+                    except Exception:
+                        domain = ""
+            path = self._clean_text(item.get("path")) or "/"
+
+            try:
+                if domain:
+                    cookie_store.set(name, value, domain=domain, path=path)
+                    synced.append(f"{name}@{domain}")
+                else:
+                    cookie_store.set(name, value, path=path)
+                    synced.append(name)
+            except TypeError:
+                try:
+                    cookie_store.set(name, value)
+                    synced.append(f"{name}@fallback")
+                except Exception:
+                    continue
+            except Exception:
+                continue
+
+        if synced:
+            self._log(
+                "浏览器 Sentinel 已同步 Cookie: " + ", ".join(synced[:8]),
+                "warning",
+            )
+        return len(synced)
+
     def _session_browser_cookies(self) -> list[dict[str, Any]]:
         """导出适合 Playwright 注入的结构化 cookie，保留域名维度。"""
         if not self.session or not getattr(self.session, "cookies", None):
@@ -786,6 +836,13 @@ class RegistrationEngine:
             did=did,
             flow=normalized_flow,
         )
+        if isinstance(payload, dict):
+            synced_count = self._sync_browser_cookies_to_session(payload.get("cookies"))
+            if synced_count:
+                self._log(
+                    f"浏览器 Sentinel Cookie 同步后会话摘要: {self._session_cookie_debug_summary()}",
+                    "warning",
+                )
         if normalized and normalized.get("t"):
             self._log(f"浏览器 Sentinel token 获取成功，flow={normalized_flow}")
             return normalized
