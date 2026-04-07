@@ -47,10 +47,11 @@ class EmailServicesTempMailFormLogicTests(unittest.TestCase):
         cls.js_text = (root / "static" / "js" / "email_services.js").read_text(encoding="utf-8")
         cls.routes_module = _load_email_services_module()
 
-    def test_add_temp_mail_form_uses_auto_domain_hint_and_no_manual_domain_input(self):
+    def test_add_temp_mail_form_supports_auto_or_manual_domain_input(self):
         self.assertIn('id="add-tempmail-fields"', self.template_text)
-        self.assertIn("创建时自动生成固定子域名", self.template_text)
-        self.assertNotIn('id="custom-tm-domain"', self.template_text)
+        self.assertIn("自动生成固定子域名", self.template_text)
+        self.assertIn('id="custom-tm-domain"', self.template_text)
+        self.assertIn("不填则自动生成固定子域名", self.template_text)
 
     def test_edit_temp_mail_form_keeps_domain_visible_but_read_only(self):
         self.assertIn('id="edit-tm-domain"', self.template_text)
@@ -59,7 +60,7 @@ class EmailServicesTempMailFormLogicTests(unittest.TestCase):
             r'<input[^>]*id="edit-tm-domain"[^>]*readonly',
         )
 
-    def test_js_temp_mail_create_payload_does_not_submit_domain(self):
+    def test_js_temp_mail_create_payload_uses_optional_domain(self):
         fn = re.search(
             r"async function handleAddCustom\(e\) \{(?P<body>[\s\S]*?)\n\}",
             self.js_text,
@@ -71,8 +72,8 @@ class EmailServicesTempMailFormLogicTests(unittest.TestCase):
         )
         self.assertIsNotNone(match)
         tempmail_create_block = match.group("block")
-        self.assertNotIn("tm_domain", tempmail_create_block)
-        self.assertNotIn("domain:", tempmail_create_block)
+        self.assertIn("tm_domain", tempmail_create_block)
+        self.assertIn("domain", tempmail_create_block)
 
     def test_js_temp_mail_edit_payload_does_not_submit_domain(self):
         fn = re.search(
@@ -88,6 +89,156 @@ class EmailServicesTempMailFormLogicTests(unittest.TestCase):
         tempmail_edit_block = match.group("block")
         self.assertNotIn("tm_domain", tempmail_edit_block)
         self.assertNotIn("domain:", tempmail_edit_block)
+
+    def test_js_temp_mail_create_payload_submits_domain_only_when_present(self):
+        export_snippet = """
+;globalThis.__testExports = {
+  handleAddCustom,
+};
+"""
+        script = f"""
+const vm = require('vm');
+
+const source = {json.dumps(self.js_text + export_snippet)};
+
+function createElement(id) {{
+  return {{
+    id,
+    value: '',
+    checked: false,
+    disabled: false,
+    textContent: '',
+    innerHTML: '',
+    style: {{}},
+    dataset: {{}},
+    classList: {{
+      add() {{}},
+      remove() {{}},
+      contains() {{ return false; }},
+    }},
+    addEventListener() {{}},
+    querySelectorAll() {{ return []; }},
+    querySelector() {{ return null; }},
+    appendChild() {{}},
+    removeChild() {{}},
+    focus() {{}},
+    reset() {{}},
+  }};
+}}
+
+const elementsById = new Map([
+  ['add-custom-modal', createElement('add-custom-modal')],
+  ['add-custom-form', createElement('add-custom-form')],
+]);
+
+const posted = [];
+const toastMessages = [];
+
+class FakeFormData {{
+  constructor(target) {{
+    this.map = new Map(Object.entries(target.__values || {{}}));
+  }}
+
+  get(name) {{
+    return this.map.has(name) ? this.map.get(name) : null;
+  }}
+}}
+
+const context = {{
+  FormData: FakeFormData,
+  api: {{
+    async post(url, payload) {{
+      posted.push({{ url, payload }});
+      return {{ success: true }};
+    }},
+  }},
+  confirm: async () => true,
+  console,
+  document: {{
+    getElementById(id) {{
+      if (!elementsById.has(id)) {{
+        elementsById.set(id, createElement(id));
+      }}
+      return elementsById.get(id);
+    }},
+    addEventListener() {{}},
+    createElement() {{
+      return createElement('generated');
+    }},
+  }},
+  format: {{ date: () => '' }},
+  Map,
+  parseInt,
+  Promise,
+  Set,
+  toast: {{
+    success(message) {{
+      toastMessages.push({{ level: 'success', message }});
+    }},
+    error(message) {{
+      toastMessages.push({{ level: 'error', message }});
+    }},
+  }},
+}};
+context.globalThis = context;
+
+vm.createContext(context);
+vm.runInContext(source, context);
+
+const {{ handleAddCustom }} = context.__testExports;
+
+async function run(values) {{
+  const target = {{
+    __values: values,
+    reset() {{}},
+  }};
+  await handleAddCustom({{
+    preventDefault() {{}},
+    target,
+  }});
+  return posted.pop().payload;
+}}
+
+(async () => {{
+  const selectedPayload = await run({{
+    sub_type: 'tempmail',
+    name: 'temp-mail-a',
+    tm_base_url: 'https://worker.example.com',
+    tm_admin_password: 'secret',
+    tm_domain: 'custom.a.example.com',
+    enabled: 'on',
+    priority: '7',
+  }});
+
+  const autoPayload = await run({{
+    sub_type: 'tempmail',
+    name: 'temp-mail-b',
+    tm_base_url: 'https://worker.example.com',
+    tm_admin_password: 'secret',
+    tm_domain: '',
+    enabled: 'on',
+    priority: '3',
+  }});
+
+  process.stdout.write(JSON.stringify({{
+    selectedPayload,
+    autoPayload,
+    toastMessages,
+  }}));
+}})().catch((error) => {{
+  process.stderr.write(String(error.stack || error));
+  process.exit(1);
+}});
+"""
+        completed = subprocess.run(
+            ["node", "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payloads = json.loads(completed.stdout)
+        self.assertEqual(payloads["selectedPayload"]["config"]["domain"], "custom.a.example.com")
+        self.assertNotIn("domain", payloads["autoPayload"]["config"])
 
     def test_cloudflare_settings_ui_and_endpoints_are_present(self):
         self.assertIn("Cloudflare Temp Mail 设置", self.template_text)

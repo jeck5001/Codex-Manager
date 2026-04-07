@@ -151,6 +151,19 @@ class CloudflareTempMailProvisioner:
         alphabet = string.ascii_lowercase + string.digits
         return "".join(secrets.choice(alphabet) for _ in range(length))
 
+    def _normalize_requested_domain(self, value: Optional[str]) -> str:
+        return self._normalize_str(value).strip(".").lower()
+
+    def _validate_requested_domain(self, domain: str) -> str:
+        normalized = self._normalize_requested_domain(domain)
+        if not normalized:
+            raise CloudflareProvisioningError("requested domain is empty")
+        if self._domain_base and normalized != self._domain_base and not normalized.endswith(f".{self._domain_base}"):
+            raise CloudflareProvisioningError(
+                f"requested domain does not belong to temp_mail_domain_base: {normalized}"
+            )
+        return normalized
+
     @staticmethod
     def _to_base36(value: int) -> str:
         digits = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -476,9 +489,13 @@ class CloudflareTempMailProvisioner:
             return cleanup_result
         return None
 
-    def provision_domain(self) -> Dict[str, Any]:
-        label = self._generate_label()
-        domain = self._compose_domain(label)
+    def provision_domain(self, requested_domain: Optional[str] = None) -> Dict[str, Any]:
+        normalized_requested_domain = self._normalize_requested_domain(requested_domain)
+        if normalized_requested_domain:
+            domain = self._validate_requested_domain(normalized_requested_domain)
+        else:
+            label = self._generate_label()
+            domain = self._compose_domain(label)
         subdomain_payload = self.create_subdomain(domain)
         cleanup_context = {
             "domain": domain,

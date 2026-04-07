@@ -147,7 +147,7 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
             def __init__(self, *_args, **_kwargs):
                 pass
 
-            def provision_domain(self):
+            def provision_domain(self, requested_domain=None):
                 events.append("provision")
                 return {
                     "persisted_config": {
@@ -267,6 +267,84 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
         self.assertEqual(fake_db.added[0].config["base_url"], "https://worker.example.com")
         self.assertEqual(fake_db.added[0].config["admin_password"], "secret")
         self.assertEqual(fake_db.added[0].config["domain"], "tm-fixed.mail.example.com")
+
+    def test_temp_mail_create_uses_explicit_domain_when_provided(self):
+        fake_db = _FakeDB(first_results=[None])
+        self.module.get_db = lambda: _DBContext(fake_db)
+        provisioner_calls: List[dict] = []
+
+        class FakeProvisioner:
+            def __init__(self, settings, *_args, **kwargs):
+                overrides = kwargs.get("overrides") or {}
+                provisioner_calls.append(
+                    {
+                        "zone_id": overrides.get("cloudflare_zone_id", settings.cloudflare_zone_id),
+                        "domain_base": overrides.get("temp_mail_domain_base", settings.temp_mail_domain_base),
+                    }
+                )
+
+            def provision_domain(self, requested_domain=None):
+                provisioner_calls[-1]["requested_domain"] = requested_domain
+                return {
+                    "persisted_config": {
+                        "domain": requested_domain,
+                    },
+                    "cleanup_context": {
+                        "domain": requested_domain,
+                    },
+                }
+
+        self.module.CloudflareTempMailProvisioner = FakeProvisioner
+        self.module.get_settings = lambda: types.SimpleNamespace(
+            temp_mail_base_url="https://worker.example.com",
+            temp_mail_admin_password=SecretStr("secret"),
+            cloudflare_api_token=SecretStr("token"),
+            cloudflare_api_email="",
+            cloudflare_global_api_key=SecretStr(""),
+            cloudflare_account_id="acc-1",
+            cloudflare_zone_id="zone-global",
+            cloudflare_worker_name="temp-email",
+            temp_mail_domain_base="global.example.com",
+            temp_mail_subdomain_mode="random",
+            temp_mail_subdomain_length=6,
+            temp_mail_subdomain_prefix="tm",
+            temp_mail_sync_cloudflare_enabled=True,
+            temp_mail_require_cloudflare_sync=True,
+            temp_mail_domain_configs=[
+                {
+                    "id": "cfg-1",
+                    "name": "主域名",
+                    "zone_id": "zone-1",
+                    "domain_base": "a.example.com",
+                    "subdomain_mode": "random",
+                    "subdomain_length": 6,
+                    "subdomain_prefix": "tm",
+                    "sync_cloudflare_enabled": True,
+                    "require_cloudflare_sync": True,
+                }
+            ],
+        )
+
+        response = self.client.post(
+            "/api/email-services",
+            json={
+                "service_type": "temp_mail",
+                "name": "Manual Temp Mail",
+                "config": {
+                    "domain": "custom.a.example.com",
+                },
+                "enabled": True,
+                "priority": 0,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(provisioner_calls), 1)
+        self.assertEqual(provisioner_calls[0]["zone_id"], "zone-1")
+        self.assertEqual(provisioner_calls[0]["domain_base"], "a.example.com")
+        self.assertEqual(provisioner_calls[0]["requested_domain"], "custom.a.example.com")
+        self.assertEqual(fake_db.added[0].config["domain"], "custom.a.example.com")
+        self.assertEqual(fake_db.added[0].config["domain_config_id"], "cfg-1")
 
     def test_temp_mail_create_uses_selected_domain_config_snapshot(self):
         fake_db = _FakeDB(first_results=[None])
@@ -691,7 +769,7 @@ class EmailServicesTempMailRoutesTests(unittest.TestCase):
             def __init__(self, *_args, **_kwargs):
                 pass
 
-            def provision_domain(self):
+            def provision_domain(self, requested_domain=None):
                 return {
                     "persisted_config": {
                         "domain": "tm-fixed.mail.example.com",
