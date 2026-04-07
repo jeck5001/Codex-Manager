@@ -190,6 +190,49 @@ OAuthStart = sys.modules["src.core.oauth"].OAuthStart
 
 
 class RegisterAddPhoneTests(unittest.TestCase):
+    def test_session_cookie_debug_summary_reports_key_cookie_flags(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine._session_cookie_items = lambda: [
+            ("cf_clearance", "cf-token"),
+            ("oai-did", "did-123"),
+            ("__Host-next-auth.csrf-token", "csrf-token"),
+            ("__Secure-next-auth.session-token", "session-token"),
+            ("misc", "value"),
+        ]
+
+        summary = engine._session_cookie_debug_summary()
+
+        self.assertIn("count=5", summary)
+        self.assertIn("cf_clearance=yes", summary)
+        self.assertIn("oai-did=yes", summary)
+        self.assertIn("csrf=yes", summary)
+        self.assertIn("session=yes", summary)
+        self.assertIn("names=cf_clearance,oai-did,__Host-next-auth.csrf-token,__Secure-next-auth.session-token,misc", summary)
+
+    def test_auth_response_debug_summary_includes_location_and_set_cookie(self):
+        class FakeHeaders(dict):
+            def get(self, key, default=None):
+                return super().get(key, default)
+
+        class FakeResponse:
+            status_code = 302
+            url = "https://auth.openai.com/create-account/password"
+            headers = FakeHeaders({
+                "content-type": "text/html; charset=utf-8",
+                "location": "https://auth.openai.com/u/next",
+                "set-cookie": "cf_clearance=abc; Path=/; Secure",
+            })
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+
+        summary = engine._auth_response_debug_summary(FakeResponse())
+
+        self.assertIn("status=302", summary)
+        self.assertIn("url=https://auth.openai.com/create-account/password", summary)
+        self.assertIn("content-type=text/html; charset=utf-8", summary)
+        self.assertIn("location=https://auth.openai.com/u/next", summary)
+        self.assertIn("set-cookie=yes", summary)
+
     def test_session_browser_cookies_preserve_duplicate_names_across_domains(self):
         class FakeCookie:
             def __init__(self, name, value, domain, path="/", secure=True, http_only=False):
