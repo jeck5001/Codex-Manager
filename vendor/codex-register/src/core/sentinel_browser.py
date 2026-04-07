@@ -16,15 +16,13 @@ import logging
 import urllib.parse
 from typing import Any, Callable, Dict, Optional
 
+from .http_client import OPENAI_BROWSER_USER_AGENT
+
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_SENTINEL_TARGET_URL = "https://auth.openai.com/about-you"
-DEFAULT_SENTINEL_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/136.0.7103.92 Safari/537.36"
-)
+DEFAULT_SENTINEL_USER_AGENT = OPENAI_BROWSER_USER_AGENT
 
 
 def _log(callback_logger: Optional[Callable[[str], None]], message: str):

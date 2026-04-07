@@ -84,6 +84,11 @@ def load_register_module():
 
     http_client_module.OpenAIHTTPClient = OpenAIHTTPClient
     http_client_module.HTTPClientError = HTTPClientError
+    http_client_module.OPENAI_BROWSER_USER_AGENT = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
     sys.modules["src.core.http_client"] = http_client_module
 
     services_module = types.ModuleType("src.services")
