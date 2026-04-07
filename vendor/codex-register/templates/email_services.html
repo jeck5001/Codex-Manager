@@ -267,6 +267,20 @@
                             <button type="submit" class="btn btn-primary" id="save-cf-settings-btn" disabled>💾 保存 Cloudflare 设置</button>
                         </div>
                     </form>
+                    <div style="margin-top: var(--spacing-lg); border-top: 1px solid var(--border-light); padding-top: var(--spacing-lg);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
+                            <div>
+                                <h4 style="margin: 0;">域名健康状态</h4>
+                                <small style="color: var(--text-muted);">自动创建 Temp-Mail 时会优先选择成功率更高且未冷却的域名。</small>
+                            </div>
+                        </div>
+                        <div id="cf-domain-configs-empty" class="empty-state" style="display: none;">
+                            <div class="empty-state-icon">📭</div>
+                            <div class="empty-state-title">暂无域名配置</div>
+                            <div class="empty-state-description">先在 Cloudflare Temp-Mail 设置里添加域名配置，系统才能自动分配健康域名。</div>
+                        </div>
+                        <div id="cf-domain-configs-container" class="table-container"></div>
+                    </div>
                 </div>
             </div>
         </main>

@@ -8,6 +8,7 @@ let customServices = [];  // 合并 custom_domain + temp_mail
 let selectedOutlook = new Set();
 let selectedCustom = new Set();
 let cloudflareSettingsReady = false;
+let cloudflareDomainConfigs = [];
 
 // DOM 元素
 const elements = {
@@ -58,6 +59,8 @@ const elements = {
     cfSyncEnabled: document.getElementById('cf-sync-enabled'),
     cfRequireSync: document.getElementById('cf-require-sync'),
     saveCfSettingsBtn: document.getElementById('save-cf-settings-btn'),
+    cfDomainConfigsContainer: document.getElementById('cf-domain-configs-container'),
+    cfDomainConfigsEmpty: document.getElementById('cf-domain-configs-empty'),
 
     // 添加自定义域名模态框
     addCustomModal: document.getElementById('add-custom-modal'),
@@ -538,6 +541,7 @@ async function loadCloudflareSettings() {
         elements.cfSubdomainPrefix.value = settings.temp_mail_subdomain_prefix || '';
         elements.cfSyncEnabled.checked = settings.temp_mail_sync_cloudflare_enabled !== false;
         elements.cfRequireSync.checked = settings.temp_mail_require_cloudflare_sync !== false;
+        renderCloudflareDomainConfigs(settings.temp_mail_domain_configs || []);
         cloudflareSettingsReady = true;
         if (elements.saveCfSettingsBtn) {
             elements.saveCfSettingsBtn.disabled = false;
@@ -553,6 +557,30 @@ async function loadCloudflareSettings() {
         }
         if (elements.cfGlobalApiKeyHint) {
             elements.cfGlobalApiKeyHint.textContent = '加载失败，请稍后重试';
+        }
+        renderCloudflareDomainConfigs([]);
+    }
+}
+
+async function resetCloudflareDomainStats(domainConfigId, button) {
+    if (!domainConfigId) return;
+
+    const trigger = button || null;
+    const originalLabel = trigger ? trigger.textContent : '';
+    if (trigger) {
+        trigger.disabled = true;
+        trigger.textContent = '重置中...';
+    }
+
+    try {
+        await api.post(`/settings/temp-mail/cloudflare/domain-configs/${domainConfigId}/reset-stats`, {});
+        toast.success('域名统计已重置');
+        await loadCloudflareSettings();
+    } catch (error) {
+        toast.error('重置域名统计失败: ' + error.message);
+        if (trigger) {
+            trigger.disabled = false;
+            trigger.textContent = originalLabel;
         }
     }
 }
@@ -608,6 +636,84 @@ function updateBatchButtons() {
     const count = selectedOutlook.size;
     elements.batchDeleteOutlookBtn.disabled = count === 0;
     elements.batchDeleteOutlookBtn.textContent = count > 0 ? `🗑️ 删除选中 (${count})` : '🗑️ 批量删除';
+}
+
+function formatCloudflareCooldown(value) {
+    if (!value) return '未冷却';
+    return format.date(value) || value;
+}
+
+function getCloudflareDomainStatus(config) {
+    if (config.enabled === false) return { label: '禁用', className: 'disabled' };
+    if (config.cooldown_until) return { label: '冷却中', className: 'pending' };
+    return { label: '可用', className: 'active' };
+}
+
+function renderCloudflareDomainConfigs(configs) {
+    if (!elements.cfDomainConfigsContainer || !elements.cfDomainConfigsEmpty) return;
+    cloudflareDomainConfigs = Array.isArray(configs) ? configs : [];
+
+    if (cloudflareDomainConfigs.length === 0) {
+        elements.cfDomainConfigsContainer.innerHTML = '';
+        elements.cfDomainConfigsEmpty.style.display = '';
+        return;
+    }
+
+    elements.cfDomainConfigsEmpty.style.display = 'none';
+    elements.cfDomainConfigsContainer.innerHTML = `
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>基础域名</th>
+                    <th style="width: 90px;">状态</th>
+                    <th style="width: 80px;">成功</th>
+                    <th style="width: 100px;">密码400</th>
+                    <th style="width: 90px;">连败</th>
+                    <th>冷却到</th>
+                    <th>最近错误</th>
+                    <th style="width: 120px;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${cloudflareDomainConfigs.map((config) => {
+                    const status = getCloudflareDomainStatus(config);
+                    return `
+                        <tr data-domain-config-id="${escapeHtml(config.id)}">
+                            <td>
+                                <div style="font-weight: 600;">${escapeHtml(config.name || '-')}</div>
+                                <small style="color: var(--text-muted);">ID: ${escapeHtml(config.id || '-')}</small>
+                            </td>
+                            <td>${escapeHtml(config.domain_base || '-')}</td>
+                            <td><span class="status-badge ${status.className}">${status.label}</span></td>
+                            <td>${config.register_success_count || 0}</td>
+                            <td>${config.register_fail_400_count || 0}</td>
+                            <td>${config.register_consecutive_fail_400 || 0}</td>
+                            <td>${escapeHtml(formatCloudflareCooldown(config.cooldown_until))}</td>
+                            <td title="${escapeHtml(config.last_register_error || '')}">${escapeHtml(config.last_register_error || '-')}</td>
+                            <td>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-sm"
+                                    data-reset-domain-config-id="${escapeHtml(config.id)}"
+                                >
+                                    重置统计
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+
+    elements.cfDomainConfigsContainer
+        .querySelectorAll('[data-reset-domain-config-id]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                resetCloudflareDomainStats(button.dataset.resetDomainConfigId, button);
+            });
+        });
 }
 
 // HTML 转义

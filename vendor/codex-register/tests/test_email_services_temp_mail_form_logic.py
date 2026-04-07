@@ -109,6 +109,17 @@ class EmailServicesTempMailFormLogicTests(unittest.TestCase):
         self.assertIn("api.get('/settings/temp-mail/cloudflare')", self.js_text)
         self.assertIn("api.post('/settings/temp-mail/cloudflare'", self.js_text)
 
+    def test_cloudflare_domain_health_table_and_reset_action_are_present(self):
+        for field_id in (
+            "cf-domain-configs-container",
+            "cf-domain-configs-empty",
+        ):
+            self.assertIn(f'id="{field_id}"', self.template_text)
+
+        self.assertIn("function renderCloudflareDomainConfigs", self.js_text)
+        self.assertIn("/settings/temp-mail/cloudflare/domain-configs/${domainConfigId}/reset-stats", self.js_text)
+        self.assertIn("重置统计", self.js_text)
+
     def _run_cloudflare_button_lifecycle_scenario(self, reload_result: str):
         self.assertIn(reload_result, {"success", "failure"})
         export_snippet = """
