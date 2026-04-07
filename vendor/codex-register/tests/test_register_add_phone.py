@@ -1312,6 +1312,70 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertEqual(payload["flow"], "username_password_create")
         self.assertEqual(payload["t"], "browser-t")
 
+    def test_browser_sentinel_payload_syncs_browser_cookies_into_http_session(self):
+        class FakeCookieStore:
+            def __init__(self):
+                self.calls = []
+
+            def set(self, name, value, **kwargs):
+                self.calls.append((name, value, kwargs))
+
+        cookie_store = FakeCookieStore()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine._log = lambda *_args, **_kwargs: None
+        engine._current_device_id = "did-789"
+        engine.proxy_url = None
+        engine.session = types.SimpleNamespace(cookies=cookie_store)
+        engine._serialize_session_cookies = lambda: "oai-did=did-789"
+
+        original_fetch = REGISTER_MODULE.fetch_browser_sentinel_token
+
+        try:
+            def fake_fetch_browser_sentinel_token(**kwargs):
+                return {
+                    "p": "browser-p",
+                    "t": "browser-t",
+                    "c": "browser-c",
+                    "id": "did-789",
+                    "flow": kwargs["flow"],
+                    "cookies": [
+                        {
+                            "name": "cf_clearance",
+                            "value": "cf-cookie",
+                            "domain": ".openai.com",
+                            "path": "/",
+                            "secure": True,
+                        },
+                        {
+                            "name": "__Host-next-auth.csrf-token",
+                            "value": "csrf-cookie",
+                            "url": "https://auth.openai.com/",
+                            "secure": True,
+                            "httpOnly": True,
+                        },
+                    ],
+                }
+
+            REGISTER_MODULE.fetch_browser_sentinel_token = fake_fetch_browser_sentinel_token
+
+            payload = engine._get_browser_sentinel_payload(
+                "username_password_create",
+                "https://auth.openai.com/create-account/password",
+            )
+        finally:
+            REGISTER_MODULE.fetch_browser_sentinel_token = original_fetch
+
+        self.assertEqual(payload["flow"], "username_password_create")
+        self.assertEqual(payload["t"], "browser-t")
+        self.assertEqual(
+            cookie_store.calls,
+            [
+                ("cf_clearance", "cf-cookie", {"domain": ".openai.com", "path": "/"}),
+                ("__Host-next-auth.csrf-token", "csrf-cookie", {"domain": "auth.openai.com", "path": "/"}),
+            ],
+        )
+
     def test_generate_password_meets_current_policy(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
 

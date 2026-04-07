@@ -189,6 +189,30 @@ def fetch_browser_sentinel_token(
             if not normalized["c"]:
                 _log(callback_logger, "浏览器 Sentinel 未返回 c 字段")
                 return None
+
+            try:
+                browser_cookies = context.cookies([target_url, "https://auth.openai.com/"])
+            except Exception:
+                browser_cookies = []
+            if browser_cookies:
+                normalized["cookies"] = browser_cookies
+                interesting_names = []
+                for item in browser_cookies:
+                    name = str((item or {}).get("name") or "").strip()
+                    if not name:
+                        continue
+                    if (
+                        name == "cf_clearance"
+                        or "csrf" in name.lower()
+                        or "session" in name.lower()
+                    ):
+                        interesting_names.append(name)
+                if interesting_names:
+                    _log(
+                        callback_logger,
+                        "浏览器 Sentinel 附带 Cookie: " + ", ".join(interesting_names[:8]),
+                    )
+
             _log(
                 callback_logger,
                 "浏览器 Sentinel 成功"
