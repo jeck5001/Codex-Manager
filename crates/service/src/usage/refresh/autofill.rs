@@ -111,6 +111,7 @@ fn run_auto_register_pool_fill(
         crate::account_register::StartRegisterBatchInput {
             email_service_type: plan.service_type.as_str(),
             email_service_id: plan.email_service_id,
+            email_service_config: None,
             register_mode: None,
             browserbase_config_id: None,
             proxy: None,
