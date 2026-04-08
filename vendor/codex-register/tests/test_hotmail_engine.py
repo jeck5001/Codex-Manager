@@ -280,6 +280,41 @@ class HotmailEngineTests(unittest.TestCase):
         self.assertIn("url=https://signup.live.com/debug", result.error_message)
         self.assertIn("title=Debug Title", result.error_message)
 
+    def test_engine_promotes_snapshot_unsupported_challenge_over_page_structure_changed(self):
+        class FakeBrowserSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def open_signup(self):
+                return None
+
+            def submit_account_credentials(self, *, email, password):
+                return "page_structure_changed"
+
+            def build_debug_snapshot(self):
+                return (
+                    "url=https://signup.live.com/signup "
+                    "title=Let's prove you're human "
+                    "state=unsupported_challenge "
+                    "text=Press and hold the button."
+                )
+
+        engine = HotmailRegistrationEngine(
+            browser_factory=lambda **_kwargs: FakeBrowserSession(),
+            verification_provider=object(),
+            profile_factory=self._build_profile,
+        )
+
+        result = engine.run()
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.reason_code, HotmailFailureCode.UNSUPPORTED_CHALLENGE.value)
+        self.assertIn("Hotmail signup failed: unsupported_challenge", result.error_message)
+        self.assertIn("state=unsupported_challenge", result.error_message)
+
     def test_engine_fails_fast_on_phone_verification(self):
         class FakeBrowserSession:
             def __enter__(self):
