@@ -266,6 +266,30 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         except Exception:
             return ""
 
+    def build_debug_snapshot(self) -> str:
+        if self.page is None:
+            return ""
+
+        try:
+            title = str(self.page.title() or "").strip()
+        except Exception:
+            title = ""
+
+        text = " ".join(self._page_text().split())
+        state = ""
+        try:
+            state = str(self._detect_state() or "").strip()
+        except Exception:
+            state = ""
+
+        parts = [
+            f"url={str(self.page.url or '').strip()}",
+            f"title={title}",
+            f"state={state}",
+            f"text={text[:600]}",
+        ]
+        return " | ".join(part for part in parts if part and not part.endswith("="))
+
     def _detect_state(self) -> str:
         assert self.page is not None
         text = self._page_text().lower()
@@ -578,6 +602,19 @@ class HotmailRegistrationEngine:
             error_message=message,
         )
 
+    @staticmethod
+    def _append_debug_snapshot(message: str, session) -> str:
+        snapshot_builder = getattr(session, "build_debug_snapshot", None)
+        if not callable(snapshot_builder):
+            return message
+        try:
+            snapshot = str(snapshot_builder() or "").strip()
+        except Exception:
+            snapshot = ""
+        if not snapshot:
+            return message
+        return f"{message} | {snapshot}"
+
     def _state_to_failure(self, state: str) -> Optional[HotmailFailureCode]:
         mapping = {
             "phone_verification": HotmailFailureCode.PHONE_VERIFICATION_REQUIRED,
@@ -632,11 +669,14 @@ class HotmailRegistrationEngine:
 
         failure = self._state_to_failure(state)
         if failure is not None:
-            return self._build_failure_result(failure, f"Hotmail verification flow failed: {state}")
+            message = f"Hotmail verification flow failed: {state}"
+            if failure == HotmailFailureCode.PAGE_STRUCTURE_CHANGED:
+                message = self._append_debug_snapshot(message, session)
+            return self._build_failure_result(failure, message)
 
         return self._build_failure_result(
             HotmailFailureCode.PAGE_STRUCTURE_CHANGED,
-            f"Unexpected verification state: {state}",
+            self._append_debug_snapshot(f"Unexpected verification state: {state}", session),
         )
 
     def _handle_post_credentials_state(
@@ -667,11 +707,14 @@ class HotmailRegistrationEngine:
 
         failure = self._state_to_failure(current_state)
         if failure is not None:
-            return self._build_failure_result(failure, f"Hotmail signup failed: {current_state}")
+            message = f"Hotmail signup failed: {current_state}"
+            if failure == HotmailFailureCode.PAGE_STRUCTURE_CHANGED:
+                message = self._append_debug_snapshot(message, session)
+            return self._build_failure_result(failure, message)
 
         return self._build_failure_result(
             HotmailFailureCode.PAGE_STRUCTURE_CHANGED,
-            f"Unexpected signup state: {current_state}",
+            self._append_debug_snapshot(f"Unexpected signup state: {current_state}", session),
         )
 
     def _attempt_browser_domain(
