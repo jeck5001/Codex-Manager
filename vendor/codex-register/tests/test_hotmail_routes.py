@@ -171,6 +171,47 @@ class HotmailRoutesTests(unittest.TestCase):
         self.assertEqual(observed["to_thread_calls"], 1)
         self.assertEqual(observed["run_calls"], 1)
 
+    def test_run_hotmail_batch_normalizes_unsupported_challenge_logs(self):
+        module = self.module
+
+        class FakeEngine:
+            def run(self):
+                return module.HotmailRegistrationResult(
+                    success=False,
+                    reason_code="unsupported_challenge",
+                    error_message=(
+                        "Hotmail signup failed: unsupported_challenge | "
+                        "title=Let's prove you're human | "
+                        "text=Press and hold the button."
+                    ),
+                )
+
+        module.create_hotmail_engine = lambda **_kwargs: FakeEngine()
+        module.hotmail_batches["batch-challenge"] = {
+            "batch_id": "batch-challenge",
+            "total": 1,
+            "completed": 0,
+            "success": 0,
+            "failed": 0,
+            "finished": False,
+            "cancelled": False,
+            "logs": [],
+            "artifacts": [],
+        }
+
+        asyncio.run(
+            module._run_hotmail_batch(
+                "batch-challenge",
+                module.HotmailBatchCreateRequest(count=1, concurrency=1, interval_min=0, interval_max=0),
+            )
+        )
+
+        batch = module.hotmail_batches["batch-challenge"]
+        self.assertEqual(batch["failed"], 1)
+        self.assertEqual(len(batch["logs"]), 1)
+        self.assertIn("微软要求人工验证", batch["logs"][0])
+        self.assertIn("Press and hold the button", batch["logs"][0])
+
 
 if __name__ == "__main__":
     unittest.main()
