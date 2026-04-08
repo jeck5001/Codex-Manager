@@ -1,7 +1,7 @@
 from typing import Optional
 
 from .profile import choose_target_domains
-from .types import HotmailFailureCode
+from .types import HotmailFailureCode, HotmailRegistrationResult
 
 
 def classify_hotmail_page_state(text: str) -> Optional[HotmailFailureCode]:
@@ -28,4 +28,15 @@ class HotmailRegistrationEngine:
         return None
 
     def run(self):
-        raise NotImplementedError
+        selected_domain = self._choose_domain_by_attempt()
+        if not selected_domain:
+            return HotmailRegistrationResult(
+                success=False,
+                reason_code=HotmailFailureCode.USERNAME_UNAVAILABLE_EXHAUSTED.value,
+                error_message="No domain attempt succeeded",
+            )
+        return HotmailRegistrationResult(
+            success=False,
+            reason_code=HotmailFailureCode.UNEXPECTED_EXCEPTION.value,
+            error_message=f"Hotmail flow not implemented for {selected_domain}",
+        )

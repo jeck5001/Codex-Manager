@@ -33,6 +33,13 @@ class HotmailEngineTests(unittest.TestCase):
         self.assertEqual(engine._choose_domain_by_attempt(), "outlook.com")
         self.assertEqual(attempted, ["hotmail.com", "outlook.com"])
 
+    def test_engine_returns_username_exhausted_when_no_domain_attempt_succeeds(self):
+        engine = HotmailRegistrationEngine()
+        result = engine.run()
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.reason_code, HotmailFailureCode.USERNAME_UNAVAILABLE_EXHAUSTED.value)
+
 
 if __name__ == "__main__":
     unittest.main()
