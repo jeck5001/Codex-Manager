@@ -15,6 +15,13 @@ from .outlook import OutlookService
 from .custom_domain import CustomDomainEmailService
 from .temp_mail import TempMailService
 from .cloudflare_temp_mail import CloudflareProvisioningError, CloudflareTempMailProvisioner
+from .hotmail import (
+    HOTMAIL_DOMAIN_POLICY,
+    HotmailAccountArtifact,
+    HotmailFailureCode,
+    build_username_candidates,
+    choose_target_domains,
+)
 
 # 注册服务
 EmailServiceFactory.register(EmailServiceType.TEMPMAIL, TempmailService)
@@ -53,6 +60,11 @@ __all__ = [
     'TempMailService',
     'CloudflareProvisioningError',
     'CloudflareTempMailProvisioner',
+    'HOTMAIL_DOMAIN_POLICY',
+    'HotmailAccountArtifact',
+    'HotmailFailureCode',
+    'build_username_candidates',
+    'choose_target_domains',
     # Outlook 模块
     'ProviderType',
     'EmailMessage',
