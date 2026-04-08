@@ -2,6 +2,7 @@ import types
 import unittest
 
 from src.services.hotmail.engine import (
+    PlaywrightHotmailBrowserSession,
     HotmailRegistrationEngine,
     classify_hotmail_page_state,
 )
@@ -190,6 +191,24 @@ class HotmailEngineTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(session.profile_calls, 2)
         self.assertEqual(result.artifact.email, "aliceexample@hotmail.com")
+
+    def test_click_first_falls_back_to_force_click(self):
+        class FakeLocator:
+            def __init__(self):
+                self.calls = []
+
+            def click(self, **kwargs):
+                self.calls.append(kwargs)
+                if not kwargs.get("force"):
+                    raise RuntimeError("intercepts pointer events")
+                return None
+
+        session = PlaywrightHotmailBrowserSession()
+        locator = FakeLocator()
+        session._first_locator = lambda selectors: locator
+
+        self.assertTrue(session._click_first(["#BirthMonthDropdown"]))
+        self.assertEqual(locator.calls, [{}, {"force": True}])
 
     def test_engine_fails_fast_on_phone_verification(self):
         class FakeBrowserSession:
