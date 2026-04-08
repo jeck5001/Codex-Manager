@@ -18,6 +18,19 @@ router = APIRouter()
 hotmail_batches: Dict[str, dict] = {}
 
 
+def _format_hotmail_batch_error(result: HotmailRegistrationResult) -> str:
+    message = str(result.error_message or result.reason_code or "unknown failure").strip()
+    normalized = message.lower()
+    if (
+        str(result.reason_code or "").strip().lower() == "unsupported_challenge"
+        or "unsupported_challenge" in normalized
+        or "let's prove you're human" in normalized
+        or "press and hold the button" in normalized
+    ):
+        return f"微软要求人工验证（Press and hold the button） | {message}"
+    return message
+
+
 def create_hotmail_engine(*, proxy_url: Optional[str] = None) -> HotmailRegistrationEngine:
     return HotmailRegistrationEngine(
         proxy_url=proxy_url,
@@ -58,7 +71,7 @@ async def _run_hotmail_batch(batch_id: str, request: HotmailBatchCreateRequest):
             batch["success"] += 1
         else:
             batch["failed"] += 1
-            batch["logs"].append(result.error_message or result.reason_code or "unknown failure")
+            batch["logs"].append(_format_hotmail_batch_error(result))
 
         if request.interval_max > 0:
             await asyncio.sleep(request.interval_min)
