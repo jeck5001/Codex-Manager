@@ -21,6 +21,7 @@ from .http_client import OPENAI_BROWSER_USER_AGENT
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_SENTINEL_FRAME_URL = "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6"
 DEFAULT_SENTINEL_TARGET_URL = "https://auth.openai.com/about-you"
 DEFAULT_SENTINEL_USER_AGENT = OPENAI_BROWSER_USER_AGENT
 
@@ -90,6 +91,20 @@ def _build_playwright_proxy(proxy_url: Optional[str]) -> Optional[Dict[str, str]
     return proxy
 
 
+def _build_sentinel_target_urls(referer: str) -> list[str]:
+    candidates: list[str] = []
+    for raw in (
+        DEFAULT_SENTINEL_FRAME_URL,
+        str(referer or "").strip(),
+        DEFAULT_SENTINEL_TARGET_URL,
+    ):
+        candidate = str(raw or "").strip()
+        if not candidate or candidate in candidates:
+            continue
+        candidates.append(candidate)
+    return candidates
+
+
 def fetch_browser_sentinel_token(
     *,
     did: str,
@@ -107,9 +122,9 @@ def fetch_browser_sentinel_token(
         _log(callback_logger, "playwright 未安装，无法使用浏览器 Sentinel")
         return None
 
-    target_url = (referer or "").strip() or DEFAULT_SENTINEL_TARGET_URL
     domain = ".openai.com"
     proxy = _build_playwright_proxy(proxy_url)
+    target_urls = _build_sentinel_target_urls(referer)
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(
@@ -132,38 +147,60 @@ def fetch_browser_sentinel_token(
                 context.add_cookies(cookies)
 
             page = context.new_page()
-            page.goto(target_url, wait_until="domcontentloaded", timeout=30_000)
-            page.wait_for_timeout(1_500)
-            page.wait_for_function(
-                """
-                () => typeof window.SentinelSDK !== 'undefined'
-                  && typeof window.SentinelSDK.token === 'function'
-                """,
-                timeout=15_000,
-            )
-            _log(callback_logger, f"浏览器 Sentinel SDK 已加载，开始请求 flow={flow}")
+            result: Optional[dict] = None
+            target_url = target_urls[0] if target_urls else DEFAULT_SENTINEL_TARGET_URL
+            last_error = ""
+            for current_url in target_urls:
+                target_url = current_url
+                try:
+                    _log(callback_logger, f"浏览器 Sentinel 尝试页面: {current_url}")
+                    page.goto(current_url, wait_until="domcontentloaded", timeout=30_000)
+                    page.wait_for_timeout(1_500)
+                    page.wait_for_function(
+                        """
+                        () => typeof window.SentinelSDK !== 'undefined'
+                          && typeof window.SentinelSDK.token === 'function'
+                        """,
+                        timeout=15_000,
+                    )
+                    _log(callback_logger, f"浏览器 Sentinel SDK 已加载，开始请求 flow={flow}")
 
-            result = page.evaluate(
-                """
-                async (flow) => {
-                    try {
-                        const token = await window.SentinelSDK.token(flow);
-                        return { success: true, token };
-                    } catch (error) {
-                        return {
-                            success: false,
-                            error: error?.message || String(error || "unknown error"),
-                        };
-                    }
-                }
-                """,
-                flow,
-            )
+                    result = page.evaluate(
+                        """
+                        async (flow) => {
+                            try {
+                                const token = await window.SentinelSDK.token(flow);
+                                return { success: true, token };
+                            } catch (error) {
+                                return {
+                                    success: false,
+                                    error: error?.message || String(error || "unknown error"),
+                                };
+                            }
+                        }
+                        """,
+                        flow,
+                    )
+                    if isinstance(result, dict) and result.get("success") and result.get("token"):
+                        break
+                    last_error = (
+                        str((result or {}).get("error") or "token missing")
+                        if isinstance(result, dict)
+                        else "invalid result"
+                    )
+                    _log(callback_logger, f"浏览器 Sentinel 页面失败: {current_url} | {last_error}")
+                except PlaywrightTimeoutError as exc:
+                    last_error = f"timeout: {exc}"
+                    _log(callback_logger, f"浏览器 Sentinel 页面超时: {current_url}")
+                except Exception as exc:
+                    last_error = str(exc)
+                    _log(callback_logger, f"浏览器 Sentinel 页面异常: {current_url} | {exc}")
+
             if not isinstance(result, dict):
                 _log(callback_logger, "浏览器 Sentinel 返回值不是对象")
                 return None
             if not result.get("success") or not result.get("token"):
-                _log(callback_logger, f"浏览器 Sentinel 失败: {result.get('error', 'unknown error')}")
+                _log(callback_logger, f"浏览器 Sentinel 失败: {result.get('error', last_error or 'unknown error')}")
                 return None
 
             token = result["token"]

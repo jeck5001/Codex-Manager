@@ -4,6 +4,7 @@
 """
 
 import json
+import re
 import time
 import logging
 import secrets
@@ -439,11 +440,14 @@ class RegistrationEngine:
                     self.oauth_start.auth_url,
                     timeout=20
                 )
-                did = self.session.cookies.get("oai-did")
+                did = self._extract_device_id_from_cookie_source(getattr(self.session, "cookies", None))
+                if not did:
+                    did = self._extract_device_id_from_response(response)
 
                 if did:
+                    self._store_device_id_in_session(did)
                     self._log(f"Device ID: {did}")
-                return did
+                    return did
 
                 self._log(
                     f"获取 Device ID 失败: 未返回 oai-did Cookie (HTTP {response.status_code}, 第 {attempt}/{max_attempts} 次)",
@@ -461,6 +465,75 @@ class RegistrationEngine:
                 self.session = self.http_client.session
 
         return None
+
+    def _extract_device_id_from_cookie_source(self, cookies: Any) -> str:
+        if cookies is None:
+            return ""
+
+        try:
+            direct = self._clean_text(cookies.get("oai-did"))
+        except Exception:
+            direct = ""
+        if direct:
+            return direct
+
+        jar = getattr(cookies, "jar", None)
+        if jar:
+            for cookie in jar:
+                name = self._clean_text(getattr(cookie, "name", ""))
+                if name != "oai-did":
+                    continue
+                value = self._clean_text(getattr(cookie, "value", ""))
+                if value:
+                    return value
+
+        return ""
+
+    def _extract_device_id_from_response(self, response: Any) -> str:
+        if response is None:
+            return ""
+
+        did = self._extract_device_id_from_cookie_source(getattr(response, "cookies", None))
+        if did:
+            return did
+
+        headers = getattr(response, "headers", None)
+        set_cookie = ""
+        if headers is not None:
+            try:
+                set_cookie = self._clean_text(headers.get("set-cookie"))
+            except Exception:
+                set_cookie = ""
+        if set_cookie:
+            match = re.search(r"(?:^|[;,]\s*)oai-did=([^;,\s]+)", set_cookie, re.IGNORECASE)
+            if match:
+                return self._clean_text(urllib.parse.unquote(match.group(1)))
+
+        text = self._clean_text(getattr(response, "text", ""))
+        if text:
+            match = re.search(r'"oai-did"\s*[:=]\s*"([^"]+)"', text, re.IGNORECASE)
+            if match:
+                return self._clean_text(urllib.parse.unquote(match.group(1)))
+
+        return ""
+
+    def _store_device_id_in_session(self, did: str):
+        normalized = self._clean_text(did)
+        if not normalized:
+            return
+        session = getattr(self, "session", None)
+        cookies = getattr(session, "cookies", None) if session is not None else None
+        if cookies is None:
+            return
+        try:
+            cookies["oai-did"] = normalized
+            return
+        except Exception:
+            pass
+        try:
+            cookies.set("oai-did", normalized)
+        except Exception:
+            pass
 
     def _session_cookie_items(self) -> list[tuple[str, str]]:
         """提取当前会话中的 cookie 列表"""

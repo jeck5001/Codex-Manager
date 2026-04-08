@@ -190,6 +190,80 @@ OAuthStart = sys.modules["src.core.oauth"].OAuthStart
 
 
 class RegisterAddPhoneTests(unittest.TestCase):
+    def test_get_device_id_uses_response_cookies_when_session_cookie_missing(self):
+        logs = []
+
+        class FakeResponse:
+            status_code = 200
+            headers = {}
+            text = ""
+
+            def __init__(self):
+                self.cookies = {"oai-did": "did-from-response-cookie"}
+
+        class FakeSession:
+            def __init__(self):
+                self.cookies = {}
+
+            def get(self, url, **kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+        engine.session = FakeSession()
+        engine.http_client = types.SimpleNamespace(session=engine.session, close=lambda: None)
+        engine._log = lambda message, level="info": logs.append((level, message))
+
+        did = engine._get_device_id()
+
+        self.assertEqual(did, "did-from-response-cookie")
+        self.assertIn(("info", "Device ID: did-from-response-cookie"), logs)
+
+    def test_get_device_id_uses_set_cookie_header_when_cookie_jar_missing(self):
+        logs = []
+
+        class FakeHeaders(dict):
+            def get(self, key, default=None):
+                return super().get(key, default)
+
+        class FakeResponse:
+            status_code = 200
+            text = ""
+            cookies = {}
+            headers = FakeHeaders(
+                {
+                    "set-cookie": "cf_clearance=abc; Path=/, oai-did=did-from-set-cookie; Path=/; Secure",
+                }
+            )
+
+        class FakeSession:
+            def __init__(self):
+                self.cookies = {}
+
+            def get(self, url, **kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+        engine.session = FakeSession()
+        engine.http_client = types.SimpleNamespace(session=engine.session, close=lambda: None)
+        engine._log = lambda message, level="info": logs.append((level, message))
+
+        did = engine._get_device_id()
+
+        self.assertEqual(did, "did-from-set-cookie")
+        self.assertIn(("info", "Device ID: did-from-set-cookie"), logs)
+
     def test_session_cookie_debug_summary_reports_key_cookie_flags(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
         engine._session_cookie_items = lambda: [
