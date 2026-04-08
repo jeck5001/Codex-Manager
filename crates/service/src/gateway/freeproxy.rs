@@ -47,6 +47,17 @@ pub(crate) struct FreeProxySyncResult {
     pub register_proxy_total_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FreeProxyClearResult {
+    pub previous_proxy_list_value: String,
+    pub previous_proxy_list_count: usize,
+    pub cleared_gateway_proxy_count: usize,
+    pub deleted_register_proxy_count: usize,
+    pub failed_register_proxy_count: usize,
+    pub remaining_register_proxy_count: usize,
+}
+
 #[derive(Debug, Clone)]
 struct FreeProxySyncOptions {
     protocol: FreeProxyProtocol,
@@ -120,6 +131,61 @@ pub(crate) fn sync_proxy_pool_from_freeproxy(
     let options = normalize_sync_options(input)?;
     let catalog = fetch_freeproxy_catalog(options.source_url.as_str())?;
     apply_freeproxy_catalog(options, catalog)
+}
+
+pub(crate) fn clear_proxy_pools() -> Result<FreeProxyClearResult, String> {
+    crate::initialize_storage_if_needed()?;
+
+    let previous_proxy_list_value = crate::app_settings::current_env_overrides()
+        .get(PROXY_LIST_ENV_KEY)
+        .cloned()
+        .unwrap_or_default();
+    let previous_proxy_list_count = previous_proxy_list_value
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .count();
+
+    let mut overrides = HashMap::new();
+    overrides.insert(PROXY_LIST_ENV_KEY.to_string(), String::new());
+    let _ = crate::app_settings::set_env_overrides(overrides)?;
+
+    let existing = crate::account_register::list_register_proxies(None)?;
+    let mut deleted_register_proxy_count = 0usize;
+    let mut failed_register_proxy_count = 0usize;
+    for item in existing.iter() {
+        match crate::account_register::delete_register_proxy(item.id) {
+            Ok(_) => deleted_register_proxy_count += 1,
+            Err(_) => failed_register_proxy_count += 1,
+        }
+    }
+
+    let remaining_register_proxy_count = crate::account_register::list_register_proxies(None)
+        .map(|items| items.len())
+        .unwrap_or(failed_register_proxy_count);
+
+    let result = FreeProxyClearResult {
+        previous_proxy_list_value,
+        previous_proxy_list_count,
+        cleared_gateway_proxy_count: previous_proxy_list_count,
+        deleted_register_proxy_count,
+        failed_register_proxy_count,
+        remaining_register_proxy_count,
+    };
+
+    crate::operation_audit::record_operation_audit(
+        "freeproxy_clear",
+        "清空代理池",
+        format!(
+            "网关代理池清空 {} 个，注册代理池删除 {} 个，失败 {} 个，剩余 {} 个",
+            result.cleared_gateway_proxy_count,
+            result.deleted_register_proxy_count,
+            result.failed_register_proxy_count,
+            result.remaining_register_proxy_count
+        ),
+    );
+
+    Ok(result)
 }
 
 fn apply_freeproxy_catalog(
@@ -678,5 +744,27 @@ mod tests {
         assert_eq!(candidates[0].port, 1080);
         assert_eq!(candidates[1].username.as_deref(), Some("user"));
         assert_eq!(candidates[1].password.as_deref(), Some("pass"));
+    }
+
+    #[test]
+    fn freeproxy_clear_result_serializes_camel_case_keys() {
+        let value = serde_json::to_value(FreeProxyClearResult {
+            previous_proxy_list_value: "a,b".to_string(),
+            previous_proxy_list_count: 2,
+            cleared_gateway_proxy_count: 2,
+            deleted_register_proxy_count: 5,
+            failed_register_proxy_count: 1,
+            remaining_register_proxy_count: 0,
+        })
+        .expect("serialize clear result");
+
+        assert_eq!(
+            value.get("clearedGatewayProxyCount").and_then(serde_json::Value::as_u64),
+            Some(2)
+        );
+        assert_eq!(
+            value.get("remainingRegisterProxyCount").and_then(serde_json::Value::as_u64),
+            Some(0)
+        );
     }
 }

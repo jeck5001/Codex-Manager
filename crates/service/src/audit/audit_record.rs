@@ -134,6 +134,7 @@ fn classify_auditable_method(method: &str) -> Option<(&'static str, &'static str
             Some(("clear", "gateway_settings"))
         }
         "gateway/freeProxy/sync" => Some(("sync", "gateway_settings")),
+        "gateway/freeProxy/clear" => Some(("clear", "gateway_settings")),
         "alert/rules/upsert" => Some(("upsert", "alert_rule")),
         "alert/rules/delete" => Some(("delete", "alert_rule")),
         "alert/channels/upsert" => Some(("upsert", "alert_channel")),
