@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   classifyHotmailLogLine,
+  formatHotmailBatchStatus,
   getHotmailBatchProgress,
   mergeHotmailBatchArtifacts,
   shouldPollHotmailBatch,
@@ -39,4 +40,19 @@ test("classifyHotmailLogLine marks human verification logs as challenge", () => 
     "challenge",
   );
   assert.equal(classifyHotmailLogLine("phone required"), "default");
+});
+
+test("formatHotmailBatchStatus marks action required batches", () => {
+  assert.deepEqual(
+    formatHotmailBatchStatus({
+      finished: false,
+      cancelled: false,
+      status: "action_required",
+      actionRequiredReason: "unsupported_challenge",
+    }),
+    {
+      label: "等待人工处理",
+      className: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-300",
+    },
+  );
 });
