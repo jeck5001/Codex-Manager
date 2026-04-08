@@ -1,37 +1,37 @@
-# Minimal Troubleshooting Manual
+# Minimal Troubleshooting Guide
 
-This manual is used to quickly locate the most common startup, forwarding and model refresh problems.
+Use this guide to quickly locate the most common startup, relay, and model-refresh problems.
 
-## What to look at first
+## What to check first
 
-1. First read [Operation and Deployment Guide](runtime-and-deployment-guide.md).
-2. Read again [FAQ and Account Hitting Rules](faq-and-account-routing-rules.md).
+1. Read the [Runtime and Deployment Guide](runtime-and-deployment-guide.md).
+2. Then read the [FAQ and Account Routing Rules](faq-and-account-routing-rules.md).
 
-## Common troubleshooting order
+## Recommended troubleshooting order
 
-### 1. Whether the service is started
+### 1. Confirm the service is running
 
-- Check whether the desktop or service is started.
-- Confirm whether the listening address, port and proxy configuration are correct.
-- Check the logs to see if there are any database connection failures, port occupation or permission issues.
+- Check whether the desktop app or service process is actually running.
+- Confirm that the listen address, port, and proxy settings are correct.
+- Review logs for database connection failures, port conflicts, or permission errors.
 
-### 2. Whether the request enters the gateway
+### 2. Confirm the request reaches the gateway
 
-- Confirm that the client request actually goes to the current gateway address.
-- Check whether there is a corresponding path and status code in the request log.
-- If it is a third-party client, confirm whether the API Key and base URL are configured correctly.
+- Make sure the client is really sending requests to the current gateway address.
+- Check the request log for the matching path and status code.
+- For third-party clients, verify that both the API key and base URL are correct.
 
-### 3. Is the model or account available?
+### 3. Confirm the model and account are available
 
-- Check whether the account status is disabled, expired or hits limits.
-- Refresh your usage and try again.
-- If the account is banned, first go to the account clearing entrance.
+- Check whether the account is disabled, expired, or quota-limited.
+- Refresh usage and retry.
+- If the account is banned, go through the account cleanup flow first.
 
-### 4. Streaming or tools exception
+### 4. Check streaming and tool-call behavior
 
-- Check whether `tool_calls`, SSE end events and field restoration are lost.
+- Verify that `tool_calls`, SSE end events, and restored fields are not being lost.
 
-## What to do if it still doesn’t work?
+## If it still fails
 
-- Directly refer to the document entry in README.
-- Prioritize keeping the error request, response and request log before continuing the investigation.
+- Follow the documentation links in README.
+- Preserve the failed request, response, and request-log entries before continuing the investigation.

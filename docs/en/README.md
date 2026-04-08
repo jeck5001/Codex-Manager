@@ -1,107 +1,95 @@
-# Docs directory description
-`docs/` is the official governance document directory for CodexManager and is no longer considered a temporary repository.
+# Documentation Index
 
-Goal:
-- Let structural governance, decision-making records, release instructions, and operation manuals all enter the main line of the warehouse
-- Allow new collaborators to find the correct document without relying on verbal handoffs
+`docs/` is the official long-form documentation directory for CodexManager.
 
-## Document responsibility boundaries
-- Root directory `README.md` / `README.en.md`: Home navigation, project overview, quick start.
-- Root directory `CHANGELOG.md`: The only source of truth for version history and unreleased updates.
-- `report/*`: Operation, troubleshooting, compatibility, FAQ manuals.
-- `release/*`: Build, release, product and release process description.
-- `docs/plan/*` / `docs/decision/*`: Long-term governance, implementation plans and record of decisions.
+Its purpose is simple:
+- Keep governance notes, release guides, and operating manuals inside the repository.
+- Make it easy for new contributors to find the right document without relying on tribal knowledge.
 
-##Latest update entry
-- If you want to see the latest released content and unreleased updates to the main branch, first read [CHANGELOG.md](CHANGELOG.md).
-- If you want to quickly determine "which document is most suitable for the current problem", first look at the "Document Home Page" and "Recommended Entry" below.
+## Scope
+- Root `README.md` / `README.en.md`: project overview and quick start.
+- Root `CHANGELOG.md`: version history and unreleased changes.
+- `report/*`: operations, troubleshooting, compatibility notes, and FAQs.
+- `release/*`: build, packaging, release, and artifact documentation.
 
-## Document Home Page
-| If you want to do something now | It is recommended to read it first |
+## Start here
+- For the latest release notes, see [CHANGELOG.md](CHANGELOG.md).
+- If you are not sure which document to open first, use the table below.
+
+## Quick navigation
+| What you need | Open this document |
 | --- | --- |
-| Run the project, deploy service/web, process macOS First startup | [Run and Deployment Guide](report/runtime-and-deployment-guide.md) |
-| Configure environment variables, database, port, proxy, listening address | [Environment variables and running configuration instructions](report/environment-and-runtime-config.md) |
-| Troubleshoot account misses, import exceptions, and challenge interceptions | [FAQ and account hit rules](report/faq-and-account-routing-rules.md) |
-| Troubleshoot background task account skipping, disabling and deactivation reasons | [Background task account skipping instructions](report/background-task-account-skip-notes.md) |
-| Plug-in Center Minimum Access and Quick Connection | [Plug-in Center Minimum Access Instructions](report/plugin-center-minimal-integration.md) |
-| System internal interface summary list, all accessible interfaces | [System internal interface summary list ](report/system-internal-interface-inventory.md) |
-| Local packaging, workflow release, download product | [Build release and script instructions](release/build-release-and-scripts.md) |
+| First launch, deployment, Docker, macOS allowlisting | [Runtime and Deployment Guide](report/runtime-and-deployment-guide.md) |
+| Environment variables, database, ports, proxy, listen address | [Environment and Runtime Configuration](report/environment-and-runtime-config.md) |
+| Account routing, import errors, challenge interception | [FAQ and Account Routing Rules](report/faq-and-account-routing-rules.md) |
+| Why background jobs skip or disable accounts | [Background Task Account Skip Notes](report/background-task-account-skip-notes.md) |
+| Minimum plugin marketplace integration | [Plugin Center Minimal Integration](report/plugin-center-minimal-integration.md) |
+| Internal commands and integration surfaces | [System Internal Interface Inventory](report/system-internal-interface-inventory.md) |
+| Local build, packaging, and release scripts | [Build, Release, and Script Guide](release/build-release-and-scripts.md) |
 
-## Directory division of labor
-
-### `docs/plan/`
-Used to save implementation plans, governance lists, and staged TODOs.
-
-### `docs/decision/`
-Used to maintain decision records and ADRs.
+## Directory guide
 
 ### `release/`
-Used to save release notes, rollback plans, release acceptance records, and build release manuals.
+Release notes, rollback notes, artifact descriptions, and packaging guides.
 
 ### `report/`
-Used to save scan, troubleshooting, operational, compatibility, FAQ type reports and manuals.
+Operational guides, troubleshooting notes, compatibility reports, and FAQs.
 
-## Recommended entrance
+## Recommended reading
 
-### Run and use
-| Documentation | Function |
+### Operations
+| Document | Summary |
 | --- | --- |
-| [Operation and Deployment Guide.md](report/runtime-and-deployment-guide.md) | First boot, Service version, Docker, macOS First boot |
-| [Environment variables and running configuration instructions.md](report/environment-and-runtime-config.md) | View all running configurations, default values and functions in one place |
-| [FAQ and Account Hitting Rules.md](report/faq-and-account-routing-rules.md) | Frequently Asked Questions, Account Hitting and Log Troubleshooting |
-| [Comparison table between the current gateway and Codex official request parameters.md](report/gateway-vs-codex-official-params.md) | Comparison table of the actual outbound parameters of the current gateway, target Codex parameters, and the differences between the two |
-| [Instructions for skipping background task accounts.md](report/background-task-account-skip-notes.md) | Background task filtering, account disabling, workspace Reasons for deactivation |
-| [Minimum Troubleshooting Manual.md](report/minimal-troubleshooting-guide.md) | Quickly locate the most common startup and forwarding problems |
-| [Plug-in Center Minimum Access Instructions.md](report/plugin-center-minimal-integration.md) | Plug-in Center Minimum Access Fields, Interfaces and Rhai Minimum Functions |
-| [Difference table of request headers and parameters between the current gateway and Codex.md](report/gateway-vs-codex-headers-and-params.md) | Comparison of parameter transfer, request headers and parameters between the current gateway and Codex |
-| [Plug-in Center docking and interface list.md](report/plugin-center-integration-and-interfaces.md) | Plug-in Center access method, market model, RPC/Tauri commands, list fields, Rhai interface list |
-| [General list of system internal interfaces.md](report/system-internal-interface-inventory.md) | All system interfaces can be connected to internal interfaces, Tauri/RPC comparison, and plug-in built-in functions |
+| [Runtime and Deployment Guide](report/runtime-and-deployment-guide.md) | Desktop first launch, Service edition, Docker, and macOS first-run handling |
+| [Environment and Runtime Configuration](report/environment-and-runtime-config.md) | Runtime configuration, defaults, and environment variables |
+| [FAQ and Account Routing Rules](report/faq-and-account-routing-rules.md) | Common account-routing issues and troubleshooting tips |
+| [Gateway vs Official Codex Params](report/gateway-vs-codex-official-params.md) | Current outbound parameter differences compared with official Codex |
+| [Background Task Account Skip Notes](report/background-task-account-skip-notes.md) | Why background jobs skip, cool down, or disable accounts |
+| [Minimal Troubleshooting Guide](report/minimal-troubleshooting-guide.md) | Fast checks for the most common startup and relay issues |
+| [Plugin Center Minimal Integration](report/plugin-center-minimal-integration.md) | Minimum fields and interfaces required for plugin marketplace access |
+| [Gateway vs Codex Headers and Params](report/gateway-vs-codex-headers-and-params.md) | Header and request parameter differences between the gateway and Codex |
+| [Plugin Center Integration and Interfaces](report/plugin-center-integration-and-interfaces.md) | Marketplace modes, RPC/Tauri commands, manifest fields, and Rhai interfaces |
+| [System Internal Interface Inventory](report/system-internal-interface-inventory.md) | Internal commands, RPC endpoints, and built-in plugin functions |
 
-### Release and Build
-| Documentation | Function |
+### Build and release
+| Document | Summary |
 | --- | --- |
-| [Build release and script instructions.md](release/build-release-and-scripts.md) | Local build, script parameters, workflow entry |
-| [Release and product description.md](release/release-and-artifacts.md) | Description of products, naming and release results of each platform |
-| [Contrast between scripting and publishing responsibilities.md](report/script-and-release-responsibility-matrix.md) | Scripting responsibility boundaries and usage scenarios |
+| [Build, Release, and Script Guide](release/build-release-and-scripts.md) | Local builds, script parameters, and GitHub workflow entry points |
+| [Release and Artifacts](release/release-and-artifacts.md) | Release artifacts, naming, and publication rules |
+| [Script and Release Responsibility Matrix](report/script-and-release-responsibility-matrix.md) | Which script or workflow is responsible for which task |
 
-### Governance and decision-making
-| Documentation | Function |
-| --- | --- |
+## Contribution rules
 
-## Submit rules
+### Commit documentation when it
+- remains useful for future contributors,
+- affects development, testing, release, or troubleshooting,
+- or serves as a long-term source of truth.
 
-### Documentation that should be committed to Git
-- Still valuable for future collaborators
-- Will affect subsequent development, testing, release or troubleshooting methods
-- Can be used as part of the long-term source of truth for the project
+### Do not commit documentation when it is
+- a temporary draft,
+- personal working notes,
+- a disposable intermediate file,
+- or a local-only experiment record.
 
-### Documentation not recommended for submission to Git
-- Temporary draft
-- Personal process notes
-- Disposable intermediate products
-- Local test records
-
-## Ignore rules
-The current repository ignores the following documents:
+## Ignored patterns
 - `docs/**/*.tmp.md`
 - `docs/**/*.local.md`
 
-If it is a formal document, do not use the above suffix.
+Do not use those suffixes for formal documentation.
 
-## Naming suggestions
-Recommended format:
+## Naming
 
 ```text
-Long-term retention document: theme.md
-One-time report: yyyyMMddHHmmssfff_topic.md
+Long-lived documents: topic.md
+One-off reports: yyyyMMddHHmmssfff_topic.md
 ```
 
-## Maintenance Agreement
-- When adding important governance documents, give priority to `docs/` and do not continue to pile them into README.
-- Version history continues in `CHANGELOG.md`.
-- The architecture overview continues to be maintained in `ARCHITECTURE.md`.
-- Collaboration specifications continue to be maintained at `CONTRIBUTING.md`.
-- Do not write unreleased updates into multiple long documents at the same time; when external explanation is needed, add `CHANGELOG.md` first, and README only retains the summary and entry.
+## Maintenance notes
+- Add important governance material under `docs/` instead of expanding the README indefinitely.
+- Keep version history in `CHANGELOG.md`.
+- Keep architecture notes in `ARCHITECTURE.md`.
+- Keep collaboration rules in `CONTRIBUTING.md`.
+- Put unreleased change details in `CHANGELOG.md`; keep the README focused on navigation and summary.
 
-## Contact information
-- Telegram Group chat: [CodexManager TG group](https://t.me/+OdpFa9GvjxhjMDhl)
+## Contact
+- Telegram group: [CodexManager TG group](https://t.me/+OdpFa9GvjxhjMDhl)

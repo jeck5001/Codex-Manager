@@ -14,9 +14,9 @@
 
 | 필드 | 현재 업로드 방법 | Codex 업스트림 | 상태 | 비고 |
 | --- | --- | --- | --- | --- |
-| `Authorization` | 현재 계정 토큰에서 `Bearer §§0§§` | Bearer 토큰도 사용 | 정렬 | 로그인/계정 링크에서 제공되는 토큰, 아웃바운드 시 현재 계정 값으로 대체됨 |
+| `Authorization` | 현재 계정 토큰에서 `Bearer <현재 계정 토큰>` | Bearer 토큰도 사용 | 정렬 | 로그인/계정 링크에서 제공되는 토큰, 아웃바운드 시 현재 계정 값으로 대체됨 |
 | `originator` | 직접 보내기 `codex_cli_rs` | 동일한 `codex_cli_rs` 보내기 | 정렬 | 런타임 구성 가능 원래 값은 아웃바운드 헤더 |
-| `User-Agent` | `codex_cli_rs/<运行时版本> (<os/version; arch>) <terminal>` | `codex_cli_rs/§§4§§ (<os/version; arch>) <terminal>` | 구현 수준의 차이점 | 버전 소스가 다르며 형식이 정렬됩니다 |
+| `User-Agent` | `codex_cli_rs/<런타임 버전> (<os/version; arch>) <terminal>` | `codex_cli_rs/<DB 설정 버전> (<os/version; arch>) <terminal>` | 구현 수준의 차이점 | 버전 소스가 다르며 형식이 정렬됩니다 |
 | `x-client-request-id` | `conversation_id`은 세션 어피니티 링크에 의해 먼저 취해지며, 그렇지 않은 경우 보완되지 않습니다 | 업스트림은 `conversation_id`을 요청 ID로 사용 | 정렬 | 장애 조치 중에 새로운 가치가 창출되지 않습니다 |
 | `session_id` | `conversation_id`/폴백 세션에서 계산되며 장애 조치 중에 폴백으로 전환됩니다 | 업스트림은 주로 `conversation_id` | 정렬 | 현재 구현에서는 선호도/대체 전략 |
 | `x-openai-subagent` | 현재 요청의 하위 에이전트를 투명하게 전송 | 업스트림은 또한 동일한 의미를 가진 하위 에이전트를 전달합니다 | 정렬 | 값이 있는 경우에만 전송됩니다 |

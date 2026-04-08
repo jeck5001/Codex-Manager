@@ -213,4 +213,4 @@
 - 如果你要做自定义仓库，保持 `scriptBody` 或 `scriptUrl` 二选一即可。
 - 当前运行时是 Rhai，适合轻量自动化，不建议把重型插件逻辑直接堆到脚本里。
 - 系统当前内置了两个账号治理脚本：封禁账号定时清理、不可用免费账号定时清理。
-- 用户列表、用量列表、请求日志这类能力已经在[系统内部接口总表](system-internal-interface-inventory.md)里按“常用叫法”列出；它们属于宿主内部接口，不是 Rhai 默认内建函数。
+- Capabilities such as user lists, usage lists, and request logs are already listed in [System Internal Interface Inventory](system-internal-interface-inventory.md) under their common names. They are host-side internal interfaces, not default built-in Rhai functions.

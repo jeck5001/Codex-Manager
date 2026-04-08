@@ -1,12 +1,12 @@
-# Minimum access instructions for plug-in center
+# Minimum access instructions for plugin center
 
-This is a minimal version of instructions for quick access to third-party or internal warehouses. As long as you return data according to the following fields and interfaces, you can access the CodexManager plug-in center.
+This is the minimum integration guide for quickly connecting a third-party or internal plugin source. As long as your endpoint returns data using the following fields and interfaces, it can integrate with the CodexManager plugin center.
 
 ## 1. What do you want to pick up?
 
 - Front-end routing: `/plugins/`
 - Market Mode: `builtin` / `private` / `custom`
-- Data format: Plug-in list JSON
+- Data format: Plugin list JSON
 - Execution method: Rhai Script
 
 ## 2. Minimum market return
@@ -90,7 +90,7 @@ It is recommended to add:
 
 ## 5. Rhai Minimum available function
 
-If the plug-in applies for these permissions, it can use the corresponding functions:
+If the plugin applies for these permissions, it can use the corresponding functions:
 
 - `settings:read` -> `get_setting(key)`, `list_settings()`
 - `network` -> `http_get(url)`, `http_post(url, body)`
@@ -105,7 +105,7 @@ Public functions:
 If you are:
 
 - Official selected market, directly returns built-in JSON with the same structure
-- Enterprise private market, returns private warehouse JSON
-- To customize the warehouse, just keep `scriptBody` or `scriptUrl`
+- Enterprise private marketplace: return the private source JSON
+- To customize the repository, just keep `scriptBody` or `scriptUrl`
 
 Currently, the most stable connection method is "list first, script later". Do not pile heavy logic directly into Rhai.

@@ -1,24 +1,24 @@
-# Inconsistencies between the current gateway and the official Codex
+# Current Differences from Official Codex
 
-Only the differences in request headers that are most needed to continue processing are retained.
+This document keeps only the remaining request-header differences that are still worth tracking.
 
-## `/v1/responses` Request header
+## `/v1/responses` request headers
 
-| Fields | Official Codex | Current Gateway | Current Diff |
+| Field | Official Codex | Current gateway | Difference |
 | --- | --- | --- | --- |
-| `Authorization` | `Bearer <官方账号 token>` | `Bearer §§1§§` | The gateway will replace the account token |
-| `User-Agent` | `codex_cli_rs/<编译时版本> (<os/version; <arch>) <terminal>` | `codex_cli_rs/<数据库配置版本> (<os/version; <arch>) §§7§§` | The official version number comes from `env!("CARGO_PKG_VERSION")`, we currently changed it to database configurable; the final value can be manually synchronized, but the source is inconsistent |
-| `x-client-request-id` | Fixed equal to `conversation_id` | Priority equal to thread anchor point | When switching numbers and threads, it will become a new thread anchor point |
-| `session_id` | Fixed equal to `conversation_id` | Priority equal to thread anchor | Normal `/responses` No longer sent when there is no thread anchor |
-| `x-codex-turn-state` | Playback within the same turn | Playback when the same thread is stable | Will be actively discarded when switching numbers or thread replacement |
+| `Authorization` | `Bearer <official account token>` | `Bearer <current account token>` | The gateway replaces the account token |
+| `User-Agent` | `codex_cli_rs/<compile-time version> (<os/version; <arch>) <terminal>` | `codex_cli_rs/<database-configured version> (<os/version; <arch>) <terminal>` | Official Codex uses `env!("CARGO_PKG_VERSION")`; the gateway currently reads this from a configurable database field |
+| `x-client-request-id` | Always equals `conversation_id` | Prefer the thread anchor | When switching accounts or threads, it becomes the new thread anchor |
+| `session_id` | Always equals `conversation_id` | Prefer the thread anchor | Not sent for normal `/responses` traffic when there is no thread anchor |
+| `x-codex-turn-state` | Replayed within the same turn | Replayed while the same thread remains stable | Dropped proactively when switching accounts or replacing the thread |
 
 ## Current conclusion
 
-1. The most worthwhile differences now are these 5 request headers/transport layer behaviors.
-2. `gatewayOriginator` The setting value will still remain in the local configuration, but it will no longer affect the actual outbound `originator`. The actual outbound is fixed to the official default value `codex_cli_rs`.
-3. `User-Agent` For the version number, the official source is the compile-time package version; in order to facilitate manual matching with the official version, the current gateway has changed it to a database field that can be configured.
+1. These five request-header / transport-layer behaviors are still the main gaps worth tracking.
+2. The `gatewayOriginator` setting is still stored locally, but it no longer affects the actual outbound `originator`. Outbound traffic now always uses the official default value: `codex_cli_rs`.
+3. For `User-Agent`, official Codex uses the compile-time package version, while the current gateway allows the version segment to be configured from the database.
 
-## Source code basis
+## Source references
 
 - Official `codex`
   - `D:\MyComputer\own\GPTTeam相关\CodexManager\codex\codex-rs\core\src\client.rs`

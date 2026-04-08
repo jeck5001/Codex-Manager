@@ -1,59 +1,56 @@
-# FAQ and account hit rules
+# FAQ and Account Routing Rules
 
-## FAQ
-- Authorization callback failure: Prioritize checking whether `CODEXMANAGER_LOGIN_ADDR` is occupied, or use manual callback resolution in the UI.
-- The model list or request is intercepted by the challenge: Prioritize checking the proxy exit, request header differences and account status, and no longer troubleshoot through old fallback or upstream cookies.
-- Still blocked by Cloudflare/WAF: Do not troubleshoot along the old compatibility path, and only proceed according to the semantics of `Codex-First` in the future.
-- "Some data refresh failed, available data has been displayed" appears frequently: the automatic refresh scenario has been changed to only record logs; manual refresh will prompt failed items and sample errors. Prioritize checking the "Background Task" interval/switch on the settings page, and the failed task name in the service log.
-- Independently run service/Web: If the directory is not writable (such as the installation directory), please set `CODEXMANAGER_DB_PATH` to a writable path.
-- macOS Requests in a proxy environment `502/503`: Prioritize to confirm that the system proxy does not take over the local loopback request (`localhost/127.0.0.1` go to `DIRECT`), and ensure that the address uses lowercase `localhost:§§0§§`.
+## Common issues
+- Authorization callback fails: first check whether `CODEXMANAGER_LOGIN_ADDR` is already in use, or use manual callback parsing in the UI.
+- Model list or request is blocked by a challenge page: first check your proxy exit, header differences, and account status. Do not fall back to the old compatibility path or upstream-cookie troubleshooting.
+- Still blocked by Cloudflare / WAF: stop following the old compatibility path. Troubleshooting should now follow the `Codex-First` direction only.
+- `Some data failed to refresh, available data is shown` appears frequently: automatic refresh now only logs failures; manual refresh shows failed items and sample errors. Check the `Background Tasks` settings and the service logs.
+- Running service / web standalone: if the current directory is not writable, such as an install directory, set `CODEXMANAGER_DB_PATH` to a writable path.
+- `502/503` on macOS behind a proxy: make sure the system proxy does not intercept local loopback traffic (`localhost/127.0.0.1` should go through `DIRECT`), and make sure the address uses lowercase `localhost:<port>`.
 
-## Migration instructions
+## Migration notes
 
-### Codex-First direction
+### `Codex-First`
 
-The current warehouse has determined the follow-up direction as `Codex-First`:
+The repository has now settled on a `Codex-First` direction:
 
-- No longer use the old compatible behavior as the mainline path
-- Only one active account can be bound to the same session
-- Manually switching accounts will cut threads, and automatically switching accounts will also cut threads.
+- The old compatibility path is no longer the primary route.
+- Each session binds to only one active account.
+- Manual account switching changes the upstream thread, and automatic switching does the same.
 
-Corresponding design documents:
-
-
-### The difference between current behavior and target behavior
+### Current behavior vs target behavior
 
 Current behavior:
 
-- `balanced` Still strict polling as per `Key + 模型`
-- The binding semantics of sessions and accounts are still migrating from "polling by request" to "binding by session"
+- `balanced` still rotates strictly by `Key + Model`.
+- Session-to-account binding is still moving from `per-request rotation` to `session binding`.
 
 Target behavior:
 
-- Bound sessions will first hit the bound account and will no longer participate in each round of ordinary polling.
-- Automatically switching accounts will synchronously switch the upstream thread generation
-- The old compatibility switch has completely exited the main path and is no longer used as a recommended configuration
+- Once a session is bound, it should prefer the bound account instead of entering normal rotation.
+- Automatic account switching should also switch the upstream thread generation.
+- Legacy compatibility switches should completely leave the main path and stop being recommended settings.
 
-## Account hit rules
-- In `ordered` (order priority) mode, the gateway builds candidates in ascending order of account `sort` and tries them in sequence, for example `0 -> 1 -> 2 -> 3`.
-- This means "try in order", not "always hit number 0"; if the previous account is unavailable or fails, it will automatically switch to the next one.
+## Account routing rules
+- In `ordered` mode, the gateway builds candidates by ascending account `sort` and tries them one by one, for example `0 -> 1 -> 2 -> 3`.
+- This means `try in order`, not `always hit account 0`. If earlier accounts are unavailable or fail, the gateway automatically moves to the next one.
 
-### Common reasons why pre-order accounts are not hit
-- Account status is not `active`
-- The account is missing token
-- Usage determination is not available, for example, the main window is exhausted and the usage field is missing
-- The account is in cooldown or the concurrent soft cap triggers skipping
+### Common reasons why earlier accounts are skipped
+- The account status is not `active`
+- The account has no token
+- Usage evaluation marks the account unavailable, for example the main quota window is exhausted or usage fields are missing
+- The account is in cooldown, or a soft concurrency limit caused it to be skipped
 
-### `balanced` Mode
-- `balanced` (Balanced Round Robin) mode will by default rotate strictly among all available accounts by `Key + 模型` dimension, with no guarantee of starting from a minimum `sort`.
-- Health swaps will only be added to the balanced poll head if you explicitly increase `CODEXMANAGER_ROUTE_HEALTH_P2C_BALANCED_WINDOW`.
+### `balanced` mode
+- By default, `balanced` rotates strictly across available accounts on the `Key + Model` dimension, so it does not guarantee starting from the smallest `sort`.
+- Only when you explicitly increase `CODEXMANAGER_ROUTE_HEALTH_P2C_BALANCED_WINDOW` will it add health-based reshuffling on top of balanced rotation.
 
-## Troubleshooting log
-You can view the same directory of the database `gateway-trace.log`:
-- `CANDIDATE_POOL`: Candidate order for this request
-- `CANDIDATE_START` / `CANDIDATE_SKIP`: Actual attempt vs. skip reason
-- `REQUEST_FINAL`: Final hit account
+## Trace logs
+You can inspect `gateway-trace.log` in the same directory as the database:
+- `CANDIDATE_POOL`: candidate order for the current request
+- `CANDIDATE_START` / `CANDIDATE_SKIP`: actual attempts and skip reasons
+- `REQUEST_FINAL`: the final matched account
 
 ## Related documents
-- Environment variables and running configuration: [Environment variables and running configuration instructions.md](environment-and-runtime-config.md)
-- Minimum Troubleshooting Manual: [Minimum Troubleshooting Manual.md](minimal-troubleshooting-guide.md)
+- Environment and runtime configuration: [Environment and Runtime Configuration](environment-and-runtime-config.md)
+- Minimal troubleshooting guide: [Minimal Troubleshooting Guide](minimal-troubleshooting-guide.md)

@@ -1,6 +1,6 @@
 #ARCHITECTURE
 
-This document describes CodexManager the current warehouse structure, running relationships, and release links. The goal is to help collaborators quickly determine which layer the changes should fall on.
+This document describes CodexManager the current repository structure, running relationships, and release links. The goal is to help collaborators quickly determine which layer the changes should fall on.
 
 ## 1. Overall shape
 
@@ -263,7 +263,7 @@ Responsibilities:
 
 ## 9. Current structural risks
 
-The current warehouse needs to focus on the following issues:
+The current repository needs to focus on the following issues:
 
 1. `apps/src-tauri/src/lib.rs` It is still thick, and the desktop shell assembly and command implementation still need to be disassembled.
 2. `crates/service/src/lib.rs` Configuration, runtime synchronization, and side effect boundaries are not clear enough.

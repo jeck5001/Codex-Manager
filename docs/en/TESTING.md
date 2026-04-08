@@ -1,16 +1,16 @@
 #TESTING
 
-This document defines CodexManager warehouse-level testing and validation baselines.
+This document defines CodexManager repository-level testing and validation baselines.
 
-Goal:
+Target:
 
-- New collaborators can quickly know what to run at least after the change
+- New collaborators can quickly know what at least needs to be run after the change
 - Avoid upgrading all changes to full verification
-- Provide fixed inspection entrances for high-risk changes such as protocol compatibility, link publishing, and setting management
+- 让协议兼容、发布链路、设置治理这些高风险改动有固定检查入口
 
 ## 1. Basic environment
 
--Node.js 20
+- Node.js 20
 - pnpm 9
 - Rust stable
 - PowerShell 7+ (Windows Packaging/Script Validation)
@@ -31,7 +31,7 @@ pnpm -C apps run build
 pnpm -C apps run test:runtime
 ```
 
-Description:
+illustrate:
 
 - `pnpm -C apps run build`: Confirm that the Next.js static export link is still normal
 - `pnpm -C apps run test:runtime`: Confirm runtime capability determination and desktop / Web Capability degradation logic has not returned
@@ -56,9 +56,9 @@ Additional suggestions:
 pwsh -NoLogo -NoProfile -File scripts/rebuild.ps1 -Bundle nsis -CleanDist
 ```
 
-Description:
+illustrate:
 
-- Whenever you change Tauri bridging or desktop lifecycle, it is a good idea to do a local desktop build verification at least once.
+- Whenever you make changes to Tauri bridging or the desktop lifecycle, it's a good idea to do at least one local desktop build verification.
 
 ## 4. Web Run shell/deploy compatible changes
 
@@ -69,7 +69,7 @@ Scope of application:
 - `apps/src/components/layout/app-bootstrap.tsx`
 - `apps/src/components/layout/header.tsx`
 - `apps/src/components/layout/sidebar.tsx`
-- Web Agent, `/api/runtime`, `/api/rpc`, and related changes to deployment methods
+- Web Agent, `/api/runtime`, `/api/rpc`, and related changes in deployment methods
 
 Minimal verification:
 
@@ -88,13 +88,13 @@ pwsh -NoLogo -NoProfile -File scripts/tests/web_runtime_probe.ps1 `
 pwsh -NoLogo -NoProfile -File scripts/tests/web_ui_smoke.ps1 -SkipBuild
 ```
 
-Description:
+illustrate:
 
 - `pnpm -C apps run build`: Confirm that front-end static export can still be generated
 - `pnpm -C apps run test:runtime`: Confirm that the front-end runtime contract and capability determination are consistent
 - `cargo test -p codexmanager-web`: Confirm Web Shell Routing and Runtime Probe Contract
-- `web_runtime_probe.test.ps1`: Confirm Web script behavior for running shell minimal smoke link
-- `web_ui_smoke.ps1`: Confirm key UI behavior of Web pages under supported / unsupported run shells
+- `web_runtime_probe.test.ps1`: Confirm Web script behavior of running shell minimal smoke link
+- `web_ui_smoke.ps1`: Confirm key UI behavior of Web page under supported / unsupported running shell
 
 ## 5. Rust server-side changes
 
@@ -145,10 +145,10 @@ pwsh -NoLogo -NoProfile -File scripts/tests/codex_stream_probe.ps1
 pwsh -NoLogo -NoProfile -File scripts/tests/chat_tools_hit_probe.ps1
 ```
 
-Description:
+illustrate:
 
-- If the local environment does not have a real upstream account, at least run the Rust test and keep the probe execution instructions.
-- Compatibility fix not being able to validate only one kind of client.
+- If the local environment does not have a real upstream account, at least run Rust tests and keep probe execution instructions.
+- Compatibility fixes cannot validate only one type of client.
 
 ## 7. Settings/Environment Variables/Persistence Changes
 
@@ -169,8 +169,8 @@ cargo test --workspace
 Must be manually confirmed:
 
 - Is the default value clear?
-- Whether to write `app_settings`
-- Whether it needs to be synchronized to runtime
+- 是否写入 `app_settings`
+- Does it need to be synchronized to runtime?
 - README / `CONTRIBUTING.md` / `ARCHITECTURE.md` Does it need to be updated?
 
 ## 8. Publish link changes
@@ -195,7 +195,7 @@ Must be manually confirmed:
 
 - The workflow input is consistent with the README description
 - There is no drift in product naming
-- No drift in prerelease/latest behavior
+- prerelease / latest behavior without drift
 
 ## 9. Document management changes
 
@@ -248,6 +248,6 @@ pwsh -NoLogo -NoProfile -File scripts/tests/gateway_regression_suite.ps1
 
 ## 11. Result recording convention
 
-- Verifications that can be completely executed are recorded as "Executed".
+- Verifications that can be completely executed are recorded as "executed".
 - Verifications that cannot be executed due to environmental restrictions are clearly written as "not executed + reason".
-- Don't mistake "should be able to pass" for "verified".
+- Don't take "should be able to pass" as "proven".

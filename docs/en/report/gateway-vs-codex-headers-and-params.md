@@ -14,9 +14,9 @@ Note: In the current workspace, Codex outbound direct contract differences have 
 
 | Field | How to upload currently | Codex upstream | Status | Remarks |
 | --- | --- | --- | --- | --- |
-| `Authorization` | Assembled from the current account token to `Bearer §§0§§` | Also uses Bearer token | Aligned | Token provided by the login/account link, replaced with the current account value when outbound |
+| `Authorization` | Assembled from the current account token to `Bearer <current account token>` | Also uses Bearer token | Aligned | Token provided by the login/account link, replaced with the current account value when outbound |
 | `originator` | Send directly `codex_cli_rs` | Send the same `codex_cli_rs` | Aligned | The runtime configurable original value will be synchronized to the outbound header |
-| `User-Agent` | `codex_cli_rs/<运行时版本> (<os/version; arch>) <terminal>` | `codex_cli_rs/§§4§§ (<os/version; arch>) <terminal>` | Implementation-level differences | Version sources are different, formats are aligned |
+| `User-Agent` | `codex_cli_rs/<runtime version> (<os/version; arch>) <terminal>` | `codex_cli_rs/<database-configured version> (<os/version; arch>) <terminal>` | Implementation-level differences | Version sources are different, formats are aligned |
 | `x-client-request-id` | `conversation_id` is taken first by the session affinity link, if not, it will not be supplemented | upstream uses `conversation_id` as the request id | Aligned | No new value will be created out of thin air during failover |
 | `session_id` | Calculated from `conversation_id` / fallback session, it will switch to fallback during failover | The upstream is mainly based on `conversation_id` | Aligned | The current implementation retains the affinity/fallback strategy |
 | `x-openai-subagent` | Transparently transmit the subagent of the current request | upstream will also carry a subagent with the same semantics | Aligned | Only sent when there is a value |

@@ -6,8 +6,8 @@
 
 | 필드 | 공식 Codex | 현재 게이트웨이 | 현재 차이 |
 | --- | --- | --- | --- |
-| `Authorization` | `Bearer <官方账号 token>` | `Bearer §§1§§` | 게이트웨이는 계정 토큰을 대체합니다 |
-| `User-Agent` | `codex_cli_rs/<编译时版本> (<os/version; <arch>) <terminal>` | `codex_cli_rs/<数据库配置版本> (<os/version; <arch>) §§7§§` | 공식 버전 번호는 `env!("CARGO_PKG_VERSION")`에서 나오며 현재 이를 데이터베이스 구성 가능으로 변경했습니다. 최종 값을 수동으로 동기화할 수 있지만 소스가 일치하지 않습니다 |
+| `Authorization` | `Bearer <공식 계정 토큰>` | `Bearer <현재 계정 토큰>` | 게이트웨이는 계정 토큰을 대체합니다 |
+| `User-Agent` | `codex_cli_rs/<컴파일 시점 버전> (<os/version; <arch>) <terminal>` | `codex_cli_rs/<DB 설정 버전> (<os/version; <arch>) <terminal>` | 공식 버전 번호는 `env!("CARGO_PKG_VERSION")`에서 나오며 현재 이를 데이터베이스 구성 가능으로 변경했습니다. 최종 값을 수동으로 동기화할 수 있지만 소스가 일치하지 않습니다 |
 | `x-client-request-id` | `conversation_id`과 동일하게 수정됨 | 스레드 앵커 포인트와 동일한 우선순위 | 숫자와 스레드를 전환하면 새로운 스레드 앵커 포인트가 됩니다 |
 | `session_id` | `conversation_id`와 동일하게 수정됨 | 스레드 앵커와 동일한 우선순위 | 일반 `/responses` 스레드 앵커가 없으면 더 이상 전송되지 않습니다 |
 | `x-codex-turn-state` | 같은 턴 내에서 재생 | 동일한 스레드가 안정적인 경우 재생 | 숫자를 바꾸거나 스레드를 교체할 때 적극적으로 폐기됩니다 |

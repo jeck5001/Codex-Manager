@@ -1,4 +1,4 @@
-# 环境变量与运行配置说明
+# Environment and Runtime Configuration
 
 ## 目标
 
