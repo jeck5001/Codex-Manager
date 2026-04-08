@@ -211,6 +211,9 @@ class HotmailRoutesTests(unittest.TestCase):
         self.assertEqual(len(batch["logs"]), 1)
         self.assertIn("微软要求人工验证", batch["logs"][0])
         self.assertIn("Press and hold the button", batch["logs"][0])
+        self.assertEqual(batch["status"], "action_required")
+        self.assertEqual(batch["action_required_reason"], "unsupported_challenge")
+        self.assertFalse(batch["finished"])
 
 
 if __name__ == "__main__":
