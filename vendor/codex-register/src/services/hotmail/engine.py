@@ -462,16 +462,22 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
             first_name_ok = self._fill_first(
                 [
                     "#firstNameInput",
+                    "input[name='firstNameInput']",
                     "input[name='FirstName']",
                     "input[autocomplete='given-name']",
+                    "input[aria-label='First name']",
+                    "input[aria-label='名字']",
                 ],
                 profile.first_name,
             )
             last_name_ok = self._fill_first(
                 [
                     "#lastNameInput",
+                    "input[name='lastNameInput']",
                     "input[name='LastName']",
                     "input[autocomplete='family-name']",
+                    "input[aria-label='Last name']",
+                    "input[aria-label='姓氏']",
                 ],
                 profile.last_name,
             )
