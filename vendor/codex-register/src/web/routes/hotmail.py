@@ -42,7 +42,7 @@ async def _run_hotmail_batch(batch_id: str, request: HotmailBatchCreateRequest):
             break
 
         engine = create_hotmail_engine(proxy_url=request.proxy)
-        result = engine.run()
+        result = await asyncio.to_thread(engine.run)
         batch["completed"] += 1
 
         if result.success and result.artifact:

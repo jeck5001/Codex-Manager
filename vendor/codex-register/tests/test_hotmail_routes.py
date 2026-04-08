@@ -1,4 +1,5 @@
 import importlib.util
+import asyncio
 import sys
 import types
 import unittest
@@ -128,6 +129,47 @@ class HotmailRoutesTests(unittest.TestCase):
         artifacts = self.client.get(f"/api/hotmail/batches/{batch_id}/artifacts")
         self.assertEqual(artifacts.status_code, 200)
         self.assertEqual(len(artifacts.json()["artifacts"]), 2)
+
+    def test_run_hotmail_batch_executes_engine_via_asyncio_to_thread(self):
+        module = self.module
+        observed = {"to_thread_calls": 0, "run_calls": 0}
+
+        class FakeEngine:
+            def run(self):
+                observed["run_calls"] += 1
+                return module.HotmailRegistrationResult(
+                    success=False,
+                    reason_code="unsupported_challenge",
+                    error_message="challenge",
+                )
+
+        async def fake_to_thread(callback, *args, **kwargs):
+            observed["to_thread_calls"] += 1
+            return callback(*args, **kwargs)
+
+        module.create_hotmail_engine = lambda **_kwargs: FakeEngine()
+        module.asyncio.to_thread = fake_to_thread
+        module.hotmail_batches["batch-thread"] = {
+            "batch_id": "batch-thread",
+            "total": 1,
+            "completed": 0,
+            "success": 0,
+            "failed": 0,
+            "finished": False,
+            "cancelled": False,
+            "logs": [],
+            "artifacts": [],
+        }
+
+        asyncio.run(
+            module._run_hotmail_batch(
+                "batch-thread",
+                module.HotmailBatchCreateRequest(count=1, concurrency=1, interval_min=0, interval_max=0),
+            )
+        )
+
+        self.assertEqual(observed["to_thread_calls"], 1)
+        self.assertEqual(observed["run_calls"], 1)
 
 
 if __name__ == "__main__":

@@ -87,6 +87,7 @@ import {
   APP_NAV_ITEMS,
   type AppNavItemId,
   normalizeVisibleMenuItems,
+  sanitizeVisibleMenuItems,
 } from "@/lib/navigation";
 import { describeFreeProxyClearResult } from "./freeproxy-clear-state";
 
@@ -814,7 +815,7 @@ export default function SettingsPage() {
       current.delete(menuId);
     }
     updateSettings.mutate({
-      visibleMenuItems: normalizeVisibleMenuItems(Array.from(current)),
+      visibleMenuItems: sanitizeVisibleMenuItems(Array.from(current)),
     });
   };
 

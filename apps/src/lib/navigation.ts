@@ -22,7 +22,7 @@ export const APP_NAV_DEFAULT_VISIBLE_IDS: AppNavItemId[] = APP_NAV_ITEMS.map(
   (item) => item.id
 );
 
-export function normalizeVisibleMenuItems(
+export function sanitizeVisibleMenuItems(
   value: readonly string[] | null | undefined
 ): AppNavItemId[] {
   const allowed = new Set<string>(APP_NAV_ITEMS.map((item) => item.id));
@@ -39,6 +39,14 @@ export function normalizeVisibleMenuItems(
   if (deduped.length === 0) {
     return [...APP_NAV_DEFAULT_VISIBLE_IDS];
   }
+
+  return deduped;
+}
+
+export function normalizeVisibleMenuItems(
+  value: readonly string[] | null | undefined
+): AppNavItemId[] {
+  const deduped = sanitizeVisibleMenuItems(value);
 
   const hasLegacyFullMenu = APP_NAV_ITEMS.filter(
     (item) => !APP_NAV_UPGRADE_VISIBLE_IDS.includes(item.id)
