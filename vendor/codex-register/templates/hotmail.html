@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotmail 工具 - OpenAI 注册系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="nav-brand">
+                <h1>OpenAI 注册系统</h1>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-link">注册</a>
+                <a href="/accounts" class="nav-link">账号管理</a>
+                <a href="/email-services" class="nav-link">邮箱服务</a>
+                <a href="/hotmail" class="nav-link active">Hotmail 工具</a>
+                <a href="/settings" class="nav-link">设置</a>
+                <a href="/logout" class="nav-link">退出</a>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <div class="page-header">
+                <h2>Hotmail 自动注册</h2>
+                <p class="subtitle">批量创建 Microsoft 消费者邮箱账号</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>批次配置</h3>
+                </div>
+                <div class="card-body">
+                    <form id="hotmail-batch-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="hotmail-count">数量</label>
+                                <input type="number" id="hotmail-count" value="1" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="hotmail-concurrency">并发</label>
+                                <input type="number" id="hotmail-concurrency" value="1" min="1" max="10">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="hotmail-interval-min">最小间隔</label>
+                                <input type="number" id="hotmail-interval-min" value="2" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="hotmail-interval-max">最大间隔</label>
+                                <input type="number" id="hotmail-interval-max" value="5" min="0">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">开始注册</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>批次状态</h3>
+                </div>
+                <div class="card-body">
+                    <div id="hotmail-batch-status">尚未创建批次</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>运行日志</h3>
+                </div>
+                <div class="card-body">
+                    <div id="hotmail-batch-logs"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>导出文件</h3>
+                </div>
+                <div class="card-body">
+                    <div id="hotmail-artifacts"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/hotmail.js"></script>
+</body>
+</html>
