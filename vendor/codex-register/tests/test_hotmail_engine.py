@@ -210,6 +210,41 @@ class HotmailEngineTests(unittest.TestCase):
         self.assertTrue(session._click_first(["#BirthMonthDropdown"]))
         self.assertEqual(locator.calls, [{}, {"force": True}])
 
+    def test_submit_profile_details_supports_name_input_selectors(self):
+        class FakePage:
+            def wait_for_timeout(self, _ms):
+                return None
+
+        class FakeSession(PlaywrightHotmailBrowserSession):
+            def __init__(self):
+                super().__init__()
+                self.page = FakePage()
+                self.state = "name_details"
+                self.filled = []
+
+            def _detect_state(self):
+                return self.state
+
+            def _fill_first(self, selectors, value):
+                selector_set = set(selectors)
+                if "input[name='firstNameInput']" in selector_set:
+                    self.filled.append(("first", value))
+                    return True
+                if "input[name='lastNameInput']" in selector_set:
+                    self.filled.append(("last", value))
+                    return True
+                return False
+
+            def _click_primary_action(self):
+                self.state = "success"
+                return True
+
+        session = FakeSession()
+        result = session.submit_profile_details(profile=self._build_profile())
+
+        self.assertEqual(result, "success")
+        self.assertEqual(session.filled, [("first", "Alice"), ("last", "Example")])
+
     def test_engine_fails_fast_on_phone_verification(self):
         class FakeBrowserSession:
             def __enter__(self):
