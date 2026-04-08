@@ -62,6 +62,53 @@ class HotmailRoutesTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_batch_completion_tracks_success_failed_and_artifacts(self):
+        module = self.module
+
+        class FakeEngine:
+            def __init__(self):
+                self._calls = 0
+
+            def run(self):
+                self._calls += 1
+                if self._calls == 1:
+                    return module.HotmailRegistrationResult(
+                        success=True,
+                        artifact=module.HotmailAccountArtifact(
+                            email="ok@hotmail.com",
+                            password="pw-1",
+                            target_domain="hotmail.com",
+                            verification_email="v@temp.example.com",
+                        ),
+                    )
+                return module.HotmailRegistrationResult(
+                    success=False,
+                    reason_code="phone_verification_required",
+                    error_message="phone required",
+                )
+
+        engine = FakeEngine()
+        self.module.create_hotmail_engine = lambda **_kwargs: engine
+
+        response = self.client.post(
+            "/api/hotmail/batches",
+            json={"count": 2, "concurrency": 1, "interval_min": 0, "interval_max": 0},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        batch_id = response.json()["batch_id"]
+        batch = self.client.get(f"/api/hotmail/batches/{batch_id}").json()
+
+        self.assertTrue(batch["finished"])
+        self.assertEqual(batch["completed"], 2)
+        self.assertEqual(batch["success"], 1)
+        self.assertEqual(batch["failed"], 1)
+        self.assertEqual(len(batch["artifacts"]), 2)
+
+        artifacts = self.client.get(f"/api/hotmail/batches/{batch_id}/artifacts")
+        self.assertEqual(artifacts.status_code, 200)
+        self.assertEqual(len(artifacts.json()["artifacts"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

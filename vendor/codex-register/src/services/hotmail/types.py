@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
 
 
 class HotmailFailureCode(str, Enum):
@@ -24,3 +25,11 @@ class HotmailAccountArtifact:
 
     def to_txt_line(self) -> str:
         return f"{self.email}----{self.password}"
+
+
+@dataclass
+class HotmailRegistrationResult:
+    success: bool
+    reason_code: str = ""
+    error_message: str = ""
+    artifact: Optional[HotmailAccountArtifact] = None
