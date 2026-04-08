@@ -31,6 +31,7 @@ SUCCESS_URL_MARKERS = (
     "outlook.live.com",
     "login.live.com",
 )
+PROFILE_PROGRESS_STATES = {"profile_details", "birth_details", "name_details"}
 MONTH_LABEL_MAP = {
     "1": ("January", "1月"),
     "2": ("February", "2月"),
@@ -627,7 +628,9 @@ class HotmailRegistrationEngine:
         domain: str,
     ) -> HotmailRegistrationResult:
         current_state = str(state or "").strip().lower()
-        if current_state in {"profile_details", "birth_details", "name_details"}:
+        for _ in range(3):
+            if current_state not in PROFILE_PROGRESS_STATES:
+                break
             current_state = str(session.submit_profile_details(profile=profile)).strip().lower()
 
         if current_state == "email_verification":
