@@ -72,12 +72,17 @@ async def _run_hotmail_batch(batch_id: str, request: HotmailBatchCreateRequest):
         else:
             batch["failed"] += 1
             batch["logs"].append(_format_hotmail_batch_error(result))
+            if str(result.reason_code or "").strip().lower() == "unsupported_challenge":
+                batch["status"] = "action_required"
+                batch["action_required_reason"] = "unsupported_challenge"
+                break
 
         if request.interval_max > 0:
             await asyncio.sleep(request.interval_min)
 
     batch["artifacts"] = write_artifacts(batch_id, successful_records)
-    batch["finished"] = True
+    if batch.get("status") != "action_required":
+        batch["finished"] = True
 
 
 @router.post("/batches")
@@ -89,6 +94,8 @@ async def create_hotmail_batch(request: HotmailBatchCreateRequest, background_ta
         "completed": 0,
         "success": 0,
         "failed": 0,
+        "status": "running",
+        "action_required_reason": "",
         "finished": False,
         "cancelled": False,
         "logs": [],
@@ -120,4 +127,5 @@ async def cancel_hotmail_batch(batch_id: str):
     if not batch:
         raise HTTPException(status_code=404, detail="Hotmail batch not found")
     batch["cancelled"] = True
+    batch["status"] = "cancelled"
     return {"success": True, "batch_id": batch_id}
