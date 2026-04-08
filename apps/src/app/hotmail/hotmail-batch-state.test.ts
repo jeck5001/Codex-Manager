@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  classifyHotmailLogLine,
   getHotmailBatchProgress,
   mergeHotmailBatchArtifacts,
   shouldPollHotmailBatch,
@@ -26,4 +27,16 @@ test("mergeHotmailBatchArtifacts keeps newest non-empty artifacts", () => {
   const next = [{ filename: "batch-b.txt", path: "/tmp/batch-b.txt", size: 20 }];
   assert.deepEqual(mergeHotmailBatchArtifacts(previous, next), next);
   assert.deepEqual(mergeHotmailBatchArtifacts(previous, []), previous);
+});
+
+test("classifyHotmailLogLine marks human verification logs as challenge", () => {
+  assert.equal(
+    classifyHotmailLogLine("微软要求人工验证（Press and hold the button）"),
+    "challenge",
+  );
+  assert.equal(
+    classifyHotmailLogLine("Hotmail signup failed: unsupported_challenge | title=Let's prove you're human"),
+    "challenge",
+  );
+  assert.equal(classifyHotmailLogLine("phone required"), "default");
 });
