@@ -314,7 +314,7 @@ export function AggregateApiModal({
       onOpenChange(false);
     } catch (error: unknown) {
       toast.error(
-        `操作失败: ${error instanceof Error ? error.message : String(error)}`
+        `${t("操作失败")}: ${error instanceof Error ? error.message : String(error)}`
       );
     } finally {
       setIsLoading(false);

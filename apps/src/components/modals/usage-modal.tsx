@@ -181,9 +181,9 @@ export default function UsageModal({
                 resetsAt={usageBuckets.primaryResetsAt}
                 icon={Clock}
                 tone="green"
-                caption="标准模型窗口"
-                emptyText={secondaryWindowOnly ? "未提供" : "--"}
-                emptyResetText={secondaryWindowOnly ? "未提供" : "未知"}
+                caption={t("标准模型窗口")}
+                emptyText={secondaryWindowOnly ? t("未提供") : "--"}
+                emptyResetText={secondaryWindowOnly ? t("未提供") : t("未知")}
               />
 
               <UsageDetailRow
@@ -192,22 +192,22 @@ export default function UsageModal({
                 resetsAt={usageBuckets.secondaryResetsAt}
                 icon={Calendar}
                 tone="blue"
-                caption="长周期窗口"
-                emptyText={primaryWindowOnly ? "未提供" : "--"}
-                emptyResetText={primaryWindowOnly ? "未提供" : "未知"}
+                caption={t("长周期窗口")}
+                emptyText={primaryWindowOnly ? t("未提供") : "--"}
+                emptyResetText={primaryWindowOnly ? t("未提供") : t("未知")}
               />
 
               {extraUsageRows.map((item) => (
                 <UsageDetailRow
                   key={item.id}
-                  label={item.label}
+                  label={`${t(item.label, item.labelValues)}${item.labelSuffix ? t(item.labelSuffix) : ""}`}
                   remainPercent={item.remainPercent}
                   resetsAt={item.resetsAt}
                   icon={Zap}
                   tone="amber"
-                  caption={item.windowLabel}
+                  caption={t(item.windowLabel, item.windowLabelValues)}
                   emptyText="--"
-                  emptyResetText="未知"
+                  emptyResetText={t("未知")}
                 />
               ))}
             </div>

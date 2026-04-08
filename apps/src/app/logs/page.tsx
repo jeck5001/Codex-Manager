@@ -69,6 +69,7 @@ import {
 
 type StatusFilter = "all" | "2xx" | "4xx" | "5xx";
 type LogsTab = "requests" | "gateway-errors";
+type TranslateFn = (message: string, values?: Record<string, string | number>) => string;
 
 /**
  * 函数 `getStatusBadge`
@@ -365,11 +366,11 @@ function resolveDisplayRequestPath(log: RequestLog): string {
  * # 返回
  * 返回函数执行结果
  */
-function resolveUpstreamDisplay(upstreamUrl: string): string {
+function resolveUpstreamDisplay(upstreamUrl: string, t: TranslateFn): string {
   const raw = String(upstreamUrl || "").trim();
   if (!raw) return "";
   if (raw === "默认" || raw === "本地" || raw === "自定义") {
-    return raw;
+    return t(raw);
   }
   try {
     const url = new URL(raw);
@@ -674,6 +675,7 @@ function AccountKeyInfoCell({
   apiKeyMap: Map<string, ApiKey>;
   aggregateApiMap: Map<string, AggregateApi>;
 }) {
+  const { t } = useI18n();
   const displayAccount = accountLabel || log.accountId || "-";
   const hasNamedAccount =
     Boolean(accountLabel) &&
@@ -768,7 +770,7 @@ function AccountKeyInfoCell({
             </div>
             {showAggregateAttemptHint ? (
               <div className="text-[9px] text-amber-500">
-                先试 {initialAggregateApiLabel}
+                {t("先试")} {initialAggregateApiLabel}
               </div>
             ) : null}
           </div>
@@ -776,7 +778,7 @@ function AccountKeyInfoCell({
         <TooltipContent className="max-w-sm">
           <div className="flex min-w-[240px] flex-col gap-2">
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">供应商名称</div>
+              <div className="text-[10px] text-background/70">{t("供应商名称")}</div>
               <div className="break-all font-mono text-[11px]">
                 {aggregateApiDisplayName}
               </div>
@@ -788,14 +790,14 @@ function AccountKeyInfoCell({
               </div>
             </div>
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">密钥</div>
+              <div className="text-[10px] text-background/70">{t("密钥")}</div>
               <div className="break-all font-mono text-[11px]">
                 {log.keyId || "-"}
               </div>
             </div>
             {attemptedAggregateApiLabels.length > 1 ? (
               <div className="space-y-0.5">
-                <div className="text-[10px] text-background/70">尝试链路</div>
+                <div className="text-[10px] text-background/70">{t("尝试链路")}</div>
                 <div className="break-all font-mono text-[11px]">
                   {attemptedAggregateApiLabels.join(" -> ")}
                 </div>
@@ -803,7 +805,7 @@ function AccountKeyInfoCell({
             ) : null}
             {initialAggregateApiLabel ? (
               <div className="space-y-0.5">
-                <div className="text-[10px] text-background/70">首尝试渠道</div>
+                <div className="text-[10px] text-background/70">{t("首尝试渠道")}</div>
                 <div className="break-all font-mono text-[11px]">
                   {initialAggregateApiLabel}
                 </div>
@@ -831,7 +833,7 @@ function AccountKeyInfoCell({
           </div>
           {showAttemptHint ? (
             <div className="text-[9px] text-amber-500">
-              先试 {initialAccountLabel}
+              {t("先试")} {initialAccountLabel}
             </div>
           ) : null}
         </div>
@@ -840,7 +842,7 @@ function AccountKeyInfoCell({
         <div className="flex min-w-[240px] flex-col gap-2">
           {initialAccountLabel ? (
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">首尝试账号</div>
+              <div className="text-[10px] text-background/70">{t("首尝试账号")}</div>
               <div className="break-all font-mono text-[11px]">
                 {initialAccountLabel}
               </div>
@@ -848,7 +850,7 @@ function AccountKeyInfoCell({
           ) : null}
           {attemptedAccountLabels.length > 1 ? (
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">尝试链路</div>
+              <div className="text-[10px] text-background/70">{t("尝试链路")}</div>
               <div className="break-all font-mono text-[11px]">
                 {attemptedAccountLabels.join(" -> ")}
               </div>
@@ -856,20 +858,20 @@ function AccountKeyInfoCell({
           ) : null}
           {hasNamedAccount ? (
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">邮箱 / 名称</div>
+              <div className="text-[10px] text-background/70">{t("邮箱 / 名称")}</div>
               <div className="break-all font-mono text-[11px]">
                 {accountLabel}
               </div>
             </div>
           ) : null}
           <div className="space-y-0.5">
-            <div className="text-[10px] text-background/70">账号 ID</div>
+            <div className="text-[10px] text-background/70">{t("账号 ID")}</div>
             <div className="break-all font-mono text-[11px]">
               {log.accountId || "-"}
             </div>
           </div>
           <div className="space-y-0.5">
-            <div className="text-[10px] text-background/70">密钥</div>
+            <div className="text-[10px] text-background/70">{t("密钥")}</div>
             <div className="break-all font-mono text-[11px]">
               {log.keyId || "-"}
             </div>
@@ -894,12 +896,13 @@ function AccountKeyInfoCell({
  * 返回函数执行结果
  */
 function RequestRouteInfoCell({ log }: { log: RequestLog }) {
+  const { t } = useI18n();
   const displayPath = resolveDisplayRequestPath(log) || "-";
   const recordedPath = String(log.path || log.requestPath || "").trim();
   const originalPath = String(log.originalPath || "").trim();
   const adaptedPath = String(log.adaptedPath || "").trim();
   const upstreamUrl = String(log.upstreamUrl || "").trim();
-  const upstreamDisplay = resolveUpstreamDisplay(upstreamUrl);
+  const upstreamDisplay = resolveUpstreamDisplay(upstreamUrl, t);
   const requestType = normalizeRequestType(log.requestType);
 
   return (
@@ -918,20 +921,20 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
       <TooltipContent className="max-w-md">
         <div className="flex min-w-[280px] flex-col gap-2">
           <div className="space-y-0.5">
-            <div className="text-[10px] text-background/70">请求类型</div>
+            <div className="text-[10px] text-background/70">{t("请求类型")}</div>
             <div className="font-mono text-[11px] uppercase">{requestType}</div>
           </div>
           <div className="space-y-0.5">
-            <div className="text-[10px] text-background/70">方法</div>
+            <div className="text-[10px] text-background/70">{t("方法")}</div>
             <div className="font-mono text-[11px]">{log.method || "-"}</div>
           </div>
           <div className="space-y-0.5">
-            <div className="text-[10px] text-background/70">显示地址</div>
+            <div className="text-[10px] text-background/70">{t("显示地址")}</div>
             <div className="break-all font-mono text-[11px]">{displayPath}</div>
           </div>
           {recordedPath && recordedPath !== displayPath ? (
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">记录地址</div>
+              <div className="text-[10px] text-background/70">{t("记录地址")}</div>
               <div className="break-all font-mono text-[11px]">
                 {recordedPath}
               </div>
@@ -939,7 +942,7 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
           ) : null}
           {originalPath && originalPath !== displayPath ? (
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">原始地址</div>
+              <div className="text-[10px] text-background/70">{t("原始地址")}</div>
               <div className="break-all font-mono text-[11px]">
                 {originalPath}
               </div>
@@ -947,7 +950,7 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
           ) : null}
           {adaptedPath && adaptedPath !== displayPath ? (
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">转发地址</div>
+              <div className="text-[10px] text-background/70">{t("转发地址")}</div>
               <div className="break-all font-mono text-[11px]">
                 {adaptedPath}
               </div>
@@ -955,7 +958,7 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
           ) : null}
           {log.responseAdapter ? (
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">适配器</div>
+              <div className="text-[10px] text-background/70">{t("适配器")}</div>
               <div className="break-all font-mono text-[11px]">
                 {log.responseAdapter}
               </div>
@@ -963,7 +966,7 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
           ) : null}
           {upstreamDisplay ? (
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">上游</div>
+              <div className="text-[10px] text-background/70">{t("上游")}</div>
               <div className="break-all font-mono text-[11px]">
                 {upstreamDisplay}
               </div>
@@ -971,7 +974,7 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
           ) : null}
           {upstreamUrl ? (
             <div className="space-y-0.5">
-              <div className="text-[10px] text-background/70">上游地址</div>
+              <div className="text-[10px] text-background/70">{t("上游地址")}</div>
               <div className="break-all font-mono text-[11px]">
                 {upstreamUrl}
               </div>
@@ -1074,6 +1077,7 @@ function ModelEffortCell({
 }: {
   log: RequestLog;
 }) {
+  const { t } = useI18n();
   const model = String(log.model || "").trim();
   const effort = String(log.reasoningEffort || "").trim();
   const clientServiceTier = resolveDisplayServiceTier(log.serviceTier);
@@ -1097,20 +1101,20 @@ function ModelEffortCell({
       <TooltipContent className="max-w-sm">
         <div className="flex min-w-[220px] flex-col gap-2">
           <div className="space-y-0.5">
-            <div className="text-[10px] text-background/70">模型</div>
+            <div className="text-[10px] text-background/70">{t("模型")}</div>
             <div className="break-all font-mono text-[11px]">
               {model || "-"}
             </div>
           </div>
           <div className="space-y-0.5">
-            <div className="text-[10px] text-background/70">推理</div>
+            <div className="text-[10px] text-background/70">{t("推理")}</div>
             <div className="break-all font-mono text-[11px]">
               {effort || "-"}
             </div>
           </div>
           <div className="space-y-0.5">
             <div className="text-[10px] text-background/70">
-              客户端显式服务等级
+              {t("客户端显式服务等级")}
             </div>
             <div className="break-all font-mono text-[11px]">
               {clientServiceTier}
@@ -1118,7 +1122,7 @@ function ModelEffortCell({
           </div>
           <div className="space-y-0.5">
             <div className="text-[10px] text-background/70">
-              最终生效服务等级
+              {t("最终生效服务等级")}
             </div>
             <div className="break-all font-mono text-[11px]">
               {effectiveServiceTier}
@@ -1682,7 +1686,7 @@ function LogsPageContent() {
                     className="group text-xs hover:bg-muted/20"
                   >
                     <TableCell className="px-4 py-3 font-mono text-[11px] text-muted-foreground">
-                      {formatTsFromSeconds(log.createdAt, "未知时间")}
+                      {formatTsFromSeconds(log.createdAt, t("未知时间"))}
                     </TableCell>
                     <TableCell className="px-4 py-3 align-top">
                       <RequestRouteInfoCell log={log} />

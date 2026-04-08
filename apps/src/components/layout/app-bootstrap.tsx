@@ -142,8 +142,8 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       }
     }
 
-    throw lastError || new Error(`服务初始化失败: ${addr}`);
-  }, []);
+    throw lastError || new Error(t("服务初始化失败: {addr}", { addr }));
+  }, [t]);
 
   const startAndInitializeService = useCallback(
     async (addr: string) => {
@@ -465,7 +465,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
           setServiceStatus({ connected: false, version: "" });
           setError(
             detectedRuntimeCapabilities.unsupportedReason ||
-              "当前 Web 运行方式不受支持"
+              t("当前 Web 运行方式不受支持")
           );
         }
         setIsInitializing(false);
@@ -636,8 +636,9 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
                   </h2>
                   {isUnsupportedWebRuntime ? (
                     <p className="px-4 text-center text-sm text-muted-foreground">
-                      请通过 `codexmanager-web` 打开页面，或在反向代理中同时提供
-                      `/api/runtime` 与 `/api/rpc`。
+                      {t(
+                        "请通过 `codexmanager-web` 打开页面，或在反向代理中同时提供 `/api/runtime` 与 `/api/rpc`。",
+                      )}
                     </p>
                   ) : null}
                   <p className="max-h-32 overflow-y-auto break-all rounded-lg bg-muted/50 p-3 font-mono text-[10px] text-muted-foreground">

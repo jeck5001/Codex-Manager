@@ -95,7 +95,7 @@ import { Account } from "@/types";
 type StatusFilter = "all" | "available" | "low_quota" | "banned";
 type AccountExportMode = "single" | "multiple";
 const ACCOUNT_SORT_STEP = 5;
-type TranslateFn = (key: string) => string;
+type TranslateFn = (key: string, values?: Record<string, string | number>) => string;
 
 /**
  * 函数 `formatAccountPlanValueLabel`
@@ -110,7 +110,7 @@ type TranslateFn = (key: string) => string;
  * # 返回
  * 返回函数执行结果
  */
-function formatAccountPlanValueLabel(value: string) {
+function formatAccountPlanValueLabel(value: string, t: TranslateFn) {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
@@ -132,9 +132,9 @@ function formatAccountPlanValueLabel(value: string) {
     case "edu":
       return "EDU";
     case "unknown":
-      return "未知";
+      return t("未知");
     default:
-      return normalized ? normalized.toUpperCase() : "未知";
+      return normalized ? normalized.toUpperCase() : t("未知");
   }
 }
 
@@ -175,7 +175,7 @@ function formatPlanFilterLabel(value: string, t: TranslateFn) {
   if (!nextValue || nextValue === "all") {
     return t("全部类型");
   }
-  return formatAccountPlanValueLabel(nextValue);
+  return formatAccountPlanValueLabel(nextValue, t);
 }
 
 /**
@@ -413,11 +413,11 @@ function getAccountStatusAction(account: Account, t: TranslateFn): {
  * # 返回
  * 返回函数执行结果
  */
-function formatAccountPlanLabel(account: Account): string | null {
+function formatAccountPlanLabel(account: Account, t: TranslateFn): string | null {
   const normalized = normalizeAccountPlanKey(account);
   return normalized === "unknown"
     ? null
-    : formatAccountPlanValueLabel(normalized);
+    : formatAccountPlanValueLabel(normalized, t);
 }
 
 /**
@@ -613,7 +613,7 @@ function AccountInfoCell({
   isPreferred: boolean;
 }) {
   const { t } = useI18n();
-  const accountPlanLabel = formatAccountPlanLabel(account);
+  const accountPlanLabel = formatAccountPlanLabel(account, t);
   const tagsText = formatAccountTags(account.tags);
   const noteText = String(account.note || "").trim();
 
@@ -660,7 +660,9 @@ function AccountInfoCell({
             </div>
             <div className="space-y-0.5">
               <div className="text-[10px] text-background/70">{t("当前状态")}</div>
-              <div className="font-medium">{account.availabilityText || t("未知")}</div>
+              <div className="font-medium">
+                {t(account.availabilityText || "未知")}
+              </div>
             </div>
           </div>
           <div className="space-y-0.5">
@@ -1358,7 +1360,7 @@ export default function AccountsPage() {
                 </SelectItem>
                 {planTypes.map((planType) => (
                   <SelectItem key={planType.value} value={planType.value}>
-                    {formatAccountPlanValueLabel(planType.value)} ({planType.count})
+                    {formatAccountPlanValueLabel(planType.value, t)} ({planType.count})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1701,12 +1703,12 @@ export default function AccountsPage() {
                       },
                       ...extraUsageRows.map((item) => ({
                         id: item.id,
-                        label: item.label,
+                        label: `${t(item.label, item.labelValues)}${item.labelSuffix ? t(item.labelSuffix) : ""}`,
                         remainPercent: item.remainPercent,
                         resetsAt: item.resetsAt,
                         icon: Zap,
                         tone: "amber" as const,
-                        caption: item.windowLabel,
+                        caption: t(item.windowLabel, item.windowLabelValues),
                         emptyText: "--",
                         emptyResetText: t("未知"),
                       })),
@@ -2082,7 +2084,7 @@ export default function AccountsPage() {
                 <div>{t("账号类型")}</div>
                 <div className="font-medium text-foreground/80">
                   {currentEditingAccount
-                    ? formatAccountPlanLabel(currentEditingAccount) || t("未知")
+                    ? formatAccountPlanLabel(currentEditingAccount, t) || t("未知")
                     : t("未知")}
                 </div>
               </div>

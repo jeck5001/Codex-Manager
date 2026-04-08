@@ -178,25 +178,25 @@ export function WebPasswordModal({ open, onOpenChange }: WebPasswordModalProps) 
             <DialogTitle>{t("访问密码")}</DialogTitle>
           </div>
           <DialogDescription>
-            该密码用于保护 Web 管理页访问。在桌面端或 Web 端修改后，都会写入同一份服务配置并立即生效。
+            {t("该密码用于保护 Web 管理页访问。在桌面端或 Web 端修改后，都会写入同一份服务配置并立即生效。")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
           {!canAccessManagementRpc ? (
             <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
-              当前运行环境暂不支持读取或保存访问密码。
+              {t("当前运行环境暂不支持读取或保存访问密码。")}
             </div>
           ) : null}
           {appSettings.webAccessPasswordConfigured ? (
             <div className="flex items-center gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 text-sm">
               <ShieldCheck className="h-4 w-4" />
-              <span>当前已启用访问密码保护</span>
+              <span>{t("当前已启用访问密码保护")}</span>
             </div>
           ) : (
             <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-600 dark:text-yellow-400 text-sm">
               <ShieldAlert className="h-4 w-4" />
-              <span>当前未设置访问密码，Web 管理页处于公开状态</span>
+              <span>{t("当前未设置访问密码，Web 管理页处于公开状态")}</span>
             </div>
           )}
 

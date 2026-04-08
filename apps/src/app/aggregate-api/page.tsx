@@ -58,6 +58,8 @@ import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { useI18n } from "@/lib/i18n/provider";
 import { AggregateApi, AggregateApiSecretResult } from "@/types";
 
+type TranslateFn = (key: string, values?: Record<string, string | number>) => string;
+
 const AGGREGATE_API_PROVIDER_LABELS: Record<string, string> = {
   codex: "Codex",
   claude: "Claude",
@@ -82,22 +84,22 @@ const AGGREGATE_API_PROVIDER_FILTER_LABELS: Record<string, string> = {
  * # 返回
  * 返回函数执行结果
  */
-function getTestBadge(api: AggregateApi) {
+function getTestBadge(api: AggregateApi, t: TranslateFn) {
   if (api.lastTestStatus === "success") {
     return (
       <Badge className="border-green-500/20 bg-green-500/10 text-green-500">
-        已连通
+        {t("已连通")}
       </Badge>
     );
   }
   if (api.lastTestStatus === "failed") {
     return (
       <Badge className="border-red-500/20 bg-red-500/10 text-red-500">
-        失败
+        {t("失败")}
       </Badge>
     );
   }
-  return <Badge variant="secondary">未测试</Badge>;
+  return <Badge variant="secondary">{t("未测试")}</Badge>;
 }
 
 export default function AggregateApiPage() {
@@ -168,7 +170,7 @@ export default function AggregateApiPage() {
    * 返回函数执行结果
    */
   const renderTestStatus = (api: AggregateApi) => {
-    const badge = getTestBadge(api);
+    const badge = getTestBadge(api, t);
     if (api.lastTestStatus !== "failed" || !api.lastTestError) {
       return badge;
     }
@@ -197,9 +199,9 @@ export default function AggregateApiPage() {
         return;
       }
       toast.error(
-        `连通性测试失败: ${
-          result.message || result.statusCode || "未返回具体错误信息"
-        }`,
+        t("连通性测试失败: {reason}", {
+          reason: result.message || result.statusCode || t("未返回具体错误信息"),
+        }),
       );
     },
     onSettled: async (_result, _error, apiId) => {
@@ -318,10 +320,10 @@ export default function AggregateApiPage() {
       const authType = String(secretResult.authType || "").trim().toLowerCase();
       if (authType === "userpass") {
         if (!secretResult.username || !secretResult.password) {
-          throw new Error("后端未返回账号密码明文");
+          throw new Error(t("后端未返回账号密码明文"));
         }
       } else if (!secretResult.key) {
-        throw new Error("后端未返回密钥明文");
+        throw new Error(t("后端未返回密钥明文"));
       }
       setRevealedSecrets((current) => ({ ...current, [apiId]: secretResult }));
       return secretResult;
@@ -387,13 +389,13 @@ export default function AggregateApiPage() {
             : secret.key;
       if (authType === "userpass") {
         if (!value) {
-          throw new Error("账号密码字段为空");
+          throw new Error(t("账号密码字段为空"));
         }
       } else if (!value) {
-        throw new Error("密钥为空");
+        throw new Error(t("密钥为空"));
       }
       await copyTextToClipboard(value);
-      toast.success("已复制到剪贴板");
+      toast.success(t("已复制到剪贴板"));
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
@@ -438,9 +440,11 @@ export default function AggregateApiPage() {
                   <SelectTrigger className="w-[160px]">
                     <SelectValue>
                       {(value) =>
-                        AGGREGATE_API_PROVIDER_FILTER_LABELS[
-                          String(value || "")
-                        ] || t("全部类型")
+                        t(
+                          AGGREGATE_API_PROVIDER_FILTER_LABELS[
+                            String(value || "")
+                          ] || "全部类型",
+                        )
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -453,7 +457,7 @@ export default function AggregateApiPage() {
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-xs text-muted-foreground">
-                  共 {filteredAggregateApis.length} 条
+                  {t("共")} {filteredAggregateApis.length} {t("条")}
                 </div>
                 <Button
                   className="h-10 gap-2 shadow-lg shadow-primary/20"
@@ -511,8 +515,13 @@ export default function AggregateApiPage() {
                         <ShieldCheck className="h-8 w-8 opacity-20" />
                         <p>
                           {providerFilter === "all"
-                            ? "暂无聚合 API，点击右上角新建"
-                            : `暂无 ${AGGREGATE_API_PROVIDER_LABELS[providerFilter] || providerFilter} 聚合 API`}
+                            ? t("暂无聚合 API，点击右上角新建")
+                            : t("暂无 {provider} 聚合 API", {
+                                provider:
+                                  AGGREGATE_API_PROVIDER_LABELS[
+                                    providerFilter
+                                  ] || providerFilter,
+                              })}
                         </p>
                       </div>
                     </TableCell>
@@ -522,7 +531,7 @@ export default function AggregateApiPage() {
                     const revealed = revealedSecrets[api.id];
                     const createdTimeText = formatTsFromSeconds(
                       api.createdAt,
-                      "未知时间",
+                      t("未知时间"),
                     );
 
                     return (
@@ -551,7 +560,7 @@ export default function AggregateApiPage() {
                                   {api.url}
                                 </div>
                                 <div className="text-[11px] opacity-80">
-                                  创建时间: {createdTimeText}
+                                  {t("创建时间")}: {createdTimeText}
                                 </div>
                               </div>
                             </TooltipContent>
@@ -672,7 +681,7 @@ export default function AggregateApiPage() {
                           </div>
                           {api.lastTestAt ? (
                             <p className="mt-1 text-[10px] text-muted-foreground">
-                              {formatTsFromSeconds(api.lastTestAt, "未知时间")}
+                              {formatTsFromSeconds(api.lastTestAt, t("未知时间"))}
                             </p>
                           ) : null}
                           {api.lastTestStatus === "failed" && api.lastTestError ? (

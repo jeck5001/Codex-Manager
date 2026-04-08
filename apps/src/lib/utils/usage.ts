@@ -26,12 +26,16 @@ const WINDOW_ROUNDING_BIAS_MINUTES = 3;
 const EXTRA_RATE_LIMITS_JSON_KEY = "_codexmanager_extra_rate_limits";
 
 type UsageWindowDisplayMode = "primary-only" | "secondary-only" | "dual" | "unknown";
+type TranslationValues = Record<string, string | number>;
 export interface ExtraUsageDisplayRow {
   id: string;
   label: string;
+  labelValues?: TranslationValues;
+  labelSuffix?: string;
   remainPercent: number | null;
   resetsAt: number | null;
   windowLabel: string;
+  windowLabelValues?: TranslationValues;
 }
 
 /**
@@ -359,17 +363,21 @@ function humanizeExtraRateLimitLabel(raw: string): string {
     .trim() || "额外额度";
 }
 
-function formatWindowLabel(windowMinutes: number | null): string {
-  if (windowMinutes == null || windowMinutes <= 0) return "独立窗口";
+function formatWindowLabel(
+  windowMinutes: number | null
+): { label: string; values?: TranslationValues } {
+  if (windowMinutes == null || windowMinutes <= 0) {
+    return { label: "独立窗口" };
+  }
   if (windowMinutes % MINUTES_PER_DAY === 0) {
     const days = windowMinutes / MINUTES_PER_DAY;
-    return days === 1 ? "1天窗口" : `${days}天窗口`;
+    return { label: "{count}天窗口", values: { count: days } };
   }
   if (windowMinutes % MINUTES_PER_HOUR === 0) {
     const hours = windowMinutes / MINUTES_PER_HOUR;
-    return hours === 1 ? "1小时窗口" : `${hours}小时窗口`;
+    return { label: "{count}小时窗口", values: { count: hours } };
   }
-  return `${windowMinutes}分钟窗口`;
+  return { label: "{count}分钟窗口", values: { count: windowMinutes } };
 }
 
 function extractExtraRateLimitWindows(raw: string | null | undefined): ExtraUsageDisplayRow[] {
@@ -390,7 +398,7 @@ function extractExtraRateLimitWindows(raw: string | null | undefined): ExtraUsag
       `extra-${index + 1}`;
     const baseLabel = humanizeExtraRateLimitLabel(labelSeed);
     const windows = [
-      { key: "primary_window", suffix: "" },
+      { key: "primary_window" },
       { key: "secondary_window", suffix: " · 长周期" },
     ];
 
@@ -405,12 +413,15 @@ function extractExtraRateLimitWindows(raw: string | null | undefined): ExtraUsag
         if (remainPercent == null && resetsAt == null && minutes == null) {
           return null;
         }
+        const windowLabel = formatWindowLabel(minutes);
         return {
           id: `${labelSeed}-${key}-${index}`,
-          label: `${baseLabel}${suffix}`,
+          label: baseLabel,
+          labelSuffix: suffix,
           remainPercent,
           resetsAt,
-          windowLabel: formatWindowLabel(minutes),
+          windowLabel: windowLabel.label,
+          windowLabelValues: windowLabel.values,
         } satisfies ExtraUsageDisplayRow;
       })
       .filter((entry): entry is ExtraUsageDisplayRow => Boolean(entry));

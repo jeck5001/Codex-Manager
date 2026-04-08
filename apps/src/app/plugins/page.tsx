@@ -40,6 +40,7 @@ import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivati
 import { usePageTransitionReady } from "@/hooks/usePageTransitionReady";
 import { appClient } from "@/lib/api/app-client";
 import { pluginClient } from "@/lib/api/plugin-client";
+import { useI18n } from "@/lib/i18n/provider";
 import { useAppStore } from "@/lib/store/useAppStore";
 import { cn } from "@/lib/utils";
 import {
@@ -55,6 +56,7 @@ type SelectedPluginDetail =
   | null;
 
 type PluginViewFilter = "installed" | "not-installed" | "update";
+type TranslateFn = (message: string, values?: Record<string, string | number>) => string;
 
 const MARKET_MODE_OPTIONS = [
   {
@@ -115,14 +117,14 @@ function normalizeMarketMode(value: string | null | undefined) {
  * # 返回
  * 返回函数执行结果
  */
-function formatPermissionLabel(permission: string) {
+function formatPermissionLabel(permission: string, t: TranslateFn) {
   switch (permission) {
     case "accounts:cleanup":
-      return "清理封禁账号";
+      return t("清理封禁账号");
     case "settings:read":
-      return "读取设置";
+      return t("读取设置");
     case "network":
-      return "网络访问";
+      return t("网络访问");
     default:
       return permission;
   }
@@ -141,14 +143,14 @@ function formatPermissionLabel(permission: string) {
  * # 返回
  * 返回函数执行结果
  */
-function formatMarketCategory(category: string | null | undefined) {
+function formatMarketCategory(category: string | null | undefined, t: TranslateFn) {
   switch (category) {
     case "official":
-      return "官方精选";
+      return t("官方精选");
     case "private":
-      return "企业私有";
+      return t("企业私有");
     case "community":
-      return "社区插件";
+      return t("社区插件");
     default:
       return category || "";
   }
@@ -228,10 +230,10 @@ function compareVersionStrings(left: string, right: string) {
  * # 返回
  * 返回函数执行结果
  */
-function PermissionBadge({ permission }: { permission: string }) {
+function PermissionBadge({ permission, t }: { permission: string; t: TranslateFn }) {
   return (
     <Badge variant="secondary" className="mr-1.5 mb-1">
-      {formatPermissionLabel(permission)}
+      {formatPermissionLabel(permission, t)}
     </Badge>
   );
 }
@@ -249,14 +251,14 @@ function PermissionBadge({ permission }: { permission: string }) {
  * # 返回
  * 返回函数执行结果
  */
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, t }: { status: string; t: TranslateFn }) {
   const normalized = status.toLowerCase();
   const label =
     normalized === "enabled"
-      ? "启用中"
+      ? t("启用中")
       : normalized === "broken"
-        ? "异常"
-        : "未知";
+        ? t("异常")
+        : t("未知");
   const toneClass =
     normalized === "enabled"
       ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600"
@@ -331,10 +333,12 @@ function PluginCard({
   item,
   onOpenDetails,
   onInstall,
+  t,
 }: {
   item: PluginCatalogEntry;
   onOpenDetails: (entry: PluginCatalogEntry) => void;
   onInstall: (entry: PluginCatalogEntry) => void;
+  t: TranslateFn;
 }) {
   return (
     <Card className="glass-card border-none shadow-sm">
@@ -343,18 +347,26 @@ function PluginCard({
           <div className="min-w-0">
             <CardTitle className="text-base">{item.name}</CardTitle>
             <CardDescription className="mt-1 line-clamp-1">
-              {item.description || "暂无描述"}
+              {item.description || t("暂无描述")}
             </CardDescription>
           </div>
           <Badge variant="secondary">{item.version}</Badge>
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          {item.author ? <span>作者：{item.author}</span> : null}
-          <span>权限 {item.permissions.length}</span>
-          <span>任务 {item.tasks.length}</span>
+          {item.author ? (
+            <span>
+              {t("作者")}：{item.author}
+            </span>
+          ) : null}
+          <span>
+            {t("权限")} {item.permissions.length}
+          </span>
+          <span>
+            {t("任务")} {item.tasks.length}
+          </span>
           {item.category ? (
             <Badge variant="outline">
-              {formatMarketCategory(item.category)}
+              {formatMarketCategory(item.category, t)}
             </Badge>
           ) : null}
           <Badge variant="outline">{formatRuntimeKind(item.runtimeKind)}</Badge>
@@ -364,10 +376,10 @@ function PluginCard({
         <div className="text-xs text-muted-foreground">
           <span>
             {item.sourceUrl === "builtin://codexmanager"
-              ? "来源：内置精选市场"
+              ? t("来源：内置精选市场")
               : item.sourceUrl
-                ? `来源：${item.sourceUrl}`
-                : "内置市场"}
+                ? t("来源：{source}", { source: item.sourceUrl })
+                : t("内置市场")}
           </span>
         </div>
         <div className="flex gap-2">
@@ -377,11 +389,11 @@ function PluginCard({
             onClick={() => onOpenDetails(item)}
           >
             <Info className="mr-1.5 h-4 w-4" />
-            详情
+            {t("详情")}
           </Button>
           <Button size="sm" onClick={() => onInstall(item)} className="gap-2">
             <Download className="h-4 w-4" />
-            安装
+            {t("安装")}
           </Button>
         </div>
       </CardContent>
@@ -409,6 +421,7 @@ function InstalledPluginCard({
   onUpdate,
   onEnable,
   onDisable,
+  t,
 }: {
   item: InstalledPluginSummary;
   updateVersion?: string | null;
@@ -416,6 +429,7 @@ function InstalledPluginCard({
   onUpdate?: (pluginId: string) => void;
   onEnable: (pluginId: string) => void;
   onDisable: (pluginId: string) => void;
+  t: TranslateFn;
 }) {
   return (
     <Card className="glass-card border-none shadow-sm">
@@ -424,29 +438,35 @@ function InstalledPluginCard({
           <div className="min-w-0">
             <CardTitle className="text-base">{item.name}</CardTitle>
             <CardDescription className="mt-1 line-clamp-1">
-              {item.description || "暂无描述"}
+              {item.description || t("暂无描述")}
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="secondary">{item.version}</Badge>
             {updateVersion ? (
               <Badge className="border-primary/20 bg-primary/10 text-primary">
-                可更新 {updateVersion}
+                {t("可更新")} {updateVersion}
               </Badge>
             ) : null}
-            <Badge variant="outline">已安装</Badge>
-            <StatusBadge status={item.status} />
+            <Badge variant="outline">{t("已安装")}</Badge>
+            <StatusBadge status={item.status} t={t} />
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          {item.author ? <span>作者：{item.author}</span> : null}
-          <span>权限 {item.permissions.length}</span>
+          {item.author ? (
+            <span>
+              {t("作者")}：{item.author}
+            </span>
+          ) : null}
           <span>
-            任务 {item.enabledTaskCount}/{item.taskCount}
+            {t("权限")} {item.permissions.length}
+          </span>
+          <span>
+            {t("任务")} {item.enabledTaskCount}/{item.taskCount}
           </span>
           {item.category ? (
             <Badge variant="outline">
-              {formatMarketCategory(item.category)}
+              {formatMarketCategory(item.category, t)}
             </Badge>
           ) : null}
           <Badge variant="outline">{formatRuntimeKind(item.runtimeKind)}</Badge>
@@ -456,10 +476,10 @@ function InstalledPluginCard({
         <div className="text-xs text-muted-foreground">
           <span>
             {item.sourceUrl === "builtin://codexmanager"
-              ? "来源：内置精选市场"
+              ? t("来源：内置精选市场")
               : item.sourceUrl
-                ? `来源：${item.sourceUrl}`
-                : "内置安装"}
+                ? t("来源：{source}", { source: item.sourceUrl })
+                : t("内置安装")}
           </span>
         </div>
         <div className="flex gap-2">
@@ -469,7 +489,7 @@ function InstalledPluginCard({
             onClick={() => onOpenDetails(item)}
           >
             <Info className="mr-1.5 h-4 w-4" />
-            详情
+            {t("详情")}
           </Button>
           {updateVersion && onUpdate ? (
             <Button
@@ -478,7 +498,7 @@ function InstalledPluginCard({
               className="gap-2"
             >
               <RefreshCw className="h-4 w-4" />
-              更新
+              {t("更新")}
             </Button>
           ) : item.status === "enabled" ? (
             <Button
@@ -487,7 +507,7 @@ function InstalledPluginCard({
               onClick={() => onDisable(item.pluginId)}
             >
               <ToggleLeft className="mr-1.5 h-4 w-4" />
-              停用
+              {t("停用")}
             </Button>
           ) : (
             <Button
@@ -496,7 +516,7 @@ function InstalledPluginCard({
               onClick={() => onEnable(item.pluginId)}
             >
               <ToggleRight className="mr-1.5 h-4 w-4" />
-              启用
+              {t("启用")}
             </Button>
           )}
         </div>
@@ -506,6 +526,7 @@ function InstalledPluginCard({
 }
 
 export default function PluginsPage() {
+  const { t } = useI18n();
   const serviceReady = useAppStore((state) => state.serviceStatus.connected);
   const isPageActive = useDesktopPageActive("/plugins/");
   const isActivationReady = useDeferredDesktopActivation(serviceReady);
@@ -574,11 +595,11 @@ export default function PluginsPage() {
       queryClient.setQueryData(["plugin-settings"], settings);
       setMarketModeDraft(null);
       setSourceUrlDraft(null);
-      toast.success("市场源已保存");
+      toast.success(t("市场源已保存"));
       void queryClient.invalidateQueries({ queryKey: ["plugin-catalog"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "保存市场源失败");
+      toast.error(error instanceof Error ? error.message : t("保存市场源失败"));
     },
   });
 
@@ -586,13 +607,13 @@ export default function PluginsPage() {
     mutationFn: (entry: PluginCatalogEntry) => pluginClient.install(entry),
     onSuccess: () => {
       setPluginViewFilter("installed");
-      toast.success("插件已安装");
+      toast.success(t("插件已安装"));
       void queryClient.invalidateQueries({ queryKey: ["plugin-installed"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-tasks"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-logs"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "安装失败");
+      toast.error(error instanceof Error ? error.message : t("安装失败"));
     },
   });
 
@@ -600,14 +621,14 @@ export default function PluginsPage() {
     mutationFn: (payload: { pluginId: string; sourceUrl?: string | null }) =>
       pluginClient.update(payload.pluginId, payload.sourceUrl || undefined),
     onSuccess: () => {
-      toast.success("插件已更新");
+      toast.success(t("插件已更新"));
       void queryClient.invalidateQueries({ queryKey: ["plugin-catalog"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-installed"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-tasks"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-logs"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "更新失败");
+      toast.error(error instanceof Error ? error.message : t("更新失败"));
     },
   });
 
@@ -617,37 +638,37 @@ export default function PluginsPage() {
         ? pluginClient.enable(payload.pluginId)
         : pluginClient.disable(payload.pluginId),
     onSuccess: () => {
-      toast.success("插件状态已更新");
+      toast.success(t("插件状态已更新"));
       void queryClient.invalidateQueries({ queryKey: ["plugin-installed"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "更新失败");
+      toast.error(error instanceof Error ? error.message : t("更新失败"));
     },
   });
 
   const uninstallMutation = useMutation({
     mutationFn: (pluginId: string) => pluginClient.uninstall(pluginId),
     onSuccess: () => {
-      toast.success("插件已卸载");
+      toast.success(t("插件已卸载"));
       void queryClient.invalidateQueries({ queryKey: ["plugin-installed"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-tasks"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-logs"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "卸载失败");
+      toast.error(error instanceof Error ? error.message : t("卸载失败"));
     },
   });
 
   const runTaskMutation = useMutation({
     mutationFn: (taskId: string) => pluginClient.runTask(taskId),
     onSuccess: () => {
-      toast.success("任务已执行");
+      toast.success(t("任务已执行"));
       void queryClient.invalidateQueries({ queryKey: ["plugin-installed"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-tasks"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-logs"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "运行失败");
+      toast.error(error instanceof Error ? error.message : t("运行失败"));
     },
   });
 
@@ -655,13 +676,13 @@ export default function PluginsPage() {
     mutationFn: (payload: { taskId: string; intervalSeconds: number }) =>
       pluginClient.updateTask(payload.taskId, payload.intervalSeconds),
     onSuccess: () => {
-      toast.success("任务间隔已更新");
+      toast.success(t("任务间隔已更新"));
       void queryClient.invalidateQueries({ queryKey: ["plugin-installed"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-tasks"] });
       void queryClient.invalidateQueries({ queryKey: ["plugin-logs"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "更新任务失败");
+      toast.error(error instanceof Error ? error.message : t("更新任务失败"));
     },
   });
 
@@ -744,9 +765,9 @@ export default function PluginsPage() {
             <Rocket className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold">插件中心</h1>
+            <h1 className="text-2xl font-semibold">{t("插件中心")}</h1>
             <p className="text-sm text-muted-foreground">
-              内置精选优先，自定义源按需补充，脚本能力继续由 Rhai 承担。
+              {t("内置精选优先，自定义源按需补充，脚本能力继续由 Rhai 承担。")}
             </p>
           </div>
         </div>
@@ -754,10 +775,9 @@ export default function PluginsPage() {
 
       <Card className="glass-card border-none shadow-sm">
         <CardHeader>
-          <CardTitle>市场层</CardTitle>
+          <CardTitle>{t("市场层")}</CardTitle>
           <CardDescription>
-            只保留内置精选和自定义源两种模式。内置模式完全隔离自定义
-            URL，自定义模式才显示并加载远程 JSON 市场。
+            {t("只保留内置精选和自定义源两种模式。内置模式完全隔离自定义 URL，自定义模式才显示并加载远程 JSON 市场。")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -777,11 +797,11 @@ export default function PluginsPage() {
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="font-medium">{option.label}</div>
-                  {marketMode === option.value ? <Badge>已选</Badge> : null}
+                  <div className="font-medium">{t(option.label)}</div>
+                  {marketMode === option.value ? <Badge>{t("已选")}</Badge> : null}
                 </div>
                 <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {option.description}
+                  {t(option.description)}
                 </div>
               </button>
             ))}
@@ -800,7 +820,7 @@ export default function PluginsPage() {
                     onClick={() => saveSourceMutation.mutate()}
                     disabled={saveSourceMutation.isPending}
                   >
-                    保存
+                    {t("保存")}
                   </Button>
                   <Button
                     variant="outline"
@@ -811,19 +831,21 @@ export default function PluginsPage() {
                     }
                   >
                     <RefreshCw className="mr-2 h-4 w-4" />
-                    刷新
+                    {t("刷新")}
                   </Button>
                 </div>
               </div>
               <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-4 text-xs text-muted-foreground">
                 {catalogQuery.data?.sourceUrl
-                  ? `当前使用自定义源：${catalogQuery.data.sourceUrl}`
-                  : "当前使用自定义源，适合接入你自己的 JSON 市场文件。"}
+                  ? t("当前使用自定义源：{sourceUrl}", {
+                      sourceUrl: catalogQuery.data.sourceUrl,
+                    })
+                  : t("当前使用自定义源，适合接入你自己的 JSON 市场文件。")}
               </div>
             </>
           ) : (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-4 text-xs text-muted-foreground">
-              当前使用内置精选市场，默认只显示官方内置脚本插件。
+              {t("当前使用内置精选市场，默认只显示官方内置脚本插件。")}
             </div>
           )}
         </CardContent>
@@ -832,9 +854,9 @@ export default function PluginsPage() {
       <Card className="glass-card border-none shadow-sm">
         <CardHeader className="space-y-4">
           <div>
-            <CardTitle>插件列表</CardTitle>
+            <CardTitle>{t("插件列表")}</CardTitle>
             <CardDescription>
-              一个面板统一查看插件。未安装看当前市场，已安装看本地插件，更新只显示当前市场里有新版本的已安装插件。
+              {t("一个面板统一查看插件。未安装看当前市场，已安装看本地插件，更新只显示当前市场里有新版本的已安装插件。")}
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -857,7 +879,7 @@ export default function PluginsPage() {
                       : "border-border/60 bg-background/40 text-muted-foreground hover:bg-background/70",
                   )}
                 >
-                  <span>{option.label}</span>
+                  <span>{t(option.label)}</span>
                   <Badge variant="secondary">{count}</Badge>
                 </button>
               );
@@ -878,6 +900,7 @@ export default function PluginsPage() {
                   <InstalledPluginCard
                     key={item.pluginId}
                     item={item}
+                    t={t}
                     updateVersion={
                       updatableVersionByPluginId.get(item.pluginId) || null
                     }
@@ -905,7 +928,7 @@ export default function PluginsPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-border/60 p-10 text-center text-sm text-muted-foreground">
-                还没有安装任何插件
+                {t("还没有安装任何插件")}
               </div>
             )
           ) : pluginViewFilter === "update" ? (
@@ -915,6 +938,7 @@ export default function PluginsPage() {
                   <InstalledPluginCard
                     key={item.pluginId}
                     item={item}
+                    t={t}
                     updateVersion={
                       updatableVersionByPluginId.get(item.pluginId) || null
                     }
@@ -942,7 +966,7 @@ export default function PluginsPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-border/60 p-10 text-center text-sm text-muted-foreground">
-                当前市场没有可更新插件
+                {t("当前市场没有可更新插件")}
               </div>
             )
           ) : notInstalledCatalogItems.length > 0 ? (
@@ -951,6 +975,7 @@ export default function PluginsPage() {
                 <PluginCard
                   key={item.id}
                   item={item}
+                  t={t}
                   onOpenDetails={(entry) =>
                     setSelectedPlugin({ kind: "catalog", pluginId: entry.id })
                   }
@@ -961,8 +986,8 @@ export default function PluginsPage() {
           ) : (
             <div className="rounded-2xl border border-dashed border-border/60 p-10 text-center text-sm text-muted-foreground">
               {marketMode === "custom" && !catalogQuery.data?.sourceUrl
-                ? "当前还没有配置自定义源，所以这里不会显示未安装插件。"
-                : "暂无未安装插件"}
+                ? t("当前还没有配置自定义源，所以这里不会显示未安装插件。")
+                : t("暂无未安装插件")}
             </div>
           )}
         </CardContent>
@@ -989,46 +1014,58 @@ export default function PluginsPage() {
                         {selectedDetail.version}
                       </Badge>
                       {"status" in selectedDetail ? (
-                        <StatusBadge status={selectedDetail.status} />
+                        <StatusBadge status={selectedDetail.status} t={t} />
                       ) : null}
                     </div>
                     <DialogDescription className="break-words text-sm">
-                      {selectedDetail.description || "暂无描述"}
+                      {selectedDetail.description || t("暂无描述")}
                     </DialogDescription>
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                       {selectedDetail.author ? (
-                        <span>作者：{selectedDetail.author}</span>
+                        <span>
+                          {t("作者")}：{selectedDetail.author}
+                        </span>
                       ) : null}
                       {selectedDetail.sourceUrl ? (
                         <span>
-                          来源：
+                          {t("来源")}：
                           {selectedDetail.sourceUrl === "builtin://codexmanager"
-                            ? "内置精选市场"
+                            ? t("内置精选市场")
                             : selectedDetail.sourceUrl}
                         </span>
                       ) : null}
-                      <span>权限 {selectedDetail.permissions.length}</span>
+                      <span>
+                        {t("权限")} {selectedDetail.permissions.length}
+                      </span>
                       {"taskCount" in selectedDetail ? (
                         <span>
-                          任务 {selectedDetail.enabledTaskCount}/
+                          {t("任务")} {selectedDetail.enabledTaskCount}/
                           {selectedDetail.taskCount}
                         </span>
                       ) : (
-                        <span>任务 {selectedDetail.tasks.length}</span>
+                        <span>
+                          {t("任务")} {selectedDetail.tasks.length}
+                        </span>
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>清单版本 {selectedDetail.manifestVersion}</span>
                       <span>
-                        运行时 {formatRuntimeKind(selectedDetail.runtimeKind)}
+                        {t("清单版本")} {selectedDetail.manifestVersion}
+                      </span>
+                      <span>
+                        {t("运行时")}{" "}
+                        {formatRuntimeKind(selectedDetail.runtimeKind)}
                       </span>
                       {selectedDetail.category ? (
                         <span>
-                          分类 {formatMarketCategory(selectedDetail.category)}
+                          {t("分类")}{" "}
+                          {formatMarketCategory(selectedDetail.category, t)}
                         </span>
                       ) : null}
                       {selectedDetail.tags.length > 0 ? (
-                        <span>标签 {selectedDetail.tags.join(" / ")}</span>
+                        <span>
+                          {t("标签")} {selectedDetail.tags.join(" / ")}
+                        </span>
                       ) : null}
                     </div>
                   </DialogHeader>
@@ -1040,7 +1077,7 @@ export default function PluginsPage() {
                     type="button"
                   >
                     <X className="h-4 w-4" />
-                    <span className="sr-only">关闭</span>
+                    <span className="sr-only">{t("关闭")}</span>
                   </DialogClose>
                 </div>
               </div>
@@ -1048,25 +1085,26 @@ export default function PluginsPage() {
               <div className="max-h-[calc(85vh-154px)] overflow-y-auto px-6 py-6">
                 <div className="grid gap-4">
                   <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
-                    <div className="mb-2 text-sm font-medium">权限</div>
+                    <div className="mb-2 text-sm font-medium">{t("权限")}</div>
                     <div>
                       {selectedDetail.permissions.length > 0 ? (
                         selectedDetail.permissions.map((permission) => (
                           <PermissionBadge
                             key={permission}
                             permission={permission}
+                            t={t}
                           />
                         ))
                       ) : (
                         <div className="text-sm text-muted-foreground">
-                          无需额外权限
+                          {t("无需额外权限")}
                         </div>
                       )}
                     </div>
                   </div>
 
                   <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
-                    <div className="mb-2 text-sm font-medium">任务</div>
+                    <div className="mb-2 text-sm font-medium">{t("任务")}</div>
                     <div className="space-y-2">
                       {selectedTasks.length > 0 ? (
                         selectedTasks.map((task) => (
@@ -1079,15 +1117,17 @@ export default function PluginsPage() {
                                 <div className="font-medium">{task.name}</div>
                                 <div className="mt-1 break-words text-xs text-muted-foreground">
                                   {task.scheduleKind === "manual"
-                                    ? "手动"
-                                    : `每 ${task.intervalSeconds || 0} 秒`}
+                                    ? t("手动")
+                                    : t("每 {seconds} 秒", {
+                                        seconds: task.intervalSeconds || 0,
+                                      })}
                                   {" · "}
                                   {task.entrypoint}
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline">
-                                  {task.enabled ? "启用" : "禁用"}
+                                  {task.enabled ? t("启用") : t("禁用")}
                                 </Badge>
                                 {selectedPlugin?.kind === "installed" ? (
                                   <Button
@@ -1098,7 +1138,7 @@ export default function PluginsPage() {
                                     }
                                   >
                                     <Play className="mr-1.5 h-3.5 w-3.5" />
-                                    运行
+                                    {t("运行")}
                                   </Button>
                                 ) : null}
                               </div>
@@ -1107,7 +1147,9 @@ export default function PluginsPage() {
                               <div className="mt-1 break-words text-xs text-muted-foreground">
                                 {task.scheduleKind === "manual"
                                   ? task.description
-                                  : `每 ${task.intervalSeconds || 0} 秒自动执行一次。`}
+                                  : t("每 {seconds} 秒自动执行一次。", {
+                                      seconds: task.intervalSeconds || 0,
+                                    })}
                               </div>
                             ) : null}
                             {task.lastError ? (
@@ -1119,7 +1161,7 @@ export default function PluginsPage() {
                             task.scheduleKind !== "manual" ? (
                               <div className="mt-3 grid gap-2 rounded-xl border border-border/60 bg-background/70 p-3">
                                 <div className="text-xs font-medium text-muted-foreground">
-                                  自动执行间隔
+                                  {t("自动执行间隔")}
                                 </div>
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                                   <Input
@@ -1140,7 +1182,7 @@ export default function PluginsPage() {
                                     disabled={updateTaskMutation.isPending}
                                   />
                                   <span className="text-xs text-muted-foreground">
-                                    秒
+                                    {t("秒")}
                                   </span>
                                   <Button
                                     size="sm"
@@ -1156,7 +1198,7 @@ export default function PluginsPage() {
                                         !Number.isFinite(intervalSeconds) ||
                                         intervalSeconds <= 0
                                       ) {
-                                        toast.error("请输入大于 0 的秒数");
+                                        toast.error(t("请输入大于 0 的秒数"));
                                         return;
                                       }
                                       updateTaskMutation.mutate({
@@ -1166,12 +1208,13 @@ export default function PluginsPage() {
                                       });
                                     }}
                                   >
-                                    保存
+                                    {t("保存")}
                                   </Button>
                                 </div>
                                 <div className="break-words text-[11px] text-muted-foreground">
-                                  当前设置为每 {task.intervalSeconds || 0}{" "}
-                                  秒自动执行一次。
+                                  {t("当前设置为每 {seconds} 秒自动执行一次。", {
+                                    seconds: task.intervalSeconds || 0,
+                                  })}
                                 </div>
                               </div>
                             ) : null}
@@ -1179,7 +1222,7 @@ export default function PluginsPage() {
                         ))
                       ) : (
                         <div className="text-sm text-muted-foreground">
-                          暂无任务
+                          {t("暂无任务")}
                         </div>
                       )}
                     </div>
@@ -1187,7 +1230,7 @@ export default function PluginsPage() {
 
                   {selectedPlugin?.kind === "installed" ? (
                     <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
-                      <div className="mb-2 text-sm font-medium">最近运行</div>
+                      <div className="mb-2 text-sm font-medium">{t("最近运行")}</div>
                       <div className="space-y-2">
                         {selectedLogs.length > 0 ? (
                           selectedLogs.slice(0, 5).map((log) => (
@@ -1202,7 +1245,7 @@ export default function PluginsPage() {
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="font-medium">
-                                  {log.taskName || log.taskId || "未知任务"}
+                                  {log.taskName || log.taskId || t("未知任务")}
                                 </div>
                                 <Badge
                                   variant={
@@ -1218,21 +1261,25 @@ export default function PluginsPage() {
                                 {log.error ||
                                   (log.output
                                     ? JSON.stringify(log.output)
-                                    : "无输出")}
+                                    : t("无输出"))}
                               </div>
                               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                                 <span>
-                                  执行于 {formatTimestamp(log.startedAt)}
+                                  {t("执行于 {time}", {
+                                    time: formatTimestamp(log.startedAt),
+                                  })}
                                 </span>
                                 <span>
-                                  耗时 {formatDuration(log.durationMs)}
+                                  {t("耗时 {duration}", {
+                                    duration: formatDuration(log.durationMs),
+                                  })}
                                 </span>
                               </div>
                             </div>
                           ))
                         ) : (
                           <div className="text-sm text-muted-foreground">
-                            暂无日志
+                            {t("暂无日志")}
                           </div>
                         )}
                       </div>
@@ -1251,7 +1298,7 @@ export default function PluginsPage() {
                     }}
                   >
                     <Download className="h-4 w-4" />
-                    安装
+                    {t("安装")}
                   </Button>
                 ) : null}
                 {selectedPlugin?.kind === "installed" &&
@@ -1270,7 +1317,9 @@ export default function PluginsPage() {
                         }
                       >
                         <RefreshCw className="h-4 w-4" />
-                        更新到 {selectedUpdateVersion}
+                        {t("更新到 {version}", {
+                          version: selectedUpdateVersion || "-",
+                        })}
                       </Button>
                     ) : null}
                     {selectedInstalledItem.status === "enabled" ? (
@@ -1285,7 +1334,7 @@ export default function PluginsPage() {
                         }
                       >
                         <ToggleLeft className="h-4 w-4" />
-                        停用
+                        {t("停用")}
                       </Button>
                     ) : (
                       <Button
@@ -1299,7 +1348,7 @@ export default function PluginsPage() {
                         }
                       >
                         <ToggleRight className="h-4 w-4" />
-                        启用
+                        {t("启用")}
                       </Button>
                     )}
                     <Button
@@ -1310,7 +1359,7 @@ export default function PluginsPage() {
                       }
                     >
                       <Trash2 className="h-4 w-4" />
-                      卸载
+                      {t("卸载")}
                     </Button>
                   </>
                 ) : null}
@@ -1327,13 +1376,15 @@ export default function PluginsPage() {
             setPendingUninstallPlugin(null);
           }
         }}
-        title="卸载插件"
+        title={t("卸载插件")}
         description={
           pendingUninstallPlugin
-            ? `确认卸载插件「${pendingUninstallPlugin.name}」吗？卸载后对应任务和运行记录会一并清理。`
-            : "确认卸载这个插件吗？"
+            ? t("确认卸载插件「{name}」吗？卸载后对应任务和运行记录会一并清理。", {
+                name: pendingUninstallPlugin.name,
+              })
+            : t("确认卸载这个插件吗？")
         }
-        confirmText="卸载"
+        confirmText={t("卸载")}
         confirmVariant="destructive"
         onConfirm={() => {
           if (!pendingUninstallPlugin) {

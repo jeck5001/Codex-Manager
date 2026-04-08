@@ -661,14 +661,16 @@ export default function SettingsPage() {
             "accountMaxInflight",
           ]);
           setShowWorkerAdvanced(true);
-          toast.success("系统推导已应用");
+          toast.success(t("系统推导已应用"));
         })
         .catch((error: unknown) => {
-          toast.error(`系统推导保存失败: ${getAppErrorMessage(error)}`);
+          toast.error(
+            `${t("系统推导保存失败")}: ${getAppErrorMessage(error)}`,
+          );
         });
     },
     onError: (error: unknown) => {
-      toast.error(`系统推导失败: ${getAppErrorMessage(error)}`);
+      toast.error(`${t("系统推导失败")}: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -701,11 +703,11 @@ export default function SettingsPage() {
       }
       applyAppearancePreset(nextSnapshot.appearancePreset);
       if (!variables._silent) {
-        toast.success("设置已更新");
+        toast.success(t("设置已更新"));
       }
     },
     onError: (error: unknown) => {
-      toast.error(`更新失败: ${getAppErrorMessage(error)}`);
+      toast.error(`${t("更新失败")}: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -726,7 +728,7 @@ export default function SettingsPage() {
         );
         if (!request?.silent) {
           toast.success(
-            `发现新版本 ${summary.latestVersion || summary.releaseTag || "可用"}，可立即下载更新`,
+            `${t("发现新版本")} ${summary.latestVersion || summary.releaseTag || t("可用")}${t("，可立即下载更新")}`,
           );
         }
         return;
@@ -736,13 +738,13 @@ export default function SettingsPage() {
       if (!request?.silent) {
         toast.success(
           summary.reason
-            ? `已检查更新：${summary.reason}`
-            : `当前已是最新版本 ${summary.currentVersion || ""}`.trim(),
+            ? `${t("已检查更新：")}${summary.reason}`
+            : `${t("当前已是最新版本")} ${summary.currentVersion || ""}`.trim(),
         );
       }
     },
     onError: (error: unknown) => {
-      toast.error(`检查更新失败: ${getAppErrorMessage(error)}`);
+      toast.error(`${t("检查更新失败")}: ${getAppErrorMessage(error)}`);
     },
     onSettled: () => {
       if (manualUpdateCheckPendingRef.current) {
@@ -760,12 +762,12 @@ export default function SettingsPage() {
       setUpdateDialogOpen(true);
       toast.success(
         summary.isPortable
-          ? `更新已下载完成，确认后即可替换到 ${summary.latestVersion || "新版本"}`
-          : `更新包已下载完成，确认后开始替换到 ${summary.latestVersion || "新版本"}`,
+          ? `${t("更新已下载完成，确认后即可替换到")} ${summary.latestVersion || t("新版本")}`
+          : `${t("更新包已下载完成，确认后开始替换到")} ${summary.latestVersion || t("新版本")}`,
       );
     },
     onError: (error: unknown) => {
-      toast.error(`下载更新失败: ${getAppErrorMessage(error)}`);
+      toast.error(`${t("下载更新失败")}: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -782,12 +784,12 @@ export default function SettingsPage() {
       const message = readStringField(asRecord(result) ?? {}, "message");
       toast.success(
         message ||
-          (payload.isPortable ? "即将重启并替换更新" : "已开始替换更新流程"),
+          (payload.isPortable ? t("即将重启并替换更新") : t("已开始替换更新流程")),
       );
     },
     onError: (error: unknown, payload) => {
       toast.error(
-        `${payload.isPortable ? "替换更新" : "启动安装程序"}失败: ${getAppErrorMessage(error)}`,
+        `${payload.isPortable ? t("替换更新") : t("启动安装程序")}${t("失败")}: ${getAppErrorMessage(error)}`,
       );
     },
   });
@@ -893,7 +895,7 @@ export default function SettingsPage() {
     void appClient
       .openInBrowser(buildReleaseUrl(updateDialogCheck ?? lastUpdateCheck))
       .catch((error) => {
-        toast.error(`打开发布页失败: ${getAppErrorMessage(error)}`);
+        toast.error(`${t("打开发布页失败")}: ${getAppErrorMessage(error)}`);
       });
   };
 
@@ -924,28 +926,28 @@ export default function SettingsPage() {
     canOpenLocalDir && (preparedUpdate || lastUpdateCheck),
   );
   const updateActionLabel = hasPreparedUpdate
-    ? "替换更新"
+    ? t("替换更新")
     : canDownloadUpdate
-      ? "下载更新"
-      : "检查更新";
+      ? t("下载更新")
+      : t("检查更新");
   const updateActionDescription = !canSelfUpdate
-    ? "Web / Docker 版不提供桌面应用更新检查"
+    ? t("Web / Docker 版不提供桌面应用更新检查")
     : hasPreparedUpdate
-      ? "更新包已下载完成，点击后确认替换当前版本"
+      ? t("更新包已下载完成，点击后确认替换当前版本")
       : canDownloadUpdate
-        ? "已发现新版本，点击后开始下载更新包"
-        : "立即检查 GitHub Releases 是否有新版本可用";
+        ? t("已发现新版本，点击后开始下载更新包")
+        : t("立即检查 GitHub Releases 是否有新版本可用");
   const updateActionBusy = Boolean(
     manualUpdateCheckPending ||
     prepareUpdate.isPending ||
     applyPreparedUpdate.isPending,
   );
   const updateActionBusyLabel = manualUpdateCheckPending
-    ? "正在检查..."
+    ? t("正在检查...")
     : prepareUpdate.isPending
-      ? "正在下载..."
+      ? t("正在下载...")
       : applyPreparedUpdate.isPending
-        ? "正在替换..."
+        ? t("正在替换...")
         : updateActionLabel;
 
   /**
@@ -994,7 +996,7 @@ export default function SettingsPage() {
     void appClient
       .openUpdateLogsDir(preparedUpdate?.assetPath)
       .catch((error) => {
-        toast.error(`打开日志目录失败: ${getAppErrorMessage(error)}`);
+        toast.error(`${t("打开日志目录失败")}: ${getAppErrorMessage(error)}`);
       });
   };
 
@@ -1263,7 +1265,7 @@ export default function SettingsPage() {
   ) => {
     const nextValue = parseIntegerInput(transportInputValues[key], minimum);
     if (nextValue == null) {
-      toast.error("请输入合法的数值");
+      toast.error(t("请输入合法的数值"));
       setTransportDraft((current) => {
         const nextDraft = { ...current };
         delete nextDraft[key];
@@ -1308,7 +1310,7 @@ export default function SettingsPage() {
       stringifyNumber(snapshot.backgroundTasks[key] as number);
     const nextValue = parseIntegerInput(sourceValue, minimum);
     if (nextValue == null) {
-      toast.error("请输入合法的数值");
+      toast.error(t("请输入合法的数值"));
       setBackgroundTaskDraft((current) => {
         const nextDraft = { ...current };
         delete nextDraft[draftKey];
@@ -1353,7 +1355,7 @@ export default function SettingsPage() {
       backgroundTaskDraft[draftKey] ?? stringifyNumber(snapshot.accountMaxInflight);
     const nextValue = parseIntegerInput(sourceValue, minimum);
     if (nextValue == null) {
-      toast.error("请输入合法的数值");
+      toast.error(t("请输入合法的数值"));
       setBackgroundTaskDraft((current) => {
         const nextDraft = { ...current };
         delete nextDraft[draftKey];
@@ -1439,7 +1441,7 @@ export default function SettingsPage() {
   if ((canAccessManagementRpc && !isSnapshotQueryEnabled) || !snapshot) {
     return (
       <div className="flex h-64 items-center justify-center text-muted-foreground">
-        加载配置中...
+        {t("加载配置中...")}
       </div>
     );
   }
@@ -1447,7 +1449,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold tracking-tight">系统设置</h2>
+        <h2 className="text-xl font-bold tracking-tight">{t("系统设置")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {t("管理应用行为、网关策略及后台任务")}
         </p>
@@ -1528,11 +1530,11 @@ export default function SettingsPage() {
                   {lastUpdateCheck ? (
                     <p className="text-xs text-muted-foreground">
                       {preparedUpdate
-                        ? `已下载 ${preparedUpdate.latestVersion || preparedUpdate.releaseTag || "新版本"}，等待替换更新`
+                        ? `${t("已下载")} ${preparedUpdate.latestVersion || preparedUpdate.releaseTag || t("新版本")}${t("，等待替换更新")}`
                         : lastUpdateCheck.hasUpdate
-                          ? `发现新版本 ${lastUpdateCheck.latestVersion || lastUpdateCheck.releaseTag || "可用"}`
+                          ? `${t("发现新版本")} ${lastUpdateCheck.latestVersion || lastUpdateCheck.releaseTag || t("可用")}`
                           : lastUpdateCheck.reason ||
-                            `当前版本 ${lastUpdateCheck.currentVersion || "未知"} 已是最新`}
+                            `${t("当前版本")} ${lastUpdateCheck.currentVersion || t("未知")} ${t("已是最新")}`}
                     </p>
                   ) : null}
                   {shouldShowUpdateLogsEntry ? (
@@ -1627,13 +1629,13 @@ export default function SettingsPage() {
                   }}
                 >
                   <SelectTrigger className="w-full md:w-[320px]">
-                    <SelectValue placeholder="选择监听地址模式">
+                    <SelectValue placeholder={t("选择监听地址模式")}>
                       {(value) =>
-                        SERVICE_LISTEN_MODE_LABELS[
-                          String(value || "").trim()
-                        ] ||
-                        t(String(value || "").trim()) ||
-                        t("仅本机 (localhost)")
+                        t(
+                          SERVICE_LISTEN_MODE_LABELS[
+                            String(value || "").trim()
+                          ] || String(value || "").trim() || "仅本机 (localhost)",
+                        )
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -1820,7 +1822,7 @@ export default function SettingsPage() {
                   }
                 >
                   <SelectTrigger className="w-full md:w-[300px]">
-                    <SelectValue placeholder="选择策略">
+                    <SelectValue placeholder={t("选择策略")}>
                       {(value) => {
                         const nextValue = String(value || "").trim();
                         if (!nextValue) return t("选择策略");
@@ -1853,7 +1855,7 @@ export default function SettingsPage() {
                   }
                 >
                   <SelectTrigger className="w-full md:w-[300px]">
-                    <SelectValue placeholder="选择 free 账号使用模型">
+                    <SelectValue placeholder={t("选择 free 账号使用模型")}>
                       {(value) =>
                         t(formatFreeAccountModelLabel(String(value || "")))
                       }
@@ -1865,7 +1867,7 @@ export default function SettingsPage() {
                       : DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS
                     ).map((model) => (
                       <SelectItem key={model} value={model}>
-                        {formatFreeAccountModelLabel(model)}
+                        {t(formatFreeAccountModelLabel(model))}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1937,7 +1939,8 @@ export default function SettingsPage() {
                 />
                 <p className="text-[10px] text-muted-foreground">
                   {t("对齐官方 Codex 的上游 Originator。默认值为")}{" "}
-                  <code>codex_cli_rs</code>，会同步影响登录和网关上游请求头。
+                  <code>codex_cli_rs</code>
+                  {t("，会同步影响登录和网关上游请求头。")}
                 </p>
               </div>
 
@@ -1987,7 +1990,7 @@ export default function SettingsPage() {
                   }
                 >
                   <SelectTrigger className="w-full md:w-[300px]">
-                    <SelectValue placeholder="选择地域约束">
+                  <SelectValue placeholder={t("选择地域约束")}>
                       {(value) => {
                         const nextValue =
                           String(value || "") === EMPTY_RESIDENCY_OPTION
@@ -2015,8 +2018,10 @@ export default function SettingsPage() {
                 </Select>
                 <p className="text-[10px] text-muted-foreground">
                   {t("对齐官方 Codex 的")}{" "}
-                  <code>x-openai-internal-codex-residency</code> 头。
-                  {t("当前只支持留空或")} <code>us</code>。
+                  <code>x-openai-internal-codex-residency</code>
+                  {t("头。")}
+                  {t("当前只支持留空或")} <code>us</code>
+                  {t("。")}
                 </p>
               </div>
 
@@ -2580,17 +2585,17 @@ export default function SettingsPage() {
         >
           <DialogHeader>
             <DialogTitle>
-              {preparedUpdate ? "替换更新" : "发现新版本"}
+              {preparedUpdate ? t("替换更新") : t("发现新版本")}
             </DialogTitle>
             <DialogDescription>
               {preparedUpdate
                 ? preparedUpdate.isPortable
-                  ? "更新包已下载完成。确认后将重启应用并替换当前程序。"
-                  : "更新包已下载完成。确认后会开始替换流程。"
-                : `当前版本 ${updateDialogCheck?.currentVersion || "未知"}，发现新版本 ${
+                  ? t("更新包已下载完成。确认后将重启应用并替换当前程序。")
+                  : t("更新包已下载完成。确认后会开始替换流程。")
+                : `${t("当前版本")} ${updateDialogCheck?.currentVersion || t("未知")}，${t("发现新版本")} ${
                     updateDialogCheck?.latestVersion ||
                     updateDialogCheck?.releaseTag ||
-                    "可用"
+                    t("可用")
                   }。`}
             </DialogDescription>
           </DialogHeader>
@@ -2598,31 +2603,31 @@ export default function SettingsPage() {
           <div className="space-y-3 text-sm">
             <div className="rounded-2xl border border-border/50 bg-background/45 p-4">
               <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">当前版本</span>
+                <span className="text-muted-foreground">{t("当前版本")}</span>
                 <span className="font-medium">
-                  {updateDialogCheck?.currentVersion || "未知"}
+                  {updateDialogCheck?.currentVersion || t("未知")}
                 </span>
               </div>
               <div className="mt-2 flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">目标版本</span>
+                <span className="text-muted-foreground">{t("目标版本")}</span>
                 <span className="font-medium">
                   {preparedUpdate?.latestVersion ||
                     updateDialogCheck?.latestVersion ||
                     updateDialogCheck?.releaseTag ||
-                    "未知"}
+                    t("未知")}
                 </span>
               </div>
               <div className="mt-2 flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">更新模式</span>
+                <span className="text-muted-foreground">{t("更新模式")}</span>
                 <span className="font-medium">
                   {(preparedUpdate?.isPortable ?? updateDialogCheck?.isPortable)
-                    ? "便携包更新"
-                    : "安装包更新"}
+                    ? t("便携包更新")
+                    : t("安装包更新")}
                 </span>
               </div>
               {preparedUpdate?.assetName ? (
                 <div className="mt-2 flex items-center justify-between gap-4">
-                  <span className="text-muted-foreground">更新文件</span>
+                  <span className="text-muted-foreground">{t("更新文件")}</span>
                   <span className="max-w-[240px] truncate font-mono text-xs">
                     {preparedUpdate.assetName}
                   </span>
@@ -2636,7 +2641,7 @@ export default function SettingsPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-border/50 bg-muted/40 p-4 text-xs leading-5 text-muted-foreground">
-                建议先下载更新包，下载完成后再执行安装或重启更新。
+                {t("建议先下载更新包，下载完成后再执行安装或重启更新。")}
               </div>
             )}
           </div>
@@ -2649,7 +2654,7 @@ export default function SettingsPage() {
               }
               onClick={() => setUpdateDialogOpen(false)}
             >
-              稍后
+              {t("稍后")}
             </Button>
             {preparedUpdate ? (
               <Button
@@ -2664,9 +2669,9 @@ export default function SettingsPage() {
                 <Download className="h-4 w-4" />
                 {applyPreparedUpdate.isPending
                   ? preparedUpdate.isPortable
-                    ? "正在替换更新..."
-                    : "正在启动替换..."
-                  : "替换更新"}
+                    ? t("正在替换更新...")
+                    : t("正在启动替换...")
+                  : t("替换更新")}
               </Button>
             ) : updateDialogCheck?.canPrepare ? (
               <Button
@@ -2675,12 +2680,12 @@ export default function SettingsPage() {
                 onClick={() => prepareUpdate.mutate()}
               >
                 <Download className="h-4 w-4" />
-                {prepareUpdate.isPending ? "正在下载更新..." : "下载更新"}
+                {prepareUpdate.isPending ? t("正在下载更新...") : t("下载更新")}
               </Button>
             ) : (
               <Button className="gap-2" onClick={handleOpenReleasePage}>
                 <ExternalLink className="h-4 w-4" />
-                打开发布页
+                {t("打开发布页")}
               </Button>
             )}
           </DialogFooter>
