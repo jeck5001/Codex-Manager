@@ -204,7 +204,7 @@ fn decode_base64_header_value(input: &[u8]) -> Option<Vec<u8>> {
     Some(output)
 }
 pub(crate) use freeproxy::{
-    clear_proxy_pools, sync_proxy_pool_from_freeproxy, FreeProxyClearResult, FreeProxySyncInput,
+    clear_proxy_pools, sync_proxy_pool_from_freeproxy, FreeProxySyncInput,
 };
 pub(super) use incoming_headers::IncomingHeaderSnapshot;
 use local_count_tokens::maybe_respond_local_count_tokens;
