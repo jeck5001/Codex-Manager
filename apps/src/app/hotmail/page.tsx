@@ -29,6 +29,7 @@ import { getAppErrorMessage } from "@/lib/api/transport";
 import { accountClient } from "@/lib/api/account-client";
 import type { RegisterHotmailArtifact, RegisterHotmailBatchSnapshot } from "@/types";
 import {
+  classifyHotmailLogLine,
   getHotmailBatchProgress,
   mergeHotmailBatchArtifacts,
   shouldPollHotmailBatch,
@@ -366,7 +367,11 @@ export default function HotmailPage() {
                       {logs.map((line, index) => (
                         <div
                           key={`${index}-${line}`}
-                          className="rounded-lg border border-border/50 bg-background/70 px-3 py-2 font-mono text-xs"
+                          className={
+                            classifyHotmailLogLine(line) === "challenge"
+                              ? "rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 font-mono text-xs text-amber-700 dark:text-amber-300"
+                              : "rounded-lg border border-border/50 bg-background/70 px-3 py-2 font-mono text-xs"
+                          }
                         >
                           {line}
                         </div>
