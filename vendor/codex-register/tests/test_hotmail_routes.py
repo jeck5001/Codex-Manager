@@ -62,6 +62,26 @@ class HotmailRoutesTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_create_hotmail_engine_wires_default_verification_provider(self):
+        captured = {}
+        provider = object()
+
+        def fake_provider_builder():
+            return provider
+
+        class FakeEngine:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+        self.module.build_default_hotmail_verification_provider = fake_provider_builder
+        self.module.HotmailRegistrationEngine = FakeEngine
+
+        engine = self.module.create_hotmail_engine(proxy_url="http://proxy.example:8080")
+
+        self.assertIsInstance(engine, FakeEngine)
+        self.assertEqual(captured["proxy_url"], "http://proxy.example:8080")
+        self.assertIs(captured["verification_provider"], provider)
+
     def test_batch_completion_tracks_success_failed_and_artifacts(self):
         module = self.module
 

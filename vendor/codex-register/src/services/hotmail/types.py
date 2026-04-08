@@ -28,6 +28,18 @@ class HotmailAccountArtifact:
 
 
 @dataclass
+class HotmailRegistrationProfile:
+    first_name: str
+    last_name: str
+    birth_day: str
+    birth_month: str
+    birth_year: str
+    password: str
+    username_candidates: list[str]
+    country: str = "United States"
+
+
+@dataclass
 class HotmailRegistrationResult:
     success: bool
     reason_code: str = ""
