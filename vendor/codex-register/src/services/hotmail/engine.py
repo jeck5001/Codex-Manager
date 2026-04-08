@@ -1,6 +1,7 @@
 from contextlib import AbstractContextManager
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
+import re
 
 from .profile import build_registration_profile, choose_target_domains
 from .types import (
@@ -615,6 +616,31 @@ class HotmailRegistrationEngine:
             return message
         return f"{message} | {snapshot}"
 
+    @staticmethod
+    def _extract_state_from_snapshot(session) -> str:
+        snapshot_builder = getattr(session, "build_debug_snapshot", None)
+        if not callable(snapshot_builder):
+            return ""
+        try:
+            snapshot = str(snapshot_builder() or "")
+        except Exception:
+            snapshot = ""
+        if not snapshot:
+            return ""
+        match = re.search(r"(?:^|\s|\|)state=([^|]+)", snapshot)
+        if not match:
+            return ""
+        return match.group(1).strip().split()[0].lower()
+
+    def _promote_state_from_snapshot(self, state: str, session) -> str:
+        normalized = str(state or "").strip().lower()
+        if normalized != "page_structure_changed":
+            return normalized
+        snapshot_state = self._extract_state_from_snapshot(session)
+        if snapshot_state and snapshot_state != normalized:
+            return snapshot_state
+        return normalized
+
     def _state_to_failure(self, state: str) -> Optional[HotmailFailureCode]:
         mapping = {
             "phone_verification": HotmailFailureCode.PHONE_VERIFICATION_REQUIRED,
@@ -667,10 +693,12 @@ class HotmailRegistrationEngine:
                 verification_email=verification_email,
             )
 
+        raw_state = str(state or "").strip().lower()
+        state = self._promote_state_from_snapshot(raw_state, session)
         failure = self._state_to_failure(state)
         if failure is not None:
             message = f"Hotmail verification flow failed: {state}"
-            if failure == HotmailFailureCode.PAGE_STRUCTURE_CHANGED:
+            if failure == HotmailFailureCode.PAGE_STRUCTURE_CHANGED or state != raw_state:
                 message = self._append_debug_snapshot(message, session)
             return self._build_failure_result(failure, message)
 
@@ -693,6 +721,8 @@ class HotmailRegistrationEngine:
             if current_state not in PROFILE_PROGRESS_STATES:
                 break
             current_state = str(session.submit_profile_details(profile=profile)).strip().lower()
+        raw_state = current_state
+        current_state = self._promote_state_from_snapshot(current_state, session)
 
         if current_state == "email_verification":
             return self._complete_email_verification(
@@ -708,7 +738,7 @@ class HotmailRegistrationEngine:
         failure = self._state_to_failure(current_state)
         if failure is not None:
             message = f"Hotmail signup failed: {current_state}"
-            if failure == HotmailFailureCode.PAGE_STRUCTURE_CHANGED:
+            if failure == HotmailFailureCode.PAGE_STRUCTURE_CHANGED or current_state != raw_state:
                 message = self._append_debug_snapshot(message, session)
             return self._build_failure_result(failure, message)
 
