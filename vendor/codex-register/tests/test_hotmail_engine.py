@@ -155,6 +155,42 @@ class HotmailEngineTests(unittest.TestCase):
         self.assertIsNotNone(session.profile)
         self.assertEqual(result.artifact.email, "aliceexample@hotmail.com")
 
+    def test_engine_advances_split_profile_flow_until_success(self):
+        class FakeBrowserSession:
+            def __init__(self):
+                self.profile_calls = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def open_signup(self):
+                return None
+
+            def submit_account_credentials(self, *, email, password):
+                return "birth_details"
+
+            def submit_profile_details(self, *, profile):
+                self.profile_calls += 1
+                if self.profile_calls == 1:
+                    return "name_details"
+                return "success"
+
+        session = FakeBrowserSession()
+        engine = HotmailRegistrationEngine(
+            browser_factory=lambda **_kwargs: session,
+            verification_provider=object(),
+            profile_factory=self._build_profile,
+        )
+
+        result = engine.run()
+
+        self.assertTrue(result.success)
+        self.assertEqual(session.profile_calls, 2)
+        self.assertEqual(result.artifact.email, "aliceexample@hotmail.com")
+
     def test_engine_fails_fast_on_phone_verification(self):
         class FakeBrowserSession:
             def __enter__(self):
