@@ -30,37 +30,13 @@ import { accountClient } from "@/lib/api/account-client";
 import type { RegisterHotmailArtifact, RegisterHotmailBatchSnapshot } from "@/types";
 import {
   classifyHotmailLogLine,
+  formatHotmailBatchStatus,
   getHotmailBatchProgress,
   mergeHotmailBatchArtifacts,
   shouldPollHotmailBatch,
 } from "./hotmail-batch-state";
 
 const HOTMAIL_BATCH_STORAGE_KEY = "codexmanager.hotmail.activeBatchId";
-
-function formatBatchStatus(batch: RegisterHotmailBatchSnapshot | null) {
-  if (!batch) {
-    return {
-      label: "未开始",
-      className: "border-border bg-muted/40 text-muted-foreground",
-    };
-  }
-  if (batch.cancelled) {
-    return {
-      label: "已取消",
-      className: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-300",
-    };
-  }
-  if (batch.finished) {
-    return {
-      label: "已完成",
-      className: "border-green-500/20 bg-green-500/10 text-green-600 dark:text-green-400",
-    };
-  }
-  return {
-    label: "运行中",
-    className: "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  };
-}
 
 function formatArtifactSize(size: number | null) {
   if (!Number.isFinite(size) || size == null || size < 0) {
@@ -189,7 +165,7 @@ export default function HotmailPage() {
   };
 
   const currentBatch = batchQuery.data ?? null;
-  const statusMeta = formatBatchStatus(currentBatch);
+  const statusMeta = formatHotmailBatchStatus(currentBatch);
   const progress = useMemo(
     () =>
       currentBatch

@@ -655,6 +655,20 @@ function normalizeRegisterHotmailBatchSnapshot(
       typeof source.success === "number" && Number.isFinite(source.success) ? source.success : 0,
     failed:
       typeof source.failed === "number" && Number.isFinite(source.failed) ? source.failed : 0,
+    status:
+      typeof source.status === "string"
+        ? source.status
+        : typeof source.batchStatus === "string"
+          ? source.batchStatus
+          : typeof source.batch_status === "string"
+            ? source.batch_status
+            : "",
+    actionRequiredReason:
+      typeof source.actionRequiredReason === "string"
+        ? source.actionRequiredReason
+        : typeof source.action_required_reason === "string"
+          ? source.action_required_reason
+          : "",
     cancelled: source.cancelled === true,
     finished: source.finished === true,
     logs: Array.isArray(source.logs)
