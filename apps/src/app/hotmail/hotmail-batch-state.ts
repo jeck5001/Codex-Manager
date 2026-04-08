@@ -3,6 +3,8 @@ export type HotmailBatchStatusLike = {
   completed: number;
   finished?: boolean;
   cancelled?: boolean;
+  status?: string;
+  actionRequiredReason?: string;
 };
 
 export type HotmailArtifactLike = {
@@ -38,4 +40,37 @@ export function classifyHotmailLogLine(line: string) {
     return "challenge";
   }
   return "default";
+}
+
+export function formatHotmailBatchStatus(
+  batch: Pick<HotmailBatchStatusLike, "finished" | "cancelled" | "status" | "actionRequiredReason"> | null
+) {
+  if (!batch) {
+    return {
+      label: "未开始",
+      className: "border-border bg-muted/40 text-muted-foreground",
+    };
+  }
+  if (batch.cancelled) {
+    return {
+      label: "已取消",
+      className: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-300",
+    };
+  }
+  if (batch.status === "action_required" || batch.actionRequiredReason === "unsupported_challenge") {
+    return {
+      label: "等待人工处理",
+      className: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-300",
+    };
+  }
+  if (batch.finished) {
+    return {
+      label: "已完成",
+      className: "border-green-500/20 bg-green-500/10 text-green-600 dark:text-green-400",
+    };
+  }
+  return {
+    label: "运行中",
+    className: "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  };
 }
