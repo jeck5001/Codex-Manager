@@ -43,6 +43,7 @@ import {
   EnvOverrideCatalogItem,
   FailureReasonSummaryItem,
   GovernanceSummaryItem,
+  FreeProxyClearResult,
   FreeProxySyncResult,
   GatewayResponseCacheStats,
   HeatmapCellItem,
@@ -1529,6 +1530,18 @@ export function normalizeFreeProxySyncResult(payload: unknown): FreeProxySyncRes
     registerProxyCreatedCount: asInteger(source.registerProxyCreatedCount, 0, 0),
     registerProxyUpdatedCount: asInteger(source.registerProxyUpdatedCount, 0, 0),
     registerProxyTotalCount: asInteger(source.registerProxyTotalCount, 0, 0),
+  };
+}
+
+export function normalizeFreeProxyClearResult(payload: unknown): FreeProxyClearResult {
+  const source = asObject(payload);
+  return {
+    previousProxyListValue: asString(source.previousProxyListValue),
+    previousProxyListCount: asInteger(source.previousProxyListCount, 0, 0),
+    clearedGatewayProxyCount: asInteger(source.clearedGatewayProxyCount, 0, 0),
+    deletedRegisterProxyCount: asInteger(source.deletedRegisterProxyCount, 0, 0),
+    failedRegisterProxyCount: asInteger(source.failedRegisterProxyCount, 0, 0),
+    remainingRegisterProxyCount: asInteger(source.remainingRegisterProxyCount, 0, 0),
   };
 }
 

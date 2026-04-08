@@ -305,6 +305,7 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_gateway_cache_stats: { rpcMethod: "gateway/cache/stats" },
   service_gateway_cache_clear: { rpcMethod: "gateway/cache/clear" },
   service_gateway_freeproxy_sync: { rpcMethod: "gateway/freeProxy/sync" },
+  service_gateway_freeproxy_clear: { rpcMethod: "gateway/freeProxy/clear" },
   service_requestlog_list: { rpcMethod: "requestlog/list" },
   service_requestlog_summary: { rpcMethod: "requestlog/summary" },
   service_requestlog_export: { rpcMethod: "requestlog/export" },

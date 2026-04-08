@@ -1348,6 +1348,13 @@ pub(crate) fn update_register_proxy(
     )
 }
 
+pub(crate) fn delete_register_proxy(proxy_id: i64) -> Result<Value, String> {
+    if proxy_id < 1 {
+        return Err("proxyId is required".to_string());
+    }
+    register_delete_json(&format!("/api/settings/proxies/{proxy_id}"))
+}
+
 pub(crate) fn list_register_email_services(
     service_type: Option<&str>,
     enabled_only: bool,

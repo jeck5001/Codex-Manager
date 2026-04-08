@@ -1029,6 +1029,15 @@ export interface FreeProxySyncResult {
   registerProxyTotalCount: number;
 }
 
+export interface FreeProxyClearResult {
+  previousProxyListValue: string;
+  previousProxyListCount: number;
+  clearedGatewayProxyCount: number;
+  deletedRegisterProxyCount: number;
+  failedRegisterProxyCount: number;
+  remainingRegisterProxyCount: number;
+}
+
 export interface AppSettings {
   updateAutoCheck: boolean;
   closeToTrayOnClose: boolean;
