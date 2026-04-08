@@ -63,6 +63,38 @@ SENTINEL_BROWSER = load_module()
 
 
 class SentinelBrowserTests(unittest.TestCase):
+    def test_build_sentinel_target_urls_prefers_frame_then_referer_then_legacy_target(self):
+        targets = SENTINEL_BROWSER._build_sentinel_target_urls(
+            "https://auth.openai.com/create-account/password"
+        )
+
+        self.assertEqual(
+            targets,
+            [
+                "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6",
+                "https://auth.openai.com/create-account/password",
+                "https://auth.openai.com/about-you",
+            ],
+        )
+
+    def test_build_sentinel_target_urls_dedupes_frame_and_legacy_target(self):
+        frame_url = "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6"
+
+        self.assertEqual(
+            SENTINEL_BROWSER._build_sentinel_target_urls(frame_url),
+            [
+                frame_url,
+                "https://auth.openai.com/about-you",
+            ],
+        )
+        self.assertEqual(
+            SENTINEL_BROWSER._build_sentinel_target_urls("https://auth.openai.com/about-you"),
+            [
+                frame_url,
+                "https://auth.openai.com/about-you",
+            ],
+        )
+
     def test_browser_sentinel_user_agent_matches_openai_http_client(self):
         client = HTTP_CLIENT.OpenAIHTTPClient()
         self.assertEqual(
