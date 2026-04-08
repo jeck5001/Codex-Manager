@@ -39,3 +39,32 @@ class HotmailVerificationMailboxProvider:
             service_type=str(getattr(service, "service_type", "") or ""),
             service=mailbox_service,
         )
+
+
+def build_default_hotmail_verification_provider() -> HotmailVerificationMailboxProvider:
+    from ...config.constants import EmailServiceType
+    from ...database.models import EmailService as EmailServiceModel
+    from ...database.session import get_db
+    from ..base import create_email_service
+
+    def _list_enabled_services():
+        with get_db() as db:
+            return list(
+                db.query(EmailServiceModel)
+                .filter(EmailServiceModel.enabled == True)
+                .order_by(EmailServiceModel.priority.asc())
+                .all()
+            )
+
+    def _create_service(service):
+        service_type = EmailServiceType(str(getattr(service, "service_type", "") or "").lower())
+        return create_email_service(
+            service_type,
+            dict(getattr(service, "config", {}) or {}),
+            getattr(service, "name", None),
+        )
+
+    return HotmailVerificationMailboxProvider(
+        list_enabled_services=_list_enabled_services,
+        create_email_service=_create_service,
+    )

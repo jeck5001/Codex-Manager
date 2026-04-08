@@ -5,7 +5,12 @@ from typing import Dict, Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
-from ...services.hotmail import HotmailAccountArtifact, HotmailRegistrationEngine, HotmailRegistrationResult
+from ...services.hotmail import (
+    HotmailAccountArtifact,
+    HotmailRegistrationEngine,
+    HotmailRegistrationResult,
+    build_default_hotmail_verification_provider,
+)
 from ...services.hotmail.artifacts import write_artifacts
 
 
@@ -14,7 +19,10 @@ hotmail_batches: Dict[str, dict] = {}
 
 
 def create_hotmail_engine(*, proxy_url: Optional[str] = None) -> HotmailRegistrationEngine:
-    return HotmailRegistrationEngine(proxy_url=proxy_url)
+    return HotmailRegistrationEngine(
+        proxy_url=proxy_url,
+        verification_provider=build_default_hotmail_verification_provider(),
+    )
 
 
 class HotmailBatchCreateRequest(BaseModel):
