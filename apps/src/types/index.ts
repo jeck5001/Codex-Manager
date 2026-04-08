@@ -954,6 +954,8 @@ export interface RegisterHotmailBatchSnapshot {
   completed: number;
   success: number;
   failed: number;
+  status?: string;
+  actionRequiredReason?: string;
   cancelled: boolean;
   finished: boolean;
   logs: string[];
