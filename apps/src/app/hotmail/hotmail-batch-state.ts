@@ -26,3 +26,16 @@ export function shouldPollHotmailBatch(batch: Pick<HotmailBatchStatusLike, "fini
 export function mergeHotmailBatchArtifacts<T extends HotmailArtifactLike>(previous: T[], next: T[]) {
   return next.length > 0 ? next : previous;
 }
+
+export function classifyHotmailLogLine(line: string) {
+  const normalized = String(line || "").toLowerCase();
+  if (
+    normalized.includes("unsupported_challenge")
+    || normalized.includes("let's prove you're human")
+    || normalized.includes("press and hold the button")
+    || normalized.includes("微软要求人工验证")
+  ) {
+    return "challenge";
+  }
+  return "default";
+}
