@@ -38,7 +38,7 @@ export function LanguageSwitcher({
         disabled={isSwitchingLocale}
       >
         <SelectTrigger
-          className={cn("h-9 min-w-[148px] gap-2", triggerClassName)}
+          className={cn("h-9 min-w-[116px] gap-2 text-xs", triggerClassName)}
           aria-label={t("选择语言")}
         >
           <div className="flex min-w-0 items-center gap-2">

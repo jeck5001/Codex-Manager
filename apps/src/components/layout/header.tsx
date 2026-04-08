@@ -171,9 +171,9 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-16 items-center gap-4 glass-header px-6">
-        <div className="flex min-w-0 shrink-0 items-center gap-4">
-          <h1 className="text-lg font-semibold">{getPageTitle()}</h1>
+      <header className="sticky top-0 z-30 grid h-16 grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-3 glass-header px-4 xl:px-6">
+        <div className="flex min-w-0 items-center gap-3 overflow-hidden">
+          <h1 className="truncate text-lg font-semibold">{getPageTitle()}</h1>
           <Badge variant={serviceStatus.connected ? "default" : "secondary"} className="h-5">
             {serviceStatus.connected ? t("服务已连接") : t("服务未连接")}
           </Badge>
@@ -182,15 +182,15 @@ export function Header() {
           ) : null}
         </div>
 
-        <div className="hidden min-w-0 flex-1 justify-center lg:flex">
+        <div className="hidden min-w-0 items-center justify-center px-2 2xl:flex">
           <DisclaimerTicker />
         </div>
 
-        <div className="flex shrink-0 items-center gap-4">
-          <LanguageSwitcher compact triggerClassName="w-[152px]" />
+        <div className="ml-auto flex shrink-0 items-center gap-2 xl:gap-3">
+          <LanguageSwitcher compact triggerClassName="w-[124px] xl:w-[132px]" />
 
           {canManageService ? (
-            <div className="flex items-center gap-2 rounded-lg border bg-card/30 px-3 py-1.5 shadow-sm">
+            <div className="flex items-center gap-2 rounded-lg border bg-card/30 px-2.5 py-1.5 shadow-sm">
               <span className="text-xs font-medium text-muted-foreground">{t("监听端口")}</span>
               <Input
                 className="h-7 w-16 border-none bg-transparent p-0 text-xs font-mono focus-visible:ring-0"
@@ -218,7 +218,7 @@ export function Header() {
           <Button
             variant="outline"
             size="sm"
-            className="h-9 gap-2 px-3"
+            className="h-9 gap-2 px-2.5 xl:px-3"
             onClick={() => setWebPasswordModalOpen(true)}
           >
             <SettingsIcon className="h-3.5 w-3.5" />

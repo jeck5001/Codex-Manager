@@ -295,7 +295,7 @@ export function Sidebar() {
         onPrefetch={prefetchRoute}
       />
     )),
-    [activePathname, handleNavigate, isSidebarOpen, prefetchRoute]
+    [activePathname, handleNavigate, isSidebarOpen, prefetchRoute, t]
   );
 
   return (
