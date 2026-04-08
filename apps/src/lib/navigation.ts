@@ -4,6 +4,7 @@ export const APP_NAV_ITEMS = [
   { id: "register", name: "注册中心", href: "/register/" },
   { id: "payment", name: "支付中心", href: "/payment/" },
   { id: "emailServices", name: "邮箱服务", href: "/email-services/" },
+  { id: "hotmail", name: "Hotmail", href: "/hotmail/" },
   { id: "apiKeys", name: "平台密钥", href: "/apikeys/" },
   { id: "logs", name: "请求日志", href: "/logs/" },
   { id: "audit", name: "审计日志", href: "/audit/" },
@@ -15,6 +16,7 @@ export const APP_NAV_ITEMS = [
 export type AppNavItemId = (typeof APP_NAV_ITEMS)[number]["id"];
 
 export const APP_NAV_ALWAYS_VISIBLE_IDS: AppNavItemId[] = ["settings"];
+const APP_NAV_UPGRADE_VISIBLE_IDS: AppNavItemId[] = ["hotmail"];
 
 export const APP_NAV_DEFAULT_VISIBLE_IDS: AppNavItemId[] = APP_NAV_ITEMS.map(
   (item) => item.id
@@ -34,5 +36,22 @@ export function normalizeVisibleMenuItems(
       normalized.includes(item.id) || APP_NAV_ALWAYS_VISIBLE_IDS.includes(item.id)
   ).map((item) => item.id);
 
-  return deduped.length > 0 ? deduped : [...APP_NAV_DEFAULT_VISIBLE_IDS];
+  if (deduped.length === 0) {
+    return [...APP_NAV_DEFAULT_VISIBLE_IDS];
+  }
+
+  const hasLegacyFullMenu = APP_NAV_ITEMS.filter(
+    (item) => !APP_NAV_UPGRADE_VISIBLE_IDS.includes(item.id)
+  ).every((item) => deduped.includes(item.id));
+
+  if (!hasLegacyFullMenu) {
+    return deduped;
+  }
+
+  return APP_NAV_ITEMS.filter(
+    (item) =>
+      deduped.includes(item.id) ||
+      APP_NAV_ALWAYS_VISIBLE_IDS.includes(item.id) ||
+      APP_NAV_UPGRADE_VISIBLE_IDS.includes(item.id)
+  ).map((item) => item.id);
 }

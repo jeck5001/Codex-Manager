@@ -942,6 +942,24 @@ export interface RegisterOutlookBatchSnapshot {
   logs: string[];
 }
 
+export interface RegisterHotmailArtifact {
+  filename: string;
+  path: string;
+  size: number | null;
+}
+
+export interface RegisterHotmailBatchSnapshot {
+  batchId: string;
+  total: number;
+  completed: number;
+  success: number;
+  failed: number;
+  cancelled: boolean;
+  finished: boolean;
+  logs: string[];
+  artifacts: RegisterHotmailArtifact[];
+}
+
 export interface RegisterImportResult {
   taskUuid: string;
   email: string;

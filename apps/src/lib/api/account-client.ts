@@ -50,6 +50,8 @@ import {
   RegisterEmailServiceTestResult,
   RegisterEmailServiceType,
   RegisterEmailServiceTypeCatalog,
+  RegisterHotmailArtifact,
+  RegisterHotmailBatchSnapshot,
   RegisterImportResult,
   RegisterOutlookAccount,
   RegisterOutlookAccountsResult,
@@ -150,6 +152,14 @@ interface RegisterOutlookBatchStartPayload {
   intervalMax: number;
   concurrency: number;
   mode: "pipeline" | "parallel";
+}
+
+interface RegisterHotmailBatchStartPayload {
+  count: number;
+  concurrency: number;
+  intervalMin: number;
+  intervalMax: number;
+  proxy?: string | null;
 }
 
 interface RegisterTaskListPayload {
@@ -591,6 +601,69 @@ function normalizeRegisterOutlookBatchSnapshot(
     ...normalizeRegisterBatchSnapshot(value),
     skipped:
       typeof source.skipped === "number" && Number.isFinite(source.skipped) ? source.skipped : 0,
+  };
+}
+
+function normalizeRegisterHotmailArtifact(value: unknown): RegisterHotmailArtifact {
+  const source = asRecord(value) ?? {};
+  return {
+    filename:
+      typeof source.filename === "string"
+        ? source.filename
+        : typeof source.fileName === "string"
+          ? source.fileName
+          : typeof source.file_name === "string"
+            ? source.file_name
+            : "",
+    path: typeof source.path === "string" ? source.path : "",
+    size:
+      typeof source.size === "number" && Number.isFinite(source.size)
+        ? source.size
+        : null,
+  };
+}
+
+function normalizeRegisterHotmailArtifacts(value: unknown): RegisterHotmailArtifact[] {
+  const source = asRecord(value);
+  const rawItems = Array.isArray(source?.artifacts)
+    ? source?.artifacts
+    : Array.isArray(value)
+      ? value
+      : [];
+  return rawItems
+    .map(normalizeRegisterHotmailArtifact)
+    .filter((item) => item.filename || item.path);
+}
+
+function normalizeRegisterHotmailBatchSnapshot(
+  value: unknown
+): RegisterHotmailBatchSnapshot {
+  const source = asRecord(value) ?? {};
+  return {
+    batchId:
+      typeof source.batchId === "string"
+        ? source.batchId
+        : typeof source.batch_id === "string"
+          ? source.batch_id
+          : "",
+    total: typeof source.total === "number" && Number.isFinite(source.total) ? source.total : 0,
+    completed:
+      typeof source.completed === "number" && Number.isFinite(source.completed)
+        ? source.completed
+        : 0,
+    success:
+      typeof source.success === "number" && Number.isFinite(source.success) ? source.success : 0,
+    failed:
+      typeof source.failed === "number" && Number.isFinite(source.failed) ? source.failed : 0,
+    cancelled: source.cancelled === true,
+    finished: source.finished === true,
+    logs: Array.isArray(source.logs)
+      ? source.logs
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [],
+    artifacts: normalizeRegisterHotmailArtifacts(source),
   };
 }
 
@@ -1297,6 +1370,37 @@ export const accountClient = {
       withAddr()
     );
     return normalizeRegisterStats(result);
+  },
+  async startRegisterHotmailBatch(
+    params: RegisterHotmailBatchStartPayload
+  ): Promise<RegisterHotmailBatchSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_hotmail_batch_start",
+      withAddr({
+        count: params.count,
+        concurrency: params.concurrency,
+        intervalMin: params.intervalMin,
+        intervalMax: params.intervalMax,
+        proxy: params.proxy ?? null,
+      })
+    );
+    return normalizeRegisterHotmailBatchSnapshot(result);
+  },
+  async getRegisterHotmailBatch(batchId: string): Promise<RegisterHotmailBatchSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_hotmail_batch_read",
+      withAddr({ batchId })
+    );
+    return normalizeRegisterHotmailBatchSnapshot(result);
+  },
+  cancelRegisterHotmailBatch: (batchId: string) =>
+    invoke("service_account_register_hotmail_batch_cancel", withAddr({ batchId })),
+  async getRegisterHotmailBatchArtifacts(batchId: string): Promise<RegisterHotmailArtifact[]> {
+    const result = await invoke<unknown>(
+      "service_account_register_hotmail_batch_artifacts",
+      withAddr({ batchId })
+    );
+    return normalizeRegisterHotmailArtifacts(result);
   },
   cancelRegisterTask: (taskUuid: string) =>
     invoke("service_account_register_task_cancel", withAddr({ taskUuid })),

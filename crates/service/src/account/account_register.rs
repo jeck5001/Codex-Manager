@@ -1056,6 +1056,58 @@ pub(crate) fn cancel_register_batch(batch_id: &str) -> Result<Value, String> {
     )
 }
 
+pub(crate) fn start_register_hotmail_batch(
+    count: i64,
+    concurrency: i64,
+    interval_min: i64,
+    interval_max: i64,
+    proxy: Option<String>,
+) -> Result<Value, String> {
+    if count < 1 {
+        return Err("count must be greater than 0".to_string());
+    }
+    if concurrency < 1 {
+        return Err("concurrency must be greater than 0".to_string());
+    }
+    if interval_min < 0 || interval_max < interval_min {
+        return Err("invalid interval range".to_string());
+    }
+    register_post_json(
+        "/api/hotmail/batches",
+        &json!({
+            "count": count,
+            "concurrency": concurrency,
+            "interval_min": interval_min,
+            "interval_max": interval_max,
+            "proxy": proxy,
+        }),
+    )
+}
+
+pub(crate) fn read_register_hotmail_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_get_json(&format!("/api/hotmail/batches/{batch_id}"))
+}
+
+pub(crate) fn cancel_register_hotmail_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_post_json(&format!("/api/hotmail/batches/{batch_id}/cancel"), &json!({}))
+}
+
+pub(crate) fn read_register_hotmail_batch_artifacts(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_get_json(&format!("/api/hotmail/batches/{batch_id}/artifacts"))
+}
+
 pub(crate) fn list_register_tasks(
     page: i64,
     page_size: i64,
@@ -1698,9 +1750,10 @@ fn first_recovery_service_id_from_group(payload: &Value, keys: &[&str]) -> Optio
 mod tests {
     use super::{
         build_auto_register_batch_payload, classify_register_failure_reason,
-        normalized_register_service_url,
+        normalized_register_service_url, read_register_hotmail_batch,
+        read_register_hotmail_batch_artifacts,
         pick_remote_account_by_email, resolve_existing_imported_account_id_from_accounts,
-        task_result_string_field,
+        task_result_string_field, cancel_register_hotmail_batch,
         AutoRegisterRecoveryPlan, RegisterProxyItem,
     };
     use codexmanager_core::storage::{now_ts, Account};
@@ -1882,5 +1935,29 @@ mod tests {
             &serde_json::json!({}),
         );
         assert_eq!(matched.as_deref(), Some("acc-imported-2"));
+    }
+
+    #[test]
+    fn read_register_hotmail_batch_requires_batch_id() {
+        assert_eq!(
+            read_register_hotmail_batch(""),
+            Err("batchId is required".to_string())
+        );
+    }
+
+    #[test]
+    fn cancel_register_hotmail_batch_requires_batch_id() {
+        assert_eq!(
+            cancel_register_hotmail_batch(""),
+            Err("batchId is required".to_string())
+        );
+    }
+
+    #[test]
+    fn read_register_hotmail_batch_artifacts_requires_batch_id() {
+        assert_eq!(
+            read_register_hotmail_batch_artifacts(""),
+            Err("batchId is required".to_string())
+        );
     }
 }
