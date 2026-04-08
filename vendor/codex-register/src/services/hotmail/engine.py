@@ -153,17 +153,32 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         locator = self._first_locator(selectors)
         if locator is None:
             return False
-        locator.click()
+        if not self._click_locator(locator):
+            return False
         locator.fill("")
         locator.fill(value)
         return True
+
+    def _click_locator(self, locator) -> bool:
+        try:
+            locator.click()
+            return True
+        except Exception:
+            try:
+                locator.click(force=True)
+                return True
+            except Exception:
+                try:
+                    locator.evaluate("el => el.click()")
+                    return True
+                except Exception:
+                    return False
 
     def _click_first(self, selectors: list[str]) -> bool:
         locator = self._first_locator(selectors)
         if locator is None:
             return False
-        locator.click()
-        return True
+        return self._click_locator(locator)
 
     def _click_primary_action(self) -> bool:
         return self._click_first(
