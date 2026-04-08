@@ -21,6 +21,7 @@ const VALID_UI_MENU_ITEMS: &[&str] = &[
     "register",
     "payment",
     "emailServices",
+    "hotmail",
     "apiKeys",
     "logs",
     "audit",

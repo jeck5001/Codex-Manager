@@ -31,13 +31,45 @@ SUCCESS_URL_MARKERS = (
     "outlook.live.com",
     "login.live.com",
 )
+MONTH_LABEL_MAP = {
+    "1": ("January", "1月"),
+    "2": ("February", "2月"),
+    "3": ("March", "3月"),
+    "4": ("April", "4月"),
+    "5": ("May", "5月"),
+    "6": ("June", "6月"),
+    "7": ("July", "7月"),
+    "8": ("August", "8月"),
+    "9": ("September", "9月"),
+    "10": ("October", "10月"),
+    "11": ("November", "11月"),
+    "12": ("December", "12月"),
+}
+COUNTRY_LABEL_MAP = {
+    "united states": ("United States", "美国"),
+}
 
 
 def classify_hotmail_page_state(text: str) -> Optional[HotmailFailureCode]:
     normalized = str(text or "").lower()
-    if "phone number" in normalized:
+    if (
+        "phone number" in normalized
+        or "mobile number" in normalized
+        or "电话号码" in normalized
+        or "手机号码" in normalized
+    ):
         return HotmailFailureCode.PHONE_VERIFICATION_REQUIRED
-    if "puzzle" in normalized or "captcha" in normalized or "verify you are human" in normalized:
+    if (
+        "puzzle" in normalized
+        or "captcha" in normalized
+        or "verify you are human" in normalized
+        or "prove you're not a robot" in normalized
+        or "hold the button" in normalized
+        or "证明你不是机器人" in normalized
+        or "长按该按钮" in normalized
+        or "按住该按钮" in normalized
+        or "长按按钮" in normalized
+    ):
         return HotmailFailureCode.UNSUPPORTED_CHALLENGE
     return None
 
@@ -132,6 +164,21 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         locator.click()
         return True
 
+    def _click_primary_action(self) -> bool:
+        return self._click_first(
+            [
+                "#nextButton",
+                "button[type='submit']",
+                "input[type='submit']",
+                "button:has-text('Next')",
+                "button:has-text('Create account')",
+                "button:has-text('Verify')",
+                "button:has-text('下一步')",
+                "button:has-text('同意并继续')",
+                "button:has-text('验证')",
+            ]
+        )
+
     def _select_first(self, selectors: list[str], value: str) -> bool:
         locator = self._first_locator(selectors)
         if locator is None:
@@ -145,6 +192,56 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
                 return True
             except Exception:
                 return False
+
+    def _select_role_option(self, labels: list[str]) -> bool:
+        assert self.page is not None
+        for label in labels:
+            try:
+                option = self.page.get_by_role("option", name=label, exact=True)
+                if option.count() > 0:
+                    option.first.click()
+                    return True
+            except Exception:
+                continue
+            try:
+                option = self.page.get_by_text(label, exact=True)
+                if option.count() > 0:
+                    option.first.click()
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _select_dropdown_option(
+        self,
+        trigger_selectors: list[str],
+        labels: list[str],
+        *,
+        fallback_value: Optional[str] = None,
+    ) -> bool:
+        if self._select_first(trigger_selectors, fallback_value or labels[0]):
+            return True
+        if not self._click_first(trigger_selectors):
+            return False
+        assert self.page is not None
+        self.page.wait_for_timeout(300)
+        return self._select_role_option(labels)
+
+    def _click_data_transfer_consent(self) -> bool:
+        if self._detect_state() != "data_transfer_consent":
+            return False
+        clicked = self._click_first(
+            [
+                "#nextButton",
+                "button:has-text('同意并继续')",
+                "button:has-text('Agree and continue')",
+                "button[type='submit']",
+            ]
+        )
+        if clicked:
+            assert self.page is not None
+            self.page.wait_for_timeout(1_500)
+        return clicked
 
     def _page_text(self) -> str:
         assert self.page is not None
@@ -161,11 +258,59 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
             if marker in text:
                 return "username_unavailable"
 
+        if (
+            "个人数据导出许可" in text
+            or "同意并继续" in text and "拒绝并退出" in text
+            or "personal data export license" in text
+        ):
+            return "data_transfer_consent"
+
         failure = classify_hotmail_page_state(text)
         if failure == HotmailFailureCode.PHONE_VERIFICATION_REQUIRED:
             return "phone_verification"
         if failure == HotmailFailureCode.UNSUPPORTED_CHALLENGE:
             return "unsupported_challenge"
+
+        if self._first_locator(
+            [
+                "input[name='email']",
+                "input[type='email']",
+                "input[autocomplete='email']",
+                "input[aria-label*='email' i]",
+                "input[aria-label='电子邮件']",
+            ]
+        ):
+            return "email_entry"
+
+        if self._first_locator(
+            [
+                "input[type='password']",
+                "input[name='Password']",
+                "input[autocomplete='new-password']",
+            ]
+        ):
+            return "password_entry"
+
+        if self._first_locator(
+            [
+                "#lastNameInput",
+                "#firstNameInput",
+                "input[name='lastNameInput']",
+                "input[name='firstNameInput']",
+            ]
+        ):
+            return "name_details"
+
+        if self._first_locator(
+            [
+                "input[name='BirthYear']",
+                "#BirthMonthDropdown",
+                "#BirthDayDropdown",
+                "#countryDropdownId",
+                "input[aria-label='出生年份']",
+            ]
+        ):
+            return "birth_details"
 
         if self._first_locator(
             [
@@ -183,17 +328,34 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
                 "input[name='otc']",
                 "input[autocomplete='one-time-code']",
                 "input[type='tel']",
+                "input[inputmode='numeric']",
+                "input[aria-label*='code' i]",
             ]
         ):
             return "email_verification"
 
-        if any(marker in text for marker in EMAIL_VERIFICATION_MARKERS):
+        if any(
+            marker in text
+            for marker in (
+                *EMAIL_VERIFICATION_MARKERS,
+                "输入代码",
+                "检查你的电子邮件",
+                "验证码",
+                "发送代码",
+                "验证电子邮件",
+            )
+        ):
             return "email_verification"
 
         current_url = (self.page.url or "").lower()
         if any(marker in current_url for marker in SUCCESS_URL_MARKERS) and "signup.live.com" not in current_url:
             return "success"
-        if "your account has been created" in text or "welcome to your microsoft account" in text:
+        if (
+            "your account has been created" in text
+            or "welcome to your microsoft account" in text
+            or "你的 microsoft 帐户已创建" in text
+            or "欢迎使用 microsoft 帐户" in text
+        ):
             return "success"
         return "page_structure_changed"
 
@@ -201,92 +363,115 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         assert self.page is not None
         self.page.goto("https://signup.live.com/signup", wait_until="domcontentloaded", timeout=60_000)
         self.page.wait_for_timeout(1_500)
+        self._click_data_transfer_consent()
 
     def submit_account_credentials(self, *, email: str, password: str) -> str:
         assert self.page is not None
-        local_part, _, domain = email.partition("@")
+        self._click_data_transfer_consent()
 
         if not self._fill_first(
             [
-                "input[name='MemberName']",
+                "input[name='email']",
                 "input[type='email']",
+                "input[autocomplete='email']",
                 "input[autocomplete='username']",
                 "input[aria-label*='email' i]",
+                "input[aria-label='电子邮件']",
+                "input[name='MemberName']",
             ],
-            local_part if self._first_locator(["select[name='domain']", "select"]) else email,
+            email,
         ):
             return "page_structure_changed"
 
-        self._select_first(
-            [
-                "select[name='domain']",
-                "select[id*='domain']",
-            ],
-            domain,
-        )
-        self._click_first(
-            [
-                "button[type='submit']",
-                "input[type='submit']",
-                "button:has-text('Next')",
-            ]
-        )
+        self._click_primary_action()
         self.page.wait_for_timeout(1_200)
         state = self._detect_state()
-        if state != "page_structure_changed":
-            if state == "username_unavailable":
-                return state
-            if state != "success":
-                password_filled = self._fill_first(
-                    [
-                        "input[type='password']",
-                        "input[name='Password']",
-                        "input[autocomplete='new-password']",
-                    ],
-                    password,
-                )
-                if password_filled:
-                    self._click_first(
-                        [
-                            "button[type='submit']",
-                            "input[type='submit']",
-                            "button:has-text('Next')",
-                        ]
-                    )
-                    self.page.wait_for_timeout(1_200)
-                    state = self._detect_state()
+        if state == "username_unavailable":
+            return state
+        if state == "password_entry":
+            password_filled = self._fill_first(
+                [
+                    "input[type='password']",
+                    "input[name='Password']",
+                    "input[autocomplete='new-password']",
+                ],
+                password,
+            )
+            if password_filled:
+                self._click_primary_action()
+                self.page.wait_for_timeout(1_200)
+                state = self._detect_state()
         return state
 
     def submit_profile_details(self, *, profile: HotmailRegistrationProfile) -> str:
-        if not self._fill_first(
-            [
-                "input[name='FirstName']",
-                "input[autocomplete='given-name']",
-            ],
-            profile.first_name,
-        ):
+        state = self._detect_state()
+        if state == "birth_details":
+            if not self._fill_first(
+                ["input[name='BirthYear']", "input[id*='BirthYear']", "input[aria-label='出生年份']"],
+                profile.birth_year,
+            ):
+                return "page_structure_changed"
+
+            country_labels = list(
+                COUNTRY_LABEL_MAP.get(profile.country.strip().lower(), (profile.country,))
+            )
+            self._select_dropdown_option(
+                ["#countryDropdownId", "button[name='countryDropdownName']", "select[name='Country']"],
+                country_labels,
+                fallback_value=country_labels[0],
+            )
+
+            month_labels = list(MONTH_LABEL_MAP.get(profile.birth_month, (profile.birth_month,)))
+            if not self._select_dropdown_option(
+                ["#BirthMonthDropdown", "button[name='BirthMonth']", "select[name='BirthMonth']"],
+                month_labels,
+                fallback_value=profile.birth_month,
+            ):
+                return "page_structure_changed"
+
+            day_labels = [f"{profile.birth_day}日", profile.birth_day]
+            if not self._select_dropdown_option(
+                ["#BirthDayDropdown", "button[name='BirthDay']", "select[name='BirthDay']"],
+                day_labels,
+                fallback_value=profile.birth_day,
+            ):
+                return "page_structure_changed"
+
+            self._click_primary_action()
+            assert self.page is not None
+            self.page.wait_for_timeout(1_200)
+            state = self._detect_state()
+
+        if state in {"name_details", "profile_details"}:
+            first_name_ok = self._fill_first(
+                [
+                    "#firstNameInput",
+                    "input[name='FirstName']",
+                    "input[autocomplete='given-name']",
+                ],
+                profile.first_name,
+            )
+            last_name_ok = self._fill_first(
+                [
+                    "#lastNameInput",
+                    "input[name='LastName']",
+                    "input[autocomplete='family-name']",
+                ],
+                profile.last_name,
+            )
+            if not first_name_ok and not last_name_ok:
+                return "page_structure_changed"
+
+            self._click_primary_action()
+            assert self.page is not None
+            self.page.wait_for_timeout(1_200)
+            state = self._detect_state()
+
+        if state == "birth_details":
             return "page_structure_changed"
-        self._fill_first(
-            [
-                "input[name='LastName']",
-                "input[autocomplete='family-name']",
-            ],
-            profile.last_name,
-        )
-        self._select_first(["select[name='BirthMonth']", "select[id*='BirthMonth']"], profile.birth_month)
-        self._fill_first(["input[name='BirthDay']", "input[id*='BirthDay']"], profile.birth_day)
-        self._fill_first(["input[name='BirthYear']", "input[id*='BirthYear']"], profile.birth_year)
-        self._select_first(["select[name='Country']", "select[id*='Country']"], profile.country)
-        self._click_first(
-            [
-                "button[type='submit']",
-                "input[type='submit']",
-                "button:has-text('Next')",
-            ]
-        )
+
         assert self.page is not None
-        self.page.wait_for_timeout(1_200)
-        return self._detect_state()
+        return state
 
     def submit_verification_code(self, code: str) -> str:
         if not self._fill_first(
@@ -295,18 +480,12 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
                 "input[name='otc']",
                 "input[autocomplete='one-time-code']",
                 "input[type='tel']",
+                "input[inputmode='numeric']",
             ],
             code,
         ):
             return "page_structure_changed"
-        self._click_first(
-            [
-                "button[type='submit']",
-                "input[type='submit']",
-                "button:has-text('Next')",
-                "button:has-text('Verify')",
-            ]
-        )
+        self._click_primary_action()
         assert self.page is not None
         self.page.wait_for_timeout(1_200)
         return self._detect_state()
@@ -448,7 +627,7 @@ class HotmailRegistrationEngine:
         domain: str,
     ) -> HotmailRegistrationResult:
         current_state = str(state or "").strip().lower()
-        if current_state == "profile_details":
+        if current_state in {"profile_details", "birth_details", "name_details"}:
             current_state = str(session.submit_profile_details(profile=profile)).strip().lower()
 
         if current_state == "email_verification":
