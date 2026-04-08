@@ -53,6 +53,8 @@ export function Header() {
         return "支付中心";
       case "/email-services":
         return "邮箱服务";
+      case "/hotmail":
+        return "Hotmail";
       case "/apikeys":
         return "平台密钥";
       case "/logs":

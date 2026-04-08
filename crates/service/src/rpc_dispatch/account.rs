@@ -497,6 +497,62 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
             super::value_or_error(account_register::cancel_register_outlook_batch(batch_id))
         }
+        "account/register/hotmailBatch/start" => {
+            let count = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("count"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(1);
+            let concurrency = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("concurrency"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(1);
+            let interval_min = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("intervalMin")
+                        .or_else(|| params.get("interval_min"))
+                })
+                .and_then(|value| value.as_i64())
+                .unwrap_or(1);
+            let interval_max = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("intervalMax")
+                        .or_else(|| params.get("interval_max"))
+                })
+                .and_then(|value| value.as_i64())
+                .unwrap_or(interval_min);
+            let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            super::value_or_error(account_register::start_register_hotmail_batch(
+                count,
+                concurrency,
+                interval_min,
+                interval_max,
+                proxy,
+            ))
+        }
+        "account/register/hotmailBatch/read" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::read_register_hotmail_batch(batch_id))
+        }
+        "account/register/hotmailBatch/cancel" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::cancel_register_hotmail_batch(batch_id))
+        }
+        "account/register/hotmailBatch/artifacts" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::read_register_hotmail_batch_artifacts(
+                batch_id,
+            ))
+        }
         "account/register/emailServices/types" => {
             super::value_or_error(account_register::register_email_service_types())
         }

@@ -83,6 +83,18 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_account_register_outlook_batch_cancel: {
     rpcMethod: "account/register/outlookBatch/cancel",
   },
+  service_account_register_hotmail_batch_start: {
+    rpcMethod: "account/register/hotmailBatch/start",
+  },
+  service_account_register_hotmail_batch_read: {
+    rpcMethod: "account/register/hotmailBatch/read",
+  },
+  service_account_register_hotmail_batch_cancel: {
+    rpcMethod: "account/register/hotmailBatch/cancel",
+  },
+  service_account_register_hotmail_batch_artifacts: {
+    rpcMethod: "account/register/hotmailBatch/artifacts",
+  },
   service_account_register_email_services_types: {
     rpcMethod: "account/register/emailServices/types",
   },
