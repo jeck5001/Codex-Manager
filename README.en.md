@@ -87,16 +87,16 @@ If this project has been helpful to you, you are welcome to support the author.
 | Build locally, package, release, and run scripts | [Build, Release, and Script Guide](docs/release/构建发布与脚本说明.md) |
 
 ## Recent Changes
-  - Current latest version: `v0.1.18` (2026-04-06, release)
+  - Current latest version: `v0.1.19` (2026-04-06, release)
   - The Gemini -> Codex / Responses request path now matches CPA-style compatibility more closely, including developer messages, tool-name mapping, FIFO `call_id`, `reasoning`, `include`, and `parallel_tool_calls`.
   - Legacy unused Gemini-path code has been removed, so `cargo tauri dev` and `cargo test` no longer flood the build with `dead_code` warnings from the old adapter flow.
   - The account quota detail popup has been realigned to the vertical center of the quota overview card, so the 5-hour, 7-day, and extra quota panels now feel visually anchored.
-  - Version alignment for this round is complete too: the workspace, frontend package, Tauri desktop app, lockfile, README, and CHANGELOG have all been updated to `0.1.18`.
+  - Version alignment for this round is complete too: the workspace, frontend package, Tauri desktop app, lockfile, README, and CHANGELOG have all been updated to `0.1.19`.
 
 ### Recent Commit Summary
 - `c9ec8c9`: aligned the Gemini request path with CPA-style Gemini -> Codex/Responses behavior.
 - `45063b6`: removed unused Gemini-path code and added CPA acknowledgement notes to the README.
-- `3c56c7a`: bumped the release version metadata to `0.1.18`.
+- `3c56c7a`: bumped the release version metadata to `0.1.19`.
 
 ## Feature Overview
 - Account pool management: groups, tags, sorting, notes, ban detection, and banned-account filtering
