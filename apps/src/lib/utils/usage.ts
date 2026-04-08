@@ -387,9 +387,9 @@ function extractExtraRateLimitWindows(raw: string | null | undefined): ExtraUsag
     ? (payload?.[EXTRA_RATE_LIMITS_JSON_KEY] as unknown[])
     : [];
 
-  return items.flatMap((item, index) => {
+  return items.reduce<ExtraUsageDisplayRow[]>((rows, item, index) => {
     const source = asObjectRecord(item);
-    if (!source) return [];
+    if (!source) return rows;
 
     const labelSeed =
       (typeof source.limit_name === "string" && source.limit_name.trim()) ||
@@ -402,30 +402,32 @@ function extractExtraRateLimitWindows(raw: string | null | undefined): ExtraUsag
       { key: "secondary_window", suffix: " · 长周期" },
     ];
 
-    return windows
-      .map(({ key, suffix }) => {
-        const window = asObjectRecord(source[key]);
-        if (!window) return null;
-        const remainPercent = remainingPercent(toNullableNumber(window.used_percent));
-        const resetsAt = toNullableNumber(window.reset_at);
-        const windowSeconds = toNullableNumber(window.limit_window_seconds);
-        const minutes = windowSeconds == null ? null : Math.max(1, Math.ceil(windowSeconds / 60));
-        if (remainPercent == null && resetsAt == null && minutes == null) {
-          return null;
-        }
-        const windowLabel = formatWindowLabel(minutes);
-        return {
-          id: `${labelSeed}-${key}-${index}`,
-          label: baseLabel,
-          labelSuffix: suffix,
-          remainPercent,
-          resetsAt,
-          windowLabel: windowLabel.label,
-          windowLabelValues: windowLabel.values,
-        } satisfies ExtraUsageDisplayRow;
-      })
-      .filter((entry): entry is ExtraUsageDisplayRow => Boolean(entry));
-  });
+    for (const { key, suffix } of windows) {
+      const window = asObjectRecord(source[key]);
+      if (!window) continue;
+
+      const remainPercent = remainingPercent(toNullableNumber(window.used_percent));
+      const resetsAt = toNullableNumber(window.reset_at);
+      const windowSeconds = toNullableNumber(window.limit_window_seconds);
+      const minutes = windowSeconds == null ? null : Math.max(1, Math.ceil(windowSeconds / 60));
+      if (remainPercent == null && resetsAt == null && minutes == null) {
+        continue;
+      }
+
+      const windowLabel = formatWindowLabel(minutes);
+      rows.push({
+        id: `${labelSeed}-${key}-${index}`,
+        label: baseLabel,
+        labelSuffix: suffix,
+        remainPercent,
+        resetsAt,
+        windowLabel: windowLabel.label,
+        windowLabelValues: windowLabel.values,
+      });
+    }
+
+    return rows;
+  }, []);
 }
 
 /**

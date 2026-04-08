@@ -827,7 +827,6 @@ export const RU_MESSAGES: MessageCatalog = {
   "均衡轮询 (Balanced)": "Балансированный раунд‑робин (Balanced)",
   "开启后将用该 path 覆盖转发 action（例如 GLM 前缀路径）。":
     "При включении этот path переопределяет action пересылки (например, префикс GLM).",
-  "控制应用启动和窗口行为": "Управление запуском приложения и поведением окна",
   "例如：/api/paas/v4/chat/completions":
     "например: /api/paas/v4/chat/completions",
   "例如：官方中转、XX 供应商":
