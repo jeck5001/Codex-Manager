@@ -31,6 +31,7 @@ import { getAppErrorMessage } from "@/lib/api/transport";
 import { accountClient } from "@/lib/api/account-client";
 import {
   buildHotmailHandoffAccessUrl,
+  buildHotmailNativeVncEndpoint,
   classifyHotmailLogLine,
   formatHotmailBatchStatus,
   getHotmailBatchProgress,
@@ -184,6 +185,13 @@ export default function HotmailPage() {
       typeof window === "undefined"
         ? ""
         : buildHotmailHandoffAccessUrl(currentBatch, window.location.href),
+    [currentBatch],
+  );
+  const nativeVncEndpoint = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? ""
+        : buildHotmailNativeVncEndpoint(currentBatch, window.location.href),
     [currentBatch],
   );
   const progress = useMemo(
@@ -364,12 +372,13 @@ export default function HotmailPage() {
                     </div>
                     <div className="mt-3 space-y-2 text-sm leading-6">
                       <p>
-                        先到运行 <span className="font-mono">register</span> 服务的那台主机上，处理当前
-                        Playwright 停留的微软验证页；处理完成后，回到这里点击“继续注册”。
+                        优先用原生 VNC 客户端连接运行 <span className="font-mono">register</span> 服务
+                        的那台主机，处理当前 Playwright 停留的微软验证页；处理完成后，回到这里点击
+                        “继续注册”。
                       </p>
                       <p>
-                        如果你现在用的是纯 Docker / headless 部署，没有远程桌面或浏览器接管通道，
-                        那这页没法直接从当前 Web 界面接手操作，只能放弃本次，或换代理/IP 后重新发起。
+                        微软这个长按按钮对远程输入很敏感，浏览器里的 noVNC 容易因为抖动或延迟反复
+                        提示重试。原生 VNC 客户端通常比 noVNC 稳定很多。
                       </p>
                       {currentBatch?.handoffInstructions ? (
                         <p>{currentBatch.handoffInstructions}</p>
@@ -381,7 +390,12 @@ export default function HotmailPage() {
                       ) : null}
                       {handoffAccessUrl ? (
                         <p className="break-all font-mono text-xs text-amber-800/80 dark:text-amber-200/80">
-                          接管地址: {handoffAccessUrl}
+                          noVNC 地址: {handoffAccessUrl}
+                        </p>
+                      ) : null}
+                      {nativeVncEndpoint ? (
+                        <p className="break-all font-mono text-xs text-amber-800/80 dark:text-amber-200/80">
+                          原生 VNC 地址: {nativeVncEndpoint}
                         </p>
                       ) : null}
                     </div>

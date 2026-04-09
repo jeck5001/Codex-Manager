@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildHotmailHandoffAccessUrl,
+  buildHotmailNativeVncEndpoint,
   classifyHotmailLogLine,
   formatHotmailBatchStatus,
   getHotmailBatchProgress,
@@ -90,5 +91,20 @@ test("buildHotmailHandoffAccessUrl falls back to current hostname with default n
       "http://192.168.5.35:48761/hotmail",
     ),
     "http://192.168.5.35:7900/vnc.html?autoconnect=1&resize=scale",
+  );
+});
+
+test("buildHotmailNativeVncEndpoint falls back to current hostname with default VNC port", () => {
+  assert.equal(
+    buildHotmailNativeVncEndpoint(
+      {
+        status: "action_required",
+        actionRequiredReason: "unsupported_challenge",
+        handoffId: "handoff-1",
+        handoffUrl: "",
+      },
+      "http://192.168.5.35:48761/hotmail",
+    ),
+    "192.168.5.35:5900",
   );
 });

@@ -32,7 +32,9 @@ class PlaywrightDockerSetupTests(unittest.TestCase):
         content = (REPO_ROOT / "docker" / "docker-compose.ghcr.yml").read_text(encoding="utf-8")
         self.assertIn('HOTMAIL_HANDOFF_ENABLED: "1"', content)
         self.assertIn('HOTMAIL_HANDOFF_PORT: "7900"', content)
+        self.assertIn('HOTMAIL_HANDOFF_VNC_PORT: "5900"', content)
         self.assertIn('- "7900:7900"', content)
+        self.assertIn('- "5900:5900"', content)
 
     def test_vendor_register_dockerignore_excludes_test_and_cache_directories(self):
         content = (REGISTER_ROOT / ".dockerignore").read_text(encoding="utf-8")
