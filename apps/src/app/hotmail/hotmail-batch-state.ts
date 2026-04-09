@@ -106,3 +106,19 @@ export function buildHotmailHandoffAccessUrl(
     return "";
   }
 }
+
+export function buildHotmailNativeVncEndpoint(
+  batch: Pick<HotmailBatchStatusLike, "handoffId" | "handoffUrl" | "status" | "actionRequiredReason"> | null,
+  currentUrl: string,
+) {
+  if (!hasHotmailPendingHandoff(batch)) {
+    return "";
+  }
+  const configuredUrl = String(batch?.handoffUrl || "").trim();
+  try {
+    const source = configuredUrl ? new URL(configuredUrl) : new URL(currentUrl);
+    return `${source.hostname}:5900`;
+  } catch {
+    return "";
+  }
+}
