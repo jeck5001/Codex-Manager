@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   buildHotmailLocalHandoffActionState,
+  buildHotmailWebLocalHandoffActionState,
+  buildHotmailWebLocalHelperUrl,
   buildHotmailHandoffAccessUrl,
   buildHotmailNativeVncEndpoint,
   classifyHotmailLogLine,
@@ -142,6 +144,31 @@ test("buildHotmailLocalHandoffActionState prefers desktop local handoff when ava
       reason: "本地接管仅在桌面版可用",
     },
   );
+});
+
+test("buildHotmailWebLocalHandoffActionState enables browser-side helper for web runtime", () => {
+  assert.deepEqual(
+    buildHotmailWebLocalHandoffActionState(
+      {
+        status: "action_required",
+        actionRequiredReason: "unsupported_challenge",
+        handoffId: "handoff-1",
+        localHandoff: {
+          handoffId: "handoff-1",
+          url: "https://signup.live.com/challenge",
+        },
+      },
+      false,
+    ),
+    {
+      enabled: true,
+      reason: "",
+    },
+  );
+});
+
+test("buildHotmailWebLocalHelperUrl uses localhost helper endpoint", () => {
+  assert.equal(buildHotmailWebLocalHelperUrl("/health"), "http://127.0.0.1:16788/health");
 });
 
 test("buildHotmailHandoffAccessUrl falls back to current hostname with default noVNC port", () => {

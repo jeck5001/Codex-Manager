@@ -980,6 +980,21 @@ export interface RegisterHotmailLocalHandoff {
   origins: RegisterHotmailLocalHandoffOrigin[];
 }
 
+export interface HotmailLocalHelperHealth {
+  ok: boolean;
+  service: string;
+  version: string;
+  playwrightReady: boolean;
+}
+
+export interface HotmailLocalHelperLaunchResult {
+  ok: boolean;
+  handoffId: string;
+  profileDir: string;
+  message: string;
+  error?: string;
+}
+
 export interface RegisterHotmailBatchSnapshot {
   batchId: string;
   total: number;
