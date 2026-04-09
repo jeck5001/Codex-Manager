@@ -1,11 +1,14 @@
 from contextlib import AbstractContextManager
+import os
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 import re
+import uuid
 
 from .profile import build_registration_profile, choose_target_domains
 from .types import (
     HotmailAccountArtifact,
+    HotmailChallengeHandoff,
     HotmailFailureCode,
     HotmailRegistrationProfile,
     HotmailRegistrationResult,
@@ -90,7 +93,7 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
 
         self.playwright = sync_playwright().start()
         launch_kwargs: dict[str, Any] = {
-            "headless": True,
+            "headless": self._launch_headless(),
             "args": [
                 "--no-sandbox",
                 "--disable-blink-features=AutomationControlled",
@@ -107,6 +110,15 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         )
         self.page = self.context.new_page()
         return self
+
+    @staticmethod
+    def _launch_headless() -> bool:
+        return str(os.getenv("HOTMAIL_HANDOFF_ENABLED", "")).strip().lower() not in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
     def __exit__(self, exc_type, exc, tb):
         if self.context is not None:
@@ -604,6 +616,70 @@ class HotmailRegistrationEngine:
         )
 
     @staticmethod
+    def _close_session(session) -> None:
+        exit_fn = getattr(session, "__exit__", None)
+        if callable(exit_fn):
+            try:
+                exit_fn(None, None, None)
+            except Exception:
+                return
+
+    @staticmethod
+    def _get_session_url(session) -> str:
+        page = getattr(session, "page", None)
+        return str(getattr(page, "url", "") or "").strip()
+
+    @staticmethod
+    def _get_session_title(session) -> str:
+        page = getattr(session, "page", None)
+        if page is None:
+            return ""
+        try:
+            return str(page.title() or "").strip()
+        except Exception:
+            return ""
+
+    def build_handoff_payload(self, handoff: HotmailChallengeHandoff) -> dict[str, str]:
+        session = handoff.session
+        public_url = str(os.getenv("HOTMAIL_HANDOFF_PUBLIC_URL", "") or "").strip()
+        return {
+            "handoff_id": handoff.handoff_id,
+            "url": public_url,
+            "title": self._get_session_title(session),
+            "instructions": (
+                "请在运行 register 服务的主机上处理当前微软验证页，"
+                "处理完成后回到面板点击“继续注册”；如果当前部署没有可交互桌面/浏览器流，只能放弃本次。"
+            ),
+        }
+
+    def _build_handoff_result(
+        self,
+        *,
+        session,
+        profile: HotmailRegistrationProfile,
+        email: str,
+        domain: str,
+        state: str,
+        message: str,
+        handoff: Optional[HotmailChallengeHandoff] = None,
+    ) -> HotmailRegistrationResult:
+        challenge_handoff = handoff or HotmailChallengeHandoff(
+            handoff_id=uuid.uuid4().hex,
+            session=session,
+            profile=profile,
+            email=email,
+            domain=domain,
+            state=state,
+        )
+        challenge_handoff.state = state
+        return HotmailRegistrationResult(
+            success=False,
+            reason_code=HotmailFailureCode.UNSUPPORTED_CHALLENGE.value,
+            error_message=message,
+            handoff_context=challenge_handoff,
+        )
+
+    @staticmethod
     def _append_debug_snapshot(message: str, session) -> str:
         snapshot_builder = getattr(session, "build_debug_snapshot", None)
         if not callable(snapshot_builder):
@@ -656,6 +732,7 @@ class HotmailRegistrationEngine:
         profile: HotmailRegistrationProfile,
         email: str,
         domain: str,
+        handoff: Optional[HotmailChallengeHandoff] = None,
     ) -> HotmailRegistrationResult:
         if self.verification_provider is None:
             return self._build_failure_result(
@@ -700,6 +777,16 @@ class HotmailRegistrationEngine:
             message = f"Hotmail verification flow failed: {state}"
             if failure == HotmailFailureCode.PAGE_STRUCTURE_CHANGED or state != raw_state:
                 message = self._append_debug_snapshot(message, session)
+            if failure == HotmailFailureCode.UNSUPPORTED_CHALLENGE:
+                return self._build_handoff_result(
+                    session=session,
+                    profile=profile,
+                    email=email,
+                    domain=domain,
+                    state=state,
+                    message=message,
+                    handoff=handoff,
+                )
             return self._build_failure_result(failure, message)
 
         return self._build_failure_result(
@@ -715,6 +802,7 @@ class HotmailRegistrationEngine:
         profile: HotmailRegistrationProfile,
         email: str,
         domain: str,
+        handoff: Optional[HotmailChallengeHandoff] = None,
     ) -> HotmailRegistrationResult:
         current_state = str(state or "").strip().lower()
         for _ in range(3):
@@ -730,6 +818,7 @@ class HotmailRegistrationEngine:
                 profile=profile,
                 email=email,
                 domain=domain,
+                handoff=handoff,
             )
 
         if current_state == "success":
@@ -740,6 +829,16 @@ class HotmailRegistrationEngine:
             message = f"Hotmail signup failed: {current_state}"
             if failure == HotmailFailureCode.PAGE_STRUCTURE_CHANGED or current_state != raw_state:
                 message = self._append_debug_snapshot(message, session)
+            if failure == HotmailFailureCode.UNSUPPORTED_CHALLENGE:
+                return self._build_handoff_result(
+                    session=session,
+                    profile=profile,
+                    email=email,
+                    domain=domain,
+                    state=current_state,
+                    message=message,
+                    handoff=handoff,
+                )
             return self._build_failure_result(failure, message)
 
         return self._build_failure_result(
@@ -776,6 +875,35 @@ class HotmailRegistrationEngine:
             )
         return None
 
+    def resume_handoff(self, handoff: HotmailChallengeHandoff) -> HotmailRegistrationResult:
+        session = handoff.session
+        keep_session = False
+        try:
+            current_state = self._promote_state_from_snapshot(
+                getattr(session, "_detect_state", lambda: "page_structure_changed")(),
+                session,
+            )
+            result = self._handle_post_credentials_state(
+                session=session,
+                state=current_state,
+                profile=handoff.profile,
+                email=handoff.email,
+                domain=handoff.domain,
+                handoff=handoff,
+            )
+            keep_session = result.handoff_context is not None
+            return result
+        except TimeoutError as exc:
+            return self._build_failure_result(HotmailFailureCode.BROWSER_TIMEOUT, f"Hotmail browser timeout: {exc}")
+        except Exception as exc:
+            return self._build_failure_result(HotmailFailureCode.UNEXPECTED_EXCEPTION, str(exc))
+        finally:
+            if not keep_session:
+                self._close_session(session)
+
+    def abandon_handoff(self, handoff: HotmailChallengeHandoff) -> None:
+        self._close_session(handoff.session)
+
     def run(self):
         if self.browser_factory is None and self.verification_provider is None and self.profile_factory is None:
             selected_domain = self._choose_domain_by_attempt()
@@ -791,6 +919,8 @@ class HotmailRegistrationEngine:
                 error_message=f"Hotmail flow not implemented for {selected_domain}",
             )
 
+        session = None
+        keep_session = False
         try:
             profile = self._build_profile()
             self._log(
@@ -800,22 +930,27 @@ class HotmailRegistrationEngine:
                 f"birth={profile.birth_year}-{profile.birth_month}-{profile.birth_day} "
                 f"username_candidates={profile.username_candidates}"
             )
-            with self._open_browser_session() as session:
-                session.open_signup()
-                for domain in choose_target_domains():
-                    result = self._attempt_browser_domain(
-                        session=session,
-                        profile=profile,
-                        domain=domain,
-                    )
-                    if result is not None:
-                        return result
+            session = self._open_browser_session()
+            session.__enter__()
+            session.open_signup()
+            for domain in choose_target_domains():
+                result = self._attempt_browser_domain(
+                    session=session,
+                    profile=profile,
+                    domain=domain,
+                )
+                if result is not None:
+                    keep_session = result.handoff_context is not None
+                    return result
         except TimeoutError as exc:
             return self._build_failure_result(HotmailFailureCode.BROWSER_TIMEOUT, f"Hotmail browser timeout: {exc}")
         except ModuleNotFoundError as exc:
             return self._build_failure_result(HotmailFailureCode.UNEXPECTED_EXCEPTION, str(exc))
         except Exception as exc:
             return self._build_failure_result(HotmailFailureCode.UNEXPECTED_EXCEPTION, str(exc))
+        finally:
+            if session is not None and not keep_session:
+                self._close_session(session)
 
         return self._build_failure_result(
             HotmailFailureCode.USERNAME_UNAVAILABLE_EXHAUSTED,
