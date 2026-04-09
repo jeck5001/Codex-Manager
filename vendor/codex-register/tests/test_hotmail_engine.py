@@ -1,3 +1,4 @@
+import sys
 import types
 import unittest
 from unittest.mock import patch
@@ -257,9 +258,19 @@ class HotmailEngineTests(unittest.TestCase):
             def start(self):
                 return FakePlaywright()
 
+        fake_playwright_module = types.ModuleType("playwright")
+        fake_sync_api_module = types.ModuleType("playwright.sync_api")
+        fake_sync_api_module.sync_playwright = lambda: FakeStarter()
+
         session = PlaywrightHotmailBrowserSession()
         with patch.dict("os.environ", {"HOTMAIL_HANDOFF_ENABLED": "1"}, clear=False):
-            with patch("playwright.sync_api.sync_playwright", return_value=FakeStarter()):
+            with patch.dict(
+                sys.modules,
+                {
+                    "playwright": fake_playwright_module,
+                    "playwright.sync_api": fake_sync_api_module,
+                },
+            ):
                 session.__enter__()
         session.__exit__(None, None, None)
 

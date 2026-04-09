@@ -57,7 +57,14 @@ def _load_payload(payload_path: str):
     return data
 
 
-def launch_local_handoff(payload_path: str, profile_dir: str) -> None:
+def get_chromium_executable_path() -> str:
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        return playwright.chromium.executable_path
+
+
+def launch_local_handoff(payload_path: str, profile_dir: str, wait_for_seconds: int = 300) -> None:
     from playwright.sync_api import sync_playwright
 
     payload = _load_payload(payload_path)
@@ -111,7 +118,7 @@ def launch_local_handoff(payload_path: str, profile_dir: str) -> None:
                     )
 
             page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
-            page.wait_for_timeout(300_000)
+            page.wait_for_timeout(max(1, int(wait_for_seconds)) * 1000)
         finally:
             context.close()
 
