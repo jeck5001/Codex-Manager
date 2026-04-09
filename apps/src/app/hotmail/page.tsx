@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Archive,
+  ExternalLink,
   LoaderCircle,
   Mail,
   PlayCircle,
@@ -27,11 +29,12 @@ import {
 } from "@/components/ui/table";
 import { getAppErrorMessage } from "@/lib/api/transport";
 import { accountClient } from "@/lib/api/account-client";
-import type { RegisterHotmailArtifact, RegisterHotmailBatchSnapshot } from "@/types";
 import {
+  buildHotmailHandoffAccessUrl,
   classifyHotmailLogLine,
   formatHotmailBatchStatus,
   getHotmailBatchProgress,
+  hasHotmailPendingHandoff,
   mergeHotmailBatchArtifacts,
   shouldPollHotmailBatch,
 } from "./hotmail-batch-state";
@@ -49,25 +52,17 @@ function formatArtifactSize(size: number | null) {
 }
 
 export default function HotmailPage() {
+  const initialBatchId =
+    typeof window === "undefined"
+      ? ""
+      : window.localStorage.getItem(HOTMAIL_BATCH_STORAGE_KEY) || "";
   const [count, setCount] = useState("1");
   const [concurrency, setConcurrency] = useState("1");
   const [intervalMin, setIntervalMin] = useState("2");
   const [intervalMax, setIntervalMax] = useState("5");
   const [proxy, setProxy] = useState("");
-  const [batchIdInput, setBatchIdInput] = useState("");
-  const [trackedBatchId, setTrackedBatchId] = useState("");
-  const [artifacts, setArtifacts] = useState<RegisterHotmailArtifact[]>([]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const savedBatchId = window.localStorage.getItem(HOTMAIL_BATCH_STORAGE_KEY) || "";
-    if (savedBatchId) {
-      setTrackedBatchId(savedBatchId);
-      setBatchIdInput(savedBatchId);
-    }
-  }, []);
+  const [batchIdInput, setBatchIdInput] = useState(initialBatchId);
+  const [trackedBatchId, setTrackedBatchId] = useState(initialBatchId);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -99,18 +94,6 @@ export default function HotmailPage() {
     refetchIntervalInBackground: true,
   });
 
-  useEffect(() => {
-    if (!trackedBatchId) {
-      setArtifacts([]);
-      return;
-    }
-    const nextArtifacts = mergeHotmailBatchArtifacts(
-      batchQuery.data?.artifacts ?? [],
-      artifactsQuery.data ?? [],
-    );
-    setArtifacts((previous) => mergeHotmailBatchArtifacts(previous, nextArtifacts));
-  }, [trackedBatchId, batchQuery.data?.artifacts, artifactsQuery.data]);
-
   const createMutation = useMutation({
     mutationFn: () =>
       accountClient.startRegisterHotmailBatch({
@@ -123,7 +106,6 @@ export default function HotmailPage() {
     onSuccess: (batch) => {
       setTrackedBatchId(batch.batchId);
       setBatchIdInput(batch.batchId);
-      setArtifacts(batch.artifacts || []);
       toast.success(`Hotmail 批次已启动: ${batch.batchId}`);
     },
     onError: (error: unknown) => {
@@ -142,6 +124,30 @@ export default function HotmailPage() {
     },
   });
 
+  const continueMutation = useMutation({
+    mutationFn: () => accountClient.continueRegisterHotmailBatch(trackedBatchId),
+    onSuccess: async (batch) => {
+      toast.success(
+        batch.status === "action_required" ? "会话仍在等待人工验证" : "已继续处理 Hotmail 注册",
+      );
+      await Promise.all([batchQuery.refetch(), artifactsQuery.refetch()]);
+    },
+    onError: (error: unknown) => {
+      toast.error(`继续失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const abandonMutation = useMutation({
+    mutationFn: () => accountClient.abandonRegisterHotmailBatch(trackedBatchId),
+    onSuccess: async () => {
+      toast.success("已放弃当前待接管的 Hotmail 尝试");
+      await Promise.all([batchQuery.refetch(), artifactsQuery.refetch()]);
+    },
+    onError: (error: unknown) => {
+      toast.error(`放弃失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   const handleTrackBatch = () => {
     const nextBatchId = batchIdInput.trim();
     if (!nextBatchId) {
@@ -149,7 +155,6 @@ export default function HotmailPage() {
       return;
     }
     setTrackedBatchId(nextBatchId);
-    setArtifacts([]);
   };
 
   const handleRefresh = async () => {
@@ -165,7 +170,22 @@ export default function HotmailPage() {
   };
 
   const currentBatch = batchQuery.data ?? null;
+  const artifacts = useMemo(
+    () =>
+      trackedBatchId
+        ? mergeHotmailBatchArtifacts(batchQuery.data?.artifacts ?? [], artifactsQuery.data ?? [])
+        : [],
+    [trackedBatchId, batchQuery.data?.artifacts, artifactsQuery.data],
+  );
   const statusMeta = formatHotmailBatchStatus(currentBatch);
+  const hasPendingHandoff = hasHotmailPendingHandoff(currentBatch);
+  const handoffAccessUrl = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? ""
+        : buildHotmailHandoffAccessUrl(currentBatch, window.location.href),
+    [currentBatch],
+  );
   const progress = useMemo(
     () =>
       currentBatch
@@ -336,6 +356,73 @@ export default function HotmailPage() {
                     </div>
                   ))}
                 </div>
+                {hasPendingHandoff ? (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-100">
+                    <div className="flex items-center gap-2 font-medium">
+                      <AlertTriangle className="h-4 w-4" />
+                      微软要求人工验证，当前批次已暂停
+                    </div>
+                    <div className="mt-3 space-y-2 text-sm leading-6">
+                      <p>
+                        先到运行 <span className="font-mono">register</span> 服务的那台主机上，处理当前
+                        Playwright 停留的微软验证页；处理完成后，回到这里点击“继续注册”。
+                      </p>
+                      <p>
+                        如果你现在用的是纯 Docker / headless 部署，没有远程桌面或浏览器接管通道，
+                        那这页没法直接从当前 Web 界面接手操作，只能放弃本次，或换代理/IP 后重新发起。
+                      </p>
+                      {currentBatch?.handoffInstructions ? (
+                        <p>{currentBatch.handoffInstructions}</p>
+                      ) : null}
+                      {currentBatch?.handoffTitle ? (
+                        <p className="font-mono text-xs text-amber-800/80 dark:text-amber-200/80">
+                          当前页面: {currentBatch.handoffTitle}
+                        </p>
+                      ) : null}
+                      {handoffAccessUrl ? (
+                        <p className="break-all font-mono text-xs text-amber-800/80 dark:text-amber-200/80">
+                          接管地址: {handoffAccessUrl}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <Button
+                        variant="secondary"
+                        className="gap-2"
+                        onClick={() => window.open(handoffAccessUrl, "_blank", "noopener,noreferrer")}
+                        disabled={!handoffAccessUrl}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        打开接管页面
+                      </Button>
+                      <Button
+                        className="gap-2"
+                        onClick={() => void continueMutation.mutateAsync()}
+                        disabled={continueMutation.isPending || !hasPendingHandoff}
+                      >
+                        {continueMutation.isPending ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <PlayCircle className="h-4 w-4" />
+                        )}
+                        我已处理，继续注册
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => void abandonMutation.mutateAsync()}
+                        disabled={abandonMutation.isPending || !hasPendingHandoff}
+                      >
+                        {abandonMutation.isPending ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Square className="h-4 w-4" />
+                        )}
+                        放弃本次
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
                   <div className="text-sm font-medium">运行日志</div>
                   {logs.length > 0 ? (

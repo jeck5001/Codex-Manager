@@ -547,6 +547,14 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
             super::value_or_error(account_register::cancel_register_hotmail_batch(batch_id))
         }
+        "account/register/hotmailBatch/continue" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::continue_register_hotmail_batch(batch_id))
+        }
+        "account/register/hotmailBatch/abandon" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::abandon_register_hotmail_batch(batch_id))
+        }
         "account/register/hotmailBatch/artifacts" => {
             let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
             super::value_or_error(account_register::read_register_hotmail_batch_artifacts(
@@ -646,9 +654,9 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 .params
                 .clone()
                 .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
-            super::value_or_error(account_register::update_register_temp_mail_cloudflare_settings(
-                payload,
-            ))
+            super::value_or_error(
+                account_register::update_register_temp_mail_cloudflare_settings(payload),
+            )
         }
         "account/register/emailServices/readFull" => {
             let service_id = req

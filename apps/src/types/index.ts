@@ -956,6 +956,10 @@ export interface RegisterHotmailBatchSnapshot {
   failed: number;
   status?: string;
   actionRequiredReason?: string;
+  handoffId?: string;
+  handoffUrl?: string;
+  handoffTitle?: string;
+  handoffInstructions?: string;
   cancelled: boolean;
   finished: boolean;
   logs: string[];

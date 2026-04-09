@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildHotmailHandoffAccessUrl,
   classifyHotmailLogLine,
   formatHotmailBatchStatus,
   getHotmailBatchProgress,
+  hasHotmailPendingHandoff,
   mergeHotmailBatchArtifacts,
   shouldPollHotmailBatch,
 } from "./hotmail-batch-state.ts";
@@ -54,5 +56,39 @@ test("formatHotmailBatchStatus marks action required batches", () => {
       label: "等待人工处理",
       className: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-300",
     },
+  );
+});
+
+test("hasHotmailPendingHandoff only returns true for action-required batches with handoff ids", () => {
+  assert.equal(
+    hasHotmailPendingHandoff({
+      status: "action_required",
+      actionRequiredReason: "unsupported_challenge",
+      handoffId: "handoff-1",
+    }),
+    true,
+  );
+  assert.equal(
+    hasHotmailPendingHandoff({
+      status: "action_required",
+      actionRequiredReason: "unsupported_challenge",
+      handoffId: "",
+    }),
+    false,
+  );
+});
+
+test("buildHotmailHandoffAccessUrl falls back to current hostname with default noVNC port", () => {
+  assert.equal(
+    buildHotmailHandoffAccessUrl(
+      {
+        status: "action_required",
+        actionRequiredReason: "unsupported_challenge",
+        handoffId: "handoff-1",
+        handoffUrl: "",
+      },
+      "http://192.168.5.35:48761/hotmail",
+    ),
+    "http://192.168.5.35:7900/vnc.html?autoconnect=1&resize=scale",
   );
 });

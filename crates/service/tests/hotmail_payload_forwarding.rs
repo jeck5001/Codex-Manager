@@ -39,7 +39,9 @@ fn post_rpc(addr: &str, body: &str) -> Value {
         body.len(),
         body
     );
-    stream.write_all(request.as_bytes()).expect("write rpc request");
+    stream
+        .write_all(request.as_bytes())
+        .expect("write rpc request");
     stream.shutdown(std::net::Shutdown::Write).ok();
     let mut buf = Vec::new();
     stream.read_to_end(&mut buf).expect("read rpc response");
@@ -50,7 +52,11 @@ fn post_rpc(addr: &str, body: &str) -> Value {
 
 fn capture_register_requests(
     count: usize,
-) -> (String, mpsc::Receiver<(String, Value)>, thread::JoinHandle<()>) {
+) -> (
+    String,
+    mpsc::Receiver<(String, Value)>,
+    thread::JoinHandle<()>,
+) {
     let server = Server::http("127.0.0.1:0").expect("start register capture");
     let addr = format!("http://{}", server.server_addr());
     let (tx, rx) = mpsc::channel();
@@ -70,10 +76,24 @@ fn capture_register_requests(
             tx.send((request.url().to_string(), parsed))
                 .expect("send register body");
             let response_body = match request.url() {
-                "/api/hotmail/batches" => json!({"batch_id": "batch-1", "total": 2, "completed": 0, "success": 0, "failed": 0, "finished": false, "cancelled": false, "logs": [], "artifacts": []}),
-                "/api/hotmail/batches/batch-1" => json!({"batch_id": "batch-1", "total": 2, "completed": 1, "success": 1, "failed": 0, "finished": false, "cancelled": false, "logs": ["ok"], "artifacts": []}),
-                "/api/hotmail/batches/batch-1/cancel" => json!({"success": true, "batch_id": "batch-1"}),
-                "/api/hotmail/batches/batch-1/artifacts" => json!({"batch_id": "batch-1", "artifacts": [{"filename": "batch-1.txt", "path": "/tmp/batch-1.txt", "size": 12}]}),
+                "/api/hotmail/batches" => {
+                    json!({"batch_id": "batch-1", "total": 2, "completed": 0, "success": 0, "failed": 0, "finished": false, "cancelled": false, "logs": [], "artifacts": []})
+                }
+                "/api/hotmail/batches/batch-1" => {
+                    json!({"batch_id": "batch-1", "total": 2, "completed": 1, "success": 1, "failed": 0, "finished": false, "cancelled": false, "logs": ["ok"], "artifacts": []})
+                }
+                "/api/hotmail/batches/batch-1/cancel" => {
+                    json!({"success": true, "batch_id": "batch-1"})
+                }
+                "/api/hotmail/batches/batch-1/continue" => {
+                    json!({"batch_id": "batch-1", "total": 2, "completed": 1, "success": 1, "failed": 0, "finished": false, "cancelled": false, "logs": ["continued"], "artifacts": []})
+                }
+                "/api/hotmail/batches/batch-1/abandon" => {
+                    json!({"batch_id": "batch-1", "total": 2, "completed": 1, "success": 0, "failed": 1, "finished": false, "cancelled": false, "logs": ["abandoned"], "artifacts": []})
+                }
+                "/api/hotmail/batches/batch-1/artifacts" => {
+                    json!({"batch_id": "batch-1", "artifacts": [{"filename": "batch-1.txt", "path": "/tmp/batch-1.txt", "size": 12}]})
+                }
                 other => panic!("unexpected path: {other}"),
             };
             let response = Response::from_string(response_body.to_string())
@@ -89,7 +109,10 @@ fn capture_register_requests(
 
 fn send_rpc_request(req: &JsonRpcRequest) -> Value {
     let server = start_one_shot_server().expect("start rpc server");
-    let response = post_rpc(&server.addr, &serde_json::to_string(req).expect("serialize rpc"));
+    let response = post_rpc(
+        &server.addr,
+        &serde_json::to_string(req).expect("serialize rpc"),
+    );
     server.join();
     response
 }
@@ -97,7 +120,7 @@ fn send_rpc_request(req: &JsonRpcRequest) -> Value {
 #[test]
 fn rpc_hotmail_forwarding_proxies_batch_endpoints() {
     let _lock = REGISTER_ENV_LOCK.lock().unwrap();
-    let (register_url, body_rx, handle) = capture_register_requests(4);
+    let (register_url, body_rx, handle) = capture_register_requests(6);
     let _env_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
 
     let create = JsonRpcRequest {
@@ -121,13 +144,23 @@ fn rpc_hotmail_forwarding_proxies_batch_endpoints() {
         method: "account/register/hotmailBatch/cancel".to_string(),
         params: Some(json!({ "batchId": "batch-1" })),
     };
-    let artifacts = JsonRpcRequest {
+    let continue_batch = JsonRpcRequest {
         id: 4,
+        method: "account/register/hotmailBatch/continue".to_string(),
+        params: Some(json!({ "batchId": "batch-1" })),
+    };
+    let abandon = JsonRpcRequest {
+        id: 5,
+        method: "account/register/hotmailBatch/abandon".to_string(),
+        params: Some(json!({ "batchId": "batch-1" })),
+    };
+    let artifacts = JsonRpcRequest {
+        id: 6,
         method: "account/register/hotmailBatch/artifacts".to_string(),
         params: Some(json!({ "batchId": "batch-1" })),
     };
 
-    let responses = vec![create, read, cancel, artifacts]
+    let responses = vec![create, read, cancel, continue_batch, abandon, artifacts]
         .into_iter()
         .map(|req| send_rpc_request(&req))
         .collect::<Vec<_>>();
@@ -140,6 +173,8 @@ fn rpc_hotmail_forwarding_proxies_batch_endpoints() {
         "/api/hotmail/batches",
         "/api/hotmail/batches/batch-1",
         "/api/hotmail/batches/batch-1/cancel",
+        "/api/hotmail/batches/batch-1/continue",
+        "/api/hotmail/batches/batch-1/abandon",
         "/api/hotmail/batches/batch-1/artifacts",
     ];
 

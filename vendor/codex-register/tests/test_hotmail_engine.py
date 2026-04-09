@@ -1,5 +1,6 @@
 import types
 import unittest
+from unittest.mock import patch
 
 from src.services.hotmail.engine import (
     PlaywrightHotmailBrowserSession,
@@ -209,6 +210,67 @@ class HotmailEngineTests(unittest.TestCase):
 
         self.assertTrue(session._click_first(["#BirthMonthDropdown"]))
         self.assertEqual(locator.calls, [{}, {"force": True}])
+
+    def test_browser_session_runs_headed_when_handoff_enabled(self):
+        launch_observed = {}
+
+        class FakeBrowser:
+            def new_context(self, **_kwargs):
+                class FakeContext:
+                    def new_page(self):
+                        return object()
+
+                    def close(self):
+                        return None
+
+                return FakeContext()
+
+            def close(self):
+                return None
+
+        class FakePlaywright:
+            chromium = None
+
+            def __init__(self):
+                self.chromium = self
+
+            def launch(self, **kwargs):
+                launch_observed.update(kwargs)
+                return FakeBrowser()
+
+            def stop(self):
+                return None
+
+        class FakeStarter:
+            def start(self):
+                return FakePlaywright()
+
+        session = PlaywrightHotmailBrowserSession()
+        with patch.dict("os.environ", {"HOTMAIL_HANDOFF_ENABLED": "1"}, clear=False):
+            with patch("playwright.sync_api.sync_playwright", return_value=FakeStarter()):
+                session.__enter__()
+        session.__exit__(None, None, None)
+
+        self.assertEqual(launch_observed.get("headless"), False)
+
+    def test_engine_build_handoff_payload_prefers_public_vnc_url(self):
+        engine = HotmailRegistrationEngine()
+        handoff = types.SimpleNamespace(
+            handoff_id="handoff-public",
+            session=types.SimpleNamespace(page=types.SimpleNamespace(url="https://signup.live.com/signup")),
+        )
+
+        with patch.dict(
+            "os.environ",
+            {"HOTMAIL_HANDOFF_PUBLIC_URL": "http://192.168.5.35:7900/vnc.html?autoconnect=1"},
+            clear=False,
+        ):
+            payload = engine.build_handoff_payload(handoff)
+
+        self.assertEqual(
+            payload["url"],
+            "http://192.168.5.35:7900/vnc.html?autoconnect=1",
+        )
 
     def test_submit_profile_details_supports_name_input_selectors(self):
         class FakePage:

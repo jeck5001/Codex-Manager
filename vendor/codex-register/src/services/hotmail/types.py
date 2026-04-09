@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 
 class HotmailFailureCode(str, Enum):
@@ -40,8 +40,19 @@ class HotmailRegistrationProfile:
 
 
 @dataclass
+class HotmailChallengeHandoff:
+    handoff_id: str
+    session: Any
+    profile: HotmailRegistrationProfile
+    email: str
+    domain: str
+    state: str = ""
+
+
+@dataclass
 class HotmailRegistrationResult:
     success: bool
     reason_code: str = ""
     error_message: str = ""
     artifact: Optional[HotmailAccountArtifact] = None
+    handoff_context: Optional[HotmailChallengeHandoff] = None
