@@ -31,8 +31,10 @@ import {
 import { getAppErrorMessage, isTauriRuntime } from "@/lib/api/transport";
 import { appClient } from "@/lib/api/app-client";
 import { accountClient } from "@/lib/api/account-client";
+import { hotmailLocalHelperClient } from "@/lib/api/hotmail-local-helper";
 import {
   buildHotmailLocalHandoffActionState,
+  buildHotmailWebLocalHandoffActionState,
   buildHotmailHandoffAccessUrl,
   buildHotmailNativeVncEndpoint,
   classifyHotmailLogLine,
@@ -69,6 +71,7 @@ export default function HotmailPage() {
   const [proxy, setProxy] = useState("");
   const [batchIdInput, setBatchIdInput] = useState(initialBatchId);
   const [trackedBatchId, setTrackedBatchId] = useState(initialBatchId);
+  const [showWebHelperGuide, setShowWebHelperGuide] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -170,6 +173,31 @@ export default function HotmailPage() {
     },
   });
 
+  const webLocalHandoffMutation = useMutation({
+    mutationFn: async () => {
+      const payload = batchQuery.data?.localHandoff;
+      if (!payload) {
+        throw new Error("当前批次没有可用的本机接管数据");
+      }
+      const health = await hotmailLocalHelperClient.health();
+      if (!health.ok) {
+        throw new Error("Hotmail helper 不可用");
+      }
+      if (!health.playwrightReady) {
+        throw new Error("Hotmail helper 缺少 Playwright Chromium，请先执行 playwright install chromium");
+      }
+      return hotmailLocalHelperClient.openHandoff(payload);
+    },
+    onSuccess: () => {
+      setShowWebHelperGuide(false);
+      toast.success("已在本机启动接管浏览器，请处理微软验证后回到这里继续注册");
+    },
+    onError: (error: unknown) => {
+      setShowWebHelperGuide(true);
+      toast.error(`本机接管启动失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   const handleTrackBatch = () => {
     const nextBatchId = batchIdInput.trim();
     if (!nextBatchId) {
@@ -204,6 +232,10 @@ export default function HotmailPage() {
   const hasPendingLocalHandoff = hasHotmailPendingLocalHandoff(currentBatch);
   const localHandoffAction = useMemo(
     () => buildHotmailLocalHandoffActionState(currentBatch, isDesktopRuntime),
+    [currentBatch, isDesktopRuntime],
+  );
+  const webLocalHandoffAction = useMemo(
+    () => buildHotmailWebLocalHandoffActionState(currentBatch, isDesktopRuntime),
     [currentBatch, isDesktopRuntime],
   );
   const handoffAccessUrl = useMemo(
@@ -400,14 +432,25 @@ export default function HotmailPage() {
                       <p>
                         {localHandoffAction.enabled
                           ? "优先点击下面的“本地接管（推荐）”，在你本机启动专用浏览器窗口处理微软验证；处理完成后，回到这里点击“继续注册”。"
-                          : "优先用原生 VNC 客户端连接运行 register 服务的那台主机，处理当前 Playwright 停留的微软验证页；处理完成后，回到这里点击“继续注册”。"}
+                          : webLocalHandoffAction.enabled
+                            ? "优先点击下面的“本机接管（Web）”，当前浏览器会调用你这台机器上的本地 helper 启动专用窗口处理微软验证；处理完成后，回到这里点击“继续注册”。"
+                            : "优先用原生 VNC 客户端连接运行 register 服务的那台主机，处理当前 Playwright 停留的微软验证页；处理完成后，回到这里点击“继续注册”。"}
                       </p>
                       <p>
                         微软这个长按按钮对远程输入很敏感，浏览器里的 noVNC 容易因为抖动或延迟反复
                         提示重试。原生 VNC 客户端通常比 noVNC 稳定很多。
                       </p>
-                      {!localHandoffAction.enabled && hasPendingLocalHandoff ? (
+                      {!isDesktopRuntime && webLocalHandoffAction.enabled ? (
+                        <p>
+                          Web 模式下需要先在当前访问页面的这台机器上启动 Hotmail 本机接管 helper，
+                          默认地址是 <span className="font-mono text-xs">http://127.0.0.1:16788</span>。
+                        </p>
+                      ) : null}
+                      {!localHandoffAction.enabled && isDesktopRuntime && hasPendingLocalHandoff ? (
                         <p>{localHandoffAction.reason}</p>
+                      ) : null}
+                      {!webLocalHandoffAction.enabled && !isDesktopRuntime && hasPendingLocalHandoff ? (
+                        <p>{webLocalHandoffAction.reason}</p>
                       ) : null}
                       {currentBatch?.handoffInstructions ? (
                         <p>{currentBatch.handoffInstructions}</p>
@@ -429,18 +472,33 @@ export default function HotmailPage() {
                       ) : null}
                     </div>
                     <div className="mt-4 flex flex-wrap gap-3">
-                      <Button
-                        className="gap-2"
-                        onClick={() => void localHandoffMutation.mutateAsync()}
-                        disabled={!localHandoffAction.enabled || localHandoffMutation.isPending}
-                      >
-                        {localHandoffMutation.isPending ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Laptop className="h-4 w-4" />
-                        )}
-                        本地接管（推荐）
-                      </Button>
+                      {isDesktopRuntime ? (
+                        <Button
+                          className="gap-2"
+                          onClick={() => void localHandoffMutation.mutateAsync()}
+                          disabled={!localHandoffAction.enabled || localHandoffMutation.isPending}
+                        >
+                          {localHandoffMutation.isPending ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Laptop className="h-4 w-4" />
+                          )}
+                          本地接管（推荐）
+                        </Button>
+                      ) : hasPendingLocalHandoff ? (
+                        <Button
+                          className="gap-2"
+                          onClick={() => void webLocalHandoffMutation.mutateAsync()}
+                          disabled={!webLocalHandoffAction.enabled || webLocalHandoffMutation.isPending}
+                        >
+                          {webLocalHandoffMutation.isPending ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Laptop className="h-4 w-4" />
+                          )}
+                          本机接管（Web）
+                        </Button>
+                      ) : null}
                       <Button
                         variant="secondary"
                         className="gap-2"
@@ -476,6 +534,30 @@ export default function HotmailPage() {
                         放弃本次
                       </Button>
                     </div>
+                    {showWebHelperGuide && !isDesktopRuntime ? (
+                      <div className="mt-4 rounded-xl border border-border/60 bg-background/70 p-4 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">
+                          请先在当前访问页面的这台机器上启动 Hotmail 本机接管 helper。
+                        </p>
+                        <p className="mt-2">
+                          健康检查地址：
+                          <span className="ml-2 font-mono text-xs">http://127.0.0.1:16788/health</span>
+                        </p>
+                        <p className="mt-2">推荐启动步骤：</p>
+                        <pre className="mt-2 overflow-x-auto rounded-lg border border-border/60 bg-background/80 p-3 text-xs">
+{`cd tools/hotmail_local_helper
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r ../../vendor/codex-register/requirements.txt
+playwright install chromium
+cd ../..
+python3 -m tools.hotmail_local_helper`}
+                        </pre>
+                        <p className="mt-2">
+                          helper 启动后，再回到这里点击“本机接管（Web）”。
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
