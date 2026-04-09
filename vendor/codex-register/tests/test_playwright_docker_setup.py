@@ -14,7 +14,7 @@ class PlaywrightDockerSetupTests(unittest.TestCase):
     def test_vendor_register_dockerfile_installs_playwright_browser_runtime(self):
         content = (REGISTER_ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn("playwright install", content)
-        self.assertIn("--only-shell", content)
+        self.assertIn('ARG PLAYWRIGHT_BROWSER_INSTALL_ARGS="chromium"', content)
         self.assertIn("libnss3", content)
         self.assertIn("x11vnc", content)
         self.assertIn("websockify", content)
