@@ -60,6 +60,7 @@ def _public_hotmail_batch(batch: dict) -> dict:
         "handoff_url": batch.get("handoff_url", ""),
         "handoff_title": batch.get("handoff_title", ""),
         "handoff_instructions": batch.get("handoff_instructions", ""),
+        "local_handoff": batch.get("local_handoff"),
         "finished": batch.get("finished", False),
         "cancelled": batch.get("cancelled", False),
         "logs": list(batch.get("logs", [])),
@@ -80,6 +81,7 @@ def _default_batch(batch_id: str, request: HotmailBatchCreateRequest) -> dict:
         "handoff_url": "",
         "handoff_title": "",
         "handoff_instructions": "",
+        "local_handoff": None,
         "finished": False,
         "cancelled": False,
         "logs": [],
@@ -109,6 +111,7 @@ def _handoff_payload(engine: Any, handoff_context: Any) -> dict[str, str]:
             "url": str(handoff_context.get("url") or "").strip(),
             "title": str(handoff_context.get("title") or "").strip(),
             "instructions": str(handoff_context.get("instructions") or "").strip(),
+            "local_handoff": handoff_context.get("local_handoff"),
         }
 
     return {
@@ -116,6 +119,7 @@ def _handoff_payload(engine: Any, handoff_context: Any) -> dict[str, str]:
         "url": "",
         "title": "",
         "instructions": "",
+        "local_handoff": getattr(handoff_context, "local_handoff", None),
     }
 
 
@@ -137,6 +141,7 @@ def _store_batch_handoff(batch: dict, engine: Any, handoff_context: Any) -> None
     batch["handoff_url"] = payload.get("url", "")
     batch["handoff_title"] = payload.get("title", "")
     batch["handoff_instructions"] = payload.get("instructions", "")
+    batch["local_handoff"] = payload.get("local_handoff")
 
 
 def _clear_batch_handoff(batch: dict) -> None:
@@ -147,6 +152,7 @@ def _clear_batch_handoff(batch: dict) -> None:
     batch["handoff_url"] = ""
     batch["handoff_title"] = ""
     batch["handoff_instructions"] = ""
+    batch["local_handoff"] = None
     batch["action_required_reason"] = ""
 
 

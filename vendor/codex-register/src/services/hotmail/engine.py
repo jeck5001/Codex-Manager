@@ -279,6 +279,118 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         except Exception:
             return ""
 
+    @staticmethod
+    def _normalize_handoff_cookie(cookie: Any) -> Optional[dict[str, Any]]:
+        if not isinstance(cookie, dict):
+            return None
+
+        name = str(cookie.get("name") or "").strip()
+        value = str(cookie.get("value") or "").strip()
+        domain = str(cookie.get("domain") or "").strip()
+        path = str(cookie.get("path") or "").strip() or "/"
+        if not name or not value:
+            return None
+
+        expires_raw = cookie.get("expires")
+        expires: Optional[int] = None
+        if isinstance(expires_raw, (int, float)):
+            try:
+                expires_int = int(expires_raw)
+                expires = expires_int if expires_int > 0 else None
+            except Exception:
+                expires = None
+
+        same_site = str(cookie.get("sameSite") or cookie.get("same_site") or "").strip()
+        if not same_site:
+            same_site = "Lax"
+
+        return {
+            "name": name,
+            "value": value,
+            "domain": domain,
+            "path": path,
+            "expires": expires,
+            "http_only": bool(cookie.get("httpOnly") or cookie.get("http_only")),
+            "secure": bool(cookie.get("secure")),
+            "same_site": same_site,
+        }
+
+    def _collect_origin_storage(self) -> list[dict[str, Any]]:
+        assert self.page is not None
+        try:
+            result = self.page.evaluate(
+                """() => {
+                    try {
+                        const origin = window.location.origin || "";
+                        const entries = [];
+                        for (let index = 0; index < window.localStorage.length; index += 1) {
+                            const name = window.localStorage.key(index);
+                            if (!name) {
+                                continue;
+                            }
+                            entries.push({
+                                name,
+                                value: window.localStorage.getItem(name) ?? "",
+                            });
+                        }
+                        return [{ origin, local_storage: entries }];
+                    } catch (error) {
+                        return [];
+                    }
+                }"""
+            )
+        except Exception:
+            return []
+
+        if not isinstance(result, list):
+            return []
+
+        origins: list[dict[str, Any]] = []
+        for item in result:
+            if not isinstance(item, dict):
+                continue
+            origin = str(item.get("origin") or "").strip()
+            raw_entries = item.get("local_storage")
+            if not isinstance(raw_entries, list):
+                raw_entries = item.get("localStorage")
+            entries: list[dict[str, str]] = []
+            if isinstance(raw_entries, list):
+                for entry in raw_entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    name = str(entry.get("name") or "").strip()
+                    value = str(entry.get("value") or "")
+                    if not name:
+                        continue
+                    entries.append({"name": name, "value": value})
+            if origin or entries:
+                origins.append({"origin": origin, "local_storage": entries})
+        return origins
+
+    def export_handoff_state(self) -> dict[str, Any]:
+        assert self.context is not None
+        assert self.page is not None
+
+        cookies: list[dict[str, Any]] = []
+        try:
+            for cookie in self.context.cookies():
+                normalized = self._normalize_handoff_cookie(cookie)
+                if normalized is not None:
+                    cookies.append(normalized)
+        except Exception:
+            cookies = []
+
+        try:
+            user_agent = str(self.page.evaluate("() => navigator.userAgent") or "").strip()
+        except Exception:
+            user_agent = ""
+
+        return {
+            "user_agent": user_agent,
+            "cookies": cookies,
+            "origins": self._collect_origin_storage(),
+        }
+
     def build_debug_snapshot(self) -> str:
         if self.page is None:
             return ""
@@ -639,9 +751,17 @@ class HotmailRegistrationEngine:
         except Exception:
             return ""
 
-    def build_handoff_payload(self, handoff: HotmailChallengeHandoff) -> dict[str, str]:
+    def build_handoff_payload(self, handoff: HotmailChallengeHandoff) -> dict[str, Any]:
         session = handoff.session
         public_url = str(os.getenv("HOTMAIL_HANDOFF_PUBLIC_URL", "") or "").strip()
+        state = self._promote_state_from_snapshot(str(getattr(handoff, "state", "") or ""), session)
+        local_state: dict[str, Any] = {}
+        export_state = getattr(session, "export_handoff_state", None)
+        if callable(export_state):
+            try:
+                local_state = export_state() or {}
+            except Exception:
+                local_state = {}
         return {
             "handoff_id": handoff.handoff_id,
             "url": public_url,
@@ -650,6 +770,16 @@ class HotmailRegistrationEngine:
                 "请在运行 register 服务的主机上处理当前微软验证页，"
                 "处理完成后回到面板点击“继续注册”；如果当前部署没有可交互桌面/浏览器流，只能放弃本次。"
             ),
+            "local_handoff": {
+                "handoff_id": handoff.handoff_id,
+                "url": self._get_session_url(session),
+                "title": self._get_session_title(session),
+                "user_agent": str(local_state.get("user_agent") or "").strip(),
+                "proxy_url": str(getattr(session, "proxy_url", "") or "").strip(),
+                "state": state,
+                "cookies": list(local_state.get("cookies") or []),
+                "origins": list(local_state.get("origins") or []),
+            },
         }
 
     def _build_handoff_result(

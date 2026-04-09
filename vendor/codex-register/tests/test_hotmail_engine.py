@@ -7,7 +7,11 @@ from src.services.hotmail.engine import (
     HotmailRegistrationEngine,
     classify_hotmail_page_state,
 )
-from src.services.hotmail.types import HotmailFailureCode, HotmailRegistrationProfile
+from src.services.hotmail.types import (
+    HotmailChallengeHandoff,
+    HotmailFailureCode,
+    HotmailRegistrationProfile,
+)
 
 
 class HotmailEngineTests(unittest.TestCase):
@@ -271,6 +275,105 @@ class HotmailEngineTests(unittest.TestCase):
             payload["url"],
             "http://192.168.5.35:7900/vnc.html?autoconnect=1",
         )
+
+    def test_engine_build_handoff_payload_includes_local_handoff_state(self):
+        engine = HotmailRegistrationEngine()
+
+        class FakePage:
+            url = "https://signup.live.com/signup"
+
+            def title(self):
+                return "Let's prove you're human"
+
+        class FakeSession:
+            def __init__(self):
+                self.page = FakePage()
+                self.proxy_url = "http://127.0.0.1:7890"
+
+            def build_debug_snapshot(self):
+                return (
+                    "url=https://signup.live.com/signup | "
+                    "title=Let's prove you're human | "
+                    "state=unsupported_challenge"
+                )
+
+            def export_handoff_state(self):
+                return {
+                    "user_agent": "Mozilla/5.0 test",
+                    "cookies": [
+                        {
+                            "name": "MSPRequ",
+                            "value": "cookie-value",
+                            "domain": ".live.com",
+                            "path": "/",
+                            "expires": 1760000000,
+                            "http_only": True,
+                            "secure": True,
+                            "same_site": "None",
+                        }
+                    ],
+                    "origins": [
+                        {
+                            "origin": "https://signup.live.com",
+                            "local_storage": [{"name": "k", "value": "v"}],
+                        }
+                    ],
+                }
+
+        handoff = HotmailChallengeHandoff(
+            handoff_id="handoff-1",
+            session=FakeSession(),
+            profile=self._build_profile(),
+            email="aliceexample@hotmail.com",
+            domain="hotmail.com",
+            state="unsupported_challenge",
+        )
+
+        payload = engine.build_handoff_payload(handoff)
+
+        self.assertEqual(payload["handoff_id"], "handoff-1")
+        self.assertIn("local_handoff", payload)
+        self.assertEqual(payload["local_handoff"]["state"], "unsupported_challenge")
+        self.assertEqual(payload["local_handoff"]["cookies"][0]["name"], "MSPRequ")
+        self.assertEqual(
+            payload["local_handoff"]["origins"][0]["local_storage"][0]["name"],
+            "k",
+        )
+
+    def test_engine_build_handoff_payload_degrades_when_local_export_fails(self):
+        engine = HotmailRegistrationEngine()
+
+        class FakePage:
+            url = "https://signup.live.com/signup"
+
+            def title(self):
+                return "Let's prove you're human"
+
+        class FakeSession:
+            def __init__(self):
+                self.page = FakePage()
+                self.proxy_url = None
+
+            def build_debug_snapshot(self):
+                return "state=unsupported_challenge"
+
+            def export_handoff_state(self):
+                raise RuntimeError("boom")
+
+        handoff = HotmailChallengeHandoff(
+            handoff_id="handoff-2",
+            session=FakeSession(),
+            profile=self._build_profile(),
+            email="aliceexample@hotmail.com",
+            domain="hotmail.com",
+            state="unsupported_challenge",
+        )
+
+        payload = engine.build_handoff_payload(handoff)
+
+        self.assertIn("local_handoff", payload)
+        self.assertEqual(payload["local_handoff"]["cookies"], [])
+        self.assertEqual(payload["local_handoff"]["origins"], [])
 
     def test_submit_profile_details_supports_name_input_selectors(self):
         class FakePage:

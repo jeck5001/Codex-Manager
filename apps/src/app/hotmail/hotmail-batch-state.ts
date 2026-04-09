@@ -7,6 +7,10 @@ export type HotmailBatchStatusLike = {
   actionRequiredReason?: string;
   handoffId?: string;
   handoffUrl?: string;
+  localHandoff?: {
+    handoffId?: string;
+    url?: string;
+  } | null;
 };
 
 export type HotmailArtifactLike = {
@@ -86,6 +90,41 @@ export function hasHotmailPendingHandoff(
   const actionRequired =
     batch.status === "action_required" || batch.actionRequiredReason === "unsupported_challenge";
   return actionRequired && Boolean(String(batch.handoffId || "").trim());
+}
+
+export function hasHotmailPendingLocalHandoff(
+  batch: Pick<
+    HotmailBatchStatusLike,
+    "status" | "actionRequiredReason" | "handoffId" | "localHandoff"
+  > | null,
+) {
+  return hasHotmailPendingHandoff(batch)
+    && Boolean(String(batch?.localHandoff?.handoffId || "").trim());
+}
+
+export function buildHotmailLocalHandoffActionState(
+  batch: Pick<
+    HotmailBatchStatusLike,
+    "status" | "actionRequiredReason" | "handoffId" | "localHandoff"
+  > | null,
+  isDesktopRuntime: boolean,
+) {
+  if (!hasHotmailPendingLocalHandoff(batch)) {
+    return {
+      enabled: false,
+      reason: "当前批次没有可用的本地接管数据",
+    };
+  }
+  if (!isDesktopRuntime) {
+    return {
+      enabled: false,
+      reason: "本地接管仅在桌面版可用",
+    };
+  }
+  return {
+    enabled: true,
+    reason: "",
+  };
 }
 
 export function buildHotmailHandoffAccessUrl(

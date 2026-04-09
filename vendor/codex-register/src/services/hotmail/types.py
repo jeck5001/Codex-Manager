@@ -50,6 +50,42 @@ class HotmailChallengeHandoff:
 
 
 @dataclass
+class HotmailLocalHandoffOriginEntry:
+    name: str
+    value: str
+
+
+@dataclass
+class HotmailLocalHandoffOrigin:
+    origin: str
+    local_storage: list[HotmailLocalHandoffOriginEntry]
+
+
+@dataclass
+class HotmailLocalHandoffCookie:
+    name: str
+    value: str
+    domain: str
+    path: str
+    expires: Optional[int] = None
+    http_only: bool = False
+    secure: bool = False
+    same_site: str = ""
+
+
+@dataclass
+class HotmailLocalHandoffPayload:
+    handoff_id: str
+    url: str
+    title: str
+    user_agent: str
+    proxy_url: str
+    state: str
+    cookies: list[dict[str, Any]]
+    origins: list[dict[str, Any]]
+
+
+@dataclass
 class HotmailRegistrationResult:
     success: bool
     reason_code: str = ""
