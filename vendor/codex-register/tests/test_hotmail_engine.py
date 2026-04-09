@@ -44,6 +44,14 @@ class HotmailEngineTests(unittest.TestCase):
             HotmailFailureCode.UNSUPPORTED_CHALLENGE,
         )
 
+    def test_classify_account_creation_blocked_page(self):
+        self.assertEqual(
+            classify_hotmail_page_state(
+                "Account creation has been blocked We have detected some unusual activity and have blocked the creation of this account."
+            ),
+            HotmailFailureCode.ACCOUNT_CREATION_BLOCKED,
+        )
+
     def test_engine_tries_outlook_after_hotmail_availability_failure(self):
         engine = HotmailRegistrationEngine.__new__(HotmailRegistrationEngine)
         attempted = []
@@ -504,6 +512,32 @@ class HotmailEngineTests(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertEqual(result.reason_code, HotmailFailureCode.PHONE_VERIFICATION_REQUIRED.value)
+
+    def test_engine_maps_account_creation_blocked_state(self):
+        class FakeBrowserSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def open_signup(self):
+                return None
+
+            def submit_account_credentials(self, *, email, password):
+                return "account_creation_blocked"
+
+        engine = HotmailRegistrationEngine(
+            browser_factory=lambda **_kwargs: FakeBrowserSession(),
+            verification_provider=object(),
+            profile_factory=self._build_profile,
+        )
+
+        result = engine.run()
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.reason_code, HotmailFailureCode.ACCOUNT_CREATION_BLOCKED.value)
+        self.assertIn("account_creation_blocked", result.error_message)
 
     def test_engine_maps_missing_browser_dependency_to_unexpected_exception(self):
         engine = HotmailRegistrationEngine(

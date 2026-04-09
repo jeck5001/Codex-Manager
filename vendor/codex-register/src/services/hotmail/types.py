@@ -6,6 +6,7 @@ from typing import Any, Optional
 class HotmailFailureCode(str, Enum):
     PHONE_VERIFICATION_REQUIRED = "phone_verification_required"
     UNSUPPORTED_CHALLENGE = "unsupported_challenge"
+    ACCOUNT_CREATION_BLOCKED = "account_creation_blocked"
     EMAIL_VERIFICATION_TIMEOUT = "email_verification_timeout"
     USERNAME_UNAVAILABLE_EXHAUSTED = "username_unavailable_exhausted"
     PROXY_ERROR = "proxy_error"
