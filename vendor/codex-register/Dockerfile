@@ -1,6 +1,6 @@
 FROM python:3.10-slim
 
-ARG PLAYWRIGHT_BROWSER_INSTALL_ARGS="chromium --only-shell"
+ARG PLAYWRIGHT_BROWSER_INSTALL_ARGS="chromium"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -43,9 +43,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install the smallest Playwright runtime that still supports our headless
-# browser flows by default. Builders can override this ARG when they need the
-# full Chromium bundle for headed debugging.
+# Install full Chromium by default so Docker deployments can switch from
+# headless automation to headed noVNC handoff without rebuilding a different
+# image. Builders can still override this ARG for headless-only scenarios.
 RUN python -m playwright install ${PLAYWRIGHT_BROWSER_INSTALL_ARGS}
 
 # Copy application code
