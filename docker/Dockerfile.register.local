@@ -1,6 +1,6 @@
 FROM docker-codexmanager-register:latest
 
-ARG PLAYWRIGHT_BROWSER_INSTALL_ARGS="chromium --only-shell"
+ARG PLAYWRIGHT_BROWSER_INSTALL_ARGS="chromium"
 
 WORKDIR /app
 
