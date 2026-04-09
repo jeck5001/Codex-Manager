@@ -127,6 +127,35 @@ export function buildHotmailLocalHandoffActionState(
   };
 }
 
+export function buildHotmailWebLocalHandoffActionState(
+  batch: Pick<
+    HotmailBatchStatusLike,
+    "status" | "actionRequiredReason" | "handoffId" | "localHandoff"
+  > | null,
+  isDesktopRuntime: boolean,
+) {
+  if (!hasHotmailPendingLocalHandoff(batch)) {
+    return {
+      enabled: false,
+      reason: "当前批次没有可用的本机接管数据",
+    };
+  }
+  if (isDesktopRuntime) {
+    return {
+      enabled: false,
+      reason: "桌面版请使用本地接管入口",
+    };
+  }
+  return {
+    enabled: true,
+    reason: "",
+  };
+}
+
+export function buildHotmailWebLocalHelperUrl(path: string) {
+  return `http://127.0.0.1:16788${path}`;
+}
+
 export function buildHotmailHandoffAccessUrl(
   batch: Pick<HotmailBatchStatusLike, "handoffId" | "handoffUrl" | "status" | "actionRequiredReason"> | null,
   currentUrl: string,
