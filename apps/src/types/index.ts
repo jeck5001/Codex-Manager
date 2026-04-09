@@ -948,6 +948,38 @@ export interface RegisterHotmailArtifact {
   size: number | null;
 }
 
+export interface RegisterHotmailLocalHandoffCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number | null;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: string;
+}
+
+export interface RegisterHotmailLocalHandoffOriginEntry {
+  name: string;
+  value: string;
+}
+
+export interface RegisterHotmailLocalHandoffOrigin {
+  origin: string;
+  localStorage: RegisterHotmailLocalHandoffOriginEntry[];
+}
+
+export interface RegisterHotmailLocalHandoff {
+  handoffId: string;
+  url: string;
+  title: string;
+  userAgent: string;
+  proxyUrl: string;
+  state: string;
+  cookies: RegisterHotmailLocalHandoffCookie[];
+  origins: RegisterHotmailLocalHandoffOrigin[];
+}
+
 export interface RegisterHotmailBatchSnapshot {
   batchId: string;
   total: number;
@@ -960,6 +992,7 @@ export interface RegisterHotmailBatchSnapshot {
   handoffUrl?: string;
   handoffTitle?: string;
   handoffInstructions?: string;
+  localHandoff?: RegisterHotmailLocalHandoff | null;
   cancelled: boolean;
   finished: boolean;
   logs: string[];

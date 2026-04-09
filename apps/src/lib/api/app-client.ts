@@ -1,5 +1,5 @@
 import { invoke, invokeFirst } from "./transport";
-import { AppSettings } from "../../types";
+import { AppSettings, RegisterHotmailLocalHandoff } from "../../types";
 import { normalizeAppSettings } from "./normalize";
 
 export const appClient = {
@@ -19,6 +19,8 @@ export const appClient = {
   openInBrowser: (url: string) => invoke("open_in_browser", { url }),
   openInBrowserIncognito: (url: string) =>
     invoke("open_in_browser_incognito", { url }),
+  openHotmailLocalHandoff: (payload: RegisterHotmailLocalHandoff) =>
+    invoke<string>("open_hotmail_local_handoff", { payload }),
 
   checkUpdate: () =>
     invokeFirst<unknown>(["app_update_check", "update_check", "check_update"], {}),
