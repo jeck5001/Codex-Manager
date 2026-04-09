@@ -52,6 +52,9 @@ import {
   RegisterEmailServiceTypeCatalog,
   RegisterHotmailArtifact,
   RegisterHotmailBatchSnapshot,
+  RegisterHotmailLocalHandoff,
+  RegisterHotmailLocalHandoffCookie,
+  RegisterHotmailLocalHandoffOrigin,
   RegisterImportResult,
   RegisterOutlookAccount,
   RegisterOutlookAccountsResult,
@@ -635,6 +638,94 @@ function normalizeRegisterHotmailArtifacts(value: unknown): RegisterHotmailArtif
     .filter((item) => item.filename || item.path);
 }
 
+function normalizeRegisterHotmailLocalHandoffCookie(
+  value: unknown
+): RegisterHotmailLocalHandoffCookie {
+  const source = asRecord(value) ?? {};
+  return {
+    name: typeof source.name === "string" ? source.name : "",
+    value: typeof source.value === "string" ? source.value : "",
+    domain: typeof source.domain === "string" ? source.domain : "",
+    path: typeof source.path === "string" ? source.path : "/",
+    expires:
+      typeof source.expires === "number" && Number.isFinite(source.expires) ? source.expires : null,
+    httpOnly:
+      source.httpOnly === true
+        ? true
+        : source.http_only === true,
+    secure: source.secure === true,
+    sameSite:
+      typeof source.sameSite === "string"
+        ? source.sameSite
+        : typeof source.same_site === "string"
+          ? source.same_site
+          : "",
+  };
+}
+
+function normalizeRegisterHotmailLocalHandoffOrigin(
+  value: unknown
+): RegisterHotmailLocalHandoffOrigin {
+  const source = asRecord(value) ?? {};
+  const rawEntries = Array.isArray(source.localStorage)
+    ? source.localStorage
+    : Array.isArray(source.local_storage)
+      ? source.local_storage
+      : [];
+  return {
+    origin: typeof source.origin === "string" ? source.origin : "",
+    localStorage: rawEntries
+      .map((item) => {
+        const entry = asRecord(item) ?? {};
+        return {
+          name: typeof entry.name === "string" ? entry.name : "",
+          value: typeof entry.value === "string" ? entry.value : "",
+        };
+      })
+      .filter((entry) => entry.name),
+  };
+}
+
+function normalizeRegisterHotmailLocalHandoff(
+  value: unknown
+): RegisterHotmailLocalHandoff | null {
+  const source = asRecord(value);
+  if (!source) {
+    return null;
+  }
+  const rawCookies = Array.isArray(source.cookies) ? source.cookies : [];
+  const rawOrigins = Array.isArray(source.origins) ? source.origins : [];
+  return {
+    handoffId:
+      typeof source.handoffId === "string"
+        ? source.handoffId
+        : typeof source.handoff_id === "string"
+          ? source.handoff_id
+          : "",
+    url: typeof source.url === "string" ? source.url : "",
+    title: typeof source.title === "string" ? source.title : "",
+    userAgent:
+      typeof source.userAgent === "string"
+        ? source.userAgent
+        : typeof source.user_agent === "string"
+          ? source.user_agent
+          : "",
+    proxyUrl:
+      typeof source.proxyUrl === "string"
+        ? source.proxyUrl
+        : typeof source.proxy_url === "string"
+          ? source.proxy_url
+          : "",
+    state: typeof source.state === "string" ? source.state : "",
+    cookies: rawCookies
+      .map(normalizeRegisterHotmailLocalHandoffCookie)
+      .filter((cookie) => cookie.name),
+    origins: rawOrigins
+      .map(normalizeRegisterHotmailLocalHandoffOrigin)
+      .filter((origin) => origin.origin || origin.localStorage.length > 0),
+  };
+}
+
 function normalizeRegisterHotmailBatchSnapshot(
   value: unknown
 ): RegisterHotmailBatchSnapshot {
@@ -693,6 +784,9 @@ function normalizeRegisterHotmailBatchSnapshot(
         : typeof source.handoff_instructions === "string"
           ? source.handoff_instructions
           : "",
+    localHandoff: normalizeRegisterHotmailLocalHandoff(
+      source.localHandoff ?? source.local_handoff
+    ),
     cancelled: source.cancelled === true,
     finished: source.finished === true,
     logs: Array.isArray(source.logs)

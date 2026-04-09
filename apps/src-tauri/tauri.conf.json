@@ -26,6 +26,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "../../vendor/codex-register/src/services/hotmail/local_handoff_cli.py"
+    ],
     "icon": [
       "icons/icon.ico",
       "icons/icon.png",

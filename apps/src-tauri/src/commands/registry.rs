@@ -120,6 +120,7 @@ macro_rules! invoke_handler {
             // system
             crate::commands::system::open_in_browser,
             crate::commands::system::open_in_browser_incognito,
+            crate::commands::hotmail::open_hotmail_local_handoff,
             crate::commands::system::app_window_unsaved_draft_sections_set,
             // updater
             crate::commands::updater::app_update_check,
