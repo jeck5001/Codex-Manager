@@ -26,6 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxfixes3 \
     libxkbcommon0 \
     libxrandr2 \
+    novnc \
+    websockify \
+    x11vnc \
     xvfb \
     && rm -rf /var/lib/apt/lists/*
 
@@ -49,13 +52,14 @@ RUN python -m playwright install ${PLAYWRIGHT_BROWSER_INSTALL_ARGS}
 COPY . .
 
 # Create data directory
-RUN mkdir -p data logs
+RUN mkdir -p data logs \
+    && chmod +x /app/docker/start-register.sh
 
 # Expose port
-EXPOSE 9000
+EXPOSE 9000 7900
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 
 # Run the application
-CMD ["python", "webui.py"]
+CMD ["/app/docker/start-register.sh"]

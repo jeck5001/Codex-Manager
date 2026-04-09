@@ -5,6 +5,8 @@ export type HotmailBatchStatusLike = {
   cancelled?: boolean;
   status?: string;
   actionRequiredReason?: string;
+  handoffId?: string;
+  handoffUrl?: string;
 };
 
 export type HotmailArtifactLike = {
@@ -73,4 +75,34 @@ export function formatHotmailBatchStatus(
     label: "运行中",
     className: "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
   };
+}
+
+export function hasHotmailPendingHandoff(
+  batch: Pick<HotmailBatchStatusLike, "status" | "actionRequiredReason" | "handoffId"> | null,
+) {
+  if (!batch) {
+    return false;
+  }
+  const actionRequired =
+    batch.status === "action_required" || batch.actionRequiredReason === "unsupported_challenge";
+  return actionRequired && Boolean(String(batch.handoffId || "").trim());
+}
+
+export function buildHotmailHandoffAccessUrl(
+  batch: Pick<HotmailBatchStatusLike, "handoffId" | "handoffUrl" | "status" | "actionRequiredReason"> | null,
+  currentUrl: string,
+) {
+  if (!hasHotmailPendingHandoff(batch)) {
+    return "";
+  }
+  const configuredUrl = String(batch?.handoffUrl || "").trim();
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+  try {
+    const current = new URL(currentUrl);
+    return `${current.protocol}//${current.hostname}:7900/vnc.html?autoconnect=1&resize=scale`;
+  } catch {
+    return "";
+  }
 }

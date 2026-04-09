@@ -6,12 +6,16 @@ services:
     environment:
       APP_HOST: 0.0.0.0
       APP_PORT: 9000
+      HOTMAIL_HANDOFF_ENABLED: "1"
+      HOTMAIL_HANDOFF_PORT: "7900"
+      HOTMAIL_HANDOFF_PUBLIC_URL: ${HOTMAIL_HANDOFF_PUBLIC_URL:-}
       PYTHONUNBUFFERED: "1"
     volumes:
       - ./codexregister-data:/app/data
       - ./codexregister-logs:/app/logs
     ports:
       - "9000:9000"
+      - "7900:7900"
 
   codexmanager-service:
     image: ${GHCR_NAMESPACE:-ghcr.io/jeck5001}/codexmanager-service:${IMAGE_TAG:-latest}
