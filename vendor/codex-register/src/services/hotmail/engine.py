@@ -76,6 +76,14 @@ def classify_hotmail_page_state(text: str) -> Optional[HotmailFailureCode]:
         or "长按按钮" in normalized
     ):
         return HotmailFailureCode.UNSUPPORTED_CHALLENGE
+    if (
+        "account creation has been blocked" in normalized
+        or "blocked the creation of this account" in normalized
+        or "we have detected some unusual activity" in normalized
+        or "我们检测到一些异常活动" in normalized
+        or "已阻止创建此帐户" in normalized
+    ):
+        return HotmailFailureCode.ACCOUNT_CREATION_BLOCKED
     return None
 
 
@@ -851,6 +859,7 @@ class HotmailRegistrationEngine:
         mapping = {
             "phone_verification": HotmailFailureCode.PHONE_VERIFICATION_REQUIRED,
             "unsupported_challenge": HotmailFailureCode.UNSUPPORTED_CHALLENGE,
+            "account_creation_blocked": HotmailFailureCode.ACCOUNT_CREATION_BLOCKED,
             "page_structure_changed": HotmailFailureCode.PAGE_STRUCTURE_CHANGED,
         }
         return mapping.get(state)
