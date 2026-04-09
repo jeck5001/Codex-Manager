@@ -62,10 +62,7 @@ fn prefixed_account_query_supports_alias() {
     let query = parse_request_log_query(Some("account:acc-1"));
     assert!(matches!(
         query,
-        RequestLogQuery::FieldLike {
-            column: "account_id",
-            pattern
-        } if pattern == "%acc-1%"
+        RequestLogQuery::AccountLike(pattern) if pattern == "%acc-1%"
     ));
 }
 

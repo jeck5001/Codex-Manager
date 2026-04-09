@@ -223,7 +223,8 @@ impl Storage {
     ) -> Result<Vec<RequestLog>> {
         let normalized_limit = normalize_request_log_limit(limit);
         let normalized_offset = offset.max(0);
-        let filters = build_request_log_filters(query, status_filter);
+        let include_account_lookup = self.has_table("accounts")?;
+        let filters = build_request_log_filters(query, status_filter, include_account_lookup);
         let sql = format!(
             "SELECT
                 r.trace_id, r.key_id, r.account_id, r.initial_account_id, r.attempted_account_ids_json, r.initial_aggregate_api_id, r.attempted_aggregate_api_ids_json,
@@ -232,10 +233,12 @@ impl Storage {
                 t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
                 r.error, r.created_at
              FROM request_logs r
+             {account_join}
              LEFT JOIN request_token_stats t ON t.request_log_id = r.id
              {where_clause}
              ORDER BY r.created_at DESC, r.id DESC
              LIMIT ? OFFSET ?",
+            account_join = account_join_clause(include_account_lookup),
             where_clause = filters.where_clause
         );
         let mut params = filters.params;
@@ -269,12 +272,15 @@ impl Storage {
         query: Option<&str>,
         status_filter: Option<&str>,
     ) -> Result<i64> {
-        let filters = build_request_log_filters(query, status_filter);
+        let include_account_lookup = self.has_table("accounts")?;
+        let filters = build_request_log_filters(query, status_filter, include_account_lookup);
         let sql = format!(
             "SELECT COUNT(1)
              FROM request_logs r
+             {account_join}
              LEFT JOIN request_token_stats t ON t.request_log_id = r.id
              {where_clause}",
+            account_join = account_join_clause(include_account_lookup),
             where_clause = filters.where_clause
         );
         self.conn
@@ -301,7 +307,8 @@ impl Storage {
         query: Option<&str>,
         status_filter: Option<&str>,
     ) -> Result<RequestLogQuerySummary> {
-        let filters = build_request_log_filters(query, status_filter);
+        let include_account_lookup = self.has_table("accounts")?;
+        let filters = build_request_log_filters(query, status_filter, include_account_lookup);
         let sql = format!(
             "SELECT
                 COUNT(1),
@@ -321,8 +328,10 @@ impl Storage {
                 ), 0),
                 IFNULL(SUM(IFNULL(t.estimated_cost_usd, 0.0)), 0.0)
              FROM request_logs r
+             {account_join}
              LEFT JOIN request_token_stats t ON t.request_log_id = r.id
              {where_clause}",
+            account_join = account_join_clause(include_account_lookup),
             where_clause = filters.where_clause
         );
         self.conn
@@ -745,12 +754,14 @@ fn normalize_request_log_limit(value: i64) -> i64 {
 fn build_request_log_filters(
     query: Option<&str>,
     status_filter: Option<&str>,
+    include_account_lookup: bool,
 ) -> RequestLogSqlFilters {
     let mut clauses = Vec::new();
     let mut params = Vec::new();
 
     append_request_log_query_clause(
         request_log_query::parse_request_log_query(query),
+        include_account_lookup,
         &mut clauses,
         &mut params,
     );
@@ -781,11 +792,18 @@ fn build_request_log_filters(
 /// 无
 fn append_request_log_query_clause(
     query: request_log_query::RequestLogQuery,
+    include_account_lookup: bool,
     clauses: &mut Vec<String>,
     params: &mut Vec<Value>,
 ) {
     match query {
         request_log_query::RequestLogQuery::All => {}
+        request_log_query::RequestLogQuery::AccountLike(pattern) => {
+            append_account_query_clause(pattern, false, include_account_lookup, clauses, params);
+        }
+        request_log_query::RequestLogQuery::AccountExact(value) => {
+            append_account_query_clause(value, true, include_account_lookup, clauses, params);
+        }
         request_log_query::RequestLogQuery::FieldLike { column, pattern } => {
             clauses.push(format!("IFNULL(r.{column}, '') LIKE ?"));
             params.push(Value::Text(pattern));
@@ -804,42 +822,86 @@ fn append_request_log_query_clause(
             params.push(Value::Integer(end));
         }
         request_log_query::RequestLogQuery::GlobalLike(pattern) => {
-            clauses.push(
-                "(r.request_path LIKE ?
-                    OR IFNULL(r.initial_account_id,'') LIKE ?
-                    OR IFNULL(r.attempted_account_ids_json,'') LIKE ?
-                    OR IFNULL(r.initial_aggregate_api_id,'') LIKE ?
-                    OR IFNULL(r.attempted_aggregate_api_ids_json,'') LIKE ?
-                    OR IFNULL(r.aggregate_api_supplier_name,'') LIKE ?
-                    OR IFNULL(r.aggregate_api_url,'') LIKE ?
-                    OR IFNULL(r.original_path,'') LIKE ?
-                    OR IFNULL(r.adapted_path,'') LIKE ?
-                    OR r.method LIKE ?
-                    OR IFNULL(r.request_type,'') LIKE ?
-                    OR IFNULL(r.account_id,'') LIKE ?
-                    OR IFNULL(r.model,'') LIKE ?
-                    OR IFNULL(r.reasoning_effort,'') LIKE ?
-                    OR IFNULL(r.service_tier,'') LIKE ?
-                    OR IFNULL(r.effective_service_tier,'') LIKE ?
-                    OR IFNULL(r.response_adapter,'') LIKE ?
-                    OR IFNULL(r.error,'') LIKE ?
-                    OR IFNULL(r.key_id,'') LIKE ?
-                    OR IFNULL(r.trace_id,'') LIKE ?
-                    OR IFNULL(r.upstream_url,'') LIKE ?
-                    OR IFNULL(CAST(r.status_code AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.input_tokens AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.cached_input_tokens AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.output_tokens AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.total_tokens AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.reasoning_output_tokens AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.estimated_cost_usd AS TEXT),'') LIKE ?)"
-                    .to_string(),
-            );
-            for _ in 0..28 {
+            let mut global_fields = vec![
+                "r.request_path LIKE ?",
+                "IFNULL(r.initial_account_id,'') LIKE ?",
+                "IFNULL(r.attempted_account_ids_json,'') LIKE ?",
+                "IFNULL(r.initial_aggregate_api_id,'') LIKE ?",
+                "IFNULL(r.attempted_aggregate_api_ids_json,'') LIKE ?",
+                "IFNULL(r.aggregate_api_supplier_name,'') LIKE ?",
+                "IFNULL(r.aggregate_api_url,'') LIKE ?",
+                "IFNULL(r.original_path,'') LIKE ?",
+                "IFNULL(r.adapted_path,'') LIKE ?",
+                "r.method LIKE ?",
+                "IFNULL(r.request_type,'') LIKE ?",
+                "IFNULL(r.account_id,'') LIKE ?",
+                "IFNULL(r.model,'') LIKE ?",
+                "IFNULL(r.reasoning_effort,'') LIKE ?",
+                "IFNULL(r.service_tier,'') LIKE ?",
+                "IFNULL(r.effective_service_tier,'') LIKE ?",
+                "IFNULL(r.response_adapter,'') LIKE ?",
+                "IFNULL(r.error,'') LIKE ?",
+                "IFNULL(r.key_id,'') LIKE ?",
+                "IFNULL(r.trace_id,'') LIKE ?",
+                "IFNULL(r.upstream_url,'') LIKE ?",
+                "IFNULL(CAST(r.status_code AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.input_tokens AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.cached_input_tokens AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.output_tokens AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.total_tokens AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.reasoning_output_tokens AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.estimated_cost_usd AS TEXT),'') LIKE ?",
+            ];
+            if include_account_lookup {
+                global_fields.extend([
+                    "IFNULL(a.label,'') LIKE ?",
+                    "IFNULL(a.chatgpt_account_id,'') LIKE ?",
+                    "IFNULL(a.workspace_id,'') LIKE ?",
+                ]);
+            }
+            clauses.push(format!(
+                "({})",
+                global_fields.join("\n                    OR ")
+            ));
+            for _ in 0..global_fields.len() {
                 params.push(Value::Text(pattern.clone()));
             }
         }
     }
+}
+
+fn account_join_clause(include_account_lookup: bool) -> &'static str {
+    if include_account_lookup {
+        "LEFT JOIN accounts a ON a.id = r.account_id"
+    } else {
+        ""
+    }
+}
+
+fn append_account_query_clause(
+    value: String,
+    is_exact: bool,
+    include_account_lookup: bool,
+    clauses: &mut Vec<String>,
+    params: &mut Vec<Value>,
+) {
+    if include_account_lookup {
+        let comparator = if is_exact { "=" } else { "LIKE" };
+        clauses.push(format!(
+            "(IFNULL(r.account_id, '') {comparator} ?
+                OR IFNULL(a.label, '') {comparator} ?
+                OR IFNULL(a.chatgpt_account_id, '') {comparator} ?
+                OR IFNULL(a.workspace_id, '') {comparator} ?)"
+        ));
+        for _ in 0..4 {
+            params.push(Value::Text(value.clone()));
+        }
+        return;
+    }
+
+    let comparator = if is_exact { "=" } else { "LIKE" };
+    clauses.push(format!("IFNULL(r.account_id, '') {comparator} ?"));
+    params.push(Value::Text(value));
 }
 
 /// 函数 `append_status_filter_clause`
