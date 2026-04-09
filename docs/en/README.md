@@ -16,6 +16,15 @@ Its purpose is simple:
 - For the latest release notes, see [CHANGELOG.md](CHANGELOG.md).
 - If you are not sure which document to open first, use the table below.
 
+## Ecosystem Pairing
+
+### OpenCowork
+
+- Repository: [AIDotNet/OpenCowork](https://github.com/AIDotNet/OpenCowork)
+- Recommended pairing: use OpenCowork for local file operations, multi-agent execution, workplace messaging, and desktop automation, while CodexManager handles Codex account management, usage tracking, platform keys, and the local gateway entry point.
+- Best for: teams that want to separate the execution workspace and office integration from account-pool management and gateway access.
+- A simple way to think about it: **OpenCowork executes in the real workspace, CodexManager manages accounts and gateway access.**
+
 ## Quick navigation
 | What you need | Open this document |
 | --- | --- |

@@ -116,6 +116,15 @@
 - 本地服务：自动拉起、可自定义端口与监听地址
 - 本地网关：为 Codex CLI、Gemini CLI、Claude Code 和第三方工具提供统一 OpenAI 兼容入口；Gemini 请求可转发到 `/v1/responses`，并兼容 SSE、tools、MCP、skill 等调用链路
 
+## 生态搭配
+
+### OpenCowork
+
+- 仓库地址：[AIDotNet/OpenCowork](https://github.com/AIDotNet/OpenCowork)
+- 搭配方式：使用 OpenCowork 承接本地文件操作、多 Agent 协作、消息平台接入与桌面执行能力，再由 CodexManager 统一管理 Codex 账号、用量、平台 Key 与本地网关入口。
+- 适合场景：当您希望把“执行工作台 / 办公协同”和“账号池管理 / 网关入口”拆开时，这两个项目可以形成互补组合。
+- 推荐理解：**OpenCowork 更偏执行与落地，CodexManager 更偏管理与网关。**
+
 ## 截图
 ![仪表盘](assets/images/dashboard.png)
 ![账号管理](assets/images/accounts.png)
