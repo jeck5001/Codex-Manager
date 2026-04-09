@@ -669,6 +669,30 @@ function normalizeRegisterHotmailBatchSnapshot(
         : typeof source.action_required_reason === "string"
           ? source.action_required_reason
           : "",
+    handoffId:
+      typeof source.handoffId === "string"
+        ? source.handoffId
+        : typeof source.handoff_id === "string"
+          ? source.handoff_id
+          : "",
+    handoffUrl:
+      typeof source.handoffUrl === "string"
+        ? source.handoffUrl
+        : typeof source.handoff_url === "string"
+          ? source.handoff_url
+          : "",
+    handoffTitle:
+      typeof source.handoffTitle === "string"
+        ? source.handoffTitle
+        : typeof source.handoff_title === "string"
+          ? source.handoff_title
+          : "",
+    handoffInstructions:
+      typeof source.handoffInstructions === "string"
+        ? source.handoffInstructions
+        : typeof source.handoff_instructions === "string"
+          ? source.handoff_instructions
+          : "",
     cancelled: source.cancelled === true,
     finished: source.finished === true,
     logs: Array.isArray(source.logs)
@@ -1409,6 +1433,20 @@ export const accountClient = {
   },
   cancelRegisterHotmailBatch: (batchId: string) =>
     invoke("service_account_register_hotmail_batch_cancel", withAddr({ batchId })),
+  async continueRegisterHotmailBatch(batchId: string): Promise<RegisterHotmailBatchSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_hotmail_batch_continue",
+      withAddr({ batchId }),
+    );
+    return normalizeRegisterHotmailBatchSnapshot(result);
+  },
+  async abandonRegisterHotmailBatch(batchId: string): Promise<RegisterHotmailBatchSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_hotmail_batch_abandon",
+      withAddr({ batchId }),
+    );
+    return normalizeRegisterHotmailBatchSnapshot(result);
+  },
   async getRegisterHotmailBatchArtifacts(batchId: string): Promise<RegisterHotmailArtifact[]> {
     const result = await invoke<unknown>(
       "service_account_register_hotmail_batch_artifacts",

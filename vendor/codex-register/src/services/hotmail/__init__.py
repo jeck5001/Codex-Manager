@@ -1,6 +1,11 @@
 from .engine import HotmailRegistrationEngine, classify_hotmail_page_state
 from .profile import HOTMAIL_DOMAIN_POLICY, build_username_candidates, choose_target_domains
-from .types import HotmailAccountArtifact, HotmailFailureCode, HotmailRegistrationResult
+from .types import (
+    HotmailAccountArtifact,
+    HotmailChallengeHandoff,
+    HotmailFailureCode,
+    HotmailRegistrationResult,
+)
 from .verification import (
     HotmailVerificationMailbox,
     HotmailVerificationMailboxProvider,
@@ -14,6 +19,7 @@ __all__ = [
     "build_default_hotmail_verification_provider",
     "HOTMAIL_DOMAIN_POLICY",
     "HotmailAccountArtifact",
+    "HotmailChallengeHandoff",
     "HotmailFailureCode",
     "HotmailRegistrationResult",
     "build_username_candidates",

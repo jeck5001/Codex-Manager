@@ -607,9 +607,9 @@ fn merge_session_token_into_cookies(
         {
             Some(existing)
         }
-        (Some(existing), Some(session_token)) => {
-            Some(format!("{existing}; __Secure-next-auth.session-token={session_token}"))
-        }
+        (Some(existing), Some(session_token)) => Some(format!(
+            "{existing}; __Secure-next-auth.session-token={session_token}"
+        )),
         (Some(existing), None) => Some(existing),
         (None, Some(session_token)) => {
             Some(format!("__Secure-next-auth.session-token={session_token}"))
@@ -873,8 +873,10 @@ pub(crate) fn refresh_and_import_register_account_by_email(
 
 pub(crate) fn auto_register_and_import_account() -> Result<Value, String> {
     let plan = resolve_auto_register_recovery_plan()?;
-    let started =
-        register_post_json("/api/registration/batch", &build_auto_register_batch_payload(&plan))?;
+    let started = register_post_json(
+        "/api/registration/batch",
+        &build_auto_register_batch_payload(&plan),
+    )?;
     let task_uuid = task_uuid_strings_from_payload(&started)
         .into_iter()
         .next()
@@ -1097,7 +1099,32 @@ pub(crate) fn cancel_register_hotmail_batch(batch_id: &str) -> Result<Value, Str
     if batch_id.is_empty() {
         return Err("batchId is required".to_string());
     }
-    register_post_json(&format!("/api/hotmail/batches/{batch_id}/cancel"), &json!({}))
+    register_post_json(
+        &format!("/api/hotmail/batches/{batch_id}/cancel"),
+        &json!({}),
+    )
+}
+
+pub(crate) fn continue_register_hotmail_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_post_json(
+        &format!("/api/hotmail/batches/{batch_id}/continue"),
+        &json!({}),
+    )
+}
+
+pub(crate) fn abandon_register_hotmail_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_post_json(
+        &format!("/api/hotmail/batches/{batch_id}/abandon"),
+        &json!({}),
+    )
 }
 
 pub(crate) fn read_register_hotmail_batch_artifacts(batch_id: &str) -> Result<Value, String> {
@@ -1451,7 +1478,9 @@ pub(crate) fn get_register_temp_mail_cloudflare_settings() -> Result<Value, Stri
     register_get_json("/api/settings/temp-mail/cloudflare")
 }
 
-pub(crate) fn update_register_temp_mail_cloudflare_settings(payload: Value) -> Result<Value, String> {
+pub(crate) fn update_register_temp_mail_cloudflare_settings(
+    payload: Value,
+) -> Result<Value, String> {
     let normalized = match payload {
         Value::Object(map) => Value::Object(map),
         _ => Value::Object(serde_json::Map::new()),
@@ -1675,8 +1704,7 @@ pub(crate) fn import_register_task(task_uuid: &str) -> Result<Value, String> {
             "chatgptAccountId",
         ],
     );
-    let workspace_id =
-        task_result_string_field(&task.result, &["workspace_id", "workspaceId"]);
+    let workspace_id = task_result_string_field(&task.result, &["workspace_id", "workspaceId"]);
 
     let mut imported = import_remote_account_for_email(&email, chatgpt_account_id, workspace_id)?;
     if let Some(object) = imported.as_object_mut() {
@@ -1756,12 +1784,12 @@ fn first_recovery_service_id_from_group(payload: &Value, keys: &[&str]) -> Optio
 #[cfg(test)]
 mod tests {
     use super::{
-        build_auto_register_batch_payload, classify_register_failure_reason,
-        normalized_register_service_url, read_register_hotmail_batch,
-        read_register_hotmail_batch_artifacts,
-        pick_remote_account_by_email, resolve_existing_imported_account_id_from_accounts,
-        task_result_string_field, cancel_register_hotmail_batch,
-        AutoRegisterRecoveryPlan, RegisterProxyItem,
+        abandon_register_hotmail_batch, build_auto_register_batch_payload,
+        cancel_register_hotmail_batch, classify_register_failure_reason,
+        continue_register_hotmail_batch, normalized_register_service_url,
+        pick_remote_account_by_email, read_register_hotmail_batch,
+        read_register_hotmail_batch_artifacts, resolve_existing_imported_account_id_from_accounts,
+        task_result_string_field, AutoRegisterRecoveryPlan, RegisterProxyItem,
     };
     use codexmanager_core::storage::{now_ts, Account};
     use serde_json::json;
@@ -1800,7 +1828,12 @@ mod tests {
         assert_eq!(
             task_result_string_field(
                 &task_result,
-                &["account_id", "accountId", "chatgpt_account_id", "chatgptAccountId"],
+                &[
+                    "account_id",
+                    "accountId",
+                    "chatgpt_account_id",
+                    "chatgptAccountId"
+                ],
             )
             .as_deref(),
             Some("chatgpt-camel-id")
@@ -1846,15 +1879,21 @@ mod tests {
         });
 
         assert_eq!(
-            payload.get("register_mode").and_then(|value| value.as_str()),
+            payload
+                .get("register_mode")
+                .and_then(|value| value.as_str()),
             Some("any_auto")
         );
         assert_eq!(
-            payload.get("email_service_type").and_then(|value| value.as_str()),
+            payload
+                .get("email_service_type")
+                .and_then(|value| value.as_str()),
             Some("custom_domain")
         );
         assert_eq!(
-            payload.get("email_service_id").and_then(|value| value.as_i64()),
+            payload
+                .get("email_service_id")
+                .and_then(|value| value.as_i64()),
             Some(12)
         );
     }
@@ -1956,6 +1995,22 @@ mod tests {
     fn cancel_register_hotmail_batch_requires_batch_id() {
         assert_eq!(
             cancel_register_hotmail_batch(""),
+            Err("batchId is required".to_string())
+        );
+    }
+
+    #[test]
+    fn continue_register_hotmail_batch_requires_batch_id() {
+        assert_eq!(
+            continue_register_hotmail_batch(""),
+            Err("batchId is required".to_string())
+        );
+    }
+
+    #[test]
+    fn abandon_register_hotmail_batch_requires_batch_id() {
+        assert_eq!(
+            abandon_register_hotmail_batch(""),
             Err("batchId is required".to_string())
         );
     }
