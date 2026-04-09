@@ -244,6 +244,16 @@ class HotmailRoutesTests(unittest.TestCase):
                         "url": "https://signup.live.com/challenge",
                         "title": "Let's prove you're human",
                         "instructions": "请在运行注册服务的主机上完成人工验证，然后回来点击继续。",
+                        "local_handoff": {
+                            "handoff_id": "handoff-1",
+                            "url": "https://signup.live.com/challenge",
+                            "title": "Let's prove you're human",
+                            "user_agent": "Mozilla/5.0 test",
+                            "proxy_url": "http://127.0.0.1:7890",
+                            "state": "unsupported_challenge",
+                            "cookies": [{"name": "MSPRequ", "value": "cookie-value"}],
+                            "origins": [],
+                        },
                     },
                 )
 
@@ -262,6 +272,8 @@ class HotmailRoutesTests(unittest.TestCase):
         self.assertEqual(payload["handoff_url"], "https://signup.live.com/challenge")
         self.assertEqual(payload["handoff_title"], "Let's prove you're human")
         self.assertTrue(payload["handoff_instructions"])
+        self.assertEqual(payload["local_handoff"]["handoff_id"], "handoff-1")
+        self.assertEqual(payload["local_handoff"]["state"], "unsupported_challenge")
         self.assertEqual(payload["failed"], 0)
         self.assertEqual(payload["completed"], 0)
         self.assertFalse(payload["finished"])

@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildHotmailLocalHandoffActionState,
   buildHotmailHandoffAccessUrl,
   buildHotmailNativeVncEndpoint,
   classifyHotmailLogLine,
   formatHotmailBatchStatus,
   getHotmailBatchProgress,
   hasHotmailPendingHandoff,
+  hasHotmailPendingLocalHandoff,
   mergeHotmailBatchArtifacts,
   shouldPollHotmailBatch,
 } from "./hotmail-batch-state.ts";
@@ -76,6 +78,69 @@ test("hasHotmailPendingHandoff only returns true for action-required batches wit
       handoffId: "",
     }),
     false,
+  );
+});
+
+test("hasHotmailPendingLocalHandoff only returns true when local handoff payload exists", () => {
+  assert.equal(
+    hasHotmailPendingLocalHandoff({
+      status: "action_required",
+      actionRequiredReason: "unsupported_challenge",
+      handoffId: "handoff-1",
+      localHandoff: {
+        handoffId: "handoff-1",
+        url: "https://signup.live.com/challenge",
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    hasHotmailPendingLocalHandoff({
+      status: "action_required",
+      actionRequiredReason: "unsupported_challenge",
+      handoffId: "handoff-1",
+      localHandoff: null,
+    }),
+    false,
+  );
+});
+
+test("buildHotmailLocalHandoffActionState prefers desktop local handoff when available", () => {
+  assert.deepEqual(
+    buildHotmailLocalHandoffActionState(
+      {
+        status: "action_required",
+        actionRequiredReason: "unsupported_challenge",
+        handoffId: "handoff-1",
+        localHandoff: {
+          handoffId: "handoff-1",
+          url: "https://signup.live.com/challenge",
+        },
+      },
+      true,
+    ),
+    {
+      enabled: true,
+      reason: "",
+    },
+  );
+  assert.deepEqual(
+    buildHotmailLocalHandoffActionState(
+      {
+        status: "action_required",
+        actionRequiredReason: "unsupported_challenge",
+        handoffId: "handoff-1",
+        localHandoff: {
+          handoffId: "handoff-1",
+          url: "https://signup.live.com/challenge",
+        },
+      },
+      false,
+    ),
+    {
+      enabled: false,
+      reason: "本地接管仅在桌面版可用",
+    },
   );
 });
 

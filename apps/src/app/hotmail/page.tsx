@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Archive,
   ExternalLink,
+  Laptop,
   LoaderCircle,
   Mail,
   PlayCircle,
@@ -27,15 +28,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getAppErrorMessage } from "@/lib/api/transport";
+import { getAppErrorMessage, isTauriRuntime } from "@/lib/api/transport";
+import { appClient } from "@/lib/api/app-client";
 import { accountClient } from "@/lib/api/account-client";
 import {
+  buildHotmailLocalHandoffActionState,
   buildHotmailHandoffAccessUrl,
   buildHotmailNativeVncEndpoint,
   classifyHotmailLogLine,
   formatHotmailBatchStatus,
   getHotmailBatchProgress,
   hasHotmailPendingHandoff,
+  hasHotmailPendingLocalHandoff,
   mergeHotmailBatchArtifacts,
   shouldPollHotmailBatch,
 } from "./hotmail-batch-state";
@@ -53,6 +57,7 @@ function formatArtifactSize(size: number | null) {
 }
 
 export default function HotmailPage() {
+  const isDesktopRuntime = isTauriRuntime();
   const initialBatchId =
     typeof window === "undefined"
       ? ""
@@ -149,6 +154,22 @@ export default function HotmailPage() {
     },
   });
 
+  const localHandoffMutation = useMutation({
+    mutationFn: async () => {
+      const payload = batchQuery.data?.localHandoff;
+      if (!payload) {
+        throw new Error("当前批次没有可用的本地接管数据");
+      }
+      return appClient.openHotmailLocalHandoff(payload);
+    },
+    onSuccess: () => {
+      toast.success("已启动本地接管浏览器，请在本机窗口里处理微软验证");
+    },
+    onError: (error: unknown) => {
+      toast.error(`本地接管启动失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
   const handleTrackBatch = () => {
     const nextBatchId = batchIdInput.trim();
     if (!nextBatchId) {
@@ -180,6 +201,11 @@ export default function HotmailPage() {
   );
   const statusMeta = formatHotmailBatchStatus(currentBatch);
   const hasPendingHandoff = hasHotmailPendingHandoff(currentBatch);
+  const hasPendingLocalHandoff = hasHotmailPendingLocalHandoff(currentBatch);
+  const localHandoffAction = useMemo(
+    () => buildHotmailLocalHandoffActionState(currentBatch, isDesktopRuntime),
+    [currentBatch, isDesktopRuntime],
+  );
   const handoffAccessUrl = useMemo(
     () =>
       typeof window === "undefined"
@@ -372,14 +398,17 @@ export default function HotmailPage() {
                     </div>
                     <div className="mt-3 space-y-2 text-sm leading-6">
                       <p>
-                        优先用原生 VNC 客户端连接运行 <span className="font-mono">register</span> 服务
-                        的那台主机，处理当前 Playwright 停留的微软验证页；处理完成后，回到这里点击
-                        “继续注册”。
+                        {localHandoffAction.enabled
+                          ? "优先点击下面的“本地接管（推荐）”，在你本机启动专用浏览器窗口处理微软验证；处理完成后，回到这里点击“继续注册”。"
+                          : "优先用原生 VNC 客户端连接运行 register 服务的那台主机，处理当前 Playwright 停留的微软验证页；处理完成后，回到这里点击“继续注册”。"}
                       </p>
                       <p>
                         微软这个长按按钮对远程输入很敏感，浏览器里的 noVNC 容易因为抖动或延迟反复
                         提示重试。原生 VNC 客户端通常比 noVNC 稳定很多。
                       </p>
+                      {!localHandoffAction.enabled && hasPendingLocalHandoff ? (
+                        <p>{localHandoffAction.reason}</p>
+                      ) : null}
                       {currentBatch?.handoffInstructions ? (
                         <p>{currentBatch.handoffInstructions}</p>
                       ) : null}
@@ -400,6 +429,18 @@ export default function HotmailPage() {
                       ) : null}
                     </div>
                     <div className="mt-4 flex flex-wrap gap-3">
+                      <Button
+                        className="gap-2"
+                        onClick={() => void localHandoffMutation.mutateAsync()}
+                        disabled={!localHandoffAction.enabled || localHandoffMutation.isPending}
+                      >
+                        {localHandoffMutation.isPending ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Laptop className="h-4 w-4" />
+                        )}
+                        本地接管（推荐）
+                      </Button>
                       <Button
                         variant="secondary"
                         className="gap-2"
