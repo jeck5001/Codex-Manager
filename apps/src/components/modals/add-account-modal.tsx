@@ -48,6 +48,14 @@ import {
   getRegisterSubmitLabel,
 } from "./register-auto-import";
 import {
+  canShowTempMailDomainConfigPicker,
+  canShowTempMailAutoCreateToggle,
+  deriveTempMailAutoCreateSubmitFlag,
+  getDefaultTempMailAutoCreateState,
+  shouldBypassTempMailServicePickerOnSubmit,
+  shouldDisableTempMailServicePicker,
+} from "./register-temp-mail-auto-create";
+import {
   canUseOutlookBatchRegisterMode,
   getDefaultRegisterChannel,
   getRegisterChannelLabel,
@@ -73,6 +81,7 @@ interface AddAccountModalProps {
 type RegisterMode = "single" | "batch" | "outlook-batch";
 type RegisterExecutionMode = "pipeline" | "parallel";
 const REGISTER_SERVICE_AUTO = "__auto__";
+const REGISTER_TEMP_MAIL_DOMAIN_CONFIG_AUTO = "__random__";
 
 const GROUP_LABELS: Record<string, string> = {
   TEAM: "团队 (TEAM)",
@@ -243,6 +252,8 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   const [registerImportSummary, setRegisterImportSummary] = useState("");
   const [registerServiceType, setRegisterServiceType] = useState("tempmail");
   const [registerServiceId, setRegisterServiceId] = useState("");
+  const [autoCreateTempMailService, setAutoCreateTempMailService] = useState(false);
+  const [registerTempMailDomainConfigId, setRegisterTempMailDomainConfigId] = useState("");
   const [registerBrowserbaseConfigId, setRegisterBrowserbaseConfigId] = useState("");
   const [registerProxy, setRegisterProxy] = useState("");
   const [registerBatchCount, setRegisterBatchCount] = useState("3");
@@ -288,6 +299,8 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
     setRegisterImportSummary("");
     setRegisterServiceType("tempmail");
     setRegisterServiceId("");
+    setAutoCreateTempMailService(getDefaultTempMailAutoCreateState("tempmail"));
+    setRegisterTempMailDomainConfigId("");
     setRegisterBrowserbaseConfigId("");
     setRegisterProxy("");
     setRegisterBatchCount("3");
@@ -401,6 +414,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
       { value: "tempmail", label: "临时邮箱", group: registerServices.tempmail },
       { value: "outlook", label: "Outlook", group: registerServices.outlook },
       { value: "custom_domain", label: "自定义域名", group: registerServices.customDomain },
+      { value: "mail_33_imap", label: "33mail + IMAP", group: registerServices.mail33Imap },
       { value: "temp_mail", label: "Temp Mail", group: registerServices.tempMail },
     ].filter((item) => item.group.available);
   }, [registerServices]);
@@ -413,6 +427,60 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
   const selectedRegisterServiceHasChoices = (selectedRegisterGroup?.services || []).some(
     (item) => item.id != null,
   );
+
+  const showTempMailAutoCreateToggle = useMemo(
+    () => canShowTempMailAutoCreateToggle(registerServiceType),
+    [registerServiceType],
+  );
+  const showTempMailDomainConfigPicker = useMemo(
+    () => canShowTempMailDomainConfigPicker(registerServiceType, autoCreateTempMailService),
+    [registerServiceType, autoCreateTempMailService],
+  );
+  const disableTempMailServicePicker = useMemo(
+    () => shouldDisableTempMailServicePicker(registerServiceType, autoCreateTempMailService),
+    [registerServiceType, autoCreateTempMailService],
+  );
+  const tempMailAutoCreateSubmitFlag = useMemo(
+    () => deriveTempMailAutoCreateSubmitFlag(registerServiceType, autoCreateTempMailService),
+    [registerServiceType, autoCreateTempMailService],
+  );
+  const bypassTempMailServicePickerOnSubmit = useMemo(
+    () => shouldBypassTempMailServicePickerOnSubmit(registerServiceType, autoCreateTempMailService),
+    [registerServiceType, autoCreateTempMailService],
+  );
+  const registerTempMailDomainConfigs = useMemo(
+    () => selectedRegisterGroup?.domainConfigs || [],
+    [selectedRegisterGroup],
+  );
+
+  useEffect(() => {
+    if (!showTempMailAutoCreateToggle && autoCreateTempMailService) {
+      setAutoCreateTempMailService(false);
+    }
+  }, [showTempMailAutoCreateToggle, autoCreateTempMailService]);
+
+  useEffect(() => {
+    if (!showTempMailDomainConfigPicker && registerTempMailDomainConfigId) {
+      setRegisterTempMailDomainConfigId("");
+      return;
+    }
+    if (
+      registerTempMailDomainConfigId &&
+      !registerTempMailDomainConfigs.some((item) => item.id === registerTempMailDomainConfigId)
+    ) {
+      setRegisterTempMailDomainConfigId("");
+    }
+  }, [
+    registerTempMailDomainConfigId,
+    registerTempMailDomainConfigs,
+    showTempMailDomainConfigPicker,
+  ]);
+
+  useEffect(() => {
+    if (tempMailAutoCreateSubmitFlag) {
+      setRegisterServiceId(REGISTER_SERVICE_AUTO);
+    }
+  }, [tempMailAutoCreateSubmitFlag]);
 
   const selectedOutlookAccounts = useMemo(() => {
     if (!registerOutlookAccounts) return [];
@@ -460,6 +528,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         { value: "tempmail", group: catalog.tempmail },
         { value: "outlook", group: catalog.outlook },
         { value: "custom_domain", group: catalog.customDomain },
+        { value: "mail_33_imap", group: catalog.mail33Imap },
         { value: "temp_mail", group: catalog.tempMail },
       ].filter((item) => item.group.available);
       const nextType =
@@ -472,6 +541,8 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         : "";
       setRegisterServiceType(nextType);
       setRegisterServiceId(nextServiceId);
+      setAutoCreateTempMailService(getDefaultTempMailAutoCreateState(nextType));
+      setRegisterTempMailDomainConfigId("");
     },
     [registerServiceType],
   );
@@ -995,20 +1066,41 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
       const resolvedBrowserbaseConfigId = isBrowserbaseRegisterChannel
         ? normalizeRegisterServiceIdForSubmit(registerBrowserbaseConfigId)
         : null;
+      const resolvedEmailServiceId =
+        isBrowserbaseRegisterChannel || bypassTempMailServicePickerOnSubmit
+          ? null
+          : normalizeRegisterServiceIdForSubmit(registerServiceId);
+      const resolvedTempMailDomainConfigId = registerTempMailDomainConfigId.trim();
+      const resolvedEmailServiceConfig =
+        tempMailAutoCreateSubmitFlag && registerServiceType === "temp_mail"
+          ? resolvedTempMailDomainConfigId
+            ? { domain_config_id: resolvedTempMailDomainConfigId }
+            : {}
+          : null;
 
       if (isBrowserbaseRegisterChannel && !resolvedBrowserbaseConfigId) {
         throw new Error("请选择一个可用的 Browserbase-DDG 配置");
+      }
+      if (tempMailAutoCreateSubmitFlag && registerServiceType === "temp_mail" && !registerTempMailDomainConfigs.length) {
+        throw new Error("当前没有可用的 Temp-Mail 域名配置，请先到邮箱服务页配置后再试");
+      }
+      if (
+        registerServiceType === "temp_mail" &&
+        !tempMailAutoCreateSubmitFlag &&
+        !selectedRegisterServiceHasChoices
+      ) {
+        throw new Error("当前没有可复用的 Temp-Mail 服务，请开启自动创建或先创建一条服务");
       }
 
       if (registerMode === "single") {
         const task = await accountClient.startRegisterTask({
           emailServiceType: resolvedEmailServiceType,
-          emailServiceId: isBrowserbaseRegisterChannel
-            ? null
-            : normalizeRegisterServiceIdForSubmit(registerServiceId),
+          emailServiceId: resolvedEmailServiceId,
+          emailServiceConfig: resolvedEmailServiceConfig,
           registerMode: resolvedRegisterMode,
           browserbaseConfigId: resolvedBrowserbaseConfigId,
           proxy: registerProxy || null,
+          autoCreateTempMailService: tempMailAutoCreateSubmitFlag,
         });
         setRegisterTask(task);
         toast.success(`${getRegisterChannelLabel(registerChannel)}任务已启动`);
@@ -1027,9 +1119,8 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         const count = parseIntegerInput(registerBatchCount, "注册数量", 1);
         const started = await accountClient.startRegisterBatch({
           emailServiceType: resolvedEmailServiceType,
-          emailServiceId: isBrowserbaseRegisterChannel
-            ? null
-            : normalizeRegisterServiceIdForSubmit(registerServiceId),
+          emailServiceId: resolvedEmailServiceId,
+          emailServiceConfig: resolvedEmailServiceConfig,
           registerMode: resolvedRegisterMode,
           browserbaseConfigId: resolvedBrowserbaseConfigId,
           proxy: registerProxy || null,
@@ -1038,6 +1129,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
           intervalMax,
           concurrency,
           mode: registerExecutionMode,
+          autoCreateTempMailService: tempMailAutoCreateSubmitFlag,
         });
         setRegisterBatchTaskUuids(started.taskUuids);
         setRegisterBatch({
@@ -1469,6 +1561,8 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                               ? REGISTER_SERVICE_AUTO
                               : "";
                             setRegisterServiceId(nextId);
+                            setAutoCreateTempMailService(getDefaultTempMailAutoCreateState(value));
+                            setRegisterTempMailDomainConfigId("");
                           }}
                         >
                           <SelectTrigger>
@@ -1485,21 +1579,76 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
                       </div>
                       <div className="space-y-2">
                         <Label>代理 (可选)</Label>
-                        <Input
-                          placeholder="http://user:pass@host:port"
-                          value={registerProxy}
-                          onChange={(event) => setRegisterProxy(event.target.value)}
-                        />
-                      </div>
-                    </div>
+                    <Input
+                      placeholder="http://user:pass@host:port"
+                      value={registerProxy}
+                      onChange={(event) => setRegisterProxy(event.target.value)}
+                    />
+                  </div>
+                </div>
 
-                    {selectedRegisterServiceHasChoices ? (
-                      <div className="space-y-2">
-                        <Label>具体服务</Label>
-                        <Select
-                          value={registerServiceId}
-                          onValueChange={(value) => setRegisterServiceId(value || REGISTER_SERVICE_AUTO)}
-                        >
+                {showTempMailAutoCreateToggle ? (
+                  <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">自动创建临时 Temp-Mail 服务</p>
+                      <p className="text-xs text-muted-foreground">
+                        {registerMode === "batch"
+                          ? "开启后，整批任务会共用 1 条临时 Temp-Mail 服务；可选域名配置，留空则随机挑一条，并在批次结束后自动删除。"
+                          : "开启后，本次注册会自动创建 1 条临时 Temp-Mail 服务；可选域名配置，留空则随机挑一条，并在任务结束后自动删除。"}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={autoCreateTempMailService}
+                      onCheckedChange={setAutoCreateTempMailService}
+                    />
+                  </div>
+                ) : null}
+
+                {showTempMailDomainConfigPicker ? (
+                  registerTempMailDomainConfigs.length ? (
+                    <div className="space-y-2">
+                      <Label>域名配置</Label>
+                      <Select
+                        value={registerTempMailDomainConfigId || REGISTER_TEMP_MAIL_DOMAIN_CONFIG_AUTO}
+                        onValueChange={(value) => {
+                          setRegisterTempMailDomainConfigId(
+                            !value || value === REGISTER_TEMP_MAIL_DOMAIN_CONFIG_AUTO ? "" : value,
+                          );
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="留空则随机选择一条域名配置" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={REGISTER_TEMP_MAIL_DOMAIN_CONFIG_AUTO}>
+                            留空，随机选择
+                          </SelectItem>
+                          {registerTempMailDomainConfigs.map((item) => (
+                            <SelectItem key={item.id} value={item.id}>
+                              {item.name} ({item.domainBase})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        这里选的是 Temp-Mail 域名配置，不是已有邮箱服务。留空时后端会从现有配置里随机挑一条。
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                      当前没有可用的 Temp-Mail 域名配置。请先到“邮箱服务”页的 Cloudflare Temp-Mail 设置里新增一条域名配置。
+                    </div>
+                  )
+                ) : null}
+
+                {selectedRegisterServiceHasChoices ? (
+                  <div className="space-y-2">
+                    <Label>具体服务</Label>
+                    <Select
+                      value={registerServiceId}
+                      disabled={disableTempMailServicePicker}
+                      onValueChange={(value) => setRegisterServiceId(value || REGISTER_SERVICE_AUTO)}
+                    >
                           <SelectTrigger>
                             <SelectValue placeholder="按当前类型自动轮询" />
                           </SelectTrigger>

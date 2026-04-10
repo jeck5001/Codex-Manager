@@ -670,6 +670,44 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
         self.assertIn(("info", "13. 尝试直接复用当前会话"), logs)
         self.assertNotIn(("info", "13. 已命中 OAuth 授权页，直接走 OAuth 收敛"), logs)
 
+    def _build_helper_runner(self):
+        runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
+        runner.engine = types.SimpleNamespace(
+            _clean_text=lambda value: str(value or "").strip(),
+            _post_create_page_type="",
+            _post_create_continue_url="",
+        )
+        return runner
+
+    def test_should_try_chatgpt_session_first_skips_allowlisted_page_types(self):
+        for page_type in (
+            "workspace",
+            "token_exchange",
+            "sign_in_with_chatgpt_codex_org",
+        ):
+            runner = self._build_helper_runner()
+            runner.engine._post_create_page_type = page_type
+            runner.engine._post_create_continue_url = ""
+            self.assertFalse(
+                runner._should_try_chatgpt_session_first(),
+                f"expected skip for page_type {page_type}",
+            )
+
+    def test_should_try_chatgpt_session_first_skips_allowlisted_continue_urls(self):
+        continue_urls = (
+            "https://auth.openai.com/workspace",
+            "https://auth.openai.com/sign-in-with-chatgpt/codex/organization?foo=bar",
+            "https://auth.openai.com/sign-in-with-chatgpt/codex/token_exchange?foo=bar",
+        )
+        for continue_url in continue_urls:
+            runner = self._build_helper_runner()
+            runner.engine._post_create_page_type = ""
+            runner.engine._post_create_continue_url = continue_url
+            self.assertFalse(
+                runner._should_try_chatgpt_session_first(),
+                f"expected skip for continue_url {continue_url}",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,7 @@
 FROM docker-codexmanager-register:latest
 
+ARG PLAYWRIGHT_BROWSER_INSTALL_ARGS="chromium"
+
 WORKDIR /app
 
 COPY vendor/codex-register/ /app/
@@ -7,12 +9,13 @@ COPY vendor/codex-register/ /app/
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 RUN pip install --no-cache-dir -r requirements.txt \
-    && python -m playwright install chromium
+    && python -m playwright install ${PLAYWRIGHT_BROWSER_INSTALL_ARGS}
 
-RUN mkdir -p /app/data /app/logs
+RUN mkdir -p /app/data /app/logs \
+    && chmod +x /app/docker/start-register.sh
 
-EXPOSE 9000
+EXPOSE 9000 7900
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "webui.py"]
+CMD ["/app/docker/start-register.sh"]

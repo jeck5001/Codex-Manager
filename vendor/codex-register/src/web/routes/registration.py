@@ -4,10 +4,11 @@
 
 import asyncio
 import logging
+import re
 import uuid
 import random
 from datetime import datetime
-from typing import Awaitable, Callable, List, Optional, Dict, Tuple
+from typing import Any, Awaitable, Callable, List, Optional, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
@@ -44,6 +45,14 @@ running_tasks: dict = {}
 # 批量任务存储
 batch_tasks: Dict[str, dict] = {}
 RECOVERY_RESUME_CONCURRENCY = 3
+
+# Register-time auto-provisioned Temp Mail resources.
+# These are in-memory only and best-effort cleaned up when background tasks finish.
+_AUTO_CREATED_TEMP_MAIL_TASKS: Dict[str, Dict[str, Any]] = {}
+_AUTO_CREATED_TEMP_MAIL_BATCHES: Dict[str, Dict[str, Any]] = {}
+# Retry hints for tasks that were auto-provisioned with temp-mail at register-time.
+# This survives cleanup so that a retry can re-provision a fresh temp-mail service.
+_AUTO_CREATED_TEMP_MAIL_RETRY_HINTS: Dict[str, Dict[str, Any]] = {}
 
 
 # ============== Proxy Helper Functions ==============
@@ -109,6 +118,40 @@ def _pick_outlook_service_for_registration(db) -> Optional[EmailServiceModel]:
 def _mark_email_service_used(db, service_id: Optional[int]):
     if service_id:
         crud.update_email_service_last_used(db, service_id)
+
+
+def _extract_temp_mail_domain_failure_http_status(result: Any) -> Optional[int]:
+    logs = getattr(result, "logs", None) or []
+    if not isinstance(logs, list):
+        return None
+
+    for entry in reversed(logs):
+        text = str(entry or "")
+        match = re.search(r"提交密码状态:\s*(\d+)", text)
+        if match:
+            try:
+                return int(match.group(1))
+            except Exception:
+                return None
+    return None
+
+
+def _record_temp_mail_domain_result(domain_config_id: Optional[str], result: Any) -> None:
+    normalized_id = str(domain_config_id or "").strip()
+    if not normalized_id or result is None:
+        return
+
+    try:
+        from .email_services import record_temp_mail_domain_registration_outcome
+
+        record_temp_mail_domain_registration_outcome(
+            normalized_id,
+            success=bool(getattr(result, "success", False)),
+            failure_http_status=_extract_temp_mail_domain_failure_http_status(result),
+            error_message=str(getattr(result, "error_message", "") or "").strip(),
+        )
+    except Exception as exc:
+        logger.warning(f"记录 Temp-Mail 域名质量结果失败({normalized_id}): {exc}")
 
 
 def _list_outlook_services_for_registration(db) -> List[EmailServiceModel]:
@@ -185,6 +228,7 @@ class RegistrationTaskCreate(BaseModel):
     browserbase_config_id: Optional[int] = None
     auto_upload_cpa: bool = False  # 注册成功后自动上传到 CPA
     cpa_service_id: Optional[int] = None  # 指定 CPA 服务 ID，不传则使用全局配置
+    auto_create_temp_mail_service: bool = False
 
 
 class BatchRegistrationRequest(BaseModel):
@@ -202,6 +246,7 @@ class BatchRegistrationRequest(BaseModel):
     mode: str = "pipeline"  # 执行模式: "parallel" 或 "pipeline"
     auto_upload_cpa: bool = False  # 注册成功后自动上传到 CPA
     cpa_service_id: Optional[int] = None  # 指定 CPA 服务 ID，不传则使用全局配置
+    auto_create_temp_mail_service: bool = False
 
 
 class RegistrationTaskResponse(BaseModel):
@@ -286,9 +331,11 @@ def _create_single_registration_task(
     browserbase_config_id: Optional[int] = None,
     auto_upload_cpa: bool = False,
     cpa_service_id: Optional[int] = None,
+    *,
+    task_uuid_override: Optional[str] = None,
 ) -> RegistrationTask:
     """创建并启动单个注册任务。"""
-    task_uuid = str(uuid.uuid4())
+    task_uuid = str(task_uuid_override or uuid.uuid4())
     task = crud.create_registration_task(
         db,
         task_uuid=task_uuid,
@@ -313,6 +360,81 @@ def _create_single_registration_task(
         cpa_service_id,
     )
     return task
+
+
+def _should_auto_create_temp_mail(email_service_type: str, flag: bool) -> bool:
+    if not flag:
+        return False
+    normalized = str(email_service_type or "").strip().lower()
+    return normalized == EmailServiceType.TEMP_MAIL.value
+
+
+def _cleanup_auto_created_temp_mail_task(task_uuid: str) -> None:
+    """Best-effort cleanup for a register-time auto-created temp-mail service bound to a single task."""
+    task_uuid = str(task_uuid or "").strip()
+    if not task_uuid:
+        return
+    meta = _AUTO_CREATED_TEMP_MAIL_TASKS.pop(task_uuid, None)
+    if not meta:
+        return
+
+    service_id = meta.get("service_id")
+    cleanup_context = meta.get("cleanup_context")
+
+    with get_db() as db:
+        # Break FK references before deleting the email service (if FK is enforced).
+        try:
+            crud.update_registration_task(db, task_uuid, email_service_id=None)
+        except Exception as exc:
+            logger.error(f"Temp-Mail 清理时解绑任务邮箱服务失败: {exc}")
+
+        try:
+            if service_id:
+                crud.delete_email_service(db, int(service_id))
+        except Exception as exc:
+            logger.error(f"Temp-Mail 清理时删除邮箱服务失败: {exc}")
+
+    try:
+        from .email_services import _cleanup_temp_mail_provisioning
+        _cleanup_temp_mail_provisioning(cleanup_context)
+    except Exception as exc:
+        logger.error(f"Temp-Mail 清理时远端回滚异常: {exc}")
+
+
+def _cleanup_auto_created_temp_mail_batch(batch_id: str) -> None:
+    """Best-effort cleanup for a register-time auto-created temp-mail service bound to a batch."""
+    batch_id = str(batch_id or "").strip()
+    if not batch_id:
+        return
+    meta = _AUTO_CREATED_TEMP_MAIL_BATCHES.pop(batch_id, None)
+    if not meta:
+        return
+
+    service_id = meta.get("service_id")
+    cleanup_context = meta.get("cleanup_context")
+    task_uuids = list(meta.get("task_uuids") or [])
+
+    with get_db() as db:
+        try:
+            for task_uuid in task_uuids:
+                try:
+                    crud.update_registration_task(db, task_uuid, email_service_id=None)
+                except Exception as exc:
+                    logger.error(f"Temp-Mail 批量清理时解绑任务邮箱服务失败({task_uuid}): {exc}")
+        except Exception as exc:
+            logger.error(f"Temp-Mail 批量清理时解绑任务邮箱服务异常: {exc}")
+
+        try:
+            if service_id:
+                crud.delete_email_service(db, int(service_id))
+        except Exception as exc:
+            logger.error(f"Temp-Mail 批量清理时删除邮箱服务失败: {exc}")
+
+    try:
+        from .email_services import _cleanup_temp_mail_provisioning
+        _cleanup_temp_mail_provisioning(cleanup_context)
+    except Exception as exc:
+        logger.error(f"Temp-Mail 批量清理时远端回滚异常: {exc}")
 
 
 class TaskListResponse(BaseModel):
@@ -401,6 +523,9 @@ def _normalize_email_service_config(
     elif service_type == EmailServiceType.TEMP_MAIL:
         if 'default_domain' in normalized and 'domain' not in normalized:
             normalized['domain'] = normalized.pop('default_domain')
+    elif service_type == EmailServiceType.MAIL_33_IMAP:
+        if 'domain' in normalized and 'alias_domain' not in normalized:
+            normalized['alias_domain'] = normalized.pop('domain')
 
     if proxy_url and 'proxy_url' not in normalized:
         normalized['proxy_url'] = proxy_url
@@ -603,6 +728,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
 
             normalized_register_mode = _normalize_register_mode(register_mode)
             settings = get_settings()
+            temp_mail_domain_config_id: Optional[str] = None
 
             if normalized_register_mode == BROWSERBASE_DDG_REGISTER_MODE:
                 profile_id = browserbase_config_id
@@ -665,6 +791,8 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                     service_type = EmailServiceType(db_service.service_type)
                     config = _normalize_email_service_config(service_type, db_service.config, actual_proxy_url)
                     config = _merge_runtime_email_service_config(config, email_service_config)
+                    if service_type == EmailServiceType.TEMP_MAIL:
+                        temp_mail_domain_config_id = str(config.get("domain_config_id") or "").strip() or None
                     # 更新任务关联的邮箱服务
                     crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
                     _mark_email_service_used(db, db_service.id)
@@ -703,6 +831,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                     if db_service and db_service.config:
                         config = _normalize_email_service_config(service_type, db_service.config, actual_proxy_url)
                         config = _merge_runtime_email_service_config(config, email_service_config)
+                        temp_mail_domain_config_id = str(config.get("domain_config_id") or "").strip() or None
                         crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
                         _mark_email_service_used(db, db_service.id)
                         logger.info(f"使用数据库 Temp Mail 服务: {db_service.name}")
@@ -721,6 +850,16 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                         logger.info(f"使用数据库 Outlook 账户: {selected_service.name}")
                     else:
                         raise ValueError("所有 Outlook 账户都已注册过 OpenAI 账号，请添加新的 Outlook 账户")
+                elif service_type == EmailServiceType.MAIL_33_IMAP:
+                    selected_service = _pick_email_service_for_registration(db, EmailServiceType.MAIL_33_IMAP)
+                    if not selected_service or not selected_service.config:
+                        raise ValueError("没有可用的 33mail + IMAP 服务，请先在邮箱服务中配置")
+
+                    config = _normalize_email_service_config(service_type, selected_service.config, actual_proxy_url)
+                    config = _merge_runtime_email_service_config(config, email_service_config)
+                    crud.update_registration_task(db, task_uuid, email_service_id=selected_service.id)
+                    _mark_email_service_used(db, selected_service.id)
+                    logger.info(f"使用数据库 33mail + IMAP 服务: {selected_service.name}")
                 else:
                     config = _merge_runtime_email_service_config({}, email_service_config)
 
@@ -737,6 +876,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                     email_code_poll_interval_override=config.get("email_code_poll_interval_override"),
                 )
                 result = runner.run()
+                _record_temp_mail_domain_result(temp_mail_domain_config_id, result)
 
                 if result.success:
                     runner.save_to_database(result)
@@ -779,6 +919,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
 
             # 执行注册
             result = engine.run()
+            _record_temp_mail_domain_result(temp_mail_domain_config_id, result)
 
             if result.success:
                 # 保存到数据库
@@ -913,6 +1054,9 @@ async def run_registration_task(task_uuid: str, email_service_type: str, proxy: 
         logger.error(f"线程池执行异常: {task_uuid}, 错误: {e}")
         task_manager.add_log(task_uuid, f"[错误] 线程池执行异常: {str(e)}")
         task_manager.update_status(task_uuid, "failed", error=str(e))
+    finally:
+        # Ensure register-time auto-created temp-mail resources are cleaned up when the task finishes.
+        _cleanup_auto_created_temp_mail_task(task_uuid)
 
 
 def _init_batch_state(batch_id: str, task_uuids: List[str]):
@@ -1128,19 +1272,23 @@ async def run_batch_registration(
     cpa_service_id: Optional[int] = None
 ):
     """根据 mode 分发到并行或流水线执行"""
-    if mode == "parallel":
-        await run_batch_parallel(
-            batch_id, task_uuids, email_service_type, proxy,
-            email_service_config, email_service_id, register_mode, browserbase_config_id, task_proxies, task_email_service_ids, concurrency,
-            auto_upload_cpa=auto_upload_cpa, cpa_service_id=cpa_service_id
-        )
-    else:
-        await run_batch_pipeline(
-            batch_id, task_uuids, email_service_type, proxy,
-            email_service_config, email_service_id, register_mode, browserbase_config_id, task_proxies, task_email_service_ids,
-            interval_min, interval_max, concurrency,
-            auto_upload_cpa=auto_upload_cpa, cpa_service_id=cpa_service_id
-        )
+    try:
+        if mode == "parallel":
+            await run_batch_parallel(
+                batch_id, task_uuids, email_service_type, proxy,
+                email_service_config, email_service_id, register_mode, browserbase_config_id, task_proxies, task_email_service_ids, concurrency,
+                auto_upload_cpa=auto_upload_cpa, cpa_service_id=cpa_service_id
+            )
+        else:
+            await run_batch_pipeline(
+                batch_id, task_uuids, email_service_type, proxy,
+                email_service_config, email_service_id, register_mode, browserbase_config_id, task_proxies, task_email_service_ids,
+                interval_min, interval_max, concurrency,
+                auto_upload_cpa=auto_upload_cpa, cpa_service_id=cpa_service_id
+            )
+    finally:
+        # Ensure register-time auto-created temp-mail resources are cleaned up when the batch finishes.
+        _cleanup_auto_created_temp_mail_batch(batch_id)
 
 
 # ============== API Endpoints ==============
@@ -1174,18 +1322,79 @@ async def start_registration(
                     status_code=400,
                     detail=f"无效的邮箱服务类型: {request.email_service_type}"
                 )
-        task = _create_single_registration_task(
-            db=db,
-            background_tasks=background_tasks,
-            email_service_type=request.email_service_type,
-            proxy=request.proxy,
-            email_service_config=request.email_service_config,
-            email_service_id=request.email_service_id,
-            register_mode=register_mode,
-            browserbase_config_id=request.browserbase_config_id,
-            auto_upload_cpa=request.auto_upload_cpa,
-            cpa_service_id=request.cpa_service_id,
-        )
+        auto_create_flag = bool(getattr(request, "auto_create_temp_mail_service", False))
+        if _should_auto_create_temp_mail(request.email_service_type, auto_create_flag):
+            task_uuid = str(uuid.uuid4())
+            cleanup_context: Optional[Dict[str, Any]] = None
+            service_id: Optional[int] = None
+            try:
+                from .email_services import build_temp_mail_service_for_registration
+                provision_config = dict(request.email_service_config or {})
+                merged_config, cleanup_context, domain = build_temp_mail_service_for_registration(
+                    provision_config,
+                    owner_task_uuid=task_uuid,
+                )
+                db_service = crud.create_email_service(
+                    db,
+                    service_type=EmailServiceType.TEMP_MAIL.value,
+                    name=str(domain or "").strip(),
+                    config=merged_config,
+                    enabled=True,
+                    priority=0,
+                )
+                service_id = int(getattr(db_service, "id", 0) or 0) or None
+                if not service_id:
+                    raise RuntimeError("Temp-Mail 服务创建成功但未返回有效 service_id")
+                _AUTO_CREATED_TEMP_MAIL_TASKS[task_uuid] = {
+                    "service_id": service_id,
+                    "cleanup_context": cleanup_context,
+                    "task_uuid": task_uuid,
+                }
+                _AUTO_CREATED_TEMP_MAIL_RETRY_HINTS[task_uuid] = {
+                    "email_service_type": EmailServiceType.TEMP_MAIL.value,
+                    "provision_config": provision_config,
+                }
+                task = _create_single_registration_task(
+                    db=db,
+                    background_tasks=background_tasks,
+                    email_service_type=request.email_service_type,
+                    proxy=request.proxy,
+                    email_service_config=request.email_service_config,
+                    email_service_id=service_id,
+                    register_mode=register_mode,
+                    browserbase_config_id=request.browserbase_config_id,
+                    auto_upload_cpa=request.auto_upload_cpa,
+                    cpa_service_id=request.cpa_service_id,
+                    task_uuid_override=task_uuid,
+                )
+            except Exception:
+                # Roll back best-effort: delete any created task (to avoid FK issues) then clean up temp-mail resources.
+                try:
+                    crud.delete_registration_task(db, task_uuid)
+                except Exception as exc:
+                    logger.error(f"Temp-Mail 回滚时删除注册任务失败: {exc}")
+                _AUTO_CREATED_TEMP_MAIL_TASKS.pop(task_uuid, None)
+                try:
+                    if service_id:
+                        crud.delete_email_service(db, int(service_id))
+                except Exception as exc:
+                    logger.error(f"Temp-Mail 回滚时删除邮箱服务失败: {exc}")
+                from .email_services import _cleanup_temp_mail_provisioning
+                _cleanup_temp_mail_provisioning(cleanup_context)
+                raise
+        else:
+            task = _create_single_registration_task(
+                db=db,
+                background_tasks=background_tasks,
+                email_service_type=request.email_service_type,
+                proxy=request.proxy,
+                email_service_config=request.email_service_config,
+                email_service_id=request.email_service_id,
+                register_mode=register_mode,
+                browserbase_config_id=request.browserbase_config_id,
+                auto_upload_cpa=request.auto_upload_cpa,
+                cpa_service_id=request.cpa_service_id,
+            )
 
     return task_to_response(task)
 
@@ -1222,6 +1431,7 @@ async def start_batch_registration(
     # 创建批量任务
     batch_id = str(uuid.uuid4())
     task_uuids = []
+    batch_email_service_id: Optional[int] = getattr(request, "email_service_id", None)
 
     with get_db() as db:
         if register_mode == BROWSERBASE_DDG_REGISTER_MODE:
@@ -1239,60 +1449,144 @@ async def start_batch_registration(
                     status_code=400,
                     detail=f"无效的邮箱服务类型: {request.email_service_type}"
                 )
-            task_email_service_ids = _build_batch_email_service_plan(
-                db,
-                service_type,
-                request.email_service_id,
-                request.count,
-            )
+            auto_create_flag = bool(getattr(request, "auto_create_temp_mail_service", False))
+            if _should_auto_create_temp_mail(request.email_service_type, auto_create_flag):
+                cleanup_context: Optional[Dict[str, Any]] = None
+                service_id: Optional[int] = None
+                try:
+                    from .email_services import build_temp_mail_service_for_registration
+                    provision_config = dict(request.email_service_config or {})
+                    merged_config, cleanup_context, domain = build_temp_mail_service_for_registration(
+                        provision_config,
+                        owner_batch_id=batch_id,
+                    )
+                    db_service = crud.create_email_service(
+                        db,
+                        service_type=EmailServiceType.TEMP_MAIL.value,
+                        name=str(domain or "").strip(),
+                        config=merged_config,
+                        enabled=True,
+                        priority=0,
+                    )
+                    service_id = int(getattr(db_service, "id", 0) or 0) or None
+                    if not service_id:
+                        raise RuntimeError("Temp-Mail 服务创建成功但未返回有效 service_id")
+                    batch_email_service_id = service_id
+                    task_email_service_ids = [service_id] * request.count
+                    _AUTO_CREATED_TEMP_MAIL_BATCHES[batch_id] = {
+                        "service_id": service_id,
+                        "cleanup_context": cleanup_context,
+                        "batch_id": batch_id,
+                        "task_uuids": [],
+                    }
+                except Exception:
+                    try:
+                        if service_id:
+                            crud.delete_email_service(db, int(service_id))
+                    except Exception as exc:
+                        logger.error(f"Temp-Mail 批量回滚时删除邮箱服务失败: {exc}")
+                    from .email_services import _cleanup_temp_mail_provisioning
+                    _cleanup_temp_mail_provisioning(cleanup_context)
+                    raise
+            else:
+                task_email_service_ids = _build_batch_email_service_plan(
+                    db,
+                    service_type,
+                    request.email_service_id,
+                    request.count,
+                )
         task_proxies = _build_batch_proxy_plan(db, request.proxy, request.count)
 
-        for index in range(request.count):
-            task_uuid = str(uuid.uuid4())
-            resolved_email_service_id = task_email_service_ids[index]
-            resolved_proxy = task_proxies[index]
-            crud.create_registration_task(
-                db,
-                task_uuid=task_uuid,
-                email_service_id=resolved_email_service_id,
-                proxy=resolved_proxy,
-                register_mode=register_mode,
-                browserbase_config_id=request.browserbase_config_id,
-            )
-            if register_mode != BROWSERBASE_DDG_REGISTER_MODE and resolved_email_service_id:
-                _mark_email_service_used(db, resolved_email_service_id)
-            task_uuids.append(task_uuid)
+        try:
+            for index in range(request.count):
+                task_uuid = str(uuid.uuid4())
+                resolved_email_service_id = task_email_service_ids[index]
+                resolved_proxy = task_proxies[index]
+                crud.create_registration_task(
+                    db,
+                    task_uuid=task_uuid,
+                    email_service_id=resolved_email_service_id,
+                    proxy=resolved_proxy,
+                    register_mode=register_mode,
+                    browserbase_config_id=request.browserbase_config_id,
+                )
+                if register_mode != BROWSERBASE_DDG_REGISTER_MODE and resolved_email_service_id:
+                    _mark_email_service_used(db, resolved_email_service_id)
+                task_uuids.append(task_uuid)
+        except Exception:
+            # If we auto-created a temp-mail service for this batch, roll back tasks + service resources.
+            if batch_id in _AUTO_CREATED_TEMP_MAIL_BATCHES:
+                meta = _AUTO_CREATED_TEMP_MAIL_BATCHES.pop(batch_id, None) or {}
+                service_id = meta.get("service_id")
+                cleanup_context = meta.get("cleanup_context")
+                for created_uuid in list(task_uuids):
+                    try:
+                        crud.delete_registration_task(db, created_uuid)
+                    except Exception as exc:
+                        logger.error(f"Temp-Mail 批量回滚时删除注册任务失败({created_uuid}): {exc}")
+                try:
+                    if service_id:
+                        crud.delete_email_service(db, int(service_id))
+                except Exception as exc:
+                    logger.error(f"Temp-Mail 批量回滚时删除邮箱服务失败: {exc}")
+                from .email_services import _cleanup_temp_mail_provisioning
+                _cleanup_temp_mail_provisioning(cleanup_context)
+            raise
+        else:
+            # Track task UUIDs for batch cleanup.
+            if batch_id in _AUTO_CREATED_TEMP_MAIL_BATCHES:
+                _AUTO_CREATED_TEMP_MAIL_BATCHES[batch_id]["task_uuids"] = list(task_uuids)
+            # Track per-task retry hints so a later retry can re-provision a fresh service.
+            if _should_auto_create_temp_mail(request.email_service_type, bool(getattr(request, "auto_create_temp_mail_service", False))):
+                provision_config = dict(request.email_service_config or {})
+                for created_uuid in task_uuids:
+                    _AUTO_CREATED_TEMP_MAIL_RETRY_HINTS[created_uuid] = {
+                        "email_service_type": EmailServiceType.TEMP_MAIL.value,
+                        "provision_config": provision_config,
+                    }
 
-    # 获取所有任务
-    with get_db() as db:
-        tasks = [crud.get_registration_task(db, uuid) for uuid in task_uuids]
+    try:
+        # 获取所有任务
+        with get_db() as db:
+            tasks = [crud.get_registration_task(db, uuid) for uuid in task_uuids]
 
-    # 在后台运行批量注册
-    background_tasks.add_task(
-        run_batch_registration,
-        batch_id,
-        task_uuids,
-        request.email_service_type,
-        request.proxy,
-        request.email_service_config,
-        request.email_service_id,
-        register_mode,
-        request.browserbase_config_id,
-        task_proxies,
-        task_email_service_ids,
-        request.interval_min,
-        request.interval_max,
-        request.concurrency,
-        request.mode,
-        request.auto_upload_cpa,
-        request.cpa_service_id
-    )
+        # 在后台运行批量注册
+        background_tasks.add_task(
+            run_batch_registration,
+            batch_id,
+            task_uuids,
+            request.email_service_type,
+            request.proxy,
+            request.email_service_config,
+            batch_email_service_id,
+            register_mode,
+            request.browserbase_config_id,
+            task_proxies,
+            task_email_service_ids,
+            request.interval_min,
+            request.interval_max,
+            request.concurrency,
+            request.mode,
+            request.auto_upload_cpa,
+            request.cpa_service_id
+        )
 
-    return BatchRegistrationResponse(
-        batch_id=batch_id,
-        count=request.count,
-        tasks=[task_to_response(t) for t in tasks if t]
-    )
+        return BatchRegistrationResponse(
+            batch_id=batch_id,
+            count=request.count,
+            tasks=[task_to_response(t) for t in tasks if t]
+        )
+    except Exception:
+        # Roll back best-effort if setup fails after auto-creating temp-mail resources.
+        if batch_id in _AUTO_CREATED_TEMP_MAIL_BATCHES:
+            with get_db() as db:
+                for created_uuid in list(task_uuids):
+                    try:
+                        crud.delete_registration_task(db, created_uuid)
+                    except Exception as exc:
+                        logger.error(f"Temp-Mail 批量回滚时删除注册任务失败({created_uuid}): {exc}")
+            _cleanup_auto_created_temp_mail_batch(batch_id)
+        raise
 
 
 @router.get("/batch/{batch_id}")
@@ -1327,6 +1621,22 @@ async def cancel_batch(batch_id: str):
 
     batch["cancelled"] = True
     task_manager.cancel_batch(batch_id)
+    # Mark all tasks as cancelled as best-effort to prevent queued work from starting.
+    task_uuids = list(batch.get("task_uuids") or [])
+    if task_uuids:
+        with get_db() as db:
+            for task_uuid in task_uuids:
+                try:
+                    task_manager.cancel_task(task_uuid)
+                except Exception as exc:
+                    logger.error(f"批量任务取消时标记子任务取消失败({task_uuid}): {exc}")
+                try:
+                    t = crud.get_registration_task(db, task_uuid)
+                    if t and str(getattr(t, "status", "") or "").strip().lower() == "pending":
+                        crud.update_registration_task(db, task_uuid, status="cancelled")
+                except Exception as exc:
+                    logger.error(f"批量任务取消时更新子任务状态失败({task_uuid}): {exc}")
+
     return {"success": True, "message": "批量任务取消请求已提交"}
 
 
@@ -1390,9 +1700,15 @@ async def cancel_task(task_uuid: str):
         if task.status not in ["pending", "running"]:
             raise HTTPException(status_code=400, detail="任务已完成或已取消")
 
+        # Mark cancellation for the worker loop ASAP.
+        try:
+            task_manager.cancel_task(task_uuid)
+        except Exception as exc:
+            logger.error(f"任务取消时标记 TaskManager 取消失败: {exc}")
+
         task = crud.update_registration_task(db, task_uuid, status="cancelled")
 
-        return {"success": True, "message": "任务已取消"}
+    return {"success": True, "message": "任务已取消"}
 
 
 @router.post("/tasks/{task_uuid}/retry", response_model=RegistrationTaskResponse)
@@ -1419,16 +1735,78 @@ async def retry_task(
         if runtime_config.get("retry_strategy") == "refresh_proxy":
             retry_proxy = None
 
-        retried_task = _create_single_registration_task(
-            db=db,
-            background_tasks=background_tasks,
-            email_service_type=email_service_type,
-            proxy=retry_proxy,
-            email_service_config=runtime_config or None,
-            email_service_id=task.email_service_id,
-            register_mode=_infer_register_mode_from_task(task),
-            browserbase_config_id=getattr(task, "browserbase_config_id", None),
+        hint = _AUTO_CREATED_TEMP_MAIL_RETRY_HINTS.get(task_uuid)
+        hint_service_type = str((hint or {}).get("email_service_type") or "").strip().lower()
+        effective_email_service_type = (
+            hint_service_type if hint_service_type else str(email_service_type or "").strip().lower()
         )
+        if hint_service_type == EmailServiceType.TEMP_MAIL.value:
+            new_task_uuid = str(uuid.uuid4())
+            cleanup_context: Optional[Dict[str, Any]] = None
+            service_id: Optional[int] = None
+            try:
+                from .email_services import build_temp_mail_service_for_registration
+                provision_config = dict(hint.get("provision_config") or {})
+                merged_config, cleanup_context, domain = build_temp_mail_service_for_registration(
+                    provision_config,
+                    owner_task_uuid=new_task_uuid,
+                )
+                db_service = crud.create_email_service(
+                    db,
+                    service_type=EmailServiceType.TEMP_MAIL.value,
+                    name=str(domain or "").strip(),
+                    config=merged_config,
+                    enabled=True,
+                    priority=0,
+                )
+                service_id = int(getattr(db_service, "id", 0) or 0) or None
+                if not service_id:
+                    raise RuntimeError("Temp-Mail 服务创建成功但未返回有效 service_id")
+                _AUTO_CREATED_TEMP_MAIL_TASKS[new_task_uuid] = {
+                    "service_id": service_id,
+                    "cleanup_context": cleanup_context,
+                    "task_uuid": new_task_uuid,
+                }
+                _AUTO_CREATED_TEMP_MAIL_RETRY_HINTS[new_task_uuid] = {
+                    "email_service_type": EmailServiceType.TEMP_MAIL.value,
+                    "provision_config": provision_config,
+                }
+                retried_task = _create_single_registration_task(
+                    db=db,
+                    background_tasks=background_tasks,
+                    email_service_type=effective_email_service_type,
+                    proxy=retry_proxy,
+                    email_service_config=runtime_config or None,
+                    email_service_id=service_id,
+                    register_mode=_infer_register_mode_from_task(task),
+                    browserbase_config_id=getattr(task, "browserbase_config_id", None),
+                    task_uuid_override=new_task_uuid,
+                )
+            except Exception:
+                try:
+                    crud.delete_registration_task(db, new_task_uuid)
+                except Exception as exc:
+                    logger.error(f"Temp-Mail 重试回滚时删除注册任务失败: {exc}")
+                _AUTO_CREATED_TEMP_MAIL_TASKS.pop(new_task_uuid, None)
+                try:
+                    if service_id:
+                        crud.delete_email_service(db, int(service_id))
+                except Exception as exc:
+                    logger.error(f"Temp-Mail 重试回滚时删除邮箱服务失败: {exc}")
+                from .email_services import _cleanup_temp_mail_provisioning
+                _cleanup_temp_mail_provisioning(cleanup_context)
+                raise
+        else:
+            retried_task = _create_single_registration_task(
+                db=db,
+                background_tasks=background_tasks,
+                email_service_type=email_service_type,
+                proxy=retry_proxy,
+                email_service_config=runtime_config or None,
+                email_service_id=task.email_service_id,
+                register_mode=_infer_register_mode_from_task(task),
+                browserbase_config_id=getattr(task, "browserbase_config_id", None),
+            )
         return task_to_response(retried_task)
 
 
@@ -1505,8 +1883,10 @@ async def get_available_email_services():
     """
     from ...database.models import EmailService as EmailServiceModel
     from ...config.settings import get_settings
+    from .email_services import _load_temp_mail_domain_configs
 
     settings = get_settings()
+    temp_mail_domain_configs = _load_temp_mail_domain_configs(settings)
     result = {
         "tempmail": {
             "available": True,
@@ -1531,7 +1911,13 @@ async def get_available_email_services():
         "temp_mail": {
             "available": False,
             "count": 0,
-            "services": []
+            "services": [],
+            "domain_configs": temp_mail_domain_configs,
+        },
+        "mail_33_imap": {
+            "available": False,
+            "count": 0,
+            "services": [],
         }
     }
 
@@ -1602,8 +1988,27 @@ async def get_available_email_services():
                 "priority": service.priority
             })
 
-        result["temp_mail"]["count"] = len(temp_mail_services)
-        result["temp_mail"]["available"] = len(temp_mail_services) > 0
+        result["temp_mail"]["count"] = len(temp_mail_services) or len(temp_mail_domain_configs)
+        result["temp_mail"]["available"] = len(temp_mail_services) > 0 or len(temp_mail_domain_configs) > 0
+
+        mail33_services = db.query(EmailServiceModel).filter(
+            EmailServiceModel.service_type == "mail_33_imap",
+            EmailServiceModel.enabled == True
+        ).order_by(EmailServiceModel.priority.asc()).all()
+
+        for service in mail33_services:
+            config = service.config or {}
+            result["mail_33_imap"]["services"].append({
+                "id": service.id,
+                "name": service.name,
+                "type": "mail_33_imap",
+                "alias_domain": config.get("alias_domain"),
+                "real_inbox_email": config.get("real_inbox_email"),
+                "priority": service.priority,
+            })
+
+        result["mail_33_imap"]["count"] = len(mail33_services)
+        result["mail_33_imap"]["available"] = len(mail33_services) > 0
 
     return result
 

@@ -50,6 +50,11 @@ import {
   RegisterEmailServiceTestResult,
   RegisterEmailServiceType,
   RegisterEmailServiceTypeCatalog,
+  RegisterHotmailArtifact,
+  RegisterHotmailBatchSnapshot,
+  RegisterHotmailLocalHandoff,
+  RegisterHotmailLocalHandoffCookie,
+  RegisterHotmailLocalHandoffOrigin,
   RegisterImportResult,
   RegisterOutlookAccount,
   RegisterOutlookAccountsResult,
@@ -58,6 +63,8 @@ import {
   RegisterOutlookBatchImportResult,
   RegisterServiceGroup,
   RegisterStats,
+  RegisterTempMailCloudflareSettings,
+  RegisterTempMailDomainConfig,
   RegisterTaskBatchDeleteResult,
   RegisterTaskListResult,
   RegisterTaskSnapshot,
@@ -125,9 +132,11 @@ interface ApiKeyPayload {
 interface RegisterStartPayload {
   emailServiceType: string;
   emailServiceId?: number | null;
+  emailServiceConfig?: Record<string, unknown> | null;
   registerMode?: string | null;
   browserbaseConfigId?: number | null;
   proxy?: string | null;
+  autoCreateTempMailService?: boolean;
 }
 
 interface RegisterBatchStartPayload extends RegisterStartPayload {
@@ -146,6 +155,14 @@ interface RegisterOutlookBatchStartPayload {
   intervalMax: number;
   concurrency: number;
   mode: "pipeline" | "parallel";
+}
+
+interface RegisterHotmailBatchStartPayload {
+  count: number;
+  concurrency: number;
+  intervalMin: number;
+  intervalMax: number;
+  proxy?: string | null;
 }
 
 interface RegisterTaskListPayload {
@@ -185,6 +202,66 @@ interface RegisterEmailServiceReorderPayload {
   serviceIds: number[];
 }
 
+interface RegisterTempMailCloudflareSettingsPayload {
+  cloudflareApiToken?: string | null;
+  cloudflareApiEmail?: string | null;
+  cloudflareGlobalApiKey?: string | null;
+  cloudflareAccountId?: string | null;
+  cloudflareZoneId?: string | null;
+  cloudflareWorkerName?: string | null;
+  tempMailBaseUrl?: string | null;
+  tempMailAdminPassword?: string | null;
+  domainConfigs?: RegisterTempMailDomainConfig[] | null;
+  tempMailDomainBase?: string | null;
+  tempMailSubdomainMode?: string | null;
+  tempMailSubdomainLength?: number | null;
+  tempMailSubdomainPrefix?: string | null;
+  tempMailSyncCloudflareEnabled?: boolean;
+  tempMailRequireCloudflareSync?: boolean;
+}
+
+function normalizeRegisterTempMailDomainConfig(value: unknown): RegisterTempMailDomainConfig {
+  const source = asRecord(value) ?? {};
+  return {
+    id: typeof source.id === "string" ? source.id : "",
+    name: typeof source.name === "string" ? source.name : "",
+    zoneId:
+      typeof source.zoneId === "string"
+        ? source.zoneId
+        : typeof source.zone_id === "string"
+          ? source.zone_id
+          : "",
+    domainBase:
+      typeof source.domainBase === "string"
+        ? source.domainBase
+        : typeof source.domain_base === "string"
+          ? source.domain_base
+          : "",
+    subdomainMode:
+      typeof source.subdomainMode === "string"
+        ? source.subdomainMode
+        : typeof source.subdomain_mode === "string"
+          ? source.subdomain_mode
+          : "random",
+    subdomainLength:
+      typeof source.subdomainLength === "number" && Number.isFinite(source.subdomainLength)
+        ? source.subdomainLength
+        : typeof source.subdomain_length === "number" && Number.isFinite(source.subdomain_length)
+          ? source.subdomain_length
+          : 6,
+    subdomainPrefix:
+      typeof source.subdomainPrefix === "string"
+        ? source.subdomainPrefix
+        : typeof source.subdomain_prefix === "string"
+          ? source.subdomain_prefix
+          : "",
+    syncCloudflareEnabled:
+      source.syncCloudflareEnabled === true || source.sync_cloudflare_enabled === true,
+    requireCloudflareSync:
+      source.requireCloudflareSync === true || source.require_cloudflare_sync === true,
+  };
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -194,6 +271,11 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function normalizeRegisterServiceGroup(value: unknown): RegisterServiceGroup {
   const source = asRecord(value) ?? {};
   const services = Array.isArray(source.services) ? source.services : [];
+  const rawDomainConfigs = Array.isArray(source.domainConfigs)
+    ? source.domainConfigs
+    : Array.isArray(source.domain_configs)
+      ? source.domain_configs
+      : [];
   return {
     available: source.available === true,
     count: typeof source.count === "number" && Number.isFinite(source.count)
@@ -208,6 +290,9 @@ function normalizeRegisterServiceGroup(value: unknown): RegisterServiceGroup {
         description: typeof service.description === "string" ? service.description : "",
       };
     }),
+    domainConfigs: rawDomainConfigs
+      .map(normalizeRegisterTempMailDomainConfig)
+      .filter((item) => item.id),
   };
 }
 
@@ -219,6 +304,7 @@ function normalizeRegisterAvailableServices(value: unknown): RegisterAvailableSe
     outlook: normalizeRegisterServiceGroup(source.outlook),
     customDomain: normalizeRegisterServiceGroup(source.custom_domain ?? source.customDomain),
     tempMail: normalizeRegisterServiceGroup(source.temp_mail ?? source.tempMail),
+    mail33Imap: normalizeRegisterServiceGroup(source.mail_33_imap ?? source.mail33Imap),
   };
 }
 
@@ -522,6 +608,198 @@ function normalizeRegisterOutlookBatchSnapshot(
   };
 }
 
+function normalizeRegisterHotmailArtifact(value: unknown): RegisterHotmailArtifact {
+  const source = asRecord(value) ?? {};
+  return {
+    filename:
+      typeof source.filename === "string"
+        ? source.filename
+        : typeof source.fileName === "string"
+          ? source.fileName
+          : typeof source.file_name === "string"
+            ? source.file_name
+            : "",
+    path: typeof source.path === "string" ? source.path : "",
+    size:
+      typeof source.size === "number" && Number.isFinite(source.size)
+        ? source.size
+        : null,
+  };
+}
+
+function normalizeRegisterHotmailArtifacts(value: unknown): RegisterHotmailArtifact[] {
+  const source = asRecord(value);
+  const rawItems = Array.isArray(source?.artifacts)
+    ? source?.artifacts
+    : Array.isArray(value)
+      ? value
+      : [];
+  return rawItems
+    .map(normalizeRegisterHotmailArtifact)
+    .filter((item) => item.filename || item.path);
+}
+
+function normalizeRegisterHotmailLocalHandoffCookie(
+  value: unknown
+): RegisterHotmailLocalHandoffCookie {
+  const source = asRecord(value) ?? {};
+  return {
+    name: typeof source.name === "string" ? source.name : "",
+    value: typeof source.value === "string" ? source.value : "",
+    domain: typeof source.domain === "string" ? source.domain : "",
+    path: typeof source.path === "string" ? source.path : "/",
+    expires:
+      typeof source.expires === "number" && Number.isFinite(source.expires) ? source.expires : null,
+    httpOnly:
+      source.httpOnly === true
+        ? true
+        : source.http_only === true,
+    secure: source.secure === true,
+    sameSite:
+      typeof source.sameSite === "string"
+        ? source.sameSite
+        : typeof source.same_site === "string"
+          ? source.same_site
+          : "",
+  };
+}
+
+function normalizeRegisterHotmailLocalHandoffOrigin(
+  value: unknown
+): RegisterHotmailLocalHandoffOrigin {
+  const source = asRecord(value) ?? {};
+  const rawEntries = Array.isArray(source.localStorage)
+    ? source.localStorage
+    : Array.isArray(source.local_storage)
+      ? source.local_storage
+      : [];
+  return {
+    origin: typeof source.origin === "string" ? source.origin : "",
+    localStorage: rawEntries
+      .map((item) => {
+        const entry = asRecord(item) ?? {};
+        return {
+          name: typeof entry.name === "string" ? entry.name : "",
+          value: typeof entry.value === "string" ? entry.value : "",
+        };
+      })
+      .filter((entry) => entry.name),
+  };
+}
+
+function normalizeRegisterHotmailLocalHandoff(
+  value: unknown
+): RegisterHotmailLocalHandoff | null {
+  const source = asRecord(value);
+  if (!source) {
+    return null;
+  }
+  const rawCookies = Array.isArray(source.cookies) ? source.cookies : [];
+  const rawOrigins = Array.isArray(source.origins) ? source.origins : [];
+  return {
+    handoffId:
+      typeof source.handoffId === "string"
+        ? source.handoffId
+        : typeof source.handoff_id === "string"
+          ? source.handoff_id
+          : "",
+    url: typeof source.url === "string" ? source.url : "",
+    title: typeof source.title === "string" ? source.title : "",
+    userAgent:
+      typeof source.userAgent === "string"
+        ? source.userAgent
+        : typeof source.user_agent === "string"
+          ? source.user_agent
+          : "",
+    proxyUrl:
+      typeof source.proxyUrl === "string"
+        ? source.proxyUrl
+        : typeof source.proxy_url === "string"
+          ? source.proxy_url
+          : "",
+    state: typeof source.state === "string" ? source.state : "",
+    cookies: rawCookies
+      .map(normalizeRegisterHotmailLocalHandoffCookie)
+      .filter((cookie) => cookie.name),
+    origins: rawOrigins
+      .map(normalizeRegisterHotmailLocalHandoffOrigin)
+      .filter((origin) => origin.origin || origin.localStorage.length > 0),
+  };
+}
+
+function normalizeRegisterHotmailBatchSnapshot(
+  value: unknown
+): RegisterHotmailBatchSnapshot {
+  const source = asRecord(value) ?? {};
+  return {
+    batchId:
+      typeof source.batchId === "string"
+        ? source.batchId
+        : typeof source.batch_id === "string"
+          ? source.batch_id
+          : "",
+    total: typeof source.total === "number" && Number.isFinite(source.total) ? source.total : 0,
+    completed:
+      typeof source.completed === "number" && Number.isFinite(source.completed)
+        ? source.completed
+        : 0,
+    success:
+      typeof source.success === "number" && Number.isFinite(source.success) ? source.success : 0,
+    failed:
+      typeof source.failed === "number" && Number.isFinite(source.failed) ? source.failed : 0,
+    status:
+      typeof source.status === "string"
+        ? source.status
+        : typeof source.batchStatus === "string"
+          ? source.batchStatus
+          : typeof source.batch_status === "string"
+            ? source.batch_status
+            : "",
+    actionRequiredReason:
+      typeof source.actionRequiredReason === "string"
+        ? source.actionRequiredReason
+        : typeof source.action_required_reason === "string"
+          ? source.action_required_reason
+          : "",
+    handoffId:
+      typeof source.handoffId === "string"
+        ? source.handoffId
+        : typeof source.handoff_id === "string"
+          ? source.handoff_id
+          : "",
+    handoffUrl:
+      typeof source.handoffUrl === "string"
+        ? source.handoffUrl
+        : typeof source.handoff_url === "string"
+          ? source.handoff_url
+          : "",
+    handoffTitle:
+      typeof source.handoffTitle === "string"
+        ? source.handoffTitle
+        : typeof source.handoff_title === "string"
+          ? source.handoff_title
+          : "",
+    handoffInstructions:
+      typeof source.handoffInstructions === "string"
+        ? source.handoffInstructions
+        : typeof source.handoff_instructions === "string"
+          ? source.handoff_instructions
+          : "",
+    localHandoff: normalizeRegisterHotmailLocalHandoff(
+      source.localHandoff ?? source.local_handoff
+    ),
+    cancelled: source.cancelled === true,
+    finished: source.finished === true,
+    logs: Array.isArray(source.logs)
+      ? source.logs
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [],
+    artifacts: normalizeRegisterHotmailArtifacts(source),
+  };
+}
+
 function normalizeRegisterImportResult(value: unknown): RegisterImportResult {
   const source = asRecord(value) ?? {};
   return {
@@ -569,6 +847,8 @@ function normalizeRegisterEmailServiceField(value: unknown): RegisterEmailServic
         ? rawDefault
         : null,
     placeholder: typeof source.placeholder === "string" ? source.placeholder : "",
+    description: typeof source.description === "string" ? source.description : "",
+    readOnly: source.readOnly === true || source.read_only === true,
     secret:
       source.secret === true ||
       ["password", "api_key", "refresh_token", "access_token", "admin_password"].includes(name),
@@ -707,6 +987,13 @@ function normalizeRegisterEmailServiceStats(value: unknown): RegisterEmailServic
         : typeof source.temp_mail_count === "number" && Number.isFinite(source.temp_mail_count)
           ? source.temp_mail_count
           : 0,
+    mail33ImapCount:
+      typeof source.mail33ImapCount === "number" && Number.isFinite(source.mail33ImapCount)
+        ? source.mail33ImapCount
+        : typeof source.mail_33_imap_count === "number" &&
+            Number.isFinite(source.mail_33_imap_count)
+          ? source.mail_33_imap_count
+          : 0,
     tempmailAvailable:
       source.tempmailAvailable === true || source.tempmail_available === true,
     enabledCount:
@@ -715,6 +1002,92 @@ function normalizeRegisterEmailServiceStats(value: unknown): RegisterEmailServic
         : typeof source.enabled_count === "number" && Number.isFinite(source.enabled_count)
           ? source.enabled_count
           : 0,
+  };
+}
+
+function normalizeRegisterTempMailCloudflareSettings(
+  value: unknown
+): RegisterTempMailCloudflareSettings {
+  const source = asRecord(value) ?? {};
+  const rawDomainConfigs = Array.isArray(source.domainConfigs)
+    ? source.domainConfigs
+    : Array.isArray(source.temp_mail_domain_configs)
+      ? source.temp_mail_domain_configs
+      : [];
+  return {
+    hasApiToken: source.hasApiToken === true || source.has_api_token === true,
+    cloudflareApiEmail:
+      typeof source.cloudflareApiEmail === "string"
+        ? source.cloudflareApiEmail
+        : typeof source.cloudflare_api_email === "string"
+          ? source.cloudflare_api_email
+          : "",
+    hasGlobalApiKey:
+      source.hasGlobalApiKey === true || source.has_global_api_key === true,
+    cloudflareAccountId:
+      typeof source.cloudflareAccountId === "string"
+        ? source.cloudflareAccountId
+        : typeof source.cloudflare_account_id === "string"
+          ? source.cloudflare_account_id
+          : "",
+    cloudflareZoneId:
+      typeof source.cloudflareZoneId === "string"
+        ? source.cloudflareZoneId
+        : typeof source.cloudflare_zone_id === "string"
+          ? source.cloudflare_zone_id
+          : "",
+    cloudflareWorkerName:
+      typeof source.cloudflareWorkerName === "string"
+        ? source.cloudflareWorkerName
+        : typeof source.cloudflare_worker_name === "string"
+          ? source.cloudflare_worker_name
+          : "",
+    tempMailBaseUrl:
+      typeof source.tempMailBaseUrl === "string"
+        ? source.tempMailBaseUrl
+        : typeof source.temp_mail_base_url === "string"
+          ? source.temp_mail_base_url
+          : "",
+    hasTempMailAdminPassword:
+      source.hasTempMailAdminPassword === true ||
+      source.has_temp_mail_admin_password === true,
+    domainConfigs: rawDomainConfigs
+      .map(normalizeRegisterTempMailDomainConfig)
+      .filter((item) => item.id),
+    tempMailDomainBase:
+      typeof source.tempMailDomainBase === "string"
+        ? source.tempMailDomainBase
+        : typeof source.temp_mail_domain_base === "string"
+          ? source.temp_mail_domain_base
+          : "",
+    tempMailSubdomainMode:
+      typeof source.tempMailSubdomainMode === "string"
+        ? source.tempMailSubdomainMode
+        : typeof source.temp_mail_subdomain_mode === "string"
+          ? source.temp_mail_subdomain_mode
+          : "random",
+    tempMailSubdomainLength:
+      typeof source.tempMailSubdomainLength === "number" &&
+      Number.isFinite(source.tempMailSubdomainLength)
+        ? source.tempMailSubdomainLength
+        : typeof source.temp_mail_subdomain_length === "number" &&
+            Number.isFinite(source.temp_mail_subdomain_length)
+          ? source.temp_mail_subdomain_length
+          : 6,
+    tempMailSubdomainPrefix:
+      typeof source.tempMailSubdomainPrefix === "string"
+        ? source.tempMailSubdomainPrefix
+        : typeof source.temp_mail_subdomain_prefix === "string"
+          ? source.temp_mail_subdomain_prefix
+          : "",
+    tempMailSyncCloudflareEnabled:
+      source.tempMailSyncCloudflareEnabled === true ||
+      source.temp_mail_sync_cloudflare_enabled === true ||
+      source.temp_mail_sync_cloudflare_enabled === undefined,
+    tempMailRequireCloudflareSync:
+      source.tempMailRequireCloudflareSync === true ||
+      source.temp_mail_require_cloudflare_sync === true ||
+      source.temp_mail_require_cloudflare_sync === undefined,
   };
 }
 
@@ -938,6 +1311,55 @@ export const accountClient = {
     );
     return normalizeRegisterEmailServiceStats(result);
   },
+  async getRegisterTempMailCloudflareSettings(): Promise<RegisterTempMailCloudflareSettings> {
+    const result = await invoke<unknown>(
+      "service_account_register_temp_mail_cloudflare_settings_get",
+      withAddr()
+    );
+    return normalizeRegisterTempMailCloudflareSettings(result);
+  },
+  async setRegisterTempMailCloudflareSettings(
+    params: RegisterTempMailCloudflareSettingsPayload
+  ): Promise<RegisterTempMailCloudflareSettings> {
+    const payload: Record<string, unknown> = {
+      cloudflare_api_email: params.cloudflareApiEmail ?? "",
+      cloudflare_account_id: params.cloudflareAccountId ?? "",
+      cloudflare_zone_id: params.cloudflareZoneId ?? "",
+      cloudflare_worker_name: params.cloudflareWorkerName ?? "",
+      temp_mail_base_url: params.tempMailBaseUrl ?? "",
+      temp_mail_domain_configs: (params.domainConfigs ?? []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        zone_id: item.zoneId,
+        domain_base: item.domainBase,
+        subdomain_mode: item.subdomainMode,
+        subdomain_length: item.subdomainLength,
+        subdomain_prefix: item.subdomainPrefix,
+        sync_cloudflare_enabled: item.syncCloudflareEnabled,
+        require_cloudflare_sync: item.requireCloudflareSync,
+      })),
+    };
+    if (typeof params.cloudflareApiToken === "string" && params.cloudflareApiToken.trim()) {
+      payload.cloudflare_api_token = params.cloudflareApiToken.trim();
+    }
+    if (
+      typeof params.cloudflareGlobalApiKey === "string" &&
+      params.cloudflareGlobalApiKey.trim()
+    ) {
+      payload.cloudflare_global_api_key = params.cloudflareGlobalApiKey.trim();
+    }
+    if (
+      typeof params.tempMailAdminPassword === "string" &&
+      params.tempMailAdminPassword.trim()
+    ) {
+      payload.temp_mail_admin_password = params.tempMailAdminPassword.trim();
+    }
+    await invoke<unknown>(
+      "service_account_register_temp_mail_cloudflare_settings_set",
+      withAddr(payload)
+    );
+    return this.getRegisterTempMailCloudflareSettings();
+  },
   async readRegisterEmailServiceFull(serviceId: number): Promise<RegisterEmailService> {
     const result = await invoke<unknown>(
       "service_account_register_email_services_read_full",
@@ -1031,9 +1453,11 @@ export const accountClient = {
       withAddr({
         emailServiceType: params.emailServiceType,
         emailServiceId: params.emailServiceId ?? null,
+        emailServiceConfig: params.emailServiceConfig ?? null,
         registerMode: params.registerMode ?? "standard",
         browserbaseConfigId: params.browserbaseConfigId ?? null,
         proxy: params.proxy ?? null,
+        autoCreateTempMailService: params.autoCreateTempMailService === true,
       })
     );
     return normalizeRegisterTaskSnapshot(result);
@@ -1046,9 +1470,11 @@ export const accountClient = {
       withAddr({
         emailServiceType: params.emailServiceType,
         emailServiceId: params.emailServiceId ?? null,
+        emailServiceConfig: params.emailServiceConfig ?? null,
         registerMode: params.registerMode ?? "standard",
         browserbaseConfigId: params.browserbaseConfigId ?? null,
         proxy: params.proxy ?? null,
+        autoCreateTempMailService: params.autoCreateTempMailService === true,
         count: params.count,
         intervalMin: params.intervalMin,
         intervalMax: params.intervalMax,
@@ -1084,6 +1510,51 @@ export const accountClient = {
       withAddr()
     );
     return normalizeRegisterStats(result);
+  },
+  async startRegisterHotmailBatch(
+    params: RegisterHotmailBatchStartPayload
+  ): Promise<RegisterHotmailBatchSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_hotmail_batch_start",
+      withAddr({
+        count: params.count,
+        concurrency: params.concurrency,
+        intervalMin: params.intervalMin,
+        intervalMax: params.intervalMax,
+        proxy: params.proxy ?? null,
+      })
+    );
+    return normalizeRegisterHotmailBatchSnapshot(result);
+  },
+  async getRegisterHotmailBatch(batchId: string): Promise<RegisterHotmailBatchSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_hotmail_batch_read",
+      withAddr({ batchId })
+    );
+    return normalizeRegisterHotmailBatchSnapshot(result);
+  },
+  cancelRegisterHotmailBatch: (batchId: string) =>
+    invoke("service_account_register_hotmail_batch_cancel", withAddr({ batchId })),
+  async continueRegisterHotmailBatch(batchId: string): Promise<RegisterHotmailBatchSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_hotmail_batch_continue",
+      withAddr({ batchId }),
+    );
+    return normalizeRegisterHotmailBatchSnapshot(result);
+  },
+  async abandonRegisterHotmailBatch(batchId: string): Promise<RegisterHotmailBatchSnapshot> {
+    const result = await invoke<unknown>(
+      "service_account_register_hotmail_batch_abandon",
+      withAddr({ batchId }),
+    );
+    return normalizeRegisterHotmailBatchSnapshot(result);
+  },
+  async getRegisterHotmailBatchArtifacts(batchId: string): Promise<RegisterHotmailArtifact[]> {
+    const result = await invoke<unknown>(
+      "service_account_register_hotmail_batch_artifacts",
+      withAddr({ batchId })
+    );
+    return normalizeRegisterHotmailArtifacts(result);
   },
   cancelRegisterTask: (taskUuid: string) =>
     invoke("service_account_register_task_cancel", withAddr({ taskUuid })),

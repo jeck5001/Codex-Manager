@@ -11,6 +11,7 @@ from .email_services import router as email_services_router
 from .browserbase_configs import router as browserbase_configs_router
 from .payment import router as payment_router
 from .cpa_services import router as cpa_services_router
+from .hotmail import router as hotmail_router
 
 api_router = APIRouter()
 
@@ -22,3 +23,4 @@ api_router.include_router(email_services_router, prefix="/email-services", tags=
 api_router.include_router(browserbase_configs_router, prefix="/browserbase-configs", tags=["browserbase-configs"])
 api_router.include_router(payment_router, prefix="/payment", tags=["payment"])
 api_router.include_router(cpa_services_router, prefix="/cpa-services", tags=["cpa-services"])
+api_router.include_router(hotmail_router, prefix="/hotmail", tags=["hotmail"])

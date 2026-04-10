@@ -84,6 +84,11 @@ def load_register_module():
 
     http_client_module.OpenAIHTTPClient = OpenAIHTTPClient
     http_client_module.HTTPClientError = HTTPClientError
+    http_client_module.OPENAI_BROWSER_USER_AGENT = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
     sys.modules["src.core.http_client"] = http_client_module
 
     services_module = types.ModuleType("src.services")
@@ -152,7 +157,7 @@ def load_register_module():
         openai_token_url = "https://auth.openai.com/oauth/token"
         openai_redirect_uri = "http://localhost/callback"
         openai_scope = "openid"
-        email_code_timeout = 120
+        email_code_timeout = 240
         email_code_poll_interval = 3
 
     settings_module.get_settings = lambda: Settings()
@@ -185,6 +190,123 @@ OAuthStart = sys.modules["src.core.oauth"].OAuthStart
 
 
 class RegisterAddPhoneTests(unittest.TestCase):
+    def test_get_device_id_uses_response_cookies_when_session_cookie_missing(self):
+        logs = []
+
+        class FakeResponse:
+            status_code = 200
+            headers = {}
+            text = ""
+
+            def __init__(self):
+                self.cookies = {"oai-did": "did-from-response-cookie"}
+
+        class FakeSession:
+            def __init__(self):
+                self.cookies = {}
+
+            def get(self, url, **kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+        engine.session = FakeSession()
+        engine.http_client = types.SimpleNamespace(session=engine.session, close=lambda: None)
+        engine._log = lambda message, level="info": logs.append((level, message))
+
+        did = engine._get_device_id()
+
+        self.assertEqual(did, "did-from-response-cookie")
+        self.assertIn(("info", "Device ID: did-from-response-cookie"), logs)
+
+    def test_get_device_id_uses_set_cookie_header_when_cookie_jar_missing(self):
+        logs = []
+
+        class FakeHeaders(dict):
+            def get(self, key, default=None):
+                return super().get(key, default)
+
+        class FakeResponse:
+            status_code = 200
+            text = ""
+            cookies = {}
+            headers = FakeHeaders(
+                {
+                    "set-cookie": "cf_clearance=abc; Path=/, oai-did=did-from-set-cookie; Path=/; Secure",
+                }
+            )
+
+        class FakeSession:
+            def __init__(self):
+                self.cookies = {}
+
+            def get(self, url, **kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+        engine.session = FakeSession()
+        engine.http_client = types.SimpleNamespace(session=engine.session, close=lambda: None)
+        engine._log = lambda message, level="info": logs.append((level, message))
+
+        did = engine._get_device_id()
+
+        self.assertEqual(did, "did-from-set-cookie")
+        self.assertIn(("info", "Device ID: did-from-set-cookie"), logs)
+
+    def test_session_cookie_debug_summary_reports_key_cookie_flags(self):
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine._session_cookie_items = lambda: [
+            ("cf_clearance", "cf-token"),
+            ("oai-did", "did-123"),
+            ("__Host-next-auth.csrf-token", "csrf-token"),
+            ("__Secure-next-auth.session-token", "session-token"),
+            ("misc", "value"),
+        ]
+
+        summary = engine._session_cookie_debug_summary()
+
+        self.assertIn("count=5", summary)
+        self.assertIn("cf_clearance=yes", summary)
+        self.assertIn("oai-did=yes", summary)
+        self.assertIn("csrf=yes", summary)
+        self.assertIn("session=yes", summary)
+        self.assertIn("names=cf_clearance,oai-did,__Host-next-auth.csrf-token,__Secure-next-auth.session-token,misc", summary)
+
+    def test_auth_response_debug_summary_includes_location_and_set_cookie(self):
+        class FakeHeaders(dict):
+            def get(self, key, default=None):
+                return super().get(key, default)
+
+        class FakeResponse:
+            status_code = 302
+            url = "https://auth.openai.com/create-account/password"
+            headers = FakeHeaders({
+                "content-type": "text/html; charset=utf-8",
+                "location": "https://auth.openai.com/u/next",
+                "set-cookie": "cf_clearance=abc; Path=/; Secure",
+            })
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+
+        summary = engine._auth_response_debug_summary(FakeResponse())
+
+        self.assertIn("status=302", summary)
+        self.assertIn("url=https://auth.openai.com/create-account/password", summary)
+        self.assertIn("content-type=text/html; charset=utf-8", summary)
+        self.assertIn("location=https://auth.openai.com/u/next", summary)
+        self.assertIn("set-cookie=yes", summary)
+
     def test_session_browser_cookies_preserve_duplicate_names_across_domains(self):
         class FakeCookie:
             def __init__(self, name, value, domain, path="/", secure=True, http_only=False):
@@ -1263,6 +1385,70 @@ class RegisterAddPhoneTests(unittest.TestCase):
         )
         self.assertEqual(payload["flow"], "username_password_create")
         self.assertEqual(payload["t"], "browser-t")
+
+    def test_browser_sentinel_payload_syncs_browser_cookies_into_http_session(self):
+        class FakeCookieStore:
+            def __init__(self):
+                self.calls = []
+
+            def set(self, name, value, **kwargs):
+                self.calls.append((name, value, kwargs))
+
+        cookie_store = FakeCookieStore()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine._log = lambda *_args, **_kwargs: None
+        engine._current_device_id = "did-789"
+        engine.proxy_url = None
+        engine.session = types.SimpleNamespace(cookies=cookie_store)
+        engine._serialize_session_cookies = lambda: "oai-did=did-789"
+
+        original_fetch = REGISTER_MODULE.fetch_browser_sentinel_token
+
+        try:
+            def fake_fetch_browser_sentinel_token(**kwargs):
+                return {
+                    "p": "browser-p",
+                    "t": "browser-t",
+                    "c": "browser-c",
+                    "id": "did-789",
+                    "flow": kwargs["flow"],
+                    "cookies": [
+                        {
+                            "name": "cf_clearance",
+                            "value": "cf-cookie",
+                            "domain": ".openai.com",
+                            "path": "/",
+                            "secure": True,
+                        },
+                        {
+                            "name": "__Host-next-auth.csrf-token",
+                            "value": "csrf-cookie",
+                            "url": "https://auth.openai.com/",
+                            "secure": True,
+                            "httpOnly": True,
+                        },
+                    ],
+                }
+
+            REGISTER_MODULE.fetch_browser_sentinel_token = fake_fetch_browser_sentinel_token
+
+            payload = engine._get_browser_sentinel_payload(
+                "username_password_create",
+                "https://auth.openai.com/create-account/password",
+            )
+        finally:
+            REGISTER_MODULE.fetch_browser_sentinel_token = original_fetch
+
+        self.assertEqual(payload["flow"], "username_password_create")
+        self.assertEqual(payload["t"], "browser-t")
+        self.assertEqual(
+            cookie_store.calls,
+            [
+                ("cf_clearance", "cf-cookie", {"domain": ".openai.com", "path": "/"}),
+                ("__Host-next-auth.csrf-token", "csrf-cookie", {"domain": "auth.openai.com", "path": "/"}),
+            ],
+        )
 
     def test_generate_password_meets_current_policy(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)

@@ -35,6 +35,7 @@ class EmailServiceType(str, Enum):
     OUTLOOK = "outlook"
     CUSTOM_DOMAIN = "custom_domain"
     TEMP_MAIL = "temp_mail"
+    MAIL_33_IMAP = "mail_33_imap"
 
 
 # ============================================================================
@@ -117,7 +118,15 @@ EMAIL_SERVICE_DEFAULTS = {
         "api_key_header": "X-API-Key",
         "timeout": 30,
         "max_retries": 3,
-    }
+    },
+    "mail_33_imap": {
+        "imap_port": 993,
+        "imap_ssl": True,
+        "imap_mailbox": "INBOX",
+        "timeout": 120,
+        "poll_interval": 3,
+        "alias_length": 12,
+    },
 }
 
 # ============================================================================

@@ -1,0 +1,190 @@
+import importlib.util
+import sys
+import types
+import unittest
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
+
+from src.config import settings as settings_module
+
+
+def _load_settings_router():
+    routes_dir = Path(__file__).resolve().parents[1] / "src" / "web" / "routes"
+    pkg_name = "src.web.routes"
+    if pkg_name not in sys.modules:
+        routes_pkg = types.ModuleType(pkg_name)
+        routes_pkg.__path__ = [str(routes_dir)]
+        sys.modules[pkg_name] = routes_pkg
+
+    spec = importlib.util.spec_from_file_location(
+        "src.web.routes.settings",
+        routes_dir / "settings.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["src.web.routes.settings"] = module
+    spec.loader.exec_module(module)
+    return module.router
+
+
+settings_router = _load_settings_router()
+
+
+class TempMailCloudflareRoutesTests(unittest.TestCase):
+    def setUp(self):
+        self.original_settings = settings_module._settings
+        self.original_save = settings_module._save_settings_to_db
+        self.updated_values = {}
+        settings_module._settings = settings_module.Settings()
+        settings_module._save_settings_to_db = lambda **kwargs: self.updated_values.update(kwargs)
+
+        app = FastAPI()
+        app.include_router(settings_router, prefix="/api/settings")
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        settings_module._save_settings_to_db = self.original_save
+        settings_module._settings = self.original_settings
+
+    def test_get_cloudflare_settings_hides_raw_token(self):
+        settings_module._settings.cloudflare_api_token = SecretStr("secret-value")
+        settings_module._settings.cloudflare_global_api_key = SecretStr("global-key")
+        settings_module._settings.cloudflare_api_email = "admin@example.com"
+        response = self.client.get("/api/settings/temp-mail/cloudflare")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["has_api_token"])
+        self.assertTrue(payload["has_global_api_key"])
+        self.assertEqual(payload["cloudflare_api_email"], "admin@example.com")
+        self.assertNotIn("cloudflare_api_token", payload)
+        self.assertNotIn("cloudflare_global_api_key", payload)
+
+    def test_post_cloudflare_settings_updates_values(self):
+        payload = {
+            "cloudflare_api_token": "token-1",
+            "cloudflare_api_email": "admin@example.com",
+            "cloudflare_global_api_key": "global-key-1",
+            "cloudflare_account_id": "acc-1",
+            "cloudflare_worker_name": "temp-email",
+            "temp_mail_base_url": "https://worker.example.com",
+            "temp_mail_admin_password": "admin-pass",
+            "temp_mail_domain_configs": [
+                {
+                    "id": "cfg-1",
+                    "name": "主域名",
+                    "zone_id": "zone-1",
+                    "domain_base": "mail.example.com",
+                    "subdomain_mode": "random",
+                    "subdomain_length": 6,
+                    "subdomain_prefix": "tm",
+                    "sync_cloudflare_enabled": True,
+                    "require_cloudflare_sync": True,
+                },
+                {
+                    "id": "cfg-2",
+                    "name": "备用域名",
+                    "zone_id": "zone-2",
+                    "domain_base": "mail.backup.example.com",
+                    "subdomain_mode": "sequence",
+                    "subdomain_length": 8,
+                    "subdomain_prefix": "bk",
+                    "sync_cloudflare_enabled": False,
+                    "require_cloudflare_sync": False,
+                },
+            ],
+        }
+        response = self.client.post("/api/settings/temp-mail/cloudflare", json=payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(settings_module._settings.temp_mail_base_url, payload["temp_mail_base_url"])
+        self.assertEqual(self.updated_values["cloudflare_api_email"], payload["cloudflare_api_email"])
+        self.assertEqual(self.updated_values["temp_mail_domain_configs"][0]["domain_base"], "mail.example.com")
+        self.assertEqual(self.updated_values["temp_mail_domain_configs"][1]["zone_id"], "zone-2")
+        get_response = self.client.get("/api/settings/temp-mail/cloudflare")
+        self.assertTrue(get_response.json()["has_api_token"])
+        self.assertTrue(get_response.json()["has_global_api_key"])
+        self.assertTrue(get_response.json()["has_temp_mail_admin_password"])
+        self.assertEqual(len(get_response.json()["temp_mail_domain_configs"]), 2)
+        self.assertNotIn("cloudflare_api_token", get_response.json())
+        self.assertNotIn("cloudflare_global_api_key", get_response.json())
+
+    def test_get_cloudflare_settings_exposes_domain_configs(self):
+        settings_module._settings.temp_mail_domain_configs = [
+            {
+                "id": "cfg-1",
+                "name": "主域名",
+                "zone_id": "zone-1",
+                "domain_base": "mail.example.com",
+                "subdomain_mode": "random",
+                "subdomain_length": 6,
+                "subdomain_prefix": "tm",
+                "sync_cloudflare_enabled": True,
+                "require_cloudflare_sync": True,
+            }
+        ]
+        response = self.client.get("/api/settings/temp-mail/cloudflare")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["temp_mail_domain_configs"]), 1)
+        self.assertEqual(payload["temp_mail_domain_configs"][0]["id"], "cfg-1")
+        self.assertEqual(payload["temp_mail_domain_configs"][0]["domain_base"], "mail.example.com")
+
+    def test_reset_domain_stats_resets_health_fields(self):
+        settings_module._settings.temp_mail_domain_configs = [
+            {
+                "id": "cfg-1",
+                "name": "主域名",
+                "zone_id": "zone-1",
+                "domain_base": "mail.example.com",
+                "subdomain_mode": "random",
+                "subdomain_length": 6,
+                "subdomain_prefix": "tm",
+                "sync_cloudflare_enabled": True,
+                "require_cloudflare_sync": True,
+                "enabled": True,
+                "priority": 1,
+                "register_success_count": 7,
+                "register_fail_400_count": 3,
+                "register_consecutive_fail_400": 2,
+                "last_register_error": "注册密码失败",
+                "cooldown_until": "2099-01-01T00:00:00",
+            }
+        ]
+
+        response = self.client.post("/api/settings/temp-mail/cloudflare/domain-configs/cfg-1/reset-stats")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("temp_mail_domain_configs", self.updated_values)
+        reset_config = self.updated_values["temp_mail_domain_configs"][0]
+        self.assertEqual(reset_config["register_success_count"], 0)
+        self.assertEqual(reset_config["register_fail_400_count"], 0)
+        self.assertEqual(reset_config["register_consecutive_fail_400"], 0)
+        self.assertEqual(reset_config["last_register_error"], "")
+        self.assertEqual(reset_config["cooldown_until"], "")
+        self.assertTrue(reset_config["enabled"])
+        self.assertEqual(reset_config["priority"], 1)
+
+    def test_reset_domain_stats_missing_config_returns_404(self):
+        response = self.client.post("/api/settings/temp-mail/cloudflare/domain-configs/not-found/reset-stats")
+        self.assertEqual(response.status_code, 404)
+
+    def test_post_invalid_subdomain_mode_is_rejected(self):
+        response = self.client.post(
+            "/api/settings/temp-mail/cloudflare",
+            json={"temp_mail_subdomain_mode": "invalid"}
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_post_invalid_subdomain_length_is_rejected(self):
+        response = self.client.post(
+            "/api/settings/temp-mail/cloudflare",
+            json={"temp_mail_subdomain_length": 20}
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_post_empty_body_returns_no_changes(self):
+        response = self.client.post("/api/settings/temp-mail/cloudflare", json={})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["message"], "Cloudflare 临时邮箱设置未修改")
+        self.assertEqual(self.updated_values, {})

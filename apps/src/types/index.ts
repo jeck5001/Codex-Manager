@@ -723,6 +723,8 @@ export interface RegisterEmailServiceField {
   defaultValue: string | number | boolean | null;
   placeholder: string;
   secret: boolean;
+  readOnly: boolean;
+  description: string;
 }
 
 export interface RegisterEmailServiceType {
@@ -757,6 +759,7 @@ export interface RegisterEmailServiceStats {
   outlookCount: number;
   customCount: number;
   tempMailCount: number;
+  mail33ImapCount: number;
   tempmailAvailable: boolean;
   enabledCount: number;
 }
@@ -765,6 +768,36 @@ export interface RegisterEmailServiceTestResult {
   success: boolean;
   message: string;
   details: Record<string, unknown> | null;
+}
+
+export interface RegisterTempMailDomainConfig {
+  id: string;
+  name: string;
+  zoneId: string;
+  domainBase: string;
+  subdomainMode: string;
+  subdomainLength: number;
+  subdomainPrefix: string;
+  syncCloudflareEnabled: boolean;
+  requireCloudflareSync: boolean;
+}
+
+export interface RegisterTempMailCloudflareSettings {
+  hasApiToken: boolean;
+  cloudflareApiEmail: string;
+  hasGlobalApiKey: boolean;
+  cloudflareAccountId: string;
+  cloudflareZoneId: string;
+  cloudflareWorkerName: string;
+  tempMailBaseUrl: string;
+  hasTempMailAdminPassword: boolean;
+  domainConfigs: RegisterTempMailDomainConfig[];
+  tempMailDomainBase: string;
+  tempMailSubdomainMode: string;
+  tempMailSubdomainLength: number;
+  tempMailSubdomainPrefix: string;
+  tempMailSyncCloudflareEnabled: boolean;
+  tempMailRequireCloudflareSync: boolean;
 }
 
 export interface RegisterEmailServiceBatchDeleteResult {
@@ -785,6 +818,7 @@ export interface RegisterServiceGroup {
   available: boolean;
   count: number;
   services: RegisterServiceItem[];
+  domainConfigs: RegisterTempMailDomainConfig[];
 }
 
 export interface RegisterAvailableServicesResult {
@@ -793,6 +827,7 @@ export interface RegisterAvailableServicesResult {
   outlook: RegisterServiceGroup;
   customDomain: RegisterServiceGroup;
   tempMail: RegisterServiceGroup;
+  mail33Imap: RegisterServiceGroup;
 }
 
 export interface RegisterBrowserbaseConfig {
@@ -909,6 +944,78 @@ export interface RegisterOutlookBatchSnapshot {
   logs: string[];
 }
 
+export interface RegisterHotmailArtifact {
+  filename: string;
+  path: string;
+  size: number | null;
+}
+
+export interface RegisterHotmailLocalHandoffCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number | null;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: string;
+}
+
+export interface RegisterHotmailLocalHandoffOriginEntry {
+  name: string;
+  value: string;
+}
+
+export interface RegisterHotmailLocalHandoffOrigin {
+  origin: string;
+  localStorage: RegisterHotmailLocalHandoffOriginEntry[];
+}
+
+export interface RegisterHotmailLocalHandoff {
+  handoffId: string;
+  url: string;
+  title: string;
+  userAgent: string;
+  proxyUrl: string;
+  state: string;
+  cookies: RegisterHotmailLocalHandoffCookie[];
+  origins: RegisterHotmailLocalHandoffOrigin[];
+}
+
+export interface HotmailLocalHelperHealth {
+  ok: boolean;
+  service: string;
+  version: string;
+  playwrightReady: boolean;
+}
+
+export interface HotmailLocalHelperLaunchResult {
+  ok: boolean;
+  handoffId: string;
+  profileDir: string;
+  message: string;
+  error?: string;
+}
+
+export interface RegisterHotmailBatchSnapshot {
+  batchId: string;
+  total: number;
+  completed: number;
+  success: number;
+  failed: number;
+  status?: string;
+  actionRequiredReason?: string;
+  handoffId?: string;
+  handoffUrl?: string;
+  handoffTitle?: string;
+  handoffInstructions?: string;
+  localHandoff?: RegisterHotmailLocalHandoff | null;
+  cancelled: boolean;
+  finished: boolean;
+  logs: string[];
+  artifacts: RegisterHotmailArtifact[];
+}
+
 export interface RegisterImportResult {
   taskUuid: string;
   email: string;
@@ -976,6 +1083,15 @@ export interface FreeProxySyncResult {
   registerProxyCreatedCount: number;
   registerProxyUpdatedCount: number;
   registerProxyTotalCount: number;
+}
+
+export interface FreeProxyClearResult {
+  previousProxyListValue: string;
+  previousProxyListCount: number;
+  clearedGatewayProxyCount: number;
+  deletedRegisterProxyCount: number;
+  failedRegisterProxyCount: number;
+  remainingRegisterProxyCount: number;
 }
 
 export interface AppSettings {

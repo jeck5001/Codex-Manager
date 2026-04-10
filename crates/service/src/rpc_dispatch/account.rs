@@ -250,6 +250,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                         .or_else(|| params.get("email_service_id"))
                 })
                 .and_then(|value| value.as_i64());
+            let email_service_config = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("emailServiceConfig")
+                        .or_else(|| params.get("email_service_config"))
+                })
+                .cloned()
+                .filter(|value| value.is_object());
             let browserbase_config_id = req
                 .params
                 .as_ref()
@@ -260,12 +270,18 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 })
                 .and_then(|value| value.as_i64());
             let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            let auto_create_temp_mail_service = first_bool_param(
+                req,
+                &["autoCreateTempMailService", "auto_create_temp_mail_service"],
+            );
             super::value_or_error(account_register::start_register_task(
                 email_service_type,
                 email_service_id,
+                email_service_config,
                 register_mode,
                 browserbase_config_id,
                 proxy,
+                auto_create_temp_mail_service,
             ))
         }
         "account/register/batch/start" => {
@@ -283,6 +299,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                         .or_else(|| params.get("email_service_id"))
                 })
                 .and_then(|value| value.as_i64());
+            let email_service_config = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("emailServiceConfig")
+                        .or_else(|| params.get("email_service_config"))
+                })
+                .cloned()
+                .filter(|value| value.is_object());
             let browserbase_config_id = req
                 .params
                 .as_ref()
@@ -293,6 +319,10 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 })
                 .and_then(|value| value.as_i64());
             let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            let auto_create_temp_mail_service = first_bool_param(
+                req,
+                &["autoCreateTempMailService", "auto_create_temp_mail_service"],
+            );
             let count = req
                 .params
                 .as_ref()
@@ -330,6 +360,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 account_register::StartRegisterBatchInput {
                     email_service_type,
                     email_service_id,
+                    email_service_config,
                     register_mode,
                     browserbase_config_id,
                     proxy,
@@ -339,6 +370,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     concurrency,
                     mode,
                 },
+                auto_create_temp_mail_service,
             ))
         }
         "account/register/batch/read" => {
@@ -465,6 +497,70 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
             super::value_or_error(account_register::cancel_register_outlook_batch(batch_id))
         }
+        "account/register/hotmailBatch/start" => {
+            let count = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("count"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(1);
+            let concurrency = req
+                .params
+                .as_ref()
+                .and_then(|params| params.get("concurrency"))
+                .and_then(|value| value.as_i64())
+                .unwrap_or(1);
+            let interval_min = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("intervalMin")
+                        .or_else(|| params.get("interval_min"))
+                })
+                .and_then(|value| value.as_i64())
+                .unwrap_or(1);
+            let interval_max = req
+                .params
+                .as_ref()
+                .and_then(|params| {
+                    params
+                        .get("intervalMax")
+                        .or_else(|| params.get("interval_max"))
+                })
+                .and_then(|value| value.as_i64())
+                .unwrap_or(interval_min);
+            let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            super::value_or_error(account_register::start_register_hotmail_batch(
+                count,
+                concurrency,
+                interval_min,
+                interval_max,
+                proxy,
+            ))
+        }
+        "account/register/hotmailBatch/read" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::read_register_hotmail_batch(batch_id))
+        }
+        "account/register/hotmailBatch/cancel" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::cancel_register_hotmail_batch(batch_id))
+        }
+        "account/register/hotmailBatch/continue" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::continue_register_hotmail_batch(batch_id))
+        }
+        "account/register/hotmailBatch/abandon" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::abandon_register_hotmail_batch(batch_id))
+        }
+        "account/register/hotmailBatch/artifacts" => {
+            let batch_id = first_str_param(req, &["batchId", "batch_id"]).unwrap_or("");
+            super::value_or_error(account_register::read_register_hotmail_batch_artifacts(
+                batch_id,
+            ))
+        }
         "account/register/emailServices/types" => {
             super::value_or_error(account_register::register_email_service_types())
         }
@@ -549,6 +645,18 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         }
         "account/register/emailServices/stats" => {
             super::value_or_error(account_register::register_email_service_stats())
+        }
+        "account/register/tempMailCloudflareSettings/get" => {
+            super::value_or_error(account_register::get_register_temp_mail_cloudflare_settings())
+        }
+        "account/register/tempMailCloudflareSettings/set" => {
+            let payload = req
+                .params
+                .clone()
+                .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+            super::value_or_error(
+                account_register::update_register_temp_mail_cloudflare_settings(payload),
+            )
         }
         "account/register/emailServices/readFull" => {
             let service_id = req

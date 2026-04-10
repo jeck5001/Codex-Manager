@@ -18,6 +18,9 @@ type RegisterEmailServiceUpdatePayload = Parameters<
 type RegisterOutlookBatchImportPayload = Parameters<
   typeof accountClient.outlookBatchImportRegisterEmailServices
 >[0];
+type RegisterTempMailCloudflareSettingsPayload = Parameters<
+  typeof accountClient.setRegisterTempMailCloudflareSettings
+>[0];
 
 function buildListQueryKey(filters: RegisterEmailServiceListParams) {
   return [
@@ -55,14 +58,35 @@ export function useRegisterEmailServices(filters: RegisterEmailServiceListParams
     retry: 1,
   });
 
+  const cloudflareSettingsQuery = useQuery({
+    queryKey: ["register-temp-mail-cloudflare-settings"],
+    queryFn: () => accountClient.getRegisterTempMailCloudflareSettings(),
+    retry: 1,
+  });
+
   const invalidateAll = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["register-email-service-types"] }),
       queryClient.invalidateQueries({ queryKey: ["register-email-services"] }),
       queryClient.invalidateQueries({ queryKey: ["register-email-service-stats"] }),
+      queryClient.invalidateQueries({ queryKey: ["register-temp-mail-cloudflare-settings"] }),
       queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
     ]);
   };
+
+  const saveCloudflareSettingsMutation = useMutation({
+    mutationFn: (payload: RegisterTempMailCloudflareSettingsPayload) =>
+      accountClient.setRegisterTempMailCloudflareSettings(payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["register-temp-mail-cloudflare-settings"],
+      });
+      toast.success("Cloudflare Temp-Mail 设置已保存");
+    },
+    onError: (error: unknown) => {
+      toast.error(`保存 Cloudflare 设置失败: ${getAppErrorMessage(error)}`);
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: (payload: RegisterEmailServiceCreatePayload) =>
@@ -194,12 +218,16 @@ export function useRegisterEmailServices(filters: RegisterEmailServiceListParams
     services: servicesQuery.data?.services || [],
     total: servicesQuery.data?.total || 0,
     stats: statsQuery.data || null,
+    cloudflareSettings: cloudflareSettingsQuery.data || null,
     isLoading: servicesQuery.isLoading,
     isTypesLoading: typesQuery.isLoading,
     isStatsLoading: statsQuery.isLoading,
+    isCloudflareSettingsLoading: cloudflareSettingsQuery.isLoading,
     refetchServices: servicesQuery.refetch,
+    refetchCloudflareSettings: cloudflareSettingsQuery.refetch,
     createEmailService: createMutation.mutateAsync,
     updateEmailService: updateMutation.mutateAsync,
+    saveCloudflareSettings: saveCloudflareSettingsMutation.mutateAsync,
     deleteEmailService: deleteMutation.mutate,
     readEmailServiceFull: readFullMutation.mutateAsync,
     testEmailService: testMutation.mutateAsync,
@@ -218,6 +246,7 @@ export function useRegisterEmailServices(filters: RegisterEmailServiceListParams
     isBatchDeletingOutlook: batchDeleteOutlookMutation.isPending,
     isReordering: reorderMutation.isPending,
     isTestingTempmail: testTempmailMutation.isPending,
+    isSavingCloudflareSettings: saveCloudflareSettingsMutation.isPending,
     lastImportResult: outlookBatchImportMutation.data || null,
   };
 }

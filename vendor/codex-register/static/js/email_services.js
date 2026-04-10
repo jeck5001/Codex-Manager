@@ -7,6 +7,8 @@ let outlookServices = [];
 let customServices = [];  // 合并 custom_domain + temp_mail
 let selectedOutlook = new Set();
 let selectedCustom = new Set();
+let cloudflareSettingsReady = false;
+let cloudflareDomainConfigs = [];
 
 // DOM 元素
 const elements = {
@@ -41,6 +43,24 @@ const elements = {
     tempmailApi: document.getElementById('tempmail-api'),
     tempmailEnabled: document.getElementById('tempmail-enabled'),
     testTempmailBtn: document.getElementById('test-tempmail-btn'),
+    cfSettingsForm: document.getElementById('cf-settings-form'),
+    cfApiToken: document.getElementById('cf-api-token'),
+    cfApiTokenHint: document.getElementById('cf-api-token-hint'),
+    cfApiEmail: document.getElementById('cf-api-email'),
+    cfGlobalApiKey: document.getElementById('cf-global-api-key'),
+    cfGlobalApiKeyHint: document.getElementById('cf-global-api-key-hint'),
+    cfAccountId: document.getElementById('cf-account-id'),
+    cfZoneId: document.getElementById('cf-zone-id'),
+    cfWorkerName: document.getElementById('cf-worker-name'),
+    cfDomainBase: document.getElementById('cf-domain-base'),
+    cfSubdomainMode: document.getElementById('cf-subdomain-mode'),
+    cfSubdomainLength: document.getElementById('cf-subdomain-length'),
+    cfSubdomainPrefix: document.getElementById('cf-subdomain-prefix'),
+    cfSyncEnabled: document.getElementById('cf-sync-enabled'),
+    cfRequireSync: document.getElementById('cf-require-sync'),
+    saveCfSettingsBtn: document.getElementById('save-cf-settings-btn'),
+    cfDomainConfigsContainer: document.getElementById('cf-domain-configs-container'),
+    cfDomainConfigsEmpty: document.getElementById('cf-domain-configs-empty'),
 
     // 添加自定义域名模态框
     addCustomModal: document.getElementById('add-custom-modal'),
@@ -74,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadOutlookServices();
     loadCustomServices();
     loadTempmailConfig();
+    loadCloudflareSettings();
     initEventListeners();
 });
 
@@ -145,6 +166,9 @@ function initEventListeners() {
     // 临时邮箱配置
     elements.tempmailForm.addEventListener('submit', handleSaveTempmail);
     elements.testTempmailBtn.addEventListener('click', handleTestTempmail);
+    if (elements.cfSettingsForm) {
+        elements.cfSettingsForm.addEventListener('submit', handleSaveCloudflareSettings);
+    }
 }
 
 // 切换添加表单子类型
@@ -378,9 +402,12 @@ async function handleAddCustom(e) {
         config = {
             base_url: formData.get('tm_base_url'),
             admin_password: formData.get('tm_admin_password'),
-            domain: formData.get('tm_domain'),
             enable_prefix: true
         };
+        const requestedDomain = String(formData.get('tm_domain') || '').trim();
+        if (requestedDomain) {
+            config.domain = requestedDomain;
+        }
     }
 
     const data = {
@@ -495,11 +522,202 @@ async function handleTestTempmail() {
     }
 }
 
+// 加载 Cloudflare Temp-Mail 设置
+async function loadCloudflareSettings() {
+    if (!elements.cfSettingsForm) return;
+    cloudflareSettingsReady = false;
+    if (elements.saveCfSettingsBtn) {
+        elements.saveCfSettingsBtn.disabled = true;
+    }
+    try {
+        const settings = await api.get('/settings/temp-mail/cloudflare');
+        elements.cfApiToken.value = '';
+        elements.cfApiTokenHint.textContent = settings.has_api_token ? '已配置 API Token，留空表示保持不变' : '尚未配置 API Token';
+        elements.cfApiEmail.value = settings.cloudflare_api_email || '';
+        elements.cfGlobalApiKey.value = '';
+        elements.cfGlobalApiKeyHint.textContent = settings.has_global_api_key ? '已配置 Global API Key，留空表示保持不变' : '尚未配置 Global API Key';
+        elements.cfAccountId.value = settings.cloudflare_account_id || '';
+        elements.cfZoneId.value = settings.cloudflare_zone_id || '';
+        elements.cfWorkerName.value = settings.cloudflare_worker_name || '';
+        elements.cfDomainBase.value = settings.temp_mail_domain_base || '';
+        elements.cfSubdomainMode.value = settings.temp_mail_subdomain_mode || 'random';
+        elements.cfSubdomainLength.value = settings.temp_mail_subdomain_length || 6;
+        elements.cfSubdomainPrefix.value = settings.temp_mail_subdomain_prefix || '';
+        elements.cfSyncEnabled.checked = settings.temp_mail_sync_cloudflare_enabled !== false;
+        elements.cfRequireSync.checked = settings.temp_mail_require_cloudflare_sync !== false;
+        renderCloudflareDomainConfigs(settings.temp_mail_domain_configs || []);
+        cloudflareSettingsReady = true;
+        if (elements.saveCfSettingsBtn) {
+            elements.saveCfSettingsBtn.disabled = false;
+        }
+    } catch (error) {
+        console.error('加载 Cloudflare Temp-Mail 设置失败:', error);
+        cloudflareSettingsReady = false;
+        if (elements.saveCfSettingsBtn) {
+            elements.saveCfSettingsBtn.disabled = true;
+        }
+        if (elements.cfApiTokenHint) {
+            elements.cfApiTokenHint.textContent = '加载失败，请稍后重试';
+        }
+        if (elements.cfGlobalApiKeyHint) {
+            elements.cfGlobalApiKeyHint.textContent = '加载失败，请稍后重试';
+        }
+        renderCloudflareDomainConfigs([]);
+    }
+}
+
+async function resetCloudflareDomainStats(domainConfigId, button) {
+    if (!domainConfigId) return;
+
+    const trigger = button || null;
+    const originalLabel = trigger ? trigger.textContent : '';
+    if (trigger) {
+        trigger.disabled = true;
+        trigger.textContent = '重置中...';
+    }
+
+    try {
+        await api.post(`/settings/temp-mail/cloudflare/domain-configs/${domainConfigId}/reset-stats`, {});
+        toast.success('域名统计已重置');
+        await loadCloudflareSettings();
+    } catch (error) {
+        toast.error('重置域名统计失败: ' + error.message);
+        if (trigger) {
+            trigger.disabled = false;
+            trigger.textContent = originalLabel;
+        }
+    }
+}
+
+// 保存 Cloudflare Temp-Mail 设置
+async function handleSaveCloudflareSettings(e) {
+    e.preventDefault();
+    if (!elements.saveCfSettingsBtn) return;
+    if (!cloudflareSettingsReady) {
+        toast.error('Cloudflare 设置加载失败，请刷新页面后重试');
+        return;
+    }
+
+    const payload = {
+        cloudflare_api_email: elements.cfApiEmail.value.trim(),
+        cloudflare_account_id: elements.cfAccountId.value.trim(),
+        cloudflare_zone_id: elements.cfZoneId.value.trim(),
+        cloudflare_worker_name: elements.cfWorkerName.value.trim(),
+        temp_mail_domain_base: elements.cfDomainBase.value.trim(),
+        temp_mail_subdomain_mode: elements.cfSubdomainMode.value,
+        temp_mail_subdomain_length: parseInt(elements.cfSubdomainLength.value, 10) || 6,
+        temp_mail_subdomain_prefix: elements.cfSubdomainPrefix.value.trim(),
+        temp_mail_sync_cloudflare_enabled: elements.cfSyncEnabled.checked,
+        temp_mail_require_cloudflare_sync: elements.cfRequireSync.checked,
+    };
+
+    const apiToken = elements.cfApiToken.value.trim();
+    if (apiToken) {
+        payload.cloudflare_api_token = apiToken;
+    }
+    const globalApiKey = elements.cfGlobalApiKey.value.trim();
+    if (globalApiKey) {
+        payload.cloudflare_global_api_key = globalApiKey;
+    }
+
+    elements.saveCfSettingsBtn.disabled = true;
+    const originalLabel = elements.saveCfSettingsBtn.textContent;
+    elements.saveCfSettingsBtn.textContent = '保存中...';
+    try {
+        await api.post('/settings/temp-mail/cloudflare', payload);
+        toast.success('Cloudflare Temp-Mail 设置已保存');
+        await loadCloudflareSettings();
+        elements.saveCfSettingsBtn.textContent = originalLabel;
+    } catch (error) {
+        toast.error('保存 Cloudflare 设置失败: ' + error.message);
+        elements.saveCfSettingsBtn.textContent = originalLabel;
+        elements.saveCfSettingsBtn.disabled = !cloudflareSettingsReady;
+    }
+}
+
 // 更新批量按钮
 function updateBatchButtons() {
     const count = selectedOutlook.size;
     elements.batchDeleteOutlookBtn.disabled = count === 0;
     elements.batchDeleteOutlookBtn.textContent = count > 0 ? `🗑️ 删除选中 (${count})` : '🗑️ 批量删除';
+}
+
+function formatCloudflareCooldown(value) {
+    if (!value) return '未冷却';
+    return format.date(value) || value;
+}
+
+function getCloudflareDomainStatus(config) {
+    if (config.enabled === false) return { label: '禁用', className: 'disabled' };
+    if (config.cooldown_until) return { label: '冷却中', className: 'pending' };
+    return { label: '可用', className: 'active' };
+}
+
+function renderCloudflareDomainConfigs(configs) {
+    if (!elements.cfDomainConfigsContainer || !elements.cfDomainConfigsEmpty) return;
+    cloudflareDomainConfigs = Array.isArray(configs) ? configs : [];
+
+    if (cloudflareDomainConfigs.length === 0) {
+        elements.cfDomainConfigsContainer.innerHTML = '';
+        elements.cfDomainConfigsEmpty.style.display = '';
+        return;
+    }
+
+    elements.cfDomainConfigsEmpty.style.display = 'none';
+    elements.cfDomainConfigsContainer.innerHTML = `
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>基础域名</th>
+                    <th style="width: 90px;">状态</th>
+                    <th style="width: 80px;">成功</th>
+                    <th style="width: 100px;">密码400</th>
+                    <th style="width: 90px;">连败</th>
+                    <th>冷却到</th>
+                    <th>最近错误</th>
+                    <th style="width: 120px;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${cloudflareDomainConfigs.map((config) => {
+                    const status = getCloudflareDomainStatus(config);
+                    return `
+                        <tr data-domain-config-id="${escapeHtml(config.id)}">
+                            <td>
+                                <div style="font-weight: 600;">${escapeHtml(config.name || '-')}</div>
+                                <small style="color: var(--text-muted);">ID: ${escapeHtml(config.id || '-')}</small>
+                            </td>
+                            <td>${escapeHtml(config.domain_base || '-')}</td>
+                            <td><span class="status-badge ${status.className}">${status.label}</span></td>
+                            <td>${config.register_success_count || 0}</td>
+                            <td>${config.register_fail_400_count || 0}</td>
+                            <td>${config.register_consecutive_fail_400 || 0}</td>
+                            <td>${escapeHtml(formatCloudflareCooldown(config.cooldown_until))}</td>
+                            <td title="${escapeHtml(config.last_register_error || '')}">${escapeHtml(config.last_register_error || '-')}</td>
+                            <td>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-sm"
+                                    data-reset-domain-config-id="${escapeHtml(config.id)}"
+                                >
+                                    重置统计
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+
+    elements.cfDomainConfigsContainer
+        .querySelectorAll('[data-reset-domain-config-id]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                resetCloudflareDomainStats(button.dataset.resetDomainConfigId, button);
+            });
+        });
 }
 
 // HTML 转义
@@ -561,7 +779,6 @@ async function handleEditCustom(e) {
     } else {
         config = {
             base_url: formData.get('tm_base_url'),
-            domain: formData.get('tm_domain'),
             enable_prefix: true
         };
         const pwd = formData.get('tm_admin_password');

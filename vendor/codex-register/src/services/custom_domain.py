@@ -348,7 +348,6 @@ class CustomDomainEmailService(BaseEmailService):
         )
 
         start_time = time.time()
-        seen_message_ids = set()
         used_message_ids = self._used_message_ids.setdefault(email.lower(), set())
         min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
@@ -367,10 +366,9 @@ class CustomDomainEmailService(BaseEmailService):
 
                 for index, message in enumerate(messages):
                     message_id = message.get("id")
-                    if not message_id or message_id in seen_message_ids or message_id in used_message_ids:
+                    if not message_id or message_id in used_message_ids:
                         continue
 
-                    seen_message_ids.add(message_id)
                     message_timestamp = self._extract_message_timestamp(message)
                     if message_timestamp and message_timestamp < min_timestamp:
                         continue

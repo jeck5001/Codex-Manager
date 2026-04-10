@@ -158,6 +158,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             })();
             super::value_or_error(result)
         }
+        "gateway/freeProxy/clear" => super::value_or_error(crate::gateway::clear_proxy_pools()),
         "gateway/transport/get" => super::as_json(serde_json::json!({
             "sseKeepaliveIntervalMs": crate::current_gateway_sse_keepalive_interval_ms(),
             "upstreamStreamTimeoutMs": crate::current_gateway_upstream_stream_timeout_ms(),

@@ -4,6 +4,7 @@
 """
 
 import json
+import re
 import time
 import logging
 import secrets
@@ -439,11 +440,14 @@ class RegistrationEngine:
                     self.oauth_start.auth_url,
                     timeout=20
                 )
-                did = self.session.cookies.get("oai-did")
+                did = self._extract_device_id_from_cookie_source(getattr(self.session, "cookies", None))
+                if not did:
+                    did = self._extract_device_id_from_response(response)
 
                 if did:
+                    self._store_device_id_in_session(did)
                     self._log(f"Device ID: {did}")
-                return did
+                    return did
 
                 self._log(
                     f"获取 Device ID 失败: 未返回 oai-did Cookie (HTTP {response.status_code}, 第 {attempt}/{max_attempts} 次)",
@@ -461,6 +465,75 @@ class RegistrationEngine:
                 self.session = self.http_client.session
 
         return None
+
+    def _extract_device_id_from_cookie_source(self, cookies: Any) -> str:
+        if cookies is None:
+            return ""
+
+        try:
+            direct = self._clean_text(cookies.get("oai-did"))
+        except Exception:
+            direct = ""
+        if direct:
+            return direct
+
+        jar = getattr(cookies, "jar", None)
+        if jar:
+            for cookie in jar:
+                name = self._clean_text(getattr(cookie, "name", ""))
+                if name != "oai-did":
+                    continue
+                value = self._clean_text(getattr(cookie, "value", ""))
+                if value:
+                    return value
+
+        return ""
+
+    def _extract_device_id_from_response(self, response: Any) -> str:
+        if response is None:
+            return ""
+
+        did = self._extract_device_id_from_cookie_source(getattr(response, "cookies", None))
+        if did:
+            return did
+
+        headers = getattr(response, "headers", None)
+        set_cookie = ""
+        if headers is not None:
+            try:
+                set_cookie = self._clean_text(headers.get("set-cookie"))
+            except Exception:
+                set_cookie = ""
+        if set_cookie:
+            match = re.search(r"(?:^|[;,]\s*)oai-did=([^;,\s]+)", set_cookie, re.IGNORECASE)
+            if match:
+                return self._clean_text(urllib.parse.unquote(match.group(1)))
+
+        text = self._clean_text(getattr(response, "text", ""))
+        if text:
+            match = re.search(r'"oai-did"\s*[:=]\s*"([^"]+)"', text, re.IGNORECASE)
+            if match:
+                return self._clean_text(urllib.parse.unquote(match.group(1)))
+
+        return ""
+
+    def _store_device_id_in_session(self, did: str):
+        normalized = self._clean_text(did)
+        if not normalized:
+            return
+        session = getattr(self, "session", None)
+        cookies = getattr(session, "cookies", None) if session is not None else None
+        if cookies is None:
+            return
+        try:
+            cookies["oai-did"] = normalized
+            return
+        except Exception:
+            pass
+        try:
+            cookies.set("oai-did", normalized)
+        except Exception:
+            pass
 
     def _session_cookie_items(self) -> list[tuple[str, str]]:
         """提取当前会话中的 cookie 列表"""
@@ -495,6 +568,88 @@ class RegistrationEngine:
             return []
 
         return items
+
+    def _session_cookie_debug_summary(self) -> str:
+        """输出当前会话关键 cookie 摘要，便于定位认证状态丢失。"""
+        items = self._session_cookie_items()
+        names = [name for name, _value in items]
+        name_set = set(names)
+        has_csrf = any("csrf" in name.lower() for name in names)
+        has_session = any("session-token" in name.lower() for name in names)
+        return (
+            f"count={len(names)} "
+            f"cf_clearance={'yes' if 'cf_clearance' in name_set else 'no'} "
+            f"oai-did={'yes' if 'oai-did' in name_set else 'no'} "
+            f"csrf={'yes' if has_csrf else 'no'} "
+            f"session={'yes' if has_session else 'no'} "
+            f"names={','.join(names)}"
+        )
+
+    def _auth_response_debug_summary(self, response: Any) -> str:
+        """输出认证跳转响应摘要，观察会话是否在 continue_url 阶段发生变化。"""
+        headers = getattr(response, "headers", None) or {}
+        status_code = getattr(response, "status_code", "")
+        url = self._clean_text(getattr(response, "url", ""))
+        content_type = self._clean_text(headers.get("content-type"))
+        location = self._clean_text(headers.get("location"))
+        has_set_cookie = bool(self._clean_text(headers.get("set-cookie")))
+        return (
+            f"status={status_code} "
+            f"url={url or '-'} "
+            f"content-type={content_type or '-'} "
+            f"location={location or '-'} "
+            f"set-cookie={'yes' if has_set_cookie else 'no'}"
+        )
+
+    def _sync_browser_cookies_to_session(self, cookies: Any) -> int:
+        """将浏览器上下文中的关键 cookie 回灌到当前 HTTP 会话。"""
+        session = getattr(self, "session", None)
+        cookie_store = getattr(session, "cookies", None) if session else None
+        if cookie_store is None or not isinstance(cookies, list):
+            return 0
+
+        synced: list[str] = []
+        for item in cookies:
+            if not isinstance(item, dict):
+                continue
+
+            name = self._clean_text(item.get("name"))
+            value = self._clean_text(item.get("value"))
+            if not name or not value:
+                continue
+
+            domain = self._clean_text(item.get("domain"))
+            if not domain:
+                raw_url = self._clean_text(item.get("url"))
+                if raw_url:
+                    try:
+                        domain = self._clean_text(urllib.parse.urlsplit(raw_url).hostname)
+                    except Exception:
+                        domain = ""
+            path = self._clean_text(item.get("path")) or "/"
+
+            try:
+                if domain:
+                    cookie_store.set(name, value, domain=domain, path=path)
+                    synced.append(f"{name}@{domain}")
+                else:
+                    cookie_store.set(name, value, path=path)
+                    synced.append(name)
+            except TypeError:
+                try:
+                    cookie_store.set(name, value)
+                    synced.append(f"{name}@fallback")
+                except Exception:
+                    continue
+            except Exception:
+                continue
+
+        if synced:
+            self._log(
+                "浏览器 Sentinel 已同步 Cookie: " + ", ".join(synced[:8]),
+                "warning",
+            )
+        return len(synced)
 
     def _session_browser_cookies(self) -> list[dict[str, Any]]:
         """导出适合 Playwright 注入的结构化 cookie，保留域名维度。"""
@@ -754,6 +909,13 @@ class RegistrationEngine:
             did=did,
             flow=normalized_flow,
         )
+        if isinstance(payload, dict):
+            synced_count = self._sync_browser_cookies_to_session(payload.get("cookies"))
+            if synced_count:
+                self._log(
+                    f"浏览器 Sentinel Cookie 同步后会话摘要: {self._session_cookie_debug_summary()}",
+                    "warning",
+                )
         if normalized and normalized.get("t"):
             self._log(f"浏览器 Sentinel token 获取成功，flow={normalized_flow}")
             return normalized
@@ -925,6 +1087,7 @@ class RegistrationEngine:
             if sentinel:
                 headers["openai-sentinel-token"] = sentinel
 
+            self._log(f"密码注册会话摘要: {self._session_cookie_debug_summary()}", "warning")
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["register"],
                 headers=headers,
@@ -936,6 +1099,7 @@ class RegistrationEngine:
             if response.status_code != 200:
                 error_text = response.text[:500]
                 self._log(f"密码注册失败: {error_text}", "warning")
+                self._log(f"密码注册响应摘要: {self._auth_response_debug_summary(response)}", "warning")
 
                 # 解析错误信息，判断是否是邮箱已注册
                 try:
@@ -1558,6 +1722,7 @@ class RegistrationEngine:
                 continue_url,
                 timeout=15,
             )
+            self._log(f"{stage} continue_url 响应: {self._auth_response_debug_summary(response)}", "warning")
             workspace_id = self._extract_workspace_id_from_response(
                 response=response,
                 html=str(getattr(response, "text", "") or ""),

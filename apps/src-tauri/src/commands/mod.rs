@@ -2,6 +2,7 @@ pub mod account;
 pub mod audit;
 pub mod alert;
 pub mod apikey;
+pub mod hotmail;
 pub mod login;
 mod registry;
 pub mod requestlog;

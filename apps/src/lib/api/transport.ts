@@ -83,6 +83,24 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_account_register_outlook_batch_cancel: {
     rpcMethod: "account/register/outlookBatch/cancel",
   },
+  service_account_register_hotmail_batch_start: {
+    rpcMethod: "account/register/hotmailBatch/start",
+  },
+  service_account_register_hotmail_batch_read: {
+    rpcMethod: "account/register/hotmailBatch/read",
+  },
+  service_account_register_hotmail_batch_cancel: {
+    rpcMethod: "account/register/hotmailBatch/cancel",
+  },
+  service_account_register_hotmail_batch_continue: {
+    rpcMethod: "account/register/hotmailBatch/continue",
+  },
+  service_account_register_hotmail_batch_abandon: {
+    rpcMethod: "account/register/hotmailBatch/abandon",
+  },
+  service_account_register_hotmail_batch_artifacts: {
+    rpcMethod: "account/register/hotmailBatch/artifacts",
+  },
   service_account_register_email_services_types: {
     rpcMethod: "account/register/emailServices/types",
   },
@@ -136,6 +154,12 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   },
   service_account_register_email_services_test_tempmail: {
     rpcMethod: "account/register/emailServices/testTempmail",
+  },
+  service_account_register_temp_mail_cloudflare_settings_get: {
+    rpcMethod: "account/register/tempMailCloudflareSettings/get",
+  },
+  service_account_register_temp_mail_cloudflare_settings_set: {
+    rpcMethod: "account/register/tempMailCloudflareSettings/set",
   },
   service_account_register_task: { rpcMethod: "account/register/task" },
   service_account_register_import: { rpcMethod: "account/register/import" },
@@ -287,6 +311,7 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_gateway_cache_stats: { rpcMethod: "gateway/cache/stats" },
   service_gateway_cache_clear: { rpcMethod: "gateway/cache/clear" },
   service_gateway_freeproxy_sync: { rpcMethod: "gateway/freeProxy/sync" },
+  service_gateway_freeproxy_clear: { rpcMethod: "gateway/freeProxy/clear" },
   service_requestlog_list: { rpcMethod: "requestlog/list" },
   service_requestlog_summary: { rpcMethod: "requestlog/summary" },
   service_requestlog_export: { rpcMethod: "requestlog/export" },

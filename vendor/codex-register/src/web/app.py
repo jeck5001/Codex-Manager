@@ -146,6 +146,13 @@ def create_app() -> FastAPI:
             return _redirect_to_login(request)
         return templates.TemplateResponse(request=request, name="email_services.html", context={"request": request})
 
+    @app.get("/hotmail", response_class=HTMLResponse)
+    async def hotmail_page(request: Request):
+        """Hotmail 自动注册页面"""
+        if not _is_authenticated(request):
+            return _redirect_to_login(request)
+        return templates.TemplateResponse(request=request, name="hotmail.html", context={"request": request})
+
     @app.get("/settings", response_class=HTMLResponse)
     async def settings_page(request: Request):
         """设置页面"""
