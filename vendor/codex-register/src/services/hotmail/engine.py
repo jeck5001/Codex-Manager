@@ -872,28 +872,40 @@ class HotmailRegistrationEngine:
         email: str,
         domain: str,
         handoff: Optional[HotmailChallengeHandoff] = None,
+        verification_email: str = "",
+        verification_service_id: str = "",
+        verification_code_provider=None,
+        callback_reporter=None,
     ) -> HotmailRegistrationResult:
-        if self.verification_provider is None:
-            return self._build_failure_result(
-                HotmailFailureCode.UNEXPECTED_EXCEPTION,
-                "No verification mailbox provider configured",
+        if callable(callback_reporter):
+            callback_reporter("running", "waiting_email_code")
+        if callable(verification_code_provider):
+            code = verification_code_provider(
+                timeout=self.email_code_timeout,
+                poll_interval=self.email_code_poll_interval,
+            )
+        else:
+            if self.verification_provider is None:
+                return self._build_failure_result(
+                    HotmailFailureCode.UNEXPECTED_EXCEPTION,
+                    "No verification mailbox provider configured",
+                )
+
+            mailbox = self.verification_provider.acquire_mailbox()
+            mailbox_info = mailbox.service.create_email()
+            verification_email = str(mailbox_info.get("email") or "").strip()
+            verification_service_id = (
+                mailbox_info.get("service_id")
+                or mailbox_info.get("id")
+                or mailbox_info.get("token")
             )
 
-        mailbox = self.verification_provider.acquire_mailbox()
-        mailbox_info = mailbox.service.create_email()
-        verification_email = str(mailbox_info.get("email") or "").strip()
-        verification_service_id = (
-            mailbox_info.get("service_id")
-            or mailbox_info.get("id")
-            or mailbox_info.get("token")
-        )
-
-        code = mailbox.service.get_verification_code(
-            email=verification_email,
-            email_id=verification_service_id,
-            timeout=self.email_code_timeout,
-            poll_interval=self.email_code_poll_interval,
-        )
+            code = mailbox.service.get_verification_code(
+                email=verification_email,
+                email_id=verification_service_id,
+                timeout=self.email_code_timeout,
+                poll_interval=self.email_code_poll_interval,
+            )
         if not code:
             return self._build_failure_result(
                 HotmailFailureCode.EMAIL_VERIFICATION_TIMEOUT,
@@ -942,6 +954,10 @@ class HotmailRegistrationEngine:
         email: str,
         domain: str,
         handoff: Optional[HotmailChallengeHandoff] = None,
+        verification_email: str = "",
+        verification_service_id: str = "",
+        verification_code_provider=None,
+        callback_reporter=None,
     ) -> HotmailRegistrationResult:
         current_state = str(state or "").strip().lower()
         for _ in range(3):
@@ -958,6 +974,10 @@ class HotmailRegistrationEngine:
                 email=email,
                 domain=domain,
                 handoff=handoff,
+                verification_email=verification_email,
+                verification_service_id=verification_service_id,
+                verification_code_provider=verification_code_provider,
+                callback_reporter=callback_reporter,
             )
 
         if current_state == "success":
@@ -991,10 +1011,16 @@ class HotmailRegistrationEngine:
         session,
         profile: HotmailRegistrationProfile,
         domain: str,
+        verification_email: str = "",
+        verification_service_id: str = "",
+        verification_code_provider=None,
+        callback_reporter=None,
     ) -> Optional[HotmailRegistrationResult]:
         for username in profile.username_candidates:
             email = f"{username}@{domain}"
             self._log(f"尝试注册 Hotmail 账号: {email}")
+            if callable(callback_reporter):
+                callback_reporter("running", "submitting_credentials", log_line=f"attempt {email}")
             state = str(
                 session.submit_account_credentials(
                     email=email,
@@ -1011,8 +1037,55 @@ class HotmailRegistrationEngine:
                 profile=profile,
                 email=email,
                 domain=domain,
+                verification_email=verification_email,
+                verification_service_id=verification_service_id,
+                verification_code_provider=verification_code_provider,
+                callback_reporter=callback_reporter,
             )
         return None
+
+    def run_local_first(
+        self,
+        *,
+        profile: HotmailRegistrationProfile,
+        target_domains: list[str],
+        verification_email: str,
+        verification_service_id: str = "",
+        verification_code_provider=None,
+        callback_reporter=None,
+    ):
+        session = None
+        keep_session = False
+        try:
+            session = self._open_browser_session()
+            session.__enter__()
+            if callable(callback_reporter):
+                callback_reporter("running", "opening_signup")
+            session.open_signup()
+            for domain in target_domains or choose_target_domains():
+                result = self._attempt_browser_domain(
+                    session=session,
+                    profile=profile,
+                    domain=domain,
+                    verification_email=verification_email,
+                    verification_service_id=verification_service_id,
+                    verification_code_provider=verification_code_provider,
+                    callback_reporter=callback_reporter,
+                )
+                if result is not None:
+                    keep_session = result.handoff_context is not None
+                    return result
+            return self._build_failure_result(
+                HotmailFailureCode.USERNAME_UNAVAILABLE_EXHAUSTED,
+                "No domain attempt succeeded",
+            )
+        except TimeoutError as exc:
+            return self._build_failure_result(HotmailFailureCode.BROWSER_TIMEOUT, f"Hotmail browser timeout: {exc}")
+        except Exception as exc:
+            return self._build_failure_result(HotmailFailureCode.UNEXPECTED_EXCEPTION, str(exc))
+        finally:
+            if session is not None and not keep_session:
+                self._close_session(session)
 
     def resume_handoff(self, handoff: HotmailChallengeHandoff) -> HotmailRegistrationResult:
         session = handoff.session

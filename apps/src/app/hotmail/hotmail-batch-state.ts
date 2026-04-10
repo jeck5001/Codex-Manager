@@ -4,9 +4,15 @@ export type HotmailBatchStatusLike = {
   finished?: boolean;
   cancelled?: boolean;
   status?: string;
+  executionMode?: string;
   actionRequiredReason?: string;
   handoffId?: string;
   handoffUrl?: string;
+  currentTask?: {
+    status?: string;
+    currentStep?: string;
+    manualActionRequired?: boolean;
+  } | null;
   localHandoff?: {
     handoffId?: string;
     url?: string;
@@ -154,6 +160,30 @@ export function buildHotmailWebLocalHandoffActionState(
 
 export function buildHotmailWebLocalHelperUrl(path: string) {
   return `http://127.0.0.1:16788${path}`;
+}
+
+export function buildHotmailBackendCallbackBase(currentUrl: string) {
+  try {
+    const current = new URL(currentUrl);
+    return `${current.protocol}//${current.hostname}:9000/api/hotmail`;
+  } catch {
+    return "http://127.0.0.1:9000/api/hotmail";
+  }
+}
+
+export function buildHotmailBatchStatusText(
+  batch: Pick<HotmailBatchStatusLike, "status" | "executionMode" | "currentTask"> | null,
+) {
+  if (!batch || batch.executionMode !== "local_first") {
+    return "";
+  }
+  if (batch.currentTask?.manualActionRequired) {
+    return "请在已打开的本机浏览器窗口中继续处理微软验证";
+  }
+  if (batch.status === "running" || batch.status === "pending_local_start") {
+    return "正在本机执行";
+  }
+  return "";
 }
 
 export function buildHotmailHandoffAccessUrl(

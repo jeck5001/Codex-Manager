@@ -35,10 +35,6 @@ class RegisterFlowRunner:
     def _clean_text(self, value: Any) -> str:
         return getattr(self.engine, "_clean_text", lambda raw: str(raw or "").strip())(value)
 
-    @staticmethod
-    def _blocked_by_add_phone_error() -> str:
-        return "注册流程已进入手机号验证（add_phone），当前无法自动完成，请先完成官方手机号验证后再继续授权"
-
     def discover_auth_navigation_urls(
         self,
         response: Optional[Any],
@@ -240,6 +236,12 @@ class RegisterFlowRunner:
             callback_url = self.engine._advance_workspace_authorization(target_url)
             if callback_url:
                 return callback_url
+
+            retry_url = self.engine._build_authenticated_oauth_url()
+            if retry_url:
+                self.engine._log(f"{stage} 命中 add_phone，回退到已登录 OAuth URL 继续收敛", "warning")
+                return self.engine._follow_redirects(retry_url)
+
             self.engine._log(f"{stage} 仍然指向 add_phone", "warning")
             return None
 
@@ -286,9 +288,6 @@ class RegisterFlowRunner:
         if resolution.callback_url:
             return resolution
 
-        if resolution.page_type == "add_phone":
-            return resolution
-
         if getattr(self.engine, "oauth_start", None):
             self.engine._log("登录邮箱验证码校验后未拿到 continue_url，回退到 OAuth URL 重试跳转...", "warning")
             retry_url = self.engine._build_authenticated_oauth_url()
@@ -303,31 +302,6 @@ class RegisterFlowRunner:
         sen_token: Optional[str],
     ) -> PostRegistrationRedirectResult:
         result = PostRegistrationRedirectResult(metadata={})
-        callback_url: Optional[str] = None
-
-        if not getattr(self.engine, "_is_existing_account", False):
-            if (
-                getattr(self.engine, "_post_create_page_type", "") == "add_phone"
-                or "add-phone" in getattr(self.engine, "_post_create_continue_url", "")
-            ):
-                if getattr(self.engine, "_add_phone_login_bypass_attempted", False):
-                    self.engine._log("add_phone 登录回退已执行过，跳过重复登录链路", "warning")
-                else:
-                    callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
-                if not callback_url:
-                    result.metadata = {
-                        "blocked_step": "add_phone",
-                        "continue_url": getattr(self.engine, "_post_create_continue_url", ""),
-                    }
-                    self.engine._log(
-                        "OpenAI 注册后进入手机号验证，登录回退未直接拿到 OAuth 回调；继续尝试从当前会话提取 Workspace",
-                        "warning",
-                    )
-
-        if callback_url:
-            self.engine._log("13. 已通过登录回退链路拿到 OAuth 回调，跳过 Workspace 预选择")
-            result.callback_url = callback_url
-            return result
 
         self.engine._log("13. 获取 Workspace ID...")
         workspace_id = self.engine._get_workspace_id()
@@ -346,10 +320,7 @@ class RegisterFlowRunner:
         self.engine._log("15. 跟随重定向链...")
         result.callback_url = self.engine._follow_redirects(continue_url)
         if not result.callback_url:
-            if isinstance(result.metadata, dict) and result.metadata.get("blocked_step") == "add_phone":
-                result.error_message = self._blocked_by_add_phone_error()
-            else:
-                result.error_message = "跟随重定向链失败"
+            result.error_message = "跟随重定向链失败"
 
         return result
 
@@ -458,9 +429,6 @@ class RegisterFlowRunner:
             if callback_url:
                 result.callback_url = callback_url
                 return result
-            if result.page_type == "add_phone":
-                return result
-
         if result.continue_url:
             result.callback_url = self.resolve_callback_from_continue_url(
                 result.continue_url,

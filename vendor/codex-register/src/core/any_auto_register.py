@@ -437,18 +437,7 @@ class AnyAutoRegistrationRunner:
                     return result
 
             should_try_session = self._should_try_chatgpt_session_first()
-            if (
-                not self.engine._is_existing_account
-                and (
-                    getattr(self.engine, "_post_create_page_type", "") == "add_phone"
-                    or "add-phone" in getattr(self.engine, "_post_create_continue_url", "")
-                )
-            ):
-                self._log("13. 检测到 add_phone，先尝试登录回退以便复用会话", "warning")
-                callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
-                if callback_url:
-                    should_try_session = False
-            elif should_try_session:
+            if should_try_session:
                 self._log("13. 尝试直接复用当前会话")
             else:
                 self._log("13. 已命中 OAuth 授权页，直接走 OAuth 收敛")

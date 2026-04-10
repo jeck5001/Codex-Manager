@@ -33,6 +33,8 @@ import { appClient } from "@/lib/api/app-client";
 import { accountClient } from "@/lib/api/account-client";
 import { hotmailLocalHelperClient } from "@/lib/api/hotmail-local-helper";
 import {
+  buildHotmailBackendCallbackBase,
+  buildHotmailBatchStatusText,
   buildHotmailLocalHandoffActionState,
   buildHotmailWebLocalHandoffActionState,
   buildHotmailHandoffAccessUrl,
@@ -104,26 +106,56 @@ export default function HotmailPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      accountClient.startRegisterHotmailBatch({
+    mutationFn: async () => {
+      const health = await hotmailLocalHelperClient.health();
+      if (!health.ok) {
+        throw new Error("Hotmail helper 不可用");
+      }
+      if (!health.playwrightReady) {
+        throw new Error("Hotmail helper 缺少 Playwright Chromium，请先执行 playwright install chromium");
+      }
+      const batch = await accountClient.startRegisterHotmailBatch({
         count: Math.max(1, Number(count) || 1),
         concurrency: Math.max(1, Number(concurrency) || 1),
         intervalMin: Math.max(0, Number(intervalMin) || 0),
         intervalMax: Math.max(0, Number(intervalMax) || 0),
         proxy: proxy.trim() || null,
-      }),
+        executionMode: "local_first",
+      });
+      if (batch.currentTaskPayload && typeof window !== "undefined") {
+        await hotmailLocalHelperClient.startTask({
+          ...batch.currentTaskPayload,
+          backendCallbackBase:
+            batch.currentTaskPayload.backendCallbackBase
+            || buildHotmailBackendCallbackBase(window.location.href),
+        });
+      }
+      return batch;
+    },
     onSuccess: (batch) => {
       setTrackedBatchId(batch.batchId);
       setBatchIdInput(batch.batchId);
+      setShowWebHelperGuide(false);
       toast.success(`Hotmail 批次已启动: ${batch.batchId}`);
     },
     onError: (error: unknown) => {
+      setShowWebHelperGuide(true);
       toast.error(`启动失败: ${getAppErrorMessage(error)}`);
     },
   });
 
   const cancelMutation = useMutation({
-    mutationFn: () => accountClient.cancelRegisterHotmailBatch(trackedBatchId),
+    mutationFn: async () => {
+      const currentTaskId = batchQuery.data?.currentTask?.taskId;
+      if (currentTaskId) {
+        try {
+          await hotmailLocalHelperClient.cancelTask(currentTaskId);
+        } catch {
+          // Best effort local helper cancel before backend batch cancel.
+        }
+      }
+      return accountClient.cancelRegisterHotmailBatch(trackedBatchId);
+    },
     onSuccess: async () => {
       toast.success("已提交取消请求");
       await Promise.all([batchQuery.refetch(), artifactsQuery.refetch()]);
@@ -229,6 +261,7 @@ export default function HotmailPage() {
   );
   const statusMeta = formatHotmailBatchStatus(currentBatch);
   const hasPendingHandoff = hasHotmailPendingHandoff(currentBatch);
+  const isLocalFirstBatch = currentBatch?.executionMode === "local_first";
   const hasPendingLocalHandoff = hasHotmailPendingLocalHandoff(currentBatch);
   const localHandoffAction = useMemo(
     () => buildHotmailLocalHandoffActionState(currentBatch, isDesktopRuntime),
@@ -263,6 +296,10 @@ export default function HotmailPage() {
     [currentBatch],
   );
   const logs = currentBatch?.logs || [];
+  const localFirstStatusText = useMemo(
+    () => buildHotmailBatchStatusText(currentBatch),
+    [currentBatch],
+  );
 
   return (
     <div className="space-y-6 p-6">
@@ -422,7 +459,46 @@ export default function HotmailPage() {
                     </div>
                   ))}
                 </div>
-                {hasPendingHandoff ? (
+                {showWebHelperGuide && !isDesktopRuntime && !trackedBatchId ? (
+                  <div className="rounded-xl border border-border/60 bg-background/70 p-4 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">
+                      请先在当前访问页面的这台机器上启动 Hotmail 本机 helper。
+                    </p>
+                    <p className="mt-2">
+                      健康检查地址：
+                      <span className="ml-2 font-mono text-xs">http://127.0.0.1:16788/health</span>
+                    </p>
+                    <p className="mt-2">推荐启动步骤：</p>
+                    <pre className="mt-2 overflow-x-auto rounded-lg border border-border/60 bg-background/80 p-3 text-xs">
+{`cd tools/hotmail_local_helper
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r ../../vendor/codex-register/requirements.txt
+playwright install chromium
+cd ../..
+python3 -m tools.hotmail_local_helper`}
+                    </pre>
+                  </div>
+                ) : null}
+                {isLocalFirstBatch && localFirstStatusText ? (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-100">
+                    <div className="flex items-center gap-2 font-medium">
+                      <AlertTriangle className="h-4 w-4" />
+                      {localFirstStatusText}
+                    </div>
+                    {currentBatch?.currentTask?.currentStep ? (
+                      <p className="mt-3 text-sm leading-6">
+                        当前步骤：{currentBatch.currentTask.currentStep}
+                      </p>
+                    ) : null}
+                    <p className="mt-2 text-sm leading-6">
+                      {currentBatch?.currentTask?.manualActionRequired
+                        ? "浏览器已经在本机打开，不需要再点击本机接管。请直接在该窗口中完成微软验证。"
+                        : "请勿关闭本机浏览器窗口，批次会继续在本机执行。"}
+                    </p>
+                  </div>
+                ) : null}
+                {hasPendingHandoff && !isLocalFirstBatch ? (
                   <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-100">
                     <div className="flex items-center gap-2 font-medium">
                       <AlertTriangle className="h-4 w-4" />
