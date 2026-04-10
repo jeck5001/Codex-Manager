@@ -6,6 +6,49 @@
 - 운영 가이드, 릴리스 문서, 유지보수 규칙을 저장소 안에서 일관되게 관리합니다.
 - 새 기여자가 구두 설명 없이도 필요한 문서를 빠르게 찾을 수 있게 합니다.
 
+## 프로젝트 개요
+
+CodexManager는 Codex 워크플로를 위한 로컬 desktop + service-process 계정 풀 관리자이자 게이트웨이 릴레이 도구입니다.
+
+- 계정, 사용량, 플랫폼 Key를 한 곳에서 관리합니다.
+- Codex CLI, Gemini CLI, Claude Code, 서드파티 도구를 위한 로컬 OpenAI 호환 게이트웨이를 제공합니다.
+- 계정 라우팅, 모델/프로필 오버라이드, aggregate API 업스트림 릴레이를 지원합니다.
+
+## 최근 변경 사항
+
+- 현재 최신 릴리스: `v0.1.19` (2026-04-08 배포).
+- Aggregate API에 다중 인증 방식과 커스텀 `action` 라우팅이 추가되어 서드파티 포워딩 안정성이 향상되었습니다.
+- 게이트웨이는 이제 Responses 요청의 미지원 `service_tier` 값을 업스트림 전달 전에 정리하여 파라미터 불일치 거절을 줄입니다.
+- i18n 적용 범위가 대시보드, 모달, 사이드바, 사용량 라벨까지 계속 확장되었습니다.
+- 문서 구조와 릴리스 설명이 `0.1.19` 기준으로 정렬되었습니다.
+
+## 기능 요약
+
+- 계정 풀 관리: 그룹, 태그, 정렬, 메모, 차단 인식/필터링.
+- 일괄 가져오기/내보내기: 다중 파일 가져오기, 데스크톱 폴더 재귀 가져오기, 계정 단위 내보내기.
+- 사용량 표시: 5시간 + 7일 윈도우, 단일 윈도우 계정, Code Review / Spark 등 추가 버킷.
+- 플랫폼 Key: 생성, 비활성화, 삭제, 모델 바인딩, 추론 등급, 서비스 등급.
+- Aggregate API: 서드파티 릴레이 업스트림 생성/수정/연결 테스트, 공급자명, 우선순위.
+- 플러그인 센터: 내장/사설/커스텀 소스 모드, 작업/로그 화면, Rhai 연동.
+- 로컬 서비스 + 게이트웨이: 바인드/리스닝 커스터마이징과 통합 호환 엔드포인트.
+
+## 빠른 시작
+
+1. 데스크톱 앱을 실행하고 **Start Service**를 클릭합니다.
+2. **Account Management**에서 계정을 추가하고 인증을 완료합니다.
+3. 콜백 파싱에 실패하면 콜백 URL을 붙여넣어 수동 파싱합니다.
+4. 사용량을 새로고침하고 계정 상태를 확인합니다.
+
+## 스크린샷
+
+![Dashboard](../../assets/images/dashboard.png)
+![Account Management](../../assets/images/accounts.png)
+![Platform Key](../../assets/images/platform-key.png)
+![Aggregate API](../../assets/images/aggregate-api.png)
+![Plugin Center](../../assets/images/plug.png)
+![Log View](../../assets/images/log.png)
+![Settings](../../assets/images/themes.png)
+
 ## 문서 역할
 - 루트 `README.md` / `README.en.md`: 프로젝트 개요와 빠른 시작.
 - 루트 `변경-이력.md`: 버전 기록과 미출시 변경 사항.
@@ -38,7 +81,7 @@ CodexManager를 후원해 주신 다음 스폰서께 감사드립니다.
       </a>
     </td>
     <td valign="top">
-      <strong>Xing Si Yan Gateway</strong> 는 Claude Code, Codex, Gemini 같은 모델 호출 시나리오를 위한 안정적인 중계와 부가 서비스를 제공합니다. 신뢰할 수 있는 API, 빠른 도입, 지속적인 운영 지원이 필요한 개발자와 팀에 잘 맞습니다. 최신 플랜은 <a href="https://gzxsy.vip/">공식 사이트</a>에서 확인할 수 있습니다.
+      <strong>Xing Si Yan Gateway</strong> 는 Claude Code, Codex 등 모델 호출 시나리오를 위한 안정적인 중계와 부가 서비스를 제공합니다. 고가용성 API, 편리한 도입, 지속적인 전달 지원이 필요한 개발자와 팀에 적합합니다. 최신 플랜은 <a href="https://gzxsy.vip/">공식 사이트</a>에서 확인할 수 있습니다.
     </td>
   </tr>
 </table>

@@ -6,6 +6,49 @@ Its purpose is simple:
 - Keep governance notes, release guides, and operating manuals inside the repository.
 - Make it easy for new contributors to find the right document without relying on tribal knowledge.
 
+## Project Snapshot
+
+CodexManager is a local desktop + service-process account pool manager and gateway relay for Codex workflows.
+
+- Unified account, usage, and platform-key management.
+- Local OpenAI-compatible gateway for Codex CLI, Gemini CLI, Claude Code, and third-party tools.
+- Supports account routing, model/profile overrides, and aggregate API upstream relays.
+
+## Latest Changes
+
+- Current latest release: `v0.1.19` (released on 2026-04-08).
+- Aggregate API now supports multiple auth modes and custom `action` routing for more stable third-party forwarding.
+- Gateway now filters unsupported Responses `service_tier` values before upstream forwarding to reduce rejection caused by incompatible parameters.
+- i18n coverage continues to expand across dashboard, modals, sidebar, and usage labels.
+- Documentation structure and release notes are aligned on the `0.1.19` baseline.
+
+## Feature Overview
+
+- Account pool management: groups, tags, ordering, notes, ban recognition, and filtering.
+- Batch import/export: multi-file import, desktop recursive folder import, per-account export.
+- Usage display: 5-hour + 7-day windows, single-window accounts, and extra buckets such as Code Review / Spark.
+- Platform keys: create, disable, delete, model binding, reasoning tier, and service tier.
+- Aggregate API: create/edit/test third-party relay upstreams with supplier naming and priority ordering.
+- Plugin center: built-in, private, and custom source modes with task/log views and Rhai integration.
+- Local service + gateway: custom bind/listen settings and unified compatible endpoint.
+
+## Quick Start
+
+1. Launch desktop app and click **Start Service**.
+2. Open **Account Management** and complete account authorization.
+3. If callback parsing fails, paste the callback URL for manual parsing.
+4. Refresh usage and verify account status.
+
+## Screenshots
+
+![Dashboard](../../assets/images/dashboard.png)
+![Account Management](../../assets/images/accounts.png)
+![Platform Key](../../assets/images/platform-key.png)
+![Aggregate API](../../assets/images/aggregate-api.png)
+![Plugin Center](../../assets/images/plug.png)
+![Log View](../../assets/images/log.png)
+![Settings](../../assets/images/themes.png)
+
 ## Scope
 - Root `README.md` / `README.en.md`: project overview and quick start.
 - Root `CHANGELOG.md`: version history and unreleased changes.
@@ -38,7 +81,7 @@ Thanks to the following sponsors for supporting CodexManager.
       </a>
     </td>
     <td valign="top">
-      <strong>Xing Si Yan Gateway</strong> offers stable relay and supporting services for Claude Code, Codex, Gemini, and similar model-access scenarios. It is a strong fit for developers and teams that need reliable APIs, fast onboarding, and steady delivery support. Visit the <a href="https://gzxsy.vip/">official site</a> for the latest plans.
+      <strong>Xing Si Yan Gateway</strong> provides stable relay and supporting services for Claude Code, Codex, and similar model-call scenarios. It is suitable for developers and teams that require highly available APIs, convenient onboarding, and continuous delivery support. Visit the <a href="https://gzxsy.vip/">official site</a> for the latest plans.
     </td>
   </tr>
 </table>
