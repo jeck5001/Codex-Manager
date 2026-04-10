@@ -1,5 +1,4 @@
 import asyncio
-
 from fastapi.testclient import TestClient
 
 from tools.hotmail_local_helper.server import create_app

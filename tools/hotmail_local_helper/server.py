@@ -88,8 +88,6 @@ def check_playwright_ready() -> bool:
 
 async def check_playwright_ready_async() -> bool:
     return await asyncio.to_thread(check_playwright_ready)
-
-
 def launch_local_handoff_background(payload_path: str, profile_dir: str) -> None:
     thread = threading.Thread(
         target=launch_local_handoff,
