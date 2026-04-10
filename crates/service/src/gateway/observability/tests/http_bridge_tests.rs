@@ -5,8 +5,7 @@ use super::{
     should_skip_chat_live_text_event, should_skip_completion_live_text_event,
     synthesize_chat_completion_sse_from_json, synthesize_completions_sse_from_json,
     GeminiSseReader, OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader, OpenAIStreamMeta,
-    PassthroughSseCollector, PassthroughSseProtocol, PassthroughSseUsageReader,
-    SseKeepAliveFrame,
+    PassthroughSseCollector, PassthroughSseProtocol, PassthroughSseUsageReader, SseKeepAliveFrame,
 };
 use crate::gateway::GeminiStreamOutputMode;
 use serde_json::json;

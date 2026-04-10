@@ -2,16 +2,16 @@ use tiny_http::{Header, Request};
 
 mod aggregate;
 mod openai;
+pub(crate) use aggregate::PassthroughSseProtocol;
 use aggregate::{
     append_output_text, collect_non_stream_json_from_sse_bytes,
     collect_output_text_from_event_fields, collect_response_output_text,
     extract_error_hint_from_body, extract_error_message_from_json, extract_sse_frame_payload,
     inspect_sse_frame, inspect_sse_frame_for_protocol, is_response_completed_event_name,
     looks_like_sse_payload, merge_usage, parse_sse_frame_json, parse_usage_from_json,
-    reload_output_text_from_env, usage_has_signal, SseTerminal,
-    UpstreamResponseBridgeResult, UpstreamResponseUsage,
+    reload_output_text_from_env, usage_has_signal, SseTerminal, UpstreamResponseBridgeResult,
+    UpstreamResponseUsage,
 };
-pub(crate) use aggregate::PassthroughSseProtocol;
 #[cfg(test)]
 use aggregate::{
     output_text_limit_bytes, parse_usage_from_sse_frame, OUTPUT_TEXT_TRUNCATED_MARKER,

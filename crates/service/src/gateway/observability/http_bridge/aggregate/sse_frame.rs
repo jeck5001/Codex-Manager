@@ -365,7 +365,9 @@ pub(in super::super) fn extract_sse_frame_payload(lines: &[String]) -> Option<St
 
 #[cfg(test)]
 mod tests {
-    use super::{inspect_sse_frame, inspect_sse_frame_for_protocol, PassthroughSseProtocol, SseTerminal};
+    use super::{
+        inspect_sse_frame, inspect_sse_frame_for_protocol, PassthroughSseProtocol, SseTerminal,
+    };
 
     /// 函数 `inspect_sse_frame_keeps_last_event_type_from_header`
     ///

@@ -43,8 +43,13 @@ struct UserPassSecret {
 #[derive(Debug, Clone)]
 enum AggregateApiAuthConfig {
     ApiKeyDefaultBearer,
-    ApiKeyHeader { name: String, format: String },
-    ApiKeyQuery { name: String },
+    ApiKeyHeader {
+        name: String,
+        format: String,
+    },
+    ApiKeyQuery {
+        name: String,
+    },
     UserPassBasic,
     UserPassHeaderPair {
         username_name: String,
@@ -123,7 +128,9 @@ fn replace_query_param(mut url: reqwest::Url, name: &str, value: &str) -> reqwes
     url
 }
 
-fn parse_auth_config(candidate: &AggregateApi) -> Result<(AggregateApiAuthConfig, HashSet<String>), String> {
+fn parse_auth_config(
+    candidate: &AggregateApi,
+) -> Result<(AggregateApiAuthConfig, HashSet<String>), String> {
     let auth_type = candidate.auth_type.trim().to_ascii_lowercase();
     let raw_params = candidate
         .auth_params_json
@@ -137,7 +144,10 @@ fn parse_auth_config(candidate: &AggregateApi) -> Result<(AggregateApiAuthConfig
         if auth_type == AGGREGATE_API_AUTH_USERPASS {
             return Ok((AggregateApiAuthConfig::UserPassBasic, injected_headers));
         }
-        return Ok((AggregateApiAuthConfig::ApiKeyDefaultBearer, injected_headers));
+        return Ok((
+            AggregateApiAuthConfig::ApiKeyDefaultBearer,
+            injected_headers,
+        ));
     }
 
     let value: serde_json::Value = serde_json::from_str(raw_params.unwrap())
@@ -226,7 +236,10 @@ fn parse_auth_config(candidate: &AggregateApi) -> Result<(AggregateApiAuthConfig
         }
     }
 
-    Ok((AggregateApiAuthConfig::ApiKeyDefaultBearer, injected_headers))
+    Ok((
+        AggregateApiAuthConfig::ApiKeyDefaultBearer,
+        injected_headers,
+    ))
 }
 
 fn resolve_passthrough_sse_protocol(
@@ -504,10 +517,8 @@ fn build_aggregate_api_request(
     }
     let request_headers = request.headers().to_vec();
     for header in &request_headers {
-        if should_skip_forward_header_with_overrides(
-            header.field.as_str().into(),
-            injected_headers,
-        ) {
+        if should_skip_forward_header_with_overrides(header.field.as_str().into(), injected_headers)
+        {
             continue;
         }
         if let (Ok(name), Ok(value)) = (
@@ -768,7 +779,8 @@ pub(in super::super) fn proxy_aggregate_request(
                 return Ok(());
             }
 
-            let mut url = match build_upstream_url(candidate_url.as_str(), effective_path.as_str()) {
+            let mut url = match build_upstream_url(candidate_url.as_str(), effective_path.as_str())
+            {
                 Ok(url) => url,
                 Err(_) => {
                     last_attempt_url = Some(candidate_url.clone());
@@ -789,8 +801,10 @@ pub(in super::super) fn proxy_aggregate_request(
                 } => {
                     let parsed: UserPassSecret = serde_json::from_str(secret.trim())
                         .map_err(|_| "invalid aggregate api secret".to_string())?;
-                    url = replace_query_param(url, username_name.as_str(), parsed.username.as_str());
-                    url = replace_query_param(url, password_name.as_str(), parsed.password.as_str());
+                    url =
+                        replace_query_param(url, username_name.as_str(), parsed.username.as_str());
+                    url =
+                        replace_query_param(url, password_name.as_str(), parsed.password.as_str());
                 }
                 _ => {}
             }
@@ -1225,16 +1239,22 @@ mod tests {
     #[test]
     fn claude_messages_passthrough_uses_anthropic_native_terminal_rules() {
         let api = aggregate_api_with_action(None);
-        let protocol =
-            resolve_passthrough_sse_protocol(&api, "/v1/messages?beta=true", ResponseAdapter::Passthrough);
+        let protocol = resolve_passthrough_sse_protocol(
+            &api,
+            "/v1/messages?beta=true",
+            ResponseAdapter::Passthrough,
+        );
         assert_eq!(protocol, Some(PassthroughSseProtocol::AnthropicNative));
     }
 
     #[test]
     fn non_passthrough_adapter_does_not_override_sse_protocol() {
         let api = aggregate_api_with_action(None);
-        let protocol =
-            resolve_passthrough_sse_protocol(&api, "/v1/messages?beta=true", ResponseAdapter::AnthropicSse);
+        let protocol = resolve_passthrough_sse_protocol(
+            &api,
+            "/v1/messages?beta=true",
+            ResponseAdapter::AnthropicSse,
+        );
         assert_eq!(protocol, None);
     }
 
@@ -1255,7 +1275,10 @@ mod tests {
     fn build_upstream_url_keeps_root_base_behavior() {
         let url = build_upstream_url("https://api.example.com", "/v1/messages?beta=true")
             .expect("build upstream url");
-        assert_eq!(url.as_str(), "https://api.example.com/v1/messages?beta=true");
+        assert_eq!(
+            url.as_str(),
+            "https://api.example.com/v1/messages?beta=true"
+        );
     }
 
     /// 函数 `final_error_promotes_success_status_to_bad_gateway`

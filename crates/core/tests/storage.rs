@@ -735,6 +735,26 @@ fn request_logs_support_prefixed_query_filters() {
     let storage = Storage::open_in_memory().expect("open in memory");
     storage.init().expect("init schema");
 
+    for (id, label) in [
+        ("acc-1", "owner-alpha@example.com"),
+        ("acc-2", "owner-beta@example.com"),
+    ] {
+        storage
+            .insert_account(&Account {
+                id: id.to_string(),
+                label: label.to_string(),
+                issuer: "https://auth.openai.com".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: 0,
+                status: "active".to_string(),
+                created_at: now_ts(),
+                updated_at: now_ts(),
+            })
+            .expect("insert account");
+    }
+
     storage
         .insert_request_log(&RequestLog {
             trace_id: Some("trc-alpha-extra".to_string()),
@@ -893,6 +913,22 @@ fn request_logs_support_prefixed_query_filters() {
         fallback_filtered[0].error.as_deref(),
         Some("upstream timeout")
     );
+
+    let account_label_filtered = storage
+        .list_request_logs(Some("owner-alpha@example.com"), 100)
+        .expect("filter by account label");
+    assert_eq!(account_label_filtered.len(), 2);
+    assert!(account_label_filtered
+        .iter()
+        .all(|log| log.account_id.as_deref() == Some("acc-1")));
+
+    let account_prefixed_filtered = storage
+        .list_request_logs(Some("account:=owner-alpha@example.com"), 100)
+        .expect("filter by account label with account prefix");
+    assert_eq!(account_prefixed_filtered.len(), 2);
+    assert!(account_prefixed_filtered
+        .iter()
+        .all(|log| log.account_id.as_deref() == Some("acc-1")));
 }
 
 /// 函数 `request_log_today_summary_reads_from_token_stats_table`
@@ -1304,6 +1340,7 @@ fn storage_api_keys_include_profile_fields() {
             service_tier: Some("fast".to_string()),
             rotation_strategy: "account_rotation".to_string(),
             aggregate_api_id: None,
+            account_plan_filter: None,
             aggregate_api_url: None,
             client_type: "claude_code".to_string(),
             protocol_type: "anthropic_native".to_string(),
@@ -1355,6 +1392,7 @@ fn storage_can_roundtrip_api_key_secret() {
             service_tier: None,
             rotation_strategy: "account_rotation".to_string(),
             aggregate_api_id: None,
+            account_plan_filter: None,
             aggregate_api_url: None,
             client_type: "codex".to_string(),
             protocol_type: "openai_compat".to_string(),

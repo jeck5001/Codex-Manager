@@ -44,6 +44,7 @@ fn sample_api_key(
         rotation_strategy: crate::apikey_profile::ROTATION_ACCOUNT.to_string(),
         aggregate_api_id: None,
         aggregate_api_url: None,
+        account_plan_filter: None,
     }
 }
 

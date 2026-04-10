@@ -2,6 +2,8 @@
 pub(super) enum RequestLogQuery {
     All,
     GlobalLike(String),
+    AccountLike(String),
+    AccountExact(String),
     FieldLike {
         column: &'static str,
         pattern: String,
@@ -59,7 +61,7 @@ fn parse_prefixed_request_log_query(raw: &str) -> Option<RequestLogQuery> {
     let (is_exact, needle) = parse_match_mode(normalized_value)?;
 
     match normalized_prefix.as_str() {
-        "account" | "account_id" => Some(parse_field_query("account_id", is_exact, needle)),
+        "account" | "account_id" => Some(parse_account_query(is_exact, needle)),
         "path" | "request_path" => Some(parse_field_query("request_path", is_exact, needle)),
         "original" | "original_path" => Some(parse_field_query("original_path", is_exact, needle)),
         "adapted" | "adapted_path" => Some(parse_field_query("adapted_path", is_exact, needle)),
@@ -133,6 +135,13 @@ fn parse_field_query(column: &'static str, is_exact: bool, value: &str) -> Reque
         column,
         pattern: format!("%{}%", value),
     }
+}
+
+fn parse_account_query(is_exact: bool, value: &str) -> RequestLogQuery {
+    if is_exact {
+        return RequestLogQuery::AccountExact(value.to_string());
+    }
+    RequestLogQuery::AccountLike(format!("%{}%", value))
 }
 
 /// 函数 `parse_status_query`

@@ -740,6 +740,16 @@ impl Storage {
         Ok(false)
     }
 
+    fn has_table(&self, table: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                [table],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|count| count > 0)
+    }
+
     /// 函数 `ensure_migrations_table`
     ///
     /// 作者: gaohongshun
