@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildHotmailBackendCallbackBase,
+  buildHotmailBatchStatusText,
   buildHotmailLocalHandoffActionState,
   buildHotmailWebLocalHandoffActionState,
   buildHotmailWebLocalHelperUrl,
@@ -169,6 +171,28 @@ test("buildHotmailWebLocalHandoffActionState enables browser-side helper for web
 
 test("buildHotmailWebLocalHelperUrl uses localhost helper endpoint", () => {
   assert.equal(buildHotmailWebLocalHelperUrl("/health"), "http://127.0.0.1:16788/health");
+});
+
+test("buildHotmailBackendCallbackBase uses current hostname with register port", () => {
+  assert.equal(
+    buildHotmailBackendCallbackBase("http://192.168.5.35:48761/hotmail"),
+    "http://192.168.5.35:9000/api/hotmail",
+  );
+});
+
+test("buildHotmailBatchStatusText shows local-first running hint", () => {
+  assert.equal(
+    buildHotmailBatchStatusText({
+      status: "running",
+      executionMode: "local_first",
+      currentTask: {
+        status: "running",
+        currentStep: "opening_signup",
+        manualActionRequired: false,
+      },
+    }),
+    "正在本机执行",
+  );
 });
 
 test("buildHotmailHandoffAccessUrl falls back to current hostname with default noVNC port", () => {

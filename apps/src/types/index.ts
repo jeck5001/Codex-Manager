@@ -995,6 +995,37 @@ export interface HotmailLocalHelperLaunchResult {
   error?: string;
 }
 
+export interface HotmailLocalHelperTaskStartResult {
+  ok: boolean;
+  taskId: string;
+  message: string;
+  error?: string;
+}
+
+export interface RegisterHotmailTaskSnapshot {
+  taskId: string;
+  batchId: string;
+  status: string;
+  currentStep: string;
+  manualActionRequired: boolean;
+  failureCode: string;
+  failureMessage: string;
+  verificationEmail: string;
+  targetEmail: string;
+  artifactPath: string;
+}
+
+export interface RegisterHotmailLocalFirstTaskPayload {
+  batchId: string;
+  taskId: string;
+  profile: Record<string, unknown>;
+  targetDomains: string[];
+  proxy: string;
+  verificationMailbox: Record<string, unknown> | null;
+  backendCallbackBase: string;
+  backendCallbackToken: string;
+}
+
 export interface RegisterHotmailBatchSnapshot {
   batchId: string;
   total: number;
@@ -1008,6 +1039,9 @@ export interface RegisterHotmailBatchSnapshot {
   handoffTitle?: string;
   handoffInstructions?: string;
   localHandoff?: RegisterHotmailLocalHandoff | null;
+  executionMode?: string;
+  currentTask?: RegisterHotmailTaskSnapshot | null;
+  currentTaskPayload?: RegisterHotmailLocalFirstTaskPayload | null;
   cancelled: boolean;
   finished: boolean;
   logs: string[];

@@ -57,7 +57,13 @@ class HotmailRoutesTests(unittest.TestCase):
         )
         response = self.client.post(
             "/api/hotmail/batches",
-            json={"count": 2, "concurrency": 1, "interval_min": 1, "interval_max": 2},
+            json={
+                "count": 2,
+                "concurrency": 1,
+                "interval_min": 1,
+                "interval_max": 2,
+                "execution_mode": "remote",
+            },
         )
 
         self.assertEqual(response.status_code, 200)
@@ -120,7 +126,13 @@ class HotmailRoutesTests(unittest.TestCase):
 
         response = self.client.post(
             "/api/hotmail/batches",
-            json={"count": 2, "concurrency": 1, "interval_min": 0, "interval_max": 0},
+            json={
+                "count": 2,
+                "concurrency": 1,
+                "interval_min": 0,
+                "interval_max": 0,
+                "execution_mode": "remote",
+            },
         )
 
         self.assertEqual(response.status_code, 200)
@@ -261,7 +273,13 @@ class HotmailRoutesTests(unittest.TestCase):
 
         response = self.client.post(
             "/api/hotmail/batches",
-            json={"count": 1, "concurrency": 1, "interval_min": 0, "interval_max": 0},
+            json={
+                "count": 1,
+                "concurrency": 1,
+                "interval_min": 0,
+                "interval_max": 0,
+                "execution_mode": "remote",
+            },
         )
 
         self.assertEqual(response.status_code, 200)
@@ -315,7 +333,13 @@ class HotmailRoutesTests(unittest.TestCase):
 
         create_response = self.client.post(
             "/api/hotmail/batches",
-            json={"count": 1, "concurrency": 1, "interval_min": 0, "interval_max": 0},
+            json={
+                "count": 1,
+                "concurrency": 1,
+                "interval_min": 0,
+                "interval_max": 0,
+                "execution_mode": "remote",
+            },
         )
         batch_id = create_response.json()["batch_id"]
 
@@ -358,7 +382,13 @@ class HotmailRoutesTests(unittest.TestCase):
 
         create_response = self.client.post(
             "/api/hotmail/batches",
-            json={"count": 1, "concurrency": 1, "interval_min": 0, "interval_max": 0},
+            json={
+                "count": 1,
+                "concurrency": 1,
+                "interval_min": 0,
+                "interval_max": 0,
+                "execution_mode": "remote",
+            },
         )
         batch_id = create_response.json()["batch_id"]
 
