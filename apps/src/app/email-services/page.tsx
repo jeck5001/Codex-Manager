@@ -419,9 +419,12 @@ export default function EmailServicesPage() {
     const tempMailCount =
       stats?.tempMailCount ??
       services.filter((service) => service.serviceType === "tempmail" || service.serviceType === "temp_mail").length;
+    const mail33ImapCount =
+      stats?.mail33ImapCount ??
+      services.filter((service) => service.serviceType === "mail_33_imap").length;
     const customCount =
       stats?.customCount ?? services.filter((service) => service.serviceType === "custom_domain").length;
-    const totalServices = outlookCount + customCount + tempMailCount;
+    const totalServices = outlookCount + customCount + tempMailCount + mail33ImapCount;
 
     return {
       totalServices,
@@ -430,6 +433,7 @@ export default function EmailServicesPage() {
       outlookCount,
       customCount,
       tempMailCount,
+      mail33ImapCount,
       tempmailAvailable: stats?.tempmailAvailable ?? true,
     };
   }, [services, stats]);
@@ -849,8 +853,11 @@ export default function EmailServicesPage() {
             icon: Upload,
           },
           {
-            title: "自定义/临时邮箱",
-            value: statsSnapshot.customCount + statsSnapshot.tempMailCount,
+            title: "自定义/33mail/临时邮箱",
+            value:
+              statsSnapshot.customCount +
+              statsSnapshot.mail33ImapCount +
+              statsSnapshot.tempMailCount,
             hint: statsSnapshot.tempmailAvailable ? "Tempmail.lol 当前可用" : "Tempmail.lol 当前不可用",
             icon: Wrench,
           },

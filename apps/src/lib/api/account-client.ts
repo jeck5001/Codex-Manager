@@ -304,6 +304,7 @@ function normalizeRegisterAvailableServices(value: unknown): RegisterAvailableSe
     outlook: normalizeRegisterServiceGroup(source.outlook),
     customDomain: normalizeRegisterServiceGroup(source.custom_domain ?? source.customDomain),
     tempMail: normalizeRegisterServiceGroup(source.temp_mail ?? source.tempMail),
+    mail33Imap: normalizeRegisterServiceGroup(source.mail_33_imap ?? source.mail33Imap),
   };
 }
 
@@ -985,6 +986,13 @@ function normalizeRegisterEmailServiceStats(value: unknown): RegisterEmailServic
         ? source.tempMailCount
         : typeof source.temp_mail_count === "number" && Number.isFinite(source.temp_mail_count)
           ? source.temp_mail_count
+          : 0,
+    mail33ImapCount:
+      typeof source.mail33ImapCount === "number" && Number.isFinite(source.mail33ImapCount)
+        ? source.mail33ImapCount
+        : typeof source.mail_33_imap_count === "number" &&
+            Number.isFinite(source.mail_33_imap_count)
+          ? source.mail_33_imap_count
           : 0,
     tempmailAvailable:
       source.tempmailAvailable === true || source.tempmail_available === true,

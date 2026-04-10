@@ -563,6 +563,7 @@ async def get_email_services_stats():
             'outlook_count': 0,
             'custom_count': 0,
             'temp_mail_count': 0,
+            'mail_33_imap_count': 0,
             'tempmail_available': True,  # 临时邮箱始终可用
             'enabled_count': enabled_count
         }
@@ -574,6 +575,8 @@ async def get_email_services_stats():
                 stats['custom_count'] = count
             elif service_type == 'temp_mail':
                 stats['temp_mail_count'] = count
+            elif service_type == 'mail_33_imap':
+                stats['mail_33_imap_count'] = count
 
         return stats
 
@@ -639,6 +642,27 @@ async def get_service_types():
                         "description": "可直接填写完整域名；留空时由服务端自动生成固定子域名",
                     },
                     {"name": "enable_prefix", "label": "启用前缀", "required": False, "default": True},
+                ]
+            },
+            {
+                "value": "mail_33_imap",
+                "label": "33mail + IMAP",
+                "description": "使用 33mail 生成别名，通过真实邮箱 IMAP 自动收取 OpenAI 验证码",
+                "config_fields": [
+                    {"name": "alias_domain", "label": "33mail 域名后缀", "required": True, "placeholder": "demo.33mail.com", "description": "不要带 @，直接填写 33mail 分配的域名后缀"},
+                    {"name": "real_inbox_email", "label": "真实收件邮箱", "required": True, "placeholder": "name@example.com", "description": "33mail 转发的真实目标邮箱"},
+                    {"name": "imap_host", "label": "IMAP Host", "required": True, "placeholder": "imap.qq.com"},
+                    {"name": "imap_port", "label": "IMAP Port", "required": True, "default": 993},
+                    {"name": "imap_username", "label": "IMAP 用户名", "required": True, "placeholder": "name@example.com"},
+                    {"name": "imap_password", "label": "IMAP 密码/授权码", "required": True, "secret": True},
+                    {"name": "imap_mailbox", "label": "邮箱目录", "required": False, "default": "INBOX"},
+                    {"name": "imap_ssl", "label": "启用 SSL", "required": False, "default": True},
+                    {"name": "from_filter", "label": "发件人过滤", "required": False, "default": "openai.com", "placeholder": "openai.com"},
+                    {"name": "subject_keyword", "label": "主题关键字", "required": False, "default": "OpenAI", "placeholder": "OpenAI"},
+                    {"name": "otp_pattern", "label": "验证码正则", "required": False, "default": "(?<!\\\\d)(\\\\d{6})(?!\\\\d)"},
+                    {"name": "poll_interval", "label": "轮询间隔(秒)", "required": False, "default": 3},
+                    {"name": "timeout", "label": "超时时间(秒)", "required": False, "default": 120},
+                    {"name": "alias_length", "label": "别名前缀长度", "required": False, "default": 12},
                 ]
             }
         ]
