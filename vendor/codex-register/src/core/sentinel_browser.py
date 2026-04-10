@@ -105,6 +105,79 @@ def _build_sentinel_target_urls(referer: str) -> list[str]:
     return candidates
 
 
+def _extract_cookie_value(cookies: list[dict[str, Any]], cookie_name: str) -> str:
+    target_name = str(cookie_name or "").strip()
+    if not target_name:
+        return ""
+
+    for item in cookies or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("name") or "").strip() != target_name:
+            continue
+        value = str(item.get("value") or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def fetch_browser_device_id(
+    *,
+    auth_url: str,
+    proxy_url: Optional[str] = None,
+    callback_logger: Optional[Callable[[str], None]] = None,
+) -> str:
+    """在浏览器上下文中落地 OAuth 页面并尝试读取 oai-did cookie。"""
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        _log(callback_logger, "playwright 未安装，无法使用浏览器兜底获取 Device ID")
+        return ""
+
+    proxy = _build_playwright_proxy(proxy_url)
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
+            headless=True,
+            proxy=proxy,
+            args=[
+                "--no-sandbox",
+                "--disable-blink-features=AutomationControlled",
+            ],
+        )
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent=DEFAULT_SENTINEL_USER_AGENT,
+            ignore_https_errors=True,
+        )
+
+        try:
+            page = context.new_page()
+            target_url = str(auth_url or "").strip() or "https://auth.openai.com/"
+            _log(callback_logger, f"浏览器兜底获取 Device ID，打开: {target_url[:120]}...")
+            page.goto(target_url, wait_until="domcontentloaded", timeout=30_000)
+            page.wait_for_timeout(2_000)
+            browser_cookies = context.cookies(["https://auth.openai.com/", target_url])
+            did = _extract_cookie_value(browser_cookies, "oai-did")
+            if did:
+                _log(callback_logger, "浏览器兜底获取 Device ID 成功")
+            else:
+                _log(callback_logger, "浏览器兜底未读取到 oai-did cookie")
+            return did
+        except PlaywrightTimeoutError:
+            _log(callback_logger, "浏览器兜底获取 Device ID 超时")
+            return ""
+        except Exception as exc:
+            _log(callback_logger, f"浏览器兜底获取 Device ID 异常: {exc}")
+            return ""
+        finally:
+            try:
+                context.close()
+            finally:
+                browser.close()
+
+
 def fetch_browser_sentinel_token(
     *,
     did: str,

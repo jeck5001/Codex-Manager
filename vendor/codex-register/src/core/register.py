@@ -32,7 +32,7 @@ from .register_token_resolver import (
     build_callback_url_from_page,
     extract_workspace_id_from_token,
 )
-from .sentinel_browser import fetch_browser_sentinel_token
+from .sentinel_browser import fetch_browser_device_id, fetch_browser_sentinel_token
 from .oauth import OAuthManager, OAuthStart
 from .http_client import OpenAIHTTPClient, HTTPClientError
 from ..services import EmailServiceFactory, BaseEmailService, EmailServiceType
@@ -448,6 +448,18 @@ class RegistrationEngine:
                     self._store_device_id_in_session(did)
                     self._log(f"Device ID: {did}")
                     return did
+
+                if getattr(response, "status_code", 0) == 403:
+                    self._log("获取 Device ID 遇到 HTTP 403，尝试浏览器兜底...", "warning")
+                    browser_did = fetch_browser_device_id(
+                        auth_url=self.oauth_start.auth_url,
+                        proxy_url=getattr(self, "proxy_url", None),
+                        callback_logger=self._log,
+                    )
+                    if browser_did:
+                        self._store_device_id_in_session(browser_did)
+                        self._log(f"Device ID: {browser_did}")
+                        return browser_did
 
                 self._log(
                     f"获取 Device ID 失败: 未返回 oai-did Cookie (HTTP {response.status_code}, 第 {attempt}/{max_attempts} 次)",

@@ -264,6 +264,50 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertEqual(did, "did-from-set-cookie")
         self.assertIn(("info", "Device ID: did-from-set-cookie"), logs)
 
+    def test_get_device_id_falls_back_to_browser_when_authorize_returns_403(self):
+        logs = []
+        original_fetch_browser_device_id = REGISTER_MODULE.fetch_browser_device_id
+
+        class FakeResponse:
+            status_code = 403
+            headers = {}
+            text = ""
+            cookies = {}
+
+        class FakeSession:
+            def __init__(self):
+                self.cookies = {}
+                self.calls = 0
+
+            def get(self, url, **kwargs):
+                self.calls += 1
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+        engine.proxy_url = "http://127.0.0.1:7890"
+        engine.session = FakeSession()
+        engine.http_client = types.SimpleNamespace(session=engine.session, close=lambda: None)
+        engine._log = lambda message, level="info": logs.append((level, message))
+
+        try:
+            REGISTER_MODULE.fetch_browser_device_id = (
+                lambda **kwargs: "did-from-browser"
+            )
+            did = engine._get_device_id()
+        finally:
+            REGISTER_MODULE.fetch_browser_device_id = original_fetch_browser_device_id
+
+        self.assertEqual(did, "did-from-browser")
+        self.assertEqual(engine.session.calls, 1)
+        self.assertIn(("warning", "获取 Device ID 遇到 HTTP 403，尝试浏览器兜底..."), logs)
+        self.assertIn(("info", "Device ID: did-from-browser"), logs)
+
     def test_session_cookie_debug_summary_reports_key_cookie_flags(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
         engine._session_cookie_items = lambda: [
