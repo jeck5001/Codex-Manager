@@ -104,11 +104,9 @@ fn normalize_auth_type(value: Option<String>) -> Result<String, String> {
             let normalized = raw.trim().to_ascii_lowercase().replace('-', "_");
             match normalized.as_str() {
                 "apikey" | "api_key" | "key" => Ok(AGGREGATE_API_AUTH_APIKEY.to_string()),
-                "userpass"
-                | "username_password"
-                | "account_password"
-                | "basic"
-                | "http_basic" => Ok(AGGREGATE_API_AUTH_USERPASS.to_string()),
+                "userpass" | "username_password" | "account_password" | "basic" | "http_basic" => {
+                    Ok(AGGREGATE_API_AUTH_USERPASS.to_string())
+                }
                 other => Err(format!("unsupported aggregate api auth type: {other}")),
             }
         }
@@ -212,9 +210,9 @@ fn normalize_auth_params_json(
                     }
                 }
             }
-            serde_json::to_string(&value).map(Some).map_err(|_| {
-                "authParams must be a valid JSON object".to_string()
-            })
+            serde_json::to_string(&value)
+                .map(Some)
+                .map_err(|_| "authParams must be a valid JSON object".to_string())
         }
     }
 }
@@ -335,36 +333,20 @@ fn apply_probe_auth(
         let parsed: UserPassSecret = serde_json::from_str(secret.trim())
             .map_err(|_| "invalid aggregate api secret".to_string())?;
         if let Some(raw) = auth_params {
-            let params: UserPassAuthParams = serde_json::from_str(raw)
-                .map_err(|_| "invalid authParams".to_string())?;
+            let params: UserPassAuthParams =
+                serde_json::from_str(raw).map_err(|_| "invalid authParams".to_string())?;
             let mode = params.mode.trim().to_ascii_lowercase();
             if mode == "headerpair" {
-                let username_name = params
-                    .username_name
-                    .as_deref()
-                    .unwrap_or("username")
-                    .trim();
-                let password_name = params
-                    .password_name
-                    .as_deref()
-                    .unwrap_or("password")
-                    .trim();
+                let username_name = params.username_name.as_deref().unwrap_or("username").trim();
+                let password_name = params.password_name.as_deref().unwrap_or("password").trim();
                 builder = builder
                     .header(username_name, parsed.username.as_str())
                     .header(password_name, parsed.password.as_str());
                 return Ok((builder, url));
             }
             if mode == "querypair" {
-                let username_name = params
-                    .username_name
-                    .as_deref()
-                    .unwrap_or("username")
-                    .trim();
-                let password_name = params
-                    .password_name
-                    .as_deref()
-                    .unwrap_or("password")
-                    .trim();
+                let username_name = params.username_name.as_deref().unwrap_or("username").trim();
+                let password_name = params.password_name.as_deref().unwrap_or("password").trim();
                 url = with_query_param(url.as_str(), username_name, parsed.username.as_str());
                 url = with_query_param(url.as_str(), password_name, parsed.password.as_str());
                 return Ok((builder, url));
@@ -900,9 +882,13 @@ pub(crate) fn create_aggregate_api(
     let normalized_url = normalize_upstream_base_url(url)?
         .unwrap_or_else(|| provider_default_url(normalized_provider_type.as_str()).to_string());
     let normalized_auth_type = normalize_auth_type(auth_type)?;
-    let normalized_auth_params_json =
-        normalize_auth_params_json(normalized_auth_type.as_str(), auth_custom_enabled, auth_params)?;
-    let normalized_action = normalize_action_override(action_custom_enabled, action)?.unwrap_or(None);
+    let normalized_auth_params_json = normalize_auth_params_json(
+        normalized_auth_type.as_str(),
+        auth_custom_enabled,
+        auth_params,
+    )?;
+    let normalized_action =
+        normalize_action_override(action_custom_enabled, action)?.unwrap_or(None);
     let normalized_secret = if normalized_auth_type == AGGREGATE_API_AUTH_APIKEY {
         normalize_secret(key).ok_or_else(|| "key is required".to_string())?
     } else {
@@ -989,10 +975,8 @@ pub(crate) fn update_aggregate_api(
         .find_aggregate_api_by_id(api_id)
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "aggregate api not found".to_string())?;
-    let existing_auth_type =
-        normalize_auth_type(Some(existing.auth_type.clone())).unwrap_or_else(|_| {
-            AGGREGATE_API_AUTH_APIKEY.to_string()
-        });
+    let existing_auth_type = normalize_auth_type(Some(existing.auth_type.clone()))
+        .unwrap_or_else(|_| AGGREGATE_API_AUTH_APIKEY.to_string());
     let normalized_auth_type = match auth_type {
         Some(raw) => Some(normalize_auth_type(Some(raw))?),
         None => None,
@@ -1078,7 +1062,10 @@ pub(crate) fn update_aggregate_api(
             return Err("username and password must be provided together".to_string());
         }
         if auth_type_changed && (!has_user || !has_pass) {
-            return Err("username and password are required when switching authType to userpass".to_string());
+            return Err(
+                "username and password are required when switching authType to userpass"
+                    .to_string(),
+            );
         }
         if has_user && has_pass {
             let secret = serialize_userpass_secret(username, password)?;

@@ -390,7 +390,11 @@ impl Storage {
         self.ensure_column("aggregate_apis", "provider_type", "TEXT")?;
         self.ensure_column("aggregate_apis", "supplier_name", "TEXT")?;
         self.ensure_column("aggregate_apis", "sort", "INTEGER DEFAULT 0")?;
-        self.ensure_column("aggregate_apis", "auth_type", "TEXT NOT NULL DEFAULT 'apikey'")?;
+        self.ensure_column(
+            "aggregate_apis",
+            "auth_type",
+            "TEXT NOT NULL DEFAULT 'apikey'",
+        )?;
         self.ensure_column("aggregate_apis", "auth_params_json", "TEXT")?;
         self.ensure_column("aggregate_apis", "action", "TEXT")?;
         self.conn.execute(
