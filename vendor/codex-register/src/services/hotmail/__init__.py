@@ -4,6 +4,7 @@ from .types import (
     HotmailAccountArtifact,
     HotmailChallengeHandoff,
     HotmailFailureCode,
+    HotmailRegistrationProfile,
     HotmailRegistrationResult,
 )
 from .verification import (
@@ -21,6 +22,7 @@ __all__ = [
     "HotmailAccountArtifact",
     "HotmailChallengeHandoff",
     "HotmailFailureCode",
+    "HotmailRegistrationProfile",
     "HotmailRegistrationResult",
     "build_username_candidates",
     "classify_hotmail_page_state",

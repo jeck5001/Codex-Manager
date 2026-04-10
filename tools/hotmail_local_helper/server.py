@@ -22,6 +22,10 @@ from src.services.hotmail.local_handoff_cli import (  # noqa: E402
     get_chromium_executable_path,
     launch_local_handoff,
 )
+from tools.hotmail_local_helper.hotmail_runner import (  # noqa: E402
+    start_hotmail_task_background,
+    validate_hotmail_task_payload,
+)
 
 DEFAULT_HOST = os.environ.get("CODEXMANAGER_HOTMAIL_HELPER_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("CODEXMANAGER_HOTMAIL_HELPER_PORT", "16788"))
@@ -29,6 +33,7 @@ HANDOFF_ROOT = Path(
     os.environ.get("CODEXMANAGER_HOTMAIL_HELPER_ROOT", "/tmp/codex-hotmail-handoff")
 )
 SERVICE_NAME = "hotmail-local-helper"
+ACTIVE_HOTMAIL_TASKS: dict[str, threading.Event] = {}
 PRIVATE_HOST_PATTERN = re.compile(
     r"^("
     r"localhost|"
@@ -209,6 +214,71 @@ def create_app() -> FastAPI:
                 "profile_dir": str(profile_dir),
                 "message": "browser launched",
             },
+            origin,
+        )
+
+    @app.post("/hotmail/start-task")
+    async def start_hotmail_task(request: Request) -> JSONResponse:
+        origin = request.headers.get("origin", "")
+        if not is_origin_allowed(origin):
+            return build_json_response(
+                403,
+                {"ok": False, "error": "origin_not_allowed", "message": "Origin is not allowed"},
+                origin,
+            )
+
+        if not check_playwright_ready():
+            return build_json_response(
+                503,
+                {
+                    "ok": False,
+                    "error": "playwright_browser_missing",
+                    "message": "Chromium is not installed for the local helper",
+                },
+                origin,
+            )
+
+        payload = await request.json()
+        try:
+            task = validate_hotmail_task_payload(payload if isinstance(payload, dict) else {})
+        except ValueError as exc:
+            return build_json_response(
+                400,
+                {"ok": False, "error": "invalid_payload", "message": str(exc)},
+                origin,
+            )
+
+        cancel_event = threading.Event()
+        ACTIVE_HOTMAIL_TASKS[task.task_id] = cancel_event
+        start_hotmail_task_background(
+            task,
+            cancel_event=cancel_event,
+            on_finish=lambda finished_task: ACTIVE_HOTMAIL_TASKS.pop(finished_task.task_id, None),
+        )
+        return build_json_response(
+            200,
+            {
+                "ok": True,
+                "task_id": task.task_id,
+                "message": "task accepted",
+            },
+            origin,
+        )
+
+    @app.post("/hotmail/cancel-task")
+    async def cancel_hotmail_task(request: Request) -> JSONResponse:
+        origin = request.headers.get("origin", "")
+        payload = await request.json()
+        task_id = str(
+            (payload or {}).get("task_id") or (payload or {}).get("taskId") or ""
+        ).strip()
+        if task_id:
+            event = ACTIVE_HOTMAIL_TASKS.get(task_id)
+            if event is not None:
+                event.set()
+        return build_json_response(
+            200,
+            {"ok": True, "task_id": task_id, "message": "cancel requested"},
             origin,
         )
 

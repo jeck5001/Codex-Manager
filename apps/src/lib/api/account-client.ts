@@ -52,9 +52,11 @@ import {
   RegisterEmailServiceTypeCatalog,
   RegisterHotmailArtifact,
   RegisterHotmailBatchSnapshot,
+  RegisterHotmailLocalFirstTaskPayload,
   RegisterHotmailLocalHandoff,
   RegisterHotmailLocalHandoffCookie,
   RegisterHotmailLocalHandoffOrigin,
+  RegisterHotmailTaskSnapshot,
   RegisterImportResult,
   RegisterOutlookAccount,
   RegisterOutlookAccountsResult,
@@ -163,6 +165,7 @@ interface RegisterHotmailBatchStartPayload {
   intervalMin: number;
   intervalMax: number;
   proxy?: string | null;
+  executionMode?: string | null;
 }
 
 interface RegisterTaskListPayload {
@@ -726,6 +729,112 @@ function normalizeRegisterHotmailLocalHandoff(
   };
 }
 
+function normalizeRegisterHotmailTaskSnapshot(value: unknown): RegisterHotmailTaskSnapshot | null {
+  const source = asRecord(value);
+  if (!source) {
+    return null;
+  }
+  return {
+    taskId:
+      typeof source.taskId === "string"
+        ? source.taskId
+        : typeof source.task_id === "string"
+          ? source.task_id
+          : "",
+    batchId:
+      typeof source.batchId === "string"
+        ? source.batchId
+        : typeof source.batch_id === "string"
+          ? source.batch_id
+          : "",
+    status: typeof source.status === "string" ? source.status : "",
+    currentStep:
+      typeof source.currentStep === "string"
+        ? source.currentStep
+        : typeof source.current_step === "string"
+          ? source.current_step
+          : "",
+    manualActionRequired:
+      source.manualActionRequired === true
+        ? true
+        : source.manual_action_required === true,
+    failureCode:
+      typeof source.failureCode === "string"
+        ? source.failureCode
+        : typeof source.failure_code === "string"
+          ? source.failure_code
+          : "",
+    failureMessage:
+      typeof source.failureMessage === "string"
+        ? source.failureMessage
+        : typeof source.failure_message === "string"
+          ? source.failure_message
+          : "",
+    verificationEmail:
+      typeof source.verificationEmail === "string"
+        ? source.verificationEmail
+        : typeof source.verification_email === "string"
+          ? source.verification_email
+          : "",
+    targetEmail:
+      typeof source.targetEmail === "string"
+        ? source.targetEmail
+        : typeof source.target_email === "string"
+          ? source.target_email
+          : "",
+    artifactPath:
+      typeof source.artifactPath === "string"
+        ? source.artifactPath
+        : typeof source.artifact_path === "string"
+          ? source.artifact_path
+          : "",
+  };
+}
+
+function normalizeRegisterHotmailLocalFirstTaskPayload(
+  value: unknown
+): RegisterHotmailLocalFirstTaskPayload | null {
+  const source = asRecord(value);
+  if (!source) {
+    return null;
+  }
+  return {
+    batchId:
+      typeof source.batchId === "string"
+        ? source.batchId
+        : typeof source.batch_id === "string"
+          ? source.batch_id
+          : "",
+    taskId:
+      typeof source.taskId === "string"
+        ? source.taskId
+        : typeof source.task_id === "string"
+          ? source.task_id
+          : "",
+    profile: asRecord(source.profile) ?? {},
+    targetDomains: Array.isArray(source.targetDomains)
+      ? source.targetDomains.filter((item): item is string => typeof item === "string")
+      : Array.isArray(source.target_domains)
+        ? source.target_domains.filter((item): item is string => typeof item === "string")
+        : [],
+    proxy: typeof source.proxy === "string" ? source.proxy : "",
+    verificationMailbox:
+      asRecord(source.verificationMailbox ?? source.verification_mailbox) ?? null,
+    backendCallbackBase:
+      typeof source.backendCallbackBase === "string"
+        ? source.backendCallbackBase
+        : typeof source.backend_callback_base === "string"
+          ? source.backend_callback_base
+          : "",
+    backendCallbackToken:
+      typeof source.backendCallbackToken === "string"
+        ? source.backendCallbackToken
+        : typeof source.backend_callback_token === "string"
+          ? source.backend_callback_token
+          : "",
+  };
+}
+
 function normalizeRegisterHotmailBatchSnapshot(
   value: unknown
 ): RegisterHotmailBatchSnapshot {
@@ -786,6 +895,18 @@ function normalizeRegisterHotmailBatchSnapshot(
           : "",
     localHandoff: normalizeRegisterHotmailLocalHandoff(
       source.localHandoff ?? source.local_handoff
+    ),
+    executionMode:
+      typeof source.executionMode === "string"
+        ? source.executionMode
+        : typeof source.execution_mode === "string"
+          ? source.execution_mode
+          : "",
+    currentTask: normalizeRegisterHotmailTaskSnapshot(
+      source.currentTask ?? source.current_task
+    ),
+    currentTaskPayload: normalizeRegisterHotmailLocalFirstTaskPayload(
+      source.currentTaskPayload ?? source.current_task_payload
     ),
     cancelled: source.cancelled === true,
     finished: source.finished === true,
@@ -1514,6 +1635,7 @@ export const accountClient = {
         intervalMin: params.intervalMin,
         intervalMax: params.intervalMax,
         proxy: params.proxy ?? null,
+        executionMode: params.executionMode ?? null,
       })
     );
     return normalizeRegisterHotmailBatchSnapshot(result);

@@ -1,7 +1,9 @@
 import type {
   HotmailLocalHelperHealth,
   HotmailLocalHelperLaunchResult,
+  HotmailLocalHelperTaskStartResult,
   RegisterHotmailLocalHandoff,
+  RegisterHotmailLocalFirstTaskPayload,
 } from "../../types";
 
 const HOTMAIL_LOCAL_HELPER_BASE = "http://127.0.0.1:16788";
@@ -34,6 +36,21 @@ function normalizeHotmailLocalHelperLaunchResult(value: unknown): HotmailLocalHe
         ? source.profileDir
         : typeof source.profile_dir === "string"
           ? source.profile_dir
+          : "",
+    message: typeof source.message === "string" ? source.message : "",
+    error: typeof source.error === "string" ? source.error : undefined,
+  };
+}
+
+function normalizeHotmailLocalHelperTaskStartResult(value: unknown): HotmailLocalHelperTaskStartResult {
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    ok: source.ok === true,
+    taskId:
+      typeof source.taskId === "string"
+        ? source.taskId
+        : typeof source.task_id === "string"
+          ? source.task_id
           : "",
     message: typeof source.message === "string" ? source.message : "",
     error: typeof source.error === "string" ? source.error : undefined,
@@ -75,5 +92,29 @@ export const hotmailLocalHelperClient = {
     });
     const json = await readJsonResponse(response);
     return normalizeHotmailLocalHelperLaunchResult(json);
+  },
+  async startTask(
+    payload: RegisterHotmailLocalFirstTaskPayload
+  ): Promise<HotmailLocalHelperTaskStartResult> {
+    const response = await fetch(buildHotmailLocalHelperUrl("/hotmail/start-task"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const json = await readJsonResponse(response);
+    return normalizeHotmailLocalHelperTaskStartResult(json);
+  },
+  async cancelTask(taskId: string): Promise<HotmailLocalHelperTaskStartResult> {
+    const response = await fetch(buildHotmailLocalHelperUrl("/hotmail/cancel-task"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ taskId }),
+    });
+    const json = await readJsonResponse(response);
+    return normalizeHotmailLocalHelperTaskStartResult(json);
   },
 };
