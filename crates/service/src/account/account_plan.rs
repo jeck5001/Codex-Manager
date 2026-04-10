@@ -236,8 +236,10 @@ pub(crate) fn account_matches_plan_filter(
         .latest_usage_snapshot_for_account(account_id)
         .ok()
         .flatten();
-    resolve_account_plan(Some(token), snapshot.as_ref())
-        .is_some_and(|plan| plan.normalized == normalized_filter)
+    match resolve_account_plan(Some(token), snapshot.as_ref()) {
+        Some(plan) => plan.normalized == normalized_filter,
+        None => normalized_filter == "unknown",
+    }
 }
 
 /// 函数 `is_long_window`
@@ -355,9 +357,10 @@ fn normalize_plan_type(value: &str) -> Option<ResolvedAccountPlan> {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_plan_type_from_credits_json, extract_plan_type_from_id_token,
-        is_free_or_single_window_account, is_free_plan_from_credits_json, is_free_plan_type,
-        is_single_window_long_usage_snapshot, normalize_plan_type, resolve_account_plan,
+        account_matches_plan_filter, extract_plan_type_from_credits_json,
+        extract_plan_type_from_id_token, is_free_or_single_window_account,
+        is_free_plan_from_credits_json, is_free_plan_type, is_single_window_long_usage_snapshot,
+        normalize_plan_type, resolve_account_plan,
     };
     use codexmanager_core::storage::{now_ts, Account, Storage, Token, UsageSnapshotRecord};
 
@@ -673,5 +676,59 @@ mod tests {
 
         let resolved = resolve_account_plan(Some(&token), Some(&usage)).expect("resolve plan");
         assert_eq!(resolved.normalized, "plus");
+    }
+
+    /// 函数 `account_plan_filter_unknown_accepts_unresolved_accounts`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-10
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn account_plan_filter_unknown_accepts_unresolved_accounts() {
+        let storage = Storage::open_in_memory().expect("open");
+        storage.init().expect("init");
+        let now = now_ts();
+        storage
+            .insert_account(&Account {
+                id: "acc-unknown".to_string(),
+                label: "acc-unknown".to_string(),
+                issuer: "issuer".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: 0,
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("insert account");
+        let token = Token {
+            account_id: "acc-unknown".to_string(),
+            id_token: "header.payload.sig".to_string(),
+            access_token: "header.payload.sig".to_string(),
+            refresh_token: "refresh".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        };
+        storage.insert_token(&token).expect("insert token");
+
+        assert!(account_matches_plan_filter(
+            &storage,
+            "acc-unknown",
+            &token,
+            Some("unknown"),
+        ));
+        assert!(!account_matches_plan_filter(
+            &storage,
+            "acc-unknown",
+            &token,
+            Some("plus"),
+        ));
     }
 }
