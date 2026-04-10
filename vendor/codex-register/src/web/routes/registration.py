@@ -523,6 +523,9 @@ def _normalize_email_service_config(
     elif service_type == EmailServiceType.TEMP_MAIL:
         if 'default_domain' in normalized and 'domain' not in normalized:
             normalized['domain'] = normalized.pop('default_domain')
+    elif service_type == EmailServiceType.MAIL_33_IMAP:
+        if 'domain' in normalized and 'alias_domain' not in normalized:
+            normalized['alias_domain'] = normalized.pop('domain')
 
     if proxy_url and 'proxy_url' not in normalized:
         normalized['proxy_url'] = proxy_url
@@ -847,6 +850,16 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                         logger.info(f"使用数据库 Outlook 账户: {selected_service.name}")
                     else:
                         raise ValueError("所有 Outlook 账户都已注册过 OpenAI 账号，请添加新的 Outlook 账户")
+                elif service_type == EmailServiceType.MAIL_33_IMAP:
+                    selected_service = _pick_email_service_for_registration(db, EmailServiceType.MAIL_33_IMAP)
+                    if not selected_service or not selected_service.config:
+                        raise ValueError("没有可用的 33mail + IMAP 服务，请先在邮箱服务中配置")
+
+                    config = _normalize_email_service_config(service_type, selected_service.config, actual_proxy_url)
+                    config = _merge_runtime_email_service_config(config, email_service_config)
+                    crud.update_registration_task(db, task_uuid, email_service_id=selected_service.id)
+                    _mark_email_service_used(db, selected_service.id)
+                    logger.info(f"使用数据库 33mail + IMAP 服务: {selected_service.name}")
                 else:
                     config = _merge_runtime_email_service_config({}, email_service_config)
 
@@ -1900,6 +1913,11 @@ async def get_available_email_services():
             "count": 0,
             "services": [],
             "domain_configs": temp_mail_domain_configs,
+        },
+        "mail_33_imap": {
+            "available": False,
+            "count": 0,
+            "services": [],
         }
     }
 
@@ -1972,6 +1990,25 @@ async def get_available_email_services():
 
         result["temp_mail"]["count"] = len(temp_mail_services) or len(temp_mail_domain_configs)
         result["temp_mail"]["available"] = len(temp_mail_services) > 0 or len(temp_mail_domain_configs) > 0
+
+        mail33_services = db.query(EmailServiceModel).filter(
+            EmailServiceModel.service_type == "mail_33_imap",
+            EmailServiceModel.enabled == True
+        ).order_by(EmailServiceModel.priority.asc()).all()
+
+        for service in mail33_services:
+            config = service.config or {}
+            result["mail_33_imap"]["services"].append({
+                "id": service.id,
+                "name": service.name,
+                "type": "mail_33_imap",
+                "alias_domain": config.get("alias_domain"),
+                "real_inbox_email": config.get("real_inbox_email"),
+                "priority": service.priority,
+            })
+
+        result["mail_33_imap"]["count"] = len(mail33_services)
+        result["mail_33_imap"]["available"] = len(mail33_services) > 0
 
     return result
 

@@ -13,6 +13,7 @@ from .base import (
 from .tempmail import TempmailService
 from .outlook import OutlookService
 from .custom_domain import CustomDomainEmailService
+from .mail_33_imap import Mail33ImapService
 from .temp_mail import TempMailService
 from .cloudflare_temp_mail import CloudflareProvisioningError, CloudflareTempMailProvisioner
 from .hotmail import (
@@ -28,6 +29,7 @@ EmailServiceFactory.register(EmailServiceType.TEMPMAIL, TempmailService)
 EmailServiceFactory.register(EmailServiceType.OUTLOOK, OutlookService)
 EmailServiceFactory.register(EmailServiceType.CUSTOM_DOMAIN, CustomDomainEmailService)
 EmailServiceFactory.register(EmailServiceType.TEMP_MAIL, TempMailService)
+EmailServiceFactory.register(EmailServiceType.MAIL_33_IMAP, Mail33ImapService)
 
 # 导出 Outlook 模块的额外内容
 from .outlook.base import (
@@ -57,6 +59,7 @@ __all__ = [
     'TempmailService',
     'OutlookService',
     'CustomDomainEmailService',
+    'Mail33ImapService',
     'TempMailService',
     'CloudflareProvisioningError',
     'CloudflareTempMailProvisioner',

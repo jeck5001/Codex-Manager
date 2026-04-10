@@ -414,6 +414,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
       { value: "tempmail", label: "临时邮箱", group: registerServices.tempmail },
       { value: "outlook", label: "Outlook", group: registerServices.outlook },
       { value: "custom_domain", label: "自定义域名", group: registerServices.customDomain },
+      { value: "mail_33_imap", label: "33mail + IMAP", group: registerServices.mail33Imap },
       { value: "temp_mail", label: "Temp Mail", group: registerServices.tempMail },
     ].filter((item) => item.group.available);
   }, [registerServices]);
@@ -527,6 +528,7 @@ export function AddAccountModal({ open, onOpenChange }: AddAccountModalProps) {
         { value: "tempmail", group: catalog.tempmail },
         { value: "outlook", group: catalog.outlook },
         { value: "custom_domain", group: catalog.customDomain },
+        { value: "mail_33_imap", group: catalog.mail33Imap },
         { value: "temp_mail", group: catalog.tempMail },
       ].filter((item) => item.group.available);
       const nextType =

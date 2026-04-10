@@ -759,6 +759,7 @@ export interface RegisterEmailServiceStats {
   outlookCount: number;
   customCount: number;
   tempMailCount: number;
+  mail33ImapCount: number;
   tempmailAvailable: boolean;
   enabledCount: number;
 }
@@ -826,6 +827,7 @@ export interface RegisterAvailableServicesResult {
   outlook: RegisterServiceGroup;
   customDomain: RegisterServiceGroup;
   tempMail: RegisterServiceGroup;
+  mail33Imap: RegisterServiceGroup;
 }
 
 export interface RegisterBrowserbaseConfig {
