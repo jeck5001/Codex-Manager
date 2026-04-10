@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -85,6 +86,10 @@ def check_playwright_ready() -> bool:
     return bool(executable_path and Path(executable_path).exists())
 
 
+async def check_playwright_ready_async() -> bool:
+    return await asyncio.to_thread(check_playwright_ready)
+
+
 def launch_local_handoff_background(payload_path: str, profile_dir: str) -> None:
     thread = threading.Thread(
         target=launch_local_handoff,
@@ -118,13 +123,14 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health() -> JSONResponse:
+        playwright_ready = await check_playwright_ready_async()
         return build_json_response(
             200,
             {
                 "ok": True,
                 "service": SERVICE_NAME,
                 "version": "1",
-                "playwright_ready": check_playwright_ready(),
+                "playwright_ready": playwright_ready,
             },
         )
 
@@ -171,7 +177,7 @@ def create_app() -> FastAPI:
                 origin,
             )
 
-        if not check_playwright_ready():
+        if not await check_playwright_ready_async():
             return build_json_response(
                 503,
                 {
