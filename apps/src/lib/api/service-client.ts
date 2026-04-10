@@ -19,6 +19,7 @@ import {
   normalizeConsumerTrend,
   normalizeDashboardHealth,
   normalizeDashboardTrend,
+  normalizeFreeProxyClearResult,
   normalizeFreeProxySyncResult,
   normalizeGatewayRetryPolicy,
   normalizeGatewayResponseCacheStats,
@@ -60,6 +61,7 @@ import {
   CostSummaryResult,
   DashboardHealth,
   DashboardTrend,
+  FreeProxyClearResult,
   FreeProxySyncResult,
   GatewayRetryPolicy,
   GatewayResponseCacheStats,
@@ -148,6 +150,13 @@ export const serviceClient = {
       withAddr(params ?? {})
     );
     return normalizeFreeProxySyncResult(result);
+  },
+  async clearFreeProxyPool(): Promise<FreeProxyClearResult> {
+    const result = await invoke<unknown>(
+      "service_gateway_freeproxy_clear",
+      withAddr()
+    );
+    return normalizeFreeProxyClearResult(result);
   },
   getRouteStrategy: () =>
     invoke<string>("service_gateway_route_strategy_get", withAddr()),

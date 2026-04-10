@@ -25,6 +25,9 @@ from ..config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+TEMP_MAIL_ADMIN_PAGE_SIZE = 100
+TEMP_MAIL_ADMIN_MAX_SCAN_PAGES = 5
+
 
 class TempMailService(BaseEmailService):
     """
@@ -162,6 +165,37 @@ class TempMailService(BaseEmailService):
             "body": body_text,
             "raw": raw,
         }
+
+    def _extract_mail_recipient_text(self, mail: Dict[str, Any]) -> str:
+        """提取收件人上下文，用于在共享收件箱场景下本地二次过滤目标地址。"""
+        parts: List[str] = []
+        for key in (
+            "address",
+            "to",
+            "recipient",
+            "recipients",
+            "delivered_to",
+            "deliveredTo",
+            "x_original_to",
+            "xOriginalTo",
+        ):
+            value = str(mail.get(key) or "").strip()
+            if value:
+                parts.append(value)
+
+        raw = str(mail.get("raw") or "").strip()
+        if raw:
+            try:
+                message = message_from_string(raw, policy=email_policy)
+                for header_name in ("To", "Delivered-To", "X-Original-To", "Cc", "Bcc"):
+                    for header_value in message.get_all(header_name, []):
+                        value = str(header_value or "").strip()
+                        if value:
+                            parts.append(value)
+            except Exception:
+                parts.append(raw)
+
+        return "\n".join(parts).strip()
 
     @staticmethod
     def _sanitize_otp_search_text(value: str) -> str:
@@ -404,68 +438,76 @@ class TempMailService(BaseEmailService):
         )
 
         start_time = time.time()
-        seen_mail_ids: set = set()
         used_mail_ids = self._used_mail_ids.setdefault(email.lower(), set())
         min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
 
         while time.time() - start_time < actual_timeout:
             try:
-                # 使用 admin API 查询邮件，通过 address 参数过滤
-                response = self._make_request(
-                    "GET",
-                    "/admin/mails",
-                    params={"limit": 20, "offset": 0, "address": email},
-                )
-
-                # admin/mails 返回格式: {"results": [...], "total": N}
-                mails = response.get("results", [])
-                if not isinstance(mails, list):
-                    time.sleep(actual_poll_interval)
-                    continue
-
                 latest_match = None
                 latest_match_key = None
 
-                for index, mail in enumerate(mails):
-                    mail_id = self._extract_mail_identity(mail)
-                    if not mail_id or mail_id in seen_mail_ids or mail_id in used_mail_ids:
-                        continue
+                for page_index in range(TEMP_MAIL_ADMIN_MAX_SCAN_PAGES):
+                    offset = page_index * TEMP_MAIL_ADMIN_PAGE_SIZE
+                    response = self._make_request(
+                        "GET",
+                        "/admin/mails",
+                        params={
+                            "limit": TEMP_MAIL_ADMIN_PAGE_SIZE,
+                            "offset": offset,
+                            "address": email,
+                        },
+                    )
 
-                    seen_mail_ids.add(mail_id)
-                    message_timestamp = self._extract_mail_timestamp(mail)
-                    if message_timestamp and message_timestamp < min_timestamp:
-                        continue
+                    mails = response.get("results", [])
+                    if not isinstance(mails, list):
+                        break
 
-                    parsed = self._extract_mail_fields(mail)
-                    sender = parsed["sender"].lower()
-                    subject = parsed["subject"]
-                    body_text = parsed["body"]
-                    raw_text = parsed["raw"]
-                    content = "\n".join(
-                        part
-                        for part in (
-                            self._sanitize_otp_search_text(sender),
-                            self._sanitize_otp_search_text(subject),
-                            self._sanitize_otp_search_text(body_text),
-                            self._sanitize_otp_search_text(raw_text),
-                        )
-                        if part
-                    ).strip()
+                    for index, mail in enumerate(mails):
+                        mail_id = self._extract_mail_identity(mail)
+                        if not mail_id or mail_id in used_mail_ids:
+                            continue
 
-                    # 只处理 OpenAI 邮件
-                    if "openai" not in sender and "openai" not in content.lower():
-                        continue
+                        message_timestamp = self._extract_mail_timestamp(mail)
+                        if message_timestamp and message_timestamp < min_timestamp:
+                            continue
 
-                    match = re.search(pattern, content)
-                    if match:
-                        code = match.group(1)
-                        candidate_key = (
-                            message_timestamp if message_timestamp is not None else float("-inf"),
-                            index,
-                        )
-                        if latest_match_key is None or candidate_key > latest_match_key:
-                            latest_match_key = candidate_key
-                            latest_match = (mail_id, code)
+                        recipient_text = self._extract_mail_recipient_text(mail)
+                        if recipient_text and email.lower() not in recipient_text.lower():
+                            continue
+
+                        parsed = self._extract_mail_fields(mail)
+                        sender = parsed["sender"].lower()
+                        subject = parsed["subject"]
+                        body_text = parsed["body"]
+                        raw_text = parsed["raw"]
+                        content = "\n".join(
+                            part
+                            for part in (
+                                self._sanitize_otp_search_text(sender),
+                                self._sanitize_otp_search_text(subject),
+                                self._sanitize_otp_search_text(body_text),
+                                self._sanitize_otp_search_text(raw_text),
+                            )
+                            if part
+                        ).strip()
+
+                        # 只处理 OpenAI 邮件
+                        if "openai" not in sender and "openai" not in content.lower():
+                            continue
+
+                        match = re.search(pattern, content)
+                        if match:
+                            code = match.group(1)
+                            candidate_key = (
+                                message_timestamp if message_timestamp is not None else float("-inf"),
+                                offset + index,
+                            )
+                            if latest_match_key is None or candidate_key > latest_match_key:
+                                latest_match_key = candidate_key
+                                latest_match = (mail_id, code)
+
+                    if len(mails) < TEMP_MAIL_ADMIN_PAGE_SIZE:
+                        break
 
                 if latest_match:
                     mail_id, code = latest_match

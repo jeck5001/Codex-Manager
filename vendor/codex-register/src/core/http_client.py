@@ -18,6 +18,13 @@ from ..config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+OPENAI_BROWSER_IMPERSONATE = "chrome120"
+OPENAI_BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+
 
 @dataclass
 class RequestConfig:
@@ -251,11 +258,11 @@ class OpenAIHTTPClient(HTTPClient):
         if config is None:
             self.config.timeout = 30
             self.config.max_retries = 3
+            self.config.impersonate = OPENAI_BROWSER_IMPERSONATE
 
         # 默认请求头
         self.default_headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": OPENAI_BROWSER_USER_AGENT,
             "Accept": "application/json",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip, deflate, br",

@@ -134,6 +134,7 @@ fn classify_auditable_method(method: &str) -> Option<(&'static str, &'static str
             Some(("clear", "gateway_settings"))
         }
         "gateway/freeProxy/sync" => Some(("sync", "gateway_settings")),
+        "gateway/freeProxy/clear" => Some(("clear", "gateway_settings")),
         "alert/rules/upsert" => Some(("upsert", "alert_rule")),
         "alert/rules/delete" => Some(("delete", "alert_rule")),
         "alert/channels/upsert" => Some(("upsert", "alert_channel")),
@@ -164,10 +165,14 @@ fn classify_auditable_method(method: &str) -> Option<(&'static str, &'static str
             Some(("import", "account"))
         }
         "account/register/start" | "account/register/task" => Some(("create", "account")),
-        "account/register/batch/start" | "account/register/outlookBatch/start" => {
+        "account/register/batch/start"
+        | "account/register/outlookBatch/start"
+        | "account/register/hotmailBatch/start" => {
             Some(("start", "register_batch"))
         }
-        "account/register/batch/cancel" | "account/register/outlookBatch/cancel" => {
+        "account/register/batch/cancel"
+        | "account/register/outlookBatch/cancel"
+        | "account/register/hotmailBatch/cancel" => {
             Some(("cancel", "register_batch"))
         }
         "account/register/task/cancel" => Some(("cancel", "register_task")),
@@ -212,7 +217,9 @@ fn extract_object_id(method: &str, params: Option<&Value>) -> Option<String> {
         "account/register/batch/start"
         | "account/register/batch/cancel"
         | "account/register/outlookBatch/start"
-        | "account/register/outlookBatch/cancel" => &["batchId"],
+        | "account/register/outlookBatch/cancel"
+        | "account/register/hotmailBatch/start"
+        | "account/register/hotmailBatch/cancel" => &["batchId"],
         "account/register/emailServices/create"
         | "account/register/emailServices/update"
         | "account/register/emailServices/delete"

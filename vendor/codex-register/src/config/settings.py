@@ -6,7 +6,7 @@
 import os
 from typing import Optional, Dict, Any, Type, List
 from enum import Enum
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Json, field_validator
 from pydantic.types import SecretStr
 from dataclasses import dataclass
 
@@ -276,6 +276,99 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         category=SettingCategory.TEMPMAIL,
         description="Tempmail 最大重试次数"
     ),
+    "cloudflare_api_token": SettingDefinition(
+        db_key="temp_mail.cloudflare_api_token",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="Cloudflare API Token，用于临时邮箱 Worker 同步",
+        is_secret=True
+    ),
+    "cloudflare_api_email": SettingDefinition(
+        db_key="temp_mail.cloudflare_api_email",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="Cloudflare API Email，用于需要 Global API Key 的邮箱接口"
+    ),
+    "cloudflare_global_api_key": SettingDefinition(
+        db_key="temp_mail.cloudflare_global_api_key",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="Cloudflare Global API Key，用于需要 X-Auth-Email/X-Auth-Key 的邮箱接口",
+        is_secret=True
+    ),
+    "cloudflare_account_id": SettingDefinition(
+        db_key="temp_mail.cloudflare_account_id",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="Cloudflare 账户 ID（用于临时邮箱同步）"
+    ),
+    "cloudflare_zone_id": SettingDefinition(
+        db_key="temp_mail.cloudflare_zone_id",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="Cloudflare 区域 ID，用于临时邮箱同步"
+    ),
+    "cloudflare_worker_name": SettingDefinition(
+        db_key="temp_mail.cloudflare_worker_name",
+        default_value="temp-email",
+        category=SettingCategory.TEMPMAIL,
+        description="Cloudflare Worker 名称"
+    ),
+    "temp_mail_base_url": SettingDefinition(
+        db_key="temp_mail.base_url",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="自部署 Temp-Mail Worker 地址"
+    ),
+    "temp_mail_admin_password": SettingDefinition(
+        db_key="temp_mail.admin_password",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="自部署 Temp-Mail Admin 密码",
+        is_secret=True
+    ),
+    "temp_mail_domain_configs": SettingDefinition(
+        db_key="temp_mail.domain_configs",
+        default_value=[],
+        category=SettingCategory.TEMPMAIL,
+        description="Cloudflare Temp-Mail 域名配置列表"
+    ),
+    "temp_mail_domain_base": SettingDefinition(
+        db_key="temp_mail.domain_base",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="临时邮箱基础域名"
+    ),
+    "temp_mail_subdomain_mode": SettingDefinition(
+        db_key="temp_mail.subdomain_mode",
+        default_value="random",
+        category=SettingCategory.TEMPMAIL,
+        description="临时子域名模式（random 或 sequence）"
+    ),
+    "temp_mail_subdomain_length": SettingDefinition(
+        db_key="temp_mail.subdomain_length",
+        default_value=6,
+        category=SettingCategory.TEMPMAIL,
+        description="临时子域名长度"
+    ),
+    "temp_mail_subdomain_prefix": SettingDefinition(
+        db_key="temp_mail.subdomain_prefix",
+        default_value="tm",
+        category=SettingCategory.TEMPMAIL,
+        description="临时子域名前缀"
+    ),
+    "temp_mail_sync_cloudflare_enabled": SettingDefinition(
+        db_key="temp_mail.sync_cloudflare_enabled",
+        default_value=True,
+        category=SettingCategory.TEMPMAIL,
+        description="启用 Cloudflare 同步临时邮箱子域名"
+    ),
+    "temp_mail_require_cloudflare_sync": SettingDefinition(
+        db_key="temp_mail.require_cloudflare_sync",
+        default_value=True,
+        category=SettingCategory.TEMPMAIL,
+        description="强制临时邮箱需要 Cloudflare 同步",
+    ),
 
     # 自定义域名邮箱配置
     "custom_domain_base_url": SettingDefinition(
@@ -403,6 +496,9 @@ SETTING_TYPES: Dict[str, Type] = {
     "email_service_priority": dict,
     "tempmail_timeout": int,
     "tempmail_max_retries": int,
+    "temp_mail_subdomain_length": int,
+    "temp_mail_sync_cloudflare_enabled": bool,
+    "temp_mail_require_cloudflare_sync": bool,
     "tm_enabled": bool,
     "cpa_enabled": bool,
     "email_code_timeout": int,
@@ -668,6 +764,40 @@ class Settings(BaseModel):
     tempmail_base_url: str = "https://api.tempmail.lol/v2"
     tempmail_timeout: int = 30
     tempmail_max_retries: int = 3
+    cloudflare_api_token: SecretStr = SecretStr("")
+    cloudflare_api_email: str = ""
+    cloudflare_global_api_key: SecretStr = SecretStr("")
+    cloudflare_account_id: str = ""
+    cloudflare_zone_id: str = ""
+    cloudflare_worker_name: str = "temp-email"
+    temp_mail_base_url: str = ""
+    temp_mail_admin_password: SecretStr = SecretStr("")
+    temp_mail_domain_configs: List[Dict[str, Any]] | Json[List[Dict[str, Any]]] = []
+    temp_mail_domain_base: str = ""
+    temp_mail_subdomain_mode: str = "random"
+    temp_mail_subdomain_length: int = 6
+    temp_mail_subdomain_prefix: str = "tm"
+    temp_mail_sync_cloudflare_enabled: bool = True
+    temp_mail_require_cloudflare_sync: bool = True
+
+    @field_validator("temp_mail_subdomain_mode")
+    @classmethod
+    def validate_temp_mail_subdomain_mode(cls, value):
+        if value is None:
+            return None
+        mode = str(value).lower()
+        if mode not in {"random", "sequence"}:
+            raise ValueError("temp_mail_subdomain_mode must be either 'random' or 'sequence'")
+        return mode
+
+    @field_validator("temp_mail_subdomain_length")
+    @classmethod
+    def validate_temp_mail_subdomain_length(cls, value):
+        if value is None:
+            return None
+        if value < 3 or value > 16:
+            raise ValueError("temp_mail_subdomain_length must be between 3 and 16")
+        return value
 
     # 自定义域名邮箱配置
     custom_domain_base_url: str = ""
@@ -687,7 +817,7 @@ class Settings(BaseModel):
     cpa_api_token: SecretStr = SecretStr("")
 
     # 验证码配置
-    email_code_timeout: int = 120
+    email_code_timeout: int = 240
     email_code_poll_interval: int = 3
 
     # Outlook 配置

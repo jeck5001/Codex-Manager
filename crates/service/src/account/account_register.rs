@@ -55,6 +55,7 @@ pub(crate) struct RegisterProxyItem {
 pub(crate) struct StartRegisterBatchInput<'a> {
     pub email_service_type: &'a str,
     pub email_service_id: Option<i64>,
+    pub email_service_config: Option<Value>,
     pub register_mode: Option<&'a str>,
     pub browserbase_config_id: Option<i64>,
     pub proxy: Option<String>,
@@ -606,9 +607,9 @@ fn merge_session_token_into_cookies(
         {
             Some(existing)
         }
-        (Some(existing), Some(session_token)) => {
-            Some(format!("{existing}; __Secure-next-auth.session-token={session_token}"))
-        }
+        (Some(existing), Some(session_token)) => Some(format!(
+            "{existing}; __Secure-next-auth.session-token={session_token}"
+        )),
         (Some(existing), None) => Some(existing),
         (None, Some(session_token)) => {
             Some(format!("__Secure-next-auth.session-token={session_token}"))
@@ -872,8 +873,10 @@ pub(crate) fn refresh_and_import_register_account_by_email(
 
 pub(crate) fn auto_register_and_import_account() -> Result<Value, String> {
     let plan = resolve_auto_register_recovery_plan()?;
-    let started =
-        register_post_json("/api/registration/batch", &build_auto_register_batch_payload(&plan))?;
+    let started = register_post_json(
+        "/api/registration/batch",
+        &build_auto_register_batch_payload(&plan),
+    )?;
     let task_uuid = task_uuid_strings_from_payload(&started)
         .into_iter()
         .next()
@@ -923,9 +926,11 @@ pub(crate) fn available_register_services() -> Result<Value, String> {
 pub(crate) fn start_register_task(
     email_service_type: &str,
     email_service_id: Option<i64>,
+    email_service_config: Option<Value>,
     register_mode: Option<&str>,
     browserbase_config_id: Option<i64>,
     proxy: Option<String>,
+    auto_create_temp_mail_service: Option<bool>,
 ) -> Result<Value, String> {
     let service_type = email_service_type.trim();
     let register_mode = register_mode
@@ -935,22 +940,36 @@ pub(crate) fn start_register_task(
     if service_type.is_empty() && register_mode != "browserbase_ddg" {
         return Err("emailServiceType is required".to_string());
     }
-    register_post_json(
-        "/api/registration/start",
-        &json!({
-            "email_service_type": service_type,
-            "email_service_id": email_service_id,
-            "register_mode": register_mode,
-            "browserbase_config_id": browserbase_config_id,
-            "proxy": proxy,
-        }),
-    )
+    let mut payload = json!({
+        "email_service_type": service_type,
+        "email_service_id": email_service_id,
+        "register_mode": register_mode,
+        "browserbase_config_id": browserbase_config_id,
+        "proxy": proxy,
+    });
+    if let Some(config) = email_service_config {
+        if config.is_object() {
+            if let Some(object) = payload.as_object_mut() {
+                object.insert("email_service_config".to_string(), config);
+            }
+        }
+    }
+    if let Some(flag) = auto_create_temp_mail_service {
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("auto_create_temp_mail_service".to_string(), json!(flag));
+        }
+    }
+    register_post_json("/api/registration/start", &payload)
 }
 
-pub(crate) fn start_register_batch(input: StartRegisterBatchInput<'_>) -> Result<Value, String> {
+pub(crate) fn start_register_batch(
+    input: StartRegisterBatchInput<'_>,
+    auto_create_temp_mail_service: Option<bool>,
+) -> Result<Value, String> {
     let StartRegisterBatchInput {
         email_service_type,
         email_service_id,
+        email_service_config,
         register_mode,
         browserbase_config_id,
         proxy,
@@ -982,21 +1001,31 @@ pub(crate) fn start_register_batch(input: StartRegisterBatchInput<'_>) -> Result
         return Err("mode must be pipeline or parallel".to_string());
     }
 
-    let mut payload = register_post_json(
-        "/api/registration/batch",
-        &json!({
-            "email_service_type": service_type,
-            "email_service_id": email_service_id,
-            "register_mode": register_mode,
-            "browserbase_config_id": browserbase_config_id,
-            "proxy": proxy,
-            "count": count,
-            "interval_min": interval_min,
-            "interval_max": interval_max,
-            "concurrency": concurrency,
-            "mode": normalized_mode,
-        }),
-    )?;
+    let mut payload = json!({
+        "email_service_type": service_type,
+        "email_service_id": email_service_id,
+        "register_mode": register_mode,
+        "browserbase_config_id": browserbase_config_id,
+        "proxy": proxy,
+        "count": count,
+        "interval_min": interval_min,
+        "interval_max": interval_max,
+        "concurrency": concurrency,
+        "mode": normalized_mode,
+    });
+    if let Some(config) = email_service_config {
+        if config.is_object() {
+            if let Some(object) = payload.as_object_mut() {
+                object.insert("email_service_config".to_string(), config);
+            }
+        }
+    }
+    if let Some(flag) = auto_create_temp_mail_service {
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("auto_create_temp_mail_service".to_string(), json!(flag));
+        }
+    }
+    let mut payload = register_post_json("/api/registration/batch", &payload)?;
     let task_uuids = payload
         .get("tasks")
         .and_then(Value::as_array)
@@ -1027,6 +1056,83 @@ pub(crate) fn cancel_register_batch(batch_id: &str) -> Result<Value, String> {
         &format!("/api/registration/batch/{batch_id}/cancel"),
         &json!({}),
     )
+}
+
+pub(crate) fn start_register_hotmail_batch(
+    count: i64,
+    concurrency: i64,
+    interval_min: i64,
+    interval_max: i64,
+    proxy: Option<String>,
+) -> Result<Value, String> {
+    if count < 1 {
+        return Err("count must be greater than 0".to_string());
+    }
+    if concurrency < 1 {
+        return Err("concurrency must be greater than 0".to_string());
+    }
+    if interval_min < 0 || interval_max < interval_min {
+        return Err("invalid interval range".to_string());
+    }
+    register_post_json(
+        "/api/hotmail/batches",
+        &json!({
+            "count": count,
+            "concurrency": concurrency,
+            "interval_min": interval_min,
+            "interval_max": interval_max,
+            "proxy": proxy,
+        }),
+    )
+}
+
+pub(crate) fn read_register_hotmail_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_get_json(&format!("/api/hotmail/batches/{batch_id}"))
+}
+
+pub(crate) fn cancel_register_hotmail_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_post_json(
+        &format!("/api/hotmail/batches/{batch_id}/cancel"),
+        &json!({}),
+    )
+}
+
+pub(crate) fn continue_register_hotmail_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_post_json(
+        &format!("/api/hotmail/batches/{batch_id}/continue"),
+        &json!({}),
+    )
+}
+
+pub(crate) fn abandon_register_hotmail_batch(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_post_json(
+        &format!("/api/hotmail/batches/{batch_id}/abandon"),
+        &json!({}),
+    )
+}
+
+pub(crate) fn read_register_hotmail_batch_artifacts(batch_id: &str) -> Result<Value, String> {
+    let batch_id = batch_id.trim();
+    if batch_id.is_empty() {
+        return Err("batchId is required".to_string());
+    }
+    register_get_json(&format!("/api/hotmail/batches/{batch_id}/artifacts"))
 }
 
 pub(crate) fn list_register_tasks(
@@ -1269,6 +1375,13 @@ pub(crate) fn update_register_proxy(
     )
 }
 
+pub(crate) fn delete_register_proxy(proxy_id: i64) -> Result<Value, String> {
+    if proxy_id < 1 {
+        return Err("proxyId is required".to_string());
+    }
+    register_delete_json(&format!("/api/settings/proxies/{proxy_id}"))
+}
+
 pub(crate) fn list_register_email_services(
     service_type: Option<&str>,
     enabled_only: bool,
@@ -1359,6 +1472,20 @@ pub(crate) fn delete_register_browserbase_config(config_id: i64) -> Result<Value
 
 pub(crate) fn register_email_service_stats() -> Result<Value, String> {
     register_get_json("/api/email-services/stats")
+}
+
+pub(crate) fn get_register_temp_mail_cloudflare_settings() -> Result<Value, String> {
+    register_get_json("/api/settings/temp-mail/cloudflare")
+}
+
+pub(crate) fn update_register_temp_mail_cloudflare_settings(
+    payload: Value,
+) -> Result<Value, String> {
+    let normalized = match payload {
+        Value::Object(map) => Value::Object(map),
+        _ => Value::Object(serde_json::Map::new()),
+    };
+    register_post_json("/api/settings/temp-mail/cloudflare", &normalized)
 }
 
 pub(crate) fn read_register_email_service_full(service_id: i64) -> Result<Value, String> {
@@ -1577,8 +1704,7 @@ pub(crate) fn import_register_task(task_uuid: &str) -> Result<Value, String> {
             "chatgptAccountId",
         ],
     );
-    let workspace_id =
-        task_result_string_field(&task.result, &["workspace_id", "workspaceId"]);
+    let workspace_id = task_result_string_field(&task.result, &["workspace_id", "workspaceId"]);
 
     let mut imported = import_remote_account_for_email(&email, chatgpt_account_id, workspace_id)?;
     if let Some(object) = imported.as_object_mut() {
@@ -1658,11 +1784,12 @@ fn first_recovery_service_id_from_group(payload: &Value, keys: &[&str]) -> Optio
 #[cfg(test)]
 mod tests {
     use super::{
-        build_auto_register_batch_payload, classify_register_failure_reason,
-        normalized_register_service_url,
-        pick_remote_account_by_email, resolve_existing_imported_account_id_from_accounts,
-        task_result_string_field,
-        AutoRegisterRecoveryPlan, RegisterProxyItem,
+        abandon_register_hotmail_batch, build_auto_register_batch_payload,
+        cancel_register_hotmail_batch, classify_register_failure_reason,
+        continue_register_hotmail_batch, normalized_register_service_url,
+        pick_remote_account_by_email, read_register_hotmail_batch,
+        read_register_hotmail_batch_artifacts, resolve_existing_imported_account_id_from_accounts,
+        task_result_string_field, AutoRegisterRecoveryPlan, RegisterProxyItem,
     };
     use codexmanager_core::storage::{now_ts, Account};
     use serde_json::json;
@@ -1701,7 +1828,12 @@ mod tests {
         assert_eq!(
             task_result_string_field(
                 &task_result,
-                &["account_id", "accountId", "chatgpt_account_id", "chatgptAccountId"],
+                &[
+                    "account_id",
+                    "accountId",
+                    "chatgpt_account_id",
+                    "chatgptAccountId"
+                ],
             )
             .as_deref(),
             Some("chatgpt-camel-id")
@@ -1747,15 +1879,21 @@ mod tests {
         });
 
         assert_eq!(
-            payload.get("register_mode").and_then(|value| value.as_str()),
+            payload
+                .get("register_mode")
+                .and_then(|value| value.as_str()),
             Some("any_auto")
         );
         assert_eq!(
-            payload.get("email_service_type").and_then(|value| value.as_str()),
+            payload
+                .get("email_service_type")
+                .and_then(|value| value.as_str()),
             Some("custom_domain")
         );
         assert_eq!(
-            payload.get("email_service_id").and_then(|value| value.as_i64()),
+            payload
+                .get("email_service_id")
+                .and_then(|value| value.as_i64()),
             Some(12)
         );
     }
@@ -1843,5 +1981,45 @@ mod tests {
             &serde_json::json!({}),
         );
         assert_eq!(matched.as_deref(), Some("acc-imported-2"));
+    }
+
+    #[test]
+    fn read_register_hotmail_batch_requires_batch_id() {
+        assert_eq!(
+            read_register_hotmail_batch(""),
+            Err("batchId is required".to_string())
+        );
+    }
+
+    #[test]
+    fn cancel_register_hotmail_batch_requires_batch_id() {
+        assert_eq!(
+            cancel_register_hotmail_batch(""),
+            Err("batchId is required".to_string())
+        );
+    }
+
+    #[test]
+    fn continue_register_hotmail_batch_requires_batch_id() {
+        assert_eq!(
+            continue_register_hotmail_batch(""),
+            Err("batchId is required".to_string())
+        );
+    }
+
+    #[test]
+    fn abandon_register_hotmail_batch_requires_batch_id() {
+        assert_eq!(
+            abandon_register_hotmail_batch(""),
+            Err("batchId is required".to_string())
+        );
+    }
+
+    #[test]
+    fn read_register_hotmail_batch_artifacts_requires_batch_id() {
+        assert_eq!(
+            read_register_hotmail_batch_artifacts(""),
+            Err("batchId is required".to_string())
+        );
     }
 }

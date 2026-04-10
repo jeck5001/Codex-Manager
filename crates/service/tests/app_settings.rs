@@ -31,7 +31,7 @@ fn reset_runtime_defaults() {
         "requestCompressionEnabled": true,
         "payloadRewriteRulesJson": "[]",
         "modelAliasPoolsJson": "[]",
-        "visibleMenuItems": ["dashboard", "accounts", "register", "payment", "emailServices", "apiKeys", "logs", "audit", "costs", "analytics", "settings"],
+        "visibleMenuItems": ["dashboard", "accounts", "register", "payment", "emailServices", "hotmail", "apiKeys", "logs", "audit", "costs", "analytics", "settings"],
         "gatewayOriginator": "codex_cli_rs",
         "gatewayResidencyRequirement": "",
         "appearancePreset": "classic",
@@ -1093,6 +1093,26 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .expect("read remote management secret hash"),
             None
         );
+    });
+}
+
+#[test]
+fn app_settings_set_preserves_hotmail_menu_item() {
+    with_temp_db(|_db_path| {
+        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
+            "visibleMenuItems": ["dashboard", "hotmail", "settings"]
+        })))
+        .expect("save app settings");
+
+        let items = snapshot
+            .get("visibleMenuItems")
+            .and_then(|value| value.as_array())
+            .expect("visibleMenuItems array")
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(items.contains(&"hotmail"));
     });
 }
 

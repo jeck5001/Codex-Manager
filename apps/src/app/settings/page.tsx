@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/modals/confirm-dialog";
 import { accountClient } from "@/lib/api/account-client";
 import { appClient } from "@/lib/api/app-client";
 import { serviceClient } from "@/lib/api/service-client";
@@ -86,7 +87,9 @@ import {
   APP_NAV_ITEMS,
   type AppNavItemId,
   normalizeVisibleMenuItems,
+  sanitizeVisibleMenuItems,
 } from "@/lib/navigation";
+import { describeFreeProxyClearResult } from "./freeproxy-clear-state";
 
 const ENV_DESCRIPTION_MAP: Record<string, string> = {
   CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS:
@@ -573,6 +576,7 @@ export default function SettingsPage() {
   const [freeProxyClearSingleProxy, setFreeProxyClearSingleProxy] = useState(true);
   const [freeProxySyncRegisterPool, setFreeProxySyncRegisterPool] = useState(true);
   const [freeProxySyncResult, setFreeProxySyncResult] = useState<FreeProxySyncResult | null>(null);
+  const [freeProxyClearConfirmOpen, setFreeProxyClearConfirmOpen] = useState(false);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<UpdateCheckSummary | null>(null);
   const [updateDialogCheck, setUpdateDialogCheck] = useState<UpdateCheckSummary | null>(null);
   const [preparedUpdate, setPreparedUpdate] = useState<UpdatePrepareSummary | null>(null);
@@ -714,6 +718,22 @@ export default function SettingsPage() {
       toast.error(`同步 freeproxy 失败: ${getAppErrorMessage(error)}`);
     },
   });
+  const clearFreeProxyPool = useMutation({
+    mutationFn: () => serviceClient.clearFreeProxyPool(),
+    onSuccess: async (result) => {
+      setFreeProxySyncResult(null);
+      const nextSnapshot = await appClient.getSettings();
+      queryClient.setQueryData(["app-settings-snapshot"], nextSnapshot);
+      setStoreSettings(nextSnapshot);
+      toast.success(describeFreeProxyClearResult(result));
+      if (result.failedRegisterProxyCount > 0) {
+        toast.warning(`注册代理池仍有 ${result.remainingRegisterProxyCount} 个代理未删除`);
+      }
+    },
+    onError: (error: unknown) => {
+      toast.error(`清空代理池失败: ${getAppErrorMessage(error)}`);
+    },
+  });
   const clearGatewayCache = useMutation({
     mutationFn: () => serviceClient.clearGatewayCache(),
     onSuccess: async () => {
@@ -795,7 +815,7 @@ export default function SettingsPage() {
       current.delete(menuId);
     }
     updateSettings.mutate({
-      visibleMenuItems: normalizeVisibleMenuItems(Array.from(current)),
+      visibleMenuItems: sanitizeVisibleMenuItems(Array.from(current)),
     });
   };
 
@@ -2529,15 +2549,26 @@ export default function SettingsPage() {
                       当前代理池共 {proxyPoolCount} 个代理。
                     </p>
                   </div>
-                  <Button
-                    variant="outline"
-                    className="gap-2 self-start"
-                    disabled={syncFreeProxyPool.isPending}
-                    onClick={() => syncFreeProxyPool.mutate()}
-                  >
-                    <Download className={cn("h-4 w-4", syncFreeProxyPool.isPending && "animate-pulse")} />
-                    同步代理池
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      className="gap-2 self-start"
+                      disabled={syncFreeProxyPool.isPending || clearFreeProxyPool.isPending}
+                      onClick={() => syncFreeProxyPool.mutate()}
+                    >
+                      <Download className={cn("h-4 w-4", syncFreeProxyPool.isPending && "animate-pulse")} />
+                      同步代理池
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="gap-2 self-start"
+                      disabled={syncFreeProxyPool.isPending || clearFreeProxyPool.isPending}
+                      onClick={() => setFreeProxyClearConfirmOpen(true)}
+                    >
+                      <Trash2 className={cn("h-4 w-4", clearFreeProxyPool.isPending && "animate-pulse")} />
+                      清空代理池
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-4">
@@ -2660,6 +2691,15 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 ) : null}
+                <ConfirmDialog
+                  open={freeProxyClearConfirmOpen}
+                  onOpenChange={setFreeProxyClearConfirmOpen}
+                  title="清空代理池"
+                  description="该操作会同时清空网关代理池 CODEXMANAGER_PROXY_LIST 和注册代理池，且不会自动恢复。是否继续？"
+                  confirmText="确认清空"
+                  confirmVariant="destructive"
+                  onConfirm={() => void clearFreeProxyPool.mutateAsync()}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4 border-t pt-6">

@@ -430,6 +430,7 @@ export default function RegisterPage() {
         value:
           (registerServicesQuery.data?.outlook.count || 0) +
           (registerServicesQuery.data?.customDomain.count || 0) +
+          (registerServicesQuery.data?.mail33Imap.count || 0) +
           (registerServicesQuery.data?.tempMail.count || 0) +
           (registerServicesQuery.data?.tempmail.available ? 1 : 0),
         sub: "当前可用于自动注册的服务总数",
@@ -464,6 +465,7 @@ export default function RegisterPage() {
       registerOutlookAccountsQuery.data?.total,
       registerOutlookAccountsQuery.data?.unregisteredCount,
       registerServicesQuery.data?.customDomain.count,
+      registerServicesQuery.data?.mail33Imap.count,
       registerServicesQuery.data?.outlook.count,
       registerServicesQuery.data?.tempMail.count,
       registerServicesQuery.data?.tempmail.available,
@@ -778,6 +780,12 @@ export default function RegisterPage() {
                       <p className="text-[11px] text-muted-foreground">自定义域名</p>
                       <p className="mt-2 text-lg font-semibold">
                         {registerServicesQuery.data?.customDomain.count || 0}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5">
+                      <p className="text-[11px] text-muted-foreground">33mail + IMAP</p>
+                      <p className="mt-2 text-lg font-semibold">
+                        {registerServicesQuery.data?.mail33Imap.count || 0}
                       </p>
                     </div>
                     <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5">

@@ -11,8 +11,9 @@ mod ui;
 
 pub use api::{app_settings_get, app_settings_get_with_overrides, app_settings_set};
 pub(crate) use env_overrides::{
-    apply_env_overrides_to_process, persisted_env_overrides_missing_process_env,
-    reload_runtime_after_env_override_apply, set_env_overrides,
+    apply_env_overrides_to_process, current_env_overrides,
+    persisted_env_overrides_missing_process_env, reload_runtime_after_env_override_apply,
+    set_env_overrides,
 };
 pub use gateway::{
     current_gateway_free_account_max_model, current_gateway_model_alias_pools_json,
