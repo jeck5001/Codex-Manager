@@ -49,6 +49,29 @@ def load_http_client_module():
     settings_module.get_settings = lambda: types.SimpleNamespace()
     sys.modules["src.config.settings"] = settings_module
 
+    curl_module = types.ModuleType("curl_cffi")
+    curl_requests_module = types.ModuleType("curl_cffi.requests")
+
+    class Session:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def close(self):
+            return None
+
+    class Response:
+        pass
+
+    class RequestsError(Exception):
+        pass
+
+    curl_requests_module.Session = Session
+    curl_requests_module.Response = Response
+    curl_requests_module.RequestsError = RequestsError
+    curl_module.requests = curl_requests_module
+    sys.modules["curl_cffi"] = curl_module
+    sys.modules["curl_cffi.requests"] = curl_requests_module
+
     module_name = "src.core.http_client"
     spec = importlib.util.spec_from_file_location(module_name, HTTP_CLIENT_MODULE_PATH)
     assert spec and spec.loader

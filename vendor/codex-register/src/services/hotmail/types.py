@@ -87,6 +87,32 @@ class HotmailLocalHandoffPayload:
 
 
 @dataclass
+class HotmailLocalTaskSnapshot:
+    task_id: str
+    batch_id: str
+    status: str
+    current_step: str
+    manual_action_required: bool = False
+    failure_code: str = ""
+    failure_message: str = ""
+    verification_email: str = ""
+    target_email: str = ""
+    artifact_path: str = ""
+
+
+@dataclass
+class HotmailLocalTaskPayload:
+    batch_id: str
+    task_id: str
+    profile: dict[str, Any]
+    target_domains: list[str]
+    proxy: str = ""
+    verification_mailbox: Optional[dict[str, Any]] = None
+    backend_callback_base: str = ""
+    backend_callback_token: str = ""
+
+
+@dataclass
 class HotmailRegistrationResult:
     success: bool
     reason_code: str = ""

@@ -128,3 +128,49 @@ def test_open_handoff_invokes_launcher(monkeypatch, tmp_path):
     assert response.json()["ok"] is True
     assert launched["payload_path"].endswith("payload.json")
     assert launched["profile_dir"].endswith("profile")
+
+
+def test_start_task_accepts_local_first_hotmail_payload(monkeypatch):
+    accepted = {}
+
+    monkeypatch.setattr(
+        "tools.hotmail_local_helper.server.check_playwright_ready",
+        lambda: True,
+    )
+
+    def fake_start(task, cancel_event=None, on_finish=None):
+        accepted["task_id"] = task.task_id
+        accepted["profile"] = task.profile
+        accepted["cancel_event"] = cancel_event is not None
+        accepted["has_on_finish"] = on_finish is not None
+
+    monkeypatch.setattr(
+        "tools.hotmail_local_helper.server.start_hotmail_task_background",
+        fake_start,
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/hotmail/start-task",
+        headers={"Origin": "http://192.168.5.35:48761"},
+        json={
+            "batch_id": "batch-1",
+            "task_id": "task-1",
+            "profile": {
+                "first_name": "Alice",
+                "last_name": "Example",
+                "birth_day": "8",
+                "birth_month": "4",
+                "birth_year": "1998",
+                "password": "pw",
+                "username_candidates": ["aliceexample"],
+            },
+            "target_domains": ["hotmail.com"],
+            "verification_mailbox": {"email": "verify@example.com", "service_id": "svc-1"},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert accepted["task_id"] == "task-1"
+    assert accepted["has_on_finish"] is True
