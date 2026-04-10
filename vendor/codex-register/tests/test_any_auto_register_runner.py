@@ -497,7 +497,7 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
         self.assertIn(("info", "13. 尝试直接复用当前会话"), logs)
         self.assertNotIn(("info", "13. 已命中 OAuth 授权页，直接走 OAuth 收敛"), logs)
 
-    def test_add_phone_login_bypass_runs_before_session_probe(self):
+    def test_add_phone_still_tries_session_probe_before_oauth_resolution(self):
         runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
         logs = []
         runner._log = lambda message, level="info": logs.append((level, message))
@@ -545,7 +545,9 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
         )
         engine._get_flow_runner = lambda: flow_runner
         call_sequence = []
-        engine._attempt_add_phone_login_bypass = lambda _did, _sen: call_sequence.append("bypass") or "http://localhost:1455/auth/callback?code=ok&state=state"
+        engine._attempt_add_phone_login_bypass = (
+            lambda _did, _sen: (_ for _ in ()).throw(AssertionError("should not use add_phone bypass"))
+        )
         runner.engine = engine
 
         def fake_fetch_chatgpt_session_payload():
@@ -561,9 +563,9 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
             runner._fetch_chatgpt_session_payload = original_fetch
 
         self.assertTrue(result.success)
-        self.assertEqual(call_sequence, ["bypass"])
-        self.assertIn(("warning", "13. 检测到 add_phone，先尝试登录回退以便复用会话"), logs)
-        self.assertNotIn(("info", "14. 尝试复用已登录会话直取 ChatGPT Session..."), logs)
+        self.assertEqual(call_sequence, ["session"])
+        self.assertIn(("info", "13. 尝试直接复用当前会话"), logs)
+        self.assertIn(("info", "14. 尝试复用已登录会话直取 ChatGPT Session..."), logs)
 
     def test_existing_account_reuses_session_before_oauth(self):
         runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
