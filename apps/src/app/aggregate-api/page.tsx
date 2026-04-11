@@ -121,6 +121,9 @@ export default function AggregateApiPage() {
   const [loadingSecretId, setLoadingSecretId] = useState<string | null>(null);
   const [testingApiId, setTestingApiId] = useState<string | null>(null);
   const [togglingApiId, setTogglingApiId] = useState<string | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, boolean>>(
+    {},
+  );
 
   const { data: aggregateApis = [], isLoading } = useQuery({
     queryKey: ["aggregate-apis"],
@@ -137,6 +140,34 @@ export default function AggregateApiPage() {
     setEditingId(null);
     setDeleteId(null);
   }, [isPageActive]);
+
+  useEffect(() => {
+    setStatusOverrides((current) => {
+      const serverStatusMap = new Map(
+        aggregateApis.map((item) => [
+          item.id,
+          String(item.status || "").trim().toLowerCase() !== "disabled",
+        ]),
+      );
+      let changed = false;
+      const next: Record<string, boolean> = {};
+
+      Object.entries(current).forEach(([id, enabled]) => {
+        const serverEnabled = serverStatusMap.get(id);
+        if (serverEnabled == null) {
+          changed = true;
+          return;
+        }
+        if (serverEnabled !== enabled) {
+          next[id] = enabled;
+          return;
+        }
+        changed = true;
+      });
+
+      return changed ? next : current;
+    });
+  }, [aggregateApis]);
 
   const editingApi = useMemo(
     () => aggregateApis.find((item) => item.id === editingId) || null,
@@ -281,6 +312,10 @@ export default function AggregateApiPage() {
       await queryClient.cancelQueries({ queryKey: ["aggregate-apis"] });
       const previousAggregateApis =
         queryClient.getQueryData<AggregateApi[]>(["aggregate-apis"]) || [];
+      setStatusOverrides((current) => ({
+        ...current,
+        [api.id]: enabled,
+      }));
       queryClient.setQueryData<AggregateApi[]>(["aggregate-apis"], (current) =>
         (current || []).map((item) =>
           item.id === api.id
@@ -297,6 +332,10 @@ export default function AggregateApiPage() {
       };
     },
     onSuccess: async (_result, variables) => {
+      setStatusOverrides((current) => ({
+        ...current,
+        [variables.api.id]: variables.enabled,
+      }));
       queryClient.setQueryData<AggregateApi[]>(["aggregate-apis"], (current) =>
         (current || []).map((item) =>
           item.id === variables.api.id
@@ -321,6 +360,13 @@ export default function AggregateApiPage() {
           context.previousAggregateApis,
         );
       }
+      setStatusOverrides((current) => {
+        const next = { ...current };
+        if (_variables?.api?.id) {
+          delete next[_variables.api.id];
+        }
+        return next;
+      });
       toast.error(
         `${t("更新状态失败")}: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -604,10 +650,11 @@ export default function AggregateApiPage() {
                 ) : (
                   filteredAggregateApis.map((api) => {
                     const revealed = revealedSecrets[api.id];
-                    const isEnabled =
+                    const serverEnabled =
                       String(api.status || "")
                         .trim()
                         .toLowerCase() !== "disabled";
+                    const isEnabled = statusOverrides[api.id] ?? serverEnabled;
                     const createdTimeText = formatTsFromSeconds(
                       api.createdAt,
                       t("未知时间"),
