@@ -1508,7 +1508,6 @@ export default function SettingsPage() {
     void updateSettings
       .mutateAsync({
         envOverrides: {
-          ...snapshot.envOverrides,
           [selectedEnvKey]: selectedEnvValue,
         },
       })
@@ -1537,10 +1536,14 @@ export default function SettingsPage() {
    */
   const handleResetEnv = () => {
     if (!selectedEnvKey || !snapshot) return;
-    const nextOverrides = { ...snapshot.envOverrides };
-    delete nextOverrides[selectedEnvKey];
     void updateSettings
-      .mutateAsync({ envOverrides: nextOverrides })
+      .mutateAsync({
+        envOverrides: {
+          // 中文注释：后端把“当前键为空字符串”视为恢复默认值，
+          // 仅仅省略该键会被解释为“保持原值不变”。
+          [selectedEnvKey]: "",
+        },
+      })
       .then(() => {
         setEnvDrafts((current) => {
           const nextDraft = { ...current };
