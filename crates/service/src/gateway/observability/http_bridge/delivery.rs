@@ -760,6 +760,7 @@ pub(crate) fn respond_with_upstream(
     is_stream: bool,
     allow_failover_for_deactivation: bool,
     trace_id: Option<&str>,
+    fallback_model: Option<&str>,
 ) -> Result<UpstreamResponseBridgeResult, String> {
     let keepalive_frame = resolve_stream_keepalive_frame(response_adapter, request_path);
     let passthrough_sse_protocol =
@@ -1456,7 +1457,11 @@ pub(crate) fn respond_with_upstream(
                 let response = Response::new(
                     status,
                     headers,
-                    AnthropicSseReader::new(upstream, Arc::clone(&usage_collector)),
+                    AnthropicSseReader::new(
+                        upstream,
+                        Arc::clone(&usage_collector),
+                        fallback_model,
+                    ),
                     None,
                     None,
                 );

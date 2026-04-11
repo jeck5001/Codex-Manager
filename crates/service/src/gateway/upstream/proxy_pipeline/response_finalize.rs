@@ -169,6 +169,7 @@ pub(super) fn finalize_upstream_response(
         client_is_stream,
         has_more_candidates,
         Some(trace_id),
+        model_for_log,
     )?;
     let bridge_output_text_len = bridge
         .usage

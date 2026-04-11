@@ -409,7 +409,7 @@ fn anthropic_sse_reader_final_usage_contains_input_cache_and_output_tokens() {
         )],
     );
     let usage_collector = Arc::new(Mutex::new(super::UpstreamResponseUsage::default()));
-    let mut reader = super::AnthropicSseReader::new(response, usage_collector);
+    let mut reader = super::AnthropicSseReader::new(response, usage_collector, None);
     let mut out = String::new();
     reader
         .read_to_string(&mut out)
@@ -422,6 +422,30 @@ fn anthropic_sse_reader_final_usage_contains_input_cache_and_output_tokens() {
     assert!(out.contains("\"output_tokens\":9"));
     assert!(out.contains("\"total_tokens\":40"));
     assert!(out.contains("\"reasoning_output_tokens\":2"));
+}
+
+#[test]
+fn anthropic_sse_reader_uses_request_model_when_upstream_stream_omits_model() {
+    let (response, server) = open_streaming_mock_http_response(
+        "text/event-stream",
+        &[(
+            "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_missing_model_1\"}}\n\n\
+             data: [DONE]\n\n",
+            0,
+        )],
+    );
+    let usage_collector = Arc::new(Mutex::new(super::UpstreamResponseUsage::default()));
+    let mut reader =
+        super::AnthropicSseReader::new(response, usage_collector, Some("gpt-5.4"));
+    let mut out = String::new();
+    reader
+        .read_to_string(&mut out)
+        .expect("read anthropic sse reader");
+    server.join().expect("join streaming mock upstream");
+
+    assert!(out.contains("\"id\":\"resp_missing_model_1\""));
+    assert!(out.contains("\"model\":\"gpt-5.4\""));
+    assert!(!out.contains("\"model\":\"gpt-5.3-codex\""));
 }
 
 /// 函数 `inspect_sse_frame_recognizes_response_failed_as_terminal_error`

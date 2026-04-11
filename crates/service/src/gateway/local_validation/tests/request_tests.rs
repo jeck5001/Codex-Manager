@@ -99,7 +99,7 @@ fn anthropic_key_applies_custom_model_and_reasoning() {
 }
 
 #[test]
-fn anthropic_key_preserves_fast_service_tier_on_responses_request() {
+fn anthropic_key_maps_fast_service_tier_to_priority_on_adapted_responses_request() {
     let api_key = sample_api_key(
         crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
         Some("gpt-5.3-codex"),
@@ -129,11 +129,12 @@ fn anthropic_key_preserves_fast_service_tier_on_responses_request() {
         None,
         None,
     );
-    let payload: Value = serde_json::from_slice(&rewritten).expect("json body");
+    let normalized = normalize_compat_service_tier_for_codex_backend(rewritten);
+    let payload: Value = serde_json::from_slice(&normalized).expect("json body");
 
     assert_eq!(
         payload.get("service_tier").and_then(Value::as_str),
-        Some("fast")
+        Some("priority")
     );
 }
 

@@ -901,6 +901,7 @@ pub(in super::super) fn proxy_aggregate_request(
                 is_stream,
                 false,
                 Some(trace_id),
+                None,
             )?;
             let bridge_output_text_len = bridge
                 .usage

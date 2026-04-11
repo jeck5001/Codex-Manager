@@ -135,6 +135,40 @@ fn should_derive_compat_conversation_anchor(protocol_type: &str, normalized_path
         || allow_compat_responses_path_rewrite(protocol_type, normalized_path)
 }
 
+fn should_normalize_compat_service_tier_for_codex_backend(
+    protocol_type: &str,
+    normalized_path: &str,
+    adapted_path: &str,
+) -> bool {
+    adapted_path.starts_with("/v1/responses")
+        && ((protocol_type == PROTOCOL_ANTHROPIC_NATIVE
+            && normalized_path.starts_with("/v1/messages"))
+            || allow_compat_responses_path_rewrite(protocol_type, normalized_path))
+}
+
+fn normalize_compat_service_tier_for_codex_backend(body: Vec<u8>) -> Vec<u8> {
+    let Ok(mut payload) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return body;
+    };
+    let Some(obj) = payload.as_object_mut() else {
+        return body;
+    };
+    let Some(service_tier) = obj.get_mut("service_tier") else {
+        return body;
+    };
+    let Some(raw_value) = service_tier.as_str() else {
+        return body;
+    };
+
+    if raw_value.eq_ignore_ascii_case("fast") {
+        *service_tier = serde_json::Value::String("priority".to_string());
+    } else {
+        obj.remove("service_tier");
+    }
+
+    serde_json::to_vec(&payload).unwrap_or(body)
+}
+
 /// 函数 `resolve_local_conversation_id`
 ///
 /// 作者: gaohongshun
@@ -365,6 +399,12 @@ pub(super) fn build_local_validation_result(
     // 线程世代只参与 prompt_cache_key 与路由绑定，不直接污染对外请求头。
     let incoming_headers =
         incoming_headers.with_conversation_id_override(local_conversation_id.as_deref());
+    let should_normalize_compat_service_tier =
+        should_normalize_compat_service_tier_for_codex_backend(
+            effective_protocol_type,
+            normalized_path.as_str(),
+            path.as_str(),
+        );
     body = if effective_thread_anchor.is_some() {
         super::super::apply_request_overrides_with_service_tier_and_forced_prompt_cache_key(
             &path,
@@ -386,6 +426,9 @@ pub(super) fn build_local_validation_result(
             None,
         )
     };
+    if should_normalize_compat_service_tier {
+        body = normalize_compat_service_tier_for_codex_backend(body);
+    }
 
     let request_meta = super::super::parse_request_metadata(&body);
     let model_for_log = request_meta.model.or(api_key.model_slug.clone());

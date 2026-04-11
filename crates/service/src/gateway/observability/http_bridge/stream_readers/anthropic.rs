@@ -43,11 +43,17 @@ impl AnthropicSseReader {
     pub(crate) fn new(
         upstream: reqwest::blocking::Response,
         usage_collector: Arc<Mutex<UpstreamResponseUsage>>,
+        fallback_model: Option<&str>,
     ) -> Self {
+        let mut state = AnthropicSseState::default();
+        state.model = fallback_model
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
         Self {
             upstream: UpstreamSseFramePump::new(upstream),
             out_cursor: Cursor::new(Vec::new()),
-            state: AnthropicSseState::default(),
+            state,
             usage_collector,
         }
     }

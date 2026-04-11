@@ -239,7 +239,7 @@ fn gateway_claude_messages_stay_on_chatgpt_codex_base() {
             name: Some("claude-chatgpt-base".to_string()),
             model_slug: Some("gpt-5.4-mini".to_string()),
             reasoning_effort: Some("high".to_string()),
-            service_tier: None,
+            service_tier: Some("fast".to_string()),
             rotation_strategy: "account_rotation".to_string(),
             aggregate_api_id: None,
             account_plan_filter: None,
@@ -281,6 +281,12 @@ fn gateway_claude_messages_stay_on_chatgpt_codex_base() {
         .expect("receive upstream request");
     upstream_join.join().expect("join upstream");
     assert_eq!(captured.path, "/chatgpt.com/backend-api/codex/responses");
+    let upstream_body =
+        String::from_utf8(decode_upstream_request_body(&captured)).expect("upstream body utf8");
+    assert!(
+        upstream_body.contains("\"service_tier\":\"priority\""),
+        "unexpected upstream body: {upstream_body}"
+    );
 }
 
 /// 函数 `gateway_claude_protocol_end_to_end_uses_codex_headers`

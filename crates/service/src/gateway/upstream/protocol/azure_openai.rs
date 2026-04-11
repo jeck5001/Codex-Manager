@@ -432,6 +432,7 @@ pub(in super::super) fn proxy_azure_request(
         is_stream,
         false,
         Some(trace_id),
+        None,
     )?;
     let bridge_ok = bridge.is_ok(is_stream);
     let bridge_error = bridge.error_message(is_stream);
