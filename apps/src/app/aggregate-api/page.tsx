@@ -277,10 +277,36 @@ export default function AggregateApiPage() {
       });
       return enabled;
     },
-    onMutate: async ({ api }) => {
+    onMutate: async ({ api, enabled }) => {
+      await queryClient.cancelQueries({ queryKey: ["aggregate-apis"] });
+      const previousAggregateApis =
+        queryClient.getQueryData<AggregateApi[]>(["aggregate-apis"]) || [];
+      queryClient.setQueryData<AggregateApi[]>(["aggregate-apis"], (current) =>
+        (current || []).map((item) =>
+          item.id === api.id
+            ? {
+                ...item,
+                status: enabled ? "active" : "disabled",
+              }
+            : item,
+        ),
+      );
       setTogglingApiId(api.id);
+      return {
+        previousAggregateApis,
+      };
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, variables) => {
+      queryClient.setQueryData<AggregateApi[]>(["aggregate-apis"], (current) =>
+        (current || []).map((item) =>
+          item.id === variables.api.id
+            ? {
+                ...item,
+                status: variables.enabled ? "active" : "disabled",
+              }
+            : item,
+        ),
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["aggregate-apis"] }),
         queryClient.invalidateQueries({ queryKey: ["apikeys"] }),
@@ -288,7 +314,13 @@ export default function AggregateApiPage() {
       ]);
       toast.success(t("状态已更新"));
     },
-    onError: (error: unknown) => {
+    onError: (error: unknown, _variables, context) => {
+      if (context?.previousAggregateApis) {
+        queryClient.setQueryData(
+          ["aggregate-apis"],
+          context.previousAggregateApis,
+        );
+      }
       toast.error(
         `${t("更新状态失败")}: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -520,7 +552,7 @@ export default function AggregateApiPage() {
                   <TableHead className="w-[148px]">{t("密钥")}</TableHead>
                   <TableHead className="w-[64px] text-center">{t("顺序")}</TableHead>
                   <TableHead className="w-[130px]">{t("测试连通性")}</TableHead>
-                  <TableHead className="w-[104px]">{t("状态")}</TableHead>
+                  <TableHead className="w-[112px] text-right pr-4">{t("状态")}</TableHead>
                   <TableHead className="text-center">{t("操作")}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -747,8 +779,8 @@ export default function AggregateApiPage() {
                             </Tooltip>
                           ) : null}
                         </TableCell>
-                        <TableCell className="align-middle">
-                          <div className="flex items-center gap-2">
+                        <TableCell className="align-middle pr-4">
+                          <div className="flex items-center justify-end gap-2">
                             <Switch
                               className="scale-75"
                               checked={isEnabled}
