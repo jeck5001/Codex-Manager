@@ -11,8 +11,11 @@ pub(crate) struct IncomingHeaderSnapshot {
     client_request_id: Option<String>,
     subagent: Option<String>,
     beta_features: Option<String>,
+    window_id: Option<String>,
     turn_metadata: Option<String>,
     turn_state: Option<String>,
+    parent_thread_id: Option<String>,
+    passthrough_codex_headers: Vec<(String, String)>,
     conversation_id: Option<String>,
 }
 
@@ -83,6 +86,12 @@ impl IncomingHeaderSnapshot {
                 }
                 continue;
             }
+            if snapshot.window_id.is_none() && name.eq_ignore_ascii_case("x-codex-window-id") {
+                if !value.is_empty() {
+                    snapshot.window_id = Some(value.to_string());
+                }
+                continue;
+            }
             if snapshot.turn_metadata.is_none()
                 && name.eq_ignore_ascii_case("x-codex-turn-metadata")
             {
@@ -95,6 +104,18 @@ impl IncomingHeaderSnapshot {
                 if !value.is_empty() {
                     snapshot.turn_state = Some(value.to_string());
                 }
+                continue;
+            }
+            if snapshot.parent_thread_id.is_none()
+                && name.eq_ignore_ascii_case("x-codex-parent-thread-id")
+            {
+                if !value.is_empty() {
+                    snapshot.parent_thread_id = Some(value.to_string());
+                }
+                continue;
+            }
+            if should_capture_passthrough_codex_header(name) && !value.is_empty() {
+                remember_passthrough_header(&mut snapshot.passthrough_codex_headers, name, value);
                 continue;
             }
             if snapshot.conversation_id.is_none() && name.eq_ignore_ascii_case("conversation_id") {
@@ -170,6 +191,13 @@ impl IncomingHeaderSnapshot {
                 }
                 continue;
             }
+            if snapshot.window_id.is_none() && header.field.equiv("x-codex-window-id") {
+                let value = header.value.as_str().trim();
+                if !value.is_empty() {
+                    snapshot.window_id = Some(value.to_string());
+                }
+                continue;
+            }
             if snapshot.turn_metadata.is_none() && header.field.equiv("x-codex-turn-metadata") {
                 let value = header.value.as_str().trim();
                 if !value.is_empty() {
@@ -181,6 +209,27 @@ impl IncomingHeaderSnapshot {
                 let value = header.value.as_str().trim();
                 if !value.is_empty() {
                     snapshot.turn_state = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.parent_thread_id.is_none()
+                && header.field.equiv("x-codex-parent-thread-id")
+            {
+                let value = header.value.as_str().trim();
+                if !value.is_empty() {
+                    snapshot.parent_thread_id = Some(value.to_string());
+                }
+                continue;
+            }
+            let header_name = header.field.to_string();
+            if should_capture_passthrough_codex_header(header_name.as_str()) {
+                let value = header.value.as_str().trim();
+                if !value.is_empty() {
+                    remember_passthrough_header(
+                        &mut snapshot.passthrough_codex_headers,
+                        header_name.as_str(),
+                        value,
+                    );
                 }
                 continue;
             }
@@ -318,6 +367,21 @@ impl IncomingHeaderSnapshot {
         self.beta_features.as_deref()
     }
 
+    /// 函数 `window_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-11
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(crate) fn window_id(&self) -> Option<&str> {
+        self.window_id.as_deref()
+    }
+
     /// 函数 `turn_metadata`
     ///
     /// 作者: gaohongshun
@@ -346,6 +410,36 @@ impl IncomingHeaderSnapshot {
     /// 返回函数执行结果
     pub(crate) fn turn_state(&self) -> Option<&str> {
         self.turn_state.as_deref()
+    }
+
+    /// 函数 `parent_thread_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-11
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(crate) fn parent_thread_id(&self) -> Option<&str> {
+        self.parent_thread_id.as_deref()
+    }
+
+    /// 函数 `passthrough_codex_headers`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-11
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(crate) fn passthrough_codex_headers(&self) -> &[(String, String)] {
+        self.passthrough_codex_headers.as_slice()
     }
 
     /// 函数 `conversation_id`
@@ -401,10 +495,30 @@ impl IncomingHeaderSnapshot {
             .map(str::to_string);
         if reset_session_affinity {
             next.session_id = None;
+            next.window_id = None;
             next.turn_state = None;
         }
         next
     }
+}
+
+fn should_capture_passthrough_codex_header(name: &str) -> bool {
+    name.to_ascii_lowercase().starts_with("x-codex-")
+        && !name.eq_ignore_ascii_case("x-codex-beta-features")
+        && !name.eq_ignore_ascii_case("x-codex-window-id")
+        && !name.eq_ignore_ascii_case("x-codex-turn-metadata")
+        && !name.eq_ignore_ascii_case("x-codex-turn-state")
+        && !name.eq_ignore_ascii_case("x-codex-parent-thread-id")
+}
+
+fn remember_passthrough_header(headers: &mut Vec<(String, String)>, name: &str, value: &str) {
+    if headers
+        .iter()
+        .any(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+    {
+        return;
+    }
+    headers.push((name.to_string(), value.to_string()));
 }
 
 /// 函数 `strict_bearer_token`

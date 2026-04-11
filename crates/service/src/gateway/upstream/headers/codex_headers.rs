@@ -5,15 +5,19 @@ const OPENAI_ORGANIZATION_HEADER_NAME: &str = "OpenAI-Organization";
 const OPENAI_PROJECT_HEADER_NAME: &str = "OpenAI-Project";
 const VERSION_HEADER_NAME: &str = "version";
 const X_CODEX_WINDOW_ID_HEADER_NAME: &str = "x-codex-window-id";
+const X_CODEX_PARENT_THREAD_ID_HEADER_NAME: &str = "x-codex-parent-thread-id";
 
 pub(crate) struct CodexUpstreamHeaderInput<'a> {
     pub(crate) auth_token: &'a str,
     pub(crate) chatgpt_account_id: Option<&'a str>,
     pub(crate) incoming_session_id: Option<&'a str>,
+    pub(crate) incoming_window_id: Option<&'a str>,
     pub(crate) incoming_client_request_id: Option<&'a str>,
     pub(crate) incoming_subagent: Option<&'a str>,
     pub(crate) incoming_beta_features: Option<&'a str>,
     pub(crate) incoming_turn_metadata: Option<&'a str>,
+    pub(crate) incoming_parent_thread_id: Option<&'a str>,
+    pub(crate) passthrough_codex_headers: &'a [(String, String)],
     pub(crate) fallback_session_id: Option<&'a str>,
     pub(crate) incoming_turn_state: Option<&'a str>,
     pub(crate) include_turn_state: bool,
@@ -25,7 +29,10 @@ pub(crate) struct CodexCompactUpstreamHeaderInput<'a> {
     pub(crate) auth_token: &'a str,
     pub(crate) chatgpt_account_id: Option<&'a str>,
     pub(crate) incoming_session_id: Option<&'a str>,
+    pub(crate) incoming_window_id: Option<&'a str>,
     pub(crate) incoming_subagent: Option<&'a str>,
+    pub(crate) incoming_parent_thread_id: Option<&'a str>,
+    pub(crate) passthrough_codex_headers: &'a [(String, String)],
     pub(crate) fallback_session_id: Option<&'a str>,
     pub(crate) strip_session_affinity: bool,
     pub(crate) has_body: bool,
@@ -115,6 +122,16 @@ pub(crate) fn build_codex_upstream_headers(
             turn_metadata.to_string(),
         ));
     }
+    if let Some(parent_thread_id) = input
+        .incoming_parent_thread_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        headers.push((
+            X_CODEX_PARENT_THREAD_ID_HEADER_NAME.to_string(),
+            parent_thread_id.to_string(),
+        ));
+    }
     let resolved_session_id = resolve_optional_session_id(
         input.incoming_session_id,
         input.fallback_session_id,
@@ -122,11 +139,19 @@ pub(crate) fn build_codex_upstream_headers(
     );
     if let Some(session_id) = resolved_session_id.as_deref() {
         headers.push(("session_id".to_string(), session_id.to_string()));
-        headers.push((
-            X_CODEX_WINDOW_ID_HEADER_NAME.to_string(),
-            format!("{session_id}:0"),
-        ));
     }
+    if let Some(window_id) = resolve_window_id(
+        input.incoming_window_id,
+        resolved_session_id.as_deref(),
+        input.strip_session_affinity,
+    ) {
+        headers.push((X_CODEX_WINDOW_ID_HEADER_NAME.to_string(), window_id));
+    }
+    append_passthrough_codex_headers(
+        &mut headers,
+        input.passthrough_codex_headers,
+        !input.strip_session_affinity,
+    );
 
     if !input.strip_session_affinity {
         if input.include_turn_state {
@@ -200,18 +225,36 @@ pub(crate) fn build_codex_compact_upstream_headers(
     {
         headers.push(("x-openai-subagent".to_string(), subagent.to_string()));
     }
-    if let Some(session_id) = resolve_optional_session_id(
+    if let Some(parent_thread_id) = input
+        .incoming_parent_thread_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        headers.push((
+            X_CODEX_PARENT_THREAD_ID_HEADER_NAME.to_string(),
+            parent_thread_id.to_string(),
+        ));
+    }
+    let resolved_session_id = resolve_optional_session_id(
         input.incoming_session_id,
         input.fallback_session_id,
         input.strip_session_affinity,
-    ) {
-        let window_id = format!("{session_id}:0");
+    );
+    if let Some(session_id) = resolved_session_id.clone() {
         headers.push(("session_id".to_string(), session_id));
-        headers.push((
-            X_CODEX_WINDOW_ID_HEADER_NAME.to_string(),
-            window_id,
-        ));
     }
+    if let Some(window_id) = resolve_window_id(
+        input.incoming_window_id,
+        resolved_session_id.as_deref(),
+        input.strip_session_affinity,
+    ) {
+        headers.push((X_CODEX_WINDOW_ID_HEADER_NAME.to_string(), window_id));
+    }
+    append_passthrough_codex_headers(
+        &mut headers,
+        input.passthrough_codex_headers,
+        !input.strip_session_affinity,
+    );
     headers
 }
 
@@ -259,6 +302,46 @@ fn resolve_optional_session_id(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn resolve_window_id(
+    incoming_window_id: Option<&str>,
+    resolved_session_id: Option<&str>,
+    strip_session_affinity: bool,
+) -> Option<String> {
+    if !strip_session_affinity {
+        if let Some(window_id) = incoming_window_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Some(window_id.to_string());
+        }
+    }
+    resolved_session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|session_id| format!("{session_id}:0"))
+}
+
+fn append_passthrough_codex_headers(
+    headers: &mut Vec<(String, String)>,
+    passthrough_headers: &[(String, String)],
+    enabled: bool,
+) {
+    if !enabled {
+        return;
+    }
+    for (name, value) in passthrough_headers {
+        let trimmed_value = value.trim();
+        if trimmed_value.is_empty()
+            || headers
+                .iter()
+                .any(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+        {
+            continue;
+        }
+        headers.push((name.clone(), trimmed_value.to_string()));
+    }
 }
 
 /// 函数 `resolve_client_request_id`
@@ -350,15 +433,22 @@ mod tests {
         let _ = set_codex_user_agent_version("0.999.0").expect("set ua version");
         let _org_guard = EnvGuard::set("OPENAI_ORGANIZATION", "org_123");
         let _project_guard = EnvGuard::set("OPENAI_PROJECT", "proj_123");
+        let passthrough = vec![(
+            "x-codex-other-limit-name".to_string(),
+            "promo_header_a".to_string(),
+        )];
 
         let headers = build_codex_upstream_headers(CodexUpstreamHeaderInput {
             auth_token: "token-123",
             chatgpt_account_id: Some("account-123"),
             incoming_session_id: Some("conversation-anchor"),
+            incoming_window_id: Some("conversation-anchor:7"),
             incoming_client_request_id: Some("conversation-anchor"),
             incoming_subagent: Some("subagent-a"),
             incoming_beta_features: Some("beta-a"),
             incoming_turn_metadata: Some("meta-a"),
+            incoming_parent_thread_id: Some("thread-parent-a"),
+            passthrough_codex_headers: passthrough.as_slice(),
             fallback_session_id: Some("conversation-anchor"),
             incoming_turn_state: Some("turn-state-a"),
             include_turn_state: true,
@@ -411,11 +501,19 @@ mod tests {
         );
         assert_eq!(
             header_value(&headers, "x-codex-window-id"),
-            Some("conversation-anchor:0")
+            Some("conversation-anchor:7")
         );
         assert_eq!(
             header_value(&headers, "x-codex-turn-state"),
             Some("turn-state-a")
+        );
+        assert_eq!(
+            header_value(&headers, "x-codex-parent-thread-id"),
+            Some("thread-parent-a")
+        );
+        assert_eq!(
+            header_value(&headers, "x-codex-other-limit-name"),
+            Some("promo_header_a")
         );
     }
 
@@ -435,15 +533,22 @@ mod tests {
         let _guard = crate::test_env_guard();
         let _ = set_originator("codex_cli_rs_tests").expect("set originator");
         let _ = set_codex_user_agent_version("0.999.1").expect("set ua version");
+        let passthrough = vec![(
+            "x-codex-other-limit-name".to_string(),
+            "promo_header_b".to_string(),
+        )];
 
         let headers = build_codex_upstream_headers(CodexUpstreamHeaderInput {
             auth_token: "token-456",
             chatgpt_account_id: None,
             incoming_session_id: Some("conversation-anchor"),
+            incoming_window_id: Some("conversation-anchor:9"),
             incoming_client_request_id: Some("conversation-anchor"),
             incoming_subagent: None,
             incoming_beta_features: None,
             incoming_turn_metadata: None,
+            incoming_parent_thread_id: Some("thread-parent-b"),
+            passthrough_codex_headers: passthrough.as_slice(),
             fallback_session_id: Some("prompt-cache-anchor"),
             incoming_turn_state: None,
             include_turn_state: true,
@@ -462,9 +567,17 @@ mod tests {
         );
         assert_eq!(
             header_value(&headers, "x-codex-window-id"),
-            Some("conversation-anchor:0")
+            Some("conversation-anchor:9")
         );
         assert_eq!(header_value(&headers, "x-codex-turn-state"), None);
+        assert_eq!(
+            header_value(&headers, "x-codex-parent-thread-id"),
+            Some("thread-parent-b")
+        );
+        assert_eq!(
+            header_value(&headers, "x-codex-other-limit-name"),
+            Some("promo_header_b")
+        );
     }
 
     /// 函数 `build_codex_compact_upstream_headers_use_session_fallback_only`
@@ -483,12 +596,19 @@ mod tests {
         let _guard = crate::test_env_guard();
         let _ = set_originator("codex_cli_rs_tests").expect("set originator");
         let _ = set_codex_user_agent_version("0.999.2").expect("set ua version");
+        let passthrough = vec![(
+            "x-codex-other-limit-name".to_string(),
+            "promo_header_c".to_string(),
+        )];
 
         let headers = build_codex_compact_upstream_headers(CodexCompactUpstreamHeaderInput {
             auth_token: "token-789",
             chatgpt_account_id: Some("account-compact"),
             incoming_session_id: None,
+            incoming_window_id: Some("conversation-anchor:11"),
             incoming_subagent: Some("subagent-b"),
+            incoming_parent_thread_id: Some("thread-parent-c"),
+            passthrough_codex_headers: passthrough.as_slice(),
             fallback_session_id: Some("conversation-anchor"),
             strip_session_affinity: true,
             has_body: true,
@@ -519,5 +639,10 @@ mod tests {
             header_value(&headers, "x-openai-subagent"),
             Some("subagent-b")
         );
+        assert_eq!(
+            header_value(&headers, "x-codex-parent-thread-id"),
+            Some("thread-parent-c")
+        );
+        assert_eq!(header_value(&headers, "x-codex-other-limit-name"), None);
     }
 }

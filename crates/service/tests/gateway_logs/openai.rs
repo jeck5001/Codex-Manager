@@ -1060,7 +1060,10 @@ fn gateway_openai_compact_route_aligns_with_codex_remote_compact_request() {
             ("Content-Type", "application/json"),
             ("Authorization", &format!("Bearer {platform_key}")),
             ("session_id", "sess_compact_cli"),
+            ("x-codex-window-id", "sess_compact_cli:7"),
             ("x-openai-subagent", "compact"),
+            ("x-codex-parent-thread-id", "thread_parent_compact_cli"),
+            ("x-codex-other-limit-name", "promo_header_http"),
         ],
     );
     server.join();
@@ -1090,9 +1093,30 @@ fn gateway_openai_compact_route_aligns_with_codex_remote_compact_request() {
     assert_eq!(
         captured
             .headers
+            .get("x-codex-window-id")
+            .map(String::as_str),
+        Some("sess_compact_cli:7")
+    );
+    assert_eq!(
+        captured
+            .headers
             .get("x-openai-subagent")
             .map(String::as_str),
         Some("compact")
+    );
+    assert_eq!(
+        captured
+            .headers
+            .get("x-codex-parent-thread-id")
+            .map(String::as_str),
+        Some("thread_parent_compact_cli")
+    );
+    assert_eq!(
+        captured
+            .headers
+            .get("x-codex-other-limit-name")
+            .map(String::as_str),
+        Some("promo_header_http")
     );
     assert!(
         captured.headers.contains_key("user-agent"),

@@ -76,6 +76,7 @@ fn drop_incoming_header_keeps_session_affinity_for_primary_attempt() {
     assert!(should_drop_incoming_header("anthropic-version"));
     assert!(should_drop_incoming_header("x-stainless-lang"));
     assert!(!should_drop_incoming_header("session_id"));
+    assert!(!should_drop_incoming_header("x-codex-other-limit-name"));
     assert!(!should_drop_incoming_header("x-codex-turn-state"));
     assert!(!should_drop_incoming_header("Content-Type"));
 }
@@ -99,6 +100,9 @@ fn drop_incoming_header_for_failover_strips_session_affinity() {
     assert!(should_drop_incoming_header_for_failover("session_id"));
     assert!(should_drop_incoming_header_for_failover(
         "x-codex-turn-state"
+    ));
+    assert!(!should_drop_incoming_header_for_failover(
+        "x-codex-other-limit-name"
     ));
     assert!(!should_drop_incoming_header_for_failover("Content-Type"));
 }

@@ -494,8 +494,11 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
         &[
             ("OpenAI-Beta", "responses_websockets=2026-02-06"),
             ("session_id", "session_ws_1"),
+            ("x-codex-window-id", "session_ws_1:7"),
             ("x-client-request-id", "client_req_ws_1"),
             ("x-openai-subagent", "review"),
+            ("x-codex-parent-thread-id", "thread_parent_ws_1"),
+            ("x-codex-other-limit-name", "promo_header_ws"),
             ("x-codex-turn-state", "turn_state_ws_1"),
             ("x-codex-turn-metadata", "turn_meta_ws_1"),
             ("x-responsesapi-include-timing-metrics", "true"),
@@ -643,7 +646,7 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
             .headers
             .get("x-codex-window-id")
             .map(String::as_str),
-        Some("session_ws_1:0")
+        Some("session_ws_1:7")
     );
     assert_eq!(
         capture
@@ -655,6 +658,20 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
     assert_eq!(
         capture.headers.get("x-openai-subagent").map(String::as_str),
         Some("review")
+    );
+    assert_eq!(
+        capture
+            .headers
+            .get("x-codex-parent-thread-id")
+            .map(String::as_str),
+        Some("thread_parent_ws_1")
+    );
+    assert_eq!(
+        capture
+            .headers
+            .get("x-codex-other-limit-name")
+            .map(String::as_str),
+        Some("promo_header_ws")
     );
     assert_eq!(
         capture

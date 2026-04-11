@@ -754,13 +754,21 @@ fn build_upstream_websocket_request(
     }
     if let Some(session_id) = context.incoming_headers.session_id() {
         insert_header(headers, "session_id", session_id)?;
-        insert_header(headers, "x-codex-window-id", format!("{session_id}:0").as_str())?;
+    }
+    if let Some(window_id) = context.incoming_headers.window_id() {
+        insert_header(headers, "x-codex-window-id", window_id)?;
+    } else if let Some(session_id) = context.incoming_headers.session_id() {
+        let fallback_window_id = format!("{session_id}:0");
+        insert_header(headers, "x-codex-window-id", fallback_window_id.as_str())?;
     }
     if let Some(client_request_id) = context.incoming_headers.client_request_id() {
         insert_header(headers, "x-client-request-id", client_request_id)?;
     }
     if let Some(subagent) = context.incoming_headers.subagent() {
         insert_header(headers, "x-openai-subagent", subagent)?;
+    }
+    if let Some(parent_thread_id) = context.incoming_headers.parent_thread_id() {
+        insert_header(headers, "x-codex-parent-thread-id", parent_thread_id)?;
     }
     if let Some(beta_features) = context.incoming_headers.beta_features() {
         insert_header(headers, "x-codex-beta-features", beta_features)?;
@@ -771,10 +779,24 @@ fn build_upstream_websocket_request(
     if let Some(turn_state) = context.incoming_headers.turn_state() {
         insert_header(headers, "x-codex-turn-state", turn_state)?;
     }
+    append_passthrough_codex_headers(headers, context.incoming_headers.passthrough_codex_headers())?;
     if context.include_timing_metrics {
         insert_header(headers, "x-responsesapi-include-timing-metrics", "true")?;
     }
     Ok(request)
+}
+
+fn append_passthrough_codex_headers(
+    headers: &mut HeaderMap,
+    passthrough_headers: &[(String, String)],
+) -> Result<(), WsSessionError> {
+    for (name, value) in passthrough_headers {
+        if headers.contains_key(name.as_str()) {
+            continue;
+        }
+        insert_header(headers, name, value)?;
+    }
+    Ok(())
 }
 
 fn append_optional_env_header(

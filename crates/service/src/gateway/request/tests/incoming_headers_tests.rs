@@ -70,3 +70,42 @@ fn goog_api_key_header_is_accepted_as_platform_key() {
         Some("platform-key-from-gemini")
     );
 }
+
+/// 函数 `codex_headers_are_captured_from_http_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-11
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn codex_headers_are_captured_from_http_headers() {
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        "x-codex-parent-thread-id",
+        axum::http::HeaderValue::from_static("thread_parent_123"),
+    );
+    headers.insert(
+        "x-codex-window-id",
+        axum::http::HeaderValue::from_static("thread_child_123:7"),
+    );
+    headers.insert(
+        "x-codex-other-limit-name",
+        axum::http::HeaderValue::from_static("promo_header"),
+    );
+
+    let snapshot = IncomingHeaderSnapshot::from_http_headers(&headers);
+    assert_eq!(snapshot.parent_thread_id(), Some("thread_parent_123"));
+    assert_eq!(snapshot.window_id(), Some("thread_child_123:7"));
+    assert_eq!(
+        snapshot.passthrough_codex_headers(),
+        &[(
+            "x-codex-other-limit-name".to_string(),
+            "promo_header".to_string()
+        )]
+    );
+}
