@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { AlertCircle, Play, RefreshCw } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store/useAppStore";
-import { accountClient } from "@/lib/api/account-client";
 import { serviceClient } from "@/lib/api/service-client";
 import {
   buildStartupSnapshotQueryKey,
@@ -32,17 +31,6 @@ import {
 } from "@/lib/utils/static-routes";
 
 const DEFAULT_SERVICE_ADDR = "localhost:48760";
-const PRIMARY_PAGE_WARMUP_STALE_TIME = 30_000;
-const PRIMARY_PAGE_WARMUP_PAGE_SIZE = 20;
-const PRIMARY_PAGE_ROUTES = [
-  "/",
-  "/accounts/",
-  "/aggregate-api/",
-  "/apikeys/",
-  "/logs/",
-  "/settings/",
-] as const;
-const DEV_ROUTE_WARMUP_TIMEOUT_MS = 12_000;
 const STARTUP_WARMUP_LABEL = "[startup warmup]";
 /**
  * 函数 `sleep`
@@ -87,13 +75,11 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const pathname = usePathname();
-  const router = useRouter();
   const { canManageService, isDesktopRuntime, isUnsupportedWebRuntime } =
     useRuntimeCapabilities();
   const [isInitializing, setIsInitializing] = useState(true);
   const hasInitializedOnce = useRef(false);
   const hasBootstrappedOnce = useRef(false);
-  const hasWarmedDevRoutes = useRef(false);
   const serviceStatusRef = useRef(serviceStatus);
   const runtimeCapabilitiesRef = useRef(runtimeCapabilities);
   const [error, setError] = useState<string | null>(null);
@@ -175,130 +161,6 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     [queryClient]
   );
 
-  const warmupPrimaryPages = useCallback(
-    async (addr: string) => {
-      for (const route of PRIMARY_PAGE_ROUTES) {
-        router.prefetch(route);
-      }
-
-      const warmupTasks = [
-        queryClient.prefetchQuery({
-          queryKey: ["accounts", "list"],
-          queryFn: () => accountClient.list(),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["usage", "list"],
-          queryFn: () => accountClient.listUsage(),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["apikeys"],
-          queryFn: () => accountClient.listApiKeys(),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["aggregate-apis"],
-          queryFn: () => accountClient.listAggregateApis(),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["apikey-models"],
-          queryFn: () => accountClient.listModels(false),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["apikey-usage-stats"],
-          queryFn: async () => {
-            const stats = await accountClient.listApiKeyUsageStats();
-            return stats.reduce<Record<string, number>>((result, item) => {
-              const keyId = String(item.keyId || "").trim();
-              if (!keyId) return result;
-              result[keyId] = Math.max(0, item.totalTokens || 0);
-              return result;
-            }, {});
-          },
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["accounts", "lookup"],
-          queryFn: () => accountClient.list(),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["logs", "list", "", "all", 1, PRIMARY_PAGE_WARMUP_PAGE_SIZE],
-          queryFn: () =>
-            serviceClient.listRequestLogs({
-              query: "",
-              statusFilter: "all",
-              page: 1,
-              pageSize: PRIMARY_PAGE_WARMUP_PAGE_SIZE,
-            }),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["logs", "summary", "", "all"],
-          queryFn: () =>
-            serviceClient.getRequestLogSummary({
-              query: "",
-              statusFilter: "all",
-            }),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["app-settings-snapshot"],
-          queryFn: () => appClient.getSettings(),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-      ];
-
-      await Promise.allSettled(warmupTasks);
-    },
-    [queryClient, router]
-  );
-
-  const warmupConnectedService = useCallback(
-    async (addr: string) => {
-      if (runtimeCapabilitiesRef.current?.mode === "desktop-tauri") {
-        return;
-      }
-
-      try {
-        await prefetchStartupSnapshot(addr);
-      } catch (warmupError) {
-        console.warn(
-          `${STARTUP_WARMUP_LABEL} startup snapshot prefetch failed`,
-          warmupError,
-        );
-      }
-
-      /**
-       * 函数 `runPrimaryWarmup`
-       *
-       * 作者: gaohongshun
-       *
-       * 时间: 2026-04-02
-       *
-       * # 参数
-       * 无
-       *
-       * # 返回
-       * 返回函数执行结果
-       */
-      const runPrimaryWarmup = () => {
-        void warmupPrimaryPages(addr).catch((warmupError) => {
-          console.warn(
-            `${STARTUP_WARMUP_LABEL} primary page warmup failed`,
-            warmupError,
-          );
-        });
-      };
-
-      runPrimaryWarmup();
-    },
-    [prefetchStartupSnapshot, warmupPrimaryPages],
-  );
-
   const shouldBlockOnInitialDashboardSnapshot = useCallback(
     (desktopRuntime: boolean) =>
       desktopRuntime &&
@@ -332,117 +194,9 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
       applyLowTransparency(lowTransparency);
       setIsInitializing(false);
       hasInitializedOnce.current = true;
-      void warmupConnectedService(addr);
     },
-    [prefetchStartupSnapshot, setServiceStatus, warmupConnectedService],
+    [prefetchStartupSnapshot, setServiceStatus],
   );
-
-  const warmupDevRouteTransitions = useCallback(() => {
-    if (process.env.NODE_ENV !== "development") {
-      return () => {};
-    }
-    if (hasWarmedDevRoutes.current || typeof window === "undefined") {
-      return () => {};
-    }
-    hasWarmedDevRoutes.current = true;
-
-    const runtime = globalThis as typeof globalThis & {
-      requestIdleCallback?: (
-        callback: IdleRequestCallback,
-        options?: IdleRequestOptions,
-      ) => number;
-      cancelIdleCallback?: (handle: number) => void;
-    };
-    const currentPath = window.location.pathname;
-    const routes = PRIMARY_PAGE_ROUTES.filter((route) => route !== currentPath);
-    const controllers: AbortController[] = [];
-    let disposed = false;
-
-    /**
-     * 函数 `warmRouteDocument`
-     *
-     * 作者: gaohongshun
-     *
-     * 时间: 2026-04-02
-     *
-     * # 参数
-     * - route: 参数 route
-     *
-     * # 返回
-     * 返回函数执行结果
-     */
-    const warmRouteDocument = async (route: (typeof PRIMARY_PAGE_ROUTES)[number]) => {
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), DEV_ROUTE_WARMUP_TIMEOUT_MS);
-      controllers.push(controller);
-      try {
-        await fetch(route, {
-          method: "GET",
-          credentials: "same-origin",
-          cache: "no-store",
-          signal: controller.signal,
-          headers: {
-            "x-codexmanager-route-warmup": "1",
-          },
-        });
-      } catch {
-        // 中文注释：dev 预热只用于减少首次切页编译等待，失败时静默回退到正常导航。
-      } finally {
-        window.clearTimeout(timeoutId);
-        const index = controllers.indexOf(controller);
-        if (index >= 0) {
-          controllers.splice(index, 1);
-        }
-      }
-    };
-
-    /**
-     * 函数 `runWarmup`
-     *
-     * 作者: gaohongshun
-     *
-     * 时间: 2026-04-02
-     *
-     * # 参数
-     * 无
-     *
-     * # 返回
-     * 返回函数执行结果
-     */
-    const runWarmup = () => {
-      void (async () => {
-        for (const route of routes) {
-          if (disposed) {
-            return;
-          }
-          router.prefetch(route);
-          await warmRouteDocument(route);
-        }
-      })();
-    };
-
-    if (runtime.requestIdleCallback) {
-      const idleId = runtime.requestIdleCallback(() => runWarmup(), {
-        timeout: 800,
-      });
-      return () => {
-        disposed = true;
-        runtime.cancelIdleCallback?.(idleId);
-        for (const controller of controllers) {
-          controller.abort();
-        }
-      };
-    }
-
-    const timer = window.setTimeout(runWarmup, 120);
-    return () => {
-      disposed = true;
-      window.clearTimeout(timer);
-      for (const controller of controllers) {
-        controller.abort();
-      }
-    };
-  }, [router]);
 
   const init = useCallback(async () => {
     // Only show full screen loading if we haven't initialized once
@@ -528,6 +282,7 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     setTheme,
     startAndInitializeService,
     shouldBlockOnInitialDashboardSnapshot,
+    t,
   ]);
 
   /**
@@ -621,8 +376,6 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
     hasBootstrappedOnce.current = true;
     void init();
   }, [init]);
-
-  useEffect(() => warmupDevRouteTransitions(), [warmupDevRouteTransitions]);
 
   useEffect(() => {
     if (isDesktopRuntime || typeof window === "undefined") {

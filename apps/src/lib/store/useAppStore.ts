@@ -4,24 +4,35 @@ import {
   DEFAULT_CODEX_ORIGINATOR,
   DEFAULT_CODEX_USER_AGENT_VERSION,
 } from "../constants/codex";
+import {
+  type TopLevelRoutePath,
+  toTopLevelRoutePath,
+} from "../app-shell/top-level-routes";
+import { buildStaticRouteUrl } from "../utils/static-routes";
 
 interface AppState {
   serviceStatus: ServiceStatus;
   appSettings: AppSettings;
   runtimeCapabilities: RuntimeCapabilities | null;
   isSidebarOpen: boolean;
-  pendingRoutePath: string;
   isCodexCliGuideOpen: boolean;
+  currentShellPath: TopLevelRoutePath;
+  openShellTabs: TopLevelRoutePath[];
   
   setServiceStatus: (status: Partial<ServiceStatus>) => void;
   setAppSettings: (settings: Partial<AppSettings>) => void;
   setRuntimeCapabilities: (capabilities: RuntimeCapabilities | null) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
-  setPendingRoutePath: (path: string) => void;
   openCodexCliGuide: () => void;
   closeCodexCliGuide: () => void;
+  syncShellPathFromLocation: (path: string) => void;
+  navigateShellPath: (path: string, options?: { replace?: boolean }) => void;
+  closeShellTab: (path: string) => TopLevelRoutePath | null;
 }
+
+const initialShellPath =
+  typeof window === "undefined" ? "/" : toTopLevelRoutePath(window.location.pathname);
 
 export const useAppStore = create<AppState>((set) => ({
   serviceStatus: {
@@ -96,8 +107,9 @@ export const useAppStore = create<AppState>((set) => ({
   },
   runtimeCapabilities: null,
   isSidebarOpen: true,
-  pendingRoutePath: "",
   isCodexCliGuideOpen: false,
+  currentShellPath: initialShellPath,
+  openShellTabs: [initialShellPath],
 
   setServiceStatus: (status) => 
     set((state) => ({ serviceStatus: { ...state.serviceStatus, ...status } })),
@@ -111,9 +123,81 @@ export const useAppStore = create<AppState>((set) => ({
   
   setSidebarOpen: (open) => set({ isSidebarOpen: open }),
 
-  setPendingRoutePath: (path) => set({ pendingRoutePath: path }),
-
   openCodexCliGuide: () => set({ isCodexCliGuideOpen: true }),
 
   closeCodexCliGuide: () => set({ isCodexCliGuideOpen: false }),
+
+  syncShellPathFromLocation: (path) =>
+    set((state) => {
+      const nextPath = toTopLevelRoutePath(path);
+      return {
+        currentShellPath: nextPath,
+        openShellTabs: state.openShellTabs.includes(nextPath)
+          ? state.openShellTabs
+          : [...state.openShellTabs, nextPath],
+      };
+    }),
+
+  navigateShellPath: (path, options) =>
+    set((state) => {
+      const nextPath = toTopLevelRoutePath(path);
+      const nextTabs = state.openShellTabs.includes(nextPath)
+        ? state.openShellTabs
+        : [...state.openShellTabs, nextPath];
+
+      if (typeof window !== "undefined") {
+        const nextUrl = buildStaticRouteUrl(nextPath);
+        if (options?.replace) {
+          window.history.replaceState(window.history.state, "", nextUrl);
+        } else if (window.location.pathname !== nextUrl) {
+          window.history.pushState(window.history.state, "", nextUrl);
+        }
+      }
+
+      return {
+        currentShellPath: nextPath,
+        openShellTabs: nextTabs,
+      };
+    }),
+
+  closeShellTab: (path) => {
+    let nextActivePath: TopLevelRoutePath | null = null;
+
+    set((state) => {
+      const normalizedPath = toTopLevelRoutePath(path);
+      if (normalizedPath === "/") {
+        return state;
+      }
+
+      const targetIndex = state.openShellTabs.indexOf(normalizedPath);
+      if (targetIndex === -1) {
+        return state;
+      }
+
+      const nextTabs = state.openShellTabs.filter((tab) => tab !== normalizedPath);
+      nextActivePath =
+        state.currentShellPath === normalizedPath
+          ? nextTabs[targetIndex - 1] ?? nextTabs[targetIndex] ?? "/"
+          : state.currentShellPath;
+
+      if (
+        typeof window !== "undefined" &&
+        nextActivePath &&
+        state.currentShellPath === normalizedPath
+      ) {
+        window.history.pushState(
+          window.history.state,
+          "",
+          buildStaticRouteUrl(nextActivePath),
+        );
+      }
+
+      return {
+        currentShellPath: nextActivePath ?? state.currentShellPath,
+        openShellTabs: nextTabs,
+      };
+    });
+
+    return nextActivePath;
+  },
 }));

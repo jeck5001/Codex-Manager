@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
+import { useDesktopPageActive } from "@/hooks/useDesktopPageActive";
 import {
   buildStartupSnapshotQueryKey,
   hasStartupSnapshotSignal,
@@ -31,16 +32,19 @@ import { pickBestRecommendations, pickCurrentAccount } from "@/lib/utils/usage";
 export function useDashboardStats() {
   const serviceStatus = useAppStore((state) => state.serviceStatus);
   const isServiceReady = serviceStatus.connected;
-  const isSnapshotQueryEnabled = useDeferredDesktopActivation(isServiceReady);
+  const isPageActive = useDesktopPageActive("/");
+  const isSnapshotQueryEnabled = useDeferredDesktopActivation(
+    isServiceReady && isPageActive,
+  );
   const warmupStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!isServiceReady) {
+    if (!isServiceReady || !isPageActive) {
       warmupStartedAtRef.current = null;
       return;
     }
     warmupStartedAtRef.current = Date.now();
-  }, [isServiceReady, serviceStatus.addr]);
+  }, [isPageActive, isServiceReady, serviceStatus.addr]);
 
   const snapshotQuery = useQuery({
     queryKey: buildStartupSnapshotQueryKey(
@@ -55,7 +59,10 @@ export function useDashboardStats() {
     retry: 1,
     staleTime: STARTUP_SNAPSHOT_STALE_TIME,
     refetchInterval: (query) => {
-      if (!isServiceReady) return false;
+      if (!isServiceReady || !isPageActive) return false;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return false;
+      }
       const startedAt = warmupStartedAtRef.current;
       if (startedAt == null) return false;
       if (Date.now() - startedAt >= STARTUP_SNAPSHOT_WARMUP_TIMEOUT_MS) {
@@ -72,13 +79,14 @@ export function useDashboardStats() {
         ? false
         : STARTUP_SNAPSHOT_WARMUP_INTERVAL_MS;
     },
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
   });
 
   const data = snapshotQuery.data;
   const accounts = data?.accounts || [];
   const hasStartupSignal = hasStartupSnapshotSignal(data);
   const shouldWarmupPoll =
+    isPageActive &&
     isServiceReady &&
     accounts.length > 0 &&
     !hasStartupSignal &&

@@ -1,10 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
-import { usePathname } from "next/navigation";
-import { useAppStore } from "@/lib/store/useAppStore";
-import { normalizeRoutePath } from "@/lib/utils/static-routes";
-
 /**
  * 函数 `usePageTransitionReady`
  *
@@ -19,28 +14,7 @@ import { normalizeRoutePath } from "@/lib/utils/static-routes";
  * # 返回
  * 返回函数执行结果
  */
-export function usePageTransitionReady(expectedPath: string, isReady: boolean) {
-  const pathname = normalizeRoutePath(usePathname());
-  const normalizedExpectedPath = normalizeRoutePath(expectedPath);
-  const pendingRoutePath = useAppStore((state) => state.pendingRoutePath);
-  const setPendingRoutePath = useAppStore((state) => state.setPendingRoutePath);
-
-  useEffect(() => {
-    if (!isReady || !pendingRoutePath) {
-      return;
-    }
-    if (normalizedExpectedPath !== pathname) {
-      return;
-    }
-    if (normalizeRoutePath(pendingRoutePath) !== normalizedExpectedPath) {
-      return;
-    }
-    setPendingRoutePath("");
-  }, [
-    isReady,
-    normalizedExpectedPath,
-    pathname,
-    pendingRoutePath,
-    setPendingRoutePath,
-  ]);
+export function usePageTransitionReady(_expectedPath: string, _isReady: boolean) {
+  void _expectedPath;
+  void _isReady;
 }

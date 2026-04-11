@@ -110,7 +110,9 @@ export default function AggregateApiPage() {
   const { canAccessManagementRpc } = useRuntimeCapabilities();
   const isServiceReady = canAccessManagementRpc && serviceStatus.connected;
   const isPageActive = useDesktopPageActive("/aggregate-api/");
-  const isQueryEnabled = useDeferredDesktopActivation(isServiceReady);
+  const isQueryEnabled = useDeferredDesktopActivation(
+    isServiceReady && isPageActive,
+  );
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);

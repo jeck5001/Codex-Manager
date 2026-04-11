@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { Settings as SettingsIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store/useAppStore";
@@ -21,6 +20,7 @@ import {
   isExpectedInitializeResult,
   normalizeServiceAddr,
 } from "@/lib/utils/service";
+import { getTopLevelRouteLabel } from "@/lib/app-shell/top-level-routes";
 
 const DEFAULT_SERVICE_ADDR = "localhost:48760";
 
@@ -38,8 +38,7 @@ const DEFAULT_SERVICE_ADDR = "localhost:48760";
  * 返回函数执行结果
  */
 export function Header() {
-  const { serviceStatus, setServiceStatus, setAppSettings } = useAppStore();
-  const pathname = usePathname();
+  const { serviceStatus, setServiceStatus, setAppSettings, currentShellPath } = useAppStore();
   const { t } = useI18n();
   const [webPasswordModalOpen, setWebPasswordModalOpen] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
@@ -66,23 +65,11 @@ export function Header() {
    * 返回函数执行结果
    */
   const getPageTitle = () => {
-      const normalizedPathname = pathname === "/" ? pathname : pathname.replace(/\/+$/, "");
-      switch (normalizedPathname) {
-      case "/":
-        return t("仪表盘");
-      case "/accounts":
-        return t("账号管理");
-      case "/apikeys":
-        return t("平台密钥");
-      case "/aggregate-api":
-        return t("聚合API");
-      case "/logs":
-        return t("请求日志");
-      case "/settings":
+      if (currentShellPath === "/settings") {
         return t("应用设置");
-      default:
-        return "CodexManager";
-    }
+      }
+
+      return t(getTopLevelRouteLabel(currentShellPath));
   };
 
   /**

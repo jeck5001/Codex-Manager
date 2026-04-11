@@ -8,6 +8,8 @@
     "dev:desktop": "next dev --webpack -H 127.0.0.1 -p 3005",
     "build": "next build",
     "build:desktop": "next build",
+    "test:e2e": "playwright test",
+    "test:navigation": "playwright test tests/navigation-cache.spec.ts",
     "test:runtime": "node --test tests/runtime-capabilities.test.mjs",
     "start": "next start",
     "lint": "eslint"
@@ -30,6 +32,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@playwright/test": "1.58.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

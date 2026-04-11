@@ -10,6 +10,7 @@ import {
   STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT,
 } from "@/lib/api/startup-snapshot";
 import { getAppErrorMessage } from "@/lib/api/transport";
+import { useDesktopPageActive } from "@/hooks/useDesktopPageActive";
 import { useDeferredDesktopActivation } from "@/hooks/useDeferredDesktopActivation";
 import { useRuntimeCapabilities } from "@/hooks/useRuntimeCapabilities";
 import { useI18n } from "@/lib/i18n/provider";
@@ -109,7 +110,10 @@ export function useAccounts() {
   const serviceStatus = useAppStore((state) => state.serviceStatus);
   const { canAccessManagementRpc } = useRuntimeCapabilities();
   const isServiceReady = canAccessManagementRpc && serviceStatus.connected;
-  const areAccountQueriesEnabled = useDeferredDesktopActivation(isServiceReady);
+  const isPageActive = useDesktopPageActive("/accounts/");
+  const areAccountQueriesEnabled = useDeferredDesktopActivation(
+    isServiceReady && isPageActive,
+  );
   const startupSnapshot = queryClient.getQueryData<StartupSnapshot>(
     buildStartupSnapshotQueryKey(
       serviceStatus.addr,
