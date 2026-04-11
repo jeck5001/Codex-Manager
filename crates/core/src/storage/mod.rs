@@ -116,6 +116,9 @@ pub struct RequestLog {
     pub adapted_path: Option<String>,
     pub method: String,
     pub request_type: Option<String>,
+    pub gateway_mode: Option<String>,
+    pub transparent_mode: Option<bool>,
+    pub enhanced_mode: Option<bool>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
@@ -566,6 +569,11 @@ impl Storage {
             "045_accounts_preferred",
             include_str!("../../migrations/045_accounts_preferred.sql"),
             |s| s.ensure_account_meta_columns(),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "046_request_logs_gateway_mode",
+            include_str!("../../migrations/046_request_logs_gateway_mode.sql"),
+            |s| s.ensure_request_log_request_type_and_service_tier_columns(),
         )?;
         self.ensure_api_key_rotation_columns()?;
         self.ensure_aggregate_apis_table()?;

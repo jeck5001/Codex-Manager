@@ -78,6 +78,10 @@ fn should_apply_codex_responses_compat(path: &str, explicit_upstream_base: Optio
     is_codex_backend_base(&normalized_base)
 }
 
+fn should_apply_codex_enhanced_rewrite(use_codex_responses_compat: bool) -> bool {
+    use_codex_responses_compat && !super::transparent_gateway_mode_enabled()
+}
+
 /// 函数 `path_matches_retain_fn`
 ///
 /// 作者: gaohongshun
@@ -598,6 +602,8 @@ fn apply_request_overrides_with_prompt_cache_key_mode(
     service_tier: Option<&str>,
 ) -> Vec<u8> {
     let use_codex_responses_compat = should_apply_codex_responses_compat(path, upstream_base_url);
+    let use_codex_enhanced_rewrite =
+        should_apply_codex_enhanced_rewrite(use_codex_responses_compat);
     let normalized_model = model_slug.map(str::trim).filter(|v| !v.is_empty());
     let normalized_reasoning = reasoning_effort
         .and_then(crate::reasoning_effort::normalize_reasoning_effort)
@@ -616,7 +622,7 @@ fn apply_request_overrides_with_prompt_cache_key_mode(
             if let Some(model) = normalized_model {
                 obj.insert("model".to_string(), Value::String(model.to_string()));
                 changed = true;
-            } else if apply_model_forward_rule_if_needed(obj) {
+            } else if use_codex_enhanced_rewrite && apply_model_forward_rule_if_needed(obj) {
                 changed = true;
             }
 
@@ -656,76 +662,88 @@ fn apply_request_overrides_with_prompt_cache_key_mode(
             }
 
             if use_codex_responses_compat {
-                if responses::normalize_dynamic_tools_to_tools(path, obj) {
-                    changed = true;
-                }
-                if responses::ensure_input_list(path, obj) {
-                    changed = true;
-                }
-                if responses::ensure_tools_list(path, obj) {
-                    changed = true;
-                }
-                if responses::ensure_parallel_tool_calls_bool(path, obj) {
-                    changed = true;
+                if use_codex_enhanced_rewrite {
+                    if responses::normalize_dynamic_tools_to_tools(path, obj) {
+                        changed = true;
+                    }
+                    if responses::ensure_input_list(path, obj) {
+                        changed = true;
+                    }
+                    if responses::ensure_tools_list(path, obj) {
+                        changed = true;
+                    }
+                    if responses::ensure_parallel_tool_calls_bool(path, obj) {
+                        changed = true;
+                    }
                 }
                 if !responses::is_compact_path(path) {
                     let had_stream_passthrough = obj.contains_key("stream_passthrough");
-                    let stream_passthrough = responses::take_stream_passthrough_flag(path, obj);
-                    if had_stream_passthrough {
+                    if use_codex_enhanced_rewrite {
+                        let stream_passthrough = responses::take_stream_passthrough_flag(path, obj);
+                        if had_stream_passthrough {
+                            changed = true;
+                        }
+                        if !stream_passthrough && responses::ensure_stream_true(path, obj) {
+                            changed = true;
+                        }
+                        if responses::ensure_store_false(path, obj) {
+                            changed = true;
+                        }
+                        if responses::ensure_tool_choice_auto(path, obj) {
+                            changed = true;
+                        }
+                        if responses::normalize_service_tier(path, obj) {
+                            changed = true;
+                        }
+                        if responses::ensure_include_list(path, obj) {
+                            changed = true;
+                        }
+                        if responses::ensure_reasoning_include(path, obj) {
+                            changed = true;
+                        }
+                    } else if had_stream_passthrough {
+                        obj.remove("stream_passthrough");
                         changed = true;
                     }
-                    if !stream_passthrough && responses::ensure_stream_true(path, obj) {
-                        changed = true;
-                    }
-                    if responses::ensure_store_false(path, obj) {
-                        changed = true;
-                    }
-                    if responses::ensure_tool_choice_auto(path, obj) {
-                        changed = true;
-                    }
-                    if responses::normalize_service_tier(path, obj) {
-                        changed = true;
-                    }
-                    if responses::ensure_include_list(path, obj) {
-                        changed = true;
-                    }
-                    if responses::ensure_reasoning_include(path, obj) {
-                        changed = true;
-                    }
-                    let existing_prompt_cache_key = obj
-                        .get("prompt_cache_key")
-                        .and_then(Value::as_str)
-                        .map(str::to_string);
-                    let prompt_cache_key_decision =
-                        request_rewrite_prompt_cache::resolve_prompt_cache_key_rewrite(
-                            existing_prompt_cache_key.as_deref(),
+                    let should_apply_prompt_cache_key =
+                        force_prompt_cache_key || use_codex_enhanced_rewrite;
+                    if should_apply_prompt_cache_key {
+                        let existing_prompt_cache_key = obj
+                            .get("prompt_cache_key")
+                            .and_then(Value::as_str)
+                            .map(str::to_string);
+                        let prompt_cache_key_decision =
+                            request_rewrite_prompt_cache::resolve_prompt_cache_key_rewrite(
+                                existing_prompt_cache_key.as_deref(),
+                                prompt_cache_key,
+                                force_prompt_cache_key,
+                            );
+                        if responses::ensure_prompt_cache_key(
+                            path,
+                            obj,
                             prompt_cache_key,
                             force_prompt_cache_key,
+                        ) {
+                            changed = true;
+                        }
+                        log::debug!(
+                            "event=gateway_prompt_cache_key_summary path={} source={} force_override={} changed={} codex_compat={} compact={} gateway_mode={} final_present={}",
+                            path,
+                            prompt_cache_key_decision.source.as_str(),
+                            if force_prompt_cache_key { "true" } else { "false" },
+                            if prompt_cache_key_decision.changed { "true" } else { "false" },
+                            if use_codex_responses_compat { "true" } else { "false" },
+                            if responses::is_compact_path(path) { "true" } else { "false" },
+                            super::current_gateway_mode(),
+                            if obj.get("prompt_cache_key").and_then(Value::as_str).is_some() {
+                                "true"
+                            } else {
+                                "false"
+                            },
                         );
-                    if responses::ensure_prompt_cache_key(
-                        path,
-                        obj,
-                        prompt_cache_key,
-                        force_prompt_cache_key,
-                    ) {
-                        changed = true;
                     }
-                    log::debug!(
-                        "event=gateway_prompt_cache_key_summary path={} source={} force_override={} changed={} codex_compat={} compact={} final_present={}",
-                        path,
-                        prompt_cache_key_decision.source.as_str(),
-                        if force_prompt_cache_key { "true" } else { "false" },
-                        if prompt_cache_key_decision.changed { "true" } else { "false" },
-                        if use_codex_responses_compat { "true" } else { "false" },
-                        if responses::is_compact_path(path) { "true" } else { "false" },
-                        if obj.get("prompt_cache_key").and_then(Value::as_str).is_some() {
-                            "true"
-                        } else {
-                            "false"
-                        },
-                    );
                 }
-                if responses::ensure_instructions(path, obj) {
+                if use_codex_enhanced_rewrite && responses::ensure_instructions(path, obj) {
                     changed = true;
                 }
                 dropped_keys.extend(responses::retain_codex_fields(path, obj));

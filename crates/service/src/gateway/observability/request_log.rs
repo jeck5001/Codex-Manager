@@ -338,6 +338,9 @@ pub(crate) fn write_request_log_with_attempts(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("http");
+    let gateway_mode = super::current_gateway_mode();
+    let transparent_mode = gateway_mode == "transparent";
+    let enhanced_mode = gateway_mode == "enhanced";
     let service_tier = trace_context
         .service_tier
         .map(str::trim)
@@ -404,6 +407,9 @@ pub(crate) fn write_request_log_with_attempts(
             adapted_path: Some(adapted_path.to_string()),
             method: method.to_string(),
             request_type: Some(request_type.to_string()),
+            gateway_mode: Some(gateway_mode.clone()),
+            transparent_mode: Some(transparent_mode),
+            enhanced_mode: Some(enhanced_mode),
             model: model.map(|v| v.to_string()),
             reasoning_effort: reasoning_effort.map(|v| v.to_string()),
             service_tier: service_tier.map(str::to_string),

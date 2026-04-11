@@ -119,6 +119,7 @@ fn reload_from_env_updates_timeout_and_proxy() {
 fn reload_from_env_defaults_limits_to_unbounded_codex_friendly_values() {
     let _guard = crate::test_env_guard();
     let _account_guard = EnvGuard::clear(ENV_ACCOUNT_MAX_INFLIGHT);
+    let _gateway_mode_guard = EnvGuard::clear(ENV_GATEWAY_MODE);
     let _strict_guard = EnvGuard::clear(ENV_STRICT_REQUEST_PARAM_ALLOWLIST);
     let _gate_guard = EnvGuard::clear(ENV_REQUEST_GATE_WAIT_TIMEOUT_MS);
     let _front_proxy_guard = EnvGuard::clear(ENV_FRONT_PROXY_MAX_BODY_BYTES);
@@ -128,6 +129,8 @@ fn reload_from_env_defaults_limits_to_unbounded_codex_friendly_values() {
     reload_from_env();
 
     assert_eq!(account_max_inflight_limit(), 0);
+    assert_eq!(current_gateway_mode(), "transparent");
+    assert!(transparent_gateway_mode_enabled());
     assert!(!strict_request_param_allowlist_enabled());
     assert_eq!(request_gate_wait_timeout(), None);
     assert_eq!(front_proxy_max_body_bytes(), 0);
