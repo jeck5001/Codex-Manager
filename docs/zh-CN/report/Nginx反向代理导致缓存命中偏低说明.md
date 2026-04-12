@@ -104,6 +104,31 @@ proxy_send_timeout 3600s;
 
 这不是为了解决缓存命中本身，而是为了避免 Responses / SSE / WebSocket 类请求在代理层被额外干扰。
 
+### 4. 对 `/v1/responses/compact` 单独走更保守的代理配置
+
+如果你线上主要报的是：
+
+- `stream disconnected before completion`
+- 本地 Codex 反复重试 compact
+- 服务端日志却已经出现多条 `200` 的 `/v1/responses/compact`
+
+那更像是 **compact 成功响应在代理返回给客户端的途中被截断了**。
+
+这种情况下，建议给 `/v1/responses/compact` 单独加一条 location，至少补齐：
+
+```nginx
+proxy_set_header Connection "";
+proxy_buffering off;
+proxy_request_buffering off;
+gzip off;
+add_header X-Accel-Buffering no;
+proxy_read_timeout 600s;
+proxy_send_timeout 600s;
+send_timeout 600s;
+```
+
+当前仓库里的 `docker/nginx/nginx.conf` 已经内置了这一条专用配置，可直接作为部署基线。
+
 ## 推荐示例配置
 
 可直接参考：

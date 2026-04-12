@@ -142,6 +142,8 @@ export const EN_MESSAGES: MessageCatalog = {
   "重置": "Reset",
   "悬停查看全部额度": "Hover to view all quota",
   "额度详情": "Quota details",
+  "额度详情（悬停查看所有额度）":
+    "Quota details (hover to view all quota)",
   "标准额度与专属额度统一在这里查看。":
     "View standard and dedicated quota together here.",
   "启用账号": "Enable account",

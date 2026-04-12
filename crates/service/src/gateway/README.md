@@ -36,6 +36,7 @@
 
 - 模型选择与解析
 - 与请求模型决策相关的轻量逻辑
+- `/v1/models` 目录解析与结构化模型目录对接
 
 ### `observability/`
 
@@ -286,3 +287,4 @@
 - 持续拆小 `request_mapping.rs`
 - 持续拆小 `response_conversion.rs` / `sse_conversion.rs`
 - 把协议兼容回归固定到脚本与 Rust 测试双路径
+- 持续保持 `/v1/models` 与平台模型目录、桌面端 `models_cache.json` 预期之间的行为对齐

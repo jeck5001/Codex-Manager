@@ -34,6 +34,7 @@
 职责：
 
 - 用量刷新状态与相关回归
+- free 账号无 `refresh_token` 时的刷新保护回归
 
 ### `gateway/`
 
@@ -88,3 +89,4 @@
 - 新增协议兼容测试，优先放到 `tests/gateway/`
 - 新增 app settings / runtime sync 测试，优先放到根目录或后续专门子目录
 - 若测试需要大量 fixture，优先新建子目录，不要继续把 crate 根测试文件堆大
+- 新增模型目录 / `models_cache.json` 相关回归时，优先明确放到 `usage/` 或 `gateway/` 之下，不要把桌面端同步假设散落到普通门面测试里

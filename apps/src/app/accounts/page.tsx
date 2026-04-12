@@ -303,6 +303,15 @@ function QuotaProgress({
 function QuotaOverviewCell({ items }: { items: QuotaSummaryItem[] }) {
   const { t } = useI18n();
   const summaryItems = items.slice(0, 2);
+  const resetSummary = summaryItems
+    .map(
+      (item) =>
+        `${item.label}${t("重置")}: ${formatTsFromSeconds(
+          item.resetsAt,
+          item.emptyResetText ?? t("未知"),
+        )}`,
+    )
+    .join(" · ");
 
   return (
     <Tooltip>
@@ -339,8 +348,8 @@ function QuotaOverviewCell({ items }: { items: QuotaSummaryItem[] }) {
               </div>
             ))}
           </div>
-          <div className="mt-1 text-[10px] text-muted-foreground">
-            {t("悬停查看全部额度")}
+          <div className="mt-1 truncate text-[10px] text-muted-foreground">
+            {resetSummary}
           </div>
         </div>
       </TooltipTrigger>
@@ -352,7 +361,9 @@ function QuotaOverviewCell({ items }: { items: QuotaSummaryItem[] }) {
       >
         <div className="space-y-3">
           <div className="space-y-1">
-            <p className="text-sm font-semibold">{t("额度详情")}</p>
+            <p className="text-sm font-semibold">
+              {t("额度详情（悬停查看所有额度）")}
+            </p>
             <p className="text-[10px] text-muted-foreground">
               {t("标准额度与专属额度统一在这里查看。")}
             </p>

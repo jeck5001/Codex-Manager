@@ -114,17 +114,17 @@
 | 本地构建、打包、发版、脚本调用 | [构建发布与脚本说明](docs/zh-CN/release/构建发布与脚本说明.md) |
 
 ## 最近变更
-  - 当前最新版本：`v0.2.0`（2026-04-12，release）
-  - 主页面切换现已加入后台 keep-alive 缓存与整区加载遮罩，桌面端、Web 版和 Docker 版在空闲后回访时的卡顿与“像被销毁重载”的体感明显收敛。
-  - Codex 原生网关路径已收敛为默认透明直通：默认保持官方请求形状，只做账号选择、认证替换、路由、会话亲和与必要字段处理；Claude Code / Gemini CLI 继续走兼容适配。
-  - `service_tier` 已进一步对齐官方 Codex：发往 `chatgpt.com/backend-api/codex/responses` 时会把 `fast` 映射为上游 `priority`，`/responses/compact` 不再错误携带该字段。
-  - 这次版本也补齐了围绕 Cloudflare challenge、兼容转发与原生 Responses 路线的专项回归测试，便于后续继续稳住网关链路。
+  - 当前最新版本：`v0.2.1`（2026-04-12，release）
+  - 模型管理页现在维护统一的结构化模型目录：桌面端会在保存、删除、远端并入和首次成功加载时自动覆盖写入本地 `~/.codex/models_cache.json`，而 Web 端提供 `models_cache.json` 导出按钮供手动放入本地 Codex 目录。
+  - 模型目录现在支持平台侧覆写 `display_name`、`description`、`supported_reasoning_levels`、`visibility`、`supported_in_api` 等关键字段，并已收敛为结构化表存储，便于后续继续扩展模型管理。
+  - Web 版运行方式已收敛为 `codexmanager-web` 壳 + `/api/runtime` / `/api/rpc` 代理；单独跑前端静态页面或普通 dev server 已不再视为完整 Web 部署方式。
+  - free 账号在没有 `refresh_token` 时，用量刷新链路会跳过 refresh-token 请求，不再出现空 rt 触发的 400 错误。
 
 ### 近期提交摘要
-- `d6012c6`：对齐 Codex `service_tier` 上游映射。
-- `a0e317b`：修复 Claude `fast` 映射与错误流模型回显。
-- `7784287`：收敛 Codex 原生直通路径。
-- `6228c8a`：优化前端导航缓存与加载遮罩体验。
+- `cb97ac8`：修复 free 账号空 `refresh_token` 时的用量刷新报错。
+- `64a5f6f`：完善模型目录导出与 Web 端引导文案。
+- `a6672aa`：冻结主要列表页的操作列。
+- `5d38260`：补齐模型管理页的桌面友好布局与可见性展示。
 
 ## 功能概览
 - 账号池管理：分组、标签、排序、备注、封禁识别与封禁筛选
@@ -132,6 +132,7 @@
 - 用量展示：支持标准 5 小时 + 7 日窗口、仅 7 日单窗口账号，以及 Code Review / Spark 等附加额度窗口；刷新后会统一展示各额度的剩余百分比与重置时间
 - 授权登录：浏览器授权 + 手动回调解析
 - 平台 Key：生成、禁用、删除、模型绑定、推理等级、服务等级（跟随请求 / Fast / Flex）
+- 模型管理：维护结构化模型目录、远端并入、自定义模型、`visibility` / `supportedInApi` 管理，以及桌面端 Codex 缓存同步 / Web 端缓存导出
 - 聚合 API：管理第三方最小转发上游，支持创建、编辑、测试连通性、供应商名称、顺序优先级，以及按 Codex / Claude 分类展示
 - 插件中心：路由为 `/plugins/`，支持内置精选、企业私有、自定义源三种市场模式，并提供插件清单、任务、日志与 Rhai 对接接口
 - 设置页：支持“系统推导”按钮、单账号并发上限，以及更保守的高并发退化策略
@@ -174,12 +175,13 @@
 ### 桌面端
 - 账号管理：集中导入、导出、刷新账号与用量，支持低配额 / 封禁筛选与重置时间展示
 - 平台 Key：按模型、推理等级、服务等级绑定平台 Key，并查看调用日志
+- 模型管理：桌面端修改后会自动同步本地 `~/.codex/models_cache.json`
 - 插件中心：`/plugins/` 路由，内置精选 / 企业私有 / 自定义源市场切换，插件安装、启停、任务、日志、Rhai 对接
 - 设置页：统一管理端口、监听地址、代理、主题、自动更新、后台行为
 
 ### Service 版
 - `codexmanager-service`：提供本地 OpenAI 兼容网关
-- `codexmanager-web`：提供浏览器管理页面
+- `codexmanager-web`：提供浏览器管理页面，并承载 `/api/runtime` 与 `/api/rpc` 代理
 - `codexmanager-start`：一键拉起 service + web
 
 ## 常用文档
@@ -188,7 +190,7 @@
 - 架构说明：[ARCHITECTURE.md](docs/zh-CN/ARCHITECTURE.md)
 - 测试基线：[TESTING.md](docs/zh-CN/TESTING.md)
 - 安全说明：[SECURITY.md](docs/zh-CN/SECURITY.md)
-- 文档索引：[docs/README.md](docs/README.md)
+- 文档索引：[docs/zh-CN/README.md](docs/zh-CN/README.md)
 
 ## 专题页面
 | 页面 | 内容 |

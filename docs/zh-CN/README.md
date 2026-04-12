@@ -16,6 +16,13 @@
 - 如果你要看最新发版内容和主分支未发版更新，先看 [CHANGELOG.md](CHANGELOG.md)。
 - 如果你要快速判断“哪个文档最适合当前问题”，先看下面的“文档首页”和“推荐入口”。
 
+## 当前版本摘要
+
+- 当前最新版本：`v0.2.1`（2026-04-12）。
+- 模型管理页已经成为统一模型目录入口：桌面端会自动覆盖写入本地 `~/.codex/models_cache.json`，Web 端则提供 `models_cache.json` 导出按钮。
+- Web 管理页面必须通过 `codexmanager-web` 提供的 `/api/runtime` 与 `/api/rpc` 才能正常工作，单独前端静态页面不再视为完整运行方式。
+- free 账号若没有 `refresh_token`，用量刷新会直接跳过 refresh-token 请求，不再触发空 rt 的 400 错误。
+
 ## 赞助商
 
 感谢以下赞助商对 CodexManager 的支持。

@@ -16,11 +16,11 @@ CodexManager is a local desktop + service-process account pool manager and gatew
 
 ## Latest Changes
 
-- Current latest release: `v0.2.0` (released on 2026-04-12).
-- Top-level page switching now uses background keep-alive caching with a full-area loading overlay, improving revisit responsiveness across desktop, web, and Docker builds.
-- The native Codex gateway path now defaults to a transparent passthrough shape close to the official client, while Claude Code and Gemini CLI continue to use compatibility adapters.
-- `service_tier` forwarding is now aligned with official Codex behavior: upstream `/responses` requests map `fast` to `priority`, and `/responses/compact` omits the field.
-- This release also adds focused regression coverage for Cloudflare challenge handling, compatibility forwarding, and native Responses flows.
+- Current latest release: `v0.2.1` (released on 2026-04-12).
+- The model management page is now the canonical model catalog editor: desktop builds overwrite `~/.codex/models_cache.json` automatically after catalog changes, while web deployments expose a `models_cache.json` export action.
+- The catalog now stores and edits richer model metadata such as `display_name`, `description`, `supported_reasoning_levels`, `visibility`, and `supported_in_api`.
+- Web mode now requires the `codexmanager-web` shell with `/api/runtime` and `/api/rpc`; serving only a static frontend is no longer considered a complete deployment.
+- Free accounts without a `refresh_token` no longer hit refresh-token 400 errors during usage refresh.
 
 ## Feature Overview
 

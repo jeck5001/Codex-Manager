@@ -91,6 +91,31 @@ proxy_send_timeout 3600s;
 
 This does not create cache hits by itself, but it reduces proxy-side interference for Responses, SSE, and WebSocket traffic.
 
+### 4. Give `/v1/responses/compact` its own conservative proxy block
+
+If production mostly shows:
+
+- `stream disconnected before completion`
+- repeated compact retries from the local Codex client
+- while the service log already records multiple successful `200` entries for `/v1/responses/compact`
+
+the more likely issue is that the compact response is being truncated while traveling back through the proxy layer.
+
+In that case, add a dedicated `location = /v1/responses/compact` block and at least include:
+
+```nginx
+proxy_set_header Connection "";
+proxy_buffering off;
+proxy_request_buffering off;
+gzip off;
+add_header X-Accel-Buffering no;
+proxy_read_timeout 600s;
+proxy_send_timeout 600s;
+send_timeout 600s;
+```
+
+The repository's `docker/nginx/nginx.conf` now includes this dedicated compact block and can be used as the deployment baseline.
+
 ## Recommended example config
 
 See:
