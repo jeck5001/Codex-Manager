@@ -32,7 +32,11 @@ from .register_token_resolver import (
     build_callback_url_from_page,
     extract_workspace_id_from_token,
 )
-from .sentinel_browser import fetch_browser_device_id, fetch_browser_sentinel_token
+from .sentinel_browser import (
+    fetch_browser_auth_state,
+    fetch_browser_device_id,
+    fetch_browser_sentinel_token,
+)
 from .oauth import OAuthManager, OAuthStart
 from .http_client import OpenAIHTTPClient, HTTPClientError
 from ..services import EmailServiceFactory, BaseEmailService, EmailServiceType
@@ -451,6 +455,16 @@ class RegistrationEngine:
 
                 if getattr(response, "status_code", 0) == 403:
                     self._log("获取 Device ID 遇到 HTTP 403，尝试浏览器兜底...", "warning")
+                    browser_auth_state = self._fetch_browser_auth_state(
+                        self.oauth_start.auth_url,
+                    )
+                    browser_did = self._clean_text((browser_auth_state or {}).get("did"))
+                    if browser_did:
+                        self._log("浏览器认证态已同步到当前会话，准备重试 Device ID", "warning")
+                        self._store_device_id_in_session(browser_did)
+                        self._log(f"Device ID: {browser_did}")
+                        return browser_did
+
                     browser_did = fetch_browser_device_id(
                         auth_url=self.oauth_start.auth_url,
                         proxy_url=getattr(self, "proxy_url", None),
@@ -533,6 +547,7 @@ class RegistrationEngine:
         normalized = self._clean_text(did)
         if not normalized:
             return
+        self._current_device_id = normalized
         session = getattr(self, "session", None)
         cookies = getattr(session, "cookies", None) if session is not None else None
         if cookies is None:
@@ -662,6 +677,29 @@ class RegistrationEngine:
                 "warning",
             )
         return len(synced)
+
+    def _fetch_browser_auth_state(self, auth_url: str) -> Dict[str, Any]:
+        """通过浏览器落地认证页，并将回收的认证态同步回当前会话。"""
+        try:
+            auth_state = fetch_browser_auth_state(
+                auth_url=auth_url,
+                cookies_str=self._serialize_session_cookies(),
+                cookies=self._session_browser_cookies(),
+                proxy_url=getattr(self, "proxy_url", None),
+                callback_logger=self._log,
+            )
+        except Exception as e:
+            self._log(f"浏览器认证态获取异常: {e}", "warning")
+            return {}
+
+        if not isinstance(auth_state, dict):
+            return {}
+
+        self._sync_browser_cookies_to_session(auth_state.get("cookies"))
+        did = self._clean_text(auth_state.get("did"))
+        if did:
+            self._store_device_id_in_session(did)
+        return auth_state
 
     def _session_browser_cookies(self) -> list[dict[str, Any]]:
         """导出适合 Playwright 注入的结构化 cookie，保留域名维度。"""
@@ -1055,81 +1093,97 @@ class RegistrationEngine:
                 "password": password,
                 "username": self.email
             })
-
-            did = self._resolve_current_device_id()
-            sentinel_payload = self._get_browser_sentinel_payload(
-                "username_password_create",
-                "https://auth.openai.com/create-account/password",
-            )
-            sen_token = ""
-            if sentinel_payload:
-                self._log("密码注册浏览器 Sentinel 获取成功，准备提交注册请求")
-            elif did:
-                self._log("密码注册浏览器 Sentinel 获取失败，准备回退 HTTP Sentinel", "warning")
-                sen_token = self._clean_text(
-                    self._check_sentinel(did, flow="username_password_create")
+            for attempt in range(1, 3):
+                did = self._resolve_current_device_id()
+                sentinel_payload = self._get_browser_sentinel_payload(
+                    "username_password_create",
+                    "https://auth.openai.com/create-account/password",
                 )
-                if sen_token:
-                    self._log("密码注册 HTTP Sentinel 获取成功")
+                sen_token = ""
+                if sentinel_payload:
+                    self._log("密码注册浏览器 Sentinel 获取成功，准备提交注册请求")
+                elif did:
+                    self._log("密码注册浏览器 Sentinel 获取失败，准备回退 HTTP Sentinel", "warning")
+                    sen_token = self._clean_text(
+                        self._check_sentinel(did, flow="username_password_create")
+                    )
+                    if sen_token:
+                        self._log("密码注册 HTTP Sentinel 获取成功")
+                    else:
+                        self._log("密码注册 HTTP Sentinel 获取失败", "warning")
                 else:
-                    self._log("密码注册 HTTP Sentinel 获取失败", "warning")
-            else:
-                self._log("密码注册缺少 Device ID，无法获取 Sentinel", "warning")
-            if not sen_token:
-                sen_token = self._clean_text(getattr(self, "_current_sentinel_token", ""))
-            headers = {
-                "referer": "https://auth.openai.com/create-account/password",
-                "accept": "application/json",
-                "content-type": "application/json",
-                "ext-passkey-client-capabilities": self._build_passkey_client_capabilities(),
-            }
-            sentinel_source = "browser" if sentinel_payload else "http" if sen_token else "missing"
-            self._log_sentinel_payload_summary(
-                "密码注册",
-                sentinel_source,
-                sentinel_payload or sen_token,
-                did=did,
-                flow="username_password_create",
-            )
-            sentinel = self._build_sentinel_header(
-                sentinel_payload or sen_token,
-                did=did,
-                flow="username_password_create",
-            )
-            if sentinel:
-                headers["openai-sentinel-token"] = sentinel
+                    self._log("密码注册缺少 Device ID，无法获取 Sentinel", "warning")
+                if not sen_token:
+                    sen_token = self._clean_text(getattr(self, "_current_sentinel_token", ""))
 
-            self._log(f"密码注册会话摘要: {self._session_cookie_debug_summary()}", "warning")
-            response = self.session.post(
-                OPENAI_API_ENDPOINTS["register"],
-                headers=headers,
-                data=register_body,
-            )
+                headers = {
+                    "referer": "https://auth.openai.com/create-account/password",
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                    "ext-passkey-client-capabilities": self._build_passkey_client_capabilities(),
+                }
+                sentinel_source = "browser" if sentinel_payload else "http" if sen_token else "missing"
+                self._log_sentinel_payload_summary(
+                    "密码注册",
+                    sentinel_source,
+                    sentinel_payload or sen_token,
+                    did=did,
+                    flow="username_password_create",
+                )
+                sentinel = self._build_sentinel_header(
+                    sentinel_payload or sen_token,
+                    did=did,
+                    flow="username_password_create",
+                )
+                if sentinel:
+                    headers["openai-sentinel-token"] = sentinel
 
-            self._log(f"提交密码状态: {response.status_code}")
+                self._log(f"密码注册会话摘要: {self._session_cookie_debug_summary()}", "warning")
+                response = self.session.post(
+                    OPENAI_API_ENDPOINTS["register"],
+                    headers=headers,
+                    data=register_body,
+                )
 
-            if response.status_code != 200:
+                self._log(f"提交密码状态: {response.status_code}")
+
+                if response.status_code == 200:
+                    return True, password
+
                 error_text = response.text[:500]
                 self._log(f"密码注册失败: {error_text}", "warning")
                 self._log(f"密码注册响应摘要: {self._auth_response_debug_summary(response)}", "warning")
 
-                # 解析错误信息，判断是否是邮箱已注册
+                error_msg = ""
+                error_code = ""
                 try:
                     error_json = response.json()
-                    error_msg = error_json.get("error", {}).get("message", "")
-                    error_code = error_json.get("error", {}).get("code", "")
-
-                    # 检测邮箱已注册的情况
-                    if "already" in error_msg.lower() or "exists" in error_msg.lower() or error_code == "user_exists":
-                        self._log(f"邮箱 {self.email} 可能已在 OpenAI 注册过", "error")
-                        # 标记此邮箱为已注册状态
-                        self._mark_email_as_registered()
+                    error_msg = self._clean_text(error_json.get("error", {}).get("message", ""))
+                    error_code = self._clean_text(error_json.get("error", {}).get("code", ""))
                 except Exception:
-                    pass
+                    error_msg = ""
+                    error_code = ""
+
+                if (
+                    attempt == 1
+                    and error_msg == "Failed to create account. Please try again."
+                ):
+                    self._log("密码注册遇到通用 400，尝试浏览器落地认证状态后重试", "warning")
+                    auth_state = self._fetch_browser_auth_state(
+                        self._clean_text(getattr(response, "url", ""))
+                        or "https://auth.openai.com/create-account/password",
+                    )
+                    if auth_state:
+                        self._current_sentinel_token = ""
+                        continue
+
+                if "already" in error_msg.lower() or "exists" in error_msg.lower() or error_code == "user_exists":
+                    self._log(f"邮箱 {self.email} 可能已在 OpenAI 注册过", "error")
+                    self._mark_email_as_registered()
 
                 return False, None
 
-            return True, password
+            return False, None
 
         except Exception as e:
             self._log(f"密码注册失败: {e}", "error")
@@ -1162,16 +1216,28 @@ class RegistrationEngine:
             # 记录发送时间戳
             self._otp_sent_at = time.time()
 
-            response = self.session.get(
+            response = self.session.post(
                 OPENAI_API_ENDPOINTS["send_otp"],
                 headers={
                     "referer": "https://auth.openai.com/create-account/password",
                     "accept": "application/json",
+                    "content-type": "application/json",
                 },
+                data="{}",
             )
 
             self._log(f"验证码发送状态: {response.status_code}")
-            return response.status_code == 200
+            if response.status_code != 200:
+                return False
+
+            try:
+                response_json = response.json()
+            except Exception:
+                response_json = None
+            if isinstance(response_json, dict):
+                self._log_auth_response_preview("验证码发送响应摘要", response_json)
+                self._follow_auth_continue_url(response_json, "注册验证码")
+            return True
 
         except Exception as e:
             self._log(f"发送验证码失败: {e}", "error")
