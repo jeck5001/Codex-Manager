@@ -643,7 +643,7 @@ fn responses_dynamic_tools_are_mapped_to_tools_for_codex_backend() {
     );
 }
 
-/// 函数 `responses_drops_priority_service_tier_for_codex_backend`
+/// 函数 `responses_preserves_priority_service_tier_for_codex_backend`
 ///
 /// 作者: gaohongshun
 ///
@@ -655,7 +655,7 @@ fn responses_dynamic_tools_are_mapped_to_tools_for_codex_backend() {
 /// # 返回
 /// 无
 #[test]
-fn responses_drops_priority_service_tier_for_codex_backend() {
+fn responses_preserves_priority_service_tier_for_codex_backend() {
     let _guard = crate::test_env_guard();
     let _mode_guard = RuntimeEnvGuard::set(GATEWAY_MODE_ENV, "enhanced");
     let body = json!({
@@ -697,7 +697,12 @@ fn responses_drops_priority_service_tier_for_codex_backend() {
     assert!(value.get("include").is_some());
     assert!(value.get("prompt_cache_key").is_some());
     assert!(value.get("text").is_some());
-    assert!(value.get("service_tier").is_none());
+    assert_eq!(
+        value
+            .get("service_tier")
+            .and_then(serde_json::Value::as_str),
+        Some("priority")
+    );
     assert!(value.get("temperature").is_none());
     assert!(value.get("user").is_none());
 }
@@ -889,6 +894,31 @@ fn responses_applies_fast_service_tier_override_as_priority_for_codex_backend() 
     );
 }
 
+#[test]
+fn responses_transparent_mode_still_maps_fast_service_tier_to_priority_for_codex_backend() {
+    let _guard = crate::test_env_guard();
+    let _mode_guard = RuntimeEnvGuard::set(GATEWAY_MODE_ENV, "transparent");
+    let body = json!({
+        "model": "gpt-5.4",
+        "input": "hello",
+        "service_tier": "Fast"
+    });
+    let out = apply_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert_eq!(
+        value
+            .get("service_tier")
+            .and_then(serde_json::Value::as_str),
+        Some("priority")
+    );
+}
+
 /// 函数 `responses_ignores_unsupported_flex_service_tier_override_for_codex_backend`
 ///
 /// 作者: gaohongshun
@@ -1024,6 +1054,26 @@ fn responses_compact_defaults_parallel_tool_calls_to_false_for_codex_backend() {
         .get("tools")
         .and_then(serde_json::Value::as_array)
         .is_some());
+}
+
+#[test]
+fn responses_compact_transparent_mode_omits_service_tier_for_codex_backend() {
+    let _guard = crate::test_env_guard();
+    let _mode_guard = RuntimeEnvGuard::set(GATEWAY_MODE_ENV, "transparent");
+    let body = json!({
+        "model": "gpt-5.4",
+        "input": "compact me",
+        "service_tier": "fast"
+    });
+    let out = apply_request_overrides(
+        "/v1/responses/compact",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert!(value.get("service_tier").is_none());
 }
 
 /// 函数 `responses_omits_include_when_reasoning_missing_for_codex_backend`

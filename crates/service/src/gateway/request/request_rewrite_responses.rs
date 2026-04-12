@@ -425,13 +425,36 @@ pub(super) fn normalize_service_tier(path: &str, obj: &mut serde_json::Map<Strin
     let Some(raw_value) = service_tier.as_str() else {
         return false;
     };
-    if raw_value.eq_ignore_ascii_case("fast") {
+    if raw_value.eq_ignore_ascii_case("fast") || raw_value.eq_ignore_ascii_case("priority") {
         *service_tier = Value::String("priority".to_string());
     } else {
         // Remove unsupported service_tier values to prevent upstream Cloudflare rejection
         obj.remove("service_tier");
     }
     true
+}
+
+/// 函数 `normalize_codex_backend_service_tier`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-12
+///
+/// # 参数
+/// - path: 参数 path
+/// - obj: 参数 obj
+///
+/// # 返回
+/// 返回函数执行结果
+pub(super) fn normalize_codex_backend_service_tier(
+    path: &str,
+    obj: &mut serde_json::Map<String, Value>,
+) -> bool {
+    if is_compact_path(path) {
+        // 中文注释：Codex 官方 `/responses/compact` 请求体不携带 service_tier。
+        return obj.remove("service_tier").is_some();
+    }
+    normalize_service_tier(path, obj)
 }
 
 /// 函数 `normalize_dynamic_tools_to_tools`

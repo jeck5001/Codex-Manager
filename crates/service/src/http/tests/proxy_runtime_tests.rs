@@ -531,7 +531,7 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
     assert_eq!(first_payload["model"], "gpt-5.4-mini");
     assert_eq!(first_payload["stream"], false);
     assert_eq!(first_payload["store"], true);
-    assert_eq!(first_payload["service_tier"], "fast");
+    assert_eq!(first_payload["service_tier"], "priority");
     assert_eq!(first_payload["generate"], false);
 
     let first_client_event = tokio::time::timeout(Duration::from_secs(5), client_ws.next())
