@@ -28,23 +28,29 @@ const MODEL_PRICE_PER_1K_TOKENS: &[(&str, f64, f64, f64)] = &[
     // OpenAI 官方价格（单位：USD / 1K tokens）。按模型前缀匹配，越具体越靠前。
     // GPT-5.4 mini 官方价格。
     ("gpt-5.4-mini", 0.00075, 0.000075, 0.0045),
+    ("gpt-5.4-nano", 0.0002, 0.00002, 0.00125),
     // GPT-5.4 pro 官方未提供 cached input 单价，这里按普通输入价计算，避免低估费用。
     ("gpt-5.4-pro", 0.03, 0.03, 0.18),
     ("gpt-5.4", 0.0025, 0.00025, 0.015),
-    // gpt-5.3-codex 作为 Anthropic 改写后的统一计费模型。
+    // gpt-5.3-codex 暂按官方当前最接近的 gpt-5.2-codex 价格估算。
     ("gpt-5.3-codex", 0.00175, 0.000175, 0.014),
     // GPT-5.2 / GPT-5.2 pro 官方价格。
     ("gpt-5.2-pro", 0.021, 0.021, 0.168),
+    ("gpt-5.2-chat-latest", 0.00175, 0.000175, 0.014),
     ("gpt-5.2-codex", 0.00175, 0.000175, 0.014),
     ("gpt-5.2", 0.00175, 0.000175, 0.014),
     // GPT-5.1 Codex mini / gpt-5-codex-mini 同价。
     ("gpt-5.1-codex-mini", 0.00025, 0.000025, 0.002),
     ("gpt-5-codex-mini", 0.00025, 0.000025, 0.002),
     ("gpt-5.1-codex-max", 0.00125, 0.000125, 0.01),
+    ("gpt-5.1-chat-latest", 0.00125, 0.000125, 0.01),
     ("gpt-5.1-codex", 0.00125, 0.000125, 0.01),
     ("gpt-5.1", 0.00125, 0.000125, 0.01),
     ("gpt-5-mini", 0.00025, 0.000025, 0.002),
     ("gpt-5-nano", 0.00005, 0.000005, 0.0004),
+    // gpt-5-pro 官方未提供 cached input 单价，这里按普通输入价计算，避免低估费用。
+    ("gpt-5-pro", 0.015, 0.015, 0.12),
+    ("gpt-5-chat-latest", 0.00125, 0.000125, 0.01),
     ("gpt-5-codex", 0.00125, 0.000125, 0.01),
     ("gpt-5", 0.00125, 0.000125, 0.01),
     ("gpt-4.1-nano", 0.0001, 0.000025, 0.0004),
@@ -54,13 +60,28 @@ const MODEL_PRICE_PER_1K_TOKENS: &[(&str, f64, f64, f64)] = &[
     // 2024-05-13 版本没有公开 cached input 单价，这里按输入同价处理，避免低估费用。
     ("gpt-4o-2024-05-13", 0.005, 0.005, 0.015),
     ("gpt-4o", 0.0025, 0.00125, 0.01),
+    ("gpt-realtime-mini", 0.0006, 0.00006, 0.0024),
+    ("gpt-realtime", 0.004, 0.0004, 0.016),
+    ("gpt-4o-mini-realtime-preview", 0.0006, 0.0003, 0.0024),
+    ("gpt-4o-realtime-preview", 0.005, 0.0025, 0.02),
+    // 音频模型官方未提供 cached input 单价，这里按普通输入价计算，避免低估费用。
+    ("gpt-audio-mini", 0.0006, 0.0006, 0.0024),
+    ("gpt-audio", 0.0025, 0.0025, 0.01),
+    ("gpt-4o-mini-audio-preview", 0.00015, 0.00015, 0.0006),
+    ("gpt-4o-audio-preview", 0.0025, 0.0025, 0.01),
     // 兼容旧模型：缓存输入按输入同价处理，保持历史口径稳定。
     ("gpt-4", 0.03, 0.03, 0.06),
     // o3 / o3-mini / o3-pro / o3-deep-research 官方价格。
+    ("o4-mini-deep-research", 0.002, 0.0005, 0.008),
+    ("o4-mini", 0.0011, 0.000275, 0.0044),
     ("o3-deep-research", 0.01, 0.0025, 0.04),
     ("o3-pro", 0.02, 0.02, 0.08),
     ("o3-mini", 0.0011, 0.00055, 0.0044),
     ("o3", 0.002, 0.0005, 0.008),
+    // o1 / o1-pro 官方未提供 cached input 单价，这里按普通输入价计算，避免低估费用。
+    ("o1-pro", 0.15, 0.15, 0.6),
+    ("o1-mini", 0.0011, 0.00055, 0.0044),
+    ("o1", 0.015, 0.0075, 0.06),
     ("claude-3-7", 0.003, 0.003, 0.015),
     ("claude-3-5", 0.003, 0.003, 0.015),
     ("claude-3", 0.003, 0.003, 0.015),
@@ -82,15 +103,15 @@ fn resolve_model_price_per_1k(
     normalized: &str,
     input_tokens_total: i64,
 ) -> Option<(f64, f64, f64)> {
-    // OpenAI 官方定价：gpt-5.4 / gpt-5.4-pro 在输入超过 272K 时切换到更高档位。
+    // OpenAI 官方定价：gpt-5.4 / gpt-5.4-pro 在输入达到 270K 时切换到更高档位。
     if normalized.starts_with("gpt-5.4-pro") {
-        if input_tokens_total > 272_000 {
+        if input_tokens_total >= 270_000 {
             return Some((0.06, 0.06, 0.27));
         }
         return Some((0.03, 0.03, 0.18));
     }
     if normalized == "gpt-5.4" {
-        if input_tokens_total > 272_000 {
+        if input_tokens_total >= 270_000 {
             return Some((0.005, 0.0005, 0.0225));
         }
         return Some((0.0025, 0.00025, 0.015));
