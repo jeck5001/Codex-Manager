@@ -110,6 +110,12 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
     mapParams: mapKeyIdToId,
   },
   service_apikey_models: { rpcMethod: "apikey/models" },
+  service_model_catalog_list: { rpcMethod: "apikey/modelCatalogList" },
+  service_model_catalog_save: {
+    rpcMethod: "apikey/modelCatalogSave",
+    mapParams: (params) => asRecord(asRecord(params)?.payload) ?? {},
+  },
+  service_model_catalog_delete: { rpcMethod: "apikey/modelCatalogDelete" },
   service_apikey_read_secret: {
     rpcMethod: "apikey/readSecret",
     mapParams: mapKeyIdToId,

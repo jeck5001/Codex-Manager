@@ -141,7 +141,7 @@ pub(super) fn maybe_respond_local_models(
                     crate::apikey_models::save_model_options_with_storage(storage, &merged)
                 {
                     log::warn!(
-                        "event=gateway_model_options_cache_upsert_failed scope={} err={}",
+                        "event=gateway_model_catalog_upsert_failed scope={} err={}",
                         MODEL_CACHE_SCOPE_DEFAULT,
                         err
                     );

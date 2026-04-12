@@ -42,7 +42,7 @@ fn gateway_claude_protocol_stabilizes_prompt_cache_key_without_conversation_id()
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
-    seed_model_options_cache(&storage, &["gpt-5.4-mini"]);
+    seed_model_catalog_models(&storage, &["gpt-5.4-mini"]);
 
     storage
         .insert_account(&Account {
@@ -205,7 +205,7 @@ fn gateway_claude_messages_stay_on_chatgpt_codex_base() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
-    seed_model_options_cache(&storage, &["gpt-5.4-mini"]);
+    seed_model_catalog_models(&storage, &["gpt-5.4-mini"]);
 
     storage
         .insert_account(&Account {
@@ -332,7 +332,7 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
-    seed_model_options_cache(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
+    seed_model_catalog_models(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
 
     storage
         .insert_account(&Account {
@@ -541,7 +541,7 @@ fn gateway_claude_failover_cross_workspace_strips_session_affinity_headers() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
-    seed_model_options_cache(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
+    seed_model_catalog_models(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
 
     storage
         .insert_account(&Account {
@@ -757,7 +757,7 @@ fn gateway_claude_failover_same_workspace_preserves_session_affinity_headers() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
-    seed_model_options_cache(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
+    seed_model_catalog_models(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
 
     for index in 1..=2 {
         storage

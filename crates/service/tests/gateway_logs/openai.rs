@@ -1790,10 +1790,7 @@ fn gateway_models_returns_cached_without_upstream() {
         }],
         ..Default::default()
     };
-    let items_json = serde_json::to_string(&cached).expect("serialize cached model options");
-    storage
-        .upsert_model_options_cache("default", &items_json, now_ts())
-        .expect("upsert model options cache");
+    seed_model_catalog_response(&storage, &cached);
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let (status, response_body) = get_http_raw(
@@ -1878,10 +1875,7 @@ fn gateway_models_hides_descriptions_for_codex_cli_only() {
         }],
         ..Default::default()
     };
-    let items_json = serde_json::to_string(&cached).expect("serialize cached model options");
-    storage
-        .upsert_model_options_cache("default", &items_json, now_ts())
-        .expect("upsert model options cache");
+    seed_model_catalog_response(&storage, &cached);
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let headers = &[
@@ -1906,18 +1900,12 @@ fn gateway_models_hides_descriptions_for_codex_cli_only() {
         "codex cli response should hide description: {response_body}"
     );
 
-    let cached_record = storage
-        .get_model_options_cache("default")
-        .expect("read cache")
-        .expect("cache exists");
-    let cached_value: serde_json::Value =
-        serde_json::from_str(&cached_record.items_json).expect("parse cached json");
-    let cached_models = cached_value
-        .get("models")
-        .and_then(|v| v.as_array())
-        .expect("cached models array");
     assert_eq!(
-        cached_models[0].get("description").and_then(|v| v.as_str()),
+        storage
+            .list_model_catalog_models("default")
+            .expect("read model rows")[0]
+            .description
+            .as_deref(),
         Some("Latest frontier agentic coding model.")
     );
 }
@@ -2086,10 +2074,7 @@ fn apikey_models_refresh_merges_cached_catalog_without_removal() {
         ],
         ..Default::default()
     };
-    let cached_json = serde_json::to_string(&cached).expect("serialize cached models");
-    storage
-        .upsert_model_options_cache("default", &cached_json, now)
-        .expect("seed model options cache");
+    seed_model_catalog_response(&storage, &cached);
 
     storage
         .insert_account(&Account {
@@ -2178,18 +2163,6 @@ fn apikey_models_refresh_merges_cached_catalog_without_removal() {
             .map(|items| items.len()),
         Some(1)
     );
-
-    let cached_record = storage
-        .get_model_options_cache("default")
-        .expect("read model options cache")
-        .expect("model cache exists");
-    let cached_models: serde_json::Value =
-        serde_json::from_str(&cached_record.items_json).expect("parse cached model json");
-    let cached_items = cached_models
-        .get("models")
-        .and_then(|v| v.as_array())
-        .expect("cached models array");
-    assert_eq!(cached_items.len(), 2);
 
     let row_models = storage
         .list_model_catalog_models("default")

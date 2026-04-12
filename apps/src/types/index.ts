@@ -287,6 +287,18 @@ export interface ModelCatalog {
   [key: string]: unknown;
 }
 
+export interface ManagedModelInfo extends ModelInfo {
+  sourceKind: string;
+  userEdited: boolean;
+  sortIndex: number;
+  updatedAt: number;
+}
+
+export interface ManagedModelCatalog {
+  items: ManagedModelInfo[];
+  [key: string]: unknown;
+}
+
 export interface RequestLog {
   id: string;
   traceId: string;

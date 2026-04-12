@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use codexmanager_core::rpc::types::{
+    ManagedModelCatalogEntry, ManagedModelCatalogResult, ManagedModelCatalogUpsertParams,
     ModelInfo, ModelReasoningLevel, ModelTruncationPolicy, ModelsResponse,
 };
 use codexmanager_core::storage::{
@@ -13,6 +14,8 @@ use crate::gateway;
 use crate::storage_helpers;
 
 const MODEL_CACHE_SCOPE_DEFAULT: &str = "default";
+const MODEL_SOURCE_KIND_REMOTE: &str = "remote";
+const MODEL_SOURCE_KIND_CUSTOM: &str = "custom";
 
 /// 函数 `read_model_options`
 ///
@@ -26,47 +29,8 @@ const MODEL_CACHE_SCOPE_DEFAULT: &str = "default";
 /// # 返回
 /// 返回函数执行结果
 pub(crate) fn read_model_options(refresh_remote: bool) -> Result<ModelsResponse, String> {
-    let cached = read_cached_model_options()?;
-    if !refresh_remote && !cached.is_empty() {
-        return Ok(cached);
-    }
-
-    match gateway::fetch_models_for_picker() {
-        Ok(models) => {
-            let merged = merge_models_response(cached.clone(), models);
-            if !merged.is_empty() {
-                let _ = save_model_options_cache(&merged);
-            }
-            Ok(merged)
-        }
-        Err(err) => {
-            if !cached.is_empty() {
-                return Ok(cached);
-            }
-            if refresh_remote {
-                Err(err)
-            } else {
-                Ok(ModelsResponse::default())
-            }
-        }
-    }
-}
-
-/// 函数 `save_model_options_cache`
-///
-/// 作者: gaohongshun
-///
-/// 时间: 2026-04-02
-///
-/// # 参数
-/// - models: 参数 models
-///
-/// # 返回
-/// 返回函数执行结果
-fn save_model_options_cache(models: &ModelsResponse) -> Result<(), String> {
-    let storage =
-        storage_helpers::open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    save_model_options_with_storage(&storage, models)
+    read_managed_model_catalog(refresh_remote)
+        .map(|catalog| managed_catalog_to_models_response(&catalog))
 }
 
 pub(crate) fn save_model_options_with_storage(
@@ -74,40 +38,69 @@ pub(crate) fn save_model_options_with_storage(
     models: &ModelsResponse,
 ) -> Result<(), String> {
     let normalized = normalize_models_response(models.clone());
-    let updated_at = now_ts();
-    save_model_catalog_rows(storage, &normalized, updated_at)
-}
-
-pub(crate) fn deserialize_models_response(raw: &str) -> ModelsResponse {
-    normalize_models_response(crate::gateway::parse_models_response(raw.as_bytes()))
-}
-
-/// 函数 `read_cached_model_options`
-///
-/// 作者: gaohongshun
-///
-/// 时间: 2026-04-02
-///
-/// # 参数
-/// 无
-///
-/// # 返回
-/// 返回函数执行结果
-fn read_cached_model_options() -> Result<ModelsResponse, String> {
-    let storage =
-        storage_helpers::open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    read_model_options_from_storage(&storage)
+    let catalog = ManagedModelCatalogResult {
+        items: normalized
+            .models
+            .into_iter()
+            .enumerate()
+            .map(|(index, model)| ManagedModelCatalogEntry {
+                model,
+                source_kind: MODEL_SOURCE_KIND_REMOTE.to_string(),
+                user_edited: false,
+                sort_index: index as i64,
+                updated_at: 0,
+            })
+            .collect(),
+        extra: normalized.extra,
+    };
+    save_managed_model_catalog_with_storage(storage, &catalog)
 }
 
 pub(crate) fn read_model_options_from_storage(storage: &Storage) -> Result<ModelsResponse, String> {
+    read_managed_model_catalog_from_storage(storage)
+        .map(|catalog| managed_catalog_to_models_response(&catalog))
+}
+
+pub(crate) fn read_managed_model_catalog(
+    refresh_remote: bool,
+) -> Result<ManagedModelCatalogResult, String> {
+    let storage =
+        storage_helpers::open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let cached_catalog = read_managed_model_catalog_from_storage(&storage)?;
+    let cached = managed_catalog_to_models_response(&cached_catalog);
+    if !refresh_remote && !cached.is_empty() {
+        return Ok(cached_catalog);
+    }
+
+    match gateway::fetch_models_for_picker() {
+        Ok(models) => {
+            let merged_catalog = merge_managed_model_catalog(cached_catalog.clone(), models);
+            if !merged_catalog.items.is_empty() {
+                let _ = save_managed_model_catalog_with_storage(&storage, &merged_catalog);
+            }
+            Ok(merged_catalog)
+        }
+        Err(err) => {
+            if !cached.is_empty() {
+                return Ok(cached_catalog);
+            }
+            if refresh_remote {
+                Err(err)
+            } else {
+                Ok(ManagedModelCatalogResult::default())
+            }
+        }
+    }
+}
+
+pub(crate) fn read_managed_model_catalog_from_storage(
+    storage: &Storage,
+) -> Result<ManagedModelCatalogResult, String> {
     let rows = storage
         .list_model_catalog_models(MODEL_CACHE_SCOPE_DEFAULT)
         .map_err(|e| e.to_string())?;
     let scope_record = storage
         .get_model_catalog_scope(MODEL_CACHE_SCOPE_DEFAULT)
-        .map_err(|e| e.to_string())?;
-    let legacy_cache = storage
-        .get_model_options_cache(MODEL_CACHE_SCOPE_DEFAULT)
         .map_err(|e| e.to_string())?;
 
     if !rows.is_empty() {
@@ -133,19 +126,15 @@ pub(crate) fn read_model_options_from_storage(storage: &Storage) -> Result<Model
         let mut modalities_by_slug = group_string_items_by_slug(input_modalities);
         let mut plans_by_slug = group_string_items_by_slug(available_in_plans);
 
-        let legacy_extra = legacy_cache
-            .as_ref()
-            .map(|cache| deserialize_models_response(&cache.items_json).extra)
-            .unwrap_or_default();
         let response_extra = scope_record
             .as_ref()
             .and_then(|record| parse_extra_json_map(Some(record.extra_json.as_str())))
-            .unwrap_or(legacy_extra);
+            .unwrap_or_default();
 
-        let mut rebuilt_models = Vec::new();
+        let mut rebuilt_items = Vec::new();
         for row in rows.iter().cloned() {
             let slug = row.slug.clone();
-            if let Some(model) = model_info_from_row(
+            if let Some(item) = managed_catalog_entry_from_row(
                 row,
                 reasoning_by_slug.remove(&slug),
                 speed_tiers_by_slug.remove(&slug),
@@ -153,35 +142,248 @@ pub(crate) fn read_model_options_from_storage(storage: &Storage) -> Result<Model
                 modalities_by_slug.remove(&slug),
                 plans_by_slug.remove(&slug),
             ) {
-                rebuilt_models.push(model);
+                rebuilt_items.push(item);
             }
         }
 
-        if !rebuilt_models.is_empty() {
+        if !rebuilt_items.is_empty() {
             let updated_at = rows
                 .iter()
                 .map(|row| row.updated_at)
                 .max()
                 .unwrap_or_else(now_ts);
-            let response = normalize_models_response(ModelsResponse {
-                models: rebuilt_models,
+            let response = normalize_managed_model_catalog(ManagedModelCatalogResult {
+                items: rebuilt_items,
                 extra: response_extra,
             });
             if needs_structured_backfill(&rows, scope_record.is_none()) {
-                let _ = save_model_catalog_rows(storage, &response, updated_at);
+                let _ = save_managed_model_catalog_rows(storage, &response, updated_at);
             }
             return Ok(response);
         }
     }
+    Ok(ManagedModelCatalogResult::default())
+}
 
-    let Some(cache) = legacy_cache else {
-        return Ok(ModelsResponse::default());
-    };
-    let models = deserialize_models_response(&cache.items_json);
-    if !models.is_empty() {
-        let _ = save_model_catalog_rows(storage, &models, cache.updated_at);
+pub(crate) fn save_managed_model_catalog_with_storage(
+    storage: &Storage,
+    catalog: &ManagedModelCatalogResult,
+) -> Result<(), String> {
+    let normalized = normalize_managed_model_catalog(catalog.clone());
+    let updated_at = now_ts();
+    save_managed_model_catalog_rows(storage, &normalized, updated_at)
+}
+
+pub(crate) fn save_managed_model_catalog_model(
+    params: ManagedModelCatalogUpsertParams,
+) -> Result<ManagedModelCatalogEntry, String> {
+    let storage =
+        storage_helpers::open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    let current_catalog = read_managed_model_catalog_from_storage(&storage)?;
+    let normalized_model =
+        normalize_model_info(params.model).ok_or_else(|| "模型 slug 不能为空".to_string())?;
+    let previous_slug = params
+        .previous_slug
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let existing_entry = previous_slug
+        .as_ref()
+        .and_then(|slug| current_catalog.items.iter().find(|item| item.model.slug == *slug))
+        .cloned()
+        .or_else(|| {
+            current_catalog
+                .items
+                .iter()
+                .find(|item| item.model.slug == normalized_model.slug)
+                .cloned()
+        });
+
+    if previous_slug
+        .as_ref()
+        .is_some_and(|slug| slug != &normalized_model.slug)
+        && current_catalog
+            .items
+            .iter()
+            .any(|item| item.model.slug == normalized_model.slug)
+    {
+        return Err(format!("模型 `{}` 已存在", normalized_model.slug));
     }
-    Ok(models)
+
+    let next_sort_index = params.sort_index.unwrap_or_else(|| {
+        existing_entry
+            .as_ref()
+            .map(|item| item.sort_index)
+            .unwrap_or_else(|| {
+                current_catalog
+                    .items
+                    .iter()
+                    .map(|item| item.sort_index)
+                    .max()
+                    .unwrap_or(-1)
+                    + 1
+            })
+    });
+    let next_source_kind = params
+        .source_kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| existing_entry.as_ref().map(|item| item.source_kind.clone()))
+        .unwrap_or_else(|| MODEL_SOURCE_KIND_CUSTOM.to_string());
+    let next_entry = ManagedModelCatalogEntry {
+        model: normalized_model,
+        source_kind: next_source_kind,
+        user_edited: params.user_edited.unwrap_or(true),
+        sort_index: next_sort_index,
+        updated_at: now_ts(),
+    };
+
+    replace_model_catalog_entry(
+        &storage,
+        previous_slug.as_deref(),
+        &next_entry,
+    )?;
+    Ok(next_entry)
+}
+
+pub(crate) fn delete_managed_model_catalog_model(slug: &str) -> Result<(), String> {
+    let normalized_slug = slug.trim();
+    if normalized_slug.is_empty() {
+        return Err("模型 slug 不能为空".to_string());
+    }
+    let storage =
+        storage_helpers::open_storage().ok_or_else(|| "storage unavailable".to_string())?;
+    delete_model_catalog_entry(&storage, normalized_slug)
+}
+
+fn managed_catalog_to_models_response(catalog: &ManagedModelCatalogResult) -> ModelsResponse {
+    ModelsResponse {
+        models: catalog
+            .items
+            .iter()
+            .map(|item| item.model.clone())
+            .collect::<Vec<_>>(),
+        extra: catalog.extra.clone(),
+    }
+}
+
+fn normalize_managed_model_catalog(
+    catalog: ManagedModelCatalogResult,
+) -> ManagedModelCatalogResult {
+    let mut items = Vec::new();
+    let mut seen = HashSet::new();
+    for item in catalog.items {
+        let Some(model) = normalize_model_info(item.model) else {
+            continue;
+        };
+        if !seen.insert(model.slug.clone()) {
+            continue;
+        }
+        items.push(ManagedModelCatalogEntry {
+            model,
+            source_kind: normalize_source_kind(Some(item.source_kind.as_str())),
+            user_edited: item.user_edited,
+            sort_index: item.sort_index,
+            updated_at: item.updated_at,
+        });
+    }
+    ManagedModelCatalogResult {
+        items,
+        extra: catalog.extra,
+    }
+}
+
+fn normalize_source_kind(source_kind: Option<&str>) -> String {
+    match source_kind.unwrap_or("").trim() {
+        MODEL_SOURCE_KIND_CUSTOM => MODEL_SOURCE_KIND_CUSTOM.to_string(),
+        _ => MODEL_SOURCE_KIND_REMOTE.to_string(),
+    }
+}
+
+fn merge_managed_model_catalog(
+    cached: ManagedModelCatalogResult,
+    incoming: ModelsResponse,
+) -> ManagedModelCatalogResult {
+    let cached = normalize_managed_model_catalog(cached);
+    let incoming = normalize_models_response(incoming);
+    if cached.items.is_empty() {
+        let ModelsResponse {
+            models: incoming_models,
+            extra: incoming_extra,
+        } = incoming;
+        return ManagedModelCatalogResult {
+            items: incoming_models
+                .into_iter()
+                .enumerate()
+                .map(|(index, model)| ManagedModelCatalogEntry {
+                    model,
+                    source_kind: MODEL_SOURCE_KIND_REMOTE.to_string(),
+                    user_edited: false,
+                    sort_index: index as i64,
+                    updated_at: 0,
+                })
+                .collect(),
+            extra: incoming_extra,
+        };
+    }
+    if incoming.is_empty() {
+        return cached;
+    }
+
+    let ModelsResponse {
+        models: incoming_models,
+        extra: incoming_extra,
+    } = incoming;
+
+    let mut cached_by_slug = BTreeMap::new();
+    for item in &cached.items {
+        cached_by_slug.insert(item.model.slug.clone(), item.clone());
+    }
+
+    let mut merged_items = Vec::new();
+    let mut seen = HashSet::new();
+    for (index, incoming_model) in incoming_models.into_iter().enumerate() {
+        let slug = incoming_model.slug.clone();
+        let merged_item = match cached_by_slug.get(&slug) {
+            Some(cached_item) if cached_item.user_edited => {
+                let mut preserved = cached_item.clone();
+                if preserved.sort_index < 0 {
+                    preserved.sort_index = index as i64;
+                }
+                preserved
+            }
+            Some(cached_item) => ManagedModelCatalogEntry {
+                model: merge_model_info(cached_item.model.clone(), incoming_model),
+                source_kind: normalize_source_kind(Some(cached_item.source_kind.as_str())),
+                user_edited: false,
+                sort_index: cached_item.sort_index,
+                updated_at: cached_item.updated_at,
+            },
+            None => ManagedModelCatalogEntry {
+                model: incoming_model,
+                source_kind: MODEL_SOURCE_KIND_REMOTE.to_string(),
+                user_edited: false,
+                sort_index: index as i64,
+                updated_at: 0,
+            },
+        };
+        seen.insert(slug);
+        merged_items.push(merged_item);
+    }
+
+    for cached_item in cached.items {
+        if seen.insert(cached_item.model.slug.clone()) {
+            merged_items.push(cached_item);
+        }
+    }
+
+    normalize_managed_model_catalog(ManagedModelCatalogResult {
+        items: merged_items,
+        extra: merge_extra_maps(cached.extra, incoming_extra),
+    })
 }
 
 pub(crate) fn normalize_models_response(response: ModelsResponse) -> ModelsResponse {
@@ -378,14 +580,43 @@ fn model_info_from_row(
     normalize_model_info(model)
 }
 
-fn save_model_catalog_rows(
+fn managed_catalog_entry_from_row(
+    row: ModelCatalogModelRecord,
+    reasoning_levels: Option<Vec<ModelReasoningLevel>>,
+    additional_speed_tiers: Option<Vec<String>>,
+    experimental_supported_tools: Option<Vec<String>>,
+    input_modalities: Option<Vec<String>>,
+    available_in_plans: Option<Vec<String>>,
+) -> Option<ManagedModelCatalogEntry> {
+    let source_kind = normalize_source_kind(Some(row.source_kind.as_str()));
+    let user_edited = row.user_edited;
+    let sort_index = row.sort_index;
+    let updated_at = row.updated_at;
+    model_info_from_row(
+        row,
+        reasoning_levels,
+        additional_speed_tiers,
+        experimental_supported_tools,
+        input_modalities,
+        available_in_plans,
+    )
+    .map(|model| ManagedModelCatalogEntry {
+        model,
+        source_kind,
+        user_edited,
+        sort_index,
+        updated_at,
+    })
+}
+
+fn save_managed_model_catalog_rows(
     storage: &Storage,
-    models: &ModelsResponse,
+    catalog: &ManagedModelCatalogResult,
     updated_at: i64,
 ) -> Result<(), String> {
     let scope_record = ModelCatalogScopeRecord {
         scope: MODEL_CACHE_SCOPE_DEFAULT.to_string(),
-        extra_json: serialize_extra_map(&models.extra)?,
+        extra_json: serialize_extra_map(&catalog.extra)?,
         updated_at,
     };
     storage
@@ -399,28 +630,42 @@ fn save_model_catalog_rows(
     let mut input_modalities = Vec::new();
     let mut available_in_plans = Vec::new();
 
-    for (index, model) in models.models.iter().enumerate() {
-        model_rows.push(model_record_from_model(model, index as i64, updated_at)?);
-        reasoning_rows.extend(reasoning_records_from_model(model, updated_at)?);
+    for (index, item) in catalog.items.iter().enumerate() {
+        let item_updated_at = if item.updated_at > 0 {
+            item.updated_at
+        } else {
+            updated_at
+        };
+        let sort_index = if item.sort_index >= 0 {
+            item.sort_index
+        } else {
+            index as i64
+        };
+        model_rows.push(model_record_from_model(
+            item,
+            sort_index,
+            item_updated_at,
+        )?);
+        reasoning_rows.extend(reasoning_records_from_model(&item.model, item_updated_at)?);
         additional_speed_tiers.extend(string_records_from_model(
-            &model.slug,
-            &model.additional_speed_tiers,
-            updated_at,
+            &item.model.slug,
+            &item.model.additional_speed_tiers,
+            item_updated_at,
         ));
         experimental_supported_tools.extend(string_records_from_model(
-            &model.slug,
-            &model.experimental_supported_tools,
-            updated_at,
+            &item.model.slug,
+            &item.model.experimental_supported_tools,
+            item_updated_at,
         ));
         input_modalities.extend(string_records_from_model(
-            &model.slug,
-            &model.input_modalities,
-            updated_at,
+            &item.model.slug,
+            &item.model.input_modalities,
+            item_updated_at,
         ));
         available_in_plans.extend(string_records_from_model(
-            &model.slug,
-            &model.available_in_plans,
-            updated_at,
+            &item.model.slug,
+            &item.model.available_in_plans,
+            item_updated_at,
         ));
     }
 
@@ -446,10 +691,11 @@ fn save_model_catalog_rows(
 }
 
 fn model_record_from_model(
-    model: &ModelInfo,
+    item: &ManagedModelCatalogEntry,
     sort_index: i64,
     updated_at: i64,
 ) -> Result<ModelCatalogModelRecord, String> {
+    let model = &item.model;
     let truncation_extra_json = model
         .truncation_policy
         .as_ref()
@@ -459,6 +705,8 @@ fn model_record_from_model(
         scope: MODEL_CACHE_SCOPE_DEFAULT.to_string(),
         slug: model.slug.clone(),
         display_name: model.display_name.clone(),
+        source_kind: normalize_source_kind(Some(item.source_kind.as_str())),
+        user_edited: item.user_edited,
         description: model.description.clone(),
         default_reasoning_level: model.default_reasoning_level.clone(),
         shell_type: model.shell_type.clone(),
@@ -492,6 +740,137 @@ fn model_record_from_model(
         sort_index,
         updated_at,
     })
+}
+
+fn replace_model_catalog_entry(
+    storage: &Storage,
+    previous_slug: Option<&str>,
+    entry: &ManagedModelCatalogEntry,
+) -> Result<(), String> {
+    let target_slug = entry.model.slug.as_str();
+    if let Some(previous_slug) = previous_slug {
+        let normalized_previous = previous_slug.trim();
+        if !normalized_previous.is_empty() && normalized_previous != target_slug {
+            delete_model_catalog_entry(storage, normalized_previous)?;
+        }
+    }
+
+    storage
+        .delete_model_catalog_reasoning_levels(MODEL_CACHE_SCOPE_DEFAULT, target_slug)
+        .map_err(|e| e.to_string())?;
+    storage
+        .delete_model_catalog_string_items(
+            MODEL_CACHE_SCOPE_DEFAULT,
+            target_slug,
+            "additional_speed_tiers",
+        )
+        .map_err(|e| e.to_string())?;
+    storage
+        .delete_model_catalog_string_items(
+            MODEL_CACHE_SCOPE_DEFAULT,
+            target_slug,
+            "experimental_supported_tools",
+        )
+        .map_err(|e| e.to_string())?;
+    storage
+        .delete_model_catalog_string_items(
+            MODEL_CACHE_SCOPE_DEFAULT,
+            target_slug,
+            "input_modalities",
+        )
+        .map_err(|e| e.to_string())?;
+    storage
+        .delete_model_catalog_string_items(
+            MODEL_CACHE_SCOPE_DEFAULT,
+            target_slug,
+            "available_in_plans",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let updated_at = if entry.updated_at > 0 {
+        entry.updated_at
+    } else {
+        now_ts()
+    };
+    let model_row = model_record_from_model(entry, entry.sort_index, updated_at)?;
+    storage
+        .upsert_model_catalog_models(&[model_row])
+        .map_err(|e| e.to_string())?;
+    let reasoning_rows = reasoning_records_from_model(&entry.model, updated_at)?;
+    storage
+        .upsert_model_catalog_reasoning_levels(&reasoning_rows)
+        .map_err(|e| e.to_string())?;
+    let additional_speed_tiers = string_records_from_model(
+        &entry.model.slug,
+        &entry.model.additional_speed_tiers,
+        updated_at,
+    );
+    storage
+        .upsert_model_catalog_additional_speed_tiers(&additional_speed_tiers)
+        .map_err(|e| e.to_string())?;
+    let experimental_supported_tools = string_records_from_model(
+        &entry.model.slug,
+        &entry.model.experimental_supported_tools,
+        updated_at,
+    );
+    storage
+        .upsert_model_catalog_experimental_supported_tools(&experimental_supported_tools)
+        .map_err(|e| e.to_string())?;
+    let input_modalities = string_records_from_model(
+        &entry.model.slug,
+        &entry.model.input_modalities,
+        updated_at,
+    );
+    storage
+        .upsert_model_catalog_input_modalities(&input_modalities)
+        .map_err(|e| e.to_string())?;
+    let available_in_plans = string_records_from_model(
+        &entry.model.slug,
+        &entry.model.available_in_plans,
+        updated_at,
+    );
+    storage
+        .upsert_model_catalog_available_in_plans(&available_in_plans)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn delete_model_catalog_entry(storage: &Storage, slug: &str) -> Result<(), String> {
+    storage
+        .delete_model_catalog_reasoning_levels(MODEL_CACHE_SCOPE_DEFAULT, slug)
+        .map_err(|e| e.to_string())?;
+    storage
+        .delete_model_catalog_string_items(
+            MODEL_CACHE_SCOPE_DEFAULT,
+            slug,
+            "additional_speed_tiers",
+        )
+        .map_err(|e| e.to_string())?;
+    storage
+        .delete_model_catalog_string_items(
+            MODEL_CACHE_SCOPE_DEFAULT,
+            slug,
+            "experimental_supported_tools",
+        )
+        .map_err(|e| e.to_string())?;
+    storage
+        .delete_model_catalog_string_items(
+            MODEL_CACHE_SCOPE_DEFAULT,
+            slug,
+            "input_modalities",
+        )
+        .map_err(|e| e.to_string())?;
+    storage
+        .delete_model_catalog_string_items(
+            MODEL_CACHE_SCOPE_DEFAULT,
+            slug,
+            "available_in_plans",
+        )
+        .map_err(|e| e.to_string())?;
+    storage
+        .delete_model_catalog_model(MODEL_CACHE_SCOPE_DEFAULT, slug)
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn reasoning_records_from_model(
@@ -778,13 +1157,18 @@ fn needs_structured_backfill(rows: &[ModelCatalogModelRecord], missing_scope_row
 mod tests {
     use std::collections::BTreeMap;
 
-    use codexmanager_core::storage::{now_ts, Storage};
+    use codexmanager_core::storage::Storage;
     use serde_json::{json, Value};
 
     use super::{
-        merge_models_response, normalize_models_response, read_model_options_from_storage,
+        merge_managed_model_catalog, merge_models_response, normalize_models_response,
+        read_managed_model_catalog_from_storage, read_model_options_from_storage,
+        save_managed_model_catalog_with_storage, save_model_options_with_storage,
+        MODEL_SOURCE_KIND_CUSTOM, MODEL_SOURCE_KIND_REMOTE,
     };
-    use codexmanager_core::rpc::types::{ModelInfo, ModelsResponse};
+    use codexmanager_core::rpc::types::{
+        ManagedModelCatalogEntry, ManagedModelCatalogResult, ModelInfo, ModelsResponse,
+    };
 
     #[test]
     fn normalize_models_response_keeps_full_model_metadata() {
@@ -902,10 +1286,9 @@ mod tests {
     }
 
     #[test]
-    fn read_model_options_from_storage_backfills_structured_tables_from_legacy_cache() {
+    fn read_model_options_from_storage_reads_structured_catalog() {
         let storage = Storage::open_in_memory().expect("open storage");
         storage.init().expect("init storage");
-        let now = now_ts();
         let payload = ModelsResponse {
             models: vec![serde_json::from_value(json!({
                 "slug": "gpt-5.4",
@@ -921,10 +1304,7 @@ mod tests {
             .expect("parse model")],
             extra: BTreeMap::from([("etag".to_string(), json!("legacy"))]),
         };
-        let payload_json = serde_json::to_string(&payload).expect("serialize payload");
-        storage
-            .upsert_model_options_cache("default", &payload_json, now)
-            .expect("seed legacy cache");
+        save_model_options_with_storage(&storage, &payload).expect("seed structured catalog");
 
         let response = read_model_options_from_storage(&storage).expect("read models");
         assert_eq!(response.models.len(), 1);
@@ -969,5 +1349,83 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["pro", "team"]
         );
+    }
+
+    #[test]
+    fn managed_catalog_round_trip_preserves_source_kind_and_user_overrides() {
+        let storage = Storage::open_in_memory().expect("open storage");
+        storage.init().expect("init storage");
+        let payload = ManagedModelCatalogResult {
+            items: vec![ManagedModelCatalogEntry {
+                model: serde_json::from_value(json!({
+                    "slug": "gpt-5.4",
+                    "display_name": "GPT-5.4 Custom",
+                    "description": "customized locally",
+                    "supported_in_api": true,
+                    "input_modalities": ["text", "image"]
+                }))
+                .expect("parse managed model"),
+                source_kind: MODEL_SOURCE_KIND_CUSTOM.to_string(),
+                user_edited: true,
+                sort_index: 9,
+                updated_at: 1_770_000_123,
+            }],
+            extra: BTreeMap::from([("etag".to_string(), json!("managed"))]),
+        };
+
+        save_managed_model_catalog_with_storage(&storage, &payload)
+            .expect("save managed model catalog");
+
+        let response = read_managed_model_catalog_from_storage(&storage)
+            .expect("read managed model catalog");
+        assert_eq!(response.items.len(), 1);
+        assert_eq!(response.items[0].model.slug, "gpt-5.4");
+        assert_eq!(response.items[0].source_kind, MODEL_SOURCE_KIND_CUSTOM);
+        assert!(response.items[0].user_edited);
+        assert_eq!(response.items[0].sort_index, 9);
+        assert_eq!(
+            response.extra.get("etag").and_then(Value::as_str),
+            Some("managed")
+        );
+    }
+
+    #[test]
+    fn merge_managed_catalog_preserves_user_edited_entries_when_remote_refreshes() {
+        let cached = ManagedModelCatalogResult {
+            items: vec![ManagedModelCatalogEntry {
+                model: serde_json::from_value(json!({
+                    "slug": "gpt-5.4",
+                    "display_name": "GPT-5.4 Local",
+                    "description": "keep local override",
+                    "supported_in_api": true
+                }))
+                .expect("parse cached model"),
+                source_kind: MODEL_SOURCE_KIND_REMOTE.to_string(),
+                user_edited: true,
+                sort_index: 3,
+                updated_at: 55,
+            }],
+            extra: BTreeMap::new(),
+        };
+        let incoming = ModelsResponse {
+            models: vec![serde_json::from_value(json!({
+                "slug": "gpt-5.4",
+                "display_name": "GPT-5.4 Remote",
+                "description": "remote version",
+                "supported_in_api": true
+            }))
+            .expect("parse incoming model")],
+            extra: BTreeMap::new(),
+        };
+
+        let merged = merge_managed_model_catalog(cached, incoming);
+        assert_eq!(merged.items.len(), 1);
+        assert_eq!(merged.items[0].model.display_name, "GPT-5.4 Local");
+        assert_eq!(
+            merged.items[0].model.description.as_deref(),
+            Some("keep local override")
+        );
+        assert_eq!(merged.items[0].source_kind, MODEL_SOURCE_KIND_REMOTE);
+        assert!(merged.items[0].user_edited);
     }
 }

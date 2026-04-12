@@ -842,6 +842,17 @@ fn init_upgrades_legacy_model_catalog_table_to_structured_schema() {
         )
         .expect("create legacy model catalog table");
     storage
+        .conn
+        .execute(
+            "CREATE TABLE model_options_cache (
+                scope TEXT PRIMARY KEY,
+                items_json TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )
+        .expect("create legacy model options cache");
+    storage
         .ensure_migrations_table()
         .expect("ensure migration tracker");
 
@@ -854,6 +865,12 @@ fn init_upgrades_legacy_model_catalog_table_to_structured_schema() {
         .has_column("model_catalog_models", "supported_in_api")
         .expect("supported_in_api column"));
     assert!(storage
+        .has_column("model_catalog_models", "source_kind")
+        .expect("source_kind column"));
+    assert!(storage
+        .has_column("model_catalog_models", "user_edited")
+        .expect("user_edited column"));
+    assert!(storage
         .has_column("model_catalog_models", "minimal_client_version_json")
         .expect("minimal client version column"));
     assert!(storage
@@ -862,6 +879,9 @@ fn init_upgrades_legacy_model_catalog_table_to_structured_schema() {
     assert!(!storage
         .has_column("model_catalog_models", "model_json")
         .expect("model_json column removed"));
+    assert!(!storage
+        .has_table("model_options_cache")
+        .expect("model_options_cache removed"));
 
     let scope_table_exists = storage
         .conn
@@ -883,13 +903,23 @@ fn init_upgrades_legacy_model_catalog_table_to_structured_schema() {
         .expect("check reasoning table");
     assert_eq!(reasoning_table_exists, 1);
 
-    let plans_table_exists = storage
+    let string_items_table_exists = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'model_catalog_string_items'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("check string items table");
+    assert_eq!(string_items_table_exists, 1);
+
+    let legacy_plans_table_exists = storage
         .conn
         .query_row(
             "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'model_catalog_available_in_plans'",
             [],
             |row| row.get::<_, i64>(0),
         )
-        .expect("check plans table");
-    assert_eq!(plans_table_exists, 1);
+        .expect("check legacy plans table");
+    assert_eq!(legacy_plans_table_exists, 0);
 }

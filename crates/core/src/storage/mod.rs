@@ -290,13 +290,6 @@ pub struct PluginRunLog {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct ModelOptionsCacheRecord {
-    pub scope: String,
-    pub items_json: String,
-    pub updated_at: i64,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct ModelCatalogScopeRecord {
     pub scope: String,
@@ -309,6 +302,8 @@ pub struct ModelCatalogModelRecord {
     pub scope: String,
     pub slug: String,
     pub display_name: String,
+    pub source_kind: String,
+    pub user_edited: bool,
     pub description: Option<String>,
     pub default_reasoning_level: Option<String>,
     pub shell_type: Option<String>,
@@ -525,10 +520,6 @@ impl Storage {
             include_str!("../../migrations/023_request_token_stats_total_tokens.sql"),
             |s| s.ensure_request_token_stats_table(),
         )?;
-        self.apply_sql_migration(
-            "024_model_options_cache",
-            include_str!("../../migrations/024_model_options_cache.sql"),
-        )?;
         self.apply_sql_or_compat_migration(
             "025_tokens_refresh_schedule",
             include_str!("../../migrations/025_tokens_refresh_schedule.sql"),
@@ -642,6 +633,14 @@ impl Storage {
             "047_model_catalog_models",
             include_str!("../../migrations/047_model_catalog_models.sql"),
             |s| s.ensure_model_catalog_models_table(),
+        )?;
+        self.apply_sql_migration(
+            "048_drop_model_options_cache",
+            include_str!("../../migrations/048_drop_model_options_cache.sql"),
+        )?;
+        self.apply_sql_migration(
+            "049_model_catalog_string_items",
+            include_str!("../../migrations/049_model_catalog_string_items.sql"),
         )?;
         self.ensure_api_key_rotation_columns()?;
         self.ensure_aggregate_apis_table()?;

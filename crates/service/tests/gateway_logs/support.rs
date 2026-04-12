@@ -5,7 +5,10 @@ pub(super) use shared::{test_env_guard, EnvGuard};
 
 pub(super) use codexmanager_core::rpc::types::ModelInfo;
 pub(super) use codexmanager_core::rpc::types::ModelsResponse;
-pub(super) use codexmanager_core::storage::{now_ts, Account, ApiKey, Storage, Token};
+pub(super) use codexmanager_core::storage::{
+    now_ts, Account, ApiKey, ModelCatalogModelRecord, ModelCatalogReasoningLevelRecord,
+    ModelCatalogScopeRecord, ModelCatalogStringItemRecord, Storage, Token,
+};
 pub(super) use sha2::{Digest, Sha256};
 pub(super) use std::collections::HashMap;
 pub(super) use std::fs;
@@ -237,7 +240,7 @@ pub(super) fn hash_platform_key_for_test(key: &str) -> String {
     out
 }
 
-/// 函数 `seed_model_options_cache`
+/// 函数 `seed_model_catalog_models`
 ///
 /// 作者: gaohongshun
 ///
@@ -248,22 +251,194 @@ pub(super) fn hash_platform_key_for_test(key: &str) -> String {
 ///
 /// # 返回
 /// 无
-pub(super) fn seed_model_options_cache(storage: &Storage, models: &[&str]) {
-    let items_json = serde_json::to_string(&ModelsResponse {
-        models: models
-            .iter()
-            .map(|slug| ModelInfo {
-                slug: (*slug).to_string(),
-                display_name: (*slug).to_string(),
-                ..Default::default()
-            })
-            .collect::<Vec<_>>(),
-        ..Default::default()
-    })
-    .expect("serialize model options cache");
+pub(super) fn seed_model_catalog_models(storage: &Storage, models: &[&str]) {
+    seed_model_catalog_response(
+        storage,
+        &ModelsResponse {
+            models: models
+                .iter()
+                .map(|slug| ModelInfo {
+                    slug: (*slug).to_string(),
+                    display_name: (*slug).to_string(),
+                    ..Default::default()
+                })
+                .collect::<Vec<_>>(),
+            ..Default::default()
+        },
+    );
+}
+
+pub(super) fn seed_model_catalog_response(storage: &Storage, response: &ModelsResponse) {
+    let updated_at = now_ts();
     storage
-        .upsert_model_options_cache("default", &items_json, now_ts())
-        .expect("upsert model options cache");
+        .upsert_model_catalog_scope(&ModelCatalogScopeRecord {
+            scope: "default".to_string(),
+            extra_json: serde_json::to_string(&response.extra).expect("serialize scope extra"),
+            updated_at,
+        })
+        .expect("upsert model catalog scope");
+
+    let rows = response
+        .models
+        .iter()
+        .enumerate()
+        .map(|(index, model)| ModelCatalogModelRecord {
+            scope: "default".to_string(),
+            slug: model.slug.clone(),
+            display_name: model.display_name.clone(),
+            source_kind: "remote".to_string(),
+            user_edited: false,
+            description: model.description.clone(),
+            default_reasoning_level: model.default_reasoning_level.clone(),
+            shell_type: model.shell_type.clone(),
+            visibility: model.visibility.clone(),
+            supported_in_api: Some(model.supported_in_api),
+            priority: Some(model.priority),
+            availability_nux_json: model
+                .availability_nux
+                .as_ref()
+                .map(|value| serde_json::to_string(value).expect("serialize availability_nux")),
+            upgrade_json: model
+                .upgrade
+                .as_ref()
+                .map(|value| serde_json::to_string(value).expect("serialize upgrade")),
+            base_instructions: model.base_instructions.clone(),
+            model_messages_json: model
+                .model_messages
+                .as_ref()
+                .map(|value| serde_json::to_string(value).expect("serialize model messages")),
+            supports_reasoning_summaries: model.supports_reasoning_summaries,
+            default_reasoning_summary: model.default_reasoning_summary.clone(),
+            support_verbosity: model.support_verbosity,
+            default_verbosity_json: model
+                .default_verbosity
+                .as_ref()
+                .map(|value| serde_json::to_string(value).expect("serialize default verbosity")),
+            apply_patch_tool_type: model.apply_patch_tool_type.clone(),
+            web_search_tool_type: model.web_search_tool_type.clone(),
+            truncation_mode: model
+                .truncation_policy
+                .as_ref()
+                .map(|policy| policy.mode.clone()),
+            truncation_limit: model.truncation_policy.as_ref().map(|policy| policy.limit),
+            truncation_extra_json: model.truncation_policy.as_ref().map(|policy| {
+                serde_json::to_string(&policy.extra).expect("serialize truncation extra")
+            }),
+            supports_parallel_tool_calls: model.supports_parallel_tool_calls,
+            supports_image_detail_original: model.supports_image_detail_original,
+            context_window: model.context_window,
+            auto_compact_token_limit: model.auto_compact_token_limit,
+            effective_context_window_percent: model.effective_context_window_percent,
+            minimal_client_version_json: model.minimal_client_version.as_ref().map(|value| {
+                serde_json::to_string(value).expect("serialize minimal client version")
+            }),
+            supports_search_tool: model.supports_search_tool,
+            extra_json: serde_json::to_string(&model.extra).expect("serialize model extra"),
+            sort_index: index as i64,
+            updated_at,
+        })
+        .collect::<Vec<_>>();
+    storage
+        .upsert_model_catalog_models(&rows)
+        .expect("upsert model catalog rows");
+
+    let reasoning_rows = response
+        .models
+        .iter()
+        .flat_map(|model| {
+            model
+                .supported_reasoning_levels
+                .iter()
+                .enumerate()
+                .map(|(index, level)| ModelCatalogReasoningLevelRecord {
+                    scope: "default".to_string(),
+                    slug: model.slug.clone(),
+                    effort: level.effort.clone(),
+                    description: level.description.clone(),
+                    extra_json: serde_json::to_string(&level.extra)
+                        .expect("serialize reasoning extra"),
+                    sort_index: index as i64,
+                    updated_at,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    storage
+        .upsert_model_catalog_reasoning_levels(&reasoning_rows)
+        .expect("upsert reasoning rows");
+
+    seed_model_catalog_string_items(
+        storage,
+        &response.models,
+        updated_at,
+        |model| &model.additional_speed_tiers,
+        |storage, rows| {
+            storage
+                .upsert_model_catalog_additional_speed_tiers(rows)
+                .expect("upsert additional speed tiers");
+        },
+    );
+    seed_model_catalog_string_items(
+        storage,
+        &response.models,
+        updated_at,
+        |model| &model.experimental_supported_tools,
+        |storage, rows| {
+            storage
+                .upsert_model_catalog_experimental_supported_tools(rows)
+                .expect("upsert experimental supported tools");
+        },
+    );
+    seed_model_catalog_string_items(
+        storage,
+        &response.models,
+        updated_at,
+        |model| &model.input_modalities,
+        |storage, rows| {
+            storage
+                .upsert_model_catalog_input_modalities(rows)
+                .expect("upsert input modalities");
+        },
+    );
+    seed_model_catalog_string_items(
+        storage,
+        &response.models,
+        updated_at,
+        |model| &model.available_in_plans,
+        |storage, rows| {
+            storage
+                .upsert_model_catalog_available_in_plans(rows)
+                .expect("upsert available in plans");
+        },
+    );
+}
+
+fn seed_model_catalog_string_items<F>(
+    storage: &Storage,
+    models: &[ModelInfo],
+    updated_at: i64,
+    select: impl Fn(&ModelInfo) -> &[String],
+    upsert: F,
+) where
+    F: Fn(&Storage, &[ModelCatalogStringItemRecord]),
+{
+    let rows = models
+        .iter()
+        .flat_map(|model| {
+            select(model)
+                .iter()
+                .enumerate()
+                .map(|(index, value)| ModelCatalogStringItemRecord {
+                    scope: "default".to_string(),
+                    slug: model.slug.clone(),
+                    value: value.clone(),
+                    sort_index: index as i64,
+                    updated_at,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    upsert(storage, &rows);
 }
 
 /// 函数 `decode_upstream_request_body`

@@ -108,6 +108,68 @@ pub async fn service_apikey_models(
     rpc_call_in_background("apikey/models", addr, params).await
 }
 
+/// 函数 `service_model_catalog_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-12
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - refresh_remote: 参数 refresh_remote
+///
+/// # 返回
+/// 返回函数执行结果
+#[tauri::command]
+pub async fn service_model_catalog_list(
+    addr: Option<String>,
+    refresh_remote: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let params = refresh_remote.map(|value| serde_json::json!({ "refreshRemote": value }));
+    rpc_call_in_background("apikey/modelCatalogList", addr, params).await
+}
+
+/// 函数 `service_model_catalog_save`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-12
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - payload: 参数 payload
+///
+/// # 返回
+/// 返回函数执行结果
+#[tauri::command]
+pub async fn service_model_catalog_save(
+    addr: Option<String>,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    rpc_call_in_background("apikey/modelCatalogSave", addr, Some(payload)).await
+}
+
+/// 函数 `service_model_catalog_delete`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-12
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - slug: 参数 slug
+///
+/// # 返回
+/// 返回函数执行结果
+#[tauri::command]
+pub async fn service_model_catalog_delete(
+    addr: Option<String>,
+    slug: String,
+) -> Result<serde_json::Value, String> {
+    let params = serde_json::json!({ "slug": slug });
+    rpc_call_in_background("apikey/modelCatalogDelete", addr, Some(params)).await
+}
+
 /// 函数 `service_apikey_usage_stats`
 ///
 /// 作者: gaohongshun

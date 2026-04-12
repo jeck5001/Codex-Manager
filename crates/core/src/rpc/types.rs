@@ -563,6 +563,49 @@ impl ModelsResponse {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedModelCatalogEntry {
+    #[serde(flatten)]
+    pub model: ModelInfo,
+    #[serde(default = "default_model_source_kind")]
+    pub source_kind: String,
+    #[serde(default)]
+    pub user_edited: bool,
+    #[serde(default)]
+    pub sort_index: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedModelCatalogResult {
+    #[serde(default)]
+    pub items: Vec<ManagedModelCatalogEntry>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedModelCatalogUpsertParams {
+    #[serde(default)]
+    pub previous_slug: Option<String>,
+    #[serde(default)]
+    pub source_kind: Option<String>,
+    #[serde(default)]
+    pub user_edited: Option<bool>,
+    #[serde(default)]
+    pub sort_index: Option<i64>,
+    #[serde(flatten)]
+    pub model: ModelInfo,
+}
+
+fn default_model_source_kind() -> String {
+    "remote".to_string()
+}
+
 fn default_supported_in_api() -> bool {
     true
 }

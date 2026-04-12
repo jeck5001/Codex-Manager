@@ -47,7 +47,7 @@ fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
-    seed_model_options_cache(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
+    seed_model_catalog_models(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
 
     storage
         .insert_account(&Account {
@@ -197,7 +197,7 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
-    seed_model_options_cache(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
+    seed_model_catalog_models(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
 
     for index in 1..=2 {
         storage
@@ -345,7 +345,7 @@ fn gateway_error_logging_writes_only_trace_log_file() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
-    seed_model_options_cache(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
+    seed_model_catalog_models(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
 
     storage
         .insert_account(&Account {

@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS model_catalog_models (
   scope TEXT NOT NULL,
   slug TEXT NOT NULL,
   display_name TEXT NOT NULL,
+  source_kind TEXT NOT NULL DEFAULT 'remote',
+  user_edited INTEGER NOT NULL DEFAULT 0,
   description TEXT,
   default_reasoning_level TEXT,
   shell_type TEXT,

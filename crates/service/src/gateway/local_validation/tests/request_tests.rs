@@ -3,7 +3,7 @@ use crate::gateway::{
     adapt_request_for_protocol, apply_request_overrides_with_service_tier_and_prompt_cache_key,
 };
 use codexmanager_core::rpc::types::{ModelInfo, ModelsResponse};
-use codexmanager_core::storage::{now_ts, Storage};
+use codexmanager_core::storage::Storage;
 use serde_json::Value;
 
 /// 函数 `sample_api_key`
@@ -336,28 +336,25 @@ fn codex_backend_passthrough_maps_fast_to_priority_but_keeps_fast_for_log() {
 fn anthropic_model_must_exist_in_cached_model_options() {
     let storage = Storage::open_in_memory().expect("open storage");
     storage.init().expect("init storage");
-    storage
-        .upsert_model_options_cache(
-            "default",
-            &serde_json::to_string(&ModelsResponse {
-                models: vec![
-                    ModelInfo {
-                        slug: "claude-sonnet-4".to_string(),
-                        display_name: "claude-sonnet-4".to_string(),
-                        ..Default::default()
-                    },
-                    ModelInfo {
-                        slug: "gpt-5.4-mini".to_string(),
-                        display_name: "gpt-5.4-mini".to_string(),
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            })
-            .expect("serialize model options"),
-            now_ts(),
-        )
-        .expect("save model cache");
+    crate::apikey_models::save_model_options_with_storage(
+        &storage,
+        &ModelsResponse {
+            models: vec![
+                ModelInfo {
+                    slug: "claude-sonnet-4".to_string(),
+                    display_name: "claude-sonnet-4".to_string(),
+                    ..Default::default()
+                },
+                ModelInfo {
+                    slug: "gpt-5.4-mini".to_string(),
+                    display_name: "gpt-5.4-mini".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        },
+    )
+    .expect("save model catalog");
 
     assert!(ensure_anthropic_model_is_listed(
         &storage,

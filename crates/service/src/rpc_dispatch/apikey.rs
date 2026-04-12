@@ -1,5 +1,6 @@
 use codexmanager_core::rpc::types::{
     ApiKeyListResult, ApiKeyUsageStatListResult, JsonRpcRequest, JsonRpcResponse,
+    ManagedModelCatalogUpsertParams,
 };
 
 use crate::{
@@ -54,6 +55,25 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "apikey/models" => {
             let refresh_remote = super::bool_param(req, "refreshRemote").unwrap_or(false);
             super::value_or_error(apikey_models::read_model_options(refresh_remote))
+        }
+        "apikey/modelCatalogList" => {
+            let refresh_remote = super::bool_param(req, "refreshRemote").unwrap_or(false);
+            super::value_or_error(apikey_models::read_managed_model_catalog(refresh_remote))
+        }
+        "apikey/modelCatalogSave" => {
+            let params = req
+                .params
+                .clone()
+                .ok_or_else(|| "缺少模型参数".to_string())
+                .and_then(|value| {
+                    serde_json::from_value::<ManagedModelCatalogUpsertParams>(value)
+                        .map_err(|err| format!("解析模型参数失败: {err}"))
+                });
+            super::value_or_error(params.and_then(apikey_models::save_managed_model_catalog_model))
+        }
+        "apikey/modelCatalogDelete" => {
+            let slug = super::str_param(req, "slug").unwrap_or("");
+            super::ok_or_error(apikey_models::delete_managed_model_catalog_model(slug))
         }
         "apikey/usageStats" => super::value_or_error(
             apikey_usage_stats::read_api_key_usage_stats()

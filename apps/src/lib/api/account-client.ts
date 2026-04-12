@@ -9,11 +9,14 @@ import {
   normalizeApiKeyList,
   normalizeApiKeyUsageStats,
   normalizeLoginStartResult,
+  normalizeManagedModelCatalog,
+  normalizeManagedModelInfo,
   normalizeModelCatalog,
   normalizeUsageAggregateSummary,
   normalizeUsageList,
   normalizeUsageSnapshot,
 } from "./normalize";
+import { serializeManagedModelForRpc } from "./model-catalog";
 import {
   AccountListResult,
   AccountUsage,
@@ -28,7 +31,10 @@ import {
   CurrentAccessTokenAccountReadResult,
   LoginStatusResult,
   LoginStartResult,
+  ManagedModelCatalog,
+  ManagedModelInfo,
   ModelCatalog,
+  ModelInfo,
   UsageAggregateSummary,
 } from "../../types";
 
@@ -101,6 +107,14 @@ interface ApiKeyPayload {
   rotationStrategy?: string | null;
   aggregateApiId?: string | null;
   accountPlanFilter?: string | null;
+}
+
+export interface ManagedModelPayload {
+  previousSlug?: string | null;
+  sourceKind?: string | null;
+  userEdited?: boolean | null;
+  sortIndex?: number | null;
+  model: ManagedModelInfo | ModelInfo;
 }
 
 interface AggregateApiPayload {
@@ -591,6 +605,34 @@ export const accountClient = {
     );
     return normalizeModelCatalog(result);
   },
+  async listManagedModels(refreshRemote?: boolean): Promise<ManagedModelCatalog> {
+    const result = await invoke<unknown>(
+      "service_model_catalog_list",
+      withAddr({ refreshRemote })
+    );
+    return normalizeManagedModelCatalog(result);
+  },
+  async saveManagedModel(params: ManagedModelPayload): Promise<ManagedModelInfo> {
+    const payload = {
+      previousSlug: params.previousSlug || null,
+      sourceKind: params.sourceKind || null,
+      userEdited:
+        typeof params.userEdited === "boolean" ? params.userEdited : null,
+      sortIndex: typeof params.sortIndex === "number" ? params.sortIndex : null,
+      ...serializeManagedModelForRpc(params.model),
+    };
+    const result = await invoke<unknown>(
+      "service_model_catalog_save",
+      withAddr({ payload })
+    );
+    const normalized = normalizeManagedModelInfo(result);
+    if (!normalized) {
+      throw new Error("模型保存结果为空");
+    }
+    return normalized;
+  },
+  deleteManagedModel: (slug: string) =>
+    invoke("service_model_catalog_delete", withAddr({ slug })),
   async readApiKeySecret(keyId: string): Promise<string> {
     const result = await invoke<{ key?: string }>(
       "service_apikey_read_secret",

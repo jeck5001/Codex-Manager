@@ -19,6 +19,8 @@ import {
   GatewayErrorLogListResult,
   InstalledPluginSummary,
   LoginStartResult,
+  ManagedModelCatalog,
+  ManagedModelInfo,
   ModelCatalog,
   ModelInfo,
   ModelReasoningLevel,
@@ -575,6 +577,19 @@ function normalizeModelInfo(payload: unknown): ModelInfo | null {
   };
 }
 
+export function normalizeManagedModelInfo(payload: unknown): ManagedModelInfo | null {
+  const model = normalizeModelInfo(payload);
+  if (!model) return null;
+  const source = asObject(payload);
+  return {
+    ...model,
+    sourceKind: asString(source.source_kind ?? source.sourceKind) || "remote",
+    userEdited: asBoolean(source.user_edited ?? source.userEdited, false),
+    sortIndex: asInteger(source.sort_index ?? source.sortIndex, 0, -1),
+    updatedAt: asInteger(source.updated_at ?? source.updatedAt, 0, 0),
+  };
+}
+
 /**
  * 函数 `normalizeModelCatalog`
  *
@@ -596,6 +611,17 @@ export function normalizeModelCatalog(payload: unknown): ModelCatalog {
     models: items
       .map((item) => normalizeModelInfo(item))
       .filter((item): item is ModelInfo => Boolean(item)),
+  };
+}
+
+export function normalizeManagedModelCatalog(payload: unknown): ManagedModelCatalog {
+  const source = asObject(payload);
+  const items = asArray(source.items ?? payload);
+  return {
+    ...source,
+    items: items
+      .map((item) => normalizeManagedModelInfo(item))
+      .filter((item): item is ManagedModelInfo => Boolean(item)),
   };
 }
 

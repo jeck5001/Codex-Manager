@@ -7,74 +7,15 @@ use crate::rpc::types::{ModelInfo, ModelReasoningLevel};
 
 use super::{
     ModelCatalogModelRecord, ModelCatalogReasoningLevelRecord, ModelCatalogScopeRecord,
-    ModelCatalogStringItemRecord, ModelOptionsCacheRecord, Storage,
+    ModelCatalogStringItemRecord, Storage,
 };
 
+const STRING_ITEM_KIND_ADDITIONAL_SPEED_TIERS: &str = "additional_speed_tiers";
+const STRING_ITEM_KIND_EXPERIMENTAL_SUPPORTED_TOOLS: &str = "experimental_supported_tools";
+const STRING_ITEM_KIND_INPUT_MODALITIES: &str = "input_modalities";
+const STRING_ITEM_KIND_AVAILABLE_IN_PLANS: &str = "available_in_plans";
+
 impl Storage {
-    /// 函数 `upsert_model_options_cache`
-    ///
-    /// 作者: gaohongshun
-    ///
-    /// 时间: 2026-04-02
-    ///
-    /// # 参数
-    /// - self: 参数 self
-    /// - scope: 参数 scope
-    /// - items_json: 参数 items_json
-    /// - updated_at: 参数 updated_at
-    ///
-    /// # 返回
-    /// 返回函数执行结果
-    pub fn upsert_model_options_cache(
-        &self,
-        scope: &str,
-        items_json: &str,
-        updated_at: i64,
-    ) -> rusqlite::Result<()> {
-        self.conn.execute(
-            "INSERT INTO model_options_cache (scope, items_json, updated_at)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(scope) DO UPDATE SET
-               items_json = excluded.items_json,
-               updated_at = excluded.updated_at",
-            params![scope, items_json, updated_at],
-        )?;
-        Ok(())
-    }
-
-    /// 函数 `get_model_options_cache`
-    ///
-    /// 作者: gaohongshun
-    ///
-    /// 时间: 2026-04-02
-    ///
-    /// # 参数
-    /// - self: 参数 self
-    /// - scope: 参数 scope
-    ///
-    /// # 返回
-    /// 返回函数执行结果
-    pub fn get_model_options_cache(
-        &self,
-        scope: &str,
-    ) -> rusqlite::Result<Option<ModelOptionsCacheRecord>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT scope, items_json, updated_at
-             FROM model_options_cache
-             WHERE scope = ?1
-             LIMIT 1",
-        )?;
-        let mut rows = stmt.query([scope])?;
-        if let Some(row) = rows.next()? {
-            return Ok(Some(ModelOptionsCacheRecord {
-                scope: row.get(0)?,
-                items_json: row.get(1)?,
-                updated_at: row.get(2)?,
-            }));
-        }
-        Ok(None)
-    }
-
     pub fn upsert_model_catalog_scope(
         &self,
         record: &ModelCatalogScopeRecord,
@@ -131,8 +72,8 @@ impl Storage {
         for model in models {
             tx.execute(
                 "INSERT INTO model_catalog_models (
-                    scope, slug, display_name, description, default_reasoning_level,
-                    shell_type, visibility, supported_in_api, priority,
+                    scope, slug, display_name, source_kind, user_edited,
+                    description, default_reasoning_level, shell_type, visibility, supported_in_api, priority,
                     availability_nux_json, upgrade_json, base_instructions,
                     model_messages_json, supports_reasoning_summaries,
                     default_reasoning_summary, support_verbosity,
@@ -146,10 +87,12 @@ impl Storage {
                  ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                     ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24,
-                    ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32
+                    ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34
                  )
                  ON CONFLICT(scope, slug) DO UPDATE SET
                     display_name = excluded.display_name,
+                    source_kind = excluded.source_kind,
+                    user_edited = excluded.user_edited,
                     description = excluded.description,
                     default_reasoning_level = excluded.default_reasoning_level,
                     shell_type = excluded.shell_type,
@@ -183,6 +126,8 @@ impl Storage {
                     model.scope,
                     model.slug,
                     model.display_name,
+                    model.source_kind,
+                    model.user_edited,
                     model.description,
                     model.default_reasoning_level,
                     model.shell_type,
@@ -237,8 +182,8 @@ impl Storage {
     ) -> rusqlite::Result<Vec<ModelCatalogModelRecord>> {
         let mut stmt = self.conn.prepare(
             "SELECT
-                scope, slug, display_name, description, default_reasoning_level,
-                shell_type, visibility, supported_in_api, priority,
+                scope, slug, display_name, source_kind, user_edited,
+                description, default_reasoning_level, shell_type, visibility, supported_in_api, priority,
                 availability_nux_json, upgrade_json, base_instructions,
                 model_messages_json, supports_reasoning_summaries,
                 default_reasoning_summary, support_verbosity,
@@ -258,35 +203,37 @@ impl Storage {
                 scope: row.get(0)?,
                 slug: row.get(1)?,
                 display_name: row.get(2)?,
-                description: row.get(3)?,
-                default_reasoning_level: row.get(4)?,
-                shell_type: row.get(5)?,
-                visibility: row.get(6)?,
-                supported_in_api: row.get(7)?,
-                priority: row.get(8)?,
-                availability_nux_json: row.get(9)?,
-                upgrade_json: row.get(10)?,
-                base_instructions: row.get(11)?,
-                model_messages_json: row.get(12)?,
-                supports_reasoning_summaries: row.get(13)?,
-                default_reasoning_summary: row.get(14)?,
-                support_verbosity: row.get(15)?,
-                default_verbosity_json: row.get(16)?,
-                apply_patch_tool_type: row.get(17)?,
-                web_search_tool_type: row.get(18)?,
-                truncation_mode: row.get(19)?,
-                truncation_limit: row.get(20)?,
-                truncation_extra_json: row.get(21)?,
-                supports_parallel_tool_calls: row.get(22)?,
-                supports_image_detail_original: row.get(23)?,
-                context_window: row.get(24)?,
-                auto_compact_token_limit: row.get(25)?,
-                effective_context_window_percent: row.get(26)?,
-                minimal_client_version_json: row.get(27)?,
-                supports_search_tool: row.get(28)?,
-                extra_json: row.get(29)?,
-                sort_index: row.get(30)?,
-                updated_at: row.get(31)?,
+                source_kind: row.get(3)?,
+                user_edited: row.get(4)?,
+                description: row.get(5)?,
+                default_reasoning_level: row.get(6)?,
+                shell_type: row.get(7)?,
+                visibility: row.get(8)?,
+                supported_in_api: row.get(9)?,
+                priority: row.get(10)?,
+                availability_nux_json: row.get(11)?,
+                upgrade_json: row.get(12)?,
+                base_instructions: row.get(13)?,
+                model_messages_json: row.get(14)?,
+                supports_reasoning_summaries: row.get(15)?,
+                default_reasoning_summary: row.get(16)?,
+                support_verbosity: row.get(17)?,
+                default_verbosity_json: row.get(18)?,
+                apply_patch_tool_type: row.get(19)?,
+                web_search_tool_type: row.get(20)?,
+                truncation_mode: row.get(21)?,
+                truncation_limit: row.get(22)?,
+                truncation_extra_json: row.get(23)?,
+                supports_parallel_tool_calls: row.get(24)?,
+                supports_image_detail_original: row.get(25)?,
+                context_window: row.get(26)?,
+                auto_compact_token_limit: row.get(27)?,
+                effective_context_window_percent: row.get(28)?,
+                minimal_client_version_json: row.get(29)?,
+                supports_search_tool: row.get(30)?,
+                extra_json: row.get(31)?,
+                sort_index: row.get(32)?,
+                updated_at: row.get(33)?,
             })
         })?;
         let mut items = Vec::new();
@@ -294,6 +241,14 @@ impl Storage {
             items.push(row?);
         }
         Ok(items)
+    }
+
+    pub fn delete_model_catalog_model(&self, scope: &str, slug: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "DELETE FROM model_catalog_models WHERE scope = ?1 AND slug = ?2",
+            params![scope, slug],
+        )?;
+        Ok(())
     }
 
     pub fn upsert_model_catalog_reasoning_levels(
@@ -354,81 +309,113 @@ impl Storage {
         Ok(items)
     }
 
+    pub fn delete_model_catalog_reasoning_levels(
+        &self,
+        scope: &str,
+        slug: &str,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "DELETE FROM model_catalog_reasoning_levels WHERE scope = ?1 AND slug = ?2",
+            params![scope, slug],
+        )?;
+        Ok(())
+    }
+
     pub fn upsert_model_catalog_additional_speed_tiers(
         &self,
         items: &[ModelCatalogStringItemRecord],
     ) -> rusqlite::Result<()> {
-        self.upsert_model_catalog_string_items("model_catalog_additional_speed_tiers", items)
+        self.upsert_model_catalog_string_items(STRING_ITEM_KIND_ADDITIONAL_SPEED_TIERS, items)
     }
 
     pub fn list_model_catalog_additional_speed_tiers(
         &self,
         scope: &str,
     ) -> rusqlite::Result<Vec<ModelCatalogStringItemRecord>> {
-        self.list_model_catalog_string_items("model_catalog_additional_speed_tiers", scope)
+        self.list_model_catalog_string_items(STRING_ITEM_KIND_ADDITIONAL_SPEED_TIERS, scope)
     }
 
     pub fn upsert_model_catalog_experimental_supported_tools(
         &self,
         items: &[ModelCatalogStringItemRecord],
     ) -> rusqlite::Result<()> {
-        self.upsert_model_catalog_string_items("model_catalog_experimental_supported_tools", items)
+        self.upsert_model_catalog_string_items(
+            STRING_ITEM_KIND_EXPERIMENTAL_SUPPORTED_TOOLS,
+            items,
+        )
     }
 
     pub fn list_model_catalog_experimental_supported_tools(
         &self,
         scope: &str,
     ) -> rusqlite::Result<Vec<ModelCatalogStringItemRecord>> {
-        self.list_model_catalog_string_items("model_catalog_experimental_supported_tools", scope)
+        self.list_model_catalog_string_items(
+            STRING_ITEM_KIND_EXPERIMENTAL_SUPPORTED_TOOLS,
+            scope,
+        )
     }
 
     pub fn upsert_model_catalog_input_modalities(
         &self,
         items: &[ModelCatalogStringItemRecord],
     ) -> rusqlite::Result<()> {
-        self.upsert_model_catalog_string_items("model_catalog_input_modalities", items)
+        self.upsert_model_catalog_string_items(STRING_ITEM_KIND_INPUT_MODALITIES, items)
     }
 
     pub fn list_model_catalog_input_modalities(
         &self,
         scope: &str,
     ) -> rusqlite::Result<Vec<ModelCatalogStringItemRecord>> {
-        self.list_model_catalog_string_items("model_catalog_input_modalities", scope)
+        self.list_model_catalog_string_items(STRING_ITEM_KIND_INPUT_MODALITIES, scope)
     }
 
     pub fn upsert_model_catalog_available_in_plans(
         &self,
         items: &[ModelCatalogStringItemRecord],
     ) -> rusqlite::Result<()> {
-        self.upsert_model_catalog_string_items("model_catalog_available_in_plans", items)
+        self.upsert_model_catalog_string_items(STRING_ITEM_KIND_AVAILABLE_IN_PLANS, items)
     }
 
     pub fn list_model_catalog_available_in_plans(
         &self,
         scope: &str,
     ) -> rusqlite::Result<Vec<ModelCatalogStringItemRecord>> {
-        self.list_model_catalog_string_items("model_catalog_available_in_plans", scope)
+        self.list_model_catalog_string_items(STRING_ITEM_KIND_AVAILABLE_IN_PLANS, scope)
+    }
+
+    pub fn delete_model_catalog_string_items(
+        &self,
+        scope: &str,
+        slug: &str,
+        item_kind: &str,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "DELETE FROM model_catalog_string_items
+             WHERE scope = ?1 AND slug = ?2 AND item_kind = ?3",
+            params![scope, slug, item_kind],
+        )?;
+        Ok(())
     }
 
     fn upsert_model_catalog_string_items(
         &self,
-        table: &str,
+        item_kind: &str,
         items: &[ModelCatalogStringItemRecord],
     ) -> rusqlite::Result<()> {
-        let sql = format!(
-            "INSERT INTO {table} (scope, slug, value, sort_index, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(scope, slug, value) DO UPDATE SET
+        let sql =
+            "INSERT INTO model_catalog_string_items (scope, slug, item_kind, value, sort_index, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(scope, slug, item_kind, value) DO UPDATE SET
                sort_index = excluded.sort_index,
-               updated_at = excluded.updated_at"
-        );
+               updated_at = excluded.updated_at";
         let tx = self.conn.unchecked_transaction()?;
         for item in items {
             tx.execute(
-                &sql,
+                sql,
                 params![
                     item.scope,
                     item.slug,
+                    item_kind,
                     item.value,
                     item.sort_index,
                     item.updated_at
@@ -441,17 +428,16 @@ impl Storage {
 
     fn list_model_catalog_string_items(
         &self,
-        table: &str,
+        item_kind: &str,
         scope: &str,
     ) -> rusqlite::Result<Vec<ModelCatalogStringItemRecord>> {
-        let sql = format!(
+        let mut stmt = self.conn.prepare(
             "SELECT scope, slug, value, sort_index, updated_at
-             FROM {table}
-             WHERE scope = ?1
-             ORDER BY slug ASC, sort_index ASC, value ASC"
-        );
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map([scope], |row| {
+             FROM model_catalog_string_items
+             WHERE scope = ?1 AND item_kind = ?2
+             ORDER BY slug ASC, sort_index ASC, value ASC",
+        )?;
+        let rows = stmt.query_map(params![scope, item_kind], |row| {
             Ok(ModelCatalogStringItemRecord {
                 scope: row.get(0)?,
                 slug: row.get(1)?,
@@ -487,46 +473,23 @@ impl Storage {
              );
              CREATE INDEX IF NOT EXISTS idx_model_catalog_reasoning_levels_scope_sort
                ON model_catalog_reasoning_levels(scope, slug, sort_index, effort);
-             CREATE TABLE IF NOT EXISTS model_catalog_additional_speed_tiers (
+             CREATE TABLE IF NOT EXISTS model_catalog_string_items (
                 scope TEXT NOT NULL,
                 slug TEXT NOT NULL,
+                item_kind TEXT NOT NULL,
                 value TEXT NOT NULL,
                 sort_index INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL,
-                PRIMARY KEY (scope, slug, value)
+                PRIMARY KEY (scope, slug, item_kind, value)
              );
-             CREATE INDEX IF NOT EXISTS idx_model_catalog_additional_speed_tiers_scope_sort
-               ON model_catalog_additional_speed_tiers(scope, slug, sort_index, value);
-             CREATE TABLE IF NOT EXISTS model_catalog_experimental_supported_tools (
-                scope TEXT NOT NULL,
-                slug TEXT NOT NULL,
-                value TEXT NOT NULL,
-                sort_index INTEGER NOT NULL DEFAULT 0,
-                updated_at INTEGER NOT NULL,
-                PRIMARY KEY (scope, slug, value)
-             );
-             CREATE INDEX IF NOT EXISTS idx_model_catalog_experimental_supported_tools_scope_sort
-               ON model_catalog_experimental_supported_tools(scope, slug, sort_index, value);
-             CREATE TABLE IF NOT EXISTS model_catalog_input_modalities (
-                scope TEXT NOT NULL,
-                slug TEXT NOT NULL,
-                value TEXT NOT NULL,
-                sort_index INTEGER NOT NULL DEFAULT 0,
-                updated_at INTEGER NOT NULL,
-                PRIMARY KEY (scope, slug, value)
-             );
-             CREATE INDEX IF NOT EXISTS idx_model_catalog_input_modalities_scope_sort
-               ON model_catalog_input_modalities(scope, slug, sort_index, value);
-             CREATE TABLE IF NOT EXISTS model_catalog_available_in_plans (
-                scope TEXT NOT NULL,
-                slug TEXT NOT NULL,
-                value TEXT NOT NULL,
-                sort_index INTEGER NOT NULL DEFAULT 0,
-                updated_at INTEGER NOT NULL,
-                PRIMARY KEY (scope, slug, value)
-             );
-             CREATE INDEX IF NOT EXISTS idx_model_catalog_available_in_plans_scope_sort
-               ON model_catalog_available_in_plans(scope, slug, sort_index, value);",
+             CREATE INDEX IF NOT EXISTS idx_model_catalog_string_items_scope_kind_sort
+               ON model_catalog_string_items(scope, item_kind, slug, sort_index, value);",
+        )?;
+        self.conn.execute_batch(
+            "DROP TABLE IF EXISTS model_catalog_additional_speed_tiers;
+             DROP TABLE IF EXISTS model_catalog_experimental_supported_tools;
+             DROP TABLE IF EXISTS model_catalog_input_modalities;
+             DROP TABLE IF EXISTS model_catalog_available_in_plans;",
         )?;
         Ok(())
     }
@@ -539,6 +502,16 @@ impl Storage {
         }
 
         self.ensure_column("model_catalog_models", "description", "TEXT")?;
+        self.ensure_column(
+            "model_catalog_models",
+            "source_kind",
+            "TEXT NOT NULL DEFAULT 'remote'",
+        )?;
+        self.ensure_column(
+            "model_catalog_models",
+            "user_edited",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
         self.ensure_column("model_catalog_models", "default_reasoning_level", "TEXT")?;
         self.ensure_column("model_catalog_models", "shell_type", "TEXT")?;
         self.ensure_column("model_catalog_models", "visibility", "TEXT")?;
@@ -650,6 +623,8 @@ impl Storage {
                 scope TEXT NOT NULL,
                 slug TEXT NOT NULL,
                 display_name TEXT NOT NULL,
+                source_kind TEXT NOT NULL DEFAULT 'remote',
+                user_edited INTEGER NOT NULL DEFAULT 0,
                 description TEXT,
                 default_reasoning_level TEXT,
                 shell_type TEXT,
@@ -686,8 +661,8 @@ impl Storage {
         for model in &model_rows {
             tx.execute(
                 "INSERT INTO model_catalog_models_rebuilt (
-                    scope, slug, display_name, description, default_reasoning_level,
-                    shell_type, visibility, supported_in_api, priority,
+                    scope, slug, display_name, source_kind, user_edited,
+                    description, default_reasoning_level, shell_type, visibility, supported_in_api, priority,
                     availability_nux_json, upgrade_json, base_instructions,
                     model_messages_json, supports_reasoning_summaries,
                     default_reasoning_summary, support_verbosity,
@@ -701,12 +676,14 @@ impl Storage {
                 ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                     ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24,
-                    ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32
+                    ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34
                 )",
                 params![
                     model.scope,
                     model.slug,
                     model.display_name,
+                    model.source_kind,
+                    model.user_edited,
                     model.description,
                     model.default_reasoning_level,
                     model.shell_type,
@@ -772,6 +749,16 @@ impl Storage {
         ))?;
         self.rebuild_model_catalog_models_without_legacy_json()?;
         self.ensure_column("model_catalog_models", "description", "TEXT")?;
+        self.ensure_column(
+            "model_catalog_models",
+            "source_kind",
+            "TEXT NOT NULL DEFAULT 'remote'",
+        )?;
+        self.ensure_column(
+            "model_catalog_models",
+            "user_edited",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
         self.ensure_column("model_catalog_models", "default_reasoning_level", "TEXT")?;
         self.ensure_column("model_catalog_models", "shell_type", "TEXT")?;
         self.ensure_column("model_catalog_models", "visibility", "TEXT")?;
@@ -836,6 +823,8 @@ struct LegacyModelCatalogModelRow {
     scope: String,
     slug: String,
     display_name: String,
+    source_kind: Option<String>,
+    user_edited: Option<bool>,
     description: Option<String>,
     default_reasoning_level: Option<String>,
     shell_type: Option<String>,
@@ -874,8 +863,8 @@ impl Storage {
     ) -> rusqlite::Result<Vec<LegacyModelCatalogModelRow>> {
         let mut stmt = self.conn.prepare(
             "SELECT
-                scope, slug, display_name, description, default_reasoning_level,
-                shell_type, visibility, supported_in_api, priority,
+                scope, slug, display_name, source_kind, user_edited,
+                description, default_reasoning_level, shell_type, visibility, supported_in_api, priority,
                 availability_nux_json, upgrade_json, base_instructions,
                 model_messages_json, supports_reasoning_summaries,
                 default_reasoning_summary, support_verbosity,
@@ -894,36 +883,38 @@ impl Storage {
                 scope: row.get(0)?,
                 slug: row.get(1)?,
                 display_name: row.get(2)?,
-                description: row.get(3)?,
-                default_reasoning_level: row.get(4)?,
-                shell_type: row.get(5)?,
-                visibility: row.get(6)?,
-                supported_in_api: row.get(7)?,
-                priority: row.get(8)?,
-                availability_nux_json: row.get(9)?,
-                upgrade_json: row.get(10)?,
-                base_instructions: row.get(11)?,
-                model_messages_json: row.get(12)?,
-                supports_reasoning_summaries: row.get(13)?,
-                default_reasoning_summary: row.get(14)?,
-                support_verbosity: row.get(15)?,
-                default_verbosity_json: row.get(16)?,
-                apply_patch_tool_type: row.get(17)?,
-                web_search_tool_type: row.get(18)?,
-                truncation_mode: row.get(19)?,
-                truncation_limit: row.get(20)?,
-                truncation_extra_json: row.get(21)?,
-                supports_parallel_tool_calls: row.get(22)?,
-                supports_image_detail_original: row.get(23)?,
-                context_window: row.get(24)?,
-                auto_compact_token_limit: row.get(25)?,
-                effective_context_window_percent: row.get(26)?,
-                minimal_client_version_json: row.get(27)?,
-                supports_search_tool: row.get(28)?,
-                extra_json: row.get(29)?,
-                model_json: row.get(30)?,
-                sort_index: row.get(31)?,
-                updated_at: row.get(32)?,
+                source_kind: row.get(3)?,
+                user_edited: row.get(4)?,
+                description: row.get(5)?,
+                default_reasoning_level: row.get(6)?,
+                shell_type: row.get(7)?,
+                visibility: row.get(8)?,
+                supported_in_api: row.get(9)?,
+                priority: row.get(10)?,
+                availability_nux_json: row.get(11)?,
+                upgrade_json: row.get(12)?,
+                base_instructions: row.get(13)?,
+                model_messages_json: row.get(14)?,
+                supports_reasoning_summaries: row.get(15)?,
+                default_reasoning_summary: row.get(16)?,
+                support_verbosity: row.get(17)?,
+                default_verbosity_json: row.get(18)?,
+                apply_patch_tool_type: row.get(19)?,
+                web_search_tool_type: row.get(20)?,
+                truncation_mode: row.get(21)?,
+                truncation_limit: row.get(22)?,
+                truncation_extra_json: row.get(23)?,
+                supports_parallel_tool_calls: row.get(24)?,
+                supports_image_detail_original: row.get(25)?,
+                context_window: row.get(26)?,
+                auto_compact_token_limit: row.get(27)?,
+                effective_context_window_percent: row.get(28)?,
+                minimal_client_version_json: row.get(29)?,
+                supports_search_tool: row.get(30)?,
+                extra_json: row.get(31)?,
+                model_json: row.get(32)?,
+                sort_index: row.get(33)?,
+                updated_at: row.get(34)?,
             })
         })?;
         let mut items = Vec::new();
@@ -953,6 +944,12 @@ fn model_record_from_legacy_row(
         } else {
             row.display_name.clone()
         },
+        source_kind: row
+            .source_kind
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "remote".to_string()),
+        user_edited: row.user_edited.unwrap_or(false),
         description: row
             .description
             .clone()
