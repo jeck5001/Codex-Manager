@@ -308,6 +308,74 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertIn(("warning", "获取 Device ID 遇到 HTTP 403，尝试浏览器兜底..."), logs)
         self.assertIn(("info", "Device ID: did-from-browser"), logs)
 
+    def test_get_device_id_syncs_browser_auth_state_cookies_before_returning(self):
+        logs = []
+        original_fetch_browser_auth_state = getattr(REGISTER_MODULE, "fetch_browser_auth_state", None)
+
+        class FakeCookieStore(dict):
+            def __init__(self):
+                super().__init__()
+                self.set_calls = []
+
+            def set(self, name, value, **kwargs):
+                self[name] = value
+                self.set_calls.append((name, value, kwargs))
+
+        class FakeResponse:
+            status_code = 403
+            headers = {}
+            text = ""
+            cookies = {}
+
+        class FakeSession:
+            def __init__(self):
+                self.cookies = FakeCookieStore()
+                self.calls = 0
+
+            def get(self, url, **kwargs):
+                self.calls += 1
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+        engine.proxy_url = None
+        engine.session = FakeSession()
+        engine.http_client = types.SimpleNamespace(session=engine.session, close=lambda: None)
+        engine._log = lambda message, level="info": logs.append((level, message))
+
+        try:
+            REGISTER_MODULE.fetch_browser_auth_state = lambda **kwargs: {
+                "did": "did-from-browser-state",
+                "cookies": [
+                    {
+                        "name": "cf_clearance",
+                        "value": "cf-cookie",
+                        "domain": ".openai.com",
+                        "path": "/",
+                    }
+                ],
+                "final_url": "https://auth.openai.com/u/login",
+            }
+            did = engine._get_device_id()
+        finally:
+            if original_fetch_browser_auth_state is None:
+                delattr(REGISTER_MODULE, "fetch_browser_auth_state")
+            else:
+                REGISTER_MODULE.fetch_browser_auth_state = original_fetch_browser_auth_state
+
+        self.assertEqual(did, "did-from-browser-state")
+        self.assertEqual(
+            engine.session.cookies.set_calls,
+            [("cf_clearance", "cf-cookie", {"domain": ".openai.com", "path": "/"})],
+        )
+        self.assertIn(("warning", "浏览器认证态已同步到当前会话，准备重试 Device ID"), logs)
+        self.assertIn(("info", "Device ID: did-from-browser-state"), logs)
+
     def test_session_cookie_debug_summary_reports_key_cookie_flags(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
         engine._session_cookie_items = lambda: [
@@ -1321,6 +1389,178 @@ class RegisterAddPhoneTests(unittest.TestCase):
             ("warning", "当前 Device ID 丢失，已从会话 Cookie 恢复"),
             logs,
         )
+
+    def test_register_password_retries_after_browser_auth_state_refresh_on_generic_400(self):
+        captured = {"attempts": []}
+        original_fetch_browser_auth_state = getattr(REGISTER_MODULE, "fetch_browser_auth_state", None)
+
+        class FakeCookieStore(dict):
+            def __init__(self):
+                super().__init__({"oai-did": "did-initial"})
+                self.set_calls = []
+
+            def set(self, name, value, **kwargs):
+                self[name] = value
+                self.set_calls.append((name, value, kwargs))
+
+        class FakeResponse400:
+            status_code = 400
+            headers = {"set-cookie": "cf_clearance=retry-token; Path=/; Secure"}
+            text = json.dumps(
+                {
+                    "error": {
+                        "message": "Failed to create account. Please try again.",
+                        "type": "invalid_request_error",
+                        "param": None,
+                        "code": None,
+                    }
+                }
+            )
+            url = "https://auth.openai.com/api/accounts/user/register"
+
+            def json(self):
+                return json.loads(self.text)
+
+        class FakeResponse200:
+            status_code = 200
+            headers = {}
+            text = "{}"
+            url = "https://auth.openai.com/api/accounts/user/register"
+
+            def json(self):
+                return {}
+
+        class FakeSession:
+            def __init__(self):
+                self.cookies = FakeCookieStore()
+                self.calls = 0
+
+            def post(self, url, **kwargs):
+                self.calls += 1
+                captured["attempts"].append(
+                    {
+                        "url": url,
+                        "headers": dict(kwargs.get("headers") or {}),
+                    }
+                )
+                if self.calls == 1:
+                    return FakeResponse400()
+                return FakeResponse200()
+
+        logs = []
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine.http_client = types.SimpleNamespace(session=engine.session)
+        engine._log = lambda message, level="info": logs.append((level, message))
+        engine._generate_password = lambda: "StrongPassw0rd!"
+        engine._current_device_id = "did-initial"
+        engine._current_sentinel_token = ""
+        engine.proxy_url = None
+        engine.oauth_start = OAuthStart(
+            auth_url="https://auth.openai.com/oauth/authorize?client_id=test",
+            state="state",
+            code_verifier="verifier",
+            redirect_uri="http://localhost/callback",
+        )
+        engine._get_browser_sentinel_payload = lambda flow, referer: None
+        engine._check_sentinel = lambda did, flow="authorize_continue": f"http-token-{len(captured['attempts']) + 1}"
+
+        try:
+            REGISTER_MODULE.fetch_browser_auth_state = lambda **kwargs: {
+                "did": "did-refreshed",
+                "cookies": [
+                    {
+                        "name": "cf_clearance",
+                        "value": "cf-cookie",
+                        "domain": ".openai.com",
+                        "path": "/",
+                    }
+                ],
+                "final_url": "https://auth.openai.com/api/accounts/email-otp/send",
+            }
+            ok, _password = engine._register_password()
+        finally:
+            if original_fetch_browser_auth_state is None:
+                delattr(REGISTER_MODULE, "fetch_browser_auth_state")
+            else:
+                REGISTER_MODULE.fetch_browser_auth_state = original_fetch_browser_auth_state
+
+        self.assertTrue(ok)
+        self.assertEqual(engine.session.calls, 2)
+        self.assertEqual(engine._current_device_id, "did-refreshed")
+        self.assertEqual(
+            engine.session.cookies.set_calls,
+            [("cf_clearance", "cf-cookie", {"domain": ".openai.com", "path": "/"})],
+        )
+        first_sentinel = json.loads(captured["attempts"][0]["headers"]["openai-sentinel-token"])
+        second_sentinel = json.loads(captured["attempts"][1]["headers"]["openai-sentinel-token"])
+        self.assertEqual(first_sentinel["id"], "did-initial")
+        self.assertEqual(second_sentinel["id"], "did-refreshed")
+        self.assertIn(("warning", "密码注册遇到通用 400，尝试浏览器落地认证状态后重试"), logs)
+
+    def test_send_verification_code_uses_post_email_otp_send_endpoint(self):
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {}
+
+        class FakeSession:
+            def post(self, url, **kwargs):
+                captured["url"] = url
+                captured["kwargs"] = kwargs
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._log_auth_response_preview = lambda *_args, **_kwargs: None
+        engine._follow_auth_continue_url = lambda *_args, **_kwargs: None
+
+        ok = engine._send_verification_code()
+
+        self.assertTrue(ok)
+        self.assertEqual(captured["url"], "")
+        self.assertEqual(captured["kwargs"]["headers"]["referer"], "https://auth.openai.com/create-account/password")
+        self.assertEqual(captured["kwargs"]["headers"]["accept"], "application/json")
+        self.assertEqual(captured["kwargs"]["headers"]["content-type"], "application/json")
+        self.assertEqual(captured["kwargs"]["data"], "{}")
+
+    def test_send_verification_code_follows_continue_url_from_payload(self):
+        followed = []
+        previews = []
+
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {
+                    "continue_url": "https://auth.openai.com/u/flow",
+                    "page": {"type": "email_otp_verification"},
+                }
+
+        class FakeSession:
+            def post(self, url, **kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._log_auth_response_preview = lambda prefix, payload: previews.append((prefix, payload))
+        engine._follow_auth_continue_url = lambda payload, stage: followed.append((payload, stage))
+
+        ok = engine._send_verification_code()
+
+        self.assertTrue(ok)
+        self.assertEqual(previews[0][0], "验证码发送响应摘要")
+        self.assertEqual(previews[0][1]["page"]["type"], "email_otp_verification")
+        self.assertEqual(followed[0][0]["continue_url"], "https://auth.openai.com/u/flow")
+        self.assertEqual(followed[0][1], "注册验证码")
 
     def test_create_user_account_prefers_browser_sentinel_token_payload(self):
         captured = {}

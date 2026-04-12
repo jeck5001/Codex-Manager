@@ -128,12 +128,31 @@ def fetch_browser_device_id(
     callback_logger: Optional[Callable[[str], None]] = None,
 ) -> str:
     """在浏览器上下文中落地 OAuth 页面并尝试读取 oai-did cookie。"""
+    auth_state = fetch_browser_auth_state(
+        auth_url=auth_url,
+        proxy_url=proxy_url,
+        callback_logger=callback_logger,
+    )
+    if isinstance(auth_state, dict):
+        return str(auth_state.get("did") or "").strip()
+    return ""
+
+
+def fetch_browser_auth_state(
+    *,
+    auth_url: str,
+    cookies_str: str = "",
+    cookies: Optional[list[dict[str, Any]]] = None,
+    proxy_url: Optional[str] = None,
+    callback_logger: Optional[Callable[[str], None]] = None,
+) -> Optional[Dict[str, Any]]:
+    """在浏览器上下文中落地认证页并回收当前认证态。"""
     try:
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
         from playwright.sync_api import sync_playwright
     except ImportError:
-        _log(callback_logger, "playwright 未安装，无法使用浏览器兜底获取 Device ID")
-        return ""
+        _log(callback_logger, "playwright 未安装，无法使用浏览器认证态兜底")
+        return None
 
     proxy = _build_playwright_proxy(proxy_url)
 
@@ -153,24 +172,38 @@ def fetch_browser_device_id(
         )
 
         try:
+            context_cookies = list(cookies or [])
+            if not context_cookies and cookies_str:
+                context_cookies.extend(_parse_cookie_str(cookies_str, ".openai.com"))
+            if context_cookies:
+                context.add_cookies(context_cookies)
+
             page = context.new_page()
             target_url = str(auth_url or "").strip() or "https://auth.openai.com/"
-            _log(callback_logger, f"浏览器兜底获取 Device ID，打开: {target_url[:120]}...")
+            _log(callback_logger, f"浏览器兜底同步认证态，打开: {target_url[:120]}...")
             page.goto(target_url, wait_until="domcontentloaded", timeout=30_000)
             page.wait_for_timeout(2_000)
-            browser_cookies = context.cookies(["https://auth.openai.com/", target_url])
+            final_url = str(getattr(page, "url", "") or "").strip()
+            cookie_urls = ["https://auth.openai.com/", target_url]
+            if final_url and final_url not in cookie_urls:
+                cookie_urls.append(final_url)
+            browser_cookies = context.cookies(cookie_urls)
             did = _extract_cookie_value(browser_cookies, "oai-did")
             if did:
-                _log(callback_logger, "浏览器兜底获取 Device ID 成功")
+                _log(callback_logger, "浏览器兜底同步认证态成功")
             else:
                 _log(callback_logger, "浏览器兜底未读取到 oai-did cookie")
-            return did
+            return {
+                "did": did,
+                "cookies": browser_cookies,
+                "final_url": final_url,
+            }
         except PlaywrightTimeoutError:
-            _log(callback_logger, "浏览器兜底获取 Device ID 超时")
-            return ""
+            _log(callback_logger, "浏览器兜底同步认证态超时")
+            return None
         except Exception as exc:
-            _log(callback_logger, f"浏览器兜底获取 Device ID 异常: {exc}")
-            return ""
+            _log(callback_logger, f"浏览器兜底同步认证态异常: {exc}")
+            return None
         finally:
             try:
                 context.close()
