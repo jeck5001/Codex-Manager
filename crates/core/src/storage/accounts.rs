@@ -1169,12 +1169,18 @@ mod tests {
         storage
             .set_preferred_account(Some("acc-a"))
             .expect("set preferred a");
-        assert_eq!(storage.preferred_account_id().expect("preferred a"), Some("acc-a".to_string()));
+        assert_eq!(
+            storage.preferred_account_id().expect("preferred a"),
+            Some("acc-a".to_string())
+        );
 
         storage
             .set_preferred_account(Some("acc-b"))
             .expect("set preferred b");
-        assert_eq!(storage.preferred_account_id().expect("preferred b"), Some("acc-b".to_string()));
+        assert_eq!(
+            storage.preferred_account_id().expect("preferred b"),
+            Some("acc-b".to_string())
+        );
 
         assert!(
             storage
@@ -1182,11 +1188,9 @@ mod tests {
                 .expect("clear non-preferred")
                 == false
         );
-        assert!(
-            storage
-                .clear_preferred_account_if("acc-b")
-                .expect("clear preferred")
-        );
+        assert!(storage
+            .clear_preferred_account_if("acc-b")
+            .expect("clear preferred"));
         assert_eq!(storage.preferred_account_id().expect("no preferred"), None);
     }
 }
