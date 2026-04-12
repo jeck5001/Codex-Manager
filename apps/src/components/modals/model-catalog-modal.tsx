@@ -80,7 +80,7 @@ const UNSET_SELECT_VALUE = "__unset__";
 
 const VISIBILITY_OPTIONS = [
   { value: "list", label: "list" },
-  { value: "hidden", label: "hidden" },
+  { value: "hide", label: "hide" },
 ] as const;
 
 const REASONING_EFFORT_OPTIONS = [
@@ -94,7 +94,21 @@ function normalizeOptionalSelectValue(value: string | null): string {
   if (!value || value === UNSET_SELECT_VALUE) {
     return "";
   }
+  if (value === "hidden") {
+    return "hide";
+  }
   return value;
+}
+
+function normalizeVisibilityValue(value: string | null | undefined): string {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized === "hidden") {
+    return "hide";
+  }
+  return normalized;
 }
 
 function toPrettyJson(value: unknown): string {
@@ -189,7 +203,7 @@ function buildDraft(
     supportedInApi: model?.supportedInApi ?? true,
     sortIndex: String(model?.sortIndex ?? nextSortIndex),
     priority: String(model?.priority ?? 0),
-    visibility: model?.visibility || "",
+    visibility: normalizeVisibilityValue(model?.visibility),
     defaultReasoningLevel: model?.defaultReasoningLevel || "",
     advancedJson: buildAdvancedJson(model),
   };

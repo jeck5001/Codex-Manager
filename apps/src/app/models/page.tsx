@@ -157,6 +157,9 @@ export default function ModelsPage() {
             <p className="max-w-3xl text-sm text-muted-foreground">
               {t("这里维护本地结构化模型目录。默认绑定模型会优先展示 supportedInApi=true 的模型，而 Codex CLI 仍会拿到完整目录。")}
             </p>
+            <p className="max-w-3xl text-xs text-muted-foreground">
+              {t("已运行中的 Codex 会话会缓存启动时的模型目录；保存后如需让 `/model` 看到最新模型与说明，请重启该会话。")}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => void refreshRemote()} disabled={isRefreshing}>

@@ -504,6 +504,15 @@ function normalizeModelTruncationPolicy(payload: unknown): ModelTruncationPolicy
   };
 }
 
+function normalizeModelVisibility(value: unknown): string | null {
+  const normalized = asString(value).trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "hidden") {
+    return "hide";
+  }
+  return normalized;
+}
+
 function normalizeModelInfo(payload: unknown): ModelInfo | null {
   const source = asObject(payload);
   const slug = asString(source.slug);
@@ -521,7 +530,7 @@ function normalizeModelInfo(payload: unknown): ModelInfo | null {
       source.supported_reasoning_levels ?? source.supportedReasoningLevels,
     ),
     shellType: asString(source.shell_type ?? source.shellType) || null,
-    visibility: asString(source.visibility) || null,
+    visibility: normalizeModelVisibility(source.visibility),
     supportedInApi: asBoolean(source.supported_in_api ?? source.supportedInApi, true),
     priority: toNullableNumber(source.priority) ?? 0,
     additionalSpeedTiers: asArray(

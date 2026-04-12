@@ -457,6 +457,7 @@ fn normalize_model_info(mut model: ModelInfo) -> Option<ModelInfo> {
     if model.display_name.trim().is_empty() {
         model.display_name = model.slug.clone();
     }
+    model.visibility = normalize_visibility(model.visibility);
     if model.input_modalities.is_empty() {
         model.input_modalities = default_input_modalities();
     }
@@ -1068,6 +1069,18 @@ fn default_input_modalities() -> Vec<String> {
     vec!["text".to_string(), "image".to_string()]
 }
 
+fn normalize_visibility(value: Option<String>) -> Option<String> {
+    let normalized = value
+        .as_deref()
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(|item| item.to_ascii_lowercase())?;
+    match normalized.as_str() {
+        "hidden" => Some("hide".to_string()),
+        _ => Some(normalized),
+    }
+}
+
 fn serialize_json_option(value: &Option<Value>) -> Result<Option<String>, String> {
     value
         .as_ref()
@@ -1199,6 +1212,24 @@ mod tests {
         assert_eq!(normalized.models[0].display_name, "GPT-5");
         assert!(normalized.models[0].supported_in_api);
         assert_eq!(normalized.models[0].supported_reasoning_levels.len(), 1);
+    }
+
+    #[test]
+    fn normalize_models_response_maps_hidden_visibility_to_hide() {
+        let response = ModelsResponse {
+            models: vec![serde_json::from_value(json!({
+                "slug": "gpt-5.4-mini",
+                "display_name": "GPT-5.4-Mini",
+                "supported_in_api": true,
+                "visibility": "hidden"
+            }))
+            .expect("parse model")],
+            ..Default::default()
+        };
+
+        let normalized = normalize_models_response(response);
+        assert_eq!(normalized.models.len(), 1);
+        assert_eq!(normalized.models[0].visibility.as_deref(), Some("hide"));
     }
 
     #[test]
