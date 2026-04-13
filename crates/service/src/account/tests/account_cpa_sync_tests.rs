@@ -115,6 +115,25 @@ fn cpa_auth_files_accepts_nested_files_array() {
 }
 
 #[test]
+fn cpa_auth_files_extracts_source_and_runtime_only_flags() {
+    let files = super::auth_file_flags_for_test(serde_json::json!({
+        "files": [
+            { "name": "disk.json", "source": "file", "runtime_only": false },
+            { "name": "memory.json", "source": "memory", "runtimeOnly": true }
+        ]
+    }))
+    .expect("parse file flags");
+
+    assert_eq!(
+        files,
+        vec![
+            ("disk.json".to_string(), Some("file".to_string()), false),
+            ("memory.json".to_string(), Some("memory".to_string()), true),
+        ]
+    );
+}
+
+#[test]
 fn cpa_filter_skips_non_target_payload_without_metadata_match() {
     let count = super::filter_import_items_for_test(r#"{"access_token":"abc123"}"#, false)
         .expect("filter");

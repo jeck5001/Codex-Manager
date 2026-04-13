@@ -35,6 +35,7 @@ struct CpaConnectionPayload {
 struct CpaAuthFile {
     name: String,
     source: Option<String>,
+    runtime_only: bool,
     item: Value,
 }
 
@@ -203,6 +204,11 @@ fn parse_auth_files(payload: Value) -> Result<Vec<CpaAuthFile>, String> {
             name: first_string_field(&item, &["name", "filename", "fileName", "id", "fileId"])
                 .unwrap_or_else(|| format!("auth-file-{}", index + 1)),
             source: first_string_field(&item, &["source", "sourceType", "type"]),
+            runtime_only: item
+                .get("runtime_only")
+                .or_else(|| item.get("runtimeOnly"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             item,
         })
         .collect())
@@ -248,9 +254,19 @@ fn metadata_blob(item: &Value) -> String {
 }
 
 fn is_runtime_only_source(file: &CpaAuthFile) -> bool {
+    if file.runtime_only {
+        return true;
+    }
     file.source
         .as_deref()
         .map(|value| value.trim().to_ascii_lowercase().contains("runtime"))
+        .unwrap_or(false)
+}
+
+fn is_downloadable_file_source(file: &CpaAuthFile) -> bool {
+    file.source
+        .as_deref()
+        .map(|value| value.trim().eq_ignore_ascii_case("file"))
         .unwrap_or(false)
 }
 
@@ -450,6 +466,14 @@ pub(crate) fn sync_cpa_accounts(params: Option<&Value>) -> Result<CpaSyncResult,
             errors.push(format!("{} 已跳过: runtime-only auth source", file.name));
             continue;
         }
+        if !is_downloadable_file_source(&file) {
+            let source = file.source.as_deref().unwrap_or("unknown");
+            errors.push(format!(
+                "{} 已跳过: source={} 不是可下载的 file 类型",
+                file.name, source
+            ));
+            continue;
+        }
 
         let metadata_match = looks_like_target_file(&file);
         let content = match download_auth_file(&settings, &file) {
@@ -517,6 +541,16 @@ pub(crate) fn import_cpa_payloads_for_test(
 #[cfg(test)]
 pub(crate) fn auth_files_from_test_payload(payload: Value) -> Result<Vec<String>, String> {
     parse_auth_files(payload).map(|files| files.into_iter().map(|file| file.name).collect())
+}
+
+#[cfg(test)]
+pub(crate) fn auth_file_flags_for_test(payload: Value) -> Result<Vec<(String, Option<String>, bool)>, String> {
+    parse_auth_files(payload).map(|files| {
+        files
+            .into_iter()
+            .map(|file| (file.name, file.source, file.runtime_only))
+            .collect()
+    })
 }
 
 #[cfg(test)]
