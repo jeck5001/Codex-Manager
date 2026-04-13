@@ -2,6 +2,8 @@
 pub(crate) mod availability;
 #[path = "account_cleanup.rs"]
 pub(crate) mod cleanup;
+#[path = "account_cpa_sync.rs"]
+pub(crate) mod cpa_sync;
 #[path = "account_delete.rs"]
 pub(crate) mod delete;
 #[path = "account_delete_many.rs"]

@@ -1,5 +1,6 @@
 use codexmanager_core::rpc::types::{AccountListParams, JsonRpcRequest, JsonRpcResponse};
 
+use crate::account::cpa_sync as account_cpa_sync;
 use crate::{
     account_cleanup, account_delete, account_delete_many, account_export, account_import,
     account_list, account_payment, account_register, account_update, account_update_many,
@@ -232,6 +233,12 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "account/teamManager/test" => super::value_or_error(
             account_payment::test_team_manager_connection(req.params.as_ref()),
         ),
+        "account/cpa/test" => {
+            super::value_or_error(account_cpa_sync::test_cpa_connection(req.params.as_ref()))
+        }
+        "account/cpa/sync" => {
+            super::value_or_error(account_cpa_sync::sync_cpa_accounts(req.params.as_ref()))
+        }
         "account/register/availableServices" => {
             super::value_or_error(account_register::available_register_services())
         }
