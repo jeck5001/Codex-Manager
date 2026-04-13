@@ -17,6 +17,8 @@ import {
 import {
   AccountAuthRecoveryResult,
   AccountBulkStatusUpdateResult,
+  AccountCpaConnectionResult,
+  AccountCpaSyncResult,
   AccountListResult,
   AccountOfficialPromoLinkResult,
   AccountPaymentLinkResult,
@@ -1337,6 +1339,22 @@ export const accountClient = {
     invoke<{ success: boolean; message: string }>(
       "service_account_team_manager_test",
       withAddr({ apiUrl: apiUrl ?? null, apiKey: apiKey ?? null })
+    ),
+  testCpaSync: (apiUrl?: string | null, managementKey?: string | null) =>
+    invoke<AccountCpaConnectionResult>(
+      "service_account_cpa_test",
+      withAddr({
+        apiUrl: apiUrl ?? null,
+        managementKey: managementKey ?? null,
+      })
+    ),
+  syncCpaAccounts: (apiUrl?: string | null, managementKey?: string | null) =>
+    invoke<AccountCpaSyncResult>(
+      "service_account_cpa_sync",
+      withAddr({
+        apiUrl: apiUrl ?? null,
+        managementKey: managementKey ?? null,
+      })
     ),
   import: (contents: string[]) =>
     invoke<AccountImportResult>("service_account_import", withAddr({ contents })),

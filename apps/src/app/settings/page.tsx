@@ -18,6 +18,7 @@ import {
 import {
   AlertChannel,
   AlertRule,
+  AccountCpaSyncResult,
   AppSettings,
   BackgroundTaskSettings,
   FreeProxySyncResult,
@@ -585,6 +586,9 @@ export default function SettingsPage() {
     Partial<Record<"sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs", string>>
   >({});
   const [backgroundTaskDraft, setBackgroundTaskDraft] = useState<Record<string, string>>({});
+  const [cpaSyncApiUrlDraft, setCpaSyncApiUrlDraft] = useState<string | null>(null);
+  const [cpaSyncManagementKeyDraft, setCpaSyncManagementKeyDraft] = useState("");
+  const [cpaSyncResult, setCpaSyncResult] = useState<AccountCpaSyncResult | null>(null);
   const [teamManagerApiUrlDraft, setTeamManagerApiUrlDraft] = useState<string | null>(null);
   const [teamManagerApiKeyDraft, setTeamManagerApiKeyDraft] = useState("");
   const [remoteManagementSecretDraft, setRemoteManagementSecretDraft] = useState("");
@@ -685,6 +689,41 @@ export default function SettingsPage() {
     },
     onError: (error: unknown) => {
       toast.error(`测试 Team Manager 失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const testCpaSync = useMutation({
+    mutationFn: (payload: { apiUrl?: string | null; managementKey?: string | null }) =>
+      accountClient.testCpaSync(payload.apiUrl, payload.managementKey),
+    onSuccess: (result) => {
+      if (result?.success) {
+        toast.success(result.message || "CPA 连接测试成功");
+      } else {
+        toast.error(result?.message || "CPA 连接测试失败");
+      }
+    },
+    onError: (error: unknown) => {
+      toast.error(`测试 CPA 失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const syncCpaAccounts = useMutation({
+    mutationFn: (payload: { apiUrl?: string | null; managementKey?: string | null }) =>
+      accountClient.syncCpaAccounts(payload.apiUrl, payload.managementKey),
+    onSuccess: async (result) => {
+      setCpaSyncResult(result);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["usage"] }),
+        queryClient.invalidateQueries({ queryKey: ["usage-aggregate"] }),
+        queryClient.invalidateQueries({ queryKey: ["today-summary"] }),
+      ]);
+      toast.success(
+        `CPA 同步完成：新增 ${result.created}，更新 ${result.updated}，失败 ${result.failed}`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(`同步 CPA 账号失败: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -1065,6 +1104,7 @@ export default function SettingsPage() {
   const proxyPoolValue = snapshot?.envOverrides.CODEXMANAGER_PROXY_LIST || "";
   const proxyPoolCount = countProxyPoolEntries(proxyPoolValue);
   const teamManagerApiUrlInput = teamManagerApiUrlDraft ?? snapshot?.teamManagerApiUrl ?? "";
+  const cpaSyncApiUrlInput = cpaSyncApiUrlDraft ?? snapshot?.cpaSyncApiUrl ?? "";
   const remoteManagementSecretInput = remoteManagementSecretDraft.trim();
   const payloadRewriteRulesInput =
     payloadRewriteRulesDraft ?? snapshot?.payloadRewriteRulesJson ?? "[]";
@@ -1424,6 +1464,24 @@ export default function SettingsPage() {
       .catch(() => undefined);
   };
 
+  const handleSaveCpaSync = () => {
+    if (!snapshot) return;
+    const nextApiUrl = cpaSyncApiUrlInput.trim();
+    void updateSettings
+      .mutateAsync({
+        cpaSyncEnabled: snapshot.cpaSyncEnabled,
+        cpaSyncApiUrl: nextApiUrl,
+        ...(cpaSyncManagementKeyDraft.trim()
+          ? { cpaSyncManagementKey: cpaSyncManagementKeyDraft.trim() }
+          : {}),
+      })
+      .then(() => {
+        setCpaSyncApiUrlDraft(null);
+        setCpaSyncManagementKeyDraft("");
+      })
+      .catch(() => undefined);
+  };
+
   const handleSaveRemoteManagement = () => {
     if (!snapshot) return;
     if (
@@ -1500,6 +1558,26 @@ export default function SettingsPage() {
       apiKey:
         teamManagerApiKeyDraft.trim() ||
         (snapshot.teamManagerHasApiKey ? "use_saved_key" : null),
+      });
+  };
+
+  const handleTestCpaSync = () => {
+    if (!snapshot) return;
+    void testCpaSync.mutate({
+      apiUrl: cpaSyncApiUrlInput.trim() || null,
+      managementKey:
+        cpaSyncManagementKeyDraft.trim() ||
+        (snapshot.cpaSyncHasManagementKey ? "use_saved_key" : null),
+      });
+  };
+
+  const handleRunCpaSync = () => {
+    if (!snapshot) return;
+    void syncCpaAccounts.mutate({
+      apiUrl: cpaSyncApiUrlInput.trim() || null,
+      managementKey:
+        cpaSyncManagementKeyDraft.trim() ||
+        (snapshot.cpaSyncHasManagementKey ? "use_saved_key" : null),
       });
   };
 
@@ -1793,6 +1871,167 @@ export default function SettingsPage() {
                   onCheckedChange={(value) => updateSettings.mutate({ lowTransparency: value })}
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border-none shadow-md">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Download className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">CLIProxyAPI / CPA</CardTitle>
+              </div>
+              <CardDescription>
+                配置 CPA Management API，把已登录的 Codex auth 文件单向同步到当前账号池。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>启用同步源</Label>
+                  <p className="text-xs text-muted-foreground">
+                    开启后保留这组 CPA 配置，便于后续手动测试和立即同步。
+                  </p>
+                </div>
+                <Switch
+                  checked={snapshot.cpaSyncEnabled}
+                  onCheckedChange={(value) => updateSettings.mutate({ cpaSyncEnabled: value })}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="cpa-sync-api-url">CPA API URL</Label>
+                <Input
+                  id="cpa-sync-api-url"
+                  placeholder="https://your-cpa.example.com"
+                  value={cpaSyncApiUrlInput}
+                  onChange={(event) => setCpaSyncApiUrlDraft(event.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="cpa-sync-management-key">Management Key</Label>
+                <Input
+                  id="cpa-sync-management-key"
+                  type="password"
+                  placeholder={
+                    snapshot.cpaSyncHasManagementKey
+                      ? "留空则保留当前已保存 Management Key"
+                      : "输入 CLIProxyAPI Management Key"
+                  }
+                  value={cpaSyncManagementKeyDraft}
+                  onChange={(event) => setCpaSyncManagementKeyDraft(event.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {snapshot.cpaSyncHasManagementKey
+                    ? "当前已保存 Management Key，重新输入后会覆盖。这里不是网页登录密码。"
+                    : "当前还未保存 Management Key。这里填写的是 Management Key，不是网页登录密码。"}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-border/60 bg-background/40 p-3 text-xs text-muted-foreground">
+                当前同步为单向导入：会读取 CPA 中已登录的 Codex/OpenAI/ChatGPT auth 文件并导入本地号池，不会删除 CPA 侧账号。
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  className="gap-2"
+                  disabled={updateSettings.isPending}
+                  onClick={handleSaveCpaSync}
+                >
+                  <Save className="h-4 w-4" />
+                  保存 CPA 设置
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  disabled={testCpaSync.isPending}
+                  onClick={handleTestCpaSync}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  {testCpaSync.isPending ? "测试中..." : "测试连接"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  disabled={syncCpaAccounts.isPending}
+                  onClick={handleRunCpaSync}
+                >
+                  <RefreshCw
+                    className={cn("h-4 w-4", syncCpaAccounts.isPending && "animate-spin")}
+                  />
+                  {syncCpaAccounts.isPending ? "同步中..." : "立即同步"}
+                </Button>
+              </div>
+
+              {cpaSyncResult ? (
+                <div className="space-y-3 rounded-xl border border-border/60 bg-background/40 p-4">
+                  <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">总文件数</p>
+                      <p className="text-base font-semibold">{cpaSyncResult.totalFiles}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">可导入文件</p>
+                      <p className="text-base font-semibold">{cpaSyncResult.eligibleFiles}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">已下载</p>
+                      <p className="text-base font-semibold">{cpaSyncResult.downloadedFiles}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">成功导入</p>
+                      <p className="text-base font-semibold">
+                        {cpaSyncResult.created + cpaSyncResult.updated}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">新增账号</p>
+                      <p className="text-base font-semibold text-emerald-500">
+                        {cpaSyncResult.created}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">更新账号</p>
+                      <p className="text-base font-semibold text-sky-500">
+                        {cpaSyncResult.updated}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">失败</p>
+                      <p className="text-base font-semibold text-rose-500">
+                        {cpaSyncResult.failed}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        本次导入账号 ID
+                      </p>
+                      <div className="max-h-28 overflow-auto whitespace-pre-wrap rounded-lg border border-border/50 bg-background/60 p-2 text-xs">
+                        {cpaSyncResult.importedAccountIds.length ? (
+                          cpaSyncResult.importedAccountIds.join("\n")
+                        ) : (
+                          <span className="text-muted-foreground">本次没有产生可识别的账号 ID</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        错误摘要
+                      </p>
+                      <div className="max-h-28 overflow-auto whitespace-pre-wrap rounded-lg border border-border/50 bg-background/60 p-2 text-xs">
+                        {cpaSyncResult.errors.length ? (
+                          cpaSyncResult.errors.slice(0, 8).join("\n")
+                        ) : (
+                          <span className="text-muted-foreground">没有错误</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

@@ -119,6 +119,23 @@ export interface AccountTeamManagerUploadManyResult {
   details: AccountTeamManagerUploadResult[];
 }
 
+export interface AccountCpaConnectionResult {
+  success: boolean;
+  message: string;
+  totalFiles: number;
+}
+
+export interface AccountCpaSyncResult {
+  totalFiles: number;
+  eligibleFiles: number;
+  downloadedFiles: number;
+  created: number;
+  updated: number;
+  failed: number;
+  importedAccountIds: string[];
+  errors: string[];
+}
+
 export interface AccountBulkStatusUpdateError {
   accountId: string;
   message: string;
