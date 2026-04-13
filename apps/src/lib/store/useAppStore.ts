@@ -75,6 +75,9 @@ export const useAppStore = create<AppState>((set) => ({
     teamManagerEnabled: false,
     teamManagerApiUrl: "",
     teamManagerHasApiKey: false,
+    cpaSyncEnabled: false,
+    cpaSyncApiUrl: "",
+    cpaSyncHasManagementKey: false,
     backgroundTasks: {
       usagePollingEnabled: true,
       usagePollIntervalSecs: 600,

@@ -18,8 +18,13 @@ use super::{
     set_ui_appearance_preset, set_ui_low_transparency_enabled, set_ui_theme,
     set_ui_visible_menu_items, set_update_auto_check_enabled, BackgroundTasksInput,
 };
+use crate::app_settings::{
+    APP_SETTING_CPA_SYNC_API_URL_KEY, APP_SETTING_CPA_SYNC_ENABLED_KEY,
+    APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
+    APP_SETTING_TEAM_MANAGER_API_URL_KEY, APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
+};
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct AppSettingsPatch {
     update_auto_check: Option<bool>,
@@ -45,6 +50,9 @@ pub(super) struct AppSettingsPatch {
     retry_policy_max_retries: Option<usize>,
     retry_policy_backoff_strategy: Option<String>,
     retry_policy_retryable_status_codes: Option<Vec<u16>>,
+    cpa_sync_enabled: Option<bool>,
+    cpa_sync_api_url: Option<String>,
+    cpa_sync_management_key: Option<String>,
     response_cache_enabled: Option<bool>,
     response_cache_ttl_secs: Option<u64>,
     response_cache_max_entries: Option<usize>,
@@ -194,13 +202,25 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
         let _ = set_env_overrides(env_overrides)?;
     }
     if let Some(enabled) = patch.team_manager_enabled {
-        save_persisted_bool_setting(crate::APP_SETTING_TEAM_MANAGER_ENABLED_KEY, enabled)?;
+        save_persisted_bool_setting(APP_SETTING_TEAM_MANAGER_ENABLED_KEY, enabled)?;
     }
     if let Some(api_url) = patch.team_manager_api_url {
-        save_persisted_app_setting(crate::APP_SETTING_TEAM_MANAGER_API_URL_KEY, Some(&api_url))?;
+        save_persisted_app_setting(APP_SETTING_TEAM_MANAGER_API_URL_KEY, Some(&api_url))?;
     }
     if let Some(api_key) = patch.team_manager_api_key {
-        save_persisted_app_setting(crate::APP_SETTING_TEAM_MANAGER_API_KEY_KEY, Some(&api_key))?;
+        save_persisted_app_setting(APP_SETTING_TEAM_MANAGER_API_KEY_KEY, Some(&api_key))?;
+    }
+    if let Some(enabled) = patch.cpa_sync_enabled {
+        save_persisted_bool_setting(APP_SETTING_CPA_SYNC_ENABLED_KEY, enabled)?;
+    }
+    if let Some(api_url) = patch.cpa_sync_api_url {
+        save_persisted_app_setting(APP_SETTING_CPA_SYNC_API_URL_KEY, Some(&api_url))?;
+    }
+    if let Some(key) = patch.cpa_sync_management_key {
+        let trimmed = key.trim();
+        if !trimmed.is_empty() {
+            save_persisted_app_setting(APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY, Some(trimmed))?;
+        }
     }
     if let Some(password) = patch.web_access_password {
         let _ = crate::set_web_access_password(Some(&password))?;

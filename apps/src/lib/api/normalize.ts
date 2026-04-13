@@ -1425,6 +1425,9 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
       source.cpaNoCookieHeaderModeEnabled,
       false
     ),
+    cpaSyncEnabled: asBoolean(source.cpaSyncEnabled, false),
+    cpaSyncApiUrl: asString(source.cpaSyncApiUrl),
+    cpaSyncHasManagementKey: asBoolean(source.cpaSyncHasManagementKey, false),
     upstreamProxyUrl: asString(source.upstreamProxyUrl),
     upstreamStreamTimeoutMs: asInteger(source.upstreamStreamTimeoutMs, 1_800_000, 0),
     sseKeepaliveIntervalMs: asInteger(source.sseKeepaliveIntervalMs, 15_000, 1),
