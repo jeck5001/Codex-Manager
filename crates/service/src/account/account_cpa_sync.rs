@@ -1,0 +1,535 @@
+use codexmanager_core::storage::now_ts;
+use reqwest::blocking::{Client, RequestBuilder};
+use reqwest::{StatusCode, Url};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::time::Duration;
+
+use crate::{
+    app_settings::{
+        get_persisted_app_setting, APP_SETTING_CPA_SYNC_API_URL_KEY,
+        APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY,
+    },
+    storage_helpers::open_storage,
+};
+
+const CPA_AUTH_FILES_PATH: &str = "/v0/management/auth-files";
+const CPA_AUTH_FILES_DOWNLOAD_PATH: &str = "/v0/management/auth-files/download";
+const CPA_HTTP_TIMEOUT_SECS: u64 = 30;
+const CPA_SAVED_KEY_SENTINEL: &str = "use_saved_key";
+
+#[derive(Debug, Clone, Default)]
+struct CpaSyncSettings {
+    api_url: String,
+    management_key: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct CpaConnectionPayload {
+    api_url: Option<String>,
+    management_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct CpaAuthFile {
+    name: String,
+    source: Option<String>,
+    item: Value,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CpaSyncResult {
+    total_files: usize,
+    eligible_files: usize,
+    downloaded_files: usize,
+    created: usize,
+    updated: usize,
+    failed: usize,
+    imported_account_ids: Vec<String>,
+    errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ImportSummary {
+    created: usize,
+    updated: usize,
+    failed: usize,
+    errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CpaConnectionResult {
+    success: bool,
+    message: String,
+    total_files: usize,
+}
+
+fn cpa_http_client() -> Result<Client, String> {
+    Client::builder()
+        .timeout(Duration::from_secs(CPA_HTTP_TIMEOUT_SECS))
+        .build()
+        .map_err(|err| format!("build CPA client failed: {err}"))
+}
+
+fn normalize_api_url(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("CPA API URL 未配置".to_string());
+    }
+    let parsed = Url::parse(trimmed).map_err(|_| "CPA API URL 格式非法".to_string())?;
+    Ok(parsed.as_str().trim_end_matches('/').to_string())
+}
+
+fn normalize_management_key(raw: Option<String>) -> Option<String> {
+    raw.map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty() && value != CPA_SAVED_KEY_SENTINEL)
+}
+
+fn resolve_cpa_settings(payload: Option<&Value>) -> Result<CpaSyncSettings, String> {
+    let parsed: CpaConnectionPayload = payload
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|err| format!("invalid CPA payload: {err}"))?
+        .unwrap_or_default();
+
+    let api_url = parsed
+        .api_url
+        .and_then(|value| {
+            let trimmed = value.trim().to_string();
+            (!trimmed.is_empty()).then_some(trimmed)
+        })
+        .or_else(|| get_persisted_app_setting(APP_SETTING_CPA_SYNC_API_URL_KEY))
+        .unwrap_or_default();
+    let api_url = normalize_api_url(&api_url)?;
+
+    let management_key = normalize_management_key(parsed.management_key)
+        .or_else(|| {
+            normalize_management_key(get_persisted_app_setting(
+                APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY,
+            ))
+        })
+        .unwrap_or_default();
+    if management_key.is_empty() {
+        return Err("CPA Management Key 未配置".to_string());
+    }
+
+    Ok(CpaSyncSettings {
+        api_url,
+        management_key,
+    })
+}
+
+fn build_cpa_endpoint(base: &str, path: &str) -> Result<Url, String> {
+    let base = Url::parse(base).map_err(|_| "CPA API URL 格式非法".to_string())?;
+    base.join(path.trim_start_matches('/'))
+        .map_err(|err| format!("build CPA endpoint failed: {err}"))
+}
+
+fn with_cpa_auth(request: RequestBuilder, management_key: &str) -> RequestBuilder {
+    request
+        .header("Authorization", format!("Bearer {management_key}"))
+        .header("X-Management-Key", management_key)
+}
+
+fn read_response_text(response: reqwest::blocking::Response) -> String {
+    response.text().unwrap_or_default()
+}
+
+fn http_error_message(status: StatusCode, body: &str) -> String {
+    let detail = serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("message")
+                .and_then(Value::as_str)
+                .or_else(|| value.get("detail").and_then(Value::as_str))
+                .or_else(|| value.get("error").and_then(Value::as_str))
+                .map(ToString::to_string)
+        })
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| body.trim().chars().take(200).collect::<String>());
+    match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
+            if detail.is_empty() {
+                "CPA Management Key 无效或没有权限".to_string()
+            } else {
+                format!("CPA Management Key 无效或没有权限: {detail}")
+            }
+        }
+        _ => {
+            if detail.is_empty() {
+                format!("CPA 请求失败: HTTP {}", status.as_u16())
+            } else {
+                format!("CPA 请求失败: HTTP {} - {detail}", status.as_u16())
+            }
+        }
+    }
+}
+
+fn array_from_container(value: &Value) -> Option<Vec<Value>> {
+    match value {
+        Value::Array(items) => Some(items.clone()),
+        Value::Object(map) => {
+            for key in ["files", "items", "data", "authFiles", "auth_files", "list"] {
+                if let Some(found) = map.get(key).and_then(array_from_container) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn first_string_field(item: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| item.get(*key).and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn parse_auth_files(payload: Value) -> Result<Vec<CpaAuthFile>, String> {
+    let items =
+        array_from_container(&payload).ok_or_else(|| "CPA auth-files 响应结构不兼容".to_string())?;
+    Ok(items
+        .into_iter()
+        .enumerate()
+        .map(|(index, item)| CpaAuthFile {
+            name: first_string_field(&item, &["name", "filename", "fileName", "id", "fileId"])
+                .unwrap_or_else(|| format!("auth-file-{}", index + 1)),
+            source: first_string_field(&item, &["source", "sourceType", "type"]),
+            item,
+        })
+        .collect())
+}
+
+fn fetch_cpa_auth_files(settings: &CpaSyncSettings) -> Result<Vec<CpaAuthFile>, String> {
+    let url = build_cpa_endpoint(&settings.api_url, CPA_AUTH_FILES_PATH)?;
+    let response = with_cpa_auth(cpa_http_client()?.get(url), &settings.management_key)
+        .send()
+        .map_err(|err| format!("CPA 连接失败: {err}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(http_error_message(status, &read_response_text(response)));
+    }
+    let payload = response
+        .json::<Value>()
+        .map_err(|err| format!("invalid CPA auth-files response: {err}"))?;
+    parse_auth_files(payload)
+}
+
+fn metadata_blob(item: &Value) -> String {
+    let mut parts = Vec::new();
+    for key in [
+        "name",
+        "filename",
+        "fileName",
+        "provider",
+        "service",
+        "type",
+        "source",
+        "label",
+        "email",
+        "issuer",
+    ] {
+        if let Some(value) = item.get(key).and_then(Value::as_str) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                parts.push(trimmed.to_ascii_lowercase());
+            }
+        }
+    }
+    parts.join(" ")
+}
+
+fn is_runtime_only_source(file: &CpaAuthFile) -> bool {
+    file.source
+        .as_deref()
+        .map(|value| value.trim().to_ascii_lowercase().contains("runtime"))
+        .unwrap_or(false)
+}
+
+fn looks_like_target_file(file: &CpaAuthFile) -> bool {
+    let metadata = format!("{} {}", file.name.to_ascii_lowercase(), metadata_blob(&file.item));
+    ["openai", "chatgpt", "codex"]
+        .iter()
+        .any(|needle| metadata.contains(needle))
+}
+
+fn has_token_field(value: &Value, key: &str) -> bool {
+    value.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+}
+
+fn item_looks_importable(item: &Value) -> bool {
+    let tokens = item.get("tokens").unwrap_or(item);
+    let has_access_token =
+        has_token_field(tokens, "access_token") || has_token_field(tokens, "accessToken");
+    if !has_access_token {
+        return false;
+    }
+    has_token_field(tokens, "id_token")
+        || has_token_field(tokens, "idToken")
+        || has_token_field(tokens, "refresh_token")
+        || has_token_field(tokens, "refreshToken")
+        || has_token_field(tokens, "session_token")
+        || has_token_field(tokens, "sessionToken")
+        || has_token_field(tokens, "cookie")
+        || has_token_field(tokens, "cookies")
+        || metadata_blob(item).contains("openai")
+        || metadata_blob(item).contains("chatgpt")
+        || metadata_blob(item).contains("codex")
+}
+
+fn resolve_download_url(settings: &CpaSyncSettings, file: &CpaAuthFile) -> Result<Url, String> {
+    if let Some(raw) = first_string_field(
+        &file.item,
+        &[
+            "downloadUrl",
+            "download_url",
+            "downloadURL",
+            "url",
+            "download",
+            "downloadPath",
+            "download_path",
+            "path",
+        ],
+    ) {
+        if let Ok(url) = Url::parse(&raw) {
+            return Ok(url);
+        }
+        let base = Url::parse(&settings.api_url).map_err(|_| "CPA API URL 格式非法".to_string())?;
+        return base
+            .join(raw.trim_start_matches('/'))
+            .map_err(|err| format!("build CPA download url failed: {err}"));
+    }
+
+    let mut url = build_cpa_endpoint(&settings.api_url, CPA_AUTH_FILES_DOWNLOAD_PATH)?;
+    url.query_pairs_mut().append_pair("name", &file.name);
+    Ok(url)
+}
+
+fn download_auth_file(settings: &CpaSyncSettings, file: &CpaAuthFile) -> Result<String, String> {
+    let url = resolve_download_url(settings, file)?;
+    let response = with_cpa_auth(cpa_http_client()?.get(url), &settings.management_key)
+        .send()
+        .map_err(|err| format!("下载失败: {err}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(http_error_message(status, &read_response_text(response)));
+    }
+    response
+        .text()
+        .map_err(|err| format!("读取下载内容失败: {err}"))
+}
+
+fn parse_auth_file_content(content: &str) -> Result<Vec<Value>, String> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    if trimmed.starts_with('[') {
+        return serde_json::from_str(trimmed).map_err(|err| format!("invalid JSON array: {err}"));
+    }
+
+    if let Ok(single) = serde_json::from_str::<Value>(trimmed) {
+        return match single {
+            Value::Array(items) => Ok(items),
+            Value::Object(map) => {
+                if let Some(items) = array_from_container(&Value::Object(map.clone())) {
+                    Ok(items)
+                } else {
+                    Ok(vec![Value::Object(map)])
+                }
+            }
+            other => Ok(vec![other]),
+        };
+    }
+
+    let mut out = Vec::new();
+    let stream = serde_json::Deserializer::from_str(trimmed).into_iter::<Value>();
+    for value in stream {
+        out.push(value.map_err(|err| format!("invalid JSON object stream: {err}"))?);
+    }
+    Ok(out)
+}
+
+fn filtered_import_items(items: Vec<Value>, metadata_match: bool) -> Vec<Value> {
+    items.into_iter()
+        .filter(|item| metadata_match || item_looks_importable(item))
+        .collect()
+}
+
+fn serialize_import_payload(items: &[Value]) -> Result<String, String> {
+    serde_json::to_string(items).map_err(|err| format!("serialize auth file payload failed: {err}"))
+}
+
+fn import_payloads(payloads: Vec<String>) -> Result<ImportSummary, String> {
+    if payloads.is_empty() {
+        return Ok(ImportSummary::default());
+    }
+    let result = crate::account_import::import_account_auth_json(payloads)?;
+    let value = serde_json::to_value(result).map_err(|err| format!("serialize import result failed: {err}"))?;
+
+    Ok(ImportSummary {
+        created: value
+            .get("created")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize,
+        updated: value
+            .get("updated")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize,
+        failed: value
+            .get("failed")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize,
+        errors: value
+            .get("errors")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| {
+                        item.get("message")
+                            .and_then(Value::as_str)
+                            .map(ToString::to_string)
+                            .or_else(|| item.as_str().map(ToString::to_string))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default(),
+    })
+}
+
+fn collect_recent_imported_account_ids(started_at: i64) -> Vec<String> {
+    let Some(storage) = open_storage() else {
+        return Vec::new();
+    };
+    let mut ids = storage
+        .list_accounts()
+        .ok()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|account| account.updated_at >= started_at)
+        .map(|account| account.id)
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+pub(crate) fn test_cpa_connection(params: Option<&Value>) -> Result<CpaConnectionResult, String> {
+    let files = fetch_cpa_auth_files(&resolve_cpa_settings(params)?)?;
+    Ok(CpaConnectionResult {
+        success: true,
+        message: format!("CPA 连接测试成功，可见 {} 个 auth 文件", files.len()),
+        total_files: files.len(),
+    })
+}
+
+pub(crate) fn sync_cpa_accounts(params: Option<&Value>) -> Result<CpaSyncResult, String> {
+    let settings = resolve_cpa_settings(params)?;
+    let files = fetch_cpa_auth_files(&settings)?;
+    let total_files = files.len();
+    let mut eligible_files = 0;
+    let mut downloaded_files = 0;
+    let mut import_payloads_raw = Vec::new();
+    let mut errors = Vec::new();
+
+    for file in files {
+        if is_runtime_only_source(&file) {
+            errors.push(format!("{} 已跳过: runtime-only auth source", file.name));
+            continue;
+        }
+
+        let metadata_match = looks_like_target_file(&file);
+        let content = match download_auth_file(&settings, &file) {
+            Ok(content) => {
+                downloaded_files += 1;
+                content
+            }
+            Err(err) => {
+                errors.push(format!("{} 下载失败: {err}", file.name));
+                continue;
+            }
+        };
+
+        let parsed_items = match parse_auth_file_content(&content) {
+            Ok(items) => items,
+            Err(err) => {
+                errors.push(format!("{} 内容解析失败: {err}", file.name));
+                continue;
+            }
+        };
+
+        let filtered = filtered_import_items(parsed_items, metadata_match);
+        if filtered.is_empty() {
+            errors.push(format!("{} 已跳过: 不是 Codex/OpenAI/ChatGPT auth 文件", file.name));
+            continue;
+        }
+
+        eligible_files += 1;
+        import_payloads_raw.push(serialize_import_payload(&filtered)?);
+    }
+
+    let started_at = now_ts();
+    let import_summary = import_payloads(import_payloads_raw)?;
+    errors.extend(import_summary.errors.iter().cloned());
+
+    Ok(CpaSyncResult {
+        total_files,
+        eligible_files,
+        downloaded_files,
+        created: import_summary.created,
+        updated: import_summary.updated,
+        failed: errors.len() + import_summary.failed,
+        imported_account_ids: collect_recent_imported_account_ids(started_at),
+        errors,
+    })
+}
+
+#[cfg(test)]
+pub(crate) struct CpaImportSummary {
+    pub(crate) created: usize,
+    pub(crate) failed: usize,
+}
+
+#[cfg(test)]
+pub(crate) fn import_cpa_payloads_for_test(
+    payloads: Vec<String>,
+) -> Result<CpaImportSummary, String> {
+    let summary = import_payloads(payloads)?;
+    Ok(CpaImportSummary {
+        created: summary.created,
+        failed: summary.failed,
+    })
+}
+
+#[cfg(test)]
+pub(crate) fn auth_files_from_test_payload(payload: Value) -> Result<Vec<String>, String> {
+    parse_auth_files(payload).map(|files| files.into_iter().map(|file| file.name).collect())
+}
+
+#[cfg(test)]
+pub(crate) fn filter_import_items_for_test(payload: &str, metadata_match: bool) -> Result<usize, String> {
+    Ok(filtered_import_items(parse_auth_file_content(payload)?, metadata_match).len())
+}
+
+#[cfg(test)]
+pub(crate) fn resolve_cpa_settings_for_test(payload: Option<&Value>) -> Result<(String, String), String> {
+    let settings = resolve_cpa_settings(payload)?;
+    Ok((settings.api_url, settings.management_key))
+}
+
+#[cfg(test)]
+#[path = "tests/account_cpa_sync_tests.rs"]
+mod tests;
