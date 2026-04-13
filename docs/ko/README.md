@@ -173,4 +173,5 @@ CodexManager를 후원해 주신 다음 스폰서께 감사드립니다.
 - 미출시 변경 사항의 상세 내용은 `변경-이력.md`에 적고, README는 탐색과 요약 위주로 유지하세요.
 
 ## 연락처
+- WeChat: ProsperGao
 - Telegram 그룹: [CodexManager TG 그룹](https://t.me/+OdpFa9GvjxhjMDhl)

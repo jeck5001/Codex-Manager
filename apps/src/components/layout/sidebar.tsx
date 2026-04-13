@@ -9,6 +9,7 @@ import {
   Puzzle,
   FileText, 
   Settings, 
+  UserRound,
   ChevronLeft, 
   ChevronRight
 } from "lucide-react";
@@ -33,6 +34,7 @@ const NAV_ITEMS = [
   { label: "插件中心", href: "/plugins", icon: Puzzle },
   { label: "请求日志", href: "/logs", icon: FileText },
   { label: "设置", href: "/settings", icon: Settings },
+  { label: "关于作者", href: "/author", icon: UserRound },
 ];
 
 const NavItem = memo(({

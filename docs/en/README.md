@@ -173,4 +173,5 @@ One-off reports: yyyyMMddHHmmssfff_topic.md
 - Put unreleased change details in `CHANGELOG.md`; keep the README focused on navigation and summary.
 
 ## Contact
+- WeChat: ProsperGao
 - Telegram group: [CodexManager TG group](https://t.me/+OdpFa9GvjxhjMDhl)
