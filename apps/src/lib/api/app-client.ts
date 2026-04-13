@@ -1,6 +1,10 @@
 import { invoke, invokeFirst } from "./transport";
 import { AppSettings, CodexLatestVersionInfo } from "../../types";
 import { normalizeAppSettings } from "./normalize";
+import {
+  GatewayConcurrencyRecommendation,
+  readGatewayConcurrencyRecommendation,
+} from "./gateway-settings";
 
 export const appClient = {
   async getSettings(): Promise<AppSettings> {
@@ -11,8 +15,10 @@ export const appClient = {
     const result = await invoke<unknown>("app_settings_set", { patch });
     return normalizeAppSettings(result);
   },
-  getGatewayConcurrencyRecommendation: () =>
-    invoke<unknown>("service_gateway_concurrency_recommend_get"),
+  async getGatewayConcurrencyRecommendation(): Promise<GatewayConcurrencyRecommendation> {
+    const result = await invoke<unknown>("service_gateway_concurrency_recommend_get");
+    return readGatewayConcurrencyRecommendation(result);
+  },
   getCodexLatestVersion: () =>
     invoke<CodexLatestVersionInfo>("service_gateway_codex_latest_version_get"),
 

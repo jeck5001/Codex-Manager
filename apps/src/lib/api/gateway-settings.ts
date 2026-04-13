@@ -64,6 +64,38 @@ export interface GatewayRouteStrategySettings {
   manualPreferredAccountId: string;
 }
 
+export interface GatewayConcurrencyRecommendation {
+  cpuCores: number;
+  memoryMib: number;
+  usageRefreshWorkers: number;
+  httpWorkerFactor: number;
+  httpWorkerMin: number;
+  httpStreamWorkerFactor: number;
+  httpStreamWorkerMin: number;
+  accountMaxInflight: number;
+  queueWaitTimeoutMs: number;
+}
+
+export interface ServiceListenConfig {
+  mode: string;
+  options: string[];
+  requiresRestart: boolean;
+}
+
+const DEFAULT_GATEWAY_CONCURRENCY_RECOMMENDATION: GatewayConcurrencyRecommendation = {
+  cpuCores: 1,
+  memoryMib: 1,
+  usageRefreshWorkers: 2,
+  httpWorkerFactor: 2,
+  httpWorkerMin: 4,
+  httpStreamWorkerFactor: 1,
+  httpStreamWorkerMin: 1,
+  accountMaxInflight: 1,
+  queueWaitTimeoutMs: 100,
+};
+
+const DEFAULT_SERVICE_LISTEN_OPTIONS = ["loopback", "all_interfaces"];
+
 export function readGatewayTransportSettings(
   payload: unknown
 ): GatewayTransportSettings {
@@ -109,5 +141,68 @@ export function readGatewayRouteStrategySettings(
         ? readStringArrayField(payload, "options")
         : ["ordered", "balanced"],
     manualPreferredAccountId: readStringField(payload, "manualPreferredAccountId"),
+  };
+}
+
+export function readGatewayConcurrencyRecommendation(
+  payload: unknown
+): GatewayConcurrencyRecommendation {
+  return {
+    cpuCores: readNumberField(
+      payload,
+      "cpuCores",
+      DEFAULT_GATEWAY_CONCURRENCY_RECOMMENDATION.cpuCores
+    ),
+    memoryMib: readNumberField(
+      payload,
+      "memoryMib",
+      DEFAULT_GATEWAY_CONCURRENCY_RECOMMENDATION.memoryMib
+    ),
+    usageRefreshWorkers: readNumberField(
+      payload,
+      "usageRefreshWorkers",
+      DEFAULT_GATEWAY_CONCURRENCY_RECOMMENDATION.usageRefreshWorkers
+    ),
+    httpWorkerFactor: readNumberField(
+      payload,
+      "httpWorkerFactor",
+      DEFAULT_GATEWAY_CONCURRENCY_RECOMMENDATION.httpWorkerFactor
+    ),
+    httpWorkerMin: readNumberField(
+      payload,
+      "httpWorkerMin",
+      DEFAULT_GATEWAY_CONCURRENCY_RECOMMENDATION.httpWorkerMin
+    ),
+    httpStreamWorkerFactor: readNumberField(
+      payload,
+      "httpStreamWorkerFactor",
+      DEFAULT_GATEWAY_CONCURRENCY_RECOMMENDATION.httpStreamWorkerFactor
+    ),
+    httpStreamWorkerMin: readNumberField(
+      payload,
+      "httpStreamWorkerMin",
+      DEFAULT_GATEWAY_CONCURRENCY_RECOMMENDATION.httpStreamWorkerMin
+    ),
+    accountMaxInflight: readNumberField(
+      payload,
+      "accountMaxInflight",
+      DEFAULT_GATEWAY_CONCURRENCY_RECOMMENDATION.accountMaxInflight
+    ),
+    queueWaitTimeoutMs: readNumberField(
+      payload,
+      "queueWaitTimeoutMs",
+      DEFAULT_GATEWAY_CONCURRENCY_RECOMMENDATION.queueWaitTimeoutMs
+    ),
+  };
+}
+
+export function readServiceListenConfig(payload: unknown): ServiceListenConfig {
+  return {
+    mode: readStringField(payload, "mode", "loopback"),
+    options:
+      readStringArrayField(payload, "options").length > 0
+        ? readStringArrayField(payload, "options")
+        : DEFAULT_SERVICE_LISTEN_OPTIONS,
+    requiresRestart: readBooleanField(payload, "requiresRestart", true),
   };
 }

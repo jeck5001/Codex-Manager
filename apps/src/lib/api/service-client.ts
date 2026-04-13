@@ -1,14 +1,19 @@
 import { invoke, withAddr } from "./transport";
 import {
+  GatewayConcurrencyRecommendation,
   GatewayRouteStrategySettings,
   GatewayTransportSettings,
   GatewayUpstreamProxySettings,
+  ServiceListenConfig,
+  readGatewayConcurrencyRecommendation,
   readGatewayRouteStrategySettings,
   readGatewayTransportSettings,
   readGatewayUpstreamProxySettings,
+  readServiceListenConfig,
 } from "./gateway-settings";
 import {
   normalizeAppSettings,
+  normalizeBackgroundTasks,
   normalizeGatewayErrorLogListResult,
   normalizeRequestLogFilterSummary,
   normalizeRequestLogListResult,
@@ -140,14 +145,21 @@ export const serviceClient = {
     invoke("service_gateway_manual_account_clear", withAddr()),
 
   getBackgroundTasks: () =>
-    invoke<BackgroundTaskSettings>("service_gateway_background_tasks_get", withAddr()),
+    invoke<unknown>("service_gateway_background_tasks_get", withAddr()).then(
+      normalizeBackgroundTasks
+    ),
   setBackgroundTasks: (settings: BackgroundTaskSettings) =>
-    invoke(
+    invoke<unknown>(
       "service_gateway_background_tasks_set",
       withAddr({ ...(settings as unknown as Record<string, unknown>) })
-    ),
-  getConcurrencyRecommendation: () =>
-    invoke<unknown>("service_gateway_concurrency_recommend_get", withAddr()),
+    ).then(normalizeBackgroundTasks),
+  async getConcurrencyRecommendation(): Promise<GatewayConcurrencyRecommendation> {
+    const result = await invoke<unknown>(
+      "service_gateway_concurrency_recommend_get",
+      withAddr()
+    );
+    return readGatewayConcurrencyRecommendation(result);
+  },
 
   async listRequestLogs(params?: {
     query?: string;
@@ -205,9 +217,17 @@ export const serviceClient = {
     return normalizeTodaySummary(result);
   },
 
-  getListenConfig: () => invoke<unknown>("service_listen_config_get", withAddr()),
-  setListenConfig: (mode: string) =>
-    invoke("service_listen_config_set", withAddr({ mode })),
+  async getListenConfig(): Promise<ServiceListenConfig> {
+    const result = await invoke<unknown>("service_listen_config_get", withAddr());
+    return readServiceListenConfig(result);
+  },
+  async setListenConfig(mode: string): Promise<ServiceListenConfig> {
+    const result = await invoke<unknown>(
+      "service_listen_config_set",
+      withAddr({ mode })
+    );
+    return readServiceListenConfig(result);
+  },
 
   getEnvOverrides: async () => {
     const result = await invoke<unknown>("app_settings_get");

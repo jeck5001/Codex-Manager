@@ -65,3 +65,36 @@ test("readGatewayUpstreamProxySettings 与 readGatewayRouteStrategySettings 对�
   assert.deepEqual(route.options, ["ordered", "balanced"]);
   assert.equal(route.manualPreferredAccountId, "acc-1");
 });
+
+test("readGatewayConcurrencyRecommendation 解析推荐并补齐保底值", () => {
+  const recommendation = gatewaySettings.readGatewayConcurrencyRecommendation({
+    cpuCores: "12",
+    memoryMib: 32768,
+    usageRefreshWorkers: 6,
+    httpWorkerFactor: "5",
+    httpWorkerMin: 12,
+    httpStreamWorkerFactor: 2,
+    httpStreamWorkerMin: 4,
+    accountMaxInflight: 2,
+  });
+
+  assert.equal(recommendation.cpuCores, 12);
+  assert.equal(recommendation.memoryMib, 32768);
+  assert.equal(recommendation.usageRefreshWorkers, 6);
+  assert.equal(recommendation.httpWorkerFactor, 5);
+  assert.equal(recommendation.httpWorkerMin, 12);
+  assert.equal(recommendation.httpStreamWorkerFactor, 2);
+  assert.equal(recommendation.httpStreamWorkerMin, 4);
+  assert.equal(recommendation.accountMaxInflight, 2);
+  assert.equal(recommendation.queueWaitTimeoutMs, 100);
+});
+
+test("readServiceListenConfig 对齐监听模式配置返回", () => {
+  const listenConfig = gatewaySettings.readServiceListenConfig({
+    mode: "all_interfaces",
+    requiresRestart: true,
+  });
+  assert.equal(listenConfig.mode, "all_interfaces");
+  assert.deepEqual(listenConfig.options, ["loopback", "all_interfaces"]);
+  assert.equal(listenConfig.requiresRestart, true);
+});
