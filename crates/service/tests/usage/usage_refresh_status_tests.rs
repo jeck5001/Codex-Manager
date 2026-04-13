@@ -212,6 +212,30 @@ fn mark_usage_unreachable_marks_401_403_429_as_unavailable() {
         Some("usage_http_401")
     );
 
+    storage
+        .update_account_status_if_changed("acc-2", "active")
+        .expect("reset account status");
+    mark_usage_unreachable_if_needed(
+        &storage,
+        "acc-2",
+        "usage endpoint failed: status=401 Unauthorized body=code=token_expired request id=req_usage_123",
+    );
+    let unavailable_after_failed_format_401 = storage
+        .list_accounts()
+        .expect("list")
+        .into_iter()
+        .find(|acc| acc.id == "acc-2")
+        .expect("exists");
+    assert_eq!(unavailable_after_failed_format_401.status, "unavailable");
+
+    let reasons = storage
+        .latest_account_status_reasons(&["acc-2".to_string()])
+        .expect("load reasons");
+    assert_eq!(
+        reasons.get("acc-2").map(String::as_str),
+        Some("usage_http_401")
+    );
+
     mark_usage_unreachable_if_needed(&storage, "acc-2", "usage endpoint status 403 Forbidden");
     let unavailable_after_403 = storage
         .list_accounts()
@@ -864,6 +888,13 @@ fn usage_refresh_failure_events_are_throttled_by_error_class() {
         &storage,
         &account_id,
         "usage endpoint status 503 Service Unavailable",
+    );
+    assert_eq!(storage.event_count().expect("count events"), 2);
+
+    record_usage_refresh_failure(
+        &storage,
+        &account_id,
+        "usage endpoint failed: status=503 Service Unavailable body=upstream unavailable",
     );
     assert_eq!(storage.event_count().expect("count events"), 2);
 }
