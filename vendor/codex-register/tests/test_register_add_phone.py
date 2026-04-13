@@ -1542,15 +1542,57 @@ class RegisterAddPhoneTests(unittest.TestCase):
         engine._log = lambda *_args, **_kwargs: None
         engine._log_auth_response_preview = lambda *_args, **_kwargs: None
         engine._follow_auth_continue_url = lambda *_args, **_kwargs: None
+        engine._current_device_id = "did-send"
+        engine._check_sentinel = lambda did, flow="authorize_continue": "send-token"
 
         ok = engine._send_verification_code()
 
         self.assertTrue(ok)
         self.assertEqual(captured["url"], "")
+        self.assertEqual(captured["kwargs"]["headers"]["origin"], "https://auth.openai.com")
+        self.assertEqual(captured["kwargs"]["headers"]["oai-device-id"], "did-send")
         self.assertEqual(captured["kwargs"]["headers"]["referer"], "https://auth.openai.com/create-account/password")
         self.assertEqual(captured["kwargs"]["headers"]["accept"], "application/json")
         self.assertEqual(captured["kwargs"]["headers"]["content-type"], "application/json")
+        sentinel = json.loads(captured["kwargs"]["headers"]["openai-sentinel-token"])
+        self.assertEqual(sentinel["id"], "did-send")
+        self.assertEqual(sentinel["c"], "send-token")
+        self.assertEqual(sentinel["flow"], "authorize_continue")
         self.assertEqual(captured["kwargs"]["data"], "{}")
+
+    def test_validate_verification_code_uses_sentinel_and_device_headers(self):
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {}
+
+        class FakeSession:
+            def post(self, url, **kwargs):
+                captured["url"] = url
+                captured["kwargs"] = kwargs
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._clear_otp_error_state = lambda: None
+        engine._current_device_id = "did-otp"
+        engine._check_sentinel = lambda did, flow="authorize_continue": "otp-token"
+
+        ok = engine._validate_verification_code("123456")
+
+        self.assertTrue(ok)
+        self.assertEqual(captured["kwargs"]["headers"]["origin"], "https://auth.openai.com")
+        self.assertEqual(captured["kwargs"]["headers"]["oai-device-id"], "did-otp")
+        self.assertEqual(captured["kwargs"]["headers"]["referer"], "https://auth.openai.com/email-verification")
+        sentinel = json.loads(captured["kwargs"]["headers"]["openai-sentinel-token"])
+        self.assertEqual(sentinel["id"], "did-otp")
+        self.assertEqual(sentinel["c"], "otp-token")
+        self.assertEqual(sentinel["flow"], "authorize_continue")
 
     def test_send_verification_code_follows_continue_url_from_payload(self):
         followed = []
@@ -1609,18 +1651,20 @@ class RegisterAddPhoneTests(unittest.TestCase):
             "t": "browser-turnstile",
             "c": "browser-c",
             "id": "did-123",
-            "flow": "username_password_create",
+            "flow": "create_account",
         }
 
         ok = engine._create_user_account()
 
         self.assertTrue(ok)
         headers = captured["kwargs"]["headers"]
+        self.assertEqual(headers["origin"], "https://auth.openai.com")
+        self.assertEqual(headers["oai-device-id"], "did-123")
         sentinel = json.loads(headers["openai-sentinel-token"])
         self.assertEqual(sentinel["p"], "browser-payload")
         self.assertEqual(sentinel["t"], "browser-turnstile")
         self.assertEqual(sentinel["c"], "browser-c")
-        self.assertEqual(sentinel["flow"], "username_password_create")
+        self.assertEqual(sentinel["flow"], "create_account")
 
     def test_create_user_account_falls_back_to_http_sentinel_token_payload(self):
         captured = {}
@@ -1643,18 +1687,20 @@ class RegisterAddPhoneTests(unittest.TestCase):
         engine._log = lambda *_args, **_kwargs: None
         engine._current_device_id = "did-456"
         engine._get_create_account_sentinel_payload = lambda: None
-        engine._check_sentinel = lambda did: "http-fallback-token"
+        engine._check_sentinel = lambda did, flow="authorize_continue": "http-fallback-token"
 
         ok = engine._create_user_account()
 
         self.assertTrue(ok)
         headers = captured["kwargs"]["headers"]
+        self.assertEqual(headers["origin"], "https://auth.openai.com")
+        self.assertEqual(headers["oai-device-id"], "did-456")
         sentinel = json.loads(headers["openai-sentinel-token"])
         self.assertEqual(sentinel["id"], "did-456")
         self.assertEqual(sentinel["c"], "http-fallback-token")
         self.assertEqual(sentinel["p"], "")
         self.assertEqual(sentinel["t"], "")
-        self.assertEqual(sentinel["flow"], "username_password_create")
+        self.assertEqual(sentinel["flow"], "create_account")
 
     def test_browser_create_account_sentinel_payload_tries_oauth_flow_before_password_flow(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
@@ -1687,9 +1733,9 @@ class RegisterAddPhoneTests(unittest.TestCase):
 
         self.assertEqual(
             calls,
-            ["oauth_create_account", "username_password_create"],
+            ["oauth_create_account", "create_account"],
         )
-        self.assertEqual(payload["flow"], "username_password_create")
+        self.assertEqual(payload["flow"], "create_account")
         self.assertEqual(payload["t"], "browser-t")
 
     def test_browser_sentinel_payload_syncs_browser_cookies_into_http_session(self):
