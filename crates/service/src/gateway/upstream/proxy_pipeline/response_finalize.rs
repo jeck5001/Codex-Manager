@@ -234,7 +234,7 @@ pub(super) fn finalize_upstream_response(
     }
     let gateway_error_follow_up = final_error
         .as_deref()
-        .map(|error| crate::account_status::analyze_gateway_error(error, has_more_candidates));
+        .map(|error| context.apply_gateway_error_follow_up(account_id, error, has_more_candidates));
     let gateway_failover = gateway_error_follow_up.is_some_and(|follow_up| follow_up.should_failover);
 
     let upstream_stream_failed = client_is_stream
@@ -265,20 +265,6 @@ pub(super) fn finalize_upstream_response(
             super::super::super::CooldownReason::Network,
         );
         super::super::super::record_route_quality(account_id, 502);
-    }
-
-    if gateway_error_follow_up.is_some_and(|follow_up| follow_up.should_mark_default_cooldown) {
-        super::super::super::mark_account_cooldown(
-            account_id,
-            super::super::super::CooldownReason::Default,
-        );
-    }
-
-    if gateway_error_follow_up.is_some_and(|follow_up| follow_up.should_mark_account_unavailable) {
-        let error = final_error
-            .as_deref()
-            .expect("final_error should exist when follow-up marks account");
-        let _ = context.mark_account_unavailable_for_gateway_error(account_id, error);
     }
 
     let usage = bridge.usage;

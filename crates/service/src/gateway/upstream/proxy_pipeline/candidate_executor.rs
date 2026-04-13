@@ -283,21 +283,12 @@ pub(in super::super) fn execute_candidate_sequence(
                 status_code,
                 message,
             } => {
-                let gateway_error_follow_up = crate::account_status::analyze_gateway_error(
+                let gateway_error_follow_up = context.apply_gateway_error_follow_up(
+                    &account.id,
                     &message,
                     context.has_more_candidates(idx),
                 );
                 if gateway_error_follow_up.should_failover {
-                    if gateway_error_follow_up.should_mark_account_unavailable {
-                        let _ = context
-                            .mark_account_unavailable_for_gateway_error(&account.id, &message);
-                    }
-                    if gateway_error_follow_up.should_mark_default_cooldown {
-                        super::super::super::mark_account_cooldown(
-                            &account.id,
-                            super::super::super::CooldownReason::Default,
-                        );
-                    }
                     super::super::super::record_gateway_failover_attempt();
                     last_attempt_url = attempt_trace.last_attempt_url.take();
                     last_attempt_error = Some(message);
