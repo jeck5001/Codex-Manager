@@ -5,6 +5,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { appClient } from "@/lib/api/app-client";
+import type {
+  UpdateCheckResult,
+  UpdatePrepareResult,
+} from "@/lib/api/app-updates";
 import { getAppErrorMessage } from "@/lib/api/transport";
 import { useAppStore } from "@/lib/store/useAppStore";
 import {
@@ -397,35 +401,6 @@ function inferServiceBindPreview(addr: string, mode: string): string {
   return mode === "all_interfaces" ? `0.0.0.0:${port}` : `localhost:${port}`;
 }
 
-type UpdateCheckSummary = {
-  repo: string;
-  mode: string;
-  isPortable: boolean;
-  hasUpdate: boolean;
-  canPrepare: boolean;
-  currentVersion: string;
-  latestVersion: string;
-  releaseTag: string;
-  releaseName: string;
-  reason: string;
-};
-
-type UpdatePrepareSummary = {
-  prepared: boolean;
-  mode: string;
-  isPortable: boolean;
-  releaseTag: string;
-  latestVersion: string;
-  assetName: string;
-  assetPath: string;
-  downloaded: boolean;
-};
-
-type UpdateStatusSummary = {
-  pending: UpdatePrepareSummary | null;
-  lastCheck: UpdateCheckSummary | null;
-};
-
 type CheckUpdateRequest = {
   silent?: boolean;
 };
@@ -450,157 +425,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * 函数 `readStringField`
- *
- * 作者: gaohongshun
- *
- * 时间: 2026-04-02
- *
- * # 参数
- * - source: 参数 source
- * - key: 参数 key
- *
- * # 返回
- * 返回函数执行结果
- */
-function readStringField(source: Record<string, unknown>, key: string): string {
-  const value = source[key];
-  return typeof value === "string" ? value : "";
-}
-
-/**
- * 函数 `readBooleanField`
- *
- * 作者: gaohongshun
- *
- * 时间: 2026-04-02
- *
- * # 参数
- * - source: 参数 source
- * - key: 参数 key
- *
- * # 返回
- * 返回函数执行结果
- */
-function readBooleanField(
-  source: Record<string, unknown>,
-  key: string,
-): boolean {
-  return source[key] === true;
-}
-
-/**
- * 函数 `normalizeUpdateCheckSummary`
- *
- * 作者: gaohongshun
- *
- * 时间: 2026-04-02
- *
- * # 参数
- * - payload: 参数 payload
- *
- * # 返回
- * 返回函数执行结果
- */
-function normalizeUpdateCheckSummary(payload: unknown): UpdateCheckSummary {
-  const source = asRecord(payload) ?? {};
-  return {
-    repo: readStringField(source, "repo"),
-    mode: readStringField(source, "mode"),
-    isPortable: readBooleanField(source, "isPortable"),
-    hasUpdate: readBooleanField(source, "hasUpdate"),
-    canPrepare: readBooleanField(source, "canPrepare"),
-    currentVersion: readStringField(source, "currentVersion"),
-    latestVersion: readStringField(source, "latestVersion"),
-    releaseTag: readStringField(source, "releaseTag"),
-    releaseName: readStringField(source, "releaseName"),
-    reason: readStringField(source, "reason"),
-  };
-}
-
-/**
- * 函数 `normalizeUpdatePrepareSummary`
- *
- * 作者: gaohongshun
- *
- * 时间: 2026-04-02
- *
- * # 参数
- * - payload: 参数 payload
- *
- * # 返回
- * 返回函数执行结果
- */
-function normalizeUpdatePrepareSummary(payload: unknown): UpdatePrepareSummary {
-  const source = asRecord(payload) ?? {};
-  return {
-    prepared: readBooleanField(source, "prepared"),
-    mode: readStringField(source, "mode"),
-    isPortable: readBooleanField(source, "isPortable"),
-    releaseTag: readStringField(source, "releaseTag"),
-    latestVersion: readStringField(source, "latestVersion"),
-    assetName: readStringField(source, "assetName"),
-    assetPath: readStringField(source, "assetPath"),
-    downloaded: readBooleanField(source, "downloaded"),
-  };
-}
-
-/**
- * 函数 `normalizePendingUpdateSummary`
- *
- * 作者: gaohongshun
- *
- * 时间: 2026-04-02
- *
- * # 参数
- * - payload: 参数 payload
- *
- * # 返回
- * 返回函数执行结果
- */
-function normalizePendingUpdateSummary(
-  payload: unknown,
-): UpdatePrepareSummary | null {
-  const source = asRecord(payload);
-  if (!source) {
-    return null;
-  }
-  return {
-    prepared: true,
-    mode: readStringField(source, "mode"),
-    isPortable: readBooleanField(source, "isPortable"),
-    releaseTag: readStringField(source, "releaseTag"),
-    latestVersion: readStringField(source, "latestVersion"),
-    assetName: readStringField(source, "assetName"),
-    assetPath: readStringField(source, "assetPath"),
-    downloaded: true,
-  };
-}
-
-/**
- * 函数 `normalizeUpdateStatusSummary`
- *
- * 作者: gaohongshun
- *
- * 时间: 2026-04-02
- *
- * # 参数
- * - payload: 参数 payload
- *
- * # 返回
- * 返回函数执行结果
- */
-function normalizeUpdateStatusSummary(payload: unknown): UpdateStatusSummary {
-  const source = asRecord(payload) ?? {};
-  return {
-    pending: normalizePendingUpdateSummary(source.pending),
-    lastCheck: source.lastCheck
-      ? normalizeUpdateCheckSummary(source.lastCheck)
-      : null,
-  };
-}
-
-/**
  * 函数 `buildReleaseUrl`
  *
  * 作者: gaohongshun
@@ -613,7 +437,7 @@ function normalizeUpdateStatusSummary(payload: unknown): UpdateStatusSummary {
  * # 返回
  * 返回函数执行结果
  */
-function buildReleaseUrl(summary: UpdateCheckSummary | null): string {
+function buildReleaseUrl(summary: UpdateCheckResult | null): string {
   if (!summary?.repo) {
     return "https://github.com/qxcnm/Codex-Manager/releases";
   }
@@ -665,11 +489,11 @@ export default function SettingsPage() {
   const [modelForwardRulesDraft, setModelForwardRulesDraft] =
     useState<string | null>(null);
   const [lastUpdateCheck, setLastUpdateCheck] =
-    useState<UpdateCheckSummary | null>(null);
+    useState<UpdateCheckResult | null>(null);
   const [updateDialogCheck, setUpdateDialogCheck] =
-    useState<UpdateCheckSummary | null>(null);
+    useState<UpdateCheckResult | null>(null);
   const [preparedUpdate, setPreparedUpdate] =
-    useState<UpdatePrepareSummary | null>(null);
+    useState<UpdatePrepareResult | null>(null);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [manualUpdateCheckPending, setManualUpdateCheckPending] =
     useState(false);
@@ -814,8 +638,7 @@ export default function SettingsPage() {
       void request;
       return appClient.checkUpdate();
     },
-    onSuccess: (result, request) => {
-      const summary = normalizeUpdateCheckSummary(result);
+    onSuccess: (summary, request) => {
       setLastUpdateCheck(summary);
       setUpdateDialogCheck(summary);
       if (summary.hasUpdate) {
@@ -854,8 +677,7 @@ export default function SettingsPage() {
 
   const prepareUpdate = useMutation({
     mutationFn: () => appClient.prepareUpdate(),
-    onSuccess: (result) => {
-      const summary = normalizeUpdatePrepareSummary(result);
+    onSuccess: (summary) => {
       setPreparedUpdate(summary);
       setUpdateDialogOpen(true);
       toast.success(
@@ -879,7 +701,7 @@ export default function SettingsPage() {
       setLastUpdateCheck(null);
       setUpdateDialogCheck(null);
       setUpdateDialogOpen(false);
-      const message = readStringField(asRecord(result) ?? {}, "message");
+      const message = result.message.trim();
       toast.success(
         message ||
           (payload.isPortable ? t("即将重启并替换更新") : t("已开始替换更新流程")),
@@ -900,11 +722,10 @@ export default function SettingsPage() {
     let cancelled = false;
     void appClient
       .getStatus()
-      .then((result) => {
+      .then((summary) => {
         if (cancelled) {
           return;
         }
-        const summary = normalizeUpdateStatusSummary(result);
         if (summary.lastCheck) {
           setLastUpdateCheck(summary.lastCheck);
           setUpdateDialogCheck(summary.lastCheck);

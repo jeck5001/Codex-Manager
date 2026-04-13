@@ -2,6 +2,16 @@ import { invoke, invokeFirst } from "./transport";
 import { AppSettings, CodexLatestVersionInfo } from "../../types";
 import { normalizeAppSettings } from "./normalize";
 import {
+  readUpdateActionResult,
+  readUpdateCheckResult,
+  readUpdatePrepareResult,
+  readUpdateStatusResult,
+  UpdateActionResult,
+  UpdateCheckResult,
+  UpdatePrepareResult,
+  UpdateStatusResult,
+} from "./app-updates";
+import {
   GatewayConcurrencyRecommendation,
   readGatewayConcurrencyRecommendation,
 } from "./gateway-settings";
@@ -31,22 +41,42 @@ export const appClient = {
   openUpdateLogsDir: (assetPath?: string) =>
     invoke("app_update_open_logs_dir", { assetPath: assetPath || null }),
 
-  checkUpdate: () =>
-    invokeFirst<unknown>(["app_update_check", "update_check", "check_update"], {}),
-  prepareUpdate: (payload: Record<string, unknown> = {}) =>
-    invokeFirst<unknown>(
+  async checkUpdate(): Promise<UpdateCheckResult> {
+    const result = await invokeFirst<unknown>(
+      ["app_update_check", "update_check", "check_update"],
+      {}
+    );
+    return readUpdateCheckResult(result);
+  },
+  async prepareUpdate(
+    payload: Record<string, unknown> = {}
+  ): Promise<UpdatePrepareResult> {
+    const result = await invokeFirst<unknown>(
       ["app_update_prepare", "update_download", "download_update"],
       payload
-    ),
-  launchInstaller: (payload: Record<string, unknown> = {}) =>
-    invokeFirst<unknown>(
+    );
+    return readUpdatePrepareResult(result);
+  },
+  async launchInstaller(
+    payload: Record<string, unknown> = {}
+  ): Promise<UpdateActionResult> {
+    const result = await invokeFirst<unknown>(
       ["app_update_launch_installer", "update_install", "install_update"],
       payload
-    ),
-  applyUpdatePortable: (payload: Record<string, unknown> = {}) =>
-    invokeFirst<unknown>(
+    );
+    return readUpdateActionResult(result);
+  },
+  async applyUpdatePortable(
+    payload: Record<string, unknown> = {}
+  ): Promise<UpdateActionResult> {
+    const result = await invokeFirst<unknown>(
       ["app_update_apply_portable", "update_restart", "restart_update"],
       payload
-    ),
-  getStatus: () => invokeFirst<unknown>(["app_update_status", "update_status"], {}),
+    );
+    return readUpdateActionResult(result);
+  },
+  async getStatus(): Promise<UpdateStatusResult> {
+    const result = await invokeFirst<unknown>(["app_update_status", "update_status"], {});
+    return readUpdateStatusResult(result);
+  },
 };
