@@ -234,5 +234,5 @@
 
 ## 联系方式
 - 公众号：七线牛马
-- 微信： ProsperGao
+- 微信：加微信群请加我微信 `ProsperGao`，并说明来意
 - Telegram 群聊：[CodexManager TG 群](https://t.me/+OdpFa9GvjxhjMDhl)
