@@ -1,5 +1,13 @@
 import { invoke, withAddr } from "./transport";
 import {
+  GatewayRouteStrategySettings,
+  GatewayTransportSettings,
+  GatewayUpstreamProxySettings,
+  readGatewayRouteStrategySettings,
+  readGatewayTransportSettings,
+  readGatewayUpstreamProxySettings,
+} from "./gateway-settings";
+import {
   normalizeAppSettings,
   normalizeGatewayErrorLogListResult,
   normalizeRequestLogFilterSummary,
@@ -87,17 +95,41 @@ export const serviceClient = {
       fetchedAt: params.fetchedAt || new Date().toISOString(),
     }),
 
-  getGatewayTransport: () => invoke<unknown>("service_gateway_transport_get", withAddr()),
-  setGatewayTransport: (settings: Record<string, unknown>) =>
-    invoke("service_gateway_transport_set", withAddr(settings)),
-  getUpstreamProxy: () =>
-    invoke<string>("service_gateway_upstream_proxy_get", withAddr()),
-  setUpstreamProxy: (proxyUrl: string) =>
-    invoke("service_gateway_upstream_proxy_set", withAddr({ proxyUrl })),
-  getRouteStrategy: () =>
-    invoke<string>("service_gateway_route_strategy_get", withAddr()),
-  setRouteStrategy: (strategy: string) =>
-    invoke("service_gateway_route_strategy_set", withAddr({ strategy })),
+  async getGatewayTransport(): Promise<GatewayTransportSettings> {
+    const result = await invoke<unknown>("service_gateway_transport_get", withAddr());
+    return readGatewayTransportSettings(result);
+  },
+  async setGatewayTransport(
+    settings: Record<string, unknown>
+  ): Promise<GatewayTransportSettings> {
+    const result = await invoke<unknown>(
+      "service_gateway_transport_set",
+      withAddr(settings)
+    );
+    return readGatewayTransportSettings(result);
+  },
+  async getUpstreamProxy(): Promise<GatewayUpstreamProxySettings> {
+    const result = await invoke<unknown>("service_gateway_upstream_proxy_get", withAddr());
+    return readGatewayUpstreamProxySettings(result);
+  },
+  async setUpstreamProxy(proxyUrl: string): Promise<GatewayUpstreamProxySettings> {
+    const result = await invoke<unknown>(
+      "service_gateway_upstream_proxy_set",
+      withAddr({ proxyUrl })
+    );
+    return readGatewayUpstreamProxySettings(result);
+  },
+  async getRouteStrategy(): Promise<GatewayRouteStrategySettings> {
+    const result = await invoke<unknown>("service_gateway_route_strategy_get", withAddr());
+    return readGatewayRouteStrategySettings(result);
+  },
+  async setRouteStrategy(strategy: string): Promise<GatewayRouteStrategySettings> {
+    const result = await invoke<unknown>(
+      "service_gateway_route_strategy_set",
+      withAddr({ strategy })
+    );
+    return readGatewayRouteStrategySettings(result);
+  },
   async getManualPreferredAccountId(): Promise<string> {
     const result = await invoke<unknown>("service_gateway_manual_account_get", withAddr());
     return readStringField(result, "accountId");
