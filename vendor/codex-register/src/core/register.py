@@ -58,6 +58,7 @@ from ..config.settings import get_settings
 logger = logging.getLogger(__name__)
 CREATE_ACCOUNT_SENTINEL_FLOWS = (
     "oauth_create_account",
+    "create_account",
     "username_password_create",
 )
 
@@ -962,6 +963,67 @@ class RegistrationEngine:
             "userVerifyingCrossPlatformAuthenticator": False,
         }, separators=(",", ":"))
 
+    def _build_browser_like_auth_headers(
+        self,
+        *,
+        referer: str,
+        did: Optional[str] = None,
+        accept: str = "application/json",
+        content_type: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """对齐 openai-cpa 的认证请求头，尽量贴近浏览器路径。"""
+        normalized_referer = self._clean_text(referer)
+        resolved_did = self._clean_text(did) or self._resolve_current_device_id()
+        headers: Dict[str, str] = {
+            "accept": self._clean_text(accept) or "application/json",
+        }
+        if normalized_referer:
+            headers["referer"] = normalized_referer
+            try:
+                parsed = urllib.parse.urlsplit(normalized_referer)
+            except Exception:
+                parsed = None
+            if parsed and parsed.scheme and parsed.hostname:
+                headers["origin"] = f"{parsed.scheme}://{parsed.hostname}"
+        if content_type:
+            headers["content-type"] = self._clean_text(content_type)
+        if resolved_did:
+            headers["oai-device-id"] = resolved_did
+
+        default_headers = getattr(getattr(self, "http_client", None), "default_headers", None) or {}
+        user_agent = self._clean_text(default_headers.get("User-Agent"))
+        accept_language = self._clean_text(default_headers.get("Accept-Language"))
+        if user_agent:
+            headers["user-agent"] = user_agent
+        if accept_language:
+            headers["accept-language"] = accept_language
+
+        headers.setdefault("sec-ch-ua", '"Google Chrome";v="120", "Chromium";v="120", "Not_A Brand";v="24"')
+        headers.setdefault("sec-ch-ua-mobile", "?0")
+        headers.setdefault("sec-ch-ua-platform", '"Windows"')
+        return headers
+
+    def _build_auth_step_sentinel_header(
+        self,
+        *,
+        flow: str,
+        referer: str,
+        prefer_browser: bool = False,
+    ) -> Optional[str]:
+        """为注册中的认证步骤生成 Sentinel 请求头。"""
+        did = self._resolve_current_device_id()
+        if not did:
+            return None
+
+        payload: Any = None
+        if prefer_browser:
+            payload = self._get_browser_sentinel_payload(flow, referer)
+
+        if not payload:
+            payload = self._clean_text(self._check_sentinel(did, flow=flow))
+
+        return self._build_sentinel_header(payload, did=did, flow=flow)
+
     def _get_browser_sentinel_payload(
         self,
         flow: str,
@@ -1053,11 +1115,11 @@ class RegistrationEngine:
         try:
             signup_body = f'{{"username":{{"value":"{self.email}","kind":"email"}},"screen_hint":"signup"}}'
 
-            headers = {
-                "referer": "https://auth.openai.com/create-account",
-                "accept": "application/json",
-                "content-type": "application/json",
-            }
+            headers = self._build_browser_like_auth_headers(
+                referer="https://auth.openai.com/create-account",
+                did=did,
+                content_type="application/json",
+            )
 
             if sen_token:
                 sentinel = self._build_sentinel_header(
@@ -1149,13 +1211,12 @@ class RegistrationEngine:
                 if not sen_token:
                     sen_token = self._clean_text(getattr(self, "_current_sentinel_token", ""))
 
-                headers = {
-                    "origin": "https://auth.openai.com",
-                    "referer": "https://auth.openai.com/create-account/password",
-                    "accept": "application/json",
-                    "content-type": "application/json",
-                    "ext-passkey-client-capabilities": self._build_passkey_client_capabilities(),
-                }
+                headers = self._build_browser_like_auth_headers(
+                    referer="https://auth.openai.com/create-account/password",
+                    did=did,
+                    content_type="application/json",
+                )
+                headers["ext-passkey-client-capabilities"] = self._build_passkey_client_capabilities()
                 sentinel_source = "browser" if sentinel_payload else "http" if sen_token else "missing"
                 self._log_sentinel_payload_summary(
                     "密码注册",
@@ -1245,14 +1306,22 @@ class RegistrationEngine:
         try:
             # 记录发送时间戳
             self._otp_sent_at = time.time()
+            did = self._resolve_current_device_id()
+            headers = self._build_browser_like_auth_headers(
+                referer="https://auth.openai.com/create-account/password",
+                did=did,
+                content_type="application/json",
+            )
+            sentinel = self._build_auth_step_sentinel_header(
+                flow="authorize_continue",
+                referer="https://auth.openai.com/create-account/password",
+            )
+            if sentinel:
+                headers["openai-sentinel-token"] = sentinel
 
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["send_otp"],
-                headers={
-                    "referer": "https://auth.openai.com/create-account/password",
-                    "accept": "application/json",
-                    "content-type": "application/json",
-                },
+                headers=headers,
                 data="{}",
             )
 
@@ -1308,14 +1377,22 @@ class RegistrationEngine:
         try:
             self._clear_otp_error_state()
             code_body = f'{{"code":"{code}"}}'
+            did = self._resolve_current_device_id()
+            headers = self._build_browser_like_auth_headers(
+                referer="https://auth.openai.com/email-verification",
+                did=did,
+                content_type="application/json",
+            )
+            sentinel = self._build_auth_step_sentinel_header(
+                flow="authorize_continue",
+                referer="https://auth.openai.com/email-verification",
+            )
+            if sentinel:
+                headers["openai-sentinel-token"] = sentinel
 
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["validate_otp"],
-                headers={
-                    "referer": "https://auth.openai.com/email-verification",
-                    "accept": "application/json",
-                    "content-type": "application/json",
-                },
+                headers=headers,
                 data=code_body,
             )
 
@@ -1356,13 +1433,21 @@ class RegistrationEngine:
         """验证验证码并返回响应载荷"""
         try:
             self._clear_otp_error_state()
+            did = self._resolve_current_device_id()
+            headers = self._build_browser_like_auth_headers(
+                referer="https://auth.openai.com/email-verification",
+                did=did,
+                content_type="application/json",
+            )
+            sentinel = self._build_auth_step_sentinel_header(
+                flow="authorize_continue",
+                referer="https://auth.openai.com/email-verification",
+            )
+            if sentinel:
+                headers["openai-sentinel-token"] = sentinel
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["validate_otp"],
-                headers={
-                    "referer": "https://auth.openai.com/email-verification",
-                    "accept": "application/json",
-                    "content-type": "application/json",
-                },
+                headers=headers,
                 data=json.dumps({"code": code}),
             )
 
@@ -1427,24 +1512,24 @@ class RegistrationEngine:
             user_info = generate_random_user_info()
             self._log(f"生成用户信息: {user_info['name']}, 生日: {user_info['birthdate']}")
             create_account_body = json.dumps(user_info)
-            headers = {
-                "referer": "https://auth.openai.com/about-you",
-                "accept": "application/json",
-                "content-type": "application/json",
-            }
             current_did = self._clean_text(getattr(self, "_current_device_id", ""))
+            headers = self._build_browser_like_auth_headers(
+                referer="https://auth.openai.com/about-you",
+                did=current_did,
+                content_type="application/json",
+            )
             sentinel_payload = self._get_create_account_sentinel_payload()
             if not sentinel_payload and current_did:
-                fallback_token = self._check_sentinel(current_did)
+                fallback_token = self._check_sentinel(current_did, flow="create_account")
                 sentinel_payload = self._normalize_sentinel_payload(
                     fallback_token,
                     did=current_did,
-                    flow="username_password_create",
+                    flow="create_account",
                 )
             sentinel = self._build_sentinel_header(
                 sentinel_payload,
                 did=current_did,
-                flow="username_password_create",
+                flow="create_account",
             )
             if sentinel:
                 headers["openai-sentinel-token"] = sentinel
