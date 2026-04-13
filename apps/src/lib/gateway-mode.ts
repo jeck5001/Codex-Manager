@@ -1,12 +1,12 @@
 export const GATEWAY_MODE_ENV_KEY = "CODEXMANAGER_GATEWAY_MODE";
-export const DEFAULT_GATEWAY_MODE = "transparent";
+export const DEFAULT_GATEWAY_MODE = "enhanced";
 
 export type GatewayMode = "transparent" | "enhanced";
 
 export function normalizeGatewayMode(value: unknown): GatewayMode {
-  return String(value || "").trim().toLowerCase() === "enhanced"
-    ? "enhanced"
-    : "transparent";
+  return String(value || "").trim().toLowerCase() === "transparent"
+    ? "transparent"
+    : "enhanced";
 }
 
 export function toGatewayModeOverride(mode: GatewayMode): string {
