@@ -1,6 +1,9 @@
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tiny_http::{Header, Response, Server, StatusCode};
+
+static TEST_DB_SEQ: AtomicUsize = AtomicUsize::new(0);
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -72,6 +75,51 @@ fn cpa_test_connection_rejects_invalid_json_response() {
 
     handle.join().expect("join mock server");
     assert!(err.contains("invalid CPA auth-files response"));
+}
+
+#[test]
+fn cpa_download_falls_back_to_filename_query_param_on_404() {
+    let _guard = setup_test_storage();
+    let server = Server::http("127.0.0.1:0").expect("start fallback server");
+    let api_url = format!("http://{}", server.server_addr());
+    let handle = thread::spawn(move || {
+        let first = server.recv().expect("receive first request");
+        let first_url = first.url().to_string();
+        let first_response = Response::from_string("404 page not found")
+            .with_status_code(StatusCode(404))
+            .with_header(
+                Header::from_bytes("Content-Type", "text/plain").expect("content-type header"),
+            );
+        first.respond(first_response).expect("respond first request");
+
+        let second = server.recv().expect("receive second request");
+        let second_url = second.url().to_string();
+        let second_response = Response::from_string(r#"{"access_token":"a","id_token":"i","account_id":"acc-fallback"}"#)
+            .with_status_code(StatusCode(200))
+            .with_header(
+                Header::from_bytes("Content-Type", "application/json")
+                    .expect("content-type header"),
+            );
+        second.respond(second_response).expect("respond second request");
+
+        (first_url, second_url)
+    });
+
+    let content = super::download_auth_file_for_test(
+        &api_url,
+        "key-fallback",
+        serde_json::json!({
+            "files": [
+                { "name": "demo.json", "source": "file" }
+            ]
+        }),
+    )
+    .expect("download auth file");
+
+    let (first_url, second_url) = handle.join().expect("join fallback server");
+    assert!(first_url.contains("/v0/management/auth-files/download?name=demo.json"));
+    assert!(second_url.contains("/v0/management/auth-files/download?filename=demo.json"));
+    assert!(content.contains("\"acc-fallback\""));
 }
 
 #[test]
@@ -170,9 +218,10 @@ fn setup_test_storage() -> EnvGuard {
         .expect("time")
         .as_nanos();
     path.push(format!(
-        "codexmanager_cpa_sync_test_{}_{}.db",
+        "codexmanager_cpa_sync_test_{}_{}_{}.db",
         std::process::id(),
-        stamp
+        stamp,
+        TEST_DB_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
     let value = path.to_string_lossy().to_string();
     let previous = std::env::var("CODEXMANAGER_DB_PATH").ok();
