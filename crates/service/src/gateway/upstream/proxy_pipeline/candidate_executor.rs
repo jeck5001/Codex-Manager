@@ -80,6 +80,44 @@ pub(in super::super) struct CandidateExecutorParams<'a> {
     pub(in super::super) disable_challenge_stateless_retry: bool,
 }
 
+fn record_failover_attempt(
+    attempt_trace: &mut CandidateAttemptTrace,
+    last_attempt_url: &mut Option<String>,
+    last_attempt_error: &mut Option<String>,
+) {
+    super::super::super::record_gateway_failover_attempt();
+    *last_attempt_url = attempt_trace.last_attempt_url.take();
+    *last_attempt_error = attempt_trace.last_attempt_error.take();
+}
+
+#[allow(clippy::too_many_arguments)]
+fn respond_terminal_attempt(
+    request: Request,
+    context: &GatewayUpstreamExecutionContext<'_>,
+    account_id: &str,
+    last_attempt_url: Option<&str>,
+    status_code: u16,
+    message: String,
+    trace_id: &str,
+    started_at: Instant,
+    model_for_log: Option<&str>,
+    attempted_account_ids: Option<&[String]>,
+) -> Result<CandidateExecutionResult, String> {
+    finalize_terminal_candidate(
+        request,
+        context,
+        account_id,
+        last_attempt_url,
+        status_code,
+        message,
+        trace_id,
+        started_at,
+        model_for_log,
+        attempted_account_ids,
+    )?;
+    Ok(CandidateExecutionResult::Handled)
+}
+
 /// 函数 `execute_candidate_sequence`
 ///
 /// 作者: gaohongshun
@@ -234,9 +272,11 @@ pub(in super::super) fn execute_candidate_sequence(
 
         match decision {
             CandidateUpstreamDecision::Failover => {
-                super::super::super::record_gateway_failover_attempt();
-                last_attempt_url = attempt_trace.last_attempt_url.take();
-                last_attempt_error = attempt_trace.last_attempt_error.take();
+                record_failover_attempt(
+                    &mut attempt_trace,
+                    &mut last_attempt_url,
+                    &mut last_attempt_error,
+                );
                 continue;
             }
             CandidateUpstreamDecision::Terminal {
@@ -266,7 +306,7 @@ pub(in super::super) fn execute_candidate_sequence(
                 let request = request
                     .take()
                     .expect("request should be available before terminal response");
-                finalize_terminal_candidate(
+                return respond_terminal_attempt(
                     request,
                     context,
                     &account.id,
@@ -277,8 +317,7 @@ pub(in super::super) fn execute_candidate_sequence(
                     started_at,
                     attempt_model_for_log,
                     Some(attempted_account_ids.as_slice()),
-                )?;
-                return Ok(CandidateExecutionResult::Handled);
+                );
             }
             CandidateUpstreamDecision::RespondUpstream(mut resp) => {
                 if resp.status().as_u16() == 400
@@ -320,9 +359,11 @@ pub(in super::super) fn execute_candidate_sequence(
                             resp = retry_resp;
                         }
                         CandidateUpstreamDecision::Failover => {
-                            super::super::super::record_gateway_failover_attempt();
-                            last_attempt_url = attempt_trace.last_attempt_url.take();
-                            last_attempt_error = attempt_trace.last_attempt_error.take();
+                            record_failover_attempt(
+                                &mut attempt_trace,
+                                &mut last_attempt_url,
+                                &mut last_attempt_error,
+                            );
                             continue;
                         }
                         CandidateUpstreamDecision::Terminal {
@@ -332,7 +373,7 @@ pub(in super::super) fn execute_candidate_sequence(
                             let request = request
                                 .take()
                                 .expect("request should be available before terminal response");
-                            finalize_terminal_candidate(
+                            return respond_terminal_attempt(
                                 request,
                                 context,
                                 &account.id,
@@ -343,8 +384,7 @@ pub(in super::super) fn execute_candidate_sequence(
                                 started_at,
                                 attempt_model_for_log,
                                 Some(attempted_account_ids.as_slice()),
-                            )?;
-                            return Ok(CandidateExecutionResult::Handled);
+                            );
                         }
                     }
                 }
@@ -392,9 +432,11 @@ pub(in super::super) fn execute_candidate_sequence(
                         return Ok(CandidateExecutionResult::Handled);
                     }
                     FinalizeUpstreamResponseOutcome::Failover => {
-                        super::super::super::record_gateway_failover_attempt();
-                        last_attempt_url = attempt_trace.last_attempt_url.take();
-                        last_attempt_error = attempt_trace.last_attempt_error.take();
+                        record_failover_attempt(
+                            &mut attempt_trace,
+                            &mut last_attempt_url,
+                            &mut last_attempt_error,
+                        );
                         continue;
                     }
                 }
