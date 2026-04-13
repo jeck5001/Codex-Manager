@@ -628,6 +628,39 @@ class RegistrationEngine:
             f"set-cookie={'yes' if has_set_cookie else 'no'}"
         )
 
+    def _resolve_password_auth_refresh_url(self, response: Any) -> str:
+        """避免把浏览器兜底错误地落到 API 端点上。"""
+        candidate = self._clean_text(getattr(response, "url", ""))
+        if candidate:
+            try:
+                parsed = urllib.parse.urlsplit(candidate)
+            except Exception:
+                parsed = None
+            if (
+                parsed
+                and parsed.scheme in {"http", "https"}
+                and parsed.hostname == "auth.openai.com"
+                and not parsed.path.startswith("/api/")
+            ):
+                return candidate
+        return "https://auth.openai.com/create-account/password"
+
+    def _refresh_password_auth_state_in_browser(self, response: Any) -> bool:
+        """在密码注册失败后尽量按真实浏览器路径重新落地认证态。"""
+        refreshed = False
+        refresh_url = self._resolve_password_auth_refresh_url(response)
+        auth_state = self._fetch_browser_auth_state(refresh_url)
+        if auth_state:
+            refreshed = True
+
+        if not self._extract_session_token_from_cookies():
+            self._log("密码注册浏览器认证态仍缺少 session token，尝试落地 ChatGPT 会话", "warning")
+            chatgpt_state = self._fetch_browser_auth_state("https://chatgpt.com/")
+            if chatgpt_state:
+                refreshed = True
+
+        return refreshed
+
     def _sync_browser_cookies_to_session(self, cookies: Any) -> int:
         """将浏览器上下文中的关键 cookie 回灌到当前 HTTP 会话。"""
         session = getattr(self, "session", None)
@@ -1117,6 +1150,7 @@ class RegistrationEngine:
                     sen_token = self._clean_text(getattr(self, "_current_sentinel_token", ""))
 
                 headers = {
+                    "origin": "https://auth.openai.com",
                     "referer": "https://auth.openai.com/create-account/password",
                     "accept": "application/json",
                     "content-type": "application/json",
@@ -1169,11 +1203,7 @@ class RegistrationEngine:
                     and error_msg == "Failed to create account. Please try again."
                 ):
                     self._log("密码注册遇到通用 400，尝试浏览器落地认证状态后重试", "warning")
-                    auth_state = self._fetch_browser_auth_state(
-                        self._clean_text(getattr(response, "url", ""))
-                        or "https://auth.openai.com/create-account/password",
-                    )
-                    if auth_state:
+                    if self._refresh_password_auth_state_in_browser(response):
                         self._current_sentinel_token = ""
                         continue
 

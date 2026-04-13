@@ -1107,6 +1107,7 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertEqual(sentinel["id"], "did-123")
         self.assertEqual(sentinel["c"], "sentinel-c")
         self.assertEqual(sentinel["flow"], "username_password_create")
+        self.assertEqual(headers["origin"], "https://auth.openai.com")
         self.assertIn("ext-passkey-client-capabilities", headers)
         self.assertTrue(headers["ext-passkey-client-capabilities"])
 
@@ -1391,7 +1392,7 @@ class RegisterAddPhoneTests(unittest.TestCase):
         )
 
     def test_register_password_retries_after_browser_auth_state_refresh_on_generic_400(self):
-        captured = {"attempts": []}
+        captured = {"attempts": [], "auth_urls": []}
         original_fetch_browser_auth_state = getattr(REGISTER_MODULE, "fetch_browser_auth_state", None)
 
         class FakeCookieStore(dict):
@@ -1467,18 +1468,28 @@ class RegisterAddPhoneTests(unittest.TestCase):
         engine._check_sentinel = lambda did, flow="authorize_continue": f"http-token-{len(captured['attempts']) + 1}"
 
         try:
-            REGISTER_MODULE.fetch_browser_auth_state = lambda **kwargs: {
-                "did": "did-refreshed",
-                "cookies": [
-                    {
-                        "name": "cf_clearance",
-                        "value": "cf-cookie",
-                        "domain": ".openai.com",
-                        "path": "/",
-                    }
-                ],
-                "final_url": "https://auth.openai.com/api/accounts/email-otp/send",
-            }
+            def fake_fetch_browser_auth_state(**kwargs):
+                captured["auth_urls"].append(kwargs.get("auth_url"))
+                return {
+                    "did": "did-refreshed",
+                    "cookies": [
+                        {
+                            "name": "cf_clearance",
+                            "value": "cf-cookie",
+                            "domain": ".openai.com",
+                            "path": "/",
+                        },
+                        {
+                            "name": "__Secure-next-auth.session-token",
+                            "value": "session-token",
+                            "domain": ".chatgpt.com",
+                            "path": "/",
+                        },
+                    ],
+                    "final_url": "https://auth.openai.com/create-account/password",
+                }
+
+            REGISTER_MODULE.fetch_browser_auth_state = fake_fetch_browser_auth_state
             ok, _password = engine._register_password()
         finally:
             if original_fetch_browser_auth_state is None:
@@ -1490,8 +1501,19 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertEqual(engine.session.calls, 2)
         self.assertEqual(engine._current_device_id, "did-refreshed")
         self.assertEqual(
+            captured["auth_urls"],
+            ["https://auth.openai.com/create-account/password"],
+        )
+        self.assertEqual(
             engine.session.cookies.set_calls,
-            [("cf_clearance", "cf-cookie", {"domain": ".openai.com", "path": "/"})],
+            [
+                ("cf_clearance", "cf-cookie", {"domain": ".openai.com", "path": "/"}),
+                (
+                    "__Secure-next-auth.session-token",
+                    "session-token",
+                    {"domain": ".chatgpt.com", "path": "/"},
+                ),
+            ],
         )
         first_sentinel = json.loads(captured["attempts"][0]["headers"]["openai-sentinel-token"])
         second_sentinel = json.loads(captured["attempts"][1]["headers"]["openai-sentinel-token"])
