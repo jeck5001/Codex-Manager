@@ -90,6 +90,26 @@ fn record_failover_attempt(
     *last_attempt_error = attempt_trace.last_attempt_error.take();
 }
 
+fn should_failover_terminal_gateway_error(
+    context: &GatewayUpstreamExecutionContext<'_>,
+    account_id: &str,
+    has_more_candidates: bool,
+    message: &str,
+    attempt_trace: &mut CandidateAttemptTrace,
+    last_attempt_url: &mut Option<String>,
+    last_attempt_error: &mut Option<String>,
+) -> bool {
+    let gateway_error_follow_up =
+        context.apply_gateway_error_follow_up(account_id, message, has_more_candidates);
+    if !gateway_error_follow_up.should_failover {
+        return false;
+    }
+    super::super::super::record_gateway_failover_attempt();
+    *last_attempt_url = attempt_trace.last_attempt_url.take();
+    *last_attempt_error = Some(message.to_string());
+    true
+}
+
 #[allow(clippy::too_many_arguments)]
 fn respond_terminal_attempt(
     request: Request,
@@ -283,15 +303,15 @@ pub(in super::super) fn execute_candidate_sequence(
                 status_code,
                 message,
             } => {
-                let gateway_error_follow_up = context.apply_gateway_error_follow_up(
+                if should_failover_terminal_gateway_error(
+                    context,
                     &account.id,
-                    &message,
                     context.has_more_candidates(idx),
-                );
-                if gateway_error_follow_up.should_failover {
-                    super::super::super::record_gateway_failover_attempt();
-                    last_attempt_url = attempt_trace.last_attempt_url.take();
-                    last_attempt_error = Some(message);
+                    &message,
+                    &mut attempt_trace,
+                    &mut last_attempt_url,
+                    &mut last_attempt_error,
+                ) {
                     continue;
                 }
                 let request = request
