@@ -10,6 +10,13 @@ test('account auth recovery uses extended timeout without retries in web runtime
   });
 });
 
+test('account cpa sync uses extended timeout without retries in web runtime', () => {
+  assert.deepEqual(resolveWebCommandRequestOptions('service_account_cpa_sync'), {
+    timeoutMs: 300000,
+    retries: 0,
+  });
+});
+
 test('explicit request options can still override command defaults', () => {
   assert.deepEqual(
     resolveWebCommandRequestOptions('service_account_auth_recover', {
