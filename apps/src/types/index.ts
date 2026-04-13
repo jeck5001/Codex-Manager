@@ -1172,6 +1172,10 @@ export interface AppSettings {
   teamManagerApiUrl: string;
   teamManagerHasApiKey: boolean;
   teamManagerApiKey?: string;
+  cpaSyncEnabled: boolean;
+  cpaSyncApiUrl: string;
+  cpaSyncHasManagementKey: boolean;
+  cpaSyncManagementKey?: string;
   backgroundTasks: BackgroundTaskSettings;
   envOverrides: Record<string, string>;
   envOverrideCatalog: EnvOverrideCatalogItem[];

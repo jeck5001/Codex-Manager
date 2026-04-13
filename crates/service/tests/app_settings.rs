@@ -740,6 +740,69 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
 }
 
 #[test]
+fn app_settings_set_persists_cpa_sync_snapshot_without_exposing_key() {
+    with_temp_db(|_| {
+        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
+            "cpaSyncEnabled": true,
+            "cpaSyncApiUrl": "https://cpa.example.com",
+            "cpaSyncManagementKey": "mgmt-key-123",
+        })))
+        .expect("set settings");
+
+        assert_eq!(
+            snapshot.get("cpaSyncEnabled").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            snapshot.get("cpaSyncApiUrl").and_then(|v| v.as_str()),
+            Some("https://cpa.example.com")
+        );
+        assert_eq!(
+            snapshot
+                .get("cpaSyncHasManagementKey")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert!(snapshot.get("cpaSyncManagementKey").is_none());
+    });
+}
+
+#[test]
+fn app_settings_preserves_cpa_management_key_when_blank_patch_sent() {
+    with_temp_db(|db_path| {
+        codexmanager_service::app_settings_set(Some(&json!({
+            "cpaSyncEnabled": true,
+            "cpaSyncApiUrl": "https://cpa.example.com",
+            "cpaSyncManagementKey": "keep-me",
+        })))
+        .expect("set initial management key");
+
+        codexmanager_service::app_settings_set(Some(&json!({
+            "cpaSyncManagementKey": "   ",
+        })))
+        .expect("apply blank patch");
+
+        let snapshot = codexmanager_service::app_settings_get()
+            .expect("get settings after blank patch");
+        assert_eq!(
+            snapshot
+                .get("cpaSyncHasManagementKey")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert!(snapshot.get("cpaSyncManagementKey").is_none());
+
+        let storage = Storage::open(db_path).expect("open storage");
+        assert_eq!(
+            storage
+                .get_app_setting(codexmanager_service::APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY)
+                .expect("read management key"),
+            Some("keep-me".to_string())
+        );
+    });
+}
+
+#[test]
 fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
     with_temp_db(|db_path| {
         let storage = Storage::open(db_path).expect("open storage");

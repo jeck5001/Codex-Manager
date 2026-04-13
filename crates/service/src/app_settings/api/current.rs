@@ -1,3 +1,7 @@
+use crate::app_settings::{
+    APP_SETTING_CPA_SYNC_API_URL_KEY, APP_SETTING_CPA_SYNC_ENABLED_KEY,
+    APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY,
+};
 use crate::initialize_storage_if_needed;
 use crate::web_access_password_configured;
 use codexmanager_core::rpc::types::ModelOption;
@@ -139,6 +143,13 @@ pub(super) fn current_app_settings_value(
     let upstream_proxy_url = crate::gateway::current_upstream_proxy_url();
     let upstream_stream_timeout_ms = current_gateway_upstream_stream_timeout_ms();
     let sse_keepalive_interval_ms = current_gateway_sse_keepalive_interval_ms();
+    let cpa_sync_enabled = get_persisted_app_setting(APP_SETTING_CPA_SYNC_ENABLED_KEY)
+        .map(|raw| parse_bool_with_default(&raw, false))
+        .unwrap_or(false);
+    let cpa_sync_api_url =
+        get_persisted_app_setting(APP_SETTING_CPA_SYNC_API_URL_KEY).unwrap_or_default();
+    let cpa_sync_has_management_key =
+        get_persisted_app_setting(APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY).is_some();
     let team_manager_enabled = get_persisted_app_setting(APP_SETTING_TEAM_MANAGER_ENABLED_KEY)
         .map(|raw| parse_bool_with_default(&raw, false))
         .unwrap_or(false);
@@ -229,6 +240,9 @@ pub(super) fn current_app_settings_value(
         "upstreamProxyUrl": upstream_proxy_url.unwrap_or_default(),
         "upstreamStreamTimeoutMs": upstream_stream_timeout_ms,
         "sseKeepaliveIntervalMs": sse_keepalive_interval_ms,
+        "cpaSyncEnabled": cpa_sync_enabled,
+        "cpaSyncApiUrl": cpa_sync_api_url,
+        "cpaSyncHasManagementKey": cpa_sync_has_management_key,
         "teamManagerEnabled": team_manager_enabled,
         "teamManagerApiUrl": team_manager_api_url,
         "teamManagerHasApiKey": team_manager_has_api_key,
