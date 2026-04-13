@@ -123,6 +123,45 @@ fn cpa_download_falls_back_to_filename_query_param_on_404() {
 }
 
 #[test]
+fn cpa_download_prefers_canonical_name_endpoint_over_broken_path_field() {
+    let _guard = setup_test_storage();
+    let server = Server::http("127.0.0.1:0").expect("start canonical server");
+    let api_url = format!("http://{}", server.server_addr());
+    let handle = thread::spawn(move || {
+        let request = server.recv().expect("receive canonical request");
+        let request_url = request.url().to_string();
+        let response = Response::from_string(
+            r#"{"access_token":"a","id_token":"i","account_id":"acc-canonical"}"#,
+        )
+        .with_status_code(StatusCode(200))
+        .with_header(
+            Header::from_bytes("Content-Type", "application/json").expect("content-type header"),
+        );
+        request.respond(response).expect("respond canonical request");
+        request_url
+    });
+
+    let content = super::download_auth_file_for_test(
+        &api_url,
+        "key-canonical",
+        serde_json::json!({
+            "files": [
+                {
+                    "name": "demo.json",
+                    "source": "file",
+                    "path": "/wrong/internal/path"
+                }
+            ]
+        }),
+    )
+    .expect("download auth file");
+
+    let request_url = handle.join().expect("join canonical server");
+    assert!(request_url.contains("/v0/management/auth-files/download?name=demo.json"));
+    assert!(content.contains("\"acc-canonical\""));
+}
+
+#[test]
 fn cpa_settings_use_saved_key_sentinel_falls_back_to_saved_value() {
     let _guard = setup_test_storage();
     crate::app_settings_set(Some(&serde_json::json!({

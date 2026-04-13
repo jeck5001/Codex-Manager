@@ -306,6 +306,15 @@ fn item_looks_importable(item: &Value) -> bool {
 }
 
 fn resolve_download_url(settings: &CpaSyncSettings, file: &CpaAuthFile) -> Result<Url, String> {
+    let mut canonical_url = build_cpa_endpoint(&settings.api_url, CPA_AUTH_FILES_DOWNLOAD_PATH)?;
+    canonical_url.query_pairs_mut().append_pair("name", &file.name);
+    Ok(canonical_url)
+}
+
+fn resolve_legacy_download_url(
+    settings: &CpaSyncSettings,
+    file: &CpaAuthFile,
+) -> Result<Option<Url>, String> {
     if let Some(raw) = first_string_field(
         &file.item,
         &[
@@ -320,17 +329,15 @@ fn resolve_download_url(settings: &CpaSyncSettings, file: &CpaAuthFile) -> Resul
         ],
     ) {
         if let Ok(url) = Url::parse(&raw) {
-            return Ok(url);
+            return Ok(Some(url));
         }
         let base = Url::parse(&settings.api_url).map_err(|_| "CPA API URL 格式非法".to_string())?;
         return base
             .join(raw.trim_start_matches('/'))
+            .map(Some)
             .map_err(|err| format!("build CPA download url failed: {err}"));
     }
-
-    let mut url = build_cpa_endpoint(&settings.api_url, CPA_AUTH_FILES_DOWNLOAD_PATH)?;
-    url.query_pairs_mut().append_pair("name", &file.name);
-    Ok(url)
+    Ok(None)
 }
 
 fn resolve_download_fallback_url(settings: &CpaSyncSettings, file: &CpaAuthFile) -> Result<Url, String> {
@@ -347,6 +354,17 @@ fn download_auth_file(settings: &CpaSyncSettings, file: &CpaAuthFile) -> Result<
         .map_err(|err| format!("下载失败: {err}"))?;
     let status = response.status();
     if status == StatusCode::NOT_FOUND {
+        if let Some(legacy_url) = resolve_legacy_download_url(settings, file)? {
+            let legacy_response = with_cpa_auth(client.get(legacy_url), &settings.management_key)
+                .send()
+                .map_err(|err| format!("下载失败: {err}"))?;
+            let legacy_status = legacy_response.status();
+            if legacy_status.is_success() {
+                return legacy_response
+                    .text()
+                    .map_err(|err| format!("读取下载内容失败: {err}"));
+            }
+        }
         let fallback_url = resolve_download_fallback_url(settings, file)?;
         let fallback_response = with_cpa_auth(client.get(fallback_url), &settings.management_key)
             .send()
