@@ -1,5 +1,8 @@
 use crate::storage_helpers::open_storage;
 
+pub(crate) const MISSING_AUTH_JSON_OPENAI_API_KEY_ERROR: &str =
+    "配置错误：未配置auth.json的OPENAI_API_KEY";
+
 mod anchor_fingerprint;
 mod concurrency;
 #[path = "routing/conversation_binding.rs"]

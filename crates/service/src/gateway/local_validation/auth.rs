@@ -47,7 +47,10 @@ pub(super) fn load_active_api_key(
                 &key_hash[..8]
             );
         }
-        return Err(super::LocalValidationError::new(403, "invalid api key"));
+        return Err(super::LocalValidationError::new(
+            403,
+            crate::gateway::MISSING_AUTH_JSON_OPENAI_API_KEY_ERROR,
+        ));
     };
 
     if api_key.status != "active" {

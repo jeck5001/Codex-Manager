@@ -446,7 +446,12 @@ fn authorize_websocket_request(headers: &HeaderMap) -> Result<WsRequestContext, 
                 format!("storage read failed: {err}"),
             )
         })?
-        .ok_or_else(|| text_error_response(StatusCode::FORBIDDEN, "invalid api key"))?;
+        .ok_or_else(|| {
+            text_error_response(
+                StatusCode::FORBIDDEN,
+                crate::gateway::MISSING_AUTH_JSON_OPENAI_API_KEY_ERROR,
+            )
+        })?;
 
     if api_key.status != "active" {
         return Err(text_error_response(

@@ -1,5 +1,7 @@
 use super::*;
 
+const MISSING_AUTH_JSON_OPENAI_API_KEY_ERROR: &str = "配置错误：未配置auth.json的OPENAI_API_KEY";
+
 /// 函数 `gateway_logs_invalid_api_key_error`
 ///
 /// 作者: gaohongshun
@@ -52,11 +54,11 @@ fn gateway_logs_invalid_api_key_error() {
             && item.output_tokens.is_none()
             && item.total_tokens.is_none()
             && item.reasoning_output_tokens.is_none()
-            && item.error.as_deref() == Some("invalid api key")
+            && item.error.as_deref() == Some(MISSING_AUTH_JSON_OPENAI_API_KEY_ERROR)
     });
     assert!(
         found,
-        "expected invalid api key request to be logged, got {:?}",
+        "expected missing auth.json OPENAI_API_KEY request to be logged, got {:?}",
         logs.iter()
             .map(|v| (&v.request_path, v.status_code, v.error.as_deref()))
             .collect::<Vec<_>>()
