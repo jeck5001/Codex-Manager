@@ -17,6 +17,7 @@ from datetime import datetime
 from curl_cffi import requests as cffi_requests
 
 from .register_flow_runner import RegisterFlowRunner
+from .cpa_register_runtime import CPARegisterRuntime
 from .register_flow_state import (
     clean_text as flow_clean_text,
     extract_auth_continue_url,
@@ -189,6 +190,7 @@ class RegistrationEngine:
         self._current_device_id: str = ""
         self._current_sentinel_token: str = ""
         self.flow_runner = RegisterFlowRunner(self)
+        self.cpa_runtime = CPARegisterRuntime(self)
 
     def _get_flow_runner(self) -> RegisterFlowRunner:
         runner = getattr(self, "flow_runner", None)
@@ -2025,11 +2027,7 @@ class RegistrationEngine:
                 self._log("OAuth 流程未初始化", "error")
                 return None
 
-            token_info = self.oauth_manager.handle_callback(
-                callback_url=callback_url,
-                expected_state=self.oauth_start.state,
-                code_verifier=self.oauth_start.code_verifier
-            )
+            token_info = self.cpa_runtime.handle_oauth_callback(callback_url)
 
             self._log("OAuth 授权成功")
             return token_info
