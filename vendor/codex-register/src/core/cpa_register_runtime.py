@@ -135,4 +135,17 @@ class CPARegisterRuntime:
         if isinstance(fallback_metadata, dict):
             result.metadata.update(fallback_metadata)
 
+        can_retry_via_login = (
+            not result.callback_url
+            and bool(result.error_message)
+            and bool(str(getattr(self.engine, "email", "") or "").strip())
+            and bool(str(getattr(self.engine, "password", "") or "").strip())
+        )
+        if can_retry_via_login and hasattr(self.engine, "_attempt_add_phone_login_bypass"):
+            self.engine._log("注册后 OAuth 收敛失败，尝试走 CPA 登录恢复链继续获取回调...", "warning")
+            callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
+            if callback_url:
+                result.callback_url = callback_url
+                result.error_message = ""
+
         return result

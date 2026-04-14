@@ -221,6 +221,91 @@ class CPARegisterRuntimeTests(unittest.TestCase):
             ],
         )
 
+    def test_resolve_post_registration_callback_uses_login_recovery_when_oauth_collection_fails(self):
+        module = load_cpa_register_runtime_module()
+
+        class FallbackResult:
+            callback_url = None
+            workspace_id = ""
+            error_message = "跟随重定向链失败"
+            metadata = {}
+
+        class FlowRunner:
+            def resolve_post_registration_callback(self, did, sen_token):
+                return FallbackResult()
+
+        class Engine:
+            _post_create_continue_url = ""
+            email = "user@example.com"
+            password = "secret"
+
+            def __init__(self):
+                self.flow_runner = FlowRunner()
+                self.recovery_calls = []
+                self.logged = []
+
+            def _get_flow_runner(self):
+                return self.flow_runner
+
+            def _get_workspace_id(self):
+                return ""
+
+            def _attempt_add_phone_login_bypass(self, did, sen_token):
+                self.recovery_calls.append((did, sen_token))
+                return "http://localhost:1455/auth/callback?code=recovered&state=state"
+
+            def _log(self, message, level="info"):
+                self.logged.append((level, message))
+
+        runtime = module.CPARegisterRuntime(Engine())
+        result = runtime.resolve_post_registration_callback("did-3", "sentinel-3")
+
+        self.assertEqual(
+            result.callback_url,
+            "http://localhost:1455/auth/callback?code=recovered&state=state",
+        )
+        self.assertEqual(result.error_message, "")
+        self.assertEqual(runtime.engine.recovery_calls, [("did-3", "sentinel-3")])
+
+    def test_resolve_post_registration_callback_preserves_error_without_login_credentials(self):
+        module = load_cpa_register_runtime_module()
+
+        class FallbackResult:
+            callback_url = None
+            workspace_id = ""
+            error_message = "跟随重定向链失败"
+            metadata = {}
+
+        class FlowRunner:
+            def resolve_post_registration_callback(self, did, sen_token):
+                return FallbackResult()
+
+        class Engine:
+            _post_create_continue_url = ""
+            email = "user@example.com"
+            password = ""
+
+            def __init__(self):
+                self.flow_runner = FlowRunner()
+
+            def _get_flow_runner(self):
+                return self.flow_runner
+
+            def _get_workspace_id(self):
+                return ""
+
+            def _attempt_add_phone_login_bypass(self, did, sen_token):
+                raise AssertionError("should not try login recovery without password")
+
+            def _log(self, _message, level="info"):
+                return level
+
+        runtime = module.CPARegisterRuntime(Engine())
+        result = runtime.resolve_post_registration_callback("did-4", "sentinel-4")
+
+        self.assertIsNone(result.callback_url)
+        self.assertEqual(result.error_message, "跟随重定向链失败")
+
 
 if __name__ == "__main__":
     unittest.main()
