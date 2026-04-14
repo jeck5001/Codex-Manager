@@ -217,6 +217,18 @@ export const EN_MESSAGES: MessageCatalog = {
   刷新账号用量: "Refresh account usage",
   刷新列表: "Refresh list",
   添加账号: "Add account",
+  预热: "Warm up",
+  "预热中...": "Warming up...",
+  账号预热: "Account warm-up",
+  当前没有可预热的账号: "There are no accounts available for warm-up",
+  "预热完成：共{requested}个账号，成功{count}个":
+    "Warm-up complete: {count} of {requested} accounts succeeded",
+  "预热完成：成功{success}个，失败{failed}个":
+    "Warm-up complete: {success} succeeded, {failed} failed",
+  首个失败: "First failure",
+  账号预热失败: "Account warm-up failed",
+  "向选中账号发送 hi 进行预热；如果未选中账号，则默认预热全部账号。":
+    "Send `hi` to warm up selected accounts; if none are selected, all accounts will be warmed up.",
   排序: "Sort",
   大号优先排序: "Large accounts first",
   小号优先排序: "Small accounts first",

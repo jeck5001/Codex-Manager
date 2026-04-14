@@ -1472,6 +1472,32 @@ export default function AccountsPage() {
           <div className="hidden min-w-0 lg:block" />
 
           <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0 lg:justify-self-end">
+            <Tooltip>
+              <TooltipTrigger render={<span />} className="inline-flex">
+                <Button
+                  variant="outline"
+                  className="glass-card h-10 min-w-[88px] gap-2 rounded-xl px-3"
+                  disabled={
+                    !isServiceReady || isWarmingUpAccounts || accounts.length === 0
+                  }
+                  onClick={() => void handleWarmupAccounts()}
+                >
+                  {isWarmingUpAccounts ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Zap className="h-4 w-4" />
+                  )}
+                  <span className="text-sm font-medium">
+                    {isWarmingUpAccounts ? t("预热中...") : t("预热")}
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs whitespace-pre-wrap break-words">
+                {t(
+                  "向选中账号发送 hi 进行预热；如果未选中账号，则默认预热全部账号。",
+                )}
+              </TooltipContent>
+            </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger>
                 <Button
@@ -1600,33 +1626,6 @@ export default function AccountsPage() {
                     <ArrowDown className="mr-2 h-4 w-4" />
                     {t("小号优先排序")}
                     <DropdownMenuShortcut>FREE</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
-                    {t("预热")}
-                  </DropdownMenuLabel>
-                  <DropdownMenuItem
-                    className="h-9 rounded-lg px-2"
-                    disabled={
-                      !isServiceReady || isWarmingUpAccounts || accounts.length === 0
-                    }
-                    onClick={() => void handleWarmupAccounts()}
-                  >
-                    {isWarmingUpAccounts ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Zap className="mr-2 h-4 w-4" />
-                    )}
-                    {isWarmingUpAccounts
-                      ? t("预热中...")
-                      : t("一键预热（hi/你好）")}
-                    <DropdownMenuShortcut>
-                      {effectiveSelectedIds.length > 0
-                        ? effectiveSelectedIds.length
-                        : t("全部")}
-                    </DropdownMenuShortcut>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
