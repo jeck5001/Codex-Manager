@@ -51,12 +51,13 @@ pub(crate) fn prefers_raw_errors_for_tiny_http_request(request: &tiny_http::Requ
     })
 }
 
-pub(crate) fn error_message_for_client(prefers_raw_errors: bool, message: impl Into<String>) -> String {
+pub(crate) fn error_message_for_client(
+    _prefers_raw_errors: bool,
+    message: impl Into<String>,
+) -> String {
     let message = message.into();
-    if prefers_raw_errors {
-        if let Some(raw) = extract_raw_error_message(message.as_str()) {
-            return raw.to_string();
-        }
+    if let Some(raw) = extract_raw_error_message(message.as_str()) {
+        return raw.to_string();
     }
     message
 }

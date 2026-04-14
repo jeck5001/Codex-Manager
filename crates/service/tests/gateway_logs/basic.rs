@@ -24,7 +24,7 @@ fn gateway_logs_invalid_api_key_error() {
 
     let server = TestServer::start();
     let req_body = r#"{"model":"gpt-5.3-codex","input":"hello"}"#;
-    let (status, _) = post_http_raw(
+    let (status, body) = post_http_raw(
         &server.addr,
         "/v1/responses",
         req_body,
@@ -34,6 +34,14 @@ fn gateway_logs_invalid_api_key_error() {
         ],
     );
     assert_eq!(status, 403);
+    assert!(
+        body.contains("invalid api key"),
+        "gateway should return raw upstream message, got {body}"
+    );
+    assert!(
+        !body.contains("未配置auth.json"),
+        "gateway response should not expose bilingual log text, got {body}"
+    );
 
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init schema");

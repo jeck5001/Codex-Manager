@@ -1,4 +1,5 @@
 use super::{terminal_text_response, with_trace_id_header};
+use std::io::Read;
 use tiny_http::Response;
 
 /// 函数 `terminal_text_response_sets_error_code_header`
@@ -56,6 +57,20 @@ fn terminal_text_response_sets_error_code_header() {
         })
         .map(|item| item.value.as_str().to_string());
     assert_eq!(trace_header.as_deref(), Some("trc_test_1"));
+
+    let mut body = String::new();
+    response
+        .into_reader()
+        .read_to_string(&mut body)
+        .expect("read response body");
+    assert!(
+        body.contains("\"message\":\"no available account\""),
+        "unexpected response body: {body}"
+    );
+    assert!(
+        !body.contains("无可用账号("),
+        "response should return raw message only: {body}"
+    );
 }
 
 /// 函数 `with_trace_id_header_appends_trace_header`
