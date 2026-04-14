@@ -2183,7 +2183,7 @@ class RegistrationEngine:
                 if not self._create_user_account():
                     result.error_message = "创建用户账户失败"
                     return result
-            redirect_result = self._get_flow_runner().resolve_post_registration_callback(did, sen_token)
+            redirect_result = self.cpa_runtime.resolve_post_registration_callback(did, sen_token)
             callback_url = redirect_result.callback_url
             if redirect_result.workspace_id:
                 result.workspace_id = redirect_result.workspace_id
