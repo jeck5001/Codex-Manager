@@ -277,6 +277,47 @@ class GeneratorEmailRouteExposureTests(unittest.TestCase):
         self.assertEqual(payload["generator_email"]["count"], 1)
         self.assertEqual(payload["generator_email"]["services"][0]["type"], "generator_email")
 
+    def test_email_service_stats_include_generator_email_count(self):
+        module = load_email_services_module()
+
+        class _StatsQuery:
+            def __init__(self, values):
+                self._values = values
+
+            def group_by(self, *_args, **_kwargs):
+                return self
+
+            def filter(self, *_args, **_kwargs):
+                return self
+
+            def all(self):
+                return list(self._values)
+
+            def scalar(self):
+                return 4
+
+        class _StatsDB:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def query(self, *args):
+                if len(args) == 2:
+                    return _StatsQuery([
+                        ("outlook", 1),
+                        ("generator_email", 3),
+                    ])
+                return _StatsQuery([])
+
+        module.get_db = lambda: _StatsDB()
+
+        payload = asyncio.run(module.get_email_services_stats())
+
+        self.assertEqual(payload["generator_email_count"], 3)
+        self.assertEqual(payload["enabled_count"], 4)
+
 
 if __name__ == "__main__":
     unittest.main()

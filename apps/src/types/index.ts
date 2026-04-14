@@ -777,6 +777,7 @@ export interface RegisterEmailServiceStats {
   customCount: number;
   tempMailCount: number;
   mail33ImapCount: number;
+  generatorEmailCount: number;
   tempmailAvailable: boolean;
   enabledCount: number;
 }
@@ -845,6 +846,7 @@ export interface RegisterAvailableServicesResult {
   customDomain: RegisterServiceGroup;
   tempMail: RegisterServiceGroup;
   mail33Imap: RegisterServiceGroup;
+  generatorEmail: RegisterServiceGroup;
 }
 
 export interface RegisterBrowserbaseConfig {

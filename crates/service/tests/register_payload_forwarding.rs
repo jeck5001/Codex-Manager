@@ -170,3 +170,37 @@ fn rpc_register_forwarding_tracks_auto_create_temp_mail_service_variants() {
 
     handle.join().expect("join capture server");
 }
+
+#[test]
+fn rpc_register_forwarding_supports_generator_email_service_type() {
+    let _lock = REGISTER_ENV_LOCK.lock().unwrap();
+    let (register_url, body_rx, handle) = capture_register_requests(1);
+    let _env_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
+
+    let request = JsonRpcRequest {
+        id: 11,
+        method: "account/register/start".to_string(),
+        params: Some(json!({
+            "emailServiceType": "generator_email",
+            "registerMode": "standard"
+        })),
+    };
+
+    let response = send_rpc_request(&request);
+    assert!(response.get("result").is_some());
+
+    let (path, body) = body_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive register body");
+    assert_eq!(path, "/api/registration/start");
+    assert_eq!(
+        body.get("email_service_type").and_then(Value::as_str),
+        Some("generator_email")
+    );
+    assert_eq!(
+        body.get("register_mode").and_then(Value::as_str),
+        Some("standard")
+    );
+
+    handle.join().expect("join capture server");
+}
