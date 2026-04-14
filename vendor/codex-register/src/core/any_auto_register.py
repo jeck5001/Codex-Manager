@@ -47,6 +47,132 @@ class AnyAutoRegistrationRunner:
     def _log(self, message: str, level: str = "info"):
         self.engine._log(message, level)
 
+    def _get_cpa_runtime(self):
+        runtime = getattr(self.engine, "cpa_runtime", None)
+        if runtime is None:
+            if not hasattr(self.engine, "_log"):
+                class _FallbackRuntime:
+                    def __init__(self, engine):
+                        self.engine = engine
+
+                    def execute_signup_sequence(self, did, sen_token):
+                        signup_result = self.engine._submit_signup_form(did, sen_token)
+                        if not getattr(signup_result, "success", False):
+                            message = getattr(signup_result, "error_message", "") or ""
+                            return type("SignupSequenceResult", (), {
+                                "success": False,
+                                "error_message": f"提交注册表单失败: {message}".strip(),
+                            })()
+
+                        if getattr(self.engine, "_is_existing_account", False):
+                            self.engine._otp_sent_at = time.time()
+                        else:
+                            password_ok, _password = self.engine._register_password()
+                            if not password_ok:
+                                return type("SignupSequenceResult", (), {
+                                    "success": False,
+                                    "error_message": "注册密码失败",
+                                })()
+
+                            if not self.engine._send_verification_code():
+                                return type("SignupSequenceResult", (), {
+                                    "success": False,
+                                    "error_message": "发送验证码失败",
+                                })()
+
+                        code = self.engine._wait_for_signup_verification_code()
+                        if not code:
+                            return type("SignupSequenceResult", (), {
+                                "success": False,
+                                "error_message": "获取验证码失败",
+                            })()
+
+                        if not self.engine._validate_signup_verification_code_with_retry(code):
+                            return type("SignupSequenceResult", (), {
+                                "success": False,
+                                "error_message": "验证验证码失败",
+                            })()
+
+                        if (
+                            not getattr(self.engine, "_is_existing_account", False)
+                            and not self.engine._create_user_account()
+                        ):
+                            return type("SignupSequenceResult", (), {
+                                "success": False,
+                                "error_message": "创建用户账户失败",
+                            })()
+
+                        return type("SignupSequenceResult", (), {
+                            "success": True,
+                            "error_message": "",
+                        })()
+
+                return _FallbackRuntime(self.engine)
+
+            try:
+                from .cpa_register_runtime import CPARegisterRuntime
+            except ModuleNotFoundError:
+                class _FallbackRuntime:
+                    def __init__(self, engine):
+                        self.engine = engine
+
+                    def execute_signup_sequence(self, did, sen_token):
+                        signup_result = self.engine._submit_signup_form(did, sen_token)
+                        if not getattr(signup_result, "success", False):
+                            message = getattr(signup_result, "error_message", "") or ""
+                            return type("SignupSequenceResult", (), {
+                                "success": False,
+                                "error_message": f"提交注册表单失败: {message}".strip(),
+                            })()
+
+                        if getattr(self.engine, "_is_existing_account", False):
+                            self.engine._otp_sent_at = time.time()
+                        else:
+                            password_ok, _password = self.engine._register_password()
+                            if not password_ok:
+                                return type("SignupSequenceResult", (), {
+                                    "success": False,
+                                    "error_message": "注册密码失败",
+                                })()
+
+                            if not self.engine._send_verification_code():
+                                return type("SignupSequenceResult", (), {
+                                    "success": False,
+                                    "error_message": "发送验证码失败",
+                                })()
+
+                        code = self.engine._wait_for_signup_verification_code()
+                        if not code:
+                            return type("SignupSequenceResult", (), {
+                                "success": False,
+                                "error_message": "获取验证码失败",
+                            })()
+
+                        if not self.engine._validate_signup_verification_code_with_retry(code):
+                            return type("SignupSequenceResult", (), {
+                                "success": False,
+                                "error_message": "验证验证码失败",
+                            })()
+
+                        if (
+                            not getattr(self.engine, "_is_existing_account", False)
+                            and not self.engine._create_user_account()
+                        ):
+                            return type("SignupSequenceResult", (), {
+                                "success": False,
+                                "error_message": "创建用户账户失败",
+                            })()
+
+                        return type("SignupSequenceResult", (), {
+                            "success": True,
+                            "error_message": "",
+                        })()
+
+                runtime = _FallbackRuntime(self.engine)
+            else:
+                runtime = CPARegisterRuntime(self.engine)
+        return runtime
+
     def _build_final_metadata(self, result: RegistrationResult, health_error: str) -> Dict[str, Any]:
         metadata = dict(result.metadata or {})
         metadata.update({
@@ -393,48 +519,10 @@ class AnyAutoRegistrationRunner:
             else:
                 self._log("Sentinel 检查失败或未启用", "warning")
 
-            self._log("7. 提交注册表单...")
-            signup_result = self.engine._submit_signup_form(did, sen_token)
-            if not signup_result.success:
-                result.error_message = f"提交注册表单失败: {signup_result.error_message}"
+            signup_sequence = self._get_cpa_runtime().execute_signup_sequence(did, sen_token)
+            if not signup_sequence.success:
+                result.error_message = signup_sequence.error_message
                 return result
-
-            if self.engine._is_existing_account:
-                self._log("8. [已注册账号] 跳过密码设置，OTP 已自动发送")
-            else:
-                self._log("8. 注册密码...")
-                password_ok, _password = self.engine._register_password()
-                if not password_ok:
-                    result.error_message = "注册密码失败"
-                    return result
-
-            if self.engine._is_existing_account:
-                self._log("9. [已注册账号] 跳过发送验证码，使用自动发送的 OTP")
-                self.engine._otp_sent_at = time.time()
-            else:
-                self._log("9. 发送验证码...")
-                if not self.engine._send_verification_code():
-                    result.error_message = "发送验证码失败"
-                    return result
-
-            self._log("10. 等待验证码...")
-            code = self.engine._wait_for_signup_verification_code()
-            if not code:
-                result.error_message = "获取验证码失败"
-                return result
-
-            self._log("11. 验证验证码...")
-            if not self.engine._validate_signup_verification_code_with_retry(code):
-                result.error_message = "验证验证码失败"
-                return result
-
-            if self.engine._is_existing_account:
-                self._log("12. [已注册账号] 跳过创建用户账户")
-            else:
-                self._log("12. 创建用户账户...")
-                if not self.engine._create_user_account():
-                    result.error_message = "创建用户账户失败"
-                    return result
 
             should_try_session = self._should_try_chatgpt_session_first()
             if should_try_session:
