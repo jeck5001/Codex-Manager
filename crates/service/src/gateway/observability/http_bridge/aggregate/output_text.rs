@@ -8,8 +8,7 @@ pub(in super::super) const OUTPUT_TEXT_TRUNCATED_MARKER: &str = "[output_text tr
 static OUTPUT_TEXT_LIMIT_BYTES: AtomicUsize = AtomicUsize::new(DEFAULT_OUTPUT_TEXT_LIMIT_BYTES);
 static OUTPUT_TEXT_LIMIT_LOADED: OnceLock<()> = OnceLock::new();
 const UPSTREAM_ERROR_HINT_LIMIT_BYTES: usize = 16 * 1024;
-const STREAM_INCOMPLETE_FALLBACK_MESSAGE: &str =
-    "连接中断（可能是网络波动或客户端主动取消）";
+const STREAM_INCOMPLETE_FALLBACK_MESSAGE: &str = "连接中断（可能是网络波动或客户端主动取消）";
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct UpstreamResponseUsage {

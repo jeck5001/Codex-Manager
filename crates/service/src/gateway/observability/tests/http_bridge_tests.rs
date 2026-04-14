@@ -435,8 +435,7 @@ fn anthropic_sse_reader_uses_request_model_when_upstream_stream_omits_model() {
         )],
     );
     let usage_collector = Arc::new(Mutex::new(super::UpstreamResponseUsage::default()));
-    let mut reader =
-        super::AnthropicSseReader::new(response, usage_collector, Some("gpt-5.4"));
+    let mut reader = super::AnthropicSseReader::new(response, usage_collector, Some("gpt-5.4"));
     let mut out = String::new();
     reader
         .read_to_string(&mut out)

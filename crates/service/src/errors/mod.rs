@@ -112,7 +112,8 @@ pub(crate) fn classify_message(message: &str) -> ErrorCode {
     if starts_with("upstream blocked by cloudflare/waf") || eq("upstream challenge blocked") {
         return ErrorCode::UpstreamChallengeBlocked;
     }
-    if contains("cloudflare/waf") || contains("安全验证拦截") || contains("验证/拦截页面") {
+    if contains("cloudflare/waf") || contains("安全验证拦截") || contains("验证/拦截页面")
+    {
         return ErrorCode::UpstreamChallengeBlocked;
     }
     if eq("upstream rate-limited") {
@@ -153,8 +154,7 @@ pub(crate) fn classify_message(message: &str) -> ErrorCode {
     if starts_with("upstream returned non-api content") {
         return ErrorCode::UpstreamNonSuccess;
     }
-    if starts_with("上游返回的不是正常接口数据")
-        || starts_with("上游返回了网页内容而不是接口数据")
+    if starts_with("上游返回的不是正常接口数据") || starts_with("上游返回了网页内容而不是接口数据")
     {
         return ErrorCode::UpstreamNonSuccess;
     }

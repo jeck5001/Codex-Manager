@@ -826,9 +826,8 @@ async fn resolve_bearer_token_for_websocket(
     token: codexmanager_core::storage::Token,
 ) -> Result<String, String> {
     let join_result = tokio::task::spawn_blocking(move || {
-        let storage = open_storage().ok_or_else(|| {
-            crate::gateway::bilingual_error("存储不可用", "storage unavailable")
-        })?;
+        let storage = open_storage()
+            .ok_or_else(|| crate::gateway::bilingual_error("存储不可用", "storage unavailable"))?;
         let mut token = token;
         crate::gateway::gateway_resolve_openai_bearer_token(&storage, &account, &mut token)
     })
@@ -944,7 +943,10 @@ fn build_upstream_websocket_request(
     if let Some(turn_state) = context.incoming_headers.turn_state() {
         insert_header(headers, "x-codex-turn-state", turn_state)?;
     }
-    append_passthrough_codex_headers(headers, context.incoming_headers.passthrough_codex_headers())?;
+    append_passthrough_codex_headers(
+        headers,
+        context.incoming_headers.passthrough_codex_headers(),
+    )?;
     if context.include_timing_metrics {
         insert_header(headers, "x-responsesapi-include-timing-metrics", "true")?;
     }
@@ -1096,9 +1098,8 @@ async fn try_rotate_ws_upstream_after_terminal(
         status_code,
     );
     if status_code == 429 {
-        let _ = crate::usage_refresh::enqueue_usage_refresh_for_account(
-            current_account_id.as_str(),
-        );
+        let _ =
+            crate::usage_refresh::enqueue_usage_refresh_for_account(current_account_id.as_str());
     }
 
     let storage = match open_storage() {
@@ -1142,7 +1143,12 @@ async fn try_rotate_ws_upstream_after_terminal(
             return;
         }
     };
-    let request = match build_upstream_websocket_request(ws_url.as_str(), &account, bearer.as_str(), context) {
+    let request = match build_upstream_websocket_request(
+        ws_url.as_str(),
+        &account,
+        bearer.as_str(),
+        context,
+    ) {
         Ok(request) => request,
         Err(err) => {
             log::warn!(

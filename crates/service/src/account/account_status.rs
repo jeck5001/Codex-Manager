@@ -198,10 +198,7 @@ pub(crate) fn usage_limit_reason_from_message(message: &str) -> Option<&'static 
     None
 }
 
-pub(crate) fn analyze_gateway_error(
-    err: &str,
-    has_more_candidates: bool,
-) -> GatewayErrorFollowUp {
+pub(crate) fn analyze_gateway_error(err: &str, has_more_candidates: bool) -> GatewayErrorFollowUp {
     let kind = if deactivation_reason_from_message(err).is_some() {
         GatewayErrorKind::Deactivation
     } else if usage_limit_reason_from_message(err).is_some() {

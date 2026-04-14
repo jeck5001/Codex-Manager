@@ -133,7 +133,9 @@ pub(super) fn maybe_respond_local_models(
                     "模型刷新后返回空目录",
                     "models refresh returned empty catalog",
                 );
-                super::local_response::respond_local_terminal_error(request, &context, 503, message)?;
+                super::local_response::respond_local_terminal_error(
+                    request, &context, 503, message,
+                )?;
                 return Ok(None);
             }
             Err(err) => {
@@ -141,7 +143,9 @@ pub(super) fn maybe_respond_local_models(
                     "模型刷新失败",
                     format!("models refresh failed: {err}"),
                 );
-                super::local_response::respond_local_terminal_error(request, &context, 503, message)?;
+                super::local_response::respond_local_terminal_error(
+                    request, &context, 503, message,
+                )?;
                 return Ok(None);
             }
         }

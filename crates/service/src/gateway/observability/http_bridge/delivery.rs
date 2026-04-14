@@ -1461,11 +1461,7 @@ pub(crate) fn respond_with_upstream(
                 let response = Response::new(
                     status,
                     headers,
-                    AnthropicSseReader::new(
-                        upstream,
-                        Arc::clone(&usage_collector),
-                        fallback_model,
-                    ),
+                    AnthropicSseReader::new(upstream, Arc::clone(&usage_collector), fallback_model),
                     None,
                     None,
                 );

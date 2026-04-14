@@ -43,10 +43,7 @@ pub(super) fn load_active_api_key(
     let api_key = storage.find_api_key_by_hash(&key_hash).map_err(|err| {
         super::LocalValidationError::new(
             500,
-            crate::gateway::bilingual_error(
-                "读取存储失败",
-                format!("storage read failed: {err}"),
-            ),
+            crate::gateway::bilingual_error("读取存储失败", format!("storage read failed: {err}")),
         )
     })?;
 

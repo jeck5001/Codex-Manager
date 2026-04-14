@@ -1207,7 +1207,10 @@ fn responses_apply_global_model_forward_rules_when_platform_key_not_bound() {
     );
     let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
 
-    assert_eq!(value.get("model").and_then(serde_json::Value::as_str), Some("spark"));
+    assert_eq!(
+        value.get("model").and_then(serde_json::Value::as_str),
+        Some("spark")
+    );
 
     let _ = crate::gateway::set_model_forward_rules(original_rules.as_str());
 }

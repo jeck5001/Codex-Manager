@@ -87,7 +87,10 @@ pub(crate) fn warmup_accounts(
     })
 }
 
-fn resolve_target_accounts(storage: &Storage, account_ids: &[String]) -> Result<Vec<Account>, String> {
+fn resolve_target_accounts(
+    storage: &Storage,
+    account_ids: &[String],
+) -> Result<Vec<Account>, String> {
     let accounts = storage
         .list_gateway_candidates()
         .map_err(|err| err.to_string())?
@@ -149,32 +152,22 @@ fn warmup_single_account(
     let started_at = Instant::now();
     match load_account_token(storage, &account) {
         Ok(mut token) => {
-            let mut outcome = send_warmup_request_with_fallback(
-                client,
-                &account,
-                &token,
-                model_slug,
-                message,
-            );
+            let mut outcome =
+                send_warmup_request_with_fallback(client, &account, &token, model_slug, message);
 
             if let Err(err) = outcome.as_ref() {
                 if should_retry_warmup_with_refresh(&token, err) {
-                    let issuer = std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| {
-                        codexmanager_core::auth::DEFAULT_ISSUER.to_string()
-                    });
-                    let client_id = std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| {
-                        codexmanager_core::auth::DEFAULT_CLIENT_ID.to_string()
-                    });
-                    outcome = refresh_and_persist_access_token(storage, &mut token, &issuer, &client_id)
-                        .and_then(|_| {
-                            send_warmup_request_with_fallback(
-                                client,
-                                &account,
-                                &token,
-                                model_slug,
-                                message,
-                            )
-                        });
+                    let issuer = std::env::var("CODEXMANAGER_ISSUER")
+                        .unwrap_or_else(|_| codexmanager_core::auth::DEFAULT_ISSUER.to_string());
+                    let client_id = std::env::var("CODEXMANAGER_CLIENT_ID")
+                        .unwrap_or_else(|_| codexmanager_core::auth::DEFAULT_CLIENT_ID.to_string());
+                    outcome =
+                        refresh_and_persist_access_token(storage, &mut token, &issuer, &client_id)
+                            .and_then(|_| {
+                                send_warmup_request_with_fallback(
+                                    client, &account, &token, model_slug, message,
+                                )
+                            });
                 }
             }
 
@@ -275,7 +268,9 @@ fn persist_warmup_observability(
         account_id: Some(account.id.clone()),
         event_type: "account_warmup".to_string(),
         message: match error {
-            Some(err) => format!("{event_message}; model={model_slug}; status={status_code}; error={err}"),
+            Some(err) => {
+                format!("{event_message}; model={model_slug}; status={status_code}; error={err}")
+            }
             None => format!("{event_message}; model={model_slug}; status={status_code}"),
         },
         created_at,
@@ -384,7 +379,11 @@ fn send_warmup_request(
     let status = response.status();
     let headers = response.headers().clone();
     let body_text = response.text().unwrap_or_default();
-    Err(summarize_warmup_error(status.as_u16(), &headers, &body_text))
+    Err(summarize_warmup_error(
+        status.as_u16(),
+        &headers,
+        &body_text,
+    ))
 }
 
 #[cfg(test)]
@@ -394,7 +393,9 @@ mod tests {
         DEFAULT_WARMUP_MODEL,
     };
     use crate::apikey_models::save_managed_model_catalog_with_storage;
-    use codexmanager_core::rpc::types::{ManagedModelCatalogEntry, ManagedModelCatalogResult, ModelInfo};
+    use codexmanager_core::rpc::types::{
+        ManagedModelCatalogEntry, ManagedModelCatalogResult, ModelInfo,
+    };
     use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 
     fn make_model(slug: &str, sort_index: i64, supported_in_api: bool) -> ManagedModelCatalogEntry {
@@ -414,14 +415,17 @@ mod tests {
     fn resolve_warmup_model_slug_uses_first_supported_model_from_catalog_order() {
         let storage = Storage::open_in_memory().expect("open in-memory storage");
         storage.init().expect("init in-memory storage");
-        save_managed_model_catalog_with_storage(&storage, &ManagedModelCatalogResult {
+        save_managed_model_catalog_with_storage(
+            &storage,
+            &ManagedModelCatalogResult {
                 items: vec![
                     make_model("gpt-hidden", 0, false),
                     make_model("gpt-latest", 1, true),
                     make_model("gpt-older", 2, true),
                 ],
                 ..ManagedModelCatalogResult::default()
-            })
+            },
+        )
         .expect("save model catalog");
 
         assert_eq!(resolve_warmup_model_slug(&storage), "gpt-latest");
@@ -445,11 +449,20 @@ mod tests {
             last_refresh: 0,
         };
 
-        assert!(should_retry_warmup_with_refresh(&token, "status=401 body=Unauthorized"));
-        assert!(!should_retry_warmup_with_refresh(&token, "status=500 body=server error"));
+        assert!(should_retry_warmup_with_refresh(
+            &token,
+            "status=401 body=Unauthorized"
+        ));
+        assert!(!should_retry_warmup_with_refresh(
+            &token,
+            "status=500 body=server error"
+        ));
 
         token.refresh_token.clear();
-        assert!(!should_retry_warmup_with_refresh(&token, "status=401 body=Unauthorized"));
+        assert!(!should_retry_warmup_with_refresh(
+            &token,
+            "status=401 body=Unauthorized"
+        ));
     }
 
     #[test]
@@ -519,8 +532,14 @@ fn build_warmup_headers(account: &Account, bearer: &str) -> Result<HeaderMap, St
         reqwest::header::ACCEPT,
         HeaderValue::from_static("text/event-stream"),
     );
-    headers.insert(reqwest::header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    headers.insert(reqwest::header::USER_AGENT, header_value(&crate::gateway::current_codex_user_agent())?);
+    headers.insert(
+        reqwest::header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        header_value(&crate::gateway::current_codex_user_agent())?,
+    );
     headers.insert(
         HeaderName::from_static("version"),
         header_value(&crate::gateway::current_codex_user_agent_version())?,
@@ -582,12 +601,13 @@ fn header_value(value: &str) -> Result<HeaderValue, String> {
 }
 
 fn summarize_warmup_error(status: u16, headers: &HeaderMap, body: &str) -> String {
-    let body_hint = crate::gateway::summarize_upstream_error_hint_from_body(status, body.as_bytes())
-        .or_else(|| {
-            let trimmed = body.trim();
-            (!trimmed.is_empty()).then(|| trimmed.to_string())
-        })
-        .unwrap_or_else(|| "unknown error".to_string());
+    let body_hint =
+        crate::gateway::summarize_upstream_error_hint_from_body(status, body.as_bytes())
+            .or_else(|| {
+                let trimmed = body.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_string())
+            })
+            .unwrap_or_else(|| "unknown error".to_string());
 
     let request_id = first_header(headers, &["x-request-id", "x-oai-request-id"]);
     let auth_error = first_header(headers, &["x-openai-authorization-error"]);
@@ -622,7 +642,11 @@ fn first_header(headers: &HeaderMap, names: &[&str]) -> Option<String> {
     })
 }
 
-fn maybe_mark_account_auth_error(storage: &Storage, account_id: &str, err: &str) -> Result<(), String> {
+fn maybe_mark_account_auth_error(
+    storage: &Storage,
+    account_id: &str,
+    err: &str,
+) -> Result<(), String> {
     if err.to_ascii_lowercase().contains("auth error")
         || err.to_ascii_lowercase().contains("status=401")
         || err.to_ascii_lowercase().contains("status=403")

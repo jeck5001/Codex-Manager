@@ -296,13 +296,12 @@ pub(super) fn build_local_validation_result(
     let effective_protocol_type =
         resolve_gateway_protocol_type(api_key.protocol_type.as_str(), normalized_path.as_str());
     let request_method = request.method().as_str().to_string();
-    let method = Method::from_bytes(request_method.as_bytes())
-        .map_err(|_| {
-            LocalValidationError::new(
-                405,
-                crate::gateway::bilingual_error("不支持的请求方法", "unsupported method"),
-            )
-        })?;
+    let method = Method::from_bytes(request_method.as_bytes()).map_err(|_| {
+        LocalValidationError::new(
+            405,
+            crate::gateway::bilingual_error("不支持的请求方法", "unsupported method"),
+        )
+    })?;
     let initial_service_tier_diagnostic = super::super::inspect_service_tier_for_log(&body);
     super::super::log_client_service_tier(
         trace_id.as_str(),
@@ -373,11 +372,11 @@ pub(super) fn build_local_validation_result(
     let adapted =
         super::super::adapt_request_for_protocol(effective_protocol_type, &normalized_path, body)
             .map_err(|err| {
-                LocalValidationError::new(
-                    400,
-                    crate::gateway::bilingual_error("请求协议适配失败", err),
-                )
-            })?;
+            LocalValidationError::new(
+                400,
+                crate::gateway::bilingual_error("请求协议适配失败", err),
+            )
+        })?;
     let mut path = adapted.path;
     let mut response_adapter = adapted.response_adapter;
     let mut gemini_stream_output_mode = adapted.gemini_stream_output_mode;

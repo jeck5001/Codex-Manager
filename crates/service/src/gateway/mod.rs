@@ -79,10 +79,10 @@ mod http_bridge;
 mod incoming_headers;
 #[path = "request/local_count_tokens.rs"]
 mod local_count_tokens;
-#[path = "request/local_response.rs"]
-mod local_response;
 #[path = "request/local_models.rs"]
 mod local_models;
+#[path = "request/local_response.rs"]
+mod local_response;
 mod local_validation;
 #[path = "observability/metrics.rs"]
 mod metrics;
@@ -120,8 +120,8 @@ pub(crate) use concurrency::current_gateway_concurrency_recommendation;
 pub(crate) use error_log::write_gateway_error_log;
 use metrics::{
     account_inflight_count, acquire_account_inflight, begin_gateway_request,
-    record_gateway_candidate_skip, record_gateway_cooldown_mark,
-    record_gateway_failover_attempt, record_gateway_request_outcome, AccountInFlightGuard,
+    record_gateway_candidate_skip, record_gateway_cooldown_mark, record_gateway_failover_attempt,
+    record_gateway_request_outcome, AccountInFlightGuard,
 };
 pub(crate) use metrics::{
     begin_rpc_request, duration_to_millis, gateway_metrics_prometheus,

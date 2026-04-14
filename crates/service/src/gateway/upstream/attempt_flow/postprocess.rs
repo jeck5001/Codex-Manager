@@ -340,7 +340,11 @@ where
             &account.id,
             super::super::super::CooldownReason::Challenge,
         );
-        log_gateway_result(Some(url), status.as_u16(), Some("upstream challenge blocked"));
+        log_gateway_result(
+            Some(url),
+            status.as_u16(),
+            Some("upstream challenge blocked"),
+        );
         return PostRetryFlowDecision::Failover;
     }
 
@@ -784,8 +788,7 @@ mod tests {
                 .expect("receive upstream request")
                 .expect("request present");
             let mut body = Vec::new();
-            std::io::Read::read_to_end(request.as_reader(), &mut body)
-                .expect("read request body");
+            std::io::Read::read_to_end(request.as_reader(), &mut body).expect("read request body");
             hit_count_thread.fetch_add(1, Ordering::SeqCst);
             let response = Response::from_string(
                 "<html><title>Just a moment...</title><body>cf</body></html>",
@@ -877,8 +880,7 @@ mod tests {
                 .expect("receive upstream request")
                 .expect("request present");
             let mut body = Vec::new();
-            std::io::Read::read_to_end(request.as_reader(), &mut body)
-                .expect("read request body");
+            std::io::Read::read_to_end(request.as_reader(), &mut body).expect("read request body");
             hit_count_thread.fetch_add(1, Ordering::SeqCst);
             let response = Response::from_string("{\"error\":\"challenge\"}")
                 .with_status_code(StatusCode(403));

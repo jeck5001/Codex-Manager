@@ -765,10 +765,7 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
         Some("session_ws_1")
     );
     assert_eq!(
-        capture
-            .headers
-            .get("x-codex-window-id")
-            .map(String::as_str),
+        capture.headers.get("x-codex-window-id").map(String::as_str),
         Some("session_ws_1:7")
     );
     assert_eq!(
@@ -996,7 +993,11 @@ async fn official_responses_websocket_rotates_account_after_terminal_failure() {
         .await
         .expect("capture timeout")
         .expect("capture result");
-    assert_eq!(captures.len(), 2, "expected two upstream websocket sessions");
+    assert_eq!(
+        captures.len(),
+        2,
+        "expected two upstream websocket sessions"
+    );
     assert_eq!(
         captures[0].headers.get("authorization").map(String::as_str),
         Some("Bearer access_token_ws_a")
@@ -1006,11 +1007,17 @@ async fn official_responses_websocket_rotates_account_after_terminal_failure() {
         Some("Bearer access_token_ws_b")
     );
     assert_eq!(
-        captures[0].headers.get("chatgpt-account-id").map(String::as_str),
+        captures[0]
+            .headers
+            .get("chatgpt-account-id")
+            .map(String::as_str),
         Some("chatgpt_proxy_runtime_ws_a")
     );
     assert_eq!(
-        captures[1].headers.get("chatgpt-account-id").map(String::as_str),
+        captures[1]
+            .headers
+            .get("chatgpt-account-id")
+            .map(String::as_str),
         Some("chatgpt_proxy_runtime_ws_b")
     );
 

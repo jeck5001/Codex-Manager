@@ -9,8 +9,7 @@ const DEFAULT_SSE_KEEPALIVE_INTERVAL_MS: u64 = 15_000;
 const ENV_SSE_KEEPALIVE_INTERVAL_MS: &str = "CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS";
 
 static SSE_KEEPALIVE_INTERVAL_MS: AtomicU64 = AtomicU64::new(DEFAULT_SSE_KEEPALIVE_INTERVAL_MS);
-const STREAM_INCOMPLETE_FALLBACK_MESSAGE: &str =
-    "连接中断（可能是网络波动或客户端主动取消）";
+const STREAM_INCOMPLETE_FALLBACK_MESSAGE: &str = "连接中断（可能是网络波动或客户端主动取消）";
 const STREAM_READ_FAILED_FALLBACK_MESSAGE: &str = "stream read failed";
 const STREAM_IDLE_TIMEOUT_FALLBACK_MESSAGE: &str = "stream idle timeout";
 
@@ -188,7 +187,11 @@ pub(super) fn stream_wait_timeout(last_upstream_activity: Instant) -> Duration {
     if elapsed >= idle_timeout {
         return Duration::from_millis(1);
     }
-    keepalive.min(idle_timeout.saturating_sub(elapsed).max(Duration::from_millis(1)))
+    keepalive.min(
+        idle_timeout
+            .saturating_sub(elapsed)
+            .max(Duration::from_millis(1)),
+    )
 }
 
 pub(super) fn stream_idle_timed_out(last_upstream_activity: Instant) -> bool {

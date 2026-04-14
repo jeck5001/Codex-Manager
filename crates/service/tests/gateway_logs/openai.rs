@@ -1581,12 +1581,10 @@ fn gateway_openai_compact_html_non_success_is_mapped_to_structured_403() {
     let log = matched.expect("compact html non-success request log");
     assert_eq!(log.status_code, Some(502), "log error: {:?}", log.error);
     assert!(
-        log.error
-            .as_deref()
-            .is_some_and(|err| {
-                err.contains("upstream server error")
-                    || err.contains("invalid upstream compact response:")
-            }),
+        log.error.as_deref().is_some_and(|err| {
+            err.contains("upstream server error")
+                || err.contains("invalid upstream compact response:")
+        }),
         "unexpected log error: {:?}",
         log.error
     );
