@@ -8,8 +8,17 @@ flow intact for now.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import urllib.parse
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+
+@dataclass
+class CPAPostRegistrationResult:
+    callback_url: Optional[str] = None
+    workspace_id: str = ""
+    error_message: str = ""
+    metadata: Dict[str, Any] | None = None
 
 
 def resolve_callback_payload(callback_url: str) -> Dict[str, str]:
@@ -91,3 +100,39 @@ class CPARegisterRuntime:
             expected_state=self.engine.oauth_start.state,
             code_verifier=self.engine.oauth_start.code_verifier,
         )
+
+    def resolve_post_registration_callback(
+        self,
+        did: Optional[str],
+        sen_token: Optional[str],
+    ) -> CPAPostRegistrationResult:
+        result = CPAPostRegistrationResult(metadata={})
+        flow_runner = self.engine._get_flow_runner()
+
+        workspace_id = str(self.engine._get_workspace_id() or "").strip()
+        if workspace_id:
+            result.workspace_id = workspace_id
+
+        continue_url = str(getattr(self.engine, "_post_create_continue_url", "") or "").strip()
+        if continue_url:
+            self.engine._log("优先使用 create_account continue_url 推进 OAuth...", "warning")
+            callback_url = flow_runner.resolve_callback_from_continue_url(
+                continue_url,
+                "注册后继续",
+            )
+            if callback_url:
+                result.callback_url = callback_url
+                return result
+
+            self.engine._log("create_account continue_url 未收敛到回调，回退到通用 OAuth 收敛流程", "warning")
+
+        fallback_result = flow_runner.resolve_post_registration_callback(did, sen_token)
+        result.callback_url = getattr(fallback_result, "callback_url", None)
+        result.workspace_id = str(getattr(fallback_result, "workspace_id", "") or "").strip()
+        result.error_message = str(getattr(fallback_result, "error_message", "") or "").strip()
+
+        fallback_metadata = getattr(fallback_result, "metadata", None)
+        if isinstance(fallback_metadata, dict):
+            result.metadata.update(fallback_metadata)
+
+        return result
