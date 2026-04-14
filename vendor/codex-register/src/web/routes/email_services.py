@@ -664,6 +664,16 @@ async def get_service_types():
                     {"name": "timeout", "label": "超时时间(秒)", "required": False, "default": 120},
                     {"name": "alias_length", "label": "别名前缀长度", "required": False, "default": 12},
                 ]
+            },
+            {
+                "value": "generator_email",
+                "label": "Generator.email",
+                "description": "Generator.email 临时邮箱服务",
+                "config_fields": [
+                    {"name": "base_url", "label": "Base URL", "required": False, "default": "https://generator.email"},
+                    {"name": "timeout", "label": "请求超时(秒)", "required": False, "default": 30},
+                    {"name": "poll_interval", "label": "轮询间隔(秒)", "required": False, "default": 3},
+                ],
             }
         ]
     }

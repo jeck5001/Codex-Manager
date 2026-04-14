@@ -36,6 +36,7 @@ class EmailServiceType(str, Enum):
     CUSTOM_DOMAIN = "custom_domain"
     TEMP_MAIL = "temp_mail"
     MAIL_33_IMAP = "mail_33_imap"
+    GENERATOR_EMAIL = "generator_email"
 
 
 # ============================================================================
@@ -126,6 +127,11 @@ EMAIL_SERVICE_DEFAULTS = {
         "timeout": 120,
         "poll_interval": 3,
         "alias_length": 12,
+    },
+    "generator_email": {
+        "base_url": "https://generator.email",
+        "timeout": 30,
+        "poll_interval": 3,
     },
 }
 
