@@ -21,6 +21,12 @@ class CPAPostRegistrationResult:
     metadata: Dict[str, Any] | None = None
 
 
+@dataclass
+class CPASignupSequenceResult:
+    success: bool
+    error_message: str = ""
+
+
 def resolve_callback_payload(callback_url: str) -> Dict[str, str]:
     candidate = str(callback_url or "").strip()
     if not candidate:
@@ -100,6 +106,53 @@ class CPARegisterRuntime:
             expected_state=self.engine.oauth_start.state,
             code_verifier=self.engine.oauth_start.code_verifier,
         )
+
+    def execute_signup_sequence(
+        self,
+        did: str,
+        sen_token: Optional[str],
+    ) -> CPASignupSequenceResult:
+        self.engine._log("7. 提交注册表单...")
+        signup_result = self.engine._submit_signup_form(did, sen_token)
+        if not getattr(signup_result, "success", False):
+            return CPASignupSequenceResult(
+                success=False,
+                error_message=f"提交注册表单失败: {getattr(signup_result, 'error_message', '') or ''}".strip(),
+            )
+
+        if getattr(self.engine, "_is_existing_account", False):
+            self.engine._log("8. [已注册账号] 跳过密码设置，OTP 已自动发送")
+        else:
+            self.engine._log("8. 注册密码...")
+            password_ok, _password = self.engine._register_password()
+            if not password_ok:
+                return CPASignupSequenceResult(success=False, error_message="注册密码失败")
+
+        if getattr(self.engine, "_is_existing_account", False):
+            self.engine._log("9. [已注册账号] 跳过发送验证码，使用自动发送的 OTP")
+            self.engine._otp_sent_at = __import__("time").time()
+        else:
+            self.engine._log("9. 发送验证码...")
+            if not self.engine._send_verification_code():
+                return CPASignupSequenceResult(success=False, error_message="发送验证码失败")
+
+        self.engine._log("10. 等待验证码...")
+        code = self.engine._wait_for_signup_verification_code()
+        if not code:
+            return CPASignupSequenceResult(success=False, error_message="获取验证码失败")
+
+        self.engine._log("11. 验证验证码...")
+        if not self.engine._validate_signup_verification_code_with_retry(code):
+            return CPASignupSequenceResult(success=False, error_message="验证验证码失败")
+
+        if getattr(self.engine, "_is_existing_account", False):
+            self.engine._log("12. [已注册账号] 跳过创建用户账户")
+        else:
+            self.engine._log("12. 创建用户账户...")
+            if not self.engine._create_user_account():
+                return CPASignupSequenceResult(success=False, error_message="创建用户账户失败")
+
+        return CPASignupSequenceResult(success=True)
 
     def resolve_post_registration_callback(
         self,

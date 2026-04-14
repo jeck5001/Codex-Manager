@@ -306,6 +306,100 @@ class CPARegisterRuntimeTests(unittest.TestCase):
         self.assertIsNone(result.callback_url)
         self.assertEqual(result.error_message, "跟随重定向链失败")
 
+    def test_execute_signup_sequence_skips_password_and_create_for_existing_account(self):
+        module = load_cpa_register_runtime_module()
+
+        class Engine:
+            _is_existing_account = True
+            _otp_sent_at = None
+
+            def __init__(self):
+                self.calls = []
+
+            def _log(self, _message, level="info"):
+                return level
+
+            def _submit_signup_form(self, did, sen_token):
+                self.calls.append(("submit", did, sen_token))
+                return type("SignupResult", (), {"success": True, "error_message": ""})()
+
+            def _register_password(self):
+                raise AssertionError("should skip password registration for existing account")
+
+            def _send_verification_code(self):
+                raise AssertionError("should skip OTP send for existing account")
+
+            def _wait_for_signup_verification_code(self):
+                self.calls.append(("wait_code",))
+                return "123456"
+
+            def _validate_signup_verification_code_with_retry(self, code):
+                self.calls.append(("validate", code))
+                return True
+
+            def _create_user_account(self):
+                raise AssertionError("should skip account creation for existing account")
+
+        runtime = module.CPARegisterRuntime(Engine())
+        result = runtime.execute_signup_sequence("did-1", "sentinel-1")
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            runtime.engine.calls,
+            [
+                ("submit", "did-1", "sentinel-1"),
+                ("wait_code",),
+                ("validate", "123456"),
+            ],
+        )
+        self.assertIsNotNone(runtime.engine._otp_sent_at)
+
+    def test_execute_signup_sequence_stops_on_password_failure(self):
+        module = load_cpa_register_runtime_module()
+
+        class Engine:
+            _is_existing_account = False
+            _otp_sent_at = None
+
+            def __init__(self):
+                self.calls = []
+
+            def _log(self, _message, level="info"):
+                return level
+
+            def _submit_signup_form(self, did, sen_token):
+                self.calls.append(("submit", did, sen_token))
+                return type("SignupResult", (), {"success": True, "error_message": ""})()
+
+            def _register_password(self):
+                self.calls.append(("password",))
+                return False, None
+
+            def _send_verification_code(self):
+                raise AssertionError("should stop before sending OTP")
+
+            def _wait_for_signup_verification_code(self):
+                raise AssertionError("should stop before waiting OTP")
+
+            def _validate_signup_verification_code_with_retry(self, code):
+                raise AssertionError("should stop before validating OTP")
+
+            def _create_user_account(self):
+                raise AssertionError("should stop before account creation")
+
+        runtime = module.CPARegisterRuntime(Engine())
+        result = runtime.execute_signup_sequence("did-2", "sentinel-2")
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_message, "注册密码失败")
+        self.assertEqual(
+            runtime.engine.calls,
+            [
+                ("submit", "did-2", "sentinel-2"),
+                ("password",),
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

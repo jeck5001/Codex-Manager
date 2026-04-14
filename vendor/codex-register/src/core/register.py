@@ -2134,55 +2134,10 @@ class RegistrationEngine:
             else:
                 self._log("Sentinel 检查失败或未启用", "warning")
 
-            # 7. 提交注册表单 + 解析响应判断账号状态
-            self._log("7. 提交注册表单...")
-            signup_result = self._submit_signup_form(did, sen_token)
-            if not signup_result.success:
-                result.error_message = f"提交注册表单失败: {signup_result.error_message}"
+            signup_sequence = self.cpa_runtime.execute_signup_sequence(did, sen_token)
+            if not signup_sequence.success:
+                result.error_message = signup_sequence.error_message
                 return result
-
-            # 8. [已注册账号跳过] 注册密码
-            if self._is_existing_account:
-                self._log("8. [已注册账号] 跳过密码设置，OTP 已自动发送")
-            else:
-                self._log("8. 注册密码...")
-                password_ok, password = self._register_password()
-                if not password_ok:
-                    result.error_message = "注册密码失败"
-                    return result
-
-            # 9. [已注册账号跳过] 发送验证码
-            if self._is_existing_account:
-                self._log("9. [已注册账号] 跳过发送验证码，使用自动发送的 OTP")
-                # 已注册账号的 OTP 在提交表单时已自动发送，记录时间戳
-                self._otp_sent_at = time.time()
-            else:
-                self._log("9. 发送验证码...")
-                if not self._send_verification_code():
-                    result.error_message = "发送验证码失败"
-                    return result
-
-            # 10. 获取验证码
-            self._log("10. 等待验证码...")
-            code = self._wait_for_signup_verification_code()
-            if not code:
-                result.error_message = "获取验证码失败"
-                return result
-
-            # 11. 验证验证码
-            self._log("11. 验证验证码...")
-            if not self._validate_signup_verification_code_with_retry(code):
-                result.error_message = "验证验证码失败"
-                return result
-
-            # 12. [已注册账号跳过] 创建用户账户
-            if self._is_existing_account:
-                self._log("12. [已注册账号] 跳过创建用户账户")
-            else:
-                self._log("12. 创建用户账户...")
-                if not self._create_user_account():
-                    result.error_message = "创建用户账户失败"
-                    return result
             redirect_result = self.cpa_runtime.resolve_post_registration_callback(did, sen_token)
             callback_url = redirect_result.callback_url
             if redirect_result.workspace_id:
