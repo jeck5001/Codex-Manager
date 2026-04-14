@@ -564,6 +564,7 @@ async def get_email_services_stats():
             'custom_count': 0,
             'temp_mail_count': 0,
             'mail_33_imap_count': 0,
+            'generator_email_count': 0,
             'tempmail_available': True,  # 临时邮箱始终可用
             'enabled_count': enabled_count
         }
@@ -577,6 +578,8 @@ async def get_email_services_stats():
                 stats['temp_mail_count'] = count
             elif service_type == 'mail_33_imap':
                 stats['mail_33_imap_count'] = count
+            elif service_type == 'generator_email':
+                stats['generator_email_count'] = count
 
         return stats
 
