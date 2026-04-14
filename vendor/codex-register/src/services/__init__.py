@@ -16,6 +16,7 @@ from .custom_domain import CustomDomainEmailService
 from .mail_33_imap import Mail33ImapService
 from .temp_mail import TempMailService
 from .cloudflare_temp_mail import CloudflareProvisioningError, CloudflareTempMailProvisioner
+from .generator_email import GeneratorEmailService
 from .hotmail import (
     HOTMAIL_DOMAIN_POLICY,
     HotmailAccountArtifact,
@@ -30,6 +31,7 @@ EmailServiceFactory.register(EmailServiceType.OUTLOOK, OutlookService)
 EmailServiceFactory.register(EmailServiceType.CUSTOM_DOMAIN, CustomDomainEmailService)
 EmailServiceFactory.register(EmailServiceType.TEMP_MAIL, TempMailService)
 EmailServiceFactory.register(EmailServiceType.MAIL_33_IMAP, Mail33ImapService)
+EmailServiceFactory.register(EmailServiceType.GENERATOR_EMAIL, GeneratorEmailService)
 
 # 导出 Outlook 模块的额外内容
 from .outlook.base import (
@@ -61,6 +63,7 @@ __all__ = [
     'CustomDomainEmailService',
     'Mail33ImapService',
     'TempMailService',
+    'GeneratorEmailService',
     'CloudflareProvisioningError',
     'CloudflareTempMailProvisioner',
     'HOTMAIL_DOMAIN_POLICY',
