@@ -672,6 +672,67 @@ class AnyAutoRegistrationRunnerTests(unittest.TestCase):
         self.assertIn(("info", "13. 尝试直接复用当前会话"), logs)
         self.assertNotIn(("info", "13. 已命中 OAuth 授权页，直接走 OAuth 收敛"), logs)
 
+    def test_run_uses_cpa_runtime_recovery_when_oauth_resolution_fails(self):
+        runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
+        logs = []
+        runner._log = lambda message, level="info": logs.append((level, message))
+
+        engine = types.SimpleNamespace()
+        engine.logs = []
+        engine.email = "demo@example.com"
+        engine.password = "pw-123"
+        engine.proxy_url = None
+        engine.email_service = types.SimpleNamespace(service_type=types.SimpleNamespace(value="temp_mail"))
+        engine._is_existing_account = False
+        engine._post_create_page_type = ""
+        engine._post_create_continue_url = ""
+        engine._check_ip_location = lambda: (True, "US")
+        engine._create_email = lambda: True
+        engine._init_session = lambda: True
+        engine._start_oauth = lambda: True
+        engine._get_device_id = lambda: "did-1"
+        engine._check_sentinel = lambda _did: "sentinel"
+        engine._submit_signup_form = lambda *_args: types.SimpleNamespace(success=True)
+        engine._register_password = lambda: (True, "pw-123")
+        engine._send_verification_code = lambda: True
+        engine._wait_for_signup_verification_code = lambda: "123456"
+        engine._validate_signup_verification_code_with_retry = lambda _code: True
+        engine._create_user_account = lambda: True
+        engine._handle_oauth_callback = lambda callback_url: {
+            "account_id": "acct-1",
+            "access_token": "access-1",
+            "refresh_token": "refresh-1",
+            "id_token": "id-1",
+        }
+        engine._clean_text = lambda value: str(value or "").strip()
+        engine._serialize_session_cookies = lambda: ""
+        engine._extract_session_token_from_cookies = lambda: ""
+        engine._extract_workspace_id_from_token = lambda _token: ""
+        engine._post_registration_health_check = lambda _token: ("active", True, "")
+        recovery_calls = []
+        engine._attempt_add_phone_login_bypass = lambda did, sen: (
+            recovery_calls.append((did, sen))
+            or "http://localhost:1455/auth/callback?code=recovered&state=state"
+        )
+
+        flow_runner = types.SimpleNamespace(
+            resolve_post_registration_callback=lambda _did, _sen: types.SimpleNamespace(
+                callback_url=None,
+                workspace_id="",
+                metadata=None,
+                error_message="跟随重定向链失败",
+            )
+        )
+        engine._get_flow_runner = lambda: flow_runner
+        runner.engine = engine
+        runner._fetch_chatgpt_session_payload = lambda: (None, "session-error")
+
+        result = runner.run()
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.access_token, "access-1")
+        self.assertEqual(recovery_calls, [("did-1", "sentinel")])
+
     def _build_helper_runner(self):
         runner = AnyAutoRegistrationRunner.__new__(AnyAutoRegistrationRunner)
         runner.engine = types.SimpleNamespace(
