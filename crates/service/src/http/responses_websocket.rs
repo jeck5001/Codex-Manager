@@ -25,6 +25,7 @@ struct WsRequestContext {
     incoming_headers: crate::gateway::IncomingHeaderSnapshot,
     effective_upstream_base: String,
     include_timing_metrics: bool,
+    prefer_raw_errors: bool,
 }
 
 struct PreparedClientFrame {
@@ -163,9 +164,12 @@ pub(super) async fn upgrade_responses_websocket(request: HttpRequest<Body>) -> R
         Err(err) => {
             return text_error_response(
                 StatusCode::BAD_REQUEST,
-                crate::gateway::bilingual_error(
-                    "WebSocket 升级失败",
-                    format!("websocket upgrade rejected: {err}"),
+                crate::gateway::error_message_for_client(
+                    context.prefer_raw_errors,
+                    crate::gateway::bilingual_error(
+                        "WebSocket 升级失败",
+                        format!("websocket upgrade rejected: {err}"),
+                    ),
                 ),
             );
         }
@@ -181,7 +185,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
         Ok(Some(text)) => text,
         Ok(None) => return,
         Err(err) => {
-            send_ws_error_and_close(&mut socket, err).await;
+            send_ws_error_and_close(&mut socket, err, context.prefer_raw_errors).await;
             return;
         }
     };
@@ -189,7 +193,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
     let prepared_first = match rewrite_client_frame(first_text.as_str(), &context) {
         Ok(prepared) => prepared,
         Err(err) => {
-            send_ws_error_and_close(&mut socket, err).await;
+            send_ws_error_and_close(&mut socket, err, context.prefer_raw_errors).await;
             return;
         }
     };
@@ -198,7 +202,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
         match connect_upstream_websocket(&context, prepared_first.model.as_deref()).await {
             Ok(stream) => stream,
             Err(err) => {
-                send_ws_error_and_close(&mut socket, err).await;
+                send_ws_error_and_close(&mut socket, err, context.prefer_raw_errors).await;
                 return;
             }
         };
@@ -227,6 +231,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                 "发送上游 WebSocket 首帧失败",
                 format!("send first upstream websocket frame failed: {err}"),
             ),
+            context.prefer_raw_errors,
         )
         .await;
         return;
@@ -292,6 +297,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                                             "发送上游 WebSocket 帧失败",
                                             format!("send upstream websocket frame failed: {err}"),
                                         ),
+                                        context.prefer_raw_errors,
                                     ).await;
                                     let _ = upstream.stream.close(None).await;
                                     break;
@@ -299,7 +305,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                                 pending_request = Some(current_pending);
                             }
                             Err(err) => {
-                                send_ws_error_and_close(&mut socket, err).await;
+                                send_ws_error_and_close(&mut socket, err, context.prefer_raw_errors).await;
                                 let _ = upstream.stream.close(None).await;
                                 break;
                             }
@@ -313,6 +319,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                                     "发送上游 WebSocket 二进制消息失败",
                                     format!("send upstream websocket binary failed: {err}"),
                                 ),
+                                context.prefer_raw_errors,
                             ).await;
                             break;
                         }
@@ -325,6 +332,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                                     "转发 WebSocket Ping 失败",
                                     format!("forward websocket ping failed: {err}"),
                                 ),
+                                context.prefer_raw_errors,
                             ).await;
                             break;
                         }
@@ -337,6 +345,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                                     "转发 WebSocket Pong 失败",
                                     format!("forward websocket pong failed: {err}"),
                                 ),
+                                context.prefer_raw_errors,
                             ).await;
                             break;
                         }
@@ -380,6 +389,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                                 "接收客户端 WebSocket 帧失败",
                                 format!("receive client websocket frame failed: {err}"),
                             ),
+                            context.prefer_raw_errors,
                         ).await;
                         let _ = upstream.stream.close(None).await;
                         break;
@@ -495,6 +505,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                                 "接收上游 WebSocket 帧失败",
                                 format!("receive upstream websocket frame failed: {err}"),
                             ),
+                            context.prefer_raw_errors,
                         ).await;
                         break;
                     }
@@ -505,18 +516,25 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
 }
 
 fn authorize_websocket_request(headers: &HeaderMap) -> Result<WsRequestContext, Response<Body>> {
+    let prefer_raw_errors = crate::gateway::prefers_raw_errors_for_http_headers(headers);
     let incoming_headers = crate::gateway::IncomingHeaderSnapshot::from_http_headers(headers);
     let Some(platform_key) = incoming_headers.platform_key() else {
         return Err(text_error_response(
             StatusCode::UNAUTHORIZED,
-            crate::gateway::bilingual_error("缺少平台 API Key", "missing platform api key"),
+            crate::gateway::error_message_for_client(
+                prefer_raw_errors,
+                crate::gateway::bilingual_error("缺少平台 API Key", "missing platform api key"),
+            ),
         ));
     };
 
     let storage = open_storage().ok_or_else(|| {
         text_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            crate::gateway::bilingual_error("存储不可用", "storage unavailable"),
+            crate::gateway::error_message_for_client(
+                prefer_raw_errors,
+                crate::gateway::bilingual_error("存储不可用", "storage unavailable"),
+            ),
         )
     })?;
     let key_hash = hash_platform_key(platform_key);
@@ -525,30 +543,42 @@ fn authorize_websocket_request(headers: &HeaderMap) -> Result<WsRequestContext, 
         .map_err(|err| {
             text_error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                crate::gateway::bilingual_error(
-                    "读取存储失败",
-                    format!("storage read failed: {err}"),
+                crate::gateway::error_message_for_client(
+                    prefer_raw_errors,
+                    crate::gateway::bilingual_error(
+                        "读取存储失败",
+                        format!("storage read failed: {err}"),
+                    ),
                 ),
             )
         })?
         .ok_or_else(|| {
             text_error_response(
                 StatusCode::FORBIDDEN,
-                crate::gateway::MISSING_AUTH_JSON_OPENAI_API_KEY_ERROR,
+                crate::gateway::error_message_for_client(
+                    prefer_raw_errors,
+                    crate::gateway::MISSING_AUTH_JSON_OPENAI_API_KEY_ERROR,
+                ),
             )
         })?;
 
     if api_key.status != "active" {
         return Err(text_error_response(
             StatusCode::FORBIDDEN,
-            crate::gateway::bilingual_error("API Key 已禁用", "api key disabled"),
+            crate::gateway::error_message_for_client(
+                prefer_raw_errors,
+                crate::gateway::bilingual_error("API Key 已禁用", "api key disabled"),
+            ),
         ));
     }
     if !crate::gateway::gateway_supports_official_responses_websocket(&api_key) {
         return Err(upgrade_required_response(
-            crate::gateway::bilingual_error(
-                "Responses WebSocket 仅支持官方 Codex 上游",
-                "responses websocket is only available for official Codex upstream",
+            crate::gateway::error_message_for_client(
+                prefer_raw_errors,
+                crate::gateway::bilingual_error(
+                    "Responses WebSocket 仅支持官方 Codex 上游",
+                    "responses websocket is only available for official Codex upstream",
+                ),
             ),
         ));
     }
@@ -560,6 +590,7 @@ fn authorize_websocket_request(headers: &HeaderMap) -> Result<WsRequestContext, 
         include_timing_metrics: parse_bool_header(
             headers.get("x-responsesapi-include-timing-metrics"),
         ),
+        prefer_raw_errors,
     })
 }
 
@@ -1266,13 +1297,18 @@ fn insert_header(headers: &mut HeaderMap, name: &str, value: &str) -> Result<(),
     Ok(())
 }
 
-async fn send_ws_error_and_close(socket: &mut WebSocket, err: WsSessionError) {
+async fn send_ws_error_and_close(
+    socket: &mut WebSocket,
+    err: WsSessionError,
+    prefer_raw_errors: bool,
+) {
+    let message = crate::gateway::error_message_for_client(prefer_raw_errors, err.message);
     let payload = json!({
         "type": "error",
         "status": err.status,
         "error": {
             "code": err.code,
-            "message": err.message,
+            "message": message,
         }
     });
     let _ = socket.send(Message::Text(payload.to_string().into())).await;

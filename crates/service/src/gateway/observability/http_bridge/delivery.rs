@@ -543,9 +543,13 @@ fn respond_synthesized_compact_error_body(
     cf_ray: Option<&str>,
     trace_id: Option<&str>,
 ) -> UpstreamResponseBridgeResult {
+    let response_message = crate::gateway::error_message_for_client(
+        crate::gateway::prefers_raw_errors_for_tiny_http_request(&request),
+        message.as_str(),
+    );
     let response = crate::gateway::error_response::terminal_text_response(
         status_code,
-        message.as_str(),
+        response_message,
         trace_id,
     );
     let delivery_error = request.respond(response).err().map(|err| err.to_string());

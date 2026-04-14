@@ -25,8 +25,15 @@ pub(in super::super) fn respond_terminal(
     message: String,
     trace_id: Option<&str>,
 ) -> Result<(), String> {
-    let response =
-        super::super::super::error_response::terminal_text_response(status_code, message, trace_id);
+    let response_message = super::super::super::error_message_for_client(
+        super::super::super::prefers_raw_errors_for_tiny_http_request(&request),
+        message,
+    );
+    let response = super::super::super::error_response::terminal_text_response(
+        status_code,
+        response_message,
+        trace_id,
+    );
     let _ = request.respond(response);
     Ok(())
 }

@@ -86,6 +86,7 @@ async fn proxy_handler(
     request: HttpRequest<Body>,
 ) -> Response<Body> {
     let (parts, body) = request.into_parts();
+    let prefer_raw_errors = crate::gateway::prefers_raw_errors_for_http_headers(&parts.headers);
     let target_url = build_target_url(&state.backend_base_url, &parts.uri);
     let max_body_bytes = crate::gateway::front_proxy_max_body_bytes();
 
@@ -105,7 +106,10 @@ async fn proxy_handler(
                 target_url.as_str(),
                 message.as_str(),
             );
-            return text_error_response(StatusCode::PAYLOAD_TOO_LARGE, message);
+            return text_error_response(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                crate::gateway::error_message_for_client(prefer_raw_errors, message),
+            );
         }
     }
 
@@ -131,7 +135,10 @@ async fn proxy_handler(
                 target_url.as_str(),
                 message.as_str(),
             );
-            return text_error_response(StatusCode::PAYLOAD_TOO_LARGE, message);
+            return text_error_response(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                crate::gateway::error_message_for_client(prefer_raw_errors, message),
+            );
         }
     };
 
@@ -151,7 +158,10 @@ async fn proxy_handler(
                 target_url.as_str(),
                 message.as_str(),
             );
-            return text_error_response(StatusCode::BAD_GATEWAY, message);
+            return text_error_response(
+                StatusCode::BAD_GATEWAY,
+                crate::gateway::error_message_for_client(prefer_raw_errors, message),
+            );
         }
     };
 
@@ -172,7 +182,10 @@ async fn proxy_handler(
                 target_url.as_str(),
                 message.as_str(),
             );
-            text_error_response(StatusCode::INTERNAL_SERVER_ERROR, message)
+            text_error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                crate::gateway::error_message_for_client(prefer_raw_errors, message),
+            )
         }
     }
 }

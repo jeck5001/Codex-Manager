@@ -197,7 +197,10 @@ pub(in super::super) fn proxy_validated_request(
                     );
                     let response = super::super::error_response::terminal_text_response(
                         404,
-                        message,
+                        super::super::error_message_for_client(
+                            super::super::prefers_raw_errors_for_tiny_http_request(&request),
+                            message,
+                        ),
                         Some(trace_id.as_str()),
                     );
                     let _ = request.respond(response);

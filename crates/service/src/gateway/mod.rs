@@ -14,6 +14,53 @@ pub(crate) fn bilingual_error(
     )
 }
 
+pub(crate) fn extract_raw_error_message(message: &str) -> Option<&str> {
+    let (_, tail) = message.rsplit_once('(')?;
+    let tail = tail.strip_suffix(')')?.trim();
+    if tail.is_empty() || !tail.is_ascii() || !tail.chars().any(|ch| ch.is_ascii_alphabetic()) {
+        return None;
+    }
+    Some(tail)
+}
+
+fn is_codex_user_agent(value: &str) -> bool {
+    value.to_ascii_lowercase().contains("codex_cli_rs")
+}
+
+fn is_codex_header_name(name: &str) -> bool {
+    name.eq_ignore_ascii_case("x-openai-subagent")
+        || name.eq_ignore_ascii_case("x-client-request-id")
+        || name.eq_ignore_ascii_case("session_id")
+        || name.eq_ignore_ascii_case("conversation_id")
+        || name.to_ascii_lowercase().starts_with("x-codex-")
+}
+
+pub(crate) fn prefers_raw_errors_for_http_headers(headers: &axum::http::HeaderMap) -> bool {
+    headers.iter().any(|(name, value)| {
+        is_codex_header_name(name.as_str())
+            || (name.as_str().eq_ignore_ascii_case("User-Agent")
+                && value.to_str().ok().is_some_and(is_codex_user_agent))
+    })
+}
+
+pub(crate) fn prefers_raw_errors_for_tiny_http_request(request: &tiny_http::Request) -> bool {
+    request.headers().iter().any(|header| {
+        let name = header.field.as_str().as_str();
+        is_codex_header_name(name)
+            || (header.field.equiv("User-Agent") && is_codex_user_agent(header.value.as_str()))
+    })
+}
+
+pub(crate) fn error_message_for_client(prefers_raw_errors: bool, message: impl Into<String>) -> String {
+    let message = message.into();
+    if prefers_raw_errors {
+        if let Some(raw) = extract_raw_error_message(message.as_str()) {
+            return raw.to_string();
+        }
+    }
+    message
+}
+
 mod anchor_fingerprint;
 mod concurrency;
 #[path = "routing/conversation_binding.rs"]
