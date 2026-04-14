@@ -107,6 +107,47 @@ class AnyAutoRegistrationRunner:
                             "error_message": "",
                         })()
 
+                    def resolve_post_registration_callback(self, did, sen_token):
+                        flow_runner = self.engine._get_flow_runner()
+                        continue_url = str(getattr(self.engine, "_post_create_continue_url", "") or "").strip()
+                        callback_url = None
+                        workspace_id = ""
+                        error_message = ""
+                        metadata = {}
+
+                        if continue_url and hasattr(flow_runner, "resolve_callback_from_continue_url"):
+                            callback_url = flow_runner.resolve_callback_from_continue_url(
+                                continue_url,
+                                "注册后继续",
+                            )
+
+                        if not callback_url:
+                            fallback_result = flow_runner.resolve_post_registration_callback(did, sen_token)
+                            callback_url = getattr(fallback_result, "callback_url", None)
+                            workspace_id = str(getattr(fallback_result, "workspace_id", "") or "").strip()
+                            error_message = str(getattr(fallback_result, "error_message", "") or "").strip()
+                            fallback_metadata = getattr(fallback_result, "metadata", None)
+                            if isinstance(fallback_metadata, dict):
+                                metadata.update(fallback_metadata)
+
+                        if (
+                            not callback_url
+                            and error_message
+                            and bool(str(getattr(self.engine, "email", "") or "").strip())
+                            and bool(str(getattr(self.engine, "password", "") or "").strip())
+                            and hasattr(self.engine, "_attempt_add_phone_login_bypass")
+                        ):
+                            callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
+                            if callback_url:
+                                error_message = ""
+
+                        return type("PostRegistrationResult", (), {
+                            "callback_url": callback_url,
+                            "workspace_id": workspace_id,
+                            "error_message": error_message,
+                            "metadata": metadata,
+                        })()
+
                 return _FallbackRuntime(self.engine)
 
             try:
@@ -543,7 +584,7 @@ class AnyAutoRegistrationRunner:
                 session_error = ""
 
             if not callback_url:
-                redirect_result = self.engine._get_flow_runner().resolve_post_registration_callback(did, sen_token)
+                redirect_result = self._get_cpa_runtime().resolve_post_registration_callback(did, sen_token)
                 callback_url = redirect_result.callback_url
                 if redirect_result.workspace_id:
                     result.workspace_id = redirect_result.workspace_id
