@@ -12,6 +12,7 @@ import {
   ExternalLink,
   FileUp,
   FolderOpen,
+  Loader2,
   MoreVertical,
   Pin,
   Plus,
@@ -739,9 +740,11 @@ export default function AccountsPage() {
     importByFile,
     importByDirectory,
     exportAccounts,
+    warmupAccounts,
     isRefreshingAccountId,
     isRefreshingAllAccounts,
     isExporting,
+    isWarmingUpAccounts,
     isDeletingMany,
     setPreferredAccount,
     clearPreferredAccount,
@@ -1083,6 +1086,37 @@ export default function AccountsPage() {
       ids: bannedIds,
       count: bannedIds.length,
     });
+  };
+
+  /**
+   * 函数 `handleWarmupAccounts`
+   *
+   * 作者: gaohongshun
+   *
+   * 时间: 2026-04-14
+   *
+   * # 参数
+   * 无
+   *
+   * # 返回
+   * 返回函数执行结果
+   */
+  const handleWarmupAccounts = async () => {
+    const targetIds = effectiveSelectedIds.length > 0 ? effectiveSelectedIds : [];
+    const targetCount = targetIds.length > 0 ? targetIds.length : accounts.length;
+    if (targetCount <= 0) {
+      toast.info(t("当前没有可预热的账号"));
+      return;
+    }
+
+    try {
+      await warmupAccounts({
+        accountIds: targetIds,
+        message: "hi",
+      });
+    } catch {
+      // 中文注释：错误提示已在 hook 内统一处理，这里不重复提示。
+    }
   };
 
   /**
@@ -1566,6 +1600,33 @@ export default function AccountsPage() {
                     <ArrowDown className="mr-2 h-4 w-4" />
                     {t("小号优先排序")}
                     <DropdownMenuShortcut>FREE</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
+                    {t("预热")}
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={
+                      !isServiceReady || isWarmingUpAccounts || accounts.length === 0
+                    }
+                    onClick={() => void handleWarmupAccounts()}
+                  >
+                    {isWarmingUpAccounts ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Zap className="mr-2 h-4 w-4" />
+                    )}
+                    {isWarmingUpAccounts
+                      ? t("预热中...")
+                      : t("一键预热（hi/你好）")}
+                    <DropdownMenuShortcut>
+                      {effectiveSelectedIds.length > 0
+                        ? effectiveSelectedIds.length
+                        : t("全部")}
+                    </DropdownMenuShortcut>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />

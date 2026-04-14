@@ -25,9 +25,11 @@ import {
   AccountExportResult,
   AccountImportError,
   AccountImportResult,
+  AccountWarmupResult,
   DeleteUnavailableFreeResult,
   readAccountExportResult,
   readAccountImportResult,
+  readAccountWarmupResult,
   readApiKeySecret,
   readDeleteUnavailableFreeResult,
 } from "./account-maintenance";
@@ -57,6 +59,11 @@ import {
 export interface AccountExportPayload {
   selectedAccountIds?: string[];
   exportMode?: "single" | "multiple";
+}
+
+export interface AccountWarmupPayload {
+  accountIds?: string[];
+  message?: string;
 }
 
 interface LoginStartPayload {
@@ -358,6 +365,16 @@ export const accountClient = {
         exportMode: params?.exportMode || "multiple",
       })
     )),
+  warmup: async (params?: AccountWarmupPayload): Promise<AccountWarmupResult> =>
+    readAccountWarmupResult(
+      await invoke<unknown>(
+        "service_account_warmup",
+        withAddr({
+          accountIds: Array.isArray(params?.accountIds) ? params.accountIds : [],
+          message: params?.message || "hi",
+        }),
+      ),
+    ),
 
   async getUsage(accountId: string): Promise<AccountUsage | null> {
     const result = await invoke<unknown>("service_usage_read", withAddr({ accountId }));
