@@ -239,6 +239,9 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "account/cpa/sync" => {
             super::value_or_error(account_cpa_sync::sync_cpa_accounts(req.params.as_ref()))
         }
+        "account/cpa/syncStatus" => {
+            super::value_or_error(account_cpa_sync::cpa_sync_status(req.params.as_ref()))
+        }
         "account/register/availableServices" => {
             super::value_or_error(account_register::available_register_services())
         }

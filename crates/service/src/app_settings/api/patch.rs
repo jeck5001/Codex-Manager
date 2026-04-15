@@ -239,5 +239,7 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
         let _ = crate::set_web_access_password(Some(&password))?;
     }
 
+    let _ = crate::account::cpa_sync::refresh_cpa_sync_schedule();
+
     Ok(())
 }

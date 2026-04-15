@@ -3344,3 +3344,22 @@ fn rpc_accepts_loopback_origin() {
     );
     assert_eq!(status, 200, "unexpected status {status}: {body}");
 }
+
+#[test]
+fn rpc_account_cpa_sync_status_returns_structured_snapshot() {
+    let _ctx = RpcTestContext::new("rpc-cpa-sync-status");
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+
+    let req = JsonRpcRequest {
+        id: 11,
+        method: "account/cpa/syncStatus".to_string(),
+        params: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let response = post_rpc(&server.addr, &json);
+    let result = response.get("result").expect("rpc result");
+
+    assert!(result.get("status").is_some());
+    assert!(result.get("intervalMinutes").is_some());
+    assert!(result.get("isRunning").is_some());
+}

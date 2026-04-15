@@ -202,6 +202,10 @@ pub fn initialize_process_logging() {
     });
 }
 
+pub fn initialize_service_runtime() {
+    let _ = crate::account::cpa_sync::refresh_cpa_sync_schedule();
+}
+
 pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
     rpc_dispatch::handle_request(req)
 }

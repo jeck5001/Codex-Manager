@@ -61,6 +61,9 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_account_cpa_sync: {
     rpcMethod: "account/cpa/sync",
   },
+  service_account_cpa_sync_status: {
+    rpcMethod: "account/cpa/syncStatus",
+  },
   service_account_import: { rpcMethod: "account/import" },
   service_account_register_available_services: {
     rpcMethod: "account/register/availableServices",

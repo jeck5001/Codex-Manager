@@ -136,6 +136,20 @@ export interface AccountCpaSyncResult {
   errors: string[];
 }
 
+export interface AccountCpaSyncStatusResult {
+  status: string;
+  scheduleEnabled: boolean;
+  intervalMinutes: number;
+  isRunning: boolean;
+  lastTrigger: string;
+  lastStartedAt: number | null;
+  lastFinishedAt: number | null;
+  lastSuccessAt: number | null;
+  lastSummary: string;
+  lastError: string;
+  nextRunAt: number | null;
+}
+
 export interface AccountBulkStatusUpdateError {
   accountId: string;
   message: string;
