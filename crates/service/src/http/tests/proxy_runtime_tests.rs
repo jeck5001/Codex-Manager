@@ -965,7 +965,7 @@ async fn official_responses_websocket_preserves_explicit_prompt_cache_key() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn official_responses_websocket_rotates_account_after_terminal_failure() {
+async fn official_responses_websocket_retries_current_request_after_terminal_failure() {
     let _guard = crate::test_env_guard();
     let db_path = new_test_db_path("codexmanager-proxy-runtime-ws-failover");
     let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
@@ -1037,56 +1037,29 @@ async fn official_responses_websocket_rotates_account_after_terminal_failure() {
         serde_json::from_str(&first_upstream_frame).expect("parse first upstream frame");
     assert_eq!(first_payload["type"], "response.create");
 
-    let first_client_event = tokio::time::timeout(Duration::from_secs(5), client_ws.next())
-        .await
-        .expect("first client event timeout")
-        .expect("first client event")
-        .expect("first client event result");
-    match first_client_event {
-        Message::Text(text) => {
-            assert!(
-                text.contains("\"response.failed\""),
-                "unexpected first event: {text}"
-            );
-        }
-        other => panic!("unexpected first client event: {other:?}"),
-    }
-
-    client_ws
-        .send(Message::Text(
-            serde_json::json!({
-                "type": "response.create",
-                "model": "gpt-4.1",
-                "input": "second request after failover"
-            })
-            .to_string()
-            .into(),
-        ))
-        .await
-        .expect("send second frame");
-
     let second_upstream_frame =
         tokio::time::timeout(Duration::from_secs(5), upstream_events.recv())
             .await
-            .expect("second upstream frame timeout")
-            .expect("second upstream frame channel");
+            .expect("retry upstream frame timeout")
+            .expect("retry upstream frame channel");
     let second_payload: serde_json::Value =
         serde_json::from_str(&second_upstream_frame).expect("parse second upstream frame");
     assert_eq!(second_payload["type"], "response.create");
+    assert_eq!(second_payload["input"], "first request");
 
-    let second_client_event = tokio::time::timeout(Duration::from_secs(5), client_ws.next())
+    let first_client_event = tokio::time::timeout(Duration::from_secs(5), client_ws.next())
         .await
-        .expect("second client event timeout")
-        .expect("second client event")
-        .expect("second client event result");
-    match second_client_event {
+        .expect("client retry event timeout")
+        .expect("client retry event")
+        .expect("client retry event result");
+    match first_client_event {
         Message::Text(text) => {
             assert!(
                 text.contains("\"response.completed\""),
-                "unexpected second event: {text}"
+                "unexpected retry event: {text}"
             );
         }
-        other => panic!("unexpected second client event: {other:?}"),
+        other => panic!("unexpected retry client event: {other:?}"),
     }
 
     let captures = tokio::time::timeout(Duration::from_secs(5), capture_rx)
