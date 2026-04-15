@@ -400,6 +400,130 @@ class CPARegisterRuntimeTests(unittest.TestCase):
             ],
         )
 
+    def test_execute_signup_sequence_retries_retryable_signup_failure(self):
+        module = load_cpa_register_runtime_module()
+
+        class Engine:
+            _is_existing_account = False
+            _otp_sent_at = None
+
+            def __init__(self):
+                self.calls = []
+                self.submit_attempts = 0
+
+            def _log(self, _message, level="info"):
+                return level
+
+            def _submit_signup_form(self, did, sen_token):
+                self.submit_attempts += 1
+                self.calls.append(("submit", self.submit_attempts, did, sen_token))
+                if self.submit_attempts == 1:
+                    return type(
+                        "SignupResult",
+                        (),
+                        {
+                            "success": False,
+                            "error_message": "CPA signup password page hit retryable error, 请重试当前流程",
+                            "retryable": True,
+                        },
+                    )()
+                return type(
+                    "SignupResult",
+                    (),
+                    {"success": True, "error_message": "", "retryable": False},
+                )()
+
+            def _register_password(self):
+                self.calls.append(("password",))
+                return True, "secret"
+
+            def _send_verification_code(self):
+                self.calls.append(("send_otp",))
+                return True
+
+            def _wait_for_signup_verification_code(self):
+                self.calls.append(("wait_code",))
+                return "123456"
+
+            def _validate_signup_verification_code_with_retry(self, code):
+                self.calls.append(("validate", code))
+                return True
+
+            def _create_user_account(self):
+                self.calls.append(("create_account",))
+                return True
+
+        runtime = module.CPARegisterRuntime(Engine())
+        result = runtime.execute_signup_sequence("did-3", "sentinel-3")
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            runtime.engine.calls,
+            [
+                ("submit", 1, "did-3", "sentinel-3"),
+                ("submit", 2, "did-3", "sentinel-3"),
+                ("password",),
+                ("send_otp",),
+                ("wait_code",),
+                ("validate", "123456"),
+                ("create_account",),
+            ],
+        )
+
+    def test_execute_signup_sequence_fails_after_retryable_signup_exhaustion(self):
+        module = load_cpa_register_runtime_module()
+
+        class Engine:
+            _is_existing_account = False
+            _otp_sent_at = None
+
+            def __init__(self):
+                self.calls = []
+
+            def _log(self, _message, level="info"):
+                return level
+
+            def _submit_signup_form(self, did, sen_token):
+                self.calls.append(("submit", did, sen_token))
+                return type(
+                    "SignupResult",
+                    (),
+                    {
+                        "success": False,
+                        "error_message": "CPA signup password page hit retryable error, 请重试当前流程",
+                        "retryable": True,
+                    },
+                )()
+
+            def _register_password(self):
+                raise AssertionError("should stop before password registration")
+
+            def _send_verification_code(self):
+                raise AssertionError("should stop before sending OTP")
+
+            def _wait_for_signup_verification_code(self):
+                raise AssertionError("should stop before waiting OTP")
+
+            def _validate_signup_verification_code_with_retry(self, code):
+                raise AssertionError("should stop before validating OTP")
+
+            def _create_user_account(self):
+                raise AssertionError("should stop before account creation")
+
+        runtime = module.CPARegisterRuntime(Engine())
+        result = runtime.execute_signup_sequence("did-4", "sentinel-4")
+
+        self.assertFalse(result.success)
+        self.assertIn("retryable", result.error_message.lower())
+        self.assertEqual(
+            runtime.engine.calls,
+            [
+                ("submit", "did-4", "sentinel-4"),
+                ("submit", "did-4", "sentinel-4"),
+                ("submit", "did-4", "sentinel-4"),
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

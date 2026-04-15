@@ -27,6 +27,9 @@ class CPASignupSequenceResult:
     error_message: str = ""
 
 
+MAX_SIGNUP_SUBMIT_RETRIES = 3
+
+
 def resolve_callback_payload(callback_url: str) -> Dict[str, str]:
     candidate = str(callback_url or "").strip()
     if not candidate:
@@ -112,12 +115,26 @@ class CPARegisterRuntime:
         did: str,
         sen_token: Optional[str],
     ) -> CPASignupSequenceResult:
-        self.engine._log("7. 提交注册表单...")
-        signup_result = self.engine._submit_signup_form(did, sen_token)
-        if not getattr(signup_result, "success", False):
-            return CPASignupSequenceResult(
-                success=False,
-                error_message=f"提交注册表单失败: {getattr(signup_result, 'error_message', '') or ''}".strip(),
+        signup_result = None
+        for attempt in range(1, MAX_SIGNUP_SUBMIT_RETRIES + 1):
+            if attempt == 1:
+                self.engine._log("7. 提交注册表单...")
+            else:
+                self.engine._log(
+                    f"7. 重试提交注册表单 ({attempt}/{MAX_SIGNUP_SUBMIT_RETRIES})...",
+                    "warning",
+                )
+            signup_result = self.engine._submit_signup_form(did, sen_token)
+            if getattr(signup_result, "success", False):
+                break
+            if not getattr(signup_result, "retryable", False) or attempt >= MAX_SIGNUP_SUBMIT_RETRIES:
+                return CPASignupSequenceResult(
+                    success=False,
+                    error_message=f"提交注册表单失败: {getattr(signup_result, 'error_message', '') or ''}".strip(),
+                )
+            self.engine._log(
+                "CPA 注册密码页恢复重试中，重新发起注册邮箱提交...",
+                "warning",
             )
 
         if getattr(self.engine, "_is_existing_account", False):
