@@ -20,7 +20,8 @@ use super::{
 };
 use crate::app_settings::{
     APP_SETTING_CPA_SYNC_API_URL_KEY, APP_SETTING_CPA_SYNC_ENABLED_KEY,
-    APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
+    APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY, APP_SETTING_CPA_SYNC_SCHEDULE_ENABLED_KEY,
+    APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
     APP_SETTING_TEAM_MANAGER_API_URL_KEY, APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
 };
 
@@ -53,6 +54,8 @@ pub(super) struct AppSettingsPatch {
     cpa_sync_enabled: Option<bool>,
     cpa_sync_api_url: Option<String>,
     cpa_sync_management_key: Option<String>,
+    cpa_sync_schedule_enabled: Option<bool>,
+    cpa_sync_schedule_interval_minutes: Option<u64>,
     response_cache_enabled: Option<bool>,
     response_cache_ttl_secs: Option<u64>,
     response_cache_max_entries: Option<usize>,
@@ -222,9 +225,21 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
             save_persisted_app_setting(APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY, Some(trimmed))?;
         }
     }
+    if let Some(enabled) = patch.cpa_sync_schedule_enabled {
+        save_persisted_bool_setting(APP_SETTING_CPA_SYNC_SCHEDULE_ENABLED_KEY, enabled)?;
+    }
+    if let Some(interval_minutes) = patch.cpa_sync_schedule_interval_minutes {
+        let interval = interval_minutes.max(1).to_string();
+        save_persisted_app_setting(
+            APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY,
+            Some(interval.as_str()),
+        )?;
+    }
     if let Some(password) = patch.web_access_password {
         let _ = crate::set_web_access_password(Some(&password))?;
     }
+
+    let _ = crate::account::cpa_sync::refresh_cpa_sync_schedule();
 
     Ok(())
 }

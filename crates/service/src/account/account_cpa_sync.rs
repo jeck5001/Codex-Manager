@@ -3,12 +3,16 @@ use reqwest::blocking::{Client, RequestBuilder};
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::{Mutex, Once, OnceLock};
+use std::thread;
 use std::time::Duration;
 
 use crate::{
     app_settings::{
-        get_persisted_app_setting, APP_SETTING_CPA_SYNC_API_URL_KEY,
-        APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY,
+        get_persisted_app_setting, parse_bool_with_default, APP_SETTING_CPA_SYNC_API_URL_KEY,
+        APP_SETTING_CPA_SYNC_ENABLED_KEY, APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY,
+        APP_SETTING_CPA_SYNC_SCHEDULE_ENABLED_KEY,
+        APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY,
     },
     storage_helpers::open_storage,
 };
@@ -17,6 +21,7 @@ const CPA_AUTH_FILES_PATH: &str = "/v0/management/auth-files";
 const CPA_AUTH_FILES_DOWNLOAD_PATH: &str = "/v0/management/auth-files/download";
 const CPA_HTTP_TIMEOUT_SECS: u64 = 30;
 const CPA_SAVED_KEY_SENTINEL: &str = "use_saved_key";
+const DEFAULT_CPA_SYNC_INTERVAL_MINUTES: u64 = 30;
 
 #[derive(Debug, Clone, Default)]
 struct CpaSyncSettings {
@@ -52,6 +57,102 @@ pub(crate) struct CpaSyncResult {
     errors: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CpaSyncStatus {
+    status: String,
+    schedule_enabled: bool,
+    interval_minutes: u64,
+    is_running: bool,
+    last_trigger: String,
+    last_started_at: Option<i64>,
+    last_finished_at: Option<i64>,
+    last_success_at: Option<i64>,
+    last_summary: String,
+    last_error: String,
+    next_run_at: Option<i64>,
+}
+
+impl Default for CpaSyncStatus {
+    fn default() -> Self {
+        Self {
+            status: "disabled".to_string(),
+            schedule_enabled: false,
+            interval_minutes: DEFAULT_CPA_SYNC_INTERVAL_MINUTES,
+            is_running: false,
+            last_trigger: String::new(),
+            last_started_at: None,
+            last_finished_at: None,
+            last_success_at: None,
+            last_summary: String::new(),
+            last_error: String::new(),
+            next_run_at: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CpaSyncRuntimeState {
+    status: String,
+    schedule_enabled: bool,
+    interval_minutes: u64,
+    is_running: bool,
+    last_trigger: String,
+    last_started_at: Option<i64>,
+    last_finished_at: Option<i64>,
+    last_success_at: Option<i64>,
+    last_summary: String,
+    last_error: String,
+    next_run_at: Option<i64>,
+}
+
+impl CpaSyncRuntimeState {
+    fn into_status(self) -> CpaSyncStatus {
+        CpaSyncStatus {
+            status: self.status,
+            schedule_enabled: self.schedule_enabled,
+            interval_minutes: self.interval_minutes,
+            is_running: self.is_running,
+            last_trigger: self.last_trigger,
+            last_started_at: self.last_started_at,
+            last_finished_at: self.last_finished_at,
+            last_success_at: self.last_success_at,
+            last_summary: self.last_summary,
+            last_error: self.last_error,
+            next_run_at: self.next_run_at,
+        }
+    }
+}
+
+impl Default for CpaSyncRuntimeState {
+    fn default() -> Self {
+        Self {
+            status: "disabled".to_string(),
+            schedule_enabled: false,
+            interval_minutes: DEFAULT_CPA_SYNC_INTERVAL_MINUTES,
+            is_running: false,
+            last_trigger: String::new(),
+            last_started_at: None,
+            last_finished_at: None,
+            last_success_at: None,
+            last_summary: String::new(),
+            last_error: String::new(),
+            next_run_at: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct CpaSyncScheduleConfig {
+    source_enabled: bool,
+    schedule_enabled: bool,
+    interval_minutes: u64,
+    api_url: String,
+    has_management_key: bool,
+}
+
+static CPA_SYNC_RUNTIME: OnceLock<Mutex<CpaSyncRuntimeState>> = OnceLock::new();
+
 #[derive(Debug, Clone, Default)]
 struct ImportSummary {
     created: usize,
@@ -60,12 +161,176 @@ struct ImportSummary {
     errors: Vec<String>,
 }
 
+#[derive(Debug)]
+pub(crate) struct CpaSyncRunGuard;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CpaConnectionResult {
     success: bool,
     message: String,
     total_files: usize,
+}
+
+fn cpa_sync_runtime() -> &'static Mutex<CpaSyncRuntimeState> {
+    CPA_SYNC_RUNTIME.get_or_init(|| Mutex::new(CpaSyncRuntimeState::default()))
+}
+
+fn with_cpa_sync_runtime<T>(f: impl FnOnce(&mut CpaSyncRuntimeState) -> T) -> T {
+    let mut state = cpa_sync_runtime()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    f(&mut state)
+}
+
+fn read_cpa_sync_status() -> CpaSyncStatus {
+    with_cpa_sync_runtime(|state| state.clone().into_status())
+}
+
+fn interval_seconds(interval_minutes: u64) -> i64 {
+    interval_minutes.max(1) as i64 * 60
+}
+
+fn schedule_next_run_at(state: &mut CpaSyncRuntimeState, from_ts: i64) {
+    if state.schedule_enabled {
+        state.next_run_at = Some(from_ts + interval_seconds(state.interval_minutes));
+    } else {
+        state.next_run_at = None;
+    }
+}
+
+fn begin_cpa_sync_run(trigger: &str) -> Result<CpaSyncRunGuard, String> {
+    with_cpa_sync_runtime(|state| {
+        if state.is_running {
+            return Err("CPA 同步正在执行中，请稍后再试".to_string());
+        }
+
+        state.is_running = true;
+        state.last_trigger = trigger.to_string();
+        state.last_started_at = Some(now_ts());
+        state.last_error.clear();
+        state.status = "running".to_string();
+        if trigger == "scheduled" {
+            state.next_run_at = None;
+        }
+        Ok(CpaSyncRunGuard)
+    })
+}
+
+impl Drop for CpaSyncRunGuard {
+    fn drop(&mut self) {
+        with_cpa_sync_runtime(|state| {
+            state.is_running = false;
+            if state.status == "running" {
+                state.status = if state.schedule_enabled {
+                    "idle".to_string()
+                } else {
+                    "disabled".to_string()
+                };
+            }
+        });
+    }
+}
+
+fn cpa_sync_summary_text(result: &CpaSyncResult) -> String {
+    format!(
+        "总文件 {}，可导入 {}，新增 {}，更新 {}，失败 {}",
+        result.total_files, result.eligible_files, result.created, result.updated, result.failed
+    )
+}
+
+fn mark_cpa_sync_success(result: &CpaSyncResult) {
+    let finished_at = now_ts();
+    with_cpa_sync_runtime(|state| {
+        state.last_finished_at = Some(finished_at);
+        state.last_success_at = Some(finished_at);
+        state.last_summary = cpa_sync_summary_text(result);
+        state.last_error.clear();
+        state.status = "idle".to_string();
+        schedule_next_run_at(state, finished_at);
+    });
+}
+
+fn mark_cpa_sync_error(err: &str) {
+    let finished_at = now_ts();
+    with_cpa_sync_runtime(|state| {
+        state.last_finished_at = Some(finished_at);
+        state.last_error = err.to_string();
+        state.status = "error".to_string();
+        schedule_next_run_at(state, finished_at);
+    });
+}
+
+fn load_cpa_sync_schedule_config() -> CpaSyncScheduleConfig {
+    let source_enabled = get_persisted_app_setting(APP_SETTING_CPA_SYNC_ENABLED_KEY)
+        .map(|raw| parse_bool_with_default(&raw, false))
+        .unwrap_or(false);
+    let schedule_enabled = get_persisted_app_setting(APP_SETTING_CPA_SYNC_SCHEDULE_ENABLED_KEY)
+        .map(|raw| parse_bool_with_default(&raw, false))
+        .unwrap_or(false);
+    let interval_minutes = get_persisted_app_setting(APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY)
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .map(|value| value.max(1))
+        .unwrap_or(DEFAULT_CPA_SYNC_INTERVAL_MINUTES);
+    let api_url = get_persisted_app_setting(APP_SETTING_CPA_SYNC_API_URL_KEY).unwrap_or_default();
+    let has_management_key = get_persisted_app_setting(APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY)
+        .map(|raw| !raw.trim().is_empty())
+        .unwrap_or(false);
+
+    CpaSyncScheduleConfig {
+        source_enabled,
+        schedule_enabled,
+        interval_minutes,
+        api_url,
+        has_management_key,
+    }
+}
+
+fn apply_cpa_sync_schedule_config(config: &CpaSyncScheduleConfig) {
+    with_cpa_sync_runtime(|state| {
+        let was_active = state.schedule_enabled;
+        let interval_changed = state.interval_minutes != config.interval_minutes.max(1);
+        let active_enabled = config.source_enabled && config.schedule_enabled;
+
+        state.schedule_enabled = active_enabled;
+        state.interval_minutes = config.interval_minutes.max(1);
+
+        if !active_enabled {
+            state.status = "disabled".to_string();
+            state.next_run_at = None;
+            state.last_error.clear();
+            return;
+        }
+
+        if config.api_url.trim().is_empty() || !config.has_management_key {
+            state.status = "misconfigured".to_string();
+            state.last_error = "CPA API URL 或 Management Key 未配置".to_string();
+            state.next_run_at = None;
+            return;
+        }
+
+        if state.is_running {
+            state.status = "running".to_string();
+            return;
+        }
+
+        state.status = "idle".to_string();
+        if !was_active || interval_changed || state.next_run_at.is_none() {
+            schedule_next_run_at(state, now_ts());
+        }
+    });
+}
+
+fn should_trigger_scheduled_sync() -> bool {
+    with_cpa_sync_runtime(|state| {
+        state.schedule_enabled
+            && !state.is_running
+            && matches!(state.status.as_str(), "idle" | "error")
+            && state
+                .next_run_at
+                .map(|next_run_at| next_run_at <= now_ts())
+                .unwrap_or(false)
+    })
 }
 
 fn cpa_http_client() -> Result<Client, String> {
@@ -493,73 +758,117 @@ pub(crate) fn test_cpa_connection(params: Option<&Value>) -> Result<CpaConnectio
     })
 }
 
-pub(crate) fn sync_cpa_accounts(params: Option<&Value>) -> Result<CpaSyncResult, String> {
-    let settings = resolve_cpa_settings(params)?;
-    let files = fetch_cpa_auth_files(&settings)?;
-    let total_files = files.len();
-    let mut eligible_files = 0;
-    let mut downloaded_files = 0;
-    let mut import_payloads_raw = Vec::new();
-    let mut errors = Vec::new();
+fn sync_cpa_accounts_once(params: Option<&Value>, trigger: &str) -> Result<CpaSyncResult, String> {
+    let _guard = begin_cpa_sync_run(trigger)?;
+    let run_result: Result<CpaSyncResult, String> = (|| -> Result<CpaSyncResult, String> {
+        let settings = resolve_cpa_settings(params)?;
+        let files = fetch_cpa_auth_files(&settings)?;
+        let total_files = files.len();
+        let mut eligible_files = 0;
+        let mut downloaded_files = 0;
+        let mut import_payloads_raw = Vec::new();
+        let mut errors = Vec::new();
 
-    for file in files {
-        if is_runtime_only_source(&file) {
-            errors.push(format!("{} 已跳过: runtime-only auth source", file.name));
-            continue;
-        }
-        if !is_downloadable_file_source(&file) {
-            let source = file.source.as_deref().unwrap_or("unknown");
-            errors.push(format!(
-                "{} 已跳过: source={} 不是可下载的 file 类型",
-                file.name, source
-            ));
-            continue;
-        }
-
-        let metadata_match = looks_like_target_file(&file);
-        let content = match download_auth_file(&settings, &file) {
-            Ok(content) => {
-                downloaded_files += 1;
-                content
-            }
-            Err(err) => {
-                errors.push(format!("{} 下载失败: {err}", file.name));
+        for file in files {
+            if is_runtime_only_source(&file) {
+                errors.push(format!("{} 已跳过: runtime-only auth source", file.name));
                 continue;
             }
-        };
-
-        let parsed_items = match parse_auth_file_content(&content) {
-            Ok(items) => items,
-            Err(err) => {
-                errors.push(format!("{} 内容解析失败: {err}", file.name));
+            if !is_downloadable_file_source(&file) {
+                let source = file.source.as_deref().unwrap_or("unknown");
+                errors.push(format!(
+                    "{} 已跳过: source={} 不是可下载的 file 类型",
+                    file.name, source
+                ));
                 continue;
             }
-        };
 
-        let filtered = filtered_import_items(parsed_items, metadata_match);
-        if filtered.is_empty() {
-            errors.push(format!("{} 已跳过: 不是 Codex/OpenAI/ChatGPT auth 文件", file.name));
-            continue;
+            let metadata_match = looks_like_target_file(&file);
+            let content = match download_auth_file(&settings, &file) {
+                Ok(content) => {
+                    downloaded_files += 1;
+                    content
+                }
+                Err(err) => {
+                    errors.push(format!("{} 下载失败: {err}", file.name));
+                    continue;
+                }
+            };
+
+            let parsed_items = match parse_auth_file_content(&content) {
+                Ok(items) => items,
+                Err(err) => {
+                    errors.push(format!("{} 内容解析失败: {err}", file.name));
+                    continue;
+                }
+            };
+
+            let filtered = filtered_import_items(parsed_items, metadata_match);
+            if filtered.is_empty() {
+                errors.push(format!("{} 已跳过: 不是 Codex/OpenAI/ChatGPT auth 文件", file.name));
+                continue;
+            }
+
+            eligible_files += 1;
+            import_payloads_raw.push(serialize_import_payload(&filtered)?);
         }
 
-        eligible_files += 1;
-        import_payloads_raw.push(serialize_import_payload(&filtered)?);
+        let started_at = now_ts();
+        let import_summary = import_payloads(import_payloads_raw)?;
+        errors.extend(import_summary.errors.iter().cloned());
+
+        Ok(CpaSyncResult {
+            total_files,
+            eligible_files,
+            downloaded_files,
+            created: import_summary.created,
+            updated: import_summary.updated,
+            failed: errors.len() + import_summary.failed,
+            imported_account_ids: collect_recent_imported_account_ids(started_at),
+            errors,
+        })
+    })();
+
+    match run_result {
+        Ok(result) => {
+            mark_cpa_sync_success(&result);
+            Ok(result)
+        }
+        Err(err) => {
+            mark_cpa_sync_error(&err);
+            Err(err)
+        }
     }
+}
 
-    let started_at = now_ts();
-    let import_summary = import_payloads(import_payloads_raw)?;
-    errors.extend(import_summary.errors.iter().cloned());
+pub(crate) fn sync_cpa_accounts(params: Option<&Value>) -> Result<CpaSyncResult, String> {
+    sync_cpa_accounts_once(params, "manual")
+}
 
-    Ok(CpaSyncResult {
-        total_files,
-        eligible_files,
-        downloaded_files,
-        created: import_summary.created,
-        updated: import_summary.updated,
-        failed: errors.len() + import_summary.failed,
-        imported_account_ids: collect_recent_imported_account_ids(started_at),
-        errors,
-    })
+pub(crate) fn cpa_sync_status(_params: Option<&Value>) -> Result<CpaSyncStatus, String> {
+    Ok(read_cpa_sync_status())
+}
+
+pub(crate) fn refresh_cpa_sync_schedule() -> Result<(), String> {
+    let config = load_cpa_sync_schedule_config();
+    apply_cpa_sync_schedule_config(&config);
+    Ok(())
+}
+
+pub(crate) fn ensure_cpa_sync_scheduler_started() {
+    static START: Once = Once::new();
+    START.call_once(|| {
+        thread::Builder::new()
+            .name("cpa-sync-scheduler".to_string())
+            .spawn(|| loop {
+                let _ = refresh_cpa_sync_schedule();
+                if should_trigger_scheduled_sync() {
+                    let _ = sync_cpa_accounts_once(None, "scheduled");
+                }
+                thread::sleep(Duration::from_secs(1));
+            })
+            .expect("spawn cpa sync scheduler");
+    });
 }
 
 #[cfg(test)]
@@ -620,6 +929,40 @@ pub(crate) fn download_auth_file_for_test(
 pub(crate) fn resolve_cpa_settings_for_test(payload: Option<&Value>) -> Result<(String, String), String> {
     let settings = resolve_cpa_settings(payload)?;
     Ok((settings.api_url, settings.management_key))
+}
+
+#[cfg(test)]
+pub(crate) fn cpa_sync_status_for_test() -> CpaSyncStatus {
+    read_cpa_sync_status()
+}
+
+#[cfg(test)]
+pub(crate) fn begin_cpa_sync_run_for_test(trigger: &str) -> Result<CpaSyncRunGuard, String> {
+    begin_cpa_sync_run(trigger)
+}
+
+#[cfg(test)]
+pub(crate) fn reset_cpa_sync_runtime_for_test() {
+    with_cpa_sync_runtime(|state| {
+        *state = CpaSyncRuntimeState::default();
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn refresh_cpa_sync_schedule_for_test(
+    _source_enabled: Option<bool>,
+    schedule_enabled: bool,
+    interval_minutes: u64,
+    api_url: &str,
+    has_management_key: bool,
+) {
+    apply_cpa_sync_schedule_config(&CpaSyncScheduleConfig {
+        source_enabled: true,
+        schedule_enabled,
+        interval_minutes,
+        api_url: api_url.to_string(),
+        has_management_key,
+    });
 }
 
 #[cfg(test)]

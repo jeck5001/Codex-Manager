@@ -803,6 +803,30 @@ fn app_settings_preserves_cpa_management_key_when_blank_patch_sent() {
 }
 
 #[test]
+fn app_settings_set_persists_cpa_schedule_snapshot() {
+    with_temp_db(|_| {
+        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
+            "cpaSyncEnabled": true,
+            "cpaSyncApiUrl": "https://cpa.example.com",
+            "cpaSyncScheduleEnabled": true,
+            "cpaSyncScheduleIntervalMinutes": 30
+        })))
+        .expect("set cpa schedule");
+
+        assert_eq!(
+            snapshot.get("cpaSyncScheduleEnabled").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            snapshot
+                .get("cpaSyncScheduleIntervalMinutes")
+                .and_then(|v| v.as_u64()),
+            Some(30)
+        );
+    });
+}
+
+#[test]
 fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
     with_temp_db(|db_path| {
         let storage = Storage::open(db_path).expect("open storage");

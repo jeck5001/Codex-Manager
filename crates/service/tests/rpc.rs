@@ -192,6 +192,72 @@ fn encode_base64url(bytes: &[u8]) -> String {
     out
 }
 
+#[test]
+fn rpc_register_task_read_returns_local_status_and_logs() {
+    let _ctx = RpcTestContext::new("rpc-register-task-read");
+    let _engine_guard = EnvGuard::set("CODEXMANAGER_REGISTER_ENGINE_TEST_MODE", "success");
+
+    let start_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let start_json = serde_json::to_string(&JsonRpcRequest {
+        id: 1,
+        method: "account/register/start".to_string(),
+        params: Some(serde_json::json!({
+            "emailServiceType": "generator_email",
+            "registerMode": "standard"
+        })),
+    })
+    .expect("serialize start rpc");
+    let start_resp = post_rpc(&start_server.addr, &start_json);
+    start_server.join();
+
+    let task_uuid = start_resp
+        .get("result")
+        .and_then(|value| value.get("taskUuid"))
+        .and_then(|value| value.as_str())
+        .expect("task uuid")
+        .to_string();
+
+    let mut read_resp = serde_json::Value::Null;
+    for _ in 0..10 {
+        let read_server = codexmanager_service::start_one_shot_server().expect("start read server");
+        let read_json = serde_json::to_string(&JsonRpcRequest {
+            id: 2,
+            method: "account/register/task".to_string(),
+            params: Some(serde_json::json!({ "taskUuid": task_uuid })),
+        })
+        .expect("serialize read rpc");
+        read_resp = post_rpc(&read_server.addr, &read_json);
+        read_server.join();
+
+        let status = read_resp
+            .get("result")
+            .and_then(|value| value.get("status"))
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string();
+        if matches!(status.as_str(), "completed" | "succeeded") {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    assert_eq!(
+        read_resp
+            .get("result")
+            .and_then(|value| value.get("status"))
+            .and_then(|value| value.as_str()),
+        Some("completed")
+    );
+    assert!(
+        read_resp
+            .get("result")
+            .and_then(|value| value.get("logs"))
+            .and_then(|value| value.as_array())
+            .map(|items| !items.is_empty())
+            .unwrap_or(false)
+    );
+}
+
 fn build_access_token(
     subject: &str,
     email: &str,
@@ -3343,4 +3409,23 @@ fn rpc_accepts_loopback_origin() {
         ],
     );
     assert_eq!(status, 200, "unexpected status {status}: {body}");
+}
+
+#[test]
+fn rpc_account_cpa_sync_status_returns_structured_snapshot() {
+    let _ctx = RpcTestContext::new("rpc-cpa-sync-status");
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+
+    let req = JsonRpcRequest {
+        id: 11,
+        method: "account/cpa/syncStatus".to_string(),
+        params: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let response = post_rpc(&server.addr, &json);
+    let result = response.get("result").expect("rpc result");
+
+    assert!(result.get("status").is_some());
+    assert!(result.get("intervalMinutes").is_some());
+    assert!(result.get("isRunning").is_some());
 }

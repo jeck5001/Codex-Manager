@@ -1428,6 +1428,8 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     cpaSyncEnabled: asBoolean(source.cpaSyncEnabled, false),
     cpaSyncApiUrl: asString(source.cpaSyncApiUrl),
     cpaSyncHasManagementKey: asBoolean(source.cpaSyncHasManagementKey, false),
+    cpaSyncScheduleEnabled: asBoolean(source.cpaSyncScheduleEnabled, false),
+    cpaSyncScheduleIntervalMinutes: asInteger(source.cpaSyncScheduleIntervalMinutes, 30, 1),
     upstreamProxyUrl: asString(source.upstreamProxyUrl),
     upstreamStreamTimeoutMs: asInteger(source.upstreamStreamTimeoutMs, 1_800_000, 0),
     sseKeepaliveIntervalMs: asInteger(source.sseKeepaliveIntervalMs, 15_000, 1),

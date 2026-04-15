@@ -247,6 +247,67 @@ fn cpa_sync_reuses_account_import_pipeline() {
     assert_eq!(result.failed, 0);
 }
 
+#[test]
+fn cpa_sync_status_defaults_to_disabled_snapshot() {
+    let _lock = env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    super::reset_cpa_sync_runtime_for_test();
+    let status = super::cpa_sync_status_for_test();
+
+    assert_eq!(status.status, "disabled");
+    assert!(!status.is_running);
+    assert_eq!(status.interval_minutes, 30);
+}
+
+#[test]
+fn cpa_sync_run_guard_rejects_overlapping_runs() {
+    let _lock = env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    super::reset_cpa_sync_runtime_for_test();
+    let _guard = super::begin_cpa_sync_run_for_test("manual").expect("first lock");
+    let err = super::begin_cpa_sync_run_for_test("scheduled")
+        .expect_err("second run should fail");
+
+    assert!(err.contains("正在执行中"));
+}
+
+#[test]
+fn cpa_schedule_status_marks_misconfigured_when_enabled_without_credentials() {
+    let _lock = env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    super::reset_cpa_sync_runtime_for_test();
+
+    super::refresh_cpa_sync_schedule_for_test(Some(false), true, 15, "", false);
+    let status = super::cpa_sync_status_for_test();
+
+    assert_eq!(status.status, "misconfigured");
+    assert_eq!(status.last_error, "CPA API URL 或 Management Key 未配置");
+}
+
+#[test]
+fn cpa_schedule_status_sets_next_run_when_enabled_and_configured() {
+    let _lock = env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    super::reset_cpa_sync_runtime_for_test();
+
+    super::refresh_cpa_sync_schedule_for_test(
+        Some(true),
+        true,
+        15,
+        "https://cpa.example.com",
+        true,
+    );
+    let status = super::cpa_sync_status_for_test();
+
+    assert_eq!(status.status, "idle");
+    assert_eq!(status.interval_minutes, 15);
+    assert!(status.next_run_at.is_some());
+}
+
 fn setup_test_storage() -> EnvGuard {
     let lock = env_lock()
         .lock()

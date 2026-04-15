@@ -937,29 +937,30 @@ pub(crate) fn start_register_task(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("standard");
+    let _ = (
+        email_service_id,
+        email_service_config,
+        browserbase_config_id,
+        auto_create_temp_mail_service,
+    );
     if service_type.is_empty() && register_mode != "browserbase_ddg" {
         return Err("emailServiceType is required".to_string());
     }
-    let mut payload = json!({
-        "email_service_type": service_type,
-        "email_service_id": email_service_id,
-        "register_mode": register_mode,
-        "browserbase_config_id": browserbase_config_id,
-        "proxy": proxy,
-    });
-    if let Some(config) = email_service_config {
-        if config.is_object() {
-            if let Some(object) = payload.as_object_mut() {
-                object.insert("email_service_config".to_string(), config);
-            }
-        }
-    }
-    if let Some(flag) = auto_create_temp_mail_service {
-        if let Some(object) = payload.as_object_mut() {
-            object.insert("auto_create_temp_mail_service".to_string(), json!(flag));
-        }
-    }
-    register_post_json("/api/registration/start", &payload)
+    let snapshot = crate::account::register_runtime::create_local_register_task(
+        crate::account::register_runtime::LocalRegisterTaskInput {
+            email_service_type: service_type.to_string(),
+            register_mode: register_mode.to_string(),
+            proxy,
+        },
+    );
+    spawn_local_register_task_worker(snapshot.clone());
+
+    Ok(json!({
+        "taskUuid": snapshot.task_uuid,
+        "status": snapshot.status,
+        "emailServiceType": snapshot.email_service_type,
+        "registerMode": snapshot.register_mode,
+    }))
 }
 
 pub(crate) fn start_register_batch(
@@ -1025,6 +1026,28 @@ pub(crate) fn start_register_batch(
             object.insert("auto_create_temp_mail_service".to_string(), json!(flag));
         }
     }
+    if service_type == "generator_email" {
+        let batch = crate::account::register_runtime::create_local_register_batch(
+            crate::account::register_runtime::LocalRegisterBatchInput {
+                email_service_type: service_type.to_string(),
+                register_mode: register_mode.to_string(),
+                proxy,
+                count: count as usize,
+                interval_min,
+                interval_max,
+                concurrency: concurrency as usize,
+                mode: normalized_mode.clone(),
+            },
+        )?;
+        spawn_local_register_batch_worker(batch.batch_id.clone());
+        return Ok(json!({
+            "batchId": batch.batch_id,
+            "status": batch.status,
+            "total": batch.total,
+            "taskUuids": batch.task_uuids,
+            "tasks": batch.task_uuids,
+        }));
+    }
     let mut payload = register_post_json("/api/registration/batch", &payload)?;
     let task_uuids = payload
         .get("tasks")
@@ -1044,6 +1067,10 @@ pub(crate) fn read_register_batch(batch_id: &str) -> Result<Value, String> {
     if batch_id.is_empty() {
         return Err("batchId is required".to_string());
     }
+    if let Some(batch) = crate::account::register_runtime::read_local_register_batch(batch_id) {
+        return serde_json::to_value(batch)
+            .map_err(|err| format!("encode local register batch failed: {err}"));
+    }
     register_get_json(&format!("/api/registration/batch/{batch_id}"))
 }
 
@@ -1051,6 +1078,14 @@ pub(crate) fn cancel_register_batch(batch_id: &str) -> Result<Value, String> {
     let batch_id = batch_id.trim();
     if batch_id.is_empty() {
         return Err("batchId is required".to_string());
+    }
+    if crate::account::register_runtime::read_local_register_batch(batch_id).is_some() {
+        crate::account::register_runtime::cancel_local_register_batch(batch_id)?;
+        return Ok(json!({
+            "success": true,
+            "batchId": batch_id,
+            "status": "cancelled",
+        }));
     }
     register_post_json(
         &format!("/api/registration/batch/{batch_id}/cancel"),
@@ -1140,6 +1175,33 @@ pub(crate) fn list_register_tasks(
     page_size: i64,
     status: Option<&str>,
 ) -> Result<Value, String> {
+    let local_tasks = crate::account::register_runtime::list_local_register_tasks();
+    if !local_tasks.is_empty() {
+        let normalized_status = status
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        let filtered = local_tasks
+            .into_iter()
+            .filter(|task| {
+                normalized_status
+                    .as_deref()
+                    .map(|expected| task.status.trim().eq_ignore_ascii_case(expected))
+                    .unwrap_or(true)
+            })
+            .map(local_task_snapshot_to_value)
+            .collect::<Vec<_>>();
+        let total = filtered.len();
+        let page = page.max(1) as usize;
+        let page_size = page_size.clamp(1, 100) as usize;
+        let offset = page.saturating_sub(1) * page_size;
+        let tasks = filtered.into_iter().skip(offset).take(page_size).collect::<Vec<_>>();
+        return Ok(json!({
+            "total": total,
+            "tasks": tasks,
+        }));
+    }
+
     let mut query = vec![
         ("page".to_string(), page.max(1).to_string()),
         ("page_size".to_string(), page_size.clamp(1, 100).to_string()),
@@ -1167,6 +1229,14 @@ pub(crate) fn cancel_register_task(task_uuid: &str) -> Result<Value, String> {
     let task_uuid = task_uuid.trim();
     if task_uuid.is_empty() {
         return Err("taskUuid is required".to_string());
+    }
+    if crate::account::register_runtime::read_local_register_task(task_uuid).is_some() {
+        crate::account::register_runtime::cancel_local_register_task(task_uuid)?;
+        return Ok(json!({
+            "success": true,
+            "taskUuid": task_uuid,
+            "status": "cancelled",
+        }));
     }
     register_post_json(
         &format!("/api/registration/tasks/{task_uuid}/cancel"),
@@ -1639,10 +1709,158 @@ pub(crate) fn test_register_tempmail(api_url: Option<&str>) -> Result<Value, Str
     )
 }
 
+fn local_task_snapshot_to_response(
+    task: &crate::account::register_runtime::LocalRegisterTaskSnapshot,
+) -> Result<RegisterTaskReadResponse, String> {
+    let status = if task.status.eq_ignore_ascii_case("succeeded") {
+        "completed".to_string()
+    } else {
+        task.status.clone()
+    };
+    let joined_logs = task.logs.join("\n");
+    let failure_reason = if matches!(
+        status.trim().to_ascii_lowercase().as_str(),
+        "failed" | "cancelled" | "canceled"
+    ) {
+        classify_register_failure_reason(task.error_message.as_deref(), joined_logs.as_str())
+    } else {
+        None
+    };
+    let imported_account_id = task.imported_account_id.clone().or_else(|| {
+        crate::storage_helpers::open_storage().and_then(|storage| {
+            resolve_existing_imported_account_id(&storage, task.email.as_deref(), &task.result)
+        })
+    });
+    let is_imported = task.is_imported || imported_account_id.is_some();
+    let can_import = matches!(
+        status.trim().to_ascii_lowercase().as_str(),
+        "completed" | "succeeded"
+    ) && task.payload.as_deref().is_some();
+
+    Ok(RegisterTaskReadResponse {
+        task_uuid: task.task_uuid.clone(),
+        status,
+        email_service_id: None,
+        proxy: task.proxy.clone(),
+        created_at: task.created_at.clone(),
+        started_at: task.started_at.clone(),
+        completed_at: task.completed_at.clone(),
+        error_message: task.error_message.clone(),
+        failure_code: task
+            .failure_code
+            .clone()
+            .or_else(|| failure_reason.map(|(code, _)| code.to_string())),
+        failure_label: failure_reason.map(|(_, label)| label.to_string()),
+        email: task.email.clone(),
+        can_import,
+        imported_account_id,
+        is_imported,
+        requires_manual_import: can_import && !is_imported,
+        result: task.result.clone(),
+        logs: task.logs.clone(),
+    })
+}
+
+fn local_task_snapshot_to_value(
+    task: crate::account::register_runtime::LocalRegisterTaskSnapshot,
+) -> Value {
+    let response = local_task_snapshot_to_response(&task).unwrap_or(RegisterTaskReadResponse {
+        task_uuid: task.task_uuid,
+        status: task.status,
+        email_service_id: None,
+        proxy: task.proxy,
+        created_at: task.created_at,
+        started_at: task.started_at,
+        completed_at: task.completed_at,
+        error_message: task.error_message,
+        failure_code: task.failure_code,
+        failure_label: None,
+        email: task.email,
+        can_import: false,
+        imported_account_id: task.imported_account_id,
+        is_imported: task.is_imported,
+        requires_manual_import: false,
+        result: task.result,
+        logs: task.logs,
+    });
+    serde_json::to_value(response).unwrap_or(Value::Null)
+}
+
+fn import_local_register_task(task_uuid: &str) -> Result<Value, String> {
+    let task = read_register_task(task_uuid)?;
+    if !matches!(
+        task.status.trim().to_ascii_lowercase().as_str(),
+        "completed" | "succeeded"
+    ) {
+        return Err("register task is not completed".to_string());
+    }
+    let payload = crate::account::register_runtime::read_local_register_task_payload(task_uuid)
+        .ok_or_else(|| "register task payload unavailable".to_string())?;
+    let imported = crate::account_import::import_account_auth_json(vec![payload])?;
+    let mut imported_value =
+        serde_json::to_value(imported).map_err(|err| format!("encode import result failed: {err}"))?;
+    let imported_account_id = crate::storage_helpers::open_storage().and_then(|storage| {
+        resolve_existing_imported_account_id(&storage, task.email.as_deref(), &task.result)
+    });
+    if let Some(account_id) = imported_account_id.as_deref() {
+        crate::account::register_runtime::mark_local_register_task_imported(task_uuid, account_id);
+    }
+    if let Some(object) = imported_value.as_object_mut() {
+        object.insert("taskUuid".to_string(), Value::String(task_uuid.trim().to_string()));
+        if let Some(account_id) = imported_account_id {
+            object.insert("importedAccountId".to_string(), Value::String(account_id));
+        }
+    }
+    Ok(imported_value)
+}
+
+fn spawn_local_register_task_worker(
+    snapshot: crate::account::register_runtime::LocalRegisterTaskSnapshot,
+) {
+    let task_uuid = snapshot.task_uuid.clone();
+    thread::spawn(move || {
+        if let Err(err) =
+            crate::account::register_engine::run_local_register_flow(task_uuid.as_str(), &snapshot)
+        {
+            crate::account::register_runtime::append_register_task_log(
+                task_uuid.as_str(),
+                format!("register engine exited with error: {err}").as_str(),
+            );
+        }
+    });
+}
+
+fn spawn_local_register_batch_worker(batch_id: String) {
+    thread::spawn(move || {
+        let Some(batch) = crate::account::register_runtime::read_local_register_batch(batch_id.as_str()) else {
+            return;
+        };
+        for task_uuid in batch.task_uuids {
+            let Some(batch_state) =
+                crate::account::register_runtime::read_local_register_batch(batch_id.as_str())
+            else {
+                break;
+            };
+            if batch_state.cancelled {
+                break;
+            }
+            if let Some(task_snapshot) =
+                crate::account::register_runtime::read_local_register_task(task_uuid.as_str())
+            {
+                spawn_local_register_task_worker(task_snapshot);
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    });
+}
+
 pub(crate) fn read_register_task(task_uuid: &str) -> Result<RegisterTaskReadResponse, String> {
     let task_id = task_uuid.trim();
     if task_id.is_empty() {
         return Err("taskUuid is required".to_string());
+    }
+    if let Some(task) = crate::account::register_runtime::read_local_register_task(task_id) {
+        return local_task_snapshot_to_response(&task);
     }
     let task = register_get_json(&format!("/api/registration/tasks/{task_id}"))?;
     let logs_payload = register_get_json(&format!("/api/registration/tasks/{task_id}/logs"))?;
@@ -1687,6 +1905,9 @@ pub(crate) fn read_register_task(task_uuid: &str) -> Result<RegisterTaskReadResp
 }
 
 pub(crate) fn import_register_task(task_uuid: &str) -> Result<Value, String> {
+    if crate::account::register_runtime::read_local_register_task(task_uuid.trim()).is_some() {
+        return import_local_register_task(task_uuid);
+    }
     let task = read_register_task(task_uuid)?;
     if !task.status.eq_ignore_ascii_case("completed") {
         return Err("register task is not completed".to_string());
@@ -1780,6 +2001,59 @@ fn first_recovery_service_id_from_group(payload: &Value, keys: &[&str]) -> Optio
             })
     })
 }
+
+#[cfg(test)]
+pub(crate) fn seed_completed_local_register_task_for_test(
+    email: &str,
+) -> crate::account::register_runtime::LocalRegisterTaskSnapshot {
+    let task = crate::account::register_runtime::create_local_register_task(
+        crate::account::register_runtime::LocalRegisterTaskInput {
+            email_service_type: "generator_email".to_string(),
+            register_mode: "standard".to_string(),
+            proxy: None,
+        },
+    );
+    let account_id = format!("acc-{}", task.task_uuid);
+    let id_token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdWItcmVnaXN0ZXIiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJ3b3Jrc3BhY2VfaWQiOiJ3cy1yZWdpc3RlciIsImh0dHBzOi8vYXBpLm9wZW5haS5jb20vYXV0aCI6eyJjaGF0Z3B0X2FjY291bnRfaWQiOiJhY2MtcmVnaXN0ZXIifX0.sig";
+    let result = json!({
+        "email": email,
+        "account_id": account_id,
+        "workspace_id": format!("ws-{}", task.task_uuid),
+        "refresh_token": format!("refresh-{}", task.task_uuid),
+    });
+    let payload = json!({
+        "type": "codex",
+        "email": email,
+        "account_id": format!("acc-{}", task.task_uuid),
+        "id_token": id_token,
+        "access_token": format!("access-{}", task.task_uuid),
+        "refresh_token": format!("refresh-{}", task.task_uuid),
+        "last_refresh": "2026-04-15T00:00:00Z",
+        "expired": "2026-04-15T01:00:00Z"
+    })
+    .to_string();
+    crate::account::register_runtime::set_register_task_result_for_test(
+        task.task_uuid.as_str(),
+        Some(email.to_string()),
+        Some(payload),
+        result,
+    );
+    crate::account::register_runtime::append_register_task_log_for_test(
+        task.task_uuid.as_str(),
+        "register completed locally",
+    );
+    crate::account::register_runtime::set_register_task_status_for_test(
+        task.task_uuid.as_str(),
+        "completed",
+        None,
+    );
+    crate::account::register_runtime::read_local_register_task_for_test(task.task_uuid.as_str())
+        .expect("seeded local register task")
+}
+
+#[cfg(test)]
+#[path = "tests/register_task_snapshot_tests.rs"]
+mod register_task_snapshot_tests;
 
 #[cfg(test)]
 mod tests {
