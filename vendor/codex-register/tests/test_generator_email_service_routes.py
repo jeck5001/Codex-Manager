@@ -21,6 +21,10 @@ def load_email_services_module():
             module_name_item == "src"
             or module_name_item.startswith("src.")
             or module_name_item.startswith("curl_cffi")
+            or module_name_item == "fastapi"
+            or module_name_item.startswith("fastapi.")
+            or module_name_item == "pydantic"
+            or module_name_item.startswith("pydantic.")
         ):
             sys.modules.pop(module_name_item, None)
 
