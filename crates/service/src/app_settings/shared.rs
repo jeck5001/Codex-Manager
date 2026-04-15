@@ -51,6 +51,9 @@ pub const APP_SETTING_TEAM_MANAGER_API_KEY_KEY: &str = "team_manager.api_key";
 pub const APP_SETTING_CPA_SYNC_ENABLED_KEY: &str = "cpa_sync.enabled";
 pub const APP_SETTING_CPA_SYNC_API_URL_KEY: &str = "cpa_sync.api_url";
 pub const APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY: &str = "cpa_sync.management_key";
+pub const APP_SETTING_CPA_SYNC_SCHEDULE_ENABLED_KEY: &str = "cpa_sync.schedule_enabled";
+pub const APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY: &str =
+    "cpa_sync.schedule_interval_minutes";
 pub const APP_SETTING_ACCOUNT_PAYMENT_STATE_KEY: &str = "account.payment_state";
 pub const APP_SETTING_ACCOUNT_SESSION_STATE_KEY: &str = "account.session_state";
 pub const APP_SETTING_WEB_ACCESS_PASSWORD_HASH_KEY: &str = "web.auth.password_hash";

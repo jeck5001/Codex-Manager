@@ -78,6 +78,8 @@ export const useAppStore = create<AppState>((set) => ({
     cpaSyncEnabled: false,
     cpaSyncApiUrl: "",
     cpaSyncHasManagementKey: false,
+    cpaSyncScheduleEnabled: false,
+    cpaSyncScheduleIntervalMinutes: 30,
     backgroundTasks: {
       usagePollingEnabled: true,
       usagePollIntervalSecs: 600,

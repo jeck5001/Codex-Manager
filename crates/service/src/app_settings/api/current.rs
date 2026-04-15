@@ -1,6 +1,7 @@
 use crate::app_settings::{
     APP_SETTING_CPA_SYNC_API_URL_KEY, APP_SETTING_CPA_SYNC_ENABLED_KEY,
-    APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY,
+    APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY, APP_SETTING_CPA_SYNC_SCHEDULE_ENABLED_KEY,
+    APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY,
 };
 use crate::initialize_storage_if_needed;
 use crate::web_access_password_configured;
@@ -150,6 +151,15 @@ pub(super) fn current_app_settings_value(
         get_persisted_app_setting(APP_SETTING_CPA_SYNC_API_URL_KEY).unwrap_or_default();
     let cpa_sync_has_management_key =
         get_persisted_app_setting(APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY).is_some();
+    let cpa_sync_schedule_enabled =
+        get_persisted_app_setting(APP_SETTING_CPA_SYNC_SCHEDULE_ENABLED_KEY)
+            .map(|raw| parse_bool_with_default(&raw, false))
+            .unwrap_or(false);
+    let cpa_sync_schedule_interval_minutes =
+        get_persisted_app_setting(APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY)
+            .and_then(|raw| raw.trim().parse::<u64>().ok())
+            .map(|value| value.max(1))
+            .unwrap_or(30);
     let team_manager_enabled = get_persisted_app_setting(APP_SETTING_TEAM_MANAGER_ENABLED_KEY)
         .map(|raw| parse_bool_with_default(&raw, false))
         .unwrap_or(false);
@@ -243,6 +253,8 @@ pub(super) fn current_app_settings_value(
         "cpaSyncEnabled": cpa_sync_enabled,
         "cpaSyncApiUrl": cpa_sync_api_url,
         "cpaSyncHasManagementKey": cpa_sync_has_management_key,
+        "cpaSyncScheduleEnabled": cpa_sync_schedule_enabled,
+        "cpaSyncScheduleIntervalMinutes": cpa_sync_schedule_interval_minutes,
         "teamManagerEnabled": team_manager_enabled,
         "teamManagerApiUrl": team_manager_api_url,
         "teamManagerHasApiKey": team_manager_has_api_key,

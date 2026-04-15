@@ -19,6 +19,7 @@ import {
   AccountBulkStatusUpdateResult,
   AccountCpaConnectionResult,
   AccountCpaSyncResult,
+  AccountCpaSyncStatusResult,
   AccountListResult,
   AccountOfficialPromoLinkResult,
   AccountPaymentLinkResult,
@@ -1363,6 +1364,11 @@ export const accountClient = {
         apiUrl: apiUrl ?? null,
         managementKey: managementKey ?? null,
       })
+    ),
+  getCpaSyncStatus: () =>
+    invoke<AccountCpaSyncStatusResult>(
+      "service_account_cpa_sync_status",
+      withAddr()
     ),
   import: (contents: string[]) =>
     invoke<AccountImportResult>("service_account_import", withAddr({ contents })),
