@@ -173,6 +173,8 @@ def load_register_module():
     load_core_module("register_retry_policy")
     load_core_module("register_token_resolver")
     load_core_module("register_flow_runner")
+    load_core_module("cpa_register_runtime")
+    load_core_module("cpa_page_driver")
     load_core_module("sentinel_browser")
 
     spec = importlib.util.spec_from_file_location(module_name, module_path)
@@ -583,6 +585,76 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertEqual(followed[0][0]["continue_url"], "https://auth.openai.com/create-account/password")
         self.assertEqual(followed[0][1], "注册邮箱")
 
+    def test_submit_signup_form_marks_existing_account_from_cpa_password_state(self):
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "page": {
+                        "type": "create_account_password",
+                        "error": {
+                            "message": "Account associated with this email address already exists"
+                        },
+                    },
+                    "continue_url": "https://auth.openai.com/create-account/password",
+                }
+
+        class FakeSession:
+            def post(self, *_args, **_kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine._is_existing_account = False
+        engine._log = lambda *_args, **_kwargs: None
+        engine._follow_auth_continue_url = lambda *_args, **_kwargs: None
+
+        result = engine._submit_signup_form("did", "sentinel")
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.page_type, "create_account_password")
+        self.assertTrue(result.is_existing_account)
+        self.assertTrue(engine._is_existing_account)
+
+    def test_submit_signup_form_rejects_retryable_cpa_password_error(self):
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "page": {
+                        "type": "create_account_password",
+                        "title": "Something went wrong",
+                        "description": "Operation timed out",
+                    },
+                    "actions": [
+                        {"label": "Try again"},
+                    ],
+                    "continue_url": "https://auth.openai.com/create-account/password",
+                }
+
+        class FakeSession:
+            def post(self, *_args, **_kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine._is_existing_account = False
+        engine._log = lambda *_args, **_kwargs: None
+        followed = []
+        engine._follow_auth_continue_url = lambda payload, stage: followed.append((payload, stage))
+
+        result = engine._submit_signup_form("did", "sentinel")
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.page_type, "create_account_password")
+        self.assertIn("retry", result.error_message.lower())
+        self.assertFalse(engine._is_existing_account)
+        self.assertEqual(followed, [])
+
     def test_run_falls_back_to_workspace_flow_when_add_phone_bypass_has_no_callback(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
         engine.logs = []
@@ -642,6 +714,18 @@ class RegisterAddPhoneTests(unittest.TestCase):
             "id_token": "id",
         }
         engine._post_registration_health_check = lambda access_token: ("active", True, "")
+        engine.cpa_runtime = types.SimpleNamespace(
+            execute_signup_sequence=lambda did, sen_token: types.SimpleNamespace(
+                success=True,
+                error_message="",
+            ),
+            resolve_post_registration_callback=lambda did, sen_token: types.SimpleNamespace(
+                callback_url="http://localhost/callback?code=ok&state=state",
+                workspace_id="ws-1",
+                error_message="",
+                metadata=None,
+            ),
+        )
 
         result = engine.run()
 
@@ -713,17 +797,25 @@ class RegisterAddPhoneTests(unittest.TestCase):
             "id_token": "id",
         }
         engine._post_registration_health_check = lambda access_token: ("active", True, "")
+        runtime_calls = []
+        engine.cpa_runtime = types.SimpleNamespace(
+            execute_signup_sequence=lambda did, sen_token: types.SimpleNamespace(
+                success=True,
+                error_message="",
+            ),
+            resolve_post_registration_callback=lambda did, sen_token: runtime_calls.append((did, sen_token)) or types.SimpleNamespace(
+                callback_url="http://localhost/callback?code=ok&state=state",
+                workspace_id="",
+                error_message="",
+                metadata=None,
+            ),
+        )
 
         result = engine.run()
 
         self.assertTrue(result.success)
-        self.assertEqual(
-            followed_urls,
-            [
-                "https://auth.openai.com/oauth/authorize"
-                "?client_id=test&response_type=code&state=state"
-            ],
-        )
+        self.assertEqual(runtime_calls, [("did", "sentinel")])
+        self.assertEqual(followed_urls, [])
 
     def test_run_marks_account_unusable_when_health_check_fails(self):
         engine = RegistrationEngine.__new__(RegistrationEngine)
@@ -780,6 +872,18 @@ class RegisterAddPhoneTests(unittest.TestCase):
             "banned",
             False,
             "账号健康检查返回 403，疑似已受限或被封禁",
+        )
+        engine.cpa_runtime = types.SimpleNamespace(
+            execute_signup_sequence=lambda did, sen_token: types.SimpleNamespace(
+                success=True,
+                error_message="",
+            ),
+            resolve_post_registration_callback=lambda did, sen_token: types.SimpleNamespace(
+                callback_url="http://localhost/callback?code=ok&state=state",
+                workspace_id="ws-1",
+                error_message="",
+                metadata=None,
+            ),
         )
 
         result = engine.run()

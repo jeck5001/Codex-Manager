@@ -310,6 +310,7 @@ function normalizeRegisterAvailableServices(value: unknown): RegisterAvailableSe
     customDomain: normalizeRegisterServiceGroup(source.custom_domain ?? source.customDomain),
     tempMail: normalizeRegisterServiceGroup(source.temp_mail ?? source.tempMail),
     mail33Imap: normalizeRegisterServiceGroup(source.mail_33_imap ?? source.mail33Imap),
+    generatorEmail: normalizeRegisterServiceGroup(source.generator_email ?? source.generatorEmail),
   };
 }
 
@@ -1116,6 +1117,13 @@ function normalizeRegisterEmailServiceStats(value: unknown): RegisterEmailServic
         : typeof source.mail_33_imap_count === "number" &&
             Number.isFinite(source.mail_33_imap_count)
           ? source.mail_33_imap_count
+          : 0,
+    generatorEmailCount:
+      typeof source.generatorEmailCount === "number" && Number.isFinite(source.generatorEmailCount)
+        ? source.generatorEmailCount
+        : typeof source.generator_email_count === "number" &&
+            Number.isFinite(source.generator_email_count)
+          ? source.generator_email_count
           : 0,
     tempmailAvailable:
       source.tempmailAvailable === true || source.tempmail_available === true,

@@ -1918,6 +1918,11 @@ async def get_available_email_services():
             "available": False,
             "count": 0,
             "services": [],
+        },
+        "generator_email": {
+            "available": False,
+            "count": 0,
+            "services": [],
         }
     }
 
@@ -2009,6 +2014,22 @@ async def get_available_email_services():
 
         result["mail_33_imap"]["count"] = len(mail33_services)
         result["mail_33_imap"]["available"] = len(mail33_services) > 0
+
+        generator_services = db.query(EmailServiceModel).filter(
+            EmailServiceModel.service_type == "generator_email",
+            EmailServiceModel.enabled == True
+        ).order_by(EmailServiceModel.priority.asc()).all()
+
+        for service in generator_services:
+            result["generator_email"]["services"].append({
+                "id": service.id,
+                "name": service.name,
+                "type": "generator_email",
+                "priority": service.priority,
+            })
+
+        result["generator_email"]["count"] = len(generator_services)
+        result["generator_email"]["available"] = len(generator_services) > 0
 
     return result
 

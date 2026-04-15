@@ -430,6 +430,7 @@ export default function RegisterPage() {
         value:
           (registerServicesQuery.data?.outlook.count || 0) +
           (registerServicesQuery.data?.customDomain.count || 0) +
+          (registerServicesQuery.data?.generatorEmail.count || 0) +
           (registerServicesQuery.data?.mail33Imap.count || 0) +
           (registerServicesQuery.data?.tempMail.count || 0) +
           (registerServicesQuery.data?.tempmail.available ? 1 : 0),
@@ -465,6 +466,7 @@ export default function RegisterPage() {
       registerOutlookAccountsQuery.data?.total,
       registerOutlookAccountsQuery.data?.unregisteredCount,
       registerServicesQuery.data?.customDomain.count,
+      registerServicesQuery.data?.generatorEmail.count,
       registerServicesQuery.data?.mail33Imap.count,
       registerServicesQuery.data?.outlook.count,
       registerServicesQuery.data?.tempMail.count,
