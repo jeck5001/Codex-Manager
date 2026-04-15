@@ -1194,6 +1194,8 @@ export interface AppSettings {
   cpaSyncEnabled: boolean;
   cpaSyncApiUrl: string;
   cpaSyncHasManagementKey: boolean;
+  cpaSyncScheduleEnabled: boolean;
+  cpaSyncScheduleIntervalMinutes: number;
   cpaSyncManagementKey?: string;
   backgroundTasks: BackgroundTaskSettings;
   envOverrides: Record<string, string>;
