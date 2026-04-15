@@ -136,6 +136,8 @@ export const serviceClient = {
     statusFilter?: string;
     page?: number;
     pageSize?: number;
+    startTs?: number | null;
+    endTs?: number | null;
   }): Promise<RequestLogListResult> {
     const result = await invoke<unknown>(
       "service_requestlog_list",
@@ -144,6 +146,8 @@ export const serviceClient = {
         statusFilter: params?.statusFilter || "all",
         page: params?.page ?? 1,
         pageSize: params?.pageSize ?? 20,
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
       })
     );
     return normalizeRequestLogListResult(result);
@@ -151,12 +155,16 @@ export const serviceClient = {
   async getRequestLogSummary(params?: {
     query?: string;
     statusFilter?: string;
+    startTs?: number | null;
+    endTs?: number | null;
   }): Promise<RequestLogFilterSummary> {
     const result = await invoke<unknown>(
       "service_requestlog_summary",
       withAddr({
         query: params?.query || "",
         statusFilter: params?.statusFilter || "all",
+        startTs: params?.startTs ?? null,
+        endTs: params?.endTs ?? null,
       })
     );
     return normalizeRequestLogFilterSummary(result);

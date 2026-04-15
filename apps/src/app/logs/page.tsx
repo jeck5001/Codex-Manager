@@ -70,7 +70,55 @@ import {
 
 type StatusFilter = "all" | "2xx" | "4xx" | "5xx";
 type LogsTab = "requests" | "gateway-errors";
+type TimeRangePreset = "all" | "30m" | "2h" | "24h" | "today" | "custom";
 type TranslateFn = (message: string, values?: Record<string, string | number>) => string;
+
+function padDateTimeSegment(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function toDateTimeLocalValue(timestampSeconds: number | null | undefined): string {
+  if (!timestampSeconds) return "";
+  const date = new Date(timestampSeconds * 1000);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = padDateTimeSegment(date.getMonth() + 1);
+  const day = padDateTimeSegment(date.getDate());
+  const hour = padDateTimeSegment(date.getHours());
+  const minute = padDateTimeSegment(date.getMinutes());
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+function fromDateTimeLocalValue(value: string): number | null {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return Math.floor(parsed.getTime() / 1000);
+}
+
+function buildFixedTimePreset(
+  preset: Exclude<TimeRangePreset, "all" | "custom">,
+  localDayStartTs: number,
+  localDayEndTs: number,
+): { startInput: string; endInput: string } {
+  if (preset === "today") {
+    return {
+      startInput: toDateTimeLocalValue(localDayStartTs),
+      endInput: toDateTimeLocalValue(localDayEndTs),
+    };
+  }
+
+  const nowTs = Math.floor(Date.now() / 1000);
+  const durationSeconds =
+    preset === "30m" ? 30 * 60 : preset === "2h" ? 2 * 60 * 60 : 24 * 60 * 60;
+  return {
+    startInput: toDateTimeLocalValue(nowTs - durationSeconds),
+    endInput: toDateTimeLocalValue(nowTs),
+  };
+}
 
 /**
  * 函数 `getStatusBadge`
@@ -1234,6 +1282,9 @@ function LogsPageContent() {
   const routeQuery = searchParams.get("query") || "";
   const [search, setSearch] = useState(routeQuery);
   const [filter, setFilter] = useState<StatusFilter>("all");
+  const [timePreset, setTimePreset] = useState<TimeRangePreset>("all");
+  const [startTimeInput, setStartTimeInput] = useState("");
+  const [endTimeInput, setEndTimeInput] = useState("");
   const [pageSize, setPageSize] = useState("10");
   const [page, setPage] = useState(1);
   const [gatewayPageSize, setGatewayPageSize] = useState("10");
@@ -1244,6 +1295,12 @@ function LogsPageContent() {
   const [gatewayStageFilter, setGatewayStageFilter] = useState("all");
   const pageSizeNumber = Number(pageSize) || 10;
   const gatewayPageSizeNumber = Number(gatewayPageSize) || 10;
+  const startTs = useMemo(
+    () => fromDateTimeLocalValue(startTimeInput),
+    [startTimeInput],
+  );
+  const endTs = useMemo(() => fromDateTimeLocalValue(endTimeInput), [endTimeInput]);
+  const hasActiveTimeRange = startTs != null || endTs != null;
   const startupSnapshot = queryClient.getQueryData<StartupSnapshot>(
     buildStartupSnapshotQueryKey(
       serviceStatus.addr,
@@ -1255,7 +1312,11 @@ function LogsPageContent() {
   const startupApiKeys = startupSnapshot?.apiKeys || [];
   const startupRequestLogs = startupSnapshot?.requestLogs || [];
   const canUseStartupLogsPlaceholder =
-    !routeQuery.trim() && !search.trim() && filter === "all" && page === 1;
+    !routeQuery.trim() &&
+    !search.trim() &&
+    filter === "all" &&
+    page === 1 &&
+    !hasActiveTimeRange;
   const hasStartupLogsSnapshot =
     canUseStartupLogsPlaceholder && startupRequestLogs.length > 0;
 
@@ -1296,11 +1357,13 @@ function LogsPageContent() {
   });
 
   const { data: logsResult, isLoading, isError: isLogsError } = useQuery({
-    queryKey: ["logs", "list", search, filter, page, pageSizeNumber],
+    queryKey: ["logs", "list", search, filter, startTs, endTs, page, pageSizeNumber],
     queryFn: () =>
       serviceClient.listRequestLogs({
         query: search,
         statusFilter: filter,
+        startTs,
+        endTs,
         page,
         pageSize: pageSizeNumber,
       }),
@@ -1320,11 +1383,13 @@ function LogsPageContent() {
   });
 
   const { data: summaryResult, isError: isSummaryError } = useQuery({
-    queryKey: ["logs", "summary", search, filter],
+    queryKey: ["logs", "summary", search, filter, startTs, endTs],
     queryFn: () =>
       serviceClient.getRequestLogSummary({
         query: search,
         statusFilter: filter,
+        startTs,
+        endTs,
       }),
     enabled: areLogQueriesEnabled && isPageActive,
     refetchInterval: 5000,
@@ -1459,6 +1524,23 @@ function LogsPageContent() {
     };
   }, [isPageActive]);
 
+  useEffect(() => {
+    if (timePreset !== "today") {
+      return;
+    }
+    const todayRange = buildFixedTimePreset(
+      "today",
+      localDayRange.dayStartTs,
+      localDayRange.dayEndTs,
+    );
+    setStartTimeInput((current) =>
+      current === todayRange.startInput ? current : todayRange.startInput,
+    );
+    setEndTimeInput((current) =>
+      current === todayRange.endInput ? current : todayRange.endInput,
+    );
+  }, [localDayRange.dayEndTs, localDayRange.dayStartTs, timePreset]);
+
   const currentFilterLabel =
     filter === "all"
       ? t("全部状态")
@@ -1467,9 +1549,41 @@ function LogsPageContent() {
         : filter === "4xx"
           ? t("客户端错误")
           : t("服务端错误");
-  const compactMetaText = `${summary.filteredCount}/${summary.totalCount} ${t("条")} · ${currentFilterLabel} · ${
+  const currentTimeRangeLabel =
+    timePreset === "30m"
+      ? t("最近30分钟")
+      : timePreset === "2h"
+        ? t("最近2小时")
+        : timePreset === "24h"
+          ? t("最近24小时")
+          : timePreset === "today"
+            ? t("今天")
+            : hasActiveTimeRange
+              ? t("自定义时间")
+              : t("全部时间");
+  const compactMetaText = `${summary.filteredCount}/${summary.totalCount} ${t("条")} · ${currentFilterLabel} · ${currentTimeRangeLabel} · ${
     serviceStatus.connected ? t("5 秒刷新") : t("服务未连接")
   }`;
+
+  const applyTimePreset = (preset: TimeRangePreset) => {
+    setTimePreset(preset);
+    setPage(1);
+    if (preset === "all") {
+      setStartTimeInput("");
+      setEndTimeInput("");
+      return;
+    }
+    if (preset === "custom") {
+      return;
+    }
+    const nextRange = buildFixedTimePreset(
+      preset,
+      localDayRange.dayStartTs,
+      localDayRange.dayEndTs,
+    );
+    setStartTimeInput(nextRange.startInput);
+    setEndTimeInput(nextRange.endInput);
+  };
 
   const renderGatewayErrorContext = (item: GatewayErrorLog) => {
     const parts = [
@@ -1539,62 +1653,138 @@ function LogsPageContent() {
 
         <TabsContent value="requests" className="space-y-5">
           <Card className="glass-card border-none shadow-md backdrop-blur-md">
-            <CardContent className="grid gap-3 pt-0 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-center">
-              <div className="min-w-0">
-                <Input
-                  placeholder={t("搜索路径、账号或密钥...")}
-                  className="glass-card h-10 rounded-xl px-3"
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
-              <div className="flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-muted/30 p-1">
-                {["all", "2xx", "4xx", "5xx"].map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => {
-                      setFilter(item as StatusFilter);
+            <CardContent className="space-y-3 pt-0">
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto] xl:items-center">
+                <div className="min-w-0">
+                  <Input
+                    placeholder={t("搜索路径、账号或密钥...")}
+                    className="glass-card h-10 rounded-xl px-3"
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
                       setPage(1);
                     }}
-                    className={cn(
-                      "rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all",
-                      filter === item
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
-                    )}
+                  />
+                </div>
+                <div className="flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-muted/30 p-1">
+                  {["all", "2xx", "4xx", "5xx"].map((item) => (
+                    <button
+                      key={item}
+                      onClick={() => {
+                        setFilter(item as StatusFilter);
+                        setPage(1);
+                      }}
+                      className={cn(
+                        "rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all",
+                        filter === item
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                      )}
+                    >
+                      {item.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex shrink-0 items-center gap-2 xl:justify-self-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="glass-card h-9 rounded-xl px-3.5"
+                    onClick={() =>
+                      queryClient.invalidateQueries({ queryKey: ["logs"] })
+                    }
                   >
-                    {item.toUpperCase()}
-                  </button>
-                ))}
+                    <RefreshCw className="mr-1.5 h-4 w-4" /> {t("刷新")}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-9 rounded-xl px-3.5"
+                    onClick={() => setClearConfirmOpen(true)}
+                    disabled={clearMutation.isPending}
+                  >
+                    <Trash2 className="mr-1.5 h-4 w-4" /> {t("清空日志")}
+                  </Button>
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="glass-card h-9 rounded-xl px-3.5"
-                  onClick={() =>
-                    queryClient.invalidateQueries({ queryKey: ["logs"] })
-                  }
-                >
-                  <RefreshCw className="mr-1.5 h-4 w-4" /> {t("刷新")}
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="h-9 rounded-xl px-3.5"
-                  onClick={() => setClearConfirmOpen(true)}
-                  disabled={clearMutation.isPending}
-                >
-                  <Trash2 className="mr-1.5 h-4 w-4" /> {t("清空日志")}
-                </Button>
-              </div>
-              <div className="text-[11px] text-muted-foreground lg:justify-self-end lg:text-right">
-                <span className="font-medium text-foreground">
-                  {compactMetaText}
-                </span>
+
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
+                <div className="space-y-2">
+                  <div className="text-[11px] font-medium text-muted-foreground">
+                    {t("快捷时间")}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border/60 bg-muted/30 p-1">
+                    {(
+                      [
+                        ["all", t("全部时间")],
+                        ["30m", t("最近30分钟")],
+                        ["2h", t("最近2小时")],
+                        ["24h", t("最近24小时")],
+                        ["today", t("今天")],
+                      ] as Array<[TimeRangePreset, string]>
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        onClick={() => applyTimePreset(value)}
+                        className={cn(
+                          "rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
+                          timePreset === value
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <div className="text-[11px] font-medium text-muted-foreground">
+                      {t("开始时间")}
+                    </div>
+                    <Input
+                      type="datetime-local"
+                      className="glass-card h-10 rounded-xl px-3"
+                      value={startTimeInput}
+                      onChange={(event) => {
+                        setTimePreset("custom");
+                        setStartTimeInput(event.target.value);
+                        setPage(1);
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-[11px] font-medium text-muted-foreground">
+                      {t("结束时间")}
+                    </div>
+                    <Input
+                      type="datetime-local"
+                      className="glass-card h-10 rounded-xl px-3"
+                      value={endTimeInput}
+                      onChange={(event) => {
+                        setTimePreset("custom");
+                        setEndTimeInput(event.target.value);
+                        setPage(1);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-muted-foreground xl:justify-self-end xl:text-right">
+                  <div className="font-medium text-foreground">
+                    {compactMetaText}
+                  </div>
+                  {hasActiveTimeRange ? (
+                    <button
+                      className="mt-1 text-xs text-primary hover:underline"
+                      onClick={() => applyTimePreset("all")}
+                    >
+                      {t("清除时间筛选")}
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </CardContent>
           </Card>
