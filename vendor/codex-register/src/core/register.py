@@ -18,6 +18,7 @@ from curl_cffi import requests as cffi_requests
 
 from .register_flow_runner import RegisterFlowRunner
 from .cpa_register_runtime import CPARegisterRuntime
+from .cpa_page_driver import classify_signup_state
 from .register_flow_state import (
     clean_text as flow_clean_text,
     extract_auth_continue_url,
@@ -112,6 +113,7 @@ class SignupFormResult:
     success: bool
     page_type: str = ""  # 响应中的 page.type 字段
     is_existing_account: bool = False  # 是否为已注册账号
+    retryable: bool = False  # 是否可重试（用于 CPA 密码页恢复）
     response_data: Dict[str, Any] = None  # 完整的响应数据
     error_message: str = ""
 
@@ -1152,10 +1154,43 @@ class RegistrationEngine:
                 page_type = response_data.get("page", {}).get("type", "")
                 self._log(f"响应页面类型: {page_type}")
                 self._log_auth_response_preview("注册邮箱响应摘要", response_data)
-                self._follow_auth_continue_url(response_data, "注册邮箱")
+                page_text = ""
+                try:
+                    page_text = json.dumps(response_data, ensure_ascii=False)
+                except Exception:
+                    page_text = str(response_data or "")
+
+                signup_state = classify_signup_state(
+                    {
+                        "page_text": page_text,
+                        "is_signup_password_page": page_type == "create_account_password",
+                        "has_retry_button": bool(
+                            re.search(r"重试|try\s+again", page_text, re.IGNORECASE)
+                        ),
+                        "has_password_input": page_type == "create_account_password",
+                    }
+                )
+                signup_kind = self._clean_text(signup_state.get("kind"))
+                if signup_kind and signup_kind != "unknown":
+                    self._log(f"CPA 注册页面状态: {signup_kind}")
+
+                if signup_kind == "password_retry":
+                    return SignupFormResult(
+                        success=False,
+                        page_type=page_type,
+                        retryable=True,
+                        response_data=response_data,
+                        error_message="CPA signup password page hit retryable error, 请重试当前流程",
+                    )
+
+                if signup_kind == "awaiting_password_submit" or not signup_kind:
+                    self._follow_auth_continue_url(response_data, "注册邮箱")
 
                 # 判断是否为已注册账号
-                is_existing = page_type == OPENAI_PAGE_TYPES["EMAIL_OTP_VERIFICATION"]
+                is_existing = (
+                    page_type == OPENAI_PAGE_TYPES["EMAIL_OTP_VERIFICATION"]
+                    or signup_kind == "email_exists"
+                )
 
                 if is_existing:
                     self._log(f"检测到已注册账号，将自动切换到登录流程")
