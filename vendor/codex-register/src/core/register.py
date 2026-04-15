@@ -4,6 +4,7 @@
 """
 
 import json
+import random
 import re
 import time
 import logging
@@ -191,6 +192,7 @@ class RegistrationEngine:
         self._cached_workspace_id: str = ""
         self._current_device_id: str = ""
         self._current_sentinel_token: str = ""
+        self._signup_password_needs_otp: bool = True
         self.flow_runner = RegisterFlowRunner(self)
         self.cpa_runtime = CPARegisterRuntime(self)
 
@@ -1215,6 +1217,7 @@ class RegistrationEngine:
     def _register_password(self) -> Tuple[bool, Optional[str]]:
         """注册密码"""
         try:
+            self._signup_password_needs_otp = True
             # 生成密码
             password = self._generate_password()
             self.password = password  # 保存密码到实例变量
@@ -1280,6 +1283,23 @@ class RegistrationEngine:
                 self._log(f"提交密码状态: {response.status_code}")
 
                 if response.status_code == 200:
+                    try:
+                        response_json = response.json()
+                    except Exception:
+                        response_json = {}
+
+                    if isinstance(response_json, dict):
+                        self._log_auth_response_preview("密码注册响应摘要", response_json)
+                        continue_url = self._clean_text(
+                            response_json.get("continue_url") or response_json.get("redirect_url")
+                        ).lower()
+                        page_type = self._extract_auth_page_type(response_json).lower()
+                        self._signup_password_needs_otp = (
+                            "verify" in continue_url
+                            or "otp" in page_type
+                        )
+                    else:
+                        self._signup_password_needs_otp = False
                     return True, password
 
                 error_text = response.text[:500]
@@ -1464,6 +1484,35 @@ class RegistrationEngine:
             return response.status_code == 200
         except Exception as e:
             self._log(f"重发邮箱验证码失败: {e}", "error")
+            return False
+
+    def _send_login_verification_code(self) -> bool:
+        """登录恢复链主动发送邮箱验证码。"""
+        try:
+            self._otp_sent_at = time.time()
+            did = self._resolve_current_device_id()
+            headers = self._build_browser_like_auth_headers(
+                referer="https://auth.openai.com/email-verification",
+                did=did,
+                content_type="application/json",
+            )
+            sentinel = self._build_auth_step_sentinel_header(
+                flow="authorize_continue",
+                referer="https://auth.openai.com/email-verification",
+            )
+            if sentinel:
+                headers["openai-sentinel-token"] = sentinel
+
+            response = self.session.post(
+                OPENAI_API_ENDPOINTS["send_otp"],
+                headers=headers,
+                data="{}",
+            )
+
+            self._log(f"登录邮箱验证码发送状态: {response.status_code}")
+            return response.status_code == 200
+        except Exception as e:
+            self._log(f"登录邮箱验证码发送失败: {e}", "warning")
             return False
 
     def _validate_verification_code_with_payload(self, code: str) -> Optional[Dict[str, Any]]:
@@ -2051,6 +2100,19 @@ class RegistrationEngine:
             self._log(f"重建 OAuth 会话失败: {e}", "error")
             return None, None
 
+    def _wait_for_post_signup_sync(self):
+        """模拟 openai-cpa 的注册后等待，给工作区/回调状态收敛时间。"""
+        settings = get_settings()
+        min_delay = max(0, int(getattr(settings, "registration_sleep_min", 5) or 5))
+        max_delay = max(min_delay, int(getattr(settings, "registration_sleep_max", 30) or 30))
+        wait_time = random.randint(min_delay, max_delay)
+        self._log(f"注册通过，等待 {wait_time} 秒后同步最终状态...")
+        time.sleep(wait_time)
+
+    def _attempt_login_recovery(self, did: Optional[str], sen_token: Optional[str]) -> Optional[str]:
+        """按 openai-cpa 的思路，在注册后改走登录恢复链继续收敛 OAuth。"""
+        return self._get_flow_runner().attempt_login_recovery(did, sen_token)
+
     def _attempt_add_phone_login_bypass(self, did: Optional[str], sen_token: Optional[str]) -> Optional[str]:
         """注册后若进入 add_phone，尝试改走登录流继续完成 OAuth"""
         return self._get_flow_runner().attempt_add_phone_login_bypass(did, sen_token)
@@ -2169,19 +2231,30 @@ class RegistrationEngine:
             else:
                 self._log("Sentinel 检查失败或未启用", "warning")
 
-            signup_sequence = self.cpa_runtime.execute_signup_sequence(did, sen_token)
-            if not signup_sequence.success:
-                result.error_message = signup_sequence.error_message
-                return result
-            redirect_result = self.cpa_runtime.resolve_post_registration_callback(did, sen_token)
-            callback_url = redirect_result.callback_url
-            if redirect_result.workspace_id:
-                result.workspace_id = redirect_result.workspace_id
-            if redirect_result.metadata:
-                result.metadata = redirect_result.metadata
-            if redirect_result.error_message:
-                result.error_message = redirect_result.error_message
-                return result
+            if hasattr(self.cpa_runtime, "complete_registration_flow"):
+                registration_flow = self.cpa_runtime.complete_registration_flow(did, sen_token)
+                callback_url = registration_flow.callback_url
+                if registration_flow.workspace_id:
+                    result.workspace_id = registration_flow.workspace_id
+                if registration_flow.metadata:
+                    result.metadata = registration_flow.metadata
+                if registration_flow.error_message:
+                    result.error_message = registration_flow.error_message
+                    return result
+            else:
+                signup_sequence = self.cpa_runtime.execute_signup_sequence(did, sen_token)
+                if not signup_sequence.success:
+                    result.error_message = signup_sequence.error_message
+                    return result
+                redirect_result = self.cpa_runtime.resolve_post_registration_callback(did, sen_token)
+                callback_url = redirect_result.callback_url
+                if redirect_result.workspace_id:
+                    result.workspace_id = redirect_result.workspace_id
+                if redirect_result.metadata:
+                    result.metadata = redirect_result.metadata
+                if redirect_result.error_message:
+                    result.error_message = redirect_result.error_message
+                    return result
 
             # 16. 处理 OAuth 回调
             self._log("16. 处理 OAuth 回调...")

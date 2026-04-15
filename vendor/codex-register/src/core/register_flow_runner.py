@@ -251,7 +251,12 @@ class RegisterFlowRunner:
         """完成登录后的邮箱验证码验证，并继续推进 OAuth。"""
         self.engine._last_login_recovery_page_type = ""
         self.engine._log("登录后触发邮箱二次验证，开始获取验证码...", "warning")
-        self.engine._otp_sent_at = time.time()
+        if hasattr(self.engine, "_send_login_verification_code"):
+            sent = self.engine._send_login_verification_code()
+            if not sent:
+                self.engine._log("登录验证码主动发送失败，继续按现有邮件状态等待验证码", "warning")
+        elif hasattr(self.engine, "_otp_sent_at"):
+            self.engine._otp_sent_at = time.time()
 
         max_attempts = 2
         code: Optional[str] = None
@@ -324,17 +329,15 @@ class RegisterFlowRunner:
 
         return result
 
-    def attempt_add_phone_login_bypass(self, did: Optional[str], sen_token: Optional[str]) -> Optional[str]:
-        """注册后若进入 add_phone，尝试改走登录流继续完成 OAuth。"""
+    def _run_login_recovery_attempts(
+        self,
+        attempts: list[tuple[str, Optional[str], Optional[str], bool]],
+        did: Optional[str],
+        sen_token: Optional[str],
+    ) -> Optional[str]:
         if not getattr(self.engine, "email", None) or not getattr(self.engine, "password", None):
             self.engine._log("缺少邮箱或密码，无法执行 add_phone 登录回退", "error")
             return None
-        self.engine._add_phone_login_bypass_attempted = True
-
-        attempts = [
-            ("当前会话", did, sen_token, False),
-            ("新 OAuth 会话", None, None, True),
-        ]
 
         for attempt_name, current_did, current_sentinel, recreate_session in attempts:
             self.engine._last_login_recovery_page_type = ""
@@ -411,6 +414,27 @@ class RegisterFlowRunner:
                     return callback_url
 
         return None
+
+    def attempt_login_recovery(self, did: Optional[str], sen_token: Optional[str]) -> Optional[str]:
+        """按 openai-cpa 主流程优先走新 OAuth 会话的登录恢复链。"""
+        self.engine._add_phone_login_bypass_attempted = True
+        return self._run_login_recovery_attempts(
+            [("新 OAuth 会话", None, None, True)],
+            did,
+            sen_token,
+        )
+
+    def attempt_add_phone_login_bypass(self, did: Optional[str], sen_token: Optional[str]) -> Optional[str]:
+        """注册后若进入 add_phone，尝试改走登录流继续完成 OAuth。"""
+        self.engine._add_phone_login_bypass_attempted = True
+        return self._run_login_recovery_attempts(
+            [
+                ("当前会话", did, sen_token, False),
+                ("新 OAuth 会话", None, None, True),
+            ],
+            did,
+            sen_token,
+        )
 
     def resolve_auth_result(self, payload: Any, stage: str = "") -> FlowResolutionResult:
         result = FlowResolutionResult()
