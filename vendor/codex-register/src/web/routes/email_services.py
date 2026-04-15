@@ -564,6 +564,7 @@ async def get_email_services_stats():
             'custom_count': 0,
             'temp_mail_count': 0,
             'mail_33_imap_count': 0,
+            'generator_email_count': 0,
             'tempmail_available': True,  # 临时邮箱始终可用
             'enabled_count': enabled_count
         }
@@ -577,6 +578,8 @@ async def get_email_services_stats():
                 stats['temp_mail_count'] = count
             elif service_type == 'mail_33_imap':
                 stats['mail_33_imap_count'] = count
+            elif service_type == 'generator_email':
+                stats['generator_email_count'] = count
 
         return stats
 
@@ -664,6 +667,16 @@ async def get_service_types():
                     {"name": "timeout", "label": "超时时间(秒)", "required": False, "default": 120},
                     {"name": "alias_length", "label": "别名前缀长度", "required": False, "default": 12},
                 ]
+            },
+            {
+                "value": "generator_email",
+                "label": "Generator.email",
+                "description": "Generator.email 临时邮箱服务",
+                "config_fields": [
+                    {"name": "base_url", "label": "Base URL", "required": False, "default": "https://generator.email"},
+                    {"name": "timeout", "label": "请求超时(秒)", "required": False, "default": 30},
+                    {"name": "poll_interval", "label": "轮询间隔(秒)", "required": False, "default": 3},
+                ],
             }
         ]
     }

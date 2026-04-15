@@ -422,9 +422,13 @@ export default function EmailServicesPage() {
     const mail33ImapCount =
       stats?.mail33ImapCount ??
       services.filter((service) => service.serviceType === "mail_33_imap").length;
+    const generatorEmailCount =
+      stats?.generatorEmailCount ??
+      services.filter((service) => service.serviceType === "generator_email").length;
     const customCount =
       stats?.customCount ?? services.filter((service) => service.serviceType === "custom_domain").length;
-    const totalServices = outlookCount + customCount + tempMailCount + mail33ImapCount;
+    const totalServices =
+      outlookCount + customCount + tempMailCount + mail33ImapCount + generatorEmailCount;
 
     return {
       totalServices,
@@ -434,6 +438,7 @@ export default function EmailServicesPage() {
       customCount,
       tempMailCount,
       mail33ImapCount,
+      generatorEmailCount,
       tempmailAvailable: stats?.tempmailAvailable ?? true,
     };
   }, [services, stats]);
@@ -853,9 +858,10 @@ export default function EmailServicesPage() {
             icon: Upload,
           },
           {
-            title: "自定义/33mail/临时邮箱",
+            title: "自定义/Generator/33mail/临时邮箱",
             value:
               statsSnapshot.customCount +
+              statsSnapshot.generatorEmailCount +
               statsSnapshot.mail33ImapCount +
               statsSnapshot.tempMailCount,
             hint: statsSnapshot.tempmailAvailable ? "Tempmail.lol 当前可用" : "Tempmail.lol 当前不可用",

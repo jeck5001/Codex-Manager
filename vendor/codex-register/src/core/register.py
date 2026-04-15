@@ -17,6 +17,8 @@ from datetime import datetime
 from curl_cffi import requests as cffi_requests
 
 from .register_flow_runner import RegisterFlowRunner
+from .cpa_register_runtime import CPARegisterRuntime
+from .cpa_page_driver import classify_signup_state
 from .register_flow_state import (
     clean_text as flow_clean_text,
     extract_auth_continue_url,
@@ -111,6 +113,7 @@ class SignupFormResult:
     success: bool
     page_type: str = ""  # 响应中的 page.type 字段
     is_existing_account: bool = False  # 是否为已注册账号
+    retryable: bool = False  # 是否可重试（用于 CPA 密码页恢复）
     response_data: Dict[str, Any] = None  # 完整的响应数据
     error_message: str = ""
 
@@ -189,6 +192,7 @@ class RegistrationEngine:
         self._current_device_id: str = ""
         self._current_sentinel_token: str = ""
         self.flow_runner = RegisterFlowRunner(self)
+        self.cpa_runtime = CPARegisterRuntime(self)
 
     def _get_flow_runner(self) -> RegisterFlowRunner:
         runner = getattr(self, "flow_runner", None)
@@ -1150,10 +1154,43 @@ class RegistrationEngine:
                 page_type = response_data.get("page", {}).get("type", "")
                 self._log(f"响应页面类型: {page_type}")
                 self._log_auth_response_preview("注册邮箱响应摘要", response_data)
-                self._follow_auth_continue_url(response_data, "注册邮箱")
+                page_text = ""
+                try:
+                    page_text = json.dumps(response_data, ensure_ascii=False)
+                except Exception:
+                    page_text = str(response_data or "")
+
+                signup_state = classify_signup_state(
+                    {
+                        "page_text": page_text,
+                        "is_signup_password_page": page_type == "create_account_password",
+                        "has_retry_button": bool(
+                            re.search(r"重试|try\s+again", page_text, re.IGNORECASE)
+                        ),
+                        "has_password_input": page_type == "create_account_password",
+                    }
+                )
+                signup_kind = self._clean_text(signup_state.get("kind"))
+                if signup_kind and signup_kind != "unknown":
+                    self._log(f"CPA 注册页面状态: {signup_kind}")
+
+                if signup_kind == "password_retry":
+                    return SignupFormResult(
+                        success=False,
+                        page_type=page_type,
+                        retryable=True,
+                        response_data=response_data,
+                        error_message="CPA signup password page hit retryable error, 请重试当前流程",
+                    )
+
+                if signup_kind != "password_retry":
+                    self._follow_auth_continue_url(response_data, "注册邮箱")
 
                 # 判断是否为已注册账号
-                is_existing = page_type == OPENAI_PAGE_TYPES["EMAIL_OTP_VERIFICATION"]
+                is_existing = (
+                    page_type == OPENAI_PAGE_TYPES["EMAIL_OTP_VERIFICATION"]
+                    or signup_kind == "email_exists"
+                )
 
                 if is_existing:
                     self._log(f"检测到已注册账号，将自动切换到登录流程")
@@ -2025,11 +2062,7 @@ class RegistrationEngine:
                 self._log("OAuth 流程未初始化", "error")
                 return None
 
-            token_info = self.oauth_manager.handle_callback(
-                callback_url=callback_url,
-                expected_state=self.oauth_start.state,
-                code_verifier=self.oauth_start.code_verifier
-            )
+            token_info = self.cpa_runtime.handle_oauth_callback(callback_url)
 
             self._log("OAuth 授权成功")
             return token_info
@@ -2136,56 +2169,11 @@ class RegistrationEngine:
             else:
                 self._log("Sentinel 检查失败或未启用", "warning")
 
-            # 7. 提交注册表单 + 解析响应判断账号状态
-            self._log("7. 提交注册表单...")
-            signup_result = self._submit_signup_form(did, sen_token)
-            if not signup_result.success:
-                result.error_message = f"提交注册表单失败: {signup_result.error_message}"
+            signup_sequence = self.cpa_runtime.execute_signup_sequence(did, sen_token)
+            if not signup_sequence.success:
+                result.error_message = signup_sequence.error_message
                 return result
-
-            # 8. [已注册账号跳过] 注册密码
-            if self._is_existing_account:
-                self._log("8. [已注册账号] 跳过密码设置，OTP 已自动发送")
-            else:
-                self._log("8. 注册密码...")
-                password_ok, password = self._register_password()
-                if not password_ok:
-                    result.error_message = "注册密码失败"
-                    return result
-
-            # 9. [已注册账号跳过] 发送验证码
-            if self._is_existing_account:
-                self._log("9. [已注册账号] 跳过发送验证码，使用自动发送的 OTP")
-                # 已注册账号的 OTP 在提交表单时已自动发送，记录时间戳
-                self._otp_sent_at = time.time()
-            else:
-                self._log("9. 发送验证码...")
-                if not self._send_verification_code():
-                    result.error_message = "发送验证码失败"
-                    return result
-
-            # 10. 获取验证码
-            self._log("10. 等待验证码...")
-            code = self._wait_for_signup_verification_code()
-            if not code:
-                result.error_message = "获取验证码失败"
-                return result
-
-            # 11. 验证验证码
-            self._log("11. 验证验证码...")
-            if not self._validate_signup_verification_code_with_retry(code):
-                result.error_message = "验证验证码失败"
-                return result
-
-            # 12. [已注册账号跳过] 创建用户账户
-            if self._is_existing_account:
-                self._log("12. [已注册账号] 跳过创建用户账户")
-            else:
-                self._log("12. 创建用户账户...")
-                if not self._create_user_account():
-                    result.error_message = "创建用户账户失败"
-                    return result
-            redirect_result = self._get_flow_runner().resolve_post_registration_callback(did, sen_token)
+            redirect_result = self.cpa_runtime.resolve_post_registration_callback(did, sen_token)
             callback_url = redirect_result.callback_url
             if redirect_result.workspace_id:
                 result.workspace_id = redirect_result.workspace_id
