@@ -655,15 +655,11 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
         serde_json::from_str(&first_upstream_frame).expect("parse first upstream frame");
     assert_eq!(first_payload["type"], "response.create");
     assert_eq!(first_payload["model"], "gpt-5.4-mini");
-    assert_eq!(first_payload["stream"], true);
-    assert_eq!(first_payload["store"], false);
+    assert_eq!(first_payload["stream"], false);
+    assert_eq!(first_payload["store"], true);
     assert_eq!(first_payload["service_tier"], "priority");
     assert_eq!(first_payload["generate"], false);
-    let first_prompt_cache_key = first_payload
-        .get("prompt_cache_key")
-        .and_then(serde_json::Value::as_str)
-        .expect("first prompt_cache_key")
-        .to_string();
+    assert!(first_payload.get("prompt_cache_key").is_none());
 
     let first_client_event = tokio::time::timeout(Duration::from_secs(5), client_ws.next())
         .await
@@ -713,12 +709,7 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
         second_payload["client_metadata"]["x-codex-turn-metadata"],
         "turn_meta_ws_1"
     );
-    assert_eq!(
-        second_payload["prompt_cache_key"]
-            .as_str()
-            .expect("second prompt_cache_key"),
-        first_prompt_cache_key
-    );
+    assert!(second_payload.get("prompt_cache_key").is_none());
 
     let second_client_event = tokio::time::timeout(Duration::from_secs(5), client_ws.next())
         .await

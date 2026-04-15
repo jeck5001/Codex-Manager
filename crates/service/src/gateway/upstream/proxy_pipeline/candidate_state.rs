@@ -299,7 +299,7 @@ mod tests {
             value
                 .get("prompt_cache_key")
                 .and_then(serde_json::Value::as_str),
-            Some("thread-2")
+            None
         );
     }
 

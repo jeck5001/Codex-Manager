@@ -216,23 +216,25 @@ pub(in super::super) fn proxy_validated_request(
         );
 
         return super::protocol::aggregate_api::proxy_aggregate_request(
-            request,
-            &storage,
-            trace_id.as_str(),
-            key_id.as_str(),
-            original_path.as_str(),
-            path.as_str(),
-            request_method.as_str(),
-            &method,
-            &body,
-            client_is_stream,
-            super::super::ResponseAdapter::Passthrough,
-            model_for_log.as_deref(),
-            reasoning_for_log.as_deref(),
-            effective_service_tier_for_log.as_deref(),
-            aggregate_api_candidates,
-            request_deadline,
-            started_at,
+            super::protocol::aggregate_api::AggregateProxyRequest {
+                request,
+                storage: &storage,
+                trace_id: trace_id.as_str(),
+                key_id: key_id.as_str(),
+                original_path: original_path.as_str(),
+                path: path.as_str(),
+                request_method: request_method.as_str(),
+                method: &method,
+                body: &body,
+                is_stream: client_is_stream,
+                response_adapter: super::super::ResponseAdapter::Passthrough,
+                model_for_log: model_for_log.as_deref(),
+                reasoning_for_log: reasoning_for_log.as_deref(),
+                effective_service_tier_for_log: effective_service_tier_for_log.as_deref(),
+                aggregate_api_candidates,
+                request_deadline,
+                started_at,
+            },
         );
     }
 

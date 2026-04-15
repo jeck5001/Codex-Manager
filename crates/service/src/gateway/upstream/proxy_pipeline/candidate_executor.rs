@@ -253,18 +253,22 @@ pub(in super::super) fn execute_candidate_sequence(
         let prompt_cache_key_for_trace =
             extract_prompt_cache_key_for_trace(body_for_attempt.as_ref());
         super::super::super::trace_log::log_attempt_profile(
-            trace_id,
-            &account.id,
-            idx,
-            setup.candidate_count,
-            strip_session_affinity,
-            incoming_session_id.is_some() || setup.has_sticky_fallback_session,
-            incoming_turn_state.is_some(),
-            incoming_conversation_id.is_some() || setup.has_sticky_fallback_conversation,
-            prompt_cache_key_for_trace.as_deref(),
-            request_shape,
-            body_for_attempt.len(),
-            attempt_model_for_log,
+            super::super::super::trace_log::AttemptProfileLog {
+                trace_id,
+                account_id: &account.id,
+                candidate_index: idx,
+                total: setup.candidate_count,
+                strip_session_affinity,
+                has_incoming_session: incoming_session_id.is_some()
+                    || setup.has_sticky_fallback_session,
+                has_incoming_turn_state: incoming_turn_state.is_some(),
+                has_incoming_conversation: incoming_conversation_id.is_some()
+                    || setup.has_sticky_fallback_conversation,
+                prompt_cache_key: prompt_cache_key_for_trace.as_deref(),
+                request_shape,
+                body_len: body_for_attempt.len(),
+                body_model: attempt_model_for_log,
+            },
         );
 
         let mut inflight_guard = Some(super::super::super::acquire_account_inflight(&account.id));
