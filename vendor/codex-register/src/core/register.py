@@ -1183,7 +1183,7 @@ class RegistrationEngine:
                         error_message="CPA signup password page hit retryable error, 请重试当前流程",
                     )
 
-                if signup_kind == "awaiting_password_submit" or not signup_kind:
+                if signup_kind != "password_retry":
                     self._follow_auth_continue_url(response_data, "注册邮箱")
 
                 # 判断是否为已注册账号
