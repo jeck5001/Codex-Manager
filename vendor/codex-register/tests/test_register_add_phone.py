@@ -1258,6 +1258,35 @@ class RegisterAddPhoneTests(unittest.TestCase):
         self.assertEqual(sentinel["c"], "fresh-flow-token")
         self.assertEqual(sentinel["flow"], "username_password_create")
 
+    def test_register_password_tracks_when_signup_does_not_need_email_otp(self):
+        class FakeResponse:
+            status_code = 200
+            text = "{}"
+
+            def json(self):
+                return {
+                    "continue_url": "https://auth.openai.com/about-you",
+                    "page": {"type": "about_you"},
+                }
+
+        class FakeSession:
+            def post(self, url, **kwargs):
+                return FakeResponse()
+
+        engine = RegistrationEngine.__new__(RegistrationEngine)
+        engine.email = "user@example.com"
+        engine.session = FakeSession()
+        engine._log = lambda *_args, **_kwargs: None
+        engine._generate_password = lambda: "StrongPassw0rd!"
+        engine._current_device_id = "did-no-otp"
+        engine._current_sentinel_token = "sentinel-c"
+        engine._signup_password_needs_otp = True
+
+        ok, _password = engine._register_password()
+
+        self.assertTrue(ok)
+        self.assertFalse(engine._signup_password_needs_otp)
+
     def test_register_password_prefers_browser_sentinel_payload(self):
         captured = {}
 

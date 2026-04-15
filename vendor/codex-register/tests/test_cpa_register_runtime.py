@@ -306,6 +306,54 @@ class CPARegisterRuntimeTests(unittest.TestCase):
         self.assertIsNone(result.callback_url)
         self.assertEqual(result.error_message, "跟随重定向链失败")
 
+    def test_resolve_post_registration_callback_uses_login_recovery_even_without_fallback_error(self):
+        module = load_cpa_register_runtime_module()
+
+        class FallbackResult:
+            callback_url = None
+            workspace_id = ""
+            error_message = ""
+            metadata = {}
+
+        class FlowRunner:
+            def resolve_post_registration_callback(self, did, sen_token):
+                return FallbackResult()
+
+        class Engine:
+            _post_create_continue_url = ""
+            email = "user@example.com"
+            password = "secret"
+
+            def __init__(self):
+                self.flow_runner = FlowRunner()
+                self.recovery_calls = []
+
+            def _get_flow_runner(self):
+                return self.flow_runner
+
+            def _get_workspace_id(self):
+                return ""
+
+            def _attempt_login_recovery(self, did, sen_token):
+                self.recovery_calls.append((did, sen_token))
+                return "http://localhost:1455/auth/callback?code=recovered&state=state"
+
+            def _attempt_add_phone_login_bypass(self, did, sen_token):
+                raise AssertionError("should prefer generic login recovery over legacy add-phone bypass")
+
+            def _log(self, _message, level="info"):
+                return level
+
+        runtime = module.CPARegisterRuntime(Engine())
+        result = runtime.resolve_post_registration_callback("did-login", "sentinel-login")
+
+        self.assertEqual(
+            result.callback_url,
+            "http://localhost:1455/auth/callback?code=recovered&state=state",
+        )
+        self.assertEqual(result.error_message, "")
+        self.assertEqual(runtime.engine.recovery_calls, [("did-login", "sentinel-login")])
+
     def test_execute_signup_sequence_skips_password_and_create_for_existing_account(self):
         module = load_cpa_register_runtime_module()
 
@@ -397,6 +445,55 @@ class CPARegisterRuntimeTests(unittest.TestCase):
             [
                 ("submit", "did-2", "sentinel-2"),
                 ("password",),
+            ],
+        )
+
+    def test_execute_signup_sequence_skips_otp_when_password_step_does_not_require_it(self):
+        module = load_cpa_register_runtime_module()
+
+        class Engine:
+            _is_existing_account = False
+            _otp_sent_at = None
+            _signup_password_needs_otp = True
+
+            def __init__(self):
+                self.calls = []
+
+            def _log(self, _message, level="info"):
+                return level
+
+            def _submit_signup_form(self, did, sen_token):
+                self.calls.append(("submit", did, sen_token))
+                return type("SignupResult", (), {"success": True, "error_message": ""})()
+
+            def _register_password(self):
+                self.calls.append(("password",))
+                self._signup_password_needs_otp = False
+                return True, "secret"
+
+            def _send_verification_code(self):
+                raise AssertionError("should skip OTP send when password step does not require OTP")
+
+            def _wait_for_signup_verification_code(self):
+                raise AssertionError("should skip OTP wait when password step does not require OTP")
+
+            def _validate_signup_verification_code_with_retry(self, code):
+                raise AssertionError("should skip OTP validation when password step does not require OTP")
+
+            def _create_user_account(self):
+                self.calls.append(("create_account",))
+                return True
+
+        runtime = module.CPARegisterRuntime(Engine())
+        result = runtime.execute_signup_sequence("did-optional-otp", "sentinel-optional-otp")
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            runtime.engine.calls,
+            [
+                ("submit", "did-optional-otp", "sentinel-optional-otp"),
+                ("password",),
+                ("create_account",),
             ],
         )
 
@@ -521,6 +618,59 @@ class CPARegisterRuntimeTests(unittest.TestCase):
                 ("submit", "did-4", "sentinel-4"),
                 ("submit", "did-4", "sentinel-4"),
                 ("submit", "did-4", "sentinel-4"),
+            ],
+        )
+
+    def test_complete_registration_flow_waits_for_post_signup_sync_before_collecting_callback(self):
+        module = load_cpa_register_runtime_module()
+
+        class FlowRunner:
+            def __init__(self, calls):
+                self.calls = calls
+
+            def resolve_callback_from_continue_url(self, continue_url, stage):
+                self.calls.append(("continue", continue_url, stage))
+                return "http://localhost:1455/auth/callback?code=from-create&state=state"
+
+            def resolve_post_registration_callback(self, did, sen_token):
+                raise AssertionError("should not fall back when create-account continue_url resolves")
+
+        class Engine:
+            _post_create_continue_url = "https://auth.openai.com/continue?state=create"
+            _is_existing_account = False
+
+            def __init__(self):
+                self.calls = []
+                self.flow_runner = FlowRunner(self.calls)
+
+            def _get_flow_runner(self):
+                return self.flow_runner
+
+            def _get_workspace_id(self):
+                return "ws_123"
+
+            def _wait_for_post_signup_sync(self):
+                self.calls.append(("wait",))
+
+            def _log(self, _message, level="info"):
+                return level
+
+        runtime = module.CPARegisterRuntime(Engine())
+        runtime.execute_signup_sequence = lambda did, sen_token: module.CPASignupSequenceResult(success=True)
+
+        result = runtime.complete_registration_flow("did-flow", "sentinel-flow")
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            result.callback_url,
+            "http://localhost:1455/auth/callback?code=from-create&state=state",
+        )
+        self.assertEqual(result.workspace_id, "ws_123")
+        self.assertEqual(
+            runtime.engine.calls,
+            [
+                ("wait",),
+                ("continue", "https://auth.openai.com/continue?state=create", "注册后继续"),
             ],
         )
 
