@@ -411,7 +411,7 @@ fn gateway_openai_responses_transparent_mode_does_not_invent_prompt_cache_key_wi
 }
 
 #[test]
-fn gateway_openai_chat_completions_preserves_explicit_prompt_cache_key_over_conversation_anchor() {
+fn gateway_openai_chat_completions_keeps_conversation_anchor_over_conflicting_prompt_cache_key() {
     let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-openai-chat-explicit-prompt-cache-key");
     let db_path: PathBuf = dir.join("codexmanager.db");
@@ -509,6 +509,7 @@ fn gateway_openai_chat_completions_preserves_explicit_prompt_cache_key_over_conv
             ("Content-Type", "application/json"),
             ("Authorization", &format!("Bearer {platform_key}")),
             ("Conversation_id", "conv_should_not_override"),
+            ("x-codex-turn-state", "turn_state_should_survive"),
         ],
     );
     assert_eq!(status, 200, "gateway response: {gateway_body}");
@@ -525,10 +526,17 @@ fn gateway_openai_chat_completions_preserves_explicit_prompt_cache_key_over_conv
 
     assert_eq!(captured.path, "/backend-api/codex/responses");
     assert_eq!(
+        captured
+            .headers
+            .get("x-codex-turn-state")
+            .map(String::as_str),
+        Some("turn_state_should_survive")
+    );
+    assert_eq!(
         upstream_payload
             .get("prompt_cache_key")
             .and_then(serde_json::Value::as_str),
-        Some("client_thread_123")
+        Some("conv_should_not_override")
     );
 }
 

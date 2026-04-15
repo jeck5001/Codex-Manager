@@ -2,6 +2,7 @@ use crate::apikey_profile::{
     is_gemini_generate_content_request_path, resolve_gateway_protocol_type,
     PROTOCOL_ANTHROPIC_NATIVE, PROTOCOL_GEMINI_NATIVE, ROTATION_AGGREGATE_API,
 };
+use crate::gateway::request_helpers::ParsedRequestMetadata;
 use bytes::Bytes;
 use codexmanager_core::storage::ApiKey;
 use reqwest::Method;
@@ -180,6 +181,36 @@ fn normalize_compat_service_tier_for_codex_backend(body: Vec<u8>) -> Vec<u8> {
     }
 
     serde_json::to_vec(&payload).unwrap_or(body)
+}
+
+fn resolve_preferred_client_prompt_cache_key(
+    protocol_type: &str,
+    incoming_headers: &super::super::IncomingHeaderSnapshot,
+    initial_request_meta: &ParsedRequestMetadata,
+    client_request_meta: &ParsedRequestMetadata,
+) -> Option<String> {
+    if protocol_type == PROTOCOL_ANTHROPIC_NATIVE {
+        return None;
+    }
+
+    let preferred = initial_request_meta.prompt_cache_key.clone().or_else(|| {
+        if client_request_meta.has_prompt_cache_key {
+            client_request_meta.prompt_cache_key.clone()
+        } else {
+            None
+        }
+    });
+    let Some(preferred) = preferred else {
+        return None;
+    };
+
+    if incoming_headers.conversation_id().is_some() || incoming_headers.turn_state().is_some() {
+        // 中文注释：原生 Codex 已经提供稳定线程锚点时，prompt_cache_key 不能反客为主；
+        // 否则会和 conversation_id / turn-state 冲突，导致 resume 线程异常。
+        return None;
+    }
+
+    Some(preferred)
 }
 
 /// 函数 `resolve_local_conversation_id`
@@ -406,18 +437,12 @@ pub(super) fn build_local_validation_result(
     let client_request_meta = super::super::parse_request_metadata(&body);
     let (effective_model, effective_reasoning, effective_service_tier) =
         resolve_effective_request_overrides(&api_key);
-    let preferred_prompt_cache_key = initial_request_meta.prompt_cache_key.clone().or_else(|| {
-        if effective_protocol_type == PROTOCOL_ANTHROPIC_NATIVE {
-            // 中文注释：Anthropic 协议适配阶段会基于 metadata.user_id 生成一个临时
-            // prompt_cache_key；这里不能把它当成原始客户端线程锚点，否则会和
-            // conversation_id / sticky conversation 冲突，导致首跳就把 turn-state 清掉。
-            None
-        } else if client_request_meta.has_prompt_cache_key {
-            client_request_meta.prompt_cache_key.clone()
-        } else {
-            None
-        }
-    });
+    let preferred_prompt_cache_key = resolve_preferred_client_prompt_cache_key(
+        effective_protocol_type,
+        &incoming_headers,
+        &initial_request_meta,
+        &client_request_meta,
+    );
     let local_conversation_id = initial_local_conversation_id.clone();
     let conversation_binding = super::super::conversation_binding::load_conversation_binding(
         &storage,
