@@ -31,5 +31,10 @@ pub(crate) fn extract_generator_email_code_for_test(html: &str) -> Option<String
 }
 
 #[cfg(test)]
+pub(crate) fn normalize_generator_email_proxy_for_test(proxy: Option<&str>) -> Option<String> {
+    generator_email::normalize_proxy_url_for_test(proxy)
+}
+
+#[cfg(test)]
 #[path = "../tests/register_email_generator_tests.rs"]
 mod tests;
