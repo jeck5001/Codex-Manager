@@ -85,8 +85,9 @@ fn send_rpc_request(req: &JsonRpcRequest) -> Value {
 #[test]
 fn rpc_register_forwarding_tracks_auto_create_temp_mail_service_variants() {
     let _lock = REGISTER_ENV_LOCK.lock().unwrap();
-    let (register_url, body_rx, handle) = capture_register_requests(5);
+    let (register_url, body_rx, handle) = capture_register_requests(2);
     let _env_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
+    let _engine_guard = EnvGuard::set("CODEXMANAGER_REGISTER_ENGINE_TEST_MODE", "success");
 
     let camel_case = JsonRpcRequest {
         id: 1,
@@ -145,25 +146,29 @@ fn rpc_register_forwarding_tracks_auto_create_temp_mail_service_variants() {
         assert!(response.get("result").is_some());
     }
 
-    let mut start_requests = Vec::new();
     let mut batch_requests = Vec::new();
-    for _ in 0..5 {
+    for _ in 0..2 {
         let (path, body) = body_rx
             .recv_timeout(Duration::from_secs(2))
             .expect("receive register body");
         match path.as_str() {
-            "/api/registration/start" => start_requests.push(body),
             "/api/registration/batch" => batch_requests.push(body),
             other => panic!("unexpected path: {}", other),
         }
     }
 
-    assert_eq!(start_requests.len(), 3);
     assert_eq!(batch_requests.len(), 2);
-
-    assert_eq!(start_requests[0].get("auto_create_temp_mail_service").and_then(Value::as_bool), Some(true));
-    assert_eq!(start_requests[1].get("auto_create_temp_mail_service").and_then(Value::as_bool), Some(true));
-    assert!(start_requests[2].get("auto_create_temp_mail_service").is_none());
+    for response in responses.iter().take(3) {
+        let result = response.get("result").expect("local start result");
+        assert_eq!(result.get("status").and_then(Value::as_str), Some("queued"));
+        assert!(
+            result
+                .get("taskUuid")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .starts_with("reg-")
+        );
+    }
 
     assert_eq!(batch_requests[0].get("auto_create_temp_mail_service").and_then(Value::as_bool), Some(true));
     assert!(batch_requests[1].get("auto_create_temp_mail_service").is_none());
@@ -172,10 +177,9 @@ fn rpc_register_forwarding_tracks_auto_create_temp_mail_service_variants() {
 }
 
 #[test]
-fn rpc_register_forwarding_supports_generator_email_service_type() {
+fn rpc_register_start_uses_local_engine_for_generator_email() {
     let _lock = REGISTER_ENV_LOCK.lock().unwrap();
-    let (register_url, body_rx, handle) = capture_register_requests(1);
-    let _env_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
+    let _engine_guard = EnvGuard::set("CODEXMANAGER_REGISTER_ENGINE_TEST_MODE", "success");
 
     let request = JsonRpcRequest {
         id: 11,
@@ -187,20 +191,21 @@ fn rpc_register_forwarding_supports_generator_email_service_type() {
     };
 
     let response = send_rpc_request(&request);
-    assert!(response.get("result").is_some());
-
-    let (path, body) = body_rx
-        .recv_timeout(Duration::from_secs(2))
-        .expect("receive register body");
-    assert_eq!(path, "/api/registration/start");
+    let result = response.get("result").expect("result payload");
     assert_eq!(
-        body.get("email_service_type").and_then(Value::as_str),
+        result.get("emailServiceType").and_then(Value::as_str),
         Some("generator_email")
     );
     assert_eq!(
-        body.get("register_mode").and_then(Value::as_str),
+        result.get("registerMode").and_then(Value::as_str),
         Some("standard")
     );
-
-    handle.join().expect("join capture server");
+    assert_eq!(result.get("status").and_then(Value::as_str), Some("queued"));
+    assert!(
+        result
+            .get("taskUuid")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .starts_with("reg-")
+    );
 }
