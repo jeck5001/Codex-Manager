@@ -27,6 +27,15 @@ class CPASignupSequenceResult:
     error_message: str = ""
 
 
+@dataclass
+class CPARegistrationFlowResult:
+    success: bool
+    callback_url: Optional[str] = None
+    workspace_id: str = ""
+    error_message: str = ""
+    metadata: Dict[str, Any] | None = None
+
+
 MAX_SIGNUP_SUBMIT_RETRIES = 3
 
 
@@ -145,22 +154,27 @@ class CPARegisterRuntime:
             if not password_ok:
                 return CPASignupSequenceResult(success=False, error_message="注册密码失败")
 
+        requires_signup_otp = bool(getattr(self.engine, "_signup_password_needs_otp", True))
+
         if getattr(self.engine, "_is_existing_account", False):
             self.engine._log("9. [已注册账号] 跳过发送验证码，使用自动发送的 OTP")
             self.engine._otp_sent_at = __import__("time").time()
-        else:
+        elif requires_signup_otp:
             self.engine._log("9. 发送验证码...")
             if not self.engine._send_verification_code():
                 return CPASignupSequenceResult(success=False, error_message="发送验证码失败")
+        else:
+            self.engine._log("9. 当前注册响应无需邮箱验证码，直接继续创建用户账户")
 
-        self.engine._log("10. 等待验证码...")
-        code = self.engine._wait_for_signup_verification_code()
-        if not code:
-            return CPASignupSequenceResult(success=False, error_message="获取验证码失败")
+        if getattr(self.engine, "_is_existing_account", False) or requires_signup_otp:
+            self.engine._log("10. 等待验证码...")
+            code = self.engine._wait_for_signup_verification_code()
+            if not code:
+                return CPASignupSequenceResult(success=False, error_message="获取验证码失败")
 
-        self.engine._log("11. 验证验证码...")
-        if not self.engine._validate_signup_verification_code_with_retry(code):
-            return CPASignupSequenceResult(success=False, error_message="验证验证码失败")
+            self.engine._log("11. 验证验证码...")
+            if not self.engine._validate_signup_verification_code_with_retry(code):
+                return CPASignupSequenceResult(success=False, error_message="验证验证码失败")
 
         if getattr(self.engine, "_is_existing_account", False):
             self.engine._log("12. [已注册账号] 跳过创建用户账户")
@@ -170,6 +184,39 @@ class CPARegisterRuntime:
                 return CPASignupSequenceResult(success=False, error_message="创建用户账户失败")
 
         return CPASignupSequenceResult(success=True)
+
+    def complete_registration_flow(
+        self,
+        did: Optional[str],
+        sen_token: Optional[str],
+    ) -> CPARegistrationFlowResult:
+        signup_result = self.execute_signup_sequence(str(did or ""), sen_token)
+        if not signup_result.success:
+            return CPARegistrationFlowResult(
+                success=False,
+                error_message=signup_result.error_message,
+                metadata={},
+            )
+
+        if (
+            not getattr(self.engine, "_is_existing_account", False)
+            and hasattr(self.engine, "_wait_for_post_signup_sync")
+        ):
+            self.engine._wait_for_post_signup_sync()
+
+        redirect_result = self.resolve_post_registration_callback(did, sen_token)
+        callback_url = str(getattr(redirect_result, "callback_url", "") or "").strip() or None
+        error_message = str(getattr(redirect_result, "error_message", "") or "").strip()
+        if not callback_url and not error_message:
+            error_message = "注册后 OAuth 收敛失败"
+
+        return CPARegistrationFlowResult(
+            success=bool(callback_url) and not error_message,
+            callback_url=callback_url,
+            workspace_id=str(getattr(redirect_result, "workspace_id", "") or "").strip(),
+            error_message=error_message,
+            metadata=getattr(redirect_result, "metadata", None) or {},
+        )
 
     def resolve_post_registration_callback(
         self,
@@ -207,13 +254,15 @@ class CPARegisterRuntime:
 
         can_retry_via_login = (
             not result.callback_url
-            and bool(result.error_message)
             and bool(str(getattr(self.engine, "email", "") or "").strip())
             and bool(str(getattr(self.engine, "password", "") or "").strip())
         )
-        if can_retry_via_login and hasattr(self.engine, "_attempt_add_phone_login_bypass"):
-            self.engine._log("注册后 OAuth 收敛失败，尝试走 CPA 登录恢复链继续获取回调...", "warning")
-            callback_url = self.engine._attempt_add_phone_login_bypass(did, sen_token)
+        attempt_login_recovery = getattr(self.engine, "_attempt_login_recovery", None)
+        if not callable(attempt_login_recovery):
+            attempt_login_recovery = getattr(self.engine, "_attempt_add_phone_login_bypass", None)
+        if can_retry_via_login and callable(attempt_login_recovery):
+            self.engine._log("注册后 OAuth 未直接收敛到回调，尝试走 CPA 登录恢复链继续获取回调...", "warning")
+            callback_url = attempt_login_recovery(did, sen_token)
             if callback_url:
                 result.callback_url = callback_url
                 result.error_message = ""
