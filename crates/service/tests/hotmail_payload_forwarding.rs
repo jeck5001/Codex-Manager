@@ -62,7 +62,7 @@ fn capture_register_requests(
     let (tx, rx) = mpsc::channel();
     let handle = thread::spawn(move || {
         for _ in 0..count {
-            let request = server.recv().expect("receive register request");
+            let mut request = server.recv().expect("receive register request");
             let mut body = String::new();
             request
                 .as_reader()

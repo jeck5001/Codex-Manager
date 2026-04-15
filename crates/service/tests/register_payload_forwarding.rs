@@ -54,8 +54,8 @@ fn capture_register_requests(count: usize) -> (String, mpsc::Receiver<(String, V
     let (tx, rx) = mpsc::channel();
     let handle = thread::spawn(move || {
         for _ in 0..count {
-            let request = server.recv().expect("receive register request");
-            assert_eq!(request.method(), "POST");
+            let mut request = server.recv().expect("receive register request");
+            assert_eq!(request.method().as_str(), "POST");
             let mut body = String::new();
             request
                 .as_reader()
