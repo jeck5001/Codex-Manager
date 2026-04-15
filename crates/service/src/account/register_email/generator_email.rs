@@ -1,5 +1,6 @@
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, COOKIE, USER_AGENT};
+use reqwest::Proxy;
 use std::time::Duration;
 
 use super::{RegisterEmailProvider, RegisterMailboxLease};
@@ -18,8 +19,20 @@ pub(crate) struct GeneratorEmailProvider {
 
 impl GeneratorEmailProvider {
     pub(crate) fn new() -> Result<Self, String> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(GENERATOR_EMAIL_TIMEOUT_SECS))
+        Self::new_with_proxy(None)
+    }
+
+    pub(crate) fn new_with_proxy(proxy: Option<&str>) -> Result<Self, String> {
+        let mut builder = Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(GENERATOR_EMAIL_TIMEOUT_SECS));
+        if let Some(proxy_url) = normalize_proxy_url(proxy) {
+            builder = builder.proxy(
+                Proxy::all(proxy_url.as_str())
+                    .map_err(|err| format!("build generator.email proxy failed: {err}"))?,
+            );
+        }
+        let client = builder
             .build()
             .map_err(|err| format!("build generator.email client failed: {err}"))?;
         Ok(Self {
@@ -167,4 +180,20 @@ fn first_six_digit_code(text: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn normalize_proxy_url(proxy: Option<&str>) -> Option<String> {
+    let raw = proxy?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if raw.contains("://") {
+        return Some(raw.to_string());
+    }
+    Some(format!("http://{raw}"))
+}
+
+#[cfg(test)]
+pub(crate) fn normalize_proxy_url_for_test(proxy: Option<&str>) -> Option<String> {
+    normalize_proxy_url(proxy)
 }

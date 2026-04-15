@@ -1,6 +1,6 @@
 use super::{
     extract_generator_email_code_for_test, generator_email_surl_for_test,
-    parse_generator_email_address_for_test,
+    normalize_generator_email_proxy_for_test, parse_generator_email_address_for_test,
 };
 
 #[test]
@@ -26,5 +26,13 @@ fn generator_email_extracts_openai_code_from_mailbox_html() {
     assert_eq!(
         extract_generator_email_code_for_test(html),
         Some("123456".to_string())
+    );
+}
+
+#[test]
+fn generator_email_normalizes_bare_proxy_url() {
+    assert_eq!(
+        normalize_generator_email_proxy_for_test(Some("192.168.5.35:7890")),
+        Some("http://192.168.5.35:7890".to_string())
     );
 }

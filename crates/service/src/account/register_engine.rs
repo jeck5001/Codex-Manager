@@ -1,8 +1,10 @@
 use base64::Engine;
-use rand::Rng;
 use rand::seq::SliceRandom;
+use rand::Rng;
 use reqwest::blocking::Client;
-use reqwest::header::{HeaderMap, ACCEPT, CONTENT_TYPE, COOKIE, LOCATION, REFERER, SET_COOKIE, USER_AGENT};
+use reqwest::header::{
+    HeaderMap, ACCEPT, CONTENT_TYPE, COOKIE, LOCATION, REFERER, SET_COOKIE, USER_AGENT,
+};
 use reqwest::{redirect::Policy, Proxy, StatusCode};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -22,6 +24,7 @@ use crate::account::register_runtime::{
 };
 
 const AUTH_BASE_URL: &str = "https://auth.openai.com";
+const SENTINEL_URL: &str = "https://sentinel.openai.com/backend-api/sentinel/req";
 const AUTHORIZE_CONTINUE_URL: &str = "https://auth.openai.com/api/accounts/authorize/continue";
 const USER_REGISTER_URL: &str = "https://auth.openai.com/api/accounts/user/register";
 const EMAIL_OTP_SEND_URL: &str = "https://auth.openai.com/api/accounts/email-otp/send";
@@ -30,9 +33,36 @@ const CREATE_ACCOUNT_URL: &str = "https://auth.openai.com/api/accounts/create_ac
 const PASSWORD_VERIFY_URL: &str = "https://auth.openai.com/api/accounts/password/verify";
 const WORKSPACE_SELECT_URL: &str = "https://auth.openai.com/api/accounts/workspace/select";
 const REGISTER_USER_AGENT: &str =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36";
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const REGISTER_ACCEPT_LANGUAGE: &str = "en-US,en;q=0.9";
+const REGISTER_SEC_CH_UA: &str =
+    "\"Google Chrome\";v=\"120\", \"Chromium\";v=\"120\", \"Not_A Brand\";v=\"24\"";
+const REGISTER_PASSKEY_CLIENT_CAPABILITIES: &str = r#"{"conditionalMediation":false,"userVerifyingPlatformAuthenticator":false,"userVerifyingCrossPlatformAuthenticator":false}"#;
 const EMAIL_OTP_POLL_ATTEMPTS: usize = 10;
 const EMAIL_OTP_POLL_INTERVAL_SECS: u64 = 3;
+
+#[derive(Debug, Clone, Copy)]
+enum RegisterAuthStep {
+    AuthorizeContinue,
+    UsernamePasswordCreate,
+    PasswordVerify,
+    CreateAccount,
+}
+
+impl RegisterAuthStep {
+    fn flow(self) -> &'static str {
+        match self {
+            Self::AuthorizeContinue => "authorize_continue",
+            Self::UsernamePasswordCreate => "username_password_create",
+            Self::PasswordVerify => "password_verify",
+            Self::CreateAccount => "create_account",
+        }
+    }
+
+    fn include_passkey_capabilities(self) -> bool {
+        matches!(self, Self::UsernamePasswordCreate)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct RegisterEngineResult {
@@ -48,8 +78,8 @@ pub(crate) fn run_local_register_flow(
     if let Some(result) = test_mode_result(input) {
         match result {
             Ok(result) => {
-                let parsed = serde_json::from_str::<Value>(result.payload.as_str())
-                    .unwrap_or(Value::Null);
+                let parsed =
+                    serde_json::from_str::<Value>(result.payload.as_str()).unwrap_or(Value::Null);
                 set_register_task_result(
                     task_uuid,
                     result.email.clone(),
@@ -78,7 +108,8 @@ pub(crate) fn run_local_register_flow(
     }
 
     set_task_stage(task_uuid, "preparing_email");
-    let provider = GeneratorEmailProvider::new()
+    append_register_task_log(task_uuid, "allocating generator.email mailbox");
+    let provider = GeneratorEmailProvider::new_with_proxy(input.proxy.as_deref())
         .map_err(|err| fail::<()>(task_uuid, "email_provider_failed", err).unwrap_err())?;
     let mailbox = provider
         .create_mailbox()
@@ -91,12 +122,16 @@ pub(crate) fn run_local_register_flow(
     let password = generate_password();
     let oauth_reg = generate_register_oauth_start();
     let (signup_client, signup_cookies) = build_client(input.proxy.as_deref())?;
-    let auth_url = follow_redirect_chain(&signup_client, &signup_cookies, oauth_reg.auth_url.as_str())?;
+    let auth_url =
+        follow_redirect_chain(&signup_client, &signup_cookies, oauth_reg.auth_url.as_str())?;
     let did = get_cookie(&signup_cookies, "oai-did").unwrap_or_default();
-    append_register_task_log(task_uuid, format!("oauth signup started: {auth_url}").as_str());
+    append_register_task_log(
+        task_uuid,
+        format!("oauth signup started: {auth_url}").as_str(),
+    );
 
     set_task_stage(task_uuid, "submitting_signup");
-    let (_, signup_status, _) = post_json(
+    let (_, signup_text, signup_status, _) = post_auth_json(
         &signup_client,
         &signup_cookies,
         AUTHORIZE_CONTINUE_URL,
@@ -106,20 +141,30 @@ pub(crate) fn run_local_register_flow(
             "username": { "value": mailbox.email, "kind": "email" },
             "screen_hint": "signup"
         }),
+        Some(RegisterAuthStep::AuthorizeContinue),
     )?;
     if signup_status == StatusCode::FORBIDDEN {
         return fail(task_uuid, "signup_blocked", "signup blocked with HTTP 403");
     }
     if !signup_status.is_success() {
+        log_http_failure(
+            task_uuid,
+            "signup email submit",
+            signup_status,
+            signup_text.as_str(),
+        );
         return fail(
             task_uuid,
             "signup_blocked",
-            format!("signup email submit failed: HTTP {}", signup_status.as_u16()),
+            format!(
+                "signup email submit failed: HTTP {}",
+                signup_status.as_u16()
+            ),
         );
     }
     append_register_task_log(task_uuid, "signup email submitted");
 
-    let (pwd_json, pwd_status, _) = post_json(
+    let (pwd_json, pwd_text, pwd_status, _) = post_auth_json(
         &signup_client,
         &signup_cookies,
         USER_REGISTER_URL,
@@ -129,8 +174,10 @@ pub(crate) fn run_local_register_flow(
             "password": password,
             "username": mailbox.email
         }),
+        Some(RegisterAuthStep::UsernamePasswordCreate),
     )?;
     if !pwd_status.is_success() {
+        log_http_failure(task_uuid, "password submit", pwd_status, pwd_text.as_str());
         return fail(
             task_uuid,
             "password_submit_failed",
@@ -154,15 +201,22 @@ pub(crate) fn run_local_register_flow(
 
     set_task_stage(task_uuid, "creating_account");
     let profile = generate_random_user_info();
-    let (create_json, create_status, _) = post_json(
+    let (create_json, create_text, create_status, _) = post_auth_json(
         &signup_client,
         &signup_cookies,
         CREATE_ACCOUNT_URL,
         did.as_str(),
         "https://auth.openai.com/about-you",
         &profile,
+        Some(RegisterAuthStep::CreateAccount),
     )?;
     if !create_status.is_success() {
+        log_http_failure(
+            task_uuid,
+            "create account",
+            create_status,
+            create_text.as_str(),
+        );
         return fail(
             task_uuid,
             "create_account_failed",
@@ -212,7 +266,7 @@ fn run_silent_oauth_login(
     }
 
     let did = get_cookie(&cookies, "oai-did").unwrap_or_default();
-    let (login_start_json, login_start_status, _) = post_json(
+    let (login_start_json, login_start_text, login_start_status, _) = post_auth_json(
         &client,
         &cookies,
         AUTHORIZE_CONTINUE_URL,
@@ -221,27 +275,39 @@ fn run_silent_oauth_login(
         &json!({
             "username": { "value": email, "kind": "email" }
         }),
+        Some(RegisterAuthStep::AuthorizeContinue),
     )?;
     if !login_start_status.is_success() {
+        log_http_failure(
+            task_uuid,
+            "oauth login start",
+            login_start_status,
+            login_start_text.as_str(),
+        );
         return fail(
             task_uuid,
             "oauth_failed",
-            format!("oauth login start failed: HTTP {}", login_start_status.as_u16()),
+            format!(
+                "oauth login start failed: HTTP {}",
+                login_start_status.as_u16()
+            ),
         );
     }
 
     let password_url = extract_continue_url(&login_start_json)
         .ok_or_else(|| "oauth_failed: missing password continue url".to_string())?;
     let password_page_url = follow_redirect_chain(&client, &cookies, password_url.as_str())?;
-    let (pwd_json, pwd_status, _) = post_json(
+    let (pwd_json, pwd_text, pwd_status, _) = post_auth_json(
         &client,
         &cookies,
         PASSWORD_VERIFY_URL,
         did.as_str(),
         password_page_url.as_str(),
         &json!({ "password": password }),
+        Some(RegisterAuthStep::PasswordVerify),
     )?;
     if !pwd_status.is_success() {
+        log_http_failure(task_uuid, "password verify", pwd_status, pwd_text.as_str());
         return fail(
             task_uuid,
             "oauth_failed",
@@ -367,15 +433,22 @@ fn try_select_workspace(
         task_uuid,
         format!("selecting workspace: {workspace_id}").as_str(),
     );
-    let (select_json, select_status, _) = post_json(
+    let (select_json, select_text, select_status, _) = post_auth_json(
         client,
         cookies,
         WORKSPACE_SELECT_URL,
         did,
         referer,
         &json!({ "workspace_id": workspace_id }),
+        Some(RegisterAuthStep::AuthorizeContinue),
     )?;
     if !select_status.is_success() {
+        log_http_failure(
+            task_uuid,
+            "workspace select",
+            select_status,
+            select_text.as_str(),
+        );
         return fail(
             task_uuid,
             "workspace_select_failed",
@@ -403,8 +476,17 @@ fn request_and_validate_email_otp(
     validate_referer: &str,
 ) -> Result<(), String> {
     set_task_stage(task_uuid, "waiting_email_otp");
-    let (_, send_status, _) = post_json(client, cookies, EMAIL_OTP_SEND_URL, did, send_referer, &json!({}))?;
+    let (_, send_text, send_status, _) = post_auth_json(
+        client,
+        cookies,
+        EMAIL_OTP_SEND_URL,
+        did,
+        send_referer,
+        &json!({}),
+        Some(RegisterAuthStep::AuthorizeContinue),
+    )?;
     if !send_status.is_success() {
+        log_http_failure(task_uuid, "email otp send", send_status, send_text.as_str());
         append_register_task_log(
             task_uuid,
             format!("email otp send returned HTTP {}", send_status.as_u16()).as_str(),
@@ -413,25 +495,35 @@ fn request_and_validate_email_otp(
         append_register_task_log(task_uuid, "email OTP requested");
     }
 
-    let code = poll_email_otp(provider, mailbox_credential).ok_or_else(|| {
+    let code = poll_email_otp(task_uuid, provider, mailbox_credential).ok_or_else(|| {
         fail::<()>(task_uuid, "otp_timeout", "email OTP not received in time").unwrap_err()
     })?;
     append_register_task_log(task_uuid, format!("email OTP received: {code}").as_str());
 
     set_task_stage(task_uuid, "validating_email_otp");
-    let (_, validate_status, _) = post_json(
+    let (_, validate_text, validate_status, _) = post_auth_json(
         client,
         cookies,
         EMAIL_OTP_VALIDATE_URL,
         did,
         validate_referer,
         &json!({ "code": code }),
+        Some(RegisterAuthStep::AuthorizeContinue),
     )?;
     if !validate_status.is_success() {
+        log_http_failure(
+            task_uuid,
+            "email otp validate",
+            validate_status,
+            validate_text.as_str(),
+        );
         return fail(
             task_uuid,
             "otp_invalid",
-            format!("email OTP validate failed: HTTP {}", validate_status.as_u16()),
+            format!(
+                "email OTP validate failed: HTTP {}",
+                validate_status.as_u16()
+            ),
         );
     }
     append_register_task_log(task_uuid, "email OTP validated");
@@ -452,7 +544,11 @@ fn finalize_callback(
         );
     }
     if callback.code.trim().is_empty() {
-        return fail(task_uuid, "token_extract_failed", "callback missing authorization code");
+        return fail(
+            task_uuid,
+            "token_extract_failed",
+            "callback missing authorization code",
+        );
     }
     if callback.state.trim() != oauth.state.trim() {
         return fail(task_uuid, "oauth_failed", "callback state mismatch");
@@ -467,8 +563,9 @@ fn finalize_callback(
         oauth.code_verifier.as_str(),
     )
     .map_err(|err| fail::<()>(task_uuid, "token_extract_failed", err).unwrap_err())?;
-    let parsed = serde_json::from_str::<Value>(payload.as_str())
-        .map_err(|err| fail::<()>(task_uuid, "token_extract_failed", err.to_string()).unwrap_err())?;
+    let parsed = serde_json::from_str::<Value>(payload.as_str()).map_err(|err| {
+        fail::<()>(task_uuid, "token_extract_failed", err.to_string()).unwrap_err()
+    })?;
     let claims = extract_id_token_claims(
         parsed
             .get("id_token")
@@ -509,9 +606,9 @@ fn build_client(proxy: Option<&str>) -> Result<(Client, CookieStateRef), String>
     let mut builder = Client::builder()
         .redirect(Policy::none())
         .timeout(Duration::from_secs(30));
-    if let Some(proxy) = proxy.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(proxy) = normalize_proxy_url(proxy) {
         builder = builder.proxy(
-            Proxy::all(proxy).map_err(|err| format!("invalid register proxy: {err}"))?,
+            Proxy::all(proxy.as_str()).map_err(|err| format!("invalid register proxy: {err}"))?,
         );
     }
     let client = builder
@@ -527,21 +624,53 @@ fn post_json(
     did: &str,
     referer: &str,
     payload: &Value,
-) -> Result<(Value, StatusCode, HeaderMap), String> {
+) -> Result<(Value, String, StatusCode, HeaderMap), String> {
+    post_auth_json(client, cookies, url, did, referer, payload, None)
+}
+
+fn post_auth_json(
+    client: &Client,
+    cookies: &CookieStateRef,
+    url: &str,
+    did: &str,
+    referer: &str,
+    payload: &Value,
+    step: Option<RegisterAuthStep>,
+) -> Result<(Value, String, StatusCode, HeaderMap), String> {
     let mut request = client
         .post(url)
         .header(USER_AGENT, REGISTER_USER_AGENT)
         .header(ACCEPT, "application/json")
         .header(CONTENT_TYPE, "application/json")
+        .header("Accept-Language", REGISTER_ACCEPT_LANGUAGE)
+        .header("sec-ch-ua", REGISTER_SEC_CH_UA)
+        .header("sec-ch-ua-mobile", "?0")
+        .header("sec-ch-ua-platform", "\"Windows\"")
         .json(payload);
     if let Some(cookie_header) = cookie_header(cookies) {
         request = request.header(COOKIE, cookie_header);
     }
     if !referer.trim().is_empty() {
         request = request.header(REFERER, referer);
+        if let Ok(parsed) = Url::parse(referer) {
+            if let Some(host) = parsed.host_str() {
+                request = request.header("Origin", format!("{}://{}", parsed.scheme(), host));
+            }
+        }
     }
     if !did.trim().is_empty() {
         request = request.header("oai-device-id", did);
+    }
+    if let Some(step) = step {
+        if let Some(sentinel_header) = fetch_sentinel_header(client, did, step)? {
+            request = request.header("openai-sentinel-token", sentinel_header);
+        }
+        if step.include_passkey_capabilities() {
+            request = request.header(
+                "ext-passkey-client-capabilities",
+                REGISTER_PASSKEY_CLIENT_CAPABILITIES,
+            );
+        }
     }
     let response = request
         .send()
@@ -553,7 +682,7 @@ fn post_json(
         .text()
         .map_err(|err| format!("read register response failed: {err}"))?;
     let json = serde_json::from_str(text.as_str()).unwrap_or(Value::Null);
-    Ok((json, status, headers))
+    Ok((json, text, status, headers))
 }
 
 fn follow_redirect_chain(
@@ -561,8 +690,8 @@ fn follow_redirect_chain(
     cookies: &CookieStateRef,
     start_url: &str,
 ) -> Result<String, String> {
-    let mut current_url = normalize_auth_url(start_url)
-        .ok_or_else(|| format!("invalid auth url: {start_url}"))?;
+    let mut current_url =
+        normalize_auth_url(start_url).ok_or_else(|| format!("invalid auth url: {start_url}"))?;
 
     for _ in 0..12 {
         if is_callback_url(current_url.as_str()) {
@@ -571,7 +700,10 @@ fn follow_redirect_chain(
         let mut request = client
             .get(current_url.as_str())
             .header(USER_AGENT, REGISTER_USER_AGENT)
-            .header(ACCEPT, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+            .header(
+                ACCEPT,
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            );
         if let Some(cookie_header) = cookie_header(cookies) {
             request = request.header(COOKIE, cookie_header);
         }
@@ -624,7 +756,9 @@ fn extract_next_url(value: &Value) -> Option<String> {
                 "https://auth.openai.com/sign-in-with-chatgpt/codex/consent"
             }
             "workspace" => "https://auth.openai.com/workspace",
-            "add_phone" | "phone_verification" | "phone_otp_verification"
+            "add_phone"
+            | "phone_verification"
+            | "phone_otp_verification"
             | "phone_number_verification" => "https://auth.openai.com/add-phone",
             _ => "",
         };
@@ -649,18 +783,122 @@ fn response_requires_email_otp(value: &Value) -> bool {
 }
 
 fn poll_email_otp(
+    task_uuid: &str,
     provider: &GeneratorEmailProvider,
     mailbox_credential: &str,
 ) -> Option<String> {
-    for _ in 0..EMAIL_OTP_POLL_ATTEMPTS {
-        if let Ok(Some(code)) = provider.fetch_code(mailbox_credential) {
-            if !code.trim().is_empty() {
-                return Some(code);
-            }
+    for attempt in 0..EMAIL_OTP_POLL_ATTEMPTS {
+        match provider.fetch_code(mailbox_credential) {
+            Ok(Some(code)) if !code.trim().is_empty() => return Some(code),
+            Ok(_) => append_register_task_log(
+                task_uuid,
+                format!(
+                    "email OTP poll {}/{}: no code yet",
+                    attempt + 1,
+                    EMAIL_OTP_POLL_ATTEMPTS
+                )
+                .as_str(),
+            ),
+            Err(err) => append_register_task_log(
+                task_uuid,
+                format!(
+                    "email OTP poll {}/{} failed: {err}",
+                    attempt + 1,
+                    EMAIL_OTP_POLL_ATTEMPTS
+                )
+                .as_str(),
+            ),
         }
         thread::sleep(Duration::from_secs(EMAIL_OTP_POLL_INTERVAL_SECS));
     }
     None
+}
+
+fn fetch_sentinel_header(
+    client: &Client,
+    did: &str,
+    step: RegisterAuthStep,
+) -> Result<Option<String>, String> {
+    let did = did.trim();
+    if did.is_empty() {
+        return Ok(None);
+    }
+
+    let response = client
+        .post(SENTINEL_URL)
+        .header("Origin", "https://sentinel.openai.com")
+        .header(
+            "Referer",
+            "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6",
+        )
+        .header(USER_AGENT, REGISTER_USER_AGENT)
+        .header(CONTENT_TYPE, "text/plain;charset=UTF-8")
+        .body(
+            json!({
+                "p": "",
+                "id": did,
+                "flow": step.flow(),
+            })
+            .to_string(),
+        )
+        .send()
+        .map_err(|err| format!("sentinel request failed: {err}"))?;
+    let status = response.status();
+    let text = response
+        .text()
+        .map_err(|err| format!("read sentinel response failed: {err}"))?;
+    if !status.is_success() {
+        return Ok(None);
+    }
+    let value = serde_json::from_str::<Value>(text.as_str()).unwrap_or(Value::Null);
+    let token = value
+        .get("token")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    Ok(token.and_then(|token| build_sentinel_header(token, did, step.flow())))
+}
+
+fn build_sentinel_header(token: &str, did: &str, flow: &str) -> Option<String> {
+    let token = token.trim();
+    let did = did.trim();
+    let flow = flow.trim();
+    if token.is_empty() || did.is_empty() || flow.is_empty() {
+        return None;
+    }
+    Some(
+        json!({
+            "p": "",
+            "t": "",
+            "c": token,
+            "id": did,
+            "flow": flow,
+        })
+        .to_string(),
+    )
+}
+
+fn log_http_failure(task_uuid: &str, stage: &str, status: StatusCode, text: &str) {
+    let snippet = text
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(240)
+        .collect::<String>();
+    append_register_task_log(
+        task_uuid,
+        format!(
+            "{stage} failed: HTTP {} body={}",
+            status.as_u16(),
+            if snippet.is_empty() {
+                "<empty>"
+            } else {
+                snippet.as_str()
+            }
+        )
+        .as_str(),
+    );
 }
 
 fn get_cookie(cookies: &CookieStateRef, name: &str) -> Option<String> {
@@ -713,6 +951,17 @@ fn normalize_auth_url(url: &str) -> Option<String> {
         AUTH_BASE_URL.trim_end_matches('/'),
         trimmed.trim_start_matches('/')
     ))
+}
+
+fn normalize_proxy_url(proxy: Option<&str>) -> Option<String> {
+    let raw = proxy?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if raw.contains("://") {
+        return Some(raw.to_string());
+    }
+    Some(format!("http://{raw}"))
 }
 
 fn is_callback_url(url: &str) -> bool {
@@ -810,7 +1059,9 @@ fn fail<T>(task_uuid: &str, code: &str, message: impl Into<String>) -> Result<T,
     Err(format!("{code}: {message}"))
 }
 
-fn test_mode_result(input: &LocalRegisterTaskSnapshot) -> Option<Result<RegisterEngineResult, String>> {
+fn test_mode_result(
+    input: &LocalRegisterTaskSnapshot,
+) -> Option<Result<RegisterEngineResult, String>> {
     let mode = std::env::var("CODEXMANAGER_REGISTER_ENGINE_TEST_MODE").ok()?;
     let email = if input.email_service_type == "generator_email" {
         "alpha123@generator.email"
@@ -895,6 +1146,16 @@ pub(crate) fn run_local_register_flow_for_test(
         })
         .to_string(),
     })
+}
+
+#[cfg(test)]
+pub(crate) fn normalize_register_proxy_for_test(proxy: Option<&str>) -> Option<String> {
+    normalize_proxy_url(proxy)
+}
+
+#[cfg(test)]
+pub(crate) fn build_sentinel_header_for_test(token: &str, did: &str, flow: &str) -> Option<String> {
+    build_sentinel_header(token, did, flow)
 }
 
 #[cfg(test)]
