@@ -538,9 +538,7 @@ mod tests {
         let headers = build_warmup_headers(&account, "bearer-token").expect("build warmup headers");
 
         assert_eq!(
-            headers
-                .get("version")
-                .and_then(|value| value.to_str().ok()),
+            headers.get("version").and_then(|value| value.to_str().ok()),
             Some(crate::gateway::current_codex_user_agent_version().as_str())
         );
         assert!(headers.get("client_version").is_none());
