@@ -359,6 +359,36 @@ class RegisterFlowRunnerTests(unittest.TestCase):
         self.assertEqual(len(resend_calls), 1)
         self.assertEqual(len(get_code_calls), 2)
 
+    def test_complete_login_email_otp_verification_sends_otp_before_waiting(self):
+        engine = EngineStub()
+        engine._otp_sent_at = None
+        engine.oauth_start = types.SimpleNamespace(auth_url="https://auth.openai.com/oauth/authorize?client_id=test")
+        calls = []
+        engine._send_login_verification_code = lambda: calls.append(("send_login_otp",)) or True
+        engine._get_verification_code = lambda: calls.append(("get_code",)) or "123456"
+        engine._validate_verification_code_with_payload = lambda code: (
+            calls.append(("validate", code))
+            or {"page": {"type": "token_exchange", "code": "otp", "state": "state"}}
+        )
+        engine._resend_email_verification_code = lambda: (_ for _ in ()).throw(AssertionError("should not resend"))
+        engine._is_wrong_email_otp_code_error = lambda: False
+        runner = FLOW_RUNNER_MODULE.RegisterFlowRunner(engine=engine)
+
+        result = runner.complete_login_email_otp_verification()
+
+        self.assertEqual(
+            result.callback_url,
+            "http://localhost:1455/auth/callback?code=page&state=state",
+        )
+        self.assertEqual(
+            calls,
+            [
+                ("send_login_otp",),
+                ("get_code",),
+                ("validate", "123456"),
+            ],
+        )
+
     def test_resolve_post_registration_callback_ignores_add_phone_bypass_and_prefers_workspace_flow(self):
         engine = EngineStub()
         engine._post_create_page_type = "add_phone"
