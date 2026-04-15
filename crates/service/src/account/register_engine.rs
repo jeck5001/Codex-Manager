@@ -25,6 +25,7 @@ use crate::account::register_runtime::{
 
 const AUTH_BASE_URL: &str = "https://auth.openai.com";
 const SENTINEL_URL: &str = "https://sentinel.openai.com/backend-api/sentinel/req";
+const ENV_REGISTER_USE_PROXY_FOR_EMAIL: &str = "CODEXMANAGER_REGISTER_USE_PROXY_FOR_EMAIL";
 const AUTHORIZE_CONTINUE_URL: &str = "https://auth.openai.com/api/accounts/authorize/continue";
 const USER_REGISTER_URL: &str = "https://auth.openai.com/api/accounts/user/register";
 const EMAIL_OTP_SEND_URL: &str = "https://auth.openai.com/api/accounts/email-otp/send";
@@ -108,12 +109,7 @@ pub(crate) fn run_local_register_flow(
     }
 
     set_task_stage(task_uuid, "preparing_email");
-    append_register_task_log(task_uuid, "allocating generator.email mailbox");
-    let provider = GeneratorEmailProvider::new_with_proxy(input.proxy.as_deref())
-        .map_err(|err| fail::<()>(task_uuid, "email_provider_failed", err).unwrap_err())?;
-    let mailbox = provider
-        .create_mailbox()
-        .map_err(|err| fail::<()>(task_uuid, "email_provider_failed", err).unwrap_err())?;
+    let (provider, mailbox) = allocate_generator_mailbox(task_uuid, input.proxy.as_deref())?;
     append_register_task_log(
         task_uuid,
         format!("mailbox allocated: {}", mailbox.email).as_str(),
@@ -528,6 +524,50 @@ fn request_and_validate_email_otp(
     }
     append_register_task_log(task_uuid, "email OTP validated");
     Ok(())
+}
+
+fn allocate_generator_mailbox(
+    task_uuid: &str,
+    task_proxy: Option<&str>,
+) -> Result<(GeneratorEmailProvider, crate::account::register_email::RegisterMailboxLease), String> {
+    let preferred_proxy = if should_use_email_proxy() {
+        normalize_proxy_url(task_proxy)
+    } else {
+        None
+    };
+
+    let attempts = if preferred_proxy.is_some() {
+        vec![preferred_proxy.clone(), None]
+    } else {
+        vec![None]
+    };
+
+    let mut last_error = None;
+    for proxy in attempts {
+        let route = proxy.as_deref().unwrap_or("direct");
+        append_register_task_log(
+            task_uuid,
+            format!("allocating generator.email mailbox via {route}").as_str(),
+        );
+        let provider = GeneratorEmailProvider::new_with_proxy(proxy.as_deref())
+            .map_err(|err| fail::<()>(task_uuid, "email_provider_failed", err).unwrap_err())?;
+        match provider.create_mailbox() {
+            Ok(mailbox) => return Ok((provider, mailbox)),
+            Err(err) => {
+                append_register_task_log(
+                    task_uuid,
+                    format!("generator.email mailbox allocation failed via {route}: {err}").as_str(),
+                );
+                last_error = Some(err);
+            }
+        }
+    }
+
+    fail(
+        task_uuid,
+        "email_provider_failed",
+        last_error.unwrap_or_else(|| "generator.email mailbox allocation failed".to_string()),
+    )
 }
 
 fn finalize_callback(
@@ -964,6 +1004,16 @@ fn normalize_proxy_url(proxy: Option<&str>) -> Option<String> {
     Some(format!("http://{raw}"))
 }
 
+fn should_use_email_proxy() -> bool {
+    match std::env::var(ENV_REGISTER_USE_PROXY_FOR_EMAIL) {
+        Ok(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => false,
+    }
+}
+
 fn is_callback_url(url: &str) -> bool {
     let parsed = parse_register_callback(url);
     !parsed.code.trim().is_empty() && !parsed.state.trim().is_empty()
@@ -1156,6 +1206,11 @@ pub(crate) fn normalize_register_proxy_for_test(proxy: Option<&str>) -> Option<S
 #[cfg(test)]
 pub(crate) fn build_sentinel_header_for_test(token: &str, did: &str, flow: &str) -> Option<String> {
     build_sentinel_header(token, did, flow)
+}
+
+#[cfg(test)]
+pub(crate) fn should_use_email_proxy_for_test() -> bool {
+    should_use_email_proxy()
 }
 
 #[cfg(test)]
