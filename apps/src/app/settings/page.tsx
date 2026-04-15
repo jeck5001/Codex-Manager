@@ -19,6 +19,7 @@ import {
   AlertChannel,
   AlertRule,
   AccountCpaSyncResult,
+  AccountCpaSyncStatusResult,
   AppSettings,
   BackgroundTaskSettings,
   FreeProxySyncResult,
@@ -91,6 +92,11 @@ import {
   sanitizeVisibleMenuItems,
 } from "@/lib/navigation";
 import { describeFreeProxyClearResult } from "./freeproxy-clear-state";
+import {
+  formatCpaSyncStatusLabel,
+  parseCpaSyncScheduleInterval,
+  shouldPollCpaSyncStatus,
+} from "./cpa-sync-state";
 
 const ENV_DESCRIPTION_MAP: Record<string, string> = {
   CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS:
@@ -327,6 +333,50 @@ function parseStatusCodeListInput(value: string): number[] | null {
     return null;
   }
   return Array.from(new Set(values)).sort((a, b) => a - b);
+}
+
+function formatCpaSyncTimestamp(value: number | null | undefined): string {
+  if (typeof value !== "number" || value <= 0) return "--";
+  return new Date(value * 1000).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function describeCpaSyncStatus(status: AccountCpaSyncStatusResult | null | undefined): string {
+  switch (status?.status) {
+    case "running":
+      return "后台正在执行 CPA 拉取和导入。";
+    case "misconfigured":
+      return "定时同步已开启，但 API URL 或 Management Key 还不完整。";
+    case "error":
+      return "最近一次同步失败，调度器会按固定间隔继续重试。";
+    case "idle":
+      return "调度器已待命，会按固定分钟间隔自动执行。";
+    case "disabled":
+    default:
+      return "当前未启用定时同步。";
+  }
+}
+
+function getCpaSyncStatusBadgeClass(status: AccountCpaSyncStatusResult | null | undefined): string {
+  switch (status?.status) {
+    case "running":
+      return "border-sky-500/40 bg-sky-500/10 text-sky-600";
+    case "misconfigured":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-600";
+    case "error":
+      return "border-rose-500/40 bg-rose-500/10 text-rose-600";
+    case "idle":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-600";
+    case "disabled":
+    default:
+      return "border-border/60 bg-background/60 text-muted-foreground";
+  }
 }
 
 function formatStatusCodeListInput(value: number[] | null | undefined): string {
@@ -587,6 +637,9 @@ export default function SettingsPage() {
   >({});
   const [backgroundTaskDraft, setBackgroundTaskDraft] = useState<Record<string, string>>({});
   const [cpaSyncApiUrlDraft, setCpaSyncApiUrlDraft] = useState<string | null>(null);
+  const [cpaSyncScheduleIntervalDraft, setCpaSyncScheduleIntervalDraft] = useState<string | null>(
+    null
+  );
   const [cpaSyncManagementKeyDraft, setCpaSyncManagementKeyDraft] = useState("");
   const [cpaSyncResult, setCpaSyncResult] = useState<AccountCpaSyncResult | null>(null);
   const [teamManagerApiUrlDraft, setTeamManagerApiUrlDraft] = useState<string | null>(null);
@@ -608,6 +661,15 @@ export default function SettingsPage() {
   const { data: snapshot, isLoading } = useQuery({
     queryKey: ["app-settings-snapshot"],
     queryFn: () => appClient.getSettings(),
+  });
+  const { data: cpaSyncStatus } = useQuery({
+    queryKey: ["cpa-sync-status"],
+    queryFn: () => accountClient.getCpaSyncStatus(),
+    refetchInterval: (query) =>
+      shouldPollCpaSyncStatus(query.state.data as AccountCpaSyncStatusResult | undefined)
+        ? 15_000
+        : 60_000,
+    refetchIntervalInBackground: true,
   });
   const { data: responseCacheStats } = useQuery({
     queryKey: ["gateway-cache-stats"],
@@ -668,6 +730,13 @@ export default function SettingsPage() {
       if ("backgroundTasks" in variables) {
         void queryClient.invalidateQueries({ queryKey: ["healthcheck-config"] });
       }
+      if (
+        "cpaSyncEnabled" in variables ||
+        "cpaSyncScheduleEnabled" in variables ||
+        "cpaSyncScheduleIntervalMinutes" in variables
+      ) {
+        void queryClient.invalidateQueries({ queryKey: ["cpa-sync-status"] });
+      }
       if (!variables._silent) {
         toast.success("设置已更新");
       }
@@ -717,12 +786,14 @@ export default function SettingsPage() {
         queryClient.invalidateQueries({ queryKey: ["usage"] }),
         queryClient.invalidateQueries({ queryKey: ["usage-aggregate"] }),
         queryClient.invalidateQueries({ queryKey: ["today-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["cpa-sync-status"] }),
       ]);
       toast.success(
         `CPA 同步完成：新增 ${result.created}，更新 ${result.updated}，失败 ${result.failed}`
       );
     },
     onError: (error: unknown) => {
+      void queryClient.invalidateQueries({ queryKey: ["cpa-sync-status"] });
       toast.error(`同步 CPA 账号失败: ${getAppErrorMessage(error)}`);
     },
   });
@@ -1105,6 +1176,8 @@ export default function SettingsPage() {
   const proxyPoolCount = countProxyPoolEntries(proxyPoolValue);
   const teamManagerApiUrlInput = teamManagerApiUrlDraft ?? snapshot?.teamManagerApiUrl ?? "";
   const cpaSyncApiUrlInput = cpaSyncApiUrlDraft ?? snapshot?.cpaSyncApiUrl ?? "";
+  const cpaSyncScheduleIntervalInput =
+    cpaSyncScheduleIntervalDraft ?? stringifyNumber(snapshot?.cpaSyncScheduleIntervalMinutes ?? 30);
   const remoteManagementSecretInput = remoteManagementSecretDraft.trim();
   const payloadRewriteRulesInput =
     payloadRewriteRulesDraft ?? snapshot?.payloadRewriteRulesJson ?? "[]";
@@ -1467,16 +1540,24 @@ export default function SettingsPage() {
   const handleSaveCpaSync = () => {
     if (!snapshot) return;
     const nextApiUrl = cpaSyncApiUrlInput.trim();
+    const intervalMinutes = parseCpaSyncScheduleInterval(cpaSyncScheduleIntervalInput.trim());
+    if (intervalMinutes == null) {
+      toast.error("定时同步间隔请输入大于等于 1 的整数分钟");
+      return;
+    }
     void updateSettings
       .mutateAsync({
         cpaSyncEnabled: snapshot.cpaSyncEnabled,
         cpaSyncApiUrl: nextApiUrl,
+        cpaSyncScheduleEnabled: snapshot.cpaSyncScheduleEnabled,
+        cpaSyncScheduleIntervalMinutes: intervalMinutes,
         ...(cpaSyncManagementKeyDraft.trim()
           ? { cpaSyncManagementKey: cpaSyncManagementKeyDraft.trim() }
           : {}),
       })
       .then(() => {
         setCpaSyncApiUrlDraft(null);
+        setCpaSyncScheduleIntervalDraft(null);
         setCpaSyncManagementKeyDraft("");
       })
       .catch(() => undefined);
@@ -1898,6 +1979,35 @@ export default function SettingsPage() {
                 />
               </div>
 
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>定时同步</Label>
+                  <p className="text-xs text-muted-foreground">
+                    由服务端后台定时触发，适合 NAS / Docker 常驻部署。
+                  </p>
+                </div>
+                <Switch
+                  checked={snapshot.cpaSyncScheduleEnabled}
+                  onCheckedChange={(value) =>
+                    updateSettings.mutate({ cpaSyncScheduleEnabled: value })
+                  }
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="cpa-sync-schedule-interval">同步间隔（分钟）</Label>
+                <Input
+                  id="cpa-sync-schedule-interval"
+                  inputMode="numeric"
+                  placeholder="30"
+                  value={cpaSyncScheduleIntervalInput}
+                  onChange={(event) => setCpaSyncScheduleIntervalDraft(event.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  使用固定分钟数。保存后立即热更新，无需重启容器。
+                </p>
+              </div>
+
               <div className="grid gap-2">
                 <Label htmlFor="cpa-sync-api-url">CPA API URL</Label>
                 <Input
@@ -1932,6 +2042,69 @@ export default function SettingsPage() {
                 当前同步为单向导入：会读取 CPA 中已登录的 Codex/OpenAI/ChatGPT auth 文件并导入本地号池，不会删除 CPA 侧账号。
               </div>
 
+              <div className="space-y-3 rounded-xl border border-border/60 bg-background/40 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge className={cn("border", getCpaSyncStatusBadgeClass(cpaSyncStatus))}>
+                        {formatCpaSyncStatusLabel(cpaSyncStatus)}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {describeCpaSyncStatus(cpaSyncStatus)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      最近触发：{cpaSyncStatus?.lastTrigger || "--"}
+                    </p>
+                  </div>
+                  <div className="text-right text-xs text-muted-foreground">
+                    <p>下次执行</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {formatCpaSyncTimestamp(cpaSyncStatus?.nextRunAt)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">固定间隔</p>
+                    <p className="text-sm font-medium">
+                      {cpaSyncStatus?.intervalMinutes ?? snapshot.cpaSyncScheduleIntervalMinutes} 分钟
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">上次开始</p>
+                    <p className="text-sm font-medium">
+                      {formatCpaSyncTimestamp(cpaSyncStatus?.lastStartedAt)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">上次完成</p>
+                    <p className="text-sm font-medium">
+                      {formatCpaSyncTimestamp(cpaSyncStatus?.lastFinishedAt)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">上次成功</p>
+                    <p className="text-sm font-medium">
+                      {formatCpaSyncTimestamp(cpaSyncStatus?.lastSuccessAt)}
+                    </p>
+                  </div>
+                </div>
+
+                {cpaSyncStatus?.lastSummary ? (
+                  <div className="rounded-lg border border-border/50 bg-background/60 p-3 text-xs text-muted-foreground">
+                    {cpaSyncStatus.lastSummary}
+                  </div>
+                ) : null}
+
+                {cpaSyncStatus?.lastError ? (
+                  <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-600">
+                    {cpaSyncStatus.lastError}
+                  </div>
+                ) : null}
+              </div>
+
               <div className="flex flex-wrap gap-3">
                 <Button
                   className="gap-2"
@@ -1953,13 +2126,18 @@ export default function SettingsPage() {
                 <Button
                   variant="outline"
                   className="gap-2"
-                  disabled={syncCpaAccounts.isPending}
+                  disabled={syncCpaAccounts.isPending || cpaSyncStatus?.isRunning}
                   onClick={handleRunCpaSync}
                 >
                   <RefreshCw
-                    className={cn("h-4 w-4", syncCpaAccounts.isPending && "animate-spin")}
+                    className={cn(
+                      "h-4 w-4",
+                      (syncCpaAccounts.isPending || cpaSyncStatus?.isRunning) && "animate-spin"
+                    )}
                   />
-                  {syncCpaAccounts.isPending ? "同步中..." : "立即同步"}
+                  {syncCpaAccounts.isPending || cpaSyncStatus?.isRunning
+                    ? "同步中..."
+                    : "立即同步"}
                 </Button>
               </div>
 
