@@ -527,8 +527,6 @@ export const EN_MESSAGES: MessageCatalog = {
     "Overrides the reasoning effort inside the request.",
   "Fast 会映射为上游 priority；未设置时跟随请求。":
     "Fast maps to upstream priority; otherwise it follows the request.",
-  "Azure 接入地址": "Azure endpoint",
-  "Azure 接口密钥": "Azure API key",
   平台密钥已生成: "API key generated",
   完成: "Done",
   "配置一个最小转发上游，保存 URL 和密钥后即可用于平台密钥轮转。":

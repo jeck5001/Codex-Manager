@@ -1,5 +1,5 @@
+use crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE;
 use crate::apikey_profile::ROTATION_AGGREGATE_API;
-use crate::apikey_profile::{PROTOCOL_ANTHROPIC_NATIVE, PROTOCOL_AZURE_OPENAI};
 use crate::gateway::request_log::RequestLogUsage;
 use std::time::Instant;
 use tiny_http::Request;
@@ -97,8 +97,6 @@ pub(in super::super) fn proxy_validated_request(
         rotation_strategy,
         aggregate_api_id,
         account_plan_filter,
-        upstream_base_url,
-        static_headers_json,
         response_adapter,
         gemini_stream_output_mode,
         tool_name_restore_map,
@@ -235,30 +233,6 @@ pub(in super::super) fn proxy_validated_request(
                 request_deadline,
                 started_at,
             },
-        );
-    }
-
-    if protocol_type == PROTOCOL_AZURE_OPENAI {
-        return super::protocol::azure_openai::proxy_azure_request(
-            request,
-            &storage,
-            trace_id.as_str(),
-            key_id.as_str(),
-            original_path.as_str(),
-            path.as_str(),
-            request_method.as_str(),
-            &method,
-            &body,
-            upstream_is_stream,
-            response_adapter,
-            &tool_name_restore_map,
-            model_for_log.as_deref(),
-            reasoning_for_log.as_deref(),
-            effective_service_tier_for_log.as_deref(),
-            upstream_base_url.as_deref(),
-            static_headers_json.as_deref(),
-            request_deadline,
-            started_at,
         );
     }
 

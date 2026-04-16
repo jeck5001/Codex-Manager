@@ -642,6 +642,10 @@ impl Storage {
             "049_model_catalog_string_items",
             include_str!("../../migrations/049_model_catalog_string_items.sql"),
         )?;
+        self.apply_sql_migration(
+            "050_api_key_profiles_drop_azure_protocol",
+            include_str!("../../migrations/050_api_key_profiles_drop_azure_protocol.sql"),
+        )?;
         self.ensure_api_key_rotation_columns()?;
         self.ensure_aggregate_apis_table()?;
         self.ensure_aggregate_api_secrets_table()?;

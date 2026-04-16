@@ -944,8 +944,6 @@ export const KO_MESSAGES: MessageCatalog = {
   总费用: "총 비용",
   "总使用 Token": "총 Token 사용량",
   "走 Claude 语义，": "Claude 의미 사용,",
-  "Azure 接口密钥": "Azure API 키",
-  "Azure 接入地址": "Azure 엔드포인트",
   "Fast 会映射为上游 priority；未设置时跟随请求。":
     "Fast는 업스트림 priority로 매핑되며, 미설정 시 요청을 따릅니다.",
   "Free 账号使用模型": "Free 계정 모델",

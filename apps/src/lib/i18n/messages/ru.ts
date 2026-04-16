@@ -949,8 +949,6 @@ export const RU_MESSAGES: MessageCatalog = {
   总费用: "Общая стоимость",
   "总使用 Token": "Общий расход Token",
   "走 Claude 语义，": "Использует семантику Claude,",
-  "Azure 接口密钥": "Azure API‑ключ",
-  "Azure 接入地址": "Azure endpoint",
   "Fast 会映射为上游 priority；未设置时跟随请求。":
     "Fast будет сопоставлен с upstream priority; если не задано — следует запросу.",
   "Free 账号使用模型": "Модель для free‑аккаунтов",
