@@ -136,13 +136,15 @@ impl CandidateExecutionState {
             .entry(cache_key)
             .or_insert_with(|| {
                 Bytes::from(
-                    super::super::super::apply_request_overrides_with_prompt_cache_key(
+                    super::super::super::apply_request_overrides_with_service_tier_and_prompt_cache_key_scope(
                         path,
                         body.to_vec(),
                         model_override,
                         None,
+                        None,
                         Some(setup.upstream_base.as_str()),
                         effective_prompt_cache_key,
+                        false,
                     ),
                 )
             })
@@ -251,6 +253,49 @@ mod tests {
     use bytes::Bytes;
     use codexmanager_core::storage::Account;
 
+    struct RuntimeEnvGuard {
+        name: &'static str,
+        previous_value: Option<String>,
+    }
+
+    impl RuntimeEnvGuard {
+        fn set(name: &'static str, value: &str) -> Self {
+            let previous_value = std::env::var(name).ok();
+            std::env::set_var(name, value);
+            crate::gateway::reload_runtime_config_from_env();
+            Self {
+                name,
+                previous_value,
+            }
+        }
+    }
+
+    impl Drop for RuntimeEnvGuard {
+        fn drop(&mut self) {
+            match self.previous_value.as_deref() {
+                Some(value) => std::env::set_var(self.name, value),
+                None => std::env::remove_var(self.name),
+            }
+            crate::gateway::reload_runtime_config_from_env();
+        }
+    }
+
+    fn sample_setup() -> super::super::request_setup::UpstreamRequestSetup {
+        super::super::request_setup::UpstreamRequestSetup {
+            upstream_base: "https://chatgpt.com/backend-api/codex".to_string(),
+            upstream_fallback_base: None,
+            url: "https://chatgpt.com/backend-api/codex/responses".to_string(),
+            url_alt: None,
+            candidate_count: 1,
+            account_max_inflight: 1,
+            anthropic_has_thread_anchor: false,
+            has_sticky_fallback_session: false,
+            has_sticky_fallback_conversation: false,
+            has_body_encrypted_content: false,
+            conversation_routing: None,
+        }
+    }
+
     /// 函数 `body_for_attempt_rewrites_model_override`
     ///
     /// 作者: gaohongshun
@@ -266,19 +311,7 @@ mod tests {
     fn body_for_attempt_rewrites_model_override() {
         let mut state = CandidateExecutionState::default();
         let body = Bytes::from_static(br#"{"model":"gpt-5.4","input":"hello"}"#);
-        let setup = super::super::request_setup::UpstreamRequestSetup {
-            upstream_base: "https://chatgpt.com/backend-api/codex".to_string(),
-            upstream_fallback_base: None,
-            url: "https://chatgpt.com/backend-api/codex/responses".to_string(),
-            url_alt: None,
-            candidate_count: 1,
-            account_max_inflight: 1,
-            anthropic_has_thread_anchor: false,
-            has_sticky_fallback_session: false,
-            has_sticky_fallback_conversation: false,
-            has_body_encrypted_content: false,
-            conversation_routing: None,
-        };
+        let setup = sample_setup();
 
         let actual = state.body_for_attempt(
             "/v1/responses",
@@ -304,24 +337,51 @@ mod tests {
     }
 
     #[test]
+    fn body_for_attempt_does_not_apply_enhanced_rewrite_to_native_codex_retry() {
+        let _guard = crate::test_env_guard();
+        let _mode_guard = RuntimeEnvGuard::set("CODEXMANAGER_GATEWAY_MODE", "enhanced");
+        let mut state = CandidateExecutionState::default();
+        let body = Bytes::from_static(
+            br#"{"model":"gpt-5.4","input":"hello","stream":false,"store":true}"#,
+        );
+        let setup = sample_setup();
+
+        let actual = state.body_for_attempt(
+            "/v1/responses",
+            &body,
+            false,
+            &setup,
+            Some("gpt-5.2"),
+            Some("thread-2"),
+        );
+        let value: serde_json::Value =
+            serde_json::from_slice(actual.as_ref()).expect("parse rewritten body");
+
+        assert_eq!(
+            value.get("model").and_then(serde_json::Value::as_str),
+            Some("gpt-5.2")
+        );
+        assert_eq!(
+            value.get("stream").and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            value.get("store").and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert!(value.get("prompt_cache_key").is_none());
+        assert!(value.get("instructions").is_none());
+        assert!(value.get("tool_choice").is_none());
+        assert!(value.get("include").is_none());
+    }
+
+    #[test]
     fn body_for_attempt_preserves_existing_prompt_cache_key() {
         let mut state = CandidateExecutionState::default();
         let body = Bytes::from_static(
             br#"{"model":"gpt-5.4","input":"hello","prompt_cache_key":"client-thread"}"#,
         );
-        let setup = super::super::request_setup::UpstreamRequestSetup {
-            upstream_base: "https://chatgpt.com/backend-api/codex".to_string(),
-            upstream_fallback_base: None,
-            url: "https://chatgpt.com/backend-api/codex/responses".to_string(),
-            url_alt: None,
-            candidate_count: 1,
-            account_max_inflight: 1,
-            anthropic_has_thread_anchor: false,
-            has_sticky_fallback_session: false,
-            has_sticky_fallback_conversation: false,
-            has_body_encrypted_content: false,
-            conversation_routing: None,
-        };
+        let setup = sample_setup();
 
         let actual = state.body_for_attempt(
             "/v1/responses",

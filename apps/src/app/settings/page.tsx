@@ -84,6 +84,9 @@ import {
   DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS,
   EMPTY_RESIDENCY_OPTION,
   ENV_DESCRIPTION_MAP,
+  ENV_EFFECT_SCOPE_LABELS,
+  ENV_RISK_BADGE_CLASSES,
+  ENV_RISK_LABELS,
   GATEWAY_MODE_HINTS,
   GATEWAY_MODE_LABELS,
   RESIDENCY_REQUIREMENT_LABELS,
@@ -97,9 +100,11 @@ import {
   asRecord,
   buildReleaseUrl,
   type CheckUpdateRequest,
+  compareEnvOverrideItems,
   formatFreeAccountModelLabel,
   inferServiceBindPreview,
   matchesRecommendedWorkerSettings,
+  normalizeEnvRiskLevel,
   normalizeWorkerRecommendation,
   parseIntegerInput,
   readInitialSettingsTab,
@@ -565,7 +570,7 @@ export default function SettingsPage() {
   };
 
   const envOverrideCatalog = snapshot?.envOverrideCatalog ?? [];
-  const filteredEnvCatalog = !envSearch
+  const filteredEnvCatalog = (!envSearch
     ? envOverrideCatalog
     : envOverrideCatalog.filter((item) => {
         const keyword = envSearch.toLowerCase();
@@ -573,9 +578,18 @@ export default function SettingsPage() {
           item.key.toLowerCase().includes(keyword) ||
           item.label.toLowerCase().includes(keyword)
         );
-      });
+      })
+  )
+    .slice()
+    .sort(compareEnvOverrideItems);
   const selectedEnvItem =
     envOverrideCatalog.find((item) => item.key === selectedEnvKey) ?? null;
+  const selectedEnvRiskLevel = normalizeEnvRiskLevel(selectedEnvItem?.riskLevel);
+  const selectedEnvEffectScope =
+    selectedEnvItem?.effectScope || "runtime-global";
+  const selectedEnvSafetyNote =
+    selectedEnvItem?.safetyNote ||
+    t("会影响运行时配置；修改后请观察请求链路是否稳定。");
 
   const upstreamProxyInput =
     upstreamProxyDraft ?? (snapshot?.upstreamProxyUrl || "");
@@ -2043,7 +2057,9 @@ export default function SettingsPage() {
             <div className="space-y-1">
               <h3 className="text-sm font-semibold">{t("环境变量配置")}</h3>
               <p className="text-sm leading-6 text-muted-foreground">
-                {t("这里可以覆盖运行时环境变量；如果改乱了，可以一键恢复当前页所有变量的默认值。")}
+                {t(
+                  "这里保留旧版和外部部署环境变量覆盖；普通用户优先使用前面结构化设置，高风险项只建议排障时临时修改。",
+                )}
               </p>
             </div>
             <Button
@@ -2084,7 +2100,28 @@ export default function SettingsPage() {
                           : "hover:bg-accent",
                       )}
                     >
-                      <div className="truncate font-medium">{t(item.label)}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {t(item.label)}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "shrink-0 px-1.5 py-0 text-[10px]",
+                            selectedEnvKey === item.key
+                              ? "border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground"
+                              : ENV_RISK_BADGE_CLASSES[
+                                  normalizeEnvRiskLevel(item.riskLevel)
+                                ],
+                          )}
+                        >
+                          {t(
+                            ENV_RISK_LABELS[
+                              normalizeEnvRiskLevel(item.riskLevel)
+                            ],
+                          )}
+                        </Badge>
+                      </div>
                       <code className="block truncate text-[10px] opacity-70">
                         {item.key}
                       </code>
@@ -2098,13 +2135,30 @@ export default function SettingsPage() {
               {selectedEnvKey ? (
                 <>
                   <CardHeader>
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-2">
                       <CardTitle className="text-lg">
                         {selectedEnvItem ? t(selectedEnvItem.label) : null}
                       </CardTitle>
-                      <code className="w-fit rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                        {selectedEnvKey}
-                      </code>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <code className="w-fit rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                          {selectedEnvKey}
+                        </code>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "px-2 py-0.5",
+                            ENV_RISK_BADGE_CLASSES[selectedEnvRiskLevel],
+                          )}
+                        >
+                          {t(ENV_RISK_LABELS[selectedEnvRiskLevel])}
+                        </Badge>
+                        <Badge variant="secondary" className="px-2 py-0.5">
+                          {t(
+                            ENV_EFFECT_SCOPE_LABELS[selectedEnvEffectScope] ||
+                              selectedEnvEffectScope,
+                          )}
+                        </Badge>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-6">
@@ -2115,6 +2169,15 @@ export default function SettingsPage() {
                           `${selectedEnvItem?.label} 对应环境变量，修改后会应用到相关模块。`,
                       )}
                     </div>
+                    {selectedEnvRiskLevel === "high" ? (
+                      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm leading-relaxed text-red-700 dark:text-red-300">
+                        {t(selectedEnvSafetyNote)}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-border/50 bg-muted/20 p-4 text-sm leading-relaxed text-muted-foreground">
+                        {t(selectedEnvSafetyNote)}
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <Label>{t("当前值")}</Label>

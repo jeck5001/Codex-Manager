@@ -985,6 +985,8 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
   const upstreamUrl = String(log.upstreamUrl || "").trim();
   const upstreamDisplay = resolveUpstreamDisplay(upstreamUrl, t);
   const requestType = normalizeRequestType(log.requestType);
+  const canonicalSource = String(log.canonicalSource || "native_codex").trim();
+  const sizeRejectStage = String(log.sizeRejectStage || "-").trim();
 
   return (
     <Tooltip>
@@ -1005,6 +1007,20 @@ function RequestRouteInfoCell({ log }: { log: RequestLog }) {
             <div className="text-[10px] text-background/70">{t("请求类型")}</div>
             <div className="font-mono text-[11px] uppercase">{requestType}</div>
           </div>
+          <div className="space-y-0.5">
+            <div className="text-[10px] text-background/70">
+              {t("规范来源")}
+            </div>
+            <div className="font-mono text-[11px]">{canonicalSource}</div>
+          </div>
+          {sizeRejectStage && sizeRejectStage !== "-" ? (
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-background/70">
+                {t("大小拒绝阶段")}
+              </div>
+              <div className="font-mono text-[11px]">{sizeRejectStage}</div>
+            </div>
+          ) : null}
           <div className="space-y-0.5">
             <div className="text-[10px] text-background/70">{t("方法")}</div>
             <div className="font-mono text-[11px]">{log.method || "-"}</div>

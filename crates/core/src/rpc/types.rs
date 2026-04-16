@@ -721,6 +721,8 @@ pub struct RequestLogSummary {
     pub service_tier: Option<String>,
     pub effective_service_tier: Option<String>,
     pub response_adapter: Option<String>,
+    pub canonical_source: Option<String>,
+    pub size_reject_stage: Option<String>,
     pub upstream_url: Option<String>,
     pub aggregate_api_supplier_name: Option<String>,
     pub aggregate_api_url: Option<String>,

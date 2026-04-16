@@ -472,7 +472,7 @@ pub(super) fn build_local_validation_result(
             allow_codex_enhanced_rewrite,
         )
     } else if effective_thread_anchor.is_some() {
-        super::super::apply_request_overrides_with_service_tier_and_forced_prompt_cache_key(
+        super::super::apply_request_overrides_with_service_tier_and_forced_prompt_cache_key_scope(
             &path,
             body,
             effective_model.as_deref(),
@@ -480,6 +480,7 @@ pub(super) fn build_local_validation_result(
             effective_service_tier.as_deref(),
             api_key.upstream_base_url.as_deref(),
             effective_thread_anchor.as_deref(),
+            allow_codex_enhanced_rewrite,
         )
     } else {
         super::super::apply_request_overrides_with_service_tier_and_prompt_cache_key_scope(

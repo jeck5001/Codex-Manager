@@ -1250,6 +1250,10 @@ export function normalizeRequestLog(item: unknown): RequestLog | null {
       source.effectiveServiceTier ?? source.effective_service_tier
     ),
     responseAdapter: asString(source.responseAdapter ?? source.response_adapter),
+    canonicalSource:
+      asString(source.canonicalSource ?? source.canonical_source) || "native_codex",
+    sizeRejectStage:
+      asString(source.sizeRejectStage ?? source.size_reject_stage) || "-",
     upstreamUrl: asString(source.upstreamUrl ?? source.upstream_url),
     aggregateApiSupplierName:
       asString(
@@ -1495,6 +1499,10 @@ export function normalizeEnvOverrideCatalog(payload: unknown): EnvOverrideCatalo
       defaultValue: asString(source.defaultValue ?? source.default_value),
       scope: asString(source.scope),
       applyMode: asString(source.applyMode ?? source.apply_mode),
+      riskLevel: asString(source.riskLevel ?? source.risk_level) || "medium",
+      effectScope:
+        asString(source.effectScope ?? source.effect_scope) || "runtime-global",
+      safetyNote: asString(source.safetyNote ?? source.safety_note),
     });
     return result;
   }, []);

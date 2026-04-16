@@ -18,6 +18,8 @@ export interface RequestLog {
   serviceTier: string;
   effectiveServiceTier: string;
   responseAdapter: string;
+  canonicalSource: string;
+  sizeRejectStage: string;
   upstreamUrl: string;
   aggregateApiSupplierName: string | null;
   aggregateApiUrl: string | null;

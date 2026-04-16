@@ -579,6 +579,7 @@ pub(super) fn apply_request_overrides_with_forced_prompt_cache_key(
 ///
 /// # 返回
 /// 返回函数执行结果
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn apply_request_overrides_with_service_tier_and_forced_prompt_cache_key(
     path: &str,
     body: Vec<u8>,
@@ -587,6 +588,28 @@ pub(super) fn apply_request_overrides_with_service_tier_and_forced_prompt_cache_
     service_tier: Option<&str>,
     upstream_base_url: Option<&str>,
     prompt_cache_key: Option<&str>,
+) -> Vec<u8> {
+    apply_request_overrides_with_service_tier_and_forced_prompt_cache_key_scope(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        service_tier,
+        upstream_base_url,
+        prompt_cache_key,
+        true,
+    )
+}
+
+pub(super) fn apply_request_overrides_with_service_tier_and_forced_prompt_cache_key_scope(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    service_tier: Option<&str>,
+    upstream_base_url: Option<&str>,
+    prompt_cache_key: Option<&str>,
+    allow_codex_enhanced_rewrite: bool,
 ) -> Vec<u8> {
     apply_request_overrides_with_prompt_cache_key_mode(
         path,
@@ -597,7 +620,7 @@ pub(super) fn apply_request_overrides_with_service_tier_and_forced_prompt_cache_
         prompt_cache_key,
         true,
         service_tier,
-        true,
+        allow_codex_enhanced_rewrite,
     )
 }
 

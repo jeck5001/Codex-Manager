@@ -1,6 +1,10 @@
 import type { UpdateCheckResult } from "@/lib/api/app-updates";
 import type { GatewayMode } from "@/lib/gateway-mode";
-import type { AppSettings, BackgroundTaskSettings } from "@/types";
+import type {
+  AppSettings,
+  BackgroundTaskSettings,
+  EnvOverrideCatalogItem,
+} from "@/types";
 
 export const ENV_DESCRIPTION_MAP: Record<string, string> = {
   CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS:
@@ -14,6 +18,48 @@ export const ENV_DESCRIPTION_MAP: Record<string, string> = {
   CODEXMANAGER_UPSTREAM_BASE_URL:
     "控制默认上游地址；修改后，网关会把请求转发到新的目标地址。",
 };
+
+export const ENV_RISK_LABELS: Record<string, string> = {
+  low: "低风险",
+  medium: "中风险",
+  high: "高风险",
+};
+
+export const ENV_EFFECT_SCOPE_LABELS: Record<string, string> = {
+  deployment: "部署级",
+  "runtime-global": "运行时全局",
+  "request-semantic": "请求语义",
+};
+
+export const ENV_RISK_BADGE_CLASSES: Record<string, string> = {
+  low: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  medium: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  high: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+};
+
+const ENV_RISK_ORDER: Record<string, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+};
+
+export function normalizeEnvRiskLevel(value: string | null | undefined): string {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized in ENV_RISK_LABELS ? normalized : "medium";
+}
+
+export function compareEnvOverrideItems(
+  left: EnvOverrideCatalogItem,
+  right: EnvOverrideCatalogItem,
+): number {
+  const leftRisk = normalizeEnvRiskLevel(left.riskLevel);
+  const rightRisk = normalizeEnvRiskLevel(right.riskLevel);
+  const riskDelta =
+    (ENV_RISK_ORDER[leftRisk] ?? ENV_RISK_ORDER.medium) -
+    (ENV_RISK_ORDER[rightRisk] ?? ENV_RISK_ORDER.medium);
+  if (riskDelta !== 0) return riskDelta;
+  return left.key.localeCompare(right.key);
+}
 
 export const THEMES = [
   { id: "tech", name: "企业蓝", color: "#2563eb" },

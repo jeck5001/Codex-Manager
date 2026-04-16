@@ -4,6 +4,9 @@ export interface EnvOverrideCatalogItem {
   defaultValue: string;
   scope: string;
   applyMode: string;
+  riskLevel: string;
+  effectScope: string;
+  safetyNote: string;
 }
 
 export interface BackgroundTaskSettings {
