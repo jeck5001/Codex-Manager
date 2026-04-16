@@ -816,6 +816,58 @@ fn responses_preserves_priority_service_tier_for_codex_backend() {
     assert!(value.get("user").is_none());
 }
 
+/// 函数 `responses_preserves_client_metadata_for_codex_backend`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-16
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn responses_preserves_client_metadata_for_codex_backend() {
+    let _guard = crate::test_env_guard();
+    let body = json!({
+        "model": "gpt-5.3-codex",
+        "instructions": "stay",
+        "input": "hello",
+        "client_metadata": {
+            "turn_id": "turn-123",
+            "origin": "gaas"
+        },
+        "metadata": {
+            "source": "open-code"
+        }
+    });
+    let out = apply_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert!(value.get("client_metadata").is_some());
+    assert_eq!(
+        value
+            .get("client_metadata")
+            .and_then(|v| v.get("turn_id"))
+            .and_then(serde_json::Value::as_str),
+        Some("turn-123")
+    );
+    assert_eq!(
+        value
+            .get("client_metadata")
+            .and_then(|v| v.get("origin"))
+            .and_then(serde_json::Value::as_str),
+        Some("gaas")
+    );
+    assert!(value.get("metadata").is_none());
+}
+
 /// 函数 `responses_defaults_tool_choice_and_reasoning_include_for_codex_backend`
 ///
 /// 作者: gaohongshun

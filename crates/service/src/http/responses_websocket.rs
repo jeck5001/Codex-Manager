@@ -14,10 +14,7 @@ use crate::http::proxy_response::{text_error_response, text_response};
 use crate::storage_helpers::{hash_platform_key, open_storage};
 
 const RESPONSES_PATH: &str = "/v1/responses";
-const RESPONSES_WS_BETA_HEADER_VALUE: &str = "responses_websockets=2026-02-06";
 const RESPONSES_WS_ERROR_CODE: &str = "responses_websocket_error";
-const OPENAI_ORGANIZATION_ENV: &str = "OPENAI_ORGANIZATION";
-const OPENAI_PROJECT_ENV: &str = "OPENAI_PROJECT";
 
 #[derive(Clone)]
 struct WsRequestContext {
@@ -25,7 +22,6 @@ struct WsRequestContext {
     incoming_headers: crate::gateway::IncomingHeaderSnapshot,
     prompt_cache_key: Option<String>,
     effective_upstream_base: String,
-    include_timing_metrics: bool,
     prefer_raw_errors: bool,
 }
 
@@ -651,9 +647,6 @@ fn authorize_websocket_request(headers: &HeaderMap) -> Result<WsRequestContext, 
         api_key,
         incoming_headers,
         prompt_cache_key,
-        include_timing_metrics: parse_bool_header(
-            headers.get("x-responsesapi-include-timing-metrics"),
-        ),
         prefer_raw_errors,
     })
 }
@@ -979,17 +972,9 @@ fn build_upstream_websocket_request(
     )?;
     insert_header(
         headers,
-        "version",
-        &crate::gateway::current_codex_user_agent_version(),
-    )?;
-    append_optional_env_header(headers, "OpenAI-Organization", OPENAI_ORGANIZATION_ENV)?;
-    append_optional_env_header(headers, "OpenAI-Project", OPENAI_PROJECT_ENV)?;
-    insert_header(
-        headers,
         "originator",
         &crate::gateway::current_wire_originator(),
     )?;
-    insert_header(headers, "OpenAI-Beta", RESPONSES_WS_BETA_HEADER_VALUE)?;
     if let Some(residency_requirement) = crate::gateway::current_residency_requirement() {
         insert_header(
             headers,
@@ -1028,9 +1013,6 @@ fn build_upstream_websocket_request(
         headers,
         context.incoming_headers.passthrough_codex_headers(),
     )?;
-    if context.include_timing_metrics {
-        insert_header(headers, "x-responsesapi-include-timing-metrics", "true")?;
-    }
     Ok(request)
 }
 
@@ -1038,27 +1020,9 @@ fn append_passthrough_codex_headers(
     headers: &mut HeaderMap,
     passthrough_headers: &[(String, String)],
 ) -> Result<(), WsSessionError> {
-    for (name, value) in passthrough_headers {
-        if headers.contains_key(name.as_str()) {
-            continue;
-        }
-        insert_header(headers, name, value)?;
-    }
-    Ok(())
-}
-
-fn append_optional_env_header(
-    headers: &mut HeaderMap,
-    header_name: &str,
-    env_name: &str,
-) -> Result<(), WsSessionError> {
-    if let Some(value) = std::env::var(env_name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        insert_header(headers, header_name, value.as_str())?;
-    }
+    // 中文注释：WebSocket 路径同样只允许 Codex 源码里明确出现的头，未知头一律丢弃。
+    let _ = headers;
+    let _ = passthrough_headers;
     Ok(())
 }
 
@@ -1480,18 +1444,6 @@ async fn send_ws_error_and_close(
     let _ = socket.close().await;
 }
 
-fn parse_bool_header(value: Option<&HeaderValue>) -> bool {
-    value
-        .and_then(|header| header.to_str().ok())
-        .map(str::trim)
-        .is_some_and(|raw| {
-            raw.eq_ignore_ascii_case("true")
-                || raw.eq_ignore_ascii_case("1")
-                || raw.eq_ignore_ascii_case("yes")
-                || raw.eq_ignore_ascii_case("on")
-        })
-}
-
 fn upgrade_required_response(message: impl Into<String>) -> Response<Body> {
     let mut response = text_response(StatusCode::UPGRADE_REQUIRED, message.into());
     response
@@ -1636,7 +1588,6 @@ mod tests {
             incoming_headers: sample_incoming_headers(Some("conversation-1"), None),
             prompt_cache_key: Some("sticky-thread".to_string()),
             effective_upstream_base: "https://chatgpt.com/backend-api/codex".to_string(),
-            include_timing_metrics: false,
             prefer_raw_errors: false,
         };
         let prepared = rewrite_client_frame(

@@ -149,6 +149,62 @@ fn should_derive_compat_conversation_anchor(protocol_type: &str, normalized_path
         || allow_compat_responses_path_rewrite(protocol_type, normalized_path)
 }
 
+/// 函数 `is_native_codex_client_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-16
+///
+/// # 参数
+/// - incoming_headers: 参数 incoming_headers
+///
+/// # 返回
+/// 返回函数执行结果
+fn is_native_codex_client_request(incoming_headers: &super::super::IncomingHeaderSnapshot) -> bool {
+    let user_agent = incoming_headers
+        .user_agent()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let originator = incoming_headers
+        .originator()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if user_agent.contains("opencode") || originator.contains("opencode") {
+        return false;
+    }
+
+    let has_codex_header_signals = incoming_headers.session_id().is_some()
+        || incoming_headers.client_request_id().is_some()
+        || incoming_headers.subagent().is_some()
+        || incoming_headers.beta_features().is_some()
+        || incoming_headers.window_id().is_some()
+        || incoming_headers.turn_metadata().is_some()
+        || incoming_headers.turn_state().is_some()
+        || incoming_headers.parent_thread_id().is_some()
+        || incoming_headers.conversation_id().is_some();
+
+    user_agent.contains("codex_cli_rs")
+        || originator.contains("codex_cli_rs")
+        || has_codex_header_signals
+}
+
+/// 函数 `should_force_codex_compat_rewrite`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-16
+///
+/// # 参数
+/// - normalized_path: 参数 normalized_path
+/// - incoming_headers: 参数 incoming_headers
+///
+/// # 返回
+/// 返回函数执行结果
+fn should_force_codex_compat_rewrite(normalized_path: &str, native_codex_client: bool) -> bool {
+    normalized_path.starts_with("/v1/responses") && !native_codex_client
+}
+
 fn should_normalize_compat_service_tier_for_codex_backend(
     protocol_type: &str,
     normalized_path: &str,
@@ -334,6 +390,20 @@ pub(super) fn build_local_validation_result(
         initial_service_tier_diagnostic.normalized_value.as_deref(),
     );
     let initial_request_meta = super::super::parse_request_metadata(&body);
+    let native_codex_client = is_native_codex_client_request(&incoming_headers);
+    log::debug!(
+        "event=gateway_client_profile trace_id={} path={} originator={} user_agent={} session_affinity={} native_codex={}",
+        trace_id.as_str(),
+        normalized_path.as_str(),
+        incoming_headers.originator().unwrap_or("-"),
+        incoming_headers.user_agent().unwrap_or("-"),
+        incoming_headers.session_affinity().unwrap_or("-"),
+        if native_codex_client {
+            "true"
+        } else {
+            "false"
+        }
+    );
     let initial_local_conversation_id = resolve_local_conversation_id(
         effective_protocol_type,
         normalized_path.as_str(),
@@ -436,7 +506,8 @@ pub(super) fn build_local_validation_result(
     );
     let local_conversation_id = initial_local_conversation_id.clone();
     let allow_codex_compat_rewrite =
-        allow_compat_responses_path_rewrite(effective_protocol_type, normalized_path.as_str());
+        allow_compat_responses_path_rewrite(effective_protocol_type, normalized_path.as_str())
+            || should_force_codex_compat_rewrite(normalized_path.as_str(), native_codex_client);
     let conversation_binding = super::super::conversation_binding::load_conversation_binding(
         &storage,
         api_key.key_hash.as_str(),

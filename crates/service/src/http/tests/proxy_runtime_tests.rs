@@ -730,7 +730,6 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
         .await
         .expect("capture timeout")
         .expect("capture result");
-    let expected_version = crate::gateway::current_codex_user_agent_version();
     assert_eq!(capture.path, "/chatgpt.com/backend-api/codex/responses");
     assert_eq!(
         capture.headers.get("authorization").map(String::as_str),
@@ -743,24 +742,18 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
             .map(String::as_str),
         Some("chatgpt_proxy_runtime_ws")
     );
-    assert_eq!(
-        capture.headers.get("openai-beta").map(String::as_str),
-        Some("responses_websockets=2026-02-06")
-    );
-    assert_eq!(
-        capture.headers.get("version").map(String::as_str),
-        Some(expected_version.as_str())
-    );
+    assert_eq!(capture.headers.get("openai-beta").map(String::as_str), None);
+    assert_eq!(capture.headers.get("version").map(String::as_str), None);
     assert_eq!(
         capture
             .headers
             .get("openai-organization")
             .map(String::as_str),
-        Some("org_ws_test")
+        None
     );
     assert_eq!(
         capture.headers.get("openai-project").map(String::as_str),
-        Some("proj_ws_test")
+        None
     );
     assert_eq!(
         capture.headers.get("session_id").map(String::as_str),
@@ -793,7 +786,7 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
             .headers
             .get("x-codex-other-limit-name")
             .map(String::as_str),
-        Some("promo_header_ws")
+        None
     );
     assert_eq!(
         capture
@@ -814,7 +807,7 @@ async fn official_responses_websocket_proxies_frames_and_headers() {
             .headers
             .get("x-responsesapi-include-timing-metrics")
             .map(String::as_str),
-        Some("true")
+        None
     );
     assert_eq!(capture.frames.len(), 2);
 

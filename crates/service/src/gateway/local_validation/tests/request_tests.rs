@@ -206,6 +206,9 @@ fn sample_request_metadata(prompt_cache_key: Option<&str>) -> ParsedRequestMetad
 fn sample_incoming_headers(
     conversation_id: Option<&str>,
     turn_state: Option<&str>,
+    user_agent: Option<&str>,
+    originator: Option<&str>,
+    session_affinity: Option<&str>,
 ) -> super::super::super::IncomingHeaderSnapshot {
     let mut headers = HeaderMap::new();
     if let Some(conversation_id) = conversation_id {
@@ -220,12 +223,30 @@ fn sample_incoming_headers(
             HeaderValue::from_str(turn_state).expect("header"),
         );
     }
+    if let Some(user_agent) = user_agent {
+        headers.insert(
+            "User-Agent",
+            HeaderValue::from_str(user_agent).expect("header"),
+        );
+    }
+    if let Some(originator) = originator {
+        headers.insert(
+            "originator",
+            HeaderValue::from_str(originator).expect("header"),
+        );
+    }
+    if let Some(session_affinity) = session_affinity {
+        headers.insert(
+            "x-session-affinity",
+            HeaderValue::from_str(session_affinity).expect("header"),
+        );
+    }
     super::super::super::IncomingHeaderSnapshot::from_http_headers(&headers)
 }
 
 #[test]
 fn preferred_client_prompt_cache_key_is_used_without_native_anchor() {
-    let incoming_headers = sample_incoming_headers(None, None);
+    let incoming_headers = sample_incoming_headers(None, None, None, None, None);
     let initial_request_meta = sample_request_metadata(Some("client_thread"));
     let client_request_meta = sample_request_metadata(Some("client_thread"));
 
@@ -241,7 +262,7 @@ fn preferred_client_prompt_cache_key_is_used_without_native_anchor() {
 
 #[test]
 fn preferred_client_prompt_cache_key_is_ignored_when_conversation_anchor_exists() {
-    let incoming_headers = sample_incoming_headers(Some("conv_anchor"), None);
+    let incoming_headers = sample_incoming_headers(Some("conv_anchor"), None, None, None, None);
     let initial_request_meta = sample_request_metadata(Some("client_thread"));
     let client_request_meta = sample_request_metadata(Some("client_thread"));
 
@@ -257,7 +278,8 @@ fn preferred_client_prompt_cache_key_is_ignored_when_conversation_anchor_exists(
 
 #[test]
 fn preferred_client_prompt_cache_key_is_ignored_when_turn_state_exists() {
-    let incoming_headers = sample_incoming_headers(None, Some("turn_state_anchor"));
+    let incoming_headers =
+        sample_incoming_headers(None, Some("turn_state_anchor"), None, None, None);
     let initial_request_meta = sample_request_metadata(Some("client_thread"));
     let client_request_meta = sample_request_metadata(Some("client_thread"));
 
@@ -273,7 +295,7 @@ fn preferred_client_prompt_cache_key_is_ignored_when_turn_state_exists() {
 
 #[test]
 fn preferred_client_prompt_cache_key_is_ignored_even_when_matching_native_anchor() {
-    let incoming_headers = sample_incoming_headers(Some("shared_anchor"), None);
+    let incoming_headers = sample_incoming_headers(Some("shared_anchor"), None, None, None, None);
     let initial_request_meta = sample_request_metadata(Some("shared_anchor"));
     let client_request_meta = sample_request_metadata(Some("shared_anchor"));
 
@@ -289,7 +311,7 @@ fn preferred_client_prompt_cache_key_is_ignored_even_when_matching_native_anchor
 
 #[test]
 fn preferred_client_prompt_cache_key_is_disabled_for_anthropic_native_requests() {
-    let incoming_headers = sample_incoming_headers(None, None);
+    let incoming_headers = sample_incoming_headers(None, None, None, None, None);
     let initial_request_meta = sample_request_metadata(Some("client_thread"));
     let client_request_meta = sample_request_metadata(Some("client_thread"));
 
@@ -356,6 +378,37 @@ fn aggregate_passthrough_applies_model_reasoning_and_service_tier_overrides_with
     assert_eq!(reasoning_for_log.as_deref(), Some("high"));
     assert_eq!(service_tier_for_log, None);
     assert_eq!(effective_service_tier_for_log.as_deref(), Some("fast"));
+}
+
+#[test]
+fn native_codex_client_detection_rejects_opencode_headers() {
+    let native_headers = sample_incoming_headers(
+        None,
+        None,
+        Some("codex_cli_rs/0.999.0"),
+        Some("codex_cli_rs"),
+        Some("affinity-1"),
+    );
+    assert!(is_native_codex_client_request(&native_headers));
+
+    let opencode_headers = sample_incoming_headers(
+        None,
+        None,
+        Some("opencode/0.1.0"),
+        Some("opencode"),
+        Some("affinity-1"),
+    );
+    assert!(!is_native_codex_client_request(&opencode_headers));
+}
+
+#[test]
+fn non_native_responses_requests_force_codex_compat_rewrite() {
+    assert!(should_force_codex_compat_rewrite("/v1/responses", false));
+    assert!(!should_force_codex_compat_rewrite(
+        "/v1/chat/completions",
+        false
+    ));
+    assert!(!should_force_codex_compat_rewrite("/v1/responses", true));
 }
 
 #[test]

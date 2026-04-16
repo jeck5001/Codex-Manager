@@ -522,7 +522,7 @@ mod tests {
     }
 
     #[test]
-    fn build_warmup_headers_keeps_version_in_header_only() {
+    fn build_warmup_headers_omits_non_codex_headers() {
         let account = Account {
             id: "acc-1".to_string(),
             label: "acc-1".to_string(),
@@ -538,10 +538,9 @@ mod tests {
 
         let headers = build_warmup_headers(&account, "bearer-token").expect("build warmup headers");
 
-        assert_eq!(
-            headers.get("version").and_then(|value| value.to_str().ok()),
-            Some(crate::gateway::current_codex_user_agent_version().as_str())
-        );
+        assert!(headers.get("version").is_none());
+        assert!(headers.get("openai-organization").is_none());
+        assert!(headers.get("openai-project").is_none());
         assert!(headers.get("client_version").is_none());
     }
 }
@@ -565,10 +564,6 @@ fn build_warmup_headers(account: &Account, bearer: &str) -> Result<HeaderMap, St
         header_value(&crate::gateway::current_codex_user_agent())?,
     );
     headers.insert(
-        HeaderName::from_static("version"),
-        header_value(&crate::gateway::current_codex_user_agent_version())?,
-    );
-    headers.insert(
         HeaderName::from_static("originator"),
         header_value(&crate::gateway::current_wire_originator())?,
     );
@@ -583,26 +578,6 @@ fn build_warmup_headers(account: &Account, bearer: &str) -> Result<HeaderMap, St
         headers.insert(
             HeaderName::from_static("chatgpt-account-id"),
             header_value(&account_header)?,
-        );
-    }
-    if let Some(org) = std::env::var("OPENAI_ORGANIZATION")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        headers.insert(
-            HeaderName::from_static("openai-organization"),
-            header_value(&org)?,
-        );
-    }
-    if let Some(project) = std::env::var("OPENAI_PROJECT")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        headers.insert(
-            HeaderName::from_static("openai-project"),
-            header_value(&project)?,
         );
     }
 

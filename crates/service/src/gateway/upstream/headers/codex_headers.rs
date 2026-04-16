@@ -1,8 +1,3 @@
-const OPENAI_ORGANIZATION_ENV: &str = "OPENAI_ORGANIZATION";
-const OPENAI_PROJECT_ENV: &str = "OPENAI_PROJECT";
-const OPENAI_ORGANIZATION_HEADER_NAME: &str = "OpenAI-Organization";
-const OPENAI_PROJECT_HEADER_NAME: &str = "OpenAI-Project";
-const VERSION_HEADER_NAME: &str = "version";
 const X_CODEX_WINDOW_ID_HEADER_NAME: &str = "x-codex-window-id";
 const X_CODEX_PARENT_THREAD_ID_HEADER_NAME: &str = "x-codex-parent-thread-id";
 
@@ -79,16 +74,6 @@ pub(crate) fn build_codex_upstream_headers(
         "User-Agent".to_string(),
         crate::gateway::current_codex_user_agent(),
     ));
-    headers.push((
-        VERSION_HEADER_NAME.to_string(),
-        crate::gateway::current_codex_user_agent_version(),
-    ));
-    append_optional_env_header(
-        &mut headers,
-        OPENAI_ORGANIZATION_HEADER_NAME,
-        OPENAI_ORGANIZATION_ENV,
-    );
-    append_optional_env_header(&mut headers, OPENAI_PROJECT_HEADER_NAME, OPENAI_PROJECT_ENV);
     headers.push((
         "originator".to_string(),
         crate::gateway::current_wire_originator(),
@@ -206,16 +191,6 @@ pub(crate) fn build_codex_compact_upstream_headers(
         crate::gateway::current_codex_user_agent(),
     ));
     headers.push((
-        VERSION_HEADER_NAME.to_string(),
-        crate::gateway::current_codex_user_agent_version(),
-    ));
-    append_optional_env_header(
-        &mut headers,
-        OPENAI_ORGANIZATION_HEADER_NAME,
-        OPENAI_ORGANIZATION_ENV,
-    );
-    append_optional_env_header(&mut headers, OPENAI_PROJECT_HEADER_NAME, OPENAI_PROJECT_ENV);
-    headers.push((
         "originator".to_string(),
         crate::gateway::current_wire_originator(),
     ));
@@ -263,20 +238,6 @@ pub(crate) fn build_codex_compact_upstream_headers(
         !input.strip_session_affinity,
     );
     headers
-}
-
-fn append_optional_env_header(
-    headers: &mut Vec<(String, String)>,
-    header_name: &str,
-    env_name: &str,
-) {
-    if let Some(value) = std::env::var(env_name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        headers.push((header_name.to_string(), value));
-    }
 }
 
 /// 函数 `resolve_optional_session_id`
@@ -353,20 +314,11 @@ fn append_passthrough_codex_headers(
     passthrough_headers: &[(String, String)],
     enabled: bool,
 ) {
-    if !enabled {
-        return;
-    }
-    for (name, value) in passthrough_headers {
-        let trimmed_value = value.trim();
-        if trimmed_value.is_empty()
-            || headers
-                .iter()
-                .any(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
-        {
-            continue;
-        }
-        headers.push((name.clone(), trimmed_value.to_string()));
-    }
+    // 中文注释：Codex wire shape 不接受额外透传头；这里保留参数只为兼容调用签名，
+    // 但实际行为是完全丢弃。
+    let _ = headers;
+    let _ = passthrough_headers;
+    let _ = enabled;
 }
 
 /// 函数 `resolve_client_request_id`
@@ -397,29 +349,6 @@ mod tests {
         set_codex_user_agent_version, set_originator, CodexCompactUpstreamHeaderInput,
         CodexUpstreamHeaderInput,
     };
-
-    struct EnvGuard {
-        key: &'static str,
-        original: Option<std::ffi::OsString>,
-    }
-
-    impl EnvGuard {
-        fn set(key: &'static str, value: &str) -> Self {
-            let original = std::env::var_os(key);
-            std::env::set_var(key, value);
-            Self { key, original }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            if let Some(value) = &self.original {
-                std::env::set_var(self.key, value);
-            } else {
-                std::env::remove_var(self.key);
-            }
-        }
-    }
 
     /// 函数 `header_value`
     ///
@@ -456,8 +385,6 @@ mod tests {
         let _guard = crate::test_env_guard();
         let _ = set_originator("codex_cli_rs_tests").expect("set originator");
         let _ = set_codex_user_agent_version("0.999.0").expect("set ua version");
-        let _org_guard = EnvGuard::set("OPENAI_ORGANIZATION", "org_123");
-        let _project_guard = EnvGuard::set("OPENAI_PROJECT", "proj_123");
         let passthrough = vec![(
             "x-codex-other-limit-name".to_string(),
             "promo_header_a".to_string(),
@@ -510,12 +437,9 @@ mod tests {
             header_value(&headers, "originator"),
             Some("codex_cli_rs_tests")
         );
-        assert_eq!(header_value(&headers, "version"), Some("0.999.0"));
-        assert_eq!(
-            header_value(&headers, "OpenAI-Organization"),
-            Some("org_123")
-        );
-        assert_eq!(header_value(&headers, "OpenAI-Project"), Some("proj_123"));
+        assert_eq!(header_value(&headers, "version"), None);
+        assert_eq!(header_value(&headers, "OpenAI-Organization"), None);
+        assert_eq!(header_value(&headers, "OpenAI-Project"), None);
         assert_eq!(
             header_value(&headers, "x-client-request-id"),
             Some("conversation-anchor")
@@ -536,10 +460,7 @@ mod tests {
             header_value(&headers, "x-codex-parent-thread-id"),
             Some("thread-parent-a")
         );
-        assert_eq!(
-            header_value(&headers, "x-codex-other-limit-name"),
-            Some("promo_header_a")
-        );
+        assert_eq!(header_value(&headers, "x-codex-other-limit-name"), None);
     }
 
     /// 函数 `build_codex_upstream_headers_clears_turn_state_when_affinity_diverges`
@@ -599,10 +520,7 @@ mod tests {
             header_value(&headers, "x-codex-parent-thread-id"),
             Some("thread-parent-b")
         );
-        assert_eq!(
-            header_value(&headers, "x-codex-other-limit-name"),
-            Some("promo_header_b")
-        );
+        assert_eq!(header_value(&headers, "x-codex-other-limit-name"), None);
     }
 
     /// 函数 `build_codex_compact_upstream_headers_use_session_fallback_only`
@@ -659,7 +577,7 @@ mod tests {
             header_value(&headers, "x-responsesapi-include-timing-metrics"),
             None
         );
-        assert_eq!(header_value(&headers, "version"), Some("0.999.2"));
+        assert_eq!(header_value(&headers, "version"), None);
         assert_eq!(
             header_value(&headers, "x-openai-subagent"),
             Some("subagent-b")
