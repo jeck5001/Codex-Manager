@@ -20,7 +20,7 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional
 
 from .base import BaseEmailService, EmailServiceError, EmailServiceType
-from ..config.constants import OTP_CODE_PATTERN
+from ..config.constants import OPENAI_VERIFICATION_KEYWORDS, OTP_CODE_PATTERN
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,20 @@ class Mail33ImapService(BaseEmailService):
     DEFAULT_POLL_INTERVAL = 3
     DEFAULT_TIMEOUT = 120
     DEFAULT_ALIAS_LENGTH = 12
+    DEFAULT_SUBJECT_KEYWORD = "Your ChatGPT code is"
+    _GENERIC_SUBJECT_FILTERS = {"openai", "chatgpt"}
+    _SUBJECT_FILTER_ALIASES = tuple(
+        dict.fromkeys(
+            [
+                DEFAULT_SUBJECT_KEYWORD.lower(),
+                "chatgpt log-in code",
+                "chatgpt log in code",
+                "openai",
+                "chatgpt",
+                *[str(item or "").strip().lower() for item in OPENAI_VERIFICATION_KEYWORDS],
+            ]
+        )
+    )
 
     def __init__(self, config: Dict[str, Any] = None, name: str = None):
         super().__init__(EmailServiceType.MAIL_33_IMAP, name)
@@ -46,7 +60,7 @@ class Mail33ImapService(BaseEmailService):
             "imap_mailbox": "INBOX",
             "imap_ssl": True,
             "from_filter": "openai.com",
-            "subject_keyword": "OpenAI",
+            "subject_keyword": self.DEFAULT_SUBJECT_KEYWORD,
             "otp_pattern": OTP_CODE_PATTERN,
             "poll_interval": self.DEFAULT_POLL_INTERVAL,
             "timeout": self.DEFAULT_TIMEOUT,
@@ -79,6 +93,46 @@ class Mail33ImapService(BaseEmailService):
     @staticmethod
     def _normalize_email_text(value: Any) -> str:
         return str(value or "").strip().lower()
+
+    @classmethod
+    def _split_filter_values(cls, value: Any) -> List[str]:
+        if isinstance(value, (list, tuple, set)):
+            values: List[str] = []
+            for item in value:
+                values.extend(cls._split_filter_values(item))
+            return values
+
+        normalized = cls._normalize_email_text(value)
+        if not normalized:
+            return []
+
+        parts = re.split(r"[,，、;；\n]+", normalized)
+        return [part.strip() for part in parts if part.strip()]
+
+    @classmethod
+    def _subject_filter_values(cls, value: Any) -> List[str]:
+        filters: List[str] = []
+        for token in cls._split_filter_values(value):
+            filters.append(token)
+            if token in cls._GENERIC_SUBJECT_FILTERS:
+                filters.extend(cls._SUBJECT_FILTER_ALIASES)
+
+        deduped: List[str] = []
+        seen = set()
+        for item in filters:
+            if item and item not in seen:
+                deduped.append(item)
+                seen.add(item)
+        return deduped
+
+    @staticmethod
+    def _matches_any_filter(filters: List[str], texts: List[str]) -> bool:
+        return any(
+            candidate and candidate in text
+            for candidate in filters
+            for text in texts
+            if text
+        )
 
     @staticmethod
     def _build_alias_local_part(length: int) -> str:
@@ -228,8 +282,8 @@ class Mail33ImapService(BaseEmailService):
         otp_sent_at: Optional[float] = None,
     ) -> Optional[str]:
         target_email = self._normalize_email_text(email)
-        from_filter = self._normalize_email_text(self.config.get("from_filter"))
-        subject_keyword = self._normalize_email_text(self.config.get("subject_keyword"))
+        from_filters = self._split_filter_values(self.config.get("from_filter"))
+        subject_filters = self._subject_filter_values(self.config.get("subject_keyword"))
         pattern = str(self.config.get("otp_pattern") or OTP_CODE_PATTERN)
 
         eligible: List[Dict[str, Any]] = []
@@ -237,13 +291,20 @@ class Mail33ImapService(BaseEmailService):
             recipient_text = self._normalize_email_text(message.get("to"))
             sender_text = self._normalize_email_text(message.get("from"))
             subject_text = self._normalize_email_text(message.get("subject"))
+            body_text = self._normalize_email_text(message.get("body"))
             timestamp = float(message.get("timestamp") or 0)
 
-            if target_email and target_email not in recipient_text:
+            if target_email and not any(
+                target_email in text
+                for text in [recipient_text, subject_text, body_text]
+            ):
                 continue
-            if from_filter and from_filter not in sender_text:
+            if from_filters and not self._matches_any_filter(from_filters, [sender_text]):
                 continue
-            if subject_keyword and subject_keyword not in subject_text:
+            if subject_filters and not self._matches_any_filter(
+                subject_filters,
+                [subject_text, body_text],
+            ):
                 continue
             if otp_sent_at and timestamp and timestamp + 1 < float(otp_sent_at):
                 continue
