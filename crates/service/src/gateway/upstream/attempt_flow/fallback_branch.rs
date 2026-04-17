@@ -16,11 +16,8 @@ pub(super) enum FallbackBranchResult {
 }
 
 fn should_failover_after_fallback_non_success(status: u16, has_more_candidates: bool) -> bool {
-    if !has_more_candidates {
-        return false;
-    }
     matches!(status, 401 | 403 | 404 | 408 | 409 | 429)
-        && super::super::super::retry_policy_allows_status(status)
+        && super::super::super::should_failover_status(status, has_more_candidates)
 }
 
 fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {

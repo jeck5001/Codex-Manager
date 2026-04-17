@@ -27,6 +27,19 @@ fn fallback_non_success_never_failover_without_more_candidates() {
 }
 
 #[test]
+fn fallback_auth_failover_ignores_retry_policy_status_list() {
+    let _retry_guard = crate::gateway::retry_policy_test_guard();
+    crate::gateway::reset_retry_policy_for_tests();
+    crate::gateway::set_retry_policy(3, "immediate", vec![429, 502]).expect("set retry policy");
+
+    assert!(should_failover_after_fallback_non_success(401, true));
+    assert!(should_failover_after_fallback_non_success(403, true));
+    assert!(!should_failover_after_fallback_non_success(404, true));
+
+    crate::gateway::reset_retry_policy_for_tests();
+}
+
+#[test]
 fn fallback_non_success_summary_includes_debug_headers_and_body_hint() {
     let mut headers = HeaderMap::new();
     headers.insert("x-oai-request-id", HeaderValue::from_static("req_fallback"));

@@ -123,6 +123,28 @@ fn challenge_with_more_candidates_triggers_failover() {
 }
 
 #[test]
+fn auth_401_with_more_candidates_ignores_retry_policy_status_list() {
+    let _retry_guard = crate::gateway::retry_policy_test_guard();
+    crate::gateway::reset_retry_policy_for_tests();
+    crate::gateway::set_retry_policy(3, "immediate", vec![429, 502]).expect("set retry policy");
+
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let decision = decide_upstream_outcome(
+        &storage,
+        "acc-auth-401",
+        reqwest::StatusCode::UNAUTHORIZED,
+        None,
+        "https://chatgpt.com/backend-api/codex/responses",
+        true,
+        |_, _, _| {},
+    );
+
+    assert!(matches!(decision, UpstreamOutcomeDecision::Failover));
+    crate::gateway::reset_retry_policy_for_tests();
+}
+
+#[test]
 fn challenge_on_last_candidate_keeps_upstream_response() {
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");

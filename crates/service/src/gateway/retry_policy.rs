@@ -133,6 +133,13 @@ pub(crate) fn retry_policy_allows_status(status_code: u16) -> bool {
         .contains(&status_code)
 }
 
+pub(crate) fn should_failover_status(status_code: u16, has_more_candidates: bool) -> bool {
+    if !has_more_candidates {
+        return false;
+    }
+    matches!(status_code, 401 | 403) || retry_policy_allows_status(status_code)
+}
+
 pub(crate) fn set_retry_policy(
     max_retries: usize,
     backoff_strategy: &str,
