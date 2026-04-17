@@ -416,6 +416,64 @@ fn storage_account_usage_filters_support_sql_pagination() {
 }
 
 #[test]
+fn storage_low_quota_filters_exclude_unavailable_accounts() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+    let now = now_ts();
+
+    let accounts = [
+        ("acc-low-active", "active", 88.0),
+        ("acc-low-unavailable", "unavailable", 92.0),
+    ];
+
+    for (idx, (id, status, used_percent)) in accounts.iter().enumerate() {
+        storage
+            .insert_account(&Account {
+                id: (*id).to_string(),
+                label: (*id).to_string(),
+                issuer: "https://auth.openai.com".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: idx as i64,
+                status: (*status).to_string(),
+                created_at: now + idx as i64,
+                updated_at: now + idx as i64,
+            })
+            .expect("insert account");
+
+        storage
+            .insert_usage_snapshot(&UsageSnapshotRecord {
+                account_id: (*id).to_string(),
+                used_percent: Some(*used_percent),
+                window_minutes: Some(300),
+                resets_at: None,
+                secondary_used_percent: Some(*used_percent),
+                secondary_window_minutes: Some(120),
+                secondary_resets_at: None,
+                credits_json: None,
+                captured_at: now + idx as i64,
+            })
+            .expect("insert usage snapshot");
+    }
+
+    assert_eq!(
+        storage
+            .account_count_low_quota(None, None)
+            .expect("count low quota"),
+        1
+    );
+
+    let low_quota_ids = storage
+        .list_accounts_low_quota(None, None, None)
+        .expect("list low quota")
+        .into_iter()
+        .map(|account| account.id)
+        .collect::<Vec<_>>();
+    assert_eq!(low_quota_ids, vec!["acc-low-active".to_string()]);
+}
+
+#[test]
 fn storage_gateway_candidates_exclude_unavailable_or_missing_token_accounts() {
     let storage = Storage::open_in_memory().expect("open in memory");
     storage.init().expect("init schema");

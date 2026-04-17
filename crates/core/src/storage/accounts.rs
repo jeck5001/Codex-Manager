@@ -535,6 +535,7 @@ fn account_usage_filter_clause(
         ),
         AccountUsageQueryMode::LowQuota => format!(
             "{usage_alias}.account_id IS NOT NULL
+             AND LOWER(TRIM(COALESCE({account_alias}.status, ''))) != 'unavailable'
              AND ({usage_alias}.used_percent >= 80 OR {usage_alias}.secondary_used_percent >= 80)"
         ),
     }

@@ -484,6 +484,9 @@ function AccountKeyInfoCell({
                   <div>候选池 {log.candidateCount}</div>
                 ) : null}
                 {attemptedCount !== null ? <div>实际尝试 {attemptedCount}</div> : null}
+                <div className="text-[10px] text-background/60">
+                  上限由设置里的“最大重试次数”决定
+                </div>
                 {skippedCount !== null ? <div>跳过 {skippedCount}</div> : null}
                 {skippedCooldownCount !== null ? (
                   <div>冷却跳过 {skippedCooldownCount}</div>

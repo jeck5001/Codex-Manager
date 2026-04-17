@@ -2805,7 +2805,8 @@ export default function SettingsPage() {
                       onBlur={saveRetryPolicyMaxRetries}
                     />
                     <p className="text-[10px] text-muted-foreground">
-                      填 <code>0</code> 表示失败后不再切换候选账号。
+                      填 <code>0</code> 表示失败后不再切换候选账号；总尝试次数
+                      = 1 次首发 + 这里的重试次数。
                     </p>
                   </div>
 
