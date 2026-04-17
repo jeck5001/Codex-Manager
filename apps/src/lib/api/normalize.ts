@@ -118,6 +118,10 @@ function asArray<T = unknown>(payload: unknown): T[] {
   return Array.isArray(payload) ? payload : [];
 }
 
+function isUnavailableAccountStatus(status: string): boolean {
+  return status.trim().toLowerCase() === "unavailable";
+}
+
 function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
 }
@@ -615,6 +619,7 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
   const name = asString(source.label || source.name) || id;
   const groupName = asString(source.groupName ?? source.group_name);
   const status = asString(source.status);
+  const isLowQuota = !isUnavailableAccountStatus(status) && isLowQuotaUsage(usage);
   const healthScore = asInteger(source.healthScore ?? source.health_score, 100, 0);
   const cooldownUntil = toNullableNumber(
     source.cooldownUntil ?? source.cooldown_until
@@ -628,7 +633,7 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     status,
     healthScore,
     availabilityLevel: availability.level,
-    isLowQuota: isLowQuotaUsage(usage),
+    isLowQuota,
   });
   const tags = Array.isArray(source.tags)
     ? source.tags
@@ -696,7 +701,7 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
         asString(source.lastIsolationReason ?? source.last_isolation_reason)
       ),
     isAvailable: availability.level === "ok",
-    isLowQuota: isLowQuotaUsage(usage),
+    isLowQuota,
     isDeactivated: status.toLowerCase() === "deactivated",
     lastRefreshAt: usage?.capturedAt ?? null,
     availabilityText: availability.text,
