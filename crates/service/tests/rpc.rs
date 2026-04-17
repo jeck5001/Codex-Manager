@@ -248,14 +248,12 @@ fn rpc_register_task_read_returns_local_status_and_logs() {
             .and_then(|value| value.as_str()),
         Some("completed")
     );
-    assert!(
-        read_resp
-            .get("result")
-            .and_then(|value| value.get("logs"))
-            .and_then(|value| value.as_array())
-            .map(|items| !items.is_empty())
-            .unwrap_or(false)
-    );
+    assert!(read_resp
+        .get("result")
+        .and_then(|value| value.get("logs"))
+        .and_then(|value| value.as_array())
+        .map(|items| !items.is_empty())
+        .unwrap_or(false));
 }
 
 fn build_access_token(
@@ -2412,10 +2410,18 @@ fn rpc_register_import_by_email_uses_remote_session_token_as_cookie_fallback() {
     let ctx = RpcTestContext::new("rpc-register-import-session-token-fallback");
     let email = "import-session@example.com";
     let account_identity = "workspace-session-import";
-    let imported_access_token =
-        build_access_token("subject-session-import-old", email, account_identity, "free");
-    let refreshed_access_token =
-        build_access_token("subject-session-import-new", email, account_identity, "plus");
+    let imported_access_token = build_access_token(
+        "subject-session-import-old",
+        email,
+        account_identity,
+        "free",
+    );
+    let refreshed_access_token = build_access_token(
+        "subject-session-import-new",
+        email,
+        account_identity,
+        "plus",
+    );
     let remote_session_token = "remote-session-token-777";
 
     let (register_url, register_rx, register_join) =
@@ -2466,7 +2472,9 @@ fn rpc_register_import_by_email_uses_remote_session_token_as_cookie_fallback() {
     let recover_resp = post_rpc(&recover_server.addr, &recover_json);
     let recover_result = recover_resp.get("result").expect("recover result");
     assert_eq!(
-        recover_result.get("status").and_then(|value| value.as_str()),
+        recover_result
+            .get("status")
+            .and_then(|value| value.as_str()),
         Some("recovered")
     );
 
@@ -2483,8 +2491,7 @@ fn rpc_register_import_by_email_uses_remote_session_token_as_cookie_fallback() {
         vec![
             (
                 "GET".to_string(),
-                "/api/accounts?page=1&page_size=20&search=import-session%40example.com"
-                    .to_string(),
+                "/api/accounts?page=1&page_size=20&search=import-session%40example.com".to_string(),
             ),
             ("GET".to_string(), "/api/accounts/777/tokens".to_string()),
         ]
@@ -2741,28 +2748,41 @@ fn rpc_account_auth_recover_remote_manager_preserves_cookie_only_session_for_fol
     let email = "recover-remote-cookie@example.com";
     let chatgpt_account_id = "chatgpt-remote-cookie";
     let workspace_id = "workspace-remote-cookie";
-    let expired_access_token =
-        build_access_token("subject-remote-cookie-old", email, chatgpt_account_id, "free");
-    let imported_access_token =
-        build_access_token("subject-remote-cookie-imported", email, chatgpt_account_id, "free");
-    let refreshed_access_token =
-        build_access_token("subject-remote-cookie-new", email, chatgpt_account_id, "plus");
+    let expired_access_token = build_access_token(
+        "subject-remote-cookie-old",
+        email,
+        chatgpt_account_id,
+        "free",
+    );
+    let imported_access_token = build_access_token(
+        "subject-remote-cookie-imported",
+        email,
+        chatgpt_account_id,
+        "free",
+    );
+    let refreshed_access_token = build_access_token(
+        "subject-remote-cookie-new",
+        email,
+        chatgpt_account_id,
+        "plus",
+    );
     let (issuer, _refresh_rx, oauth_join) =
         start_mock_oauth_token_server(401, r#"{"error":"refresh_token_reused"}"#.to_string());
     let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let _client_id_guard =
-        EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-remote-cookie");
+    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-remote-cookie");
     let (register_url, register_rx, register_join) = start_mock_register_service_probe_server();
     let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
-    let (recovery_url, recovery_rx, recovery_join) = start_mock_recovery_manager_server_with_cookies(
-        email.to_string(),
-        "remote-account-cookie-1".to_string(),
-        chatgpt_account_id.to_string(),
-        workspace_id.to_string(),
-        imported_access_token.clone(),
-        "".to_string(),
-        "__Secure-next-auth.session-token=remote-cookie-session; oai-did=remote-cookie-device".to_string(),
-    );
+    let (recovery_url, recovery_rx, recovery_join) =
+        start_mock_recovery_manager_server_with_cookies(
+            email.to_string(),
+            "remote-account-cookie-1".to_string(),
+            chatgpt_account_id.to_string(),
+            workspace_id.to_string(),
+            imported_access_token.clone(),
+            "".to_string(),
+            "__Secure-next-auth.session-token=remote-cookie-session; oai-did=remote-cookie-device"
+                .to_string(),
+        );
     let _recovery_guard = EnvGuard::set("CODEXMANAGER_ACCOUNT_RECOVERY_SOURCE_URL", &recovery_url);
     let (session_url, session_rx, session_join) = start_mock_session_refresh_server(
         serde_json::json!({
@@ -2815,7 +2835,9 @@ fn rpc_account_auth_recover_remote_manager_preserves_cookie_only_session_for_fol
     let recover_resp = post_rpc(&recover_server.addr, &recover_json);
     let recover_result = recover_resp.get("result").expect("recover result");
     assert_eq!(
-        recover_result.get("status").and_then(|value| value.as_str()),
+        recover_result
+            .get("status")
+            .and_then(|value| value.as_str()),
         Some("recovered"),
         "recover response: {recover_resp}"
     );
@@ -3209,6 +3231,11 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
                 account_id: Some("acc-page".to_string()),
                 initial_account_id: Some("acc-free".to_string()),
                 attempted_account_ids_json: Some(r#"["acc-free","acc-page"]"#.to_string()),
+                candidate_count: Some(9),
+                attempted_count: Some(2),
+                skipped_count: Some(7),
+                skipped_cooldown_count: Some(6),
+                skipped_inflight_count: Some(1),
                 route_strategy: Some("least-latency".to_string()),
                 requested_model: None,
                 model_fallback_path_json: None,
@@ -3299,6 +3326,24 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
             .and_then(|value| value.as_array())
             .map(|items| items.len()),
         Some(2)
+    );
+    assert_eq!(
+        items[0]
+            .get("candidateCount")
+            .and_then(|value| value.as_i64()),
+        Some(9)
+    );
+    assert_eq!(
+        items[0]
+            .get("attemptedCount")
+            .and_then(|value| value.as_i64()),
+        Some(2)
+    );
+    assert_eq!(
+        items[0]
+            .get("skippedCount")
+            .and_then(|value| value.as_i64()),
+        Some(7)
     );
     assert_eq!(
         items[0]

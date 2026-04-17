@@ -264,6 +264,8 @@ pub(in super::super) fn proxy_validated_request(
                 error: None,
                 elapsed_ms: started_at.elapsed().as_millis(),
                 attempted_account_ids: None,
+                skipped_cooldown_count: 0,
+                skipped_inflight_count: 0,
             });
             super::super::response_cache::respond_with_cached_response(
                 request,
@@ -486,6 +488,8 @@ pub(in super::super) fn proxy_validated_request(
         elapsed_ms: started_at.elapsed().as_millis(),
         attempted_account_ids: (!attempted_account_ids_all.is_empty())
             .then_some(attempted_account_ids_all.as_slice()),
+        skipped_cooldown_count: skipped_cooldown_total,
+        skipped_inflight_count: skipped_inflight_total,
     });
     respond_terminal(
         request,

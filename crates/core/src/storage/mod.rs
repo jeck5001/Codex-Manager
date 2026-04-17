@@ -107,6 +107,11 @@ pub struct RequestLog {
     pub account_id: Option<String>,
     pub initial_account_id: Option<String>,
     pub attempted_account_ids_json: Option<String>,
+    pub candidate_count: Option<i64>,
+    pub attempted_count: Option<i64>,
+    pub skipped_count: Option<i64>,
+    pub skipped_cooldown_count: Option<i64>,
+    pub skipped_inflight_count: Option<i64>,
     pub route_strategy: Option<String>,
     pub requested_model: Option<String>,
     pub model_fallback_path_json: Option<String>,
@@ -645,6 +650,11 @@ impl Storage {
         self.apply_sql_migration(
             "045_plugins",
             include_str!("../../migrations/045_plugins.sql"),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "046_request_logs_candidate_stats",
+            include_str!("../../migrations/046_request_logs_candidate_stats.sql"),
+            |s| s.ensure_request_log_candidate_stats_columns(),
         )?;
         self.ensure_alerting_tables()?;
         self.ensure_audit_logs_table()?;

@@ -107,6 +107,11 @@ fn write_azure_request_log(args: AzureRequestLogArgs<'_>) {
         },
         super::super::super::request_log::RequestLogRouteMeta {
             attempted_account_ids: None,
+            candidate_count: None,
+            attempted_count: None,
+            skipped_count: None,
+            skipped_cooldown_count: None,
+            skipped_inflight_count: None,
             requested_model,
             model_fallback_path: None,
         },

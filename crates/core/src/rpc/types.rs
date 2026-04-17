@@ -613,6 +613,11 @@ pub struct RequestLogSummary {
     pub initial_account_id: Option<String>,
     #[serde(default)]
     pub attempted_account_ids: Vec<String>,
+    pub candidate_count: Option<i64>,
+    pub attempted_count: Option<i64>,
+    pub skipped_count: Option<i64>,
+    pub skipped_cooldown_count: Option<i64>,
+    pub skipped_inflight_count: Option<i64>,
     pub route_strategy: Option<String>,
     pub requested_model: Option<String>,
     #[serde(default)]

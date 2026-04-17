@@ -138,6 +138,7 @@ pub(crate) fn to_request_log_summary(item: RequestLog) -> RequestLogSummary {
         .as_deref()
         .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
         .unwrap_or_default();
+    let attempted_account_count = attempted_account_ids.len() as i64;
     let model_fallback_path = item
         .model_fallback_path_json
         .as_deref()
@@ -149,6 +150,15 @@ pub(crate) fn to_request_log_summary(item: RequestLog) -> RequestLogSummary {
         account_id: item.account_id,
         initial_account_id: item.initial_account_id,
         attempted_account_ids,
+        candidate_count: item.candidate_count,
+        attempted_count: item.attempted_count.or_else(|| {
+            item.attempted_account_ids_json
+                .as_ref()
+                .map(|_| attempted_account_count)
+        }),
+        skipped_count: item.skipped_count,
+        skipped_cooldown_count: item.skipped_cooldown_count,
+        skipped_inflight_count: item.skipped_inflight_count,
         route_strategy: item.route_strategy,
         requested_model: item.requested_model,
         model_fallback_path,

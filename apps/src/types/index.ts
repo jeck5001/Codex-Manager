@@ -567,6 +567,11 @@ export interface RequestLog {
   accountId: string;
   initialAccountId: string;
   attemptedAccountIds: string[];
+  candidateCount: number | null;
+  attemptedCount: number | null;
+  skippedCount: number | null;
+  skippedCooldownCount: number | null;
+  skippedInflightCount: number | null;
   routeStrategy: string;
   requestedModel: string;
   modelFallbackPath: string[];
