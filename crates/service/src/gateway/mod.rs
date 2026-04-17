@@ -203,9 +203,7 @@ fn decode_base64_header_value(input: &[u8]) -> Option<Vec<u8>> {
 
     Some(output)
 }
-pub(crate) use freeproxy::{
-    clear_proxy_pools, sync_proxy_pool_from_freeproxy, FreeProxySyncInput,
-};
+pub(crate) use freeproxy::{clear_proxy_pools, sync_proxy_pool_from_freeproxy, FreeProxySyncInput};
 pub(super) use incoming_headers::IncomingHeaderSnapshot;
 use local_count_tokens::maybe_respond_local_count_tokens;
 use local_models::maybe_respond_local_models;
@@ -228,7 +226,7 @@ pub(crate) use response_cache::{
 };
 pub(crate) use retry_policy::{
     current_retry_policy, retry_policy_allows_status, retry_policy_max_retries, set_retry_policy,
-    sleep_before_retry, RetryPolicySnapshot,
+    should_failover_status, sleep_before_retry, RetryPolicySnapshot,
 };
 #[cfg(test)]
 pub(crate) use retry_policy::{reset_retry_policy_for_tests, retry_policy_test_guard};
