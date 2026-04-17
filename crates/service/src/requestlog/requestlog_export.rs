@@ -9,7 +9,7 @@ use crate::storage_helpers::open_storage;
 use super::list::{normalize_filter_params, to_request_log_summary, to_storage_filters};
 
 const REQUEST_LOG_EXPORT_CSV_HEADER: &str =
-    "traceId,keyId,accountId,initialAccountId,attemptedAccountIds,routeStrategy,requestedModel,modelFallbackPath,requestPath,originalPath,adaptedPath,method,model,reasoningEffort,responseAdapter,upstreamUrl,statusCode,durationMs,inputTokens,cachedInputTokens,outputTokens,totalTokens,reasoningOutputTokens,estimatedCostUsd,error,createdAt";
+    "traceId,keyId,accountId,initialAccountId,attemptedAccountIds,candidateCount,attemptedCount,skippedCount,skippedCooldownCount,skippedInflightCount,routeStrategy,requestedModel,modelFallbackPath,requestPath,originalPath,adaptedPath,method,model,reasoningEffort,responseAdapter,upstreamUrl,statusCode,durationMs,inputTokens,cachedInputTokens,outputTokens,totalTokens,reasoningOutputTokens,estimatedCostUsd,error,createdAt";
 const REQUEST_LOG_EXPORT_BATCH_SIZE: i64 = 500;
 
 pub(crate) struct RequestLogExportPlan {
@@ -72,6 +72,11 @@ fn append_csv_row(output: &mut String, item: &RequestLogSummary) {
         optional_string(item.account_id.as_deref()),
         optional_string(item.initial_account_id.as_deref()),
         json_string(&item.attempted_account_ids),
+        optional_i64(item.candidate_count),
+        optional_i64(item.attempted_count),
+        optional_i64(item.skipped_count),
+        optional_i64(item.skipped_cooldown_count),
+        optional_i64(item.skipped_inflight_count),
         optional_string(item.route_strategy.as_deref()),
         optional_string(item.requested_model.as_deref()),
         json_string(&item.model_fallback_path),
@@ -117,6 +122,11 @@ fn build_request_log_export_csv(items: &[RequestLogSummary]) -> String {
                 optional_string(item.account_id.as_deref()),
                 optional_string(item.initial_account_id.as_deref()),
                 json_string(&item.attempted_account_ids),
+                optional_i64(item.candidate_count),
+                optional_i64(item.attempted_count),
+                optional_i64(item.skipped_count),
+                optional_i64(item.skipped_cooldown_count),
+                optional_i64(item.skipped_inflight_count),
                 optional_string(item.route_strategy.as_deref()),
                 optional_string(item.requested_model.as_deref()),
                 json_string(&item.model_fallback_path),
@@ -376,6 +386,11 @@ mod tests {
             account_id: Some("acc-stream".to_string()),
             initial_account_id: Some("acc-stream".to_string()),
             attempted_account_ids_json: Some(r#"["acc-stream"]"#.to_string()),
+            candidate_count: Some(6),
+            attempted_count: Some(1),
+            skipped_count: Some(5),
+            skipped_cooldown_count: Some(4),
+            skipped_inflight_count: Some(1),
             route_strategy: Some("balanced".to_string()),
             requested_model: Some("o3".to_string()),
             model_fallback_path_json: Some(r#"["o3"]"#.to_string()),
@@ -408,6 +423,11 @@ mod tests {
             account_id: Some("acc-export".to_string()),
             initial_account_id: Some("acc-initial".to_string()),
             attempted_account_ids: vec!["acc-initial".to_string(), "acc-export".to_string()],
+            candidate_count: Some(12),
+            attempted_count: Some(2),
+            skipped_count: Some(10),
+            skipped_cooldown_count: Some(9),
+            skipped_inflight_count: Some(1),
             route_strategy: Some("balanced".to_string()),
             requested_model: Some("o3".to_string()),
             model_fallback_path: vec!["o3".to_string(), "gpt-4o".to_string()],
@@ -432,6 +452,7 @@ mod tests {
         }]);
 
         assert!(csv.contains("traceId,keyId,accountId"));
+        assert!(csv.contains("candidateCount,attemptedCount,skippedCount"));
         assert!(csv.contains("trc-export"));
         assert!(csv.contains("\"[\"\"acc-initial\"\",\"\"acc-export\"\"]\""));
     }

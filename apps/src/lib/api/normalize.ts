@@ -939,6 +939,15 @@ export function normalizeRequestLog(item: unknown): RequestLog | null {
     attemptedAccountIds: asArray(source.attemptedAccountIds ?? source.attempted_account_ids)
       .map((value) => asString(value))
       .filter((value) => value.length > 0),
+    candidateCount: toNullableNumber(source.candidateCount ?? source.candidate_count),
+    attemptedCount: toNullableNumber(source.attemptedCount ?? source.attempted_count),
+    skippedCount: toNullableNumber(source.skippedCount ?? source.skipped_count),
+    skippedCooldownCount: toNullableNumber(
+      source.skippedCooldownCount ?? source.skipped_cooldown_count
+    ),
+    skippedInflightCount: toNullableNumber(
+      source.skippedInflightCount ?? source.skipped_inflight_count
+    ),
     routeStrategy: asString(source.routeStrategy ?? source.route_strategy),
     requestedModel: asString(source.requestedModel ?? source.requested_model),
     modelFallbackPath: asArray(source.modelFallbackPath ?? source.model_fallback_path)

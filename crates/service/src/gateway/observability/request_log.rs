@@ -35,6 +35,11 @@ pub(super) struct RequestLogEntry<'a> {
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct RequestLogRouteMeta<'a> {
     pub attempted_account_ids: Option<&'a [String]>,
+    pub candidate_count: Option<usize>,
+    pub attempted_count: Option<usize>,
+    pub skipped_count: Option<usize>,
+    pub skipped_cooldown_count: Option<usize>,
+    pub skipped_inflight_count: Option<usize>,
     pub requested_model: Option<&'a str>,
     pub model_fallback_path: Option<&'a [String]>,
 }
@@ -120,6 +125,10 @@ fn normalize_duration_ms(value: Option<u128>) -> Option<i64> {
     value.map(|duration| duration.min(i64::MAX as u128) as i64)
 }
 
+fn normalize_count(value: Option<usize>) -> Option<i64> {
+    value.map(|count| count.min(i64::MAX as usize) as i64)
+}
+
 fn is_inference_path(path: &str) -> bool {
     path.starts_with("/v1/responses")
         || path.starts_with("/v1/chat/completions")
@@ -167,6 +176,14 @@ pub(super) fn write_request_log_with_attempts_and_model_fallback(
         .attempted_account_ids
         .filter(|items| !items.is_empty())
         .and_then(|items| serde_json::to_string(items).ok());
+    let attempted_count = route_meta
+        .attempted_count
+        .or_else(|| route_meta.attempted_account_ids.map(|items| items.len()));
+    let skipped_cooldown_count = route_meta.skipped_cooldown_count.unwrap_or_default();
+    let skipped_inflight_count = route_meta.skipped_inflight_count.unwrap_or_default();
+    let skipped_count = route_meta
+        .skipped_count
+        .or(Some(skipped_cooldown_count + skipped_inflight_count));
     let model_fallback_path_json = route_meta
         .model_fallback_path
         .filter(|items| items.len() > 1)
@@ -235,6 +252,11 @@ pub(super) fn write_request_log_with_attempts_and_model_fallback(
             account_id: entry.account_id.map(|v| v.to_string()),
             initial_account_id: initial_account_id.map(str::to_string),
             attempted_account_ids_json,
+            candidate_count: normalize_count(route_meta.candidate_count),
+            attempted_count: normalize_count(attempted_count),
+            skipped_count: normalize_count(skipped_count),
+            skipped_cooldown_count: normalize_count(Some(skipped_cooldown_count)),
+            skipped_inflight_count: normalize_count(Some(skipped_inflight_count)),
             route_strategy: Some(super::current_route_strategy().to_string()),
             requested_model: route_meta.requested_model.map(|value| value.to_string()),
             model_fallback_path_json,

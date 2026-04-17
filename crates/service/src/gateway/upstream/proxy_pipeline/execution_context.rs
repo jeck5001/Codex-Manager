@@ -27,6 +27,8 @@ pub(in super::super) struct FinalResultLogArgs<'a> {
     pub(in super::super) error: Option<&'a str>,
     pub(in super::super) elapsed_ms: u128,
     pub(in super::super) attempted_account_ids: Option<&'a [String]>,
+    pub(in super::super) skipped_cooldown_count: usize,
+    pub(in super::super) skipped_inflight_count: usize,
 }
 
 impl<'a> GatewayUpstreamExecutionContext<'a> {
@@ -149,7 +151,13 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
             error,
             elapsed_ms,
             attempted_account_ids,
+            skipped_cooldown_count,
+            skipped_inflight_count,
         } = args;
+        let has_candidate_stats = self.candidate_count > 0
+            || attempted_account_ids.is_some()
+            || skipped_cooldown_count > 0
+            || skipped_inflight_count > 0;
         super::super::super::request_log::write_request_log_with_attempts_and_model_fallback(
             self.storage,
             super::super::super::request_log::RequestLogTraceContext {
@@ -173,6 +181,14 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
             },
             super::super::super::request_log::RequestLogRouteMeta {
                 attempted_account_ids,
+                candidate_count: has_candidate_stats
+                    .then_some(self.candidate_count)
+                    .filter(|count| *count > 0),
+                attempted_count: attempted_account_ids.map(|items| items.len()),
+                skipped_count: has_candidate_stats
+                    .then_some(skipped_cooldown_count + skipped_inflight_count),
+                skipped_cooldown_count: has_candidate_stats.then_some(skipped_cooldown_count),
+                skipped_inflight_count: has_candidate_stats.then_some(skipped_inflight_count),
                 requested_model: self.requested_model,
                 model_fallback_path: self.model_fallback_path,
             },

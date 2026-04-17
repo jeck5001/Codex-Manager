@@ -124,6 +124,8 @@ pub(in super::super) fn execute_candidate_sequence(
                 started_at,
                 model_for_log,
                 Some(attempted_account_ids.as_slice()),
+                skipped_cooldown,
+                skipped_inflight,
             )?;
             return Ok(CandidateExecutionResult::Handled);
         }
@@ -208,6 +210,8 @@ pub(in super::super) fn execute_candidate_sequence(
                     error: Some(reject.message.as_str()),
                     elapsed_ms: started_at.elapsed().as_millis(),
                     attempted_account_ids: Some(attempted_account_ids.as_slice()),
+                    skipped_cooldown_count: skipped_cooldown,
+                    skipped_inflight_count: skipped_inflight,
                 });
                 let response = super::super::super::error_response::json_value_response(
                     reject.status_code,
@@ -281,6 +285,8 @@ pub(in super::super) fn execute_candidate_sequence(
                         started_at,
                         model_for_log,
                         Some(attempted_account_ids.as_slice()),
+                        skipped_cooldown,
+                        skipped_inflight,
                     )?;
                     return Ok(CandidateExecutionResult::Handled);
                 }
@@ -304,6 +310,8 @@ pub(in super::super) fn execute_candidate_sequence(
                     started_at,
                     model_for_log: attempt_model_for_log.as_deref(),
                     attempted_account_ids: Some(attempted_account_ids.as_slice()),
+                    skipped_cooldown_count: skipped_cooldown,
+                    skipped_inflight_count: skipped_inflight,
                 })?;
                 return Ok(CandidateExecutionResult::Handled);
             }
@@ -357,6 +365,8 @@ pub(in super::super) fn execute_candidate_sequence(
                                     started_at,
                                     model_for_log,
                                     Some(attempted_account_ids.as_slice()),
+                                    skipped_cooldown,
+                                    skipped_inflight,
                                 )?;
                                 return Ok(CandidateExecutionResult::Handled);
                             }
@@ -380,6 +390,8 @@ pub(in super::super) fn execute_candidate_sequence(
                                 started_at,
                                 model_for_log: attempt_model_for_log.as_deref(),
                                 attempted_account_ids: Some(attempted_account_ids.as_slice()),
+                                skipped_cooldown_count: skipped_cooldown,
+                                skipped_inflight_count: skipped_inflight,
                             })?;
                             return Ok(CandidateExecutionResult::Handled);
                         }
@@ -426,6 +438,8 @@ pub(in super::super) fn execute_candidate_sequence(
                     model_for_log: attempt_model_for_log.as_deref(),
                     response_cache_key,
                     attempted_account_ids: Some(attempted_account_ids.as_slice()),
+                    skipped_cooldown_count: skipped_cooldown,
+                    skipped_inflight_count: skipped_inflight,
                 })?;
                 return Ok(CandidateExecutionResult::Handled);
             }

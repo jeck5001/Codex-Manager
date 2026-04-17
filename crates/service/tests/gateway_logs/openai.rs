@@ -2440,6 +2440,27 @@ fn gateway_at_only_stateless_retry_fails_over_to_next_candidate() {
         third.headers.get("authorization").map(String::as_str),
         Some("Bearer access_token_at_only_failover_good")
     );
+
+    let mut matched = None;
+    for _ in 0..40 {
+        let logs = storage
+            .list_request_logs(Some("key:=gk_openai_at_only_failover"), 20)
+            .expect("list request logs");
+        matched = logs
+            .into_iter()
+            .find(|item| item.request_path == "/v1/responses");
+        if matched.is_some() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    let log = matched.expect("at-only failover request log");
+    assert_eq!(log.candidate_count, Some(2));
+    assert_eq!(log.attempted_count, Some(2));
+    assert_eq!(log.skipped_count, Some(0));
+    assert_eq!(log.skipped_cooldown_count, Some(0));
+    assert_eq!(log.skipped_inflight_count, Some(0));
 }
 
 #[test]
@@ -2804,9 +2825,15 @@ fn gateway_token_invalidated_marks_account_unavailable_and_fails_over() {
             401,
             first_body,
             vec![
-                ("x-request-id".to_string(), "req-token-invalidated".to_string()),
+                (
+                    "x-request-id".to_string(),
+                    "req-token-invalidated".to_string(),
+                ),
                 ("cf-ray".to_string(), "ray-token-invalidated".to_string()),
-                ("x-openai-authorization-error".to_string(), "401".to_string()),
+                (
+                    "x-openai-authorization-error".to_string(),
+                    "401".to_string(),
+                ),
                 (
                     "x-error-json".to_string(),
                     "{\"identity_error_code\":\"token_invalidated\"}".to_string(),

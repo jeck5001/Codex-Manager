@@ -33,6 +33,8 @@ pub(super) fn respond_total_timeout(
     started_at: std::time::Instant,
     model_for_log: Option<&str>,
     attempted_account_ids: Option<&[String]>,
+    skipped_cooldown_count: usize,
+    skipped_inflight_count: usize,
 ) -> Result<(), String> {
     let message = "upstream total timeout exceeded".to_string();
     context.log_final_result_with_model(FinalResultLogArgs {
@@ -44,6 +46,8 @@ pub(super) fn respond_total_timeout(
         error: Some(message.as_str()),
         elapsed_ms: started_at.elapsed().as_millis(),
         attempted_account_ids,
+        skipped_cooldown_count,
+        skipped_inflight_count,
     });
     respond_terminal(request, 504, message, Some(trace_id))
 }
@@ -59,6 +63,8 @@ pub(super) struct TerminalCandidateArgs<'a> {
     pub(super) started_at: std::time::Instant,
     pub(super) model_for_log: Option<&'a str>,
     pub(super) attempted_account_ids: Option<&'a [String]>,
+    pub(super) skipped_cooldown_count: usize,
+    pub(super) skipped_inflight_count: usize,
 }
 
 pub(super) fn finalize_terminal_candidate(args: TerminalCandidateArgs<'_>) -> Result<(), String> {
@@ -73,6 +79,8 @@ pub(super) fn finalize_terminal_candidate(args: TerminalCandidateArgs<'_>) -> Re
         started_at,
         model_for_log,
         attempted_account_ids,
+        skipped_cooldown_count,
+        skipped_inflight_count,
     } = args;
     context.log_final_result_with_model(FinalResultLogArgs {
         final_account_id: Some(account_id),
@@ -83,6 +91,8 @@ pub(super) fn finalize_terminal_candidate(args: TerminalCandidateArgs<'_>) -> Re
         error: Some(message.as_str()),
         elapsed_ms: started_at.elapsed().as_millis(),
         attempted_account_ids,
+        skipped_cooldown_count,
+        skipped_inflight_count,
     });
     respond_terminal(request, status_code, message, Some(trace_id))
 }
@@ -105,6 +115,8 @@ pub(super) struct FinalizeUpstreamResponseArgs<'a> {
     pub(super) model_for_log: Option<&'a str>,
     pub(super) response_cache_key: Option<&'a str>,
     pub(super) attempted_account_ids: Option<&'a [String]>,
+    pub(super) skipped_cooldown_count: usize,
+    pub(super) skipped_inflight_count: usize,
 }
 
 pub(super) fn finalize_upstream_response(
@@ -128,6 +140,8 @@ pub(super) fn finalize_upstream_response(
         model_for_log,
         response_cache_key,
         attempted_account_ids,
+        skipped_cooldown_count,
+        skipped_inflight_count,
     } = args;
     let status_code = response.status().as_u16();
     let mut final_error = None;
@@ -232,6 +246,8 @@ pub(super) fn finalize_upstream_response(
         error: final_error.as_deref(),
         elapsed_ms: started_at.elapsed().as_millis(),
         attempted_account_ids,
+        skipped_cooldown_count,
+        skipped_inflight_count,
     });
     Ok(())
 }

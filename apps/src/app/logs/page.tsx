@@ -416,6 +416,22 @@ function AccountKeyInfoCell({
     accountNameMap,
   );
   const apiKeyName = resolveApiKeyName(log.keyId, apiKeyNameMap);
+  const attemptedCount =
+    log.attemptedCount ??
+    (log.attemptedAccountIds.length > 0 ? log.attemptedAccountIds.length : null);
+  const skippedCooldownCount = log.skippedCooldownCount;
+  const skippedInflightCount = log.skippedInflightCount;
+  const skippedCount =
+    log.skippedCount ??
+    (skippedCooldownCount !== null || skippedInflightCount !== null
+      ? (skippedCooldownCount ?? 0) + (skippedInflightCount ?? 0)
+      : null);
+  const hasCandidateStats =
+    log.candidateCount !== null ||
+    attemptedCount !== null ||
+    skippedCount !== null ||
+    skippedCooldownCount !== null ||
+    skippedInflightCount !== null;
   const showAttemptHint =
     attemptedAccountLabels.length > 1 &&
     initialAccountLabel &&
@@ -457,6 +473,24 @@ function AccountKeyInfoCell({
               <div className="text-[10px] text-background/70">尝试链路</div>
               <div className="break-all font-mono text-[11px]">
                 {attemptedAccountLabels.join(" -> ")}
+              </div>
+            </div>
+          ) : null}
+          {hasCandidateStats ? (
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-background/70">候选统计</div>
+              <div className="space-y-0.5 font-mono text-[11px]">
+                {log.candidateCount !== null ? (
+                  <div>候选池 {log.candidateCount}</div>
+                ) : null}
+                {attemptedCount !== null ? <div>实际尝试 {attemptedCount}</div> : null}
+                {skippedCount !== null ? <div>跳过 {skippedCount}</div> : null}
+                {skippedCooldownCount !== null ? (
+                  <div>冷却跳过 {skippedCooldownCount}</div>
+                ) : null}
+                {skippedInflightCount !== null ? (
+                  <div>并发跳过 {skippedInflightCount}</div>
+                ) : null}
               </div>
             </div>
           ) : null}
