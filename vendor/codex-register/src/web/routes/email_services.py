@@ -660,8 +660,22 @@ async def get_service_types():
                     {"name": "imap_password", "label": "IMAP 密码/授权码", "required": True, "secret": True},
                     {"name": "imap_mailbox", "label": "邮箱目录", "required": False, "default": "INBOX"},
                     {"name": "imap_ssl", "label": "启用 SSL", "required": False, "default": True},
-                    {"name": "from_filter", "label": "发件人过滤", "required": False, "default": "openai.com", "placeholder": "openai.com"},
-                    {"name": "subject_keyword", "label": "主题关键字", "required": False, "default": "OpenAI", "placeholder": "OpenAI"},
+                    {
+                        "name": "from_filter",
+                        "label": "发件人过滤",
+                        "required": False,
+                        "default": "openai.com",
+                        "placeholder": "openai.com, sender@mailer1.33mail.com",
+                        "description": "支持多个值，逗号或 、 分隔；留空表示不过滤发件人",
+                    },
+                    {
+                        "name": "subject_keyword",
+                        "label": "主题关键字",
+                        "required": False,
+                        "default": "Your ChatGPT code is",
+                        "placeholder": "Your ChatGPT code is",
+                        "description": "支持多个值，逗号或 、 分隔；留空表示不过滤主题/正文关键字",
+                    },
                     {"name": "otp_pattern", "label": "验证码正则", "required": False, "default": "(?<!\\\\d)(\\\\d{6})(?!\\\\d)"},
                     {"name": "poll_interval", "label": "轮询间隔(秒)", "required": False, "default": 3},
                     {"name": "timeout", "label": "超时时间(秒)", "required": False, "default": 120},
@@ -815,8 +829,8 @@ async def update_email_service(service_id: int, request: EmailServiceUpdate):
                 )
 
             merged_config = {**current_config, **incoming_config}
-            # 移除空值
-            merged_config = {k: v for k, v in merged_config.items() if v}
+            # 仅移除显式 None，保留空字符串/false/0，允许清空过滤条件和关闭布尔配置。
+            merged_config = {k: v for k, v in merged_config.items() if v is not None}
             update_data["config"] = merged_config
         if request.enabled is not None:
             update_data["enabled"] = request.enabled

@@ -19,6 +19,8 @@ def load_email_services_module():
     for module_name_item in list(sys.modules):
         if module_name_item == "src" or module_name_item.startswith("src."):
             sys.modules.pop(module_name_item, None)
+    for module_name_item in ("fastapi", "pydantic"):
+        sys.modules.pop(module_name_item, None)
 
     src_dir = Path(__file__).resolve().parents[1] / "src"
     web_dir = src_dir / "web"
@@ -213,8 +215,13 @@ class Mail33RouteExposureTests(unittest.TestCase):
 
         payload = asyncio.run(module.get_service_types())
         values = {item["value"] for item in payload["types"]}
+        mail33 = next(item for item in payload["types"] if item["value"] == "mail_33_imap")
+        subject_keyword_field = next(
+            field for field in mail33["config_fields"] if field["name"] == "subject_keyword"
+        )
 
         self.assertIn("mail_33_imap", values)
+        self.assertEqual(subject_keyword_field["default"], "Your ChatGPT code is")
 
     def test_registration_available_services_include_mail33_group(self):
         module = load_registration_module()
@@ -265,6 +272,74 @@ class Mail33RouteExposureTests(unittest.TestCase):
         self.assertTrue(payload["mail_33_imap"]["available"])
         self.assertEqual(payload["mail_33_imap"]["count"], 1)
         self.assertEqual(payload["mail_33_imap"]["services"][0]["id"], 9)
+
+    def test_update_mail33_service_allows_clearing_optional_filters(self):
+        module = load_email_services_module()
+
+        class FakeService:
+            def __init__(self):
+                self.id = 7
+                self.service_type = "mail_33_imap"
+                self.name = "33mail Main"
+                self.enabled = True
+                self.priority = 1
+                self.config = {
+                    "alias_domain": "295542345.33mail.com",
+                    "real_inbox_email": "295542345@qq.com",
+                    "imap_host": "imap.qq.com",
+                    "imap_username": "295542345@qq.com",
+                    "imap_password": "secret",
+                    "from_filter": "openai.com",
+                    "subject_keyword": "OpenAI",
+                }
+                self.last_used = None
+                self.created_at = None
+                self.updated_at = None
+
+        service = FakeService()
+
+        class FakeQuery:
+            def filter(self, *_args, **_kwargs):
+                return self
+
+            def first(self):
+                return service
+
+        class FakeDb:
+            def query(self, _model):
+                return FakeQuery()
+
+            def commit(self):
+                return None
+
+            def refresh(self, _service):
+                return None
+
+        class DbContext:
+            def __enter__(self):
+                return FakeDb()
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        module.get_db = lambda: DbContext()
+
+        response = asyncio.run(
+            module.update_email_service(
+                7,
+                types.SimpleNamespace(
+                    name=None,
+                    config={"from_filter": "", "subject_keyword": ""},
+                    enabled=None,
+                    priority=None,
+                ),
+            )
+        )
+
+        self.assertEqual(service.config["from_filter"], "")
+        self.assertEqual(service.config["subject_keyword"], "")
+        self.assertEqual(response.config["from_filter"], "")
+        self.assertEqual(response.config["subject_keyword"], "")
 
 
 if __name__ == "__main__":

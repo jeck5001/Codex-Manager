@@ -48,6 +48,14 @@ def load_mail_33_module():
 
     constants_module = types.ModuleType("src.config.constants")
     constants_module.OTP_CODE_PATTERN = r"(?<!\d)(\d{6})(?!\d)"
+    constants_module.OPENAI_VERIFICATION_KEYWORDS = [
+        "verify your email",
+        "verification code",
+        "验证码",
+        "your openai code",
+        "code is",
+        "one-time code",
+    ]
     sys.modules["src.config.constants"] = constants_module
 
     spec = importlib.util.spec_from_file_location(module_name, module_path)
@@ -121,6 +129,107 @@ class Mail33ImapServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(code, "222222")
+
+    def test_matches_forwarded_33mail_message_when_alias_is_only_in_subject(self):
+        service = Mail33ImapService(
+            config={
+                "alias_domain": "295542345.33mail.com",
+                "real_inbox_email": "295542345@qq.com",
+                "imap_host": "imap.qq.com",
+                "imap_port": 993,
+                "imap_username": "295542345@qq.com",
+                "imap_password": "secret",
+                "from_filter": "openai.com",
+                "subject_keyword": "Your ChatGPT code is",
+                "otp_pattern": r"(?<!\d)(\d{6})(?!\d)",
+            }
+        )
+
+        messages = [
+            {
+                "to": "295542345@qq.com",
+                "from": "'noreply@tm.openai.com' via 33Mail <sender@mailer1.33mail.com>",
+                "subject": "Your ChatGPT code is 696479 - This email was sent to the alias '4434p1bixfkc@295542345.33mail.com'",
+                "body": "Hi there,\nUse this code: 696479",
+                "timestamp": 200,
+            },
+        ]
+
+        code = service._extract_verification_code_from_messages(
+            email="4434p1bixfkc@295542345.33mail.com",
+            messages=messages,
+            otp_sent_at=150,
+        )
+
+        self.assertEqual(code, "696479")
+
+    def test_matches_forwarded_33mail_message_with_legacy_openai_subject_keyword(self):
+        service = Mail33ImapService(
+            config={
+                "alias_domain": "295542345.33mail.com",
+                "real_inbox_email": "295542345@qq.com",
+                "imap_host": "imap.qq.com",
+                "imap_port": 993,
+                "imap_username": "295542345@qq.com",
+                "imap_password": "secret",
+                "from_filter": "openai.com",
+                "subject_keyword": "OpenAI",
+                "otp_pattern": r"(?<!\d)(\d{6})(?!\d)",
+            }
+        )
+
+        messages = [
+            {
+                "to": "295542345@qq.com",
+                "from": "'noreply@tm.openai.com' via 33Mail <sender@mailer1.33mail.com>",
+                "subject": "Your ChatGPT code is 196580",
+                "body": "OpenAI\nChatGPT Log-in Code\nUse this code: 196580\n"
+                "This email was sent to the alias 'jvdf5mmde0h9@295542345.33mail.com'",
+                "timestamp": 200,
+            },
+        ]
+
+        code = service._extract_verification_code_from_messages(
+            email="jvdf5mmde0h9@295542345.33mail.com",
+            messages=messages,
+            otp_sent_at=150,
+        )
+
+        self.assertEqual(code, "196580")
+
+    def test_matches_multiple_sender_filters_separated_by_chinese_delimiter(self):
+        service = Mail33ImapService(
+            config={
+                "alias_domain": "295542345.33mail.com",
+                "real_inbox_email": "295542345@qq.com",
+                "imap_host": "imap.qq.com",
+                "imap_port": 993,
+                "imap_username": "295542345@qq.com",
+                "imap_password": "secret",
+                "from_filter": "sender@mailer1.33mail.com、openai.com",
+                "subject_keyword": "Your ChatGPT code is",
+                "otp_pattern": r"(?<!\d)(\d{6})(?!\d)",
+            }
+        )
+
+        messages = [
+            {
+                "to": "295542345@qq.com",
+                "from": "'noreply@tm.openai.com' via 33Mail <sender@mailer1.33mail.com>",
+                "subject": "Your ChatGPT code is 215600",
+                "body": "Hi there,\nUse this code: 215600\n"
+                "This email was sent to the alias '4434p1bixfkc@295542345.33mail.com'",
+                "timestamp": 200,
+            },
+        ]
+
+        code = service._extract_verification_code_from_messages(
+            email="4434p1bixfkc@295542345.33mail.com",
+            messages=messages,
+            otp_sent_at=150,
+        )
+
+        self.assertEqual(code, "215600")
 
 
 if __name__ == "__main__":
