@@ -554,6 +554,58 @@ pub(super) fn start_mock_upstream_sequence(
     start_mock_upstream_sequence_lenient(responses, Duration::from_secs(3))
 }
 
+pub(super) fn start_mock_upstream_sequence_with_headers(
+    responses: Vec<(u16, String, Vec<(String, String)>)>,
+) -> (
+    String,
+    Receiver<CapturedUpstreamRequest>,
+    thread::JoinHandle<()>,
+) {
+    let listener = bind_test_listener("mock upstream");
+    let addr = listener.local_addr().expect("mock upstream addr");
+    let (tx, rx) = mpsc::channel();
+
+    let join = thread::spawn(move || {
+        let mut idx = 0usize;
+        let fallback_body =
+            "{\"error\":{\"message\":\"unexpected extra upstream request\",\"type\":\"server_error\"}}"
+                .to_string();
+        loop {
+            let Some((mut stream, captured)) =
+                accept_http_request(&listener, Duration::from_secs(3))
+            else {
+                break;
+            };
+            let _ = tx.send(captured);
+
+            let (status, body, extra_headers) = responses
+                .get(idx)
+                .map(|(status, body, headers)| (*status, body.as_str(), headers.as_slice()))
+                .unwrap_or((500, fallback_body.as_str(), &[]));
+            let body_bytes = body.as_bytes().to_vec();
+            let mut header = format!(
+                "HTTP/1.1 {} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
+                status,
+                body_bytes.len()
+            );
+            for (name, value) in extra_headers {
+                header.push_str(&format!("{name}: {value}\r\n"));
+            }
+            header.push_str("\r\n");
+            stream
+                .write_all(header.as_bytes())
+                .expect("write upstream status");
+            stream
+                .write_all(&body_bytes)
+                .expect("write upstream response body");
+            let _ = stream.flush();
+            idx = idx.saturating_add(1);
+        }
+    });
+
+    (addr.to_string(), rx, join)
+}
+
 pub(super) fn start_mock_upstream_sequence_lenient(
     responses: Vec<(u16, String)>,
     idle_timeout: Duration,

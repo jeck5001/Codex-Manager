@@ -39,7 +39,9 @@ fn post_rpc(addr: &str, body: &str) -> Value {
         body.len(),
         body
     );
-    stream.write_all(request.as_bytes()).expect("write rpc request");
+    stream
+        .write_all(request.as_bytes())
+        .expect("write rpc request");
     stream.shutdown(std::net::Shutdown::Write).ok();
     let mut buf = Vec::new();
     stream.read_to_end(&mut buf).expect("read rpc response");
@@ -48,7 +50,13 @@ fn post_rpc(addr: &str, body: &str) -> Value {
     serde_json::from_str(body).expect("parse rpc json")
 }
 
-fn capture_register_requests(count: usize) -> (String, mpsc::Receiver<(String, Value)>, thread::JoinHandle<()>) {
+fn capture_register_requests(
+    count: usize,
+) -> (
+    String,
+    mpsc::Receiver<(String, Value)>,
+    thread::JoinHandle<()>,
+) {
     let server = Server::http("127.0.0.1:0").expect("start register capture");
     let addr = format!("http://{}", server.server_addr());
     let (tx, rx) = mpsc::channel();
@@ -77,7 +85,10 @@ fn capture_register_requests(count: usize) -> (String, mpsc::Receiver<(String, V
 
 fn send_rpc_request(req: &JsonRpcRequest) -> Value {
     let server = start_one_shot_server().expect("start rpc server");
-    let response = post_rpc(&server.addr, &serde_json::to_string(req).expect("serialize rpc"));
+    let response = post_rpc(
+        &server.addr,
+        &serde_json::to_string(req).expect("serialize rpc"),
+    );
     server.join();
     response
 }
@@ -137,10 +148,16 @@ fn rpc_register_forwarding_tracks_auto_create_temp_mail_service_variants() {
         })),
     };
 
-    let responses = vec![camel_case, snake_case, absent_field, batch_with_flag, batch_without_flag]
-        .into_iter()
-        .map(|req| send_rpc_request(&req))
-        .collect::<Vec<_>>();
+    let responses = vec![
+        camel_case,
+        snake_case,
+        absent_field,
+        batch_with_flag,
+        batch_without_flag,
+    ]
+    .into_iter()
+    .map(|req| send_rpc_request(&req))
+    .collect::<Vec<_>>();
 
     for response in responses.iter() {
         assert!(response.get("result").is_some());
@@ -170,8 +187,15 @@ fn rpc_register_forwarding_tracks_auto_create_temp_mail_service_variants() {
         );
     }
 
-    assert_eq!(batch_requests[0].get("auto_create_temp_mail_service").and_then(Value::as_bool), Some(true));
-    assert!(batch_requests[1].get("auto_create_temp_mail_service").is_none());
+    assert_eq!(
+        batch_requests[0]
+            .get("auto_create_temp_mail_service")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    assert!(batch_requests[1]
+        .get("auto_create_temp_mail_service")
+        .is_none());
 
     handle.join().expect("join capture server");
 }

@@ -64,6 +64,7 @@ pub(crate) fn map_account_status_reason_label(reason: &str) -> &'static str {
         "refresh_token_invalid:reused" => "Refresh 已复用",
         "refresh_token_invalid:invalidated" => "Refresh 已失效",
         "refresh_token_invalid:invalid" => "Refresh 刷新失败",
+        "identity_error:token_invalidated" => "登录态已失效",
         _ => "状态已变更",
     }
 }
@@ -78,6 +79,7 @@ pub(crate) fn map_isolation_reason(reason: &str) -> Option<(&'static str, &'stat
         "usage_http_401" | "auto_governance_auth_failures" => {
             Some(("auth_invalid", "授权失效 / 401-403"))
         }
+        "identity_error:token_invalidated" => Some(("auth_invalid", "登录态已失效")),
         "auto_governance_suspected" => Some(("suspected", "疑似风控/授权异常")),
         "auto_governance_proxy_failures" => Some(("proxy_error", "代理异常")),
         "auto_governance_refresh_token" => Some(("refresh_token", "Refresh 连续失效")),
@@ -153,6 +155,10 @@ mod tests {
         assert_eq!(
             map_account_status_reason_label("refresh_token_invalid:invalidated"),
             "Refresh 已失效"
+        );
+        assert_eq!(
+            map_account_status_reason_label("identity_error:token_invalidated"),
+            "登录态已失效"
         );
     }
 
