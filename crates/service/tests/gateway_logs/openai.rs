@@ -2042,10 +2042,9 @@ fn gateway_unauthorized_uses_session_cookie_fallback_without_refresh_token() {
     );
     assert_eq!(second.path, "/chatgpt.com/api/auth/session");
     assert!(
-        second
-            .headers
-            .get("cookie")
-            .is_some_and(|value| value.contains("__Secure-next-auth.session-token=session-gateway-refresh")),
+        second.headers.get("cookie").is_some_and(
+            |value| value.contains("__Secure-next-auth.session-token=session-gateway-refresh")
+        ),
         "unexpected cookie header: {:?}",
         second.headers.get("cookie")
     );
@@ -2284,12 +2283,10 @@ fn gateway_at_only_unauthorized_retries_stateless_before_failover() {
         Some("legacy_session_should_be_dropped")
     );
     assert!(!second.headers.contains_key("x-codex-turn-state"));
-    assert!(
-        second
-            .headers
-            .get("session_id")
-            .is_some_and(|value| value != "legacy_session_should_be_dropped")
-    );
+    assert!(second
+        .headers
+        .get("session_id")
+        .is_some_and(|value| value != "legacy_session_should_be_dropped"));
 }
 
 #[test]
@@ -2473,11 +2470,8 @@ fn gateway_invalid_session_cookie_fails_over_to_next_candidate() {
     });
     let body_401 = serde_json::to_string(&first_response).expect("serialize first response");
     let body_200 = serde_json::to_string(&second_response).expect("serialize second response");
-    let (upstream_addr, upstream_rx, upstream_join) = start_mock_upstream_sequence(vec![
-        (401, body_401),
-        (401, String::new()),
-        (200, body_200),
-    ]);
+    let (upstream_addr, upstream_rx, upstream_join) =
+        start_mock_upstream_sequence(vec![(401, body_401), (401, String::new()), (200, body_200)]);
 
     let upstream_base = format!("http://{upstream_addr}/chatgpt.com/backend-api/codex");
     let session_refresh_url = format!("http://{upstream_addr}/chatgpt.com/api/auth/session");
@@ -2771,6 +2765,169 @@ fn gateway_invalid_refresh_token_marks_first_account_unavailable_and_fails_over(
 
     let bad_account = storage
         .find_account_by_id("acc_refresh_bad")
+        .expect("find first account")
+        .expect("first account exists");
+    assert_eq!(bad_account.status, "unavailable");
+}
+
+#[test]
+fn gateway_token_invalidated_marks_account_unavailable_and_fails_over() {
+    let _lock = lock_env();
+    let dir = new_test_dir("codexmanager-gateway-token-invalidated-failover");
+    let db_path: PathBuf = dir.join("codexmanager.db");
+
+    let _db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+    let _no_proxy_guard = EnvGuard::set("NO_PROXY", "127.0.0.1,localhost");
+    let _no_proxy_lower_guard = EnvGuard::set("no_proxy", "127.0.0.1,localhost");
+
+    let first_body = serde_json::to_string(&serde_json::json!({
+        "error": {
+            "message": "Your authentication token has been invalidated. Please try signing in again.",
+            "type": "invalid_request_error",
+            "code": "token_invalidated"
+        }
+    }))
+    .expect("serialize first response");
+    let second_body = serde_json::to_string(&serde_json::json!({
+        "id": "resp_after_token_invalidated_failover",
+        "model": "gpt-5.3-codex",
+        "output": [{
+            "type": "message",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "text": "ok after token invalidated failover" }]
+        }],
+        "usage": { "input_tokens": 5, "output_tokens": 4, "total_tokens": 9 }
+    }))
+    .expect("serialize second response");
+    let (upstream_addr, rx, upstream_join) = start_mock_upstream_sequence_with_headers(vec![
+        (
+            401,
+            first_body,
+            vec![
+                ("x-request-id".to_string(), "req-token-invalidated".to_string()),
+                ("cf-ray".to_string(), "ray-token-invalidated".to_string()),
+                ("x-openai-authorization-error".to_string(), "401".to_string()),
+                (
+                    "x-error-json".to_string(),
+                    "{\"identity_error_code\":\"token_invalidated\"}".to_string(),
+                ),
+            ],
+        ),
+        (200, second_body, vec![]),
+    ]);
+
+    let upstream_base = format!("http://{upstream_addr}/chatgpt.com/backend-api/codex");
+    let _upstream_guard = EnvGuard::set("CODEXMANAGER_UPSTREAM_BASE_URL", &upstream_base);
+
+    let storage = Storage::open(&db_path).expect("open db");
+    storage.init().expect("init db");
+    let now = now_ts();
+
+    storage
+        .insert_account(&Account {
+            id: "acc_token_invalidated_bad".to_string(),
+            label: "token-invalidated-bad".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_token_invalidated_bad".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert first account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_token_invalidated_bad".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_token_invalidated_bad".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert first token");
+
+    storage
+        .insert_account(&Account {
+            id: "acc_token_invalidated_good".to_string(),
+            label: "token-invalidated-good".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("chatgpt_token_invalidated_good".to_string()),
+            workspace_id: None,
+            group_name: None,
+            sort: 1,
+            status: "active".to_string(),
+            created_at: now + 1,
+            updated_at: now + 1,
+        })
+        .expect("insert second account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc_token_invalidated_good".to_string(),
+            id_token: String::new(),
+            access_token: "access_token_token_invalidated_good".to_string(),
+            refresh_token: String::new(),
+            api_key_access_token: None,
+            last_refresh: now + 1,
+        })
+        .expect("insert second token");
+
+    let platform_key = "pk_openai_token_invalidated_failover";
+    storage
+        .insert_api_key(&ApiKey {
+            id: "gk_openai_token_invalidated_failover".to_string(),
+            name: Some("openai-token-invalidated-failover".to_string()),
+            model_slug: Some("gpt-5.3-codex".to_string()),
+            reasoning_effort: None,
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: hash_platform_key_for_test(platform_key),
+            status: "active".to_string(),
+            created_at: now,
+            last_used_at: None,
+            expires_at: None,
+        })
+        .expect("insert api key");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req_body = r#"{"model":"gpt-5.3-codex","input":"hello","stream":false}"#;
+    let (status, response_body) = post_http_raw(
+        &server.addr,
+        "/v1/responses",
+        req_body,
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", &format!("Bearer {platform_key}")),
+        ],
+    );
+    server.join();
+    assert_eq!(status, 200, "gateway response: {response_body}");
+
+    let first = rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive first upstream request");
+    let second = rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive second upstream request");
+    upstream_join.join().expect("join mock upstream");
+
+    assert_eq!(first.path, "/chatgpt.com/backend-api/codex/responses");
+    assert_eq!(
+        first.headers.get("authorization").map(String::as_str),
+        Some("Bearer access_token_token_invalidated_bad")
+    );
+    assert_eq!(second.path, "/chatgpt.com/backend-api/codex/responses");
+    assert_eq!(
+        second.headers.get("authorization").map(String::as_str),
+        Some("Bearer access_token_token_invalidated_good")
+    );
+
+    let bad_account = storage
+        .find_account_by_id("acc_token_invalidated_bad")
         .expect("find first account")
         .expect("first account exists");
     assert_eq!(bad_account.status, "unavailable");

@@ -56,6 +56,23 @@ fn is_session_cookie_refresh_auth_error(err: &str) -> bool {
         || err.contains("session cookie refresh failed: usage endpoint failed: status=403")
 }
 
+fn should_failover_for_identity_error(
+    storage: &Storage,
+    account_id: &str,
+    upstream: &reqwest::blocking::Response,
+) -> bool {
+    let Some(identity_error_code) =
+        crate::gateway::extract_identity_error_code_from_headers(upstream.headers())
+    else {
+        return false;
+    };
+    crate::account_status::mark_account_unavailable_for_identity_error(
+        storage,
+        account_id,
+        &identity_error_code,
+    )
+}
+
 pub(super) enum PostRetryFlowDecision {
     Failover,
     Terminal { status_code: u16, message: String },
@@ -106,8 +123,15 @@ where
     }
 
     if !compact_no_cookie_mode {
-        let allow_unauthorized_stateless_retry =
-            status.as_u16() == 401 && !has_chatgpt_recovery_credentials(account, token);
+        let has_identity_failover_marker =
+            status.as_u16() == 401 && should_failover_for_identity_error(storage, &account.id, &upstream);
+        if has_identity_failover_marker && has_more_candidates {
+            log_gateway_result(Some(url), 401, Some("identity token invalidated failover"));
+            return PostRetryFlowDecision::Failover;
+        }
+        let allow_unauthorized_stateless_retry = status.as_u16() == 401
+            && !has_chatgpt_recovery_credentials(account, token)
+            && !has_identity_failover_marker;
         if status.as_u16() == 401 {
             match try_refresh_chatgpt_access_token(storage, upstream_base, account, token) {
                 Ok(Some(refreshed_auth_token)) => {
@@ -249,7 +273,11 @@ where
             }
         }
         if attempted_unauthorized_stateless_retry && status.as_u16() == 401 && has_more_candidates {
-            log_gateway_result(Some(url), 401, Some("access token only stateless retry failover"));
+            log_gateway_result(
+                Some(url),
+                401,
+                Some("access token only stateless retry failover"),
+            );
             return PostRetryFlowDecision::Failover;
         }
     }

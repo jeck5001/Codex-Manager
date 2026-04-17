@@ -2,7 +2,9 @@ use super::{
     mark_usage_unreachable_if_needed, record_usage_refresh_failure, should_retry_with_refresh,
 };
 use crate::account_availability::Availability;
-use crate::account_status::mark_account_unavailable_for_refresh_token_error;
+use crate::account_status::{
+    mark_account_unavailable_for_identity_error, mark_account_unavailable_for_refresh_token_error,
+};
 use crate::usage_snapshot_store::apply_status_from_snapshot;
 use codexmanager_core::storage::{now_ts, Account, Storage, UsageSnapshotRecord};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -360,6 +362,36 @@ fn refresh_token_unknown_401_marks_account_unavailable() {
     ));
     let unavailable = storage
         .find_account_by_id("acc-refresh-unknown-401")
+        .expect("find")
+        .expect("exists");
+    assert_eq!(unavailable.status, "unavailable");
+}
+
+#[test]
+fn token_invalidated_identity_error_marks_account_unavailable() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let account = Account {
+        id: "acc-token-invalidated".to_string(),
+        label: "main".to_string(),
+        issuer: "issuer".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    storage.insert_account(&account).expect("insert");
+
+    assert!(mark_account_unavailable_for_identity_error(
+        &storage,
+        "acc-token-invalidated",
+        "token_invalidated"
+    ));
+    let unavailable = storage
+        .find_account_by_id("acc-token-invalidated")
         .expect("find")
         .expect("exists");
     assert_eq!(unavailable.status, "unavailable");

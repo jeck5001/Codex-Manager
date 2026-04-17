@@ -26,3 +26,23 @@ pub(crate) fn mark_account_unavailable_for_refresh_token_error(
     set_account_status(storage, account_id, "unavailable", &status_reason);
     true
 }
+
+pub(crate) fn mark_account_unavailable_for_identity_error(
+    storage: &Storage,
+    account_id: &str,
+    identity_error_code: &str,
+) -> bool {
+    if !identity_error_code
+        .trim()
+        .eq_ignore_ascii_case("token_invalidated")
+    {
+        return false;
+    }
+    set_account_status(
+        storage,
+        account_id,
+        "unavailable",
+        "identity_error:token_invalidated",
+    );
+    true
+}
