@@ -39,7 +39,7 @@ const REGISTER_ACCEPT_LANGUAGE: &str = "en-US,en;q=0.9";
 const REGISTER_SEC_CH_UA: &str =
     "\"Google Chrome\";v=\"120\", \"Chromium\";v=\"120\", \"Not_A Brand\";v=\"24\"";
 const REGISTER_PASSKEY_CLIENT_CAPABILITIES: &str = r#"{"conditionalMediation":false,"userVerifyingPlatformAuthenticator":false,"userVerifyingCrossPlatformAuthenticator":false}"#;
-const EMAIL_OTP_POLL_ATTEMPTS: usize = 10;
+const EMAIL_OTP_POLL_ATTEMPTS: usize = 40;
 const EMAIL_OTP_POLL_INTERVAL_SECS: u64 = 3;
 
 #[derive(Debug, Clone, Copy)]
@@ -529,7 +529,13 @@ fn request_and_validate_email_otp(
 fn allocate_generator_mailbox(
     task_uuid: &str,
     task_proxy: Option<&str>,
-) -> Result<(GeneratorEmailProvider, crate::account::register_email::RegisterMailboxLease), String> {
+) -> Result<
+    (
+        GeneratorEmailProvider,
+        crate::account::register_email::RegisterMailboxLease,
+    ),
+    String,
+> {
     let preferred_proxy = if should_use_email_proxy() {
         normalize_proxy_url(task_proxy)
     } else {
@@ -556,7 +562,8 @@ fn allocate_generator_mailbox(
             Err(err) => {
                 append_register_task_log(
                     task_uuid,
-                    format!("generator.email mailbox allocation failed via {route}: {err}").as_str(),
+                    format!("generator.email mailbox allocation failed via {route}: {err}")
+                        .as_str(),
                 );
                 last_error = Some(err);
             }

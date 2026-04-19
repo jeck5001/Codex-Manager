@@ -1,6 +1,6 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use tiny_http::{Header, Response, Server, StatusCode};
 
 static TEST_DB_SEQ: AtomicUsize = AtomicUsize::new(0);
@@ -90,17 +90,22 @@ fn cpa_download_falls_back_to_filename_query_param_on_404() {
             .with_header(
                 Header::from_bytes("Content-Type", "text/plain").expect("content-type header"),
             );
-        first.respond(first_response).expect("respond first request");
+        first
+            .respond(first_response)
+            .expect("respond first request");
 
         let second = server.recv().expect("receive second request");
         let second_url = second.url().to_string();
-        let second_response = Response::from_string(r#"{"access_token":"a","id_token":"i","account_id":"acc-fallback"}"#)
-            .with_status_code(StatusCode(200))
-            .with_header(
-                Header::from_bytes("Content-Type", "application/json")
-                    .expect("content-type header"),
-            );
-        second.respond(second_response).expect("respond second request");
+        let second_response = Response::from_string(
+            r#"{"access_token":"a","id_token":"i","account_id":"acc-fallback"}"#,
+        )
+        .with_status_code(StatusCode(200))
+        .with_header(
+            Header::from_bytes("Content-Type", "application/json").expect("content-type header"),
+        );
+        second
+            .respond(second_response)
+            .expect("respond second request");
 
         (first_url, second_url)
     });
@@ -137,7 +142,9 @@ fn cpa_download_prefers_canonical_name_endpoint_over_broken_path_field() {
         .with_header(
             Header::from_bytes("Content-Type", "application/json").expect("content-type header"),
         );
-        request.respond(response).expect("respond canonical request");
+        request
+            .respond(response)
+            .expect("respond canonical request");
         request_url
     });
 
@@ -170,11 +177,12 @@ fn cpa_settings_use_saved_key_sentinel_falls_back_to_saved_value() {
     })))
     .expect("seed settings");
 
-    let (api_url, management_key) = super::resolve_cpa_settings_for_test(Some(&serde_json::json!({
-        "apiUrl": "https://override.example.com/base/",
-        "managementKey": "use_saved_key"
-    })))
-    .expect("resolve settings");
+    let (api_url, management_key) =
+        super::resolve_cpa_settings_for_test(Some(&serde_json::json!({
+            "apiUrl": "https://override.example.com/base/",
+            "managementKey": "use_saved_key"
+        })))
+        .expect("resolve settings");
 
     assert_eq!(api_url, "https://override.example.com/base");
     assert_eq!(management_key, "saved-key");
@@ -222,8 +230,8 @@ fn cpa_auth_files_extracts_source_and_runtime_only_flags() {
 
 #[test]
 fn cpa_filter_skips_non_target_payload_without_metadata_match() {
-    let count = super::filter_import_items_for_test(r#"{"access_token":"abc123"}"#, false)
-        .expect("filter");
+    let count =
+        super::filter_import_items_for_test(r#"{"access_token":"abc123"}"#, false).expect("filter");
     assert_eq!(count, 0);
 }
 
@@ -267,8 +275,7 @@ fn cpa_sync_run_guard_rejects_overlapping_runs() {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     super::reset_cpa_sync_runtime_for_test();
     let _guard = super::begin_cpa_sync_run_for_test("manual").expect("first lock");
-    let err = super::begin_cpa_sync_run_for_test("scheduled")
-        .expect_err("second run should fail");
+    let err = super::begin_cpa_sync_run_for_test("scheduled").expect_err("second run should fail");
 
     assert!(err.contains("正在执行中"));
 }

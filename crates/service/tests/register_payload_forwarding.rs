@@ -178,13 +178,11 @@ fn rpc_register_forwarding_tracks_auto_create_temp_mail_service_variants() {
     for response in responses.iter().take(3) {
         let result = response.get("result").expect("local start result");
         assert_eq!(result.get("status").and_then(Value::as_str), Some("queued"));
-        assert!(
-            result
-                .get("taskUuid")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .starts_with("reg-")
-        );
+        assert!(result
+            .get("taskUuid")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .starts_with("reg-"));
     }
 
     assert_eq!(
@@ -225,11 +223,9 @@ fn rpc_register_start_uses_local_engine_for_generator_email() {
         Some("standard")
     );
     assert_eq!(result.get("status").and_then(Value::as_str), Some("queued"));
-    assert!(
-        result
-            .get("taskUuid")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .starts_with("reg-")
-    );
+    assert!(result
+        .get("taskUuid")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .starts_with("reg-"));
 }

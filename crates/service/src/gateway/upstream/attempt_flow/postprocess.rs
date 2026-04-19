@@ -123,8 +123,8 @@ where
     }
 
     if !compact_no_cookie_mode {
-        let has_identity_failover_marker =
-            status.as_u16() == 401 && should_failover_for_identity_error(storage, &account.id, &upstream);
+        let has_identity_failover_marker = status.as_u16() == 401
+            && should_failover_for_identity_error(storage, &account.id, &upstream);
         if has_identity_failover_marker && has_more_candidates {
             log_gateway_result(Some(url), 401, Some("identity token invalidated failover"));
             return PostRetryFlowDecision::Failover;

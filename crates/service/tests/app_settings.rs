@@ -782,8 +782,8 @@ fn app_settings_preserves_cpa_management_key_when_blank_patch_sent() {
         })))
         .expect("apply blank patch");
 
-        let snapshot = codexmanager_service::app_settings_get()
-            .expect("get settings after blank patch");
+        let snapshot =
+            codexmanager_service::app_settings_get().expect("get settings after blank patch");
         assert_eq!(
             snapshot
                 .get("cpaSyncHasManagementKey")
@@ -814,7 +814,9 @@ fn app_settings_set_persists_cpa_schedule_snapshot() {
         .expect("set cpa schedule");
 
         assert_eq!(
-            snapshot.get("cpaSyncScheduleEnabled").and_then(|v| v.as_bool()),
+            snapshot
+                .get("cpaSyncScheduleEnabled")
+                .and_then(|v| v.as_bool()),
             Some(true)
         );
         assert_eq!(
