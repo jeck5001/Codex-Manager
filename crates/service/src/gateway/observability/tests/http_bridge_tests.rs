@@ -1667,7 +1667,7 @@ fn passthrough_sse_reader_waits_for_first_upstream_frame_before_keepalive() {
 }
 
 #[test]
-fn openai_responses_passthrough_reader_emits_keepalive_for_responses_stream() {
+fn openai_responses_passthrough_reader_passthroughs_raw_sse_without_keepalive_injection() {
     let _guard = crate::test_env_guard();
     let _keepalive_guard = EnvGuard::set("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS", "15");
     super::reload_from_env();
@@ -1707,9 +1707,14 @@ fn openai_responses_passthrough_reader_emits_keepalive_for_responses_stream() {
         .lock()
         .expect("lock usage collector")
         .clone();
-    assert!(mapped.contains("\"type\":\"codexmanager.keepalive\""));
-    assert!(mapped.contains("event: response.created"));
-    assert!(mapped.contains("event: response.completed"));
+    assert!(!mapped.contains("\"type\":\"codexmanager.keepalive\""));
+    assert_eq!(
+        mapped,
+        "event: response.created\n\
+         data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_eventsource_keepalive\"}}\n\n\
+         event: response.completed\n\
+         data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_eventsource_keepalive\"}}\n\n"
+    );
     assert!(collector.saw_terminal);
     assert_eq!(
         collector.last_event_type.as_deref(),
