@@ -27,6 +27,8 @@ mod gemini;
 mod openai_chat;
 #[path = "stream_readers/openai_completions.rs"]
 mod openai_completions;
+#[path = "stream_readers/openai_responses.rs"]
+mod openai_responses;
 #[path = "stream_readers/passthrough.rs"]
 mod passthrough;
 
@@ -44,6 +46,7 @@ pub(crate) use common::{
 pub(crate) use gemini::GeminiSseReader;
 pub(crate) use openai_chat::OpenAIChatCompletionsSseReader;
 pub(crate) use openai_completions::OpenAICompletionsSseReader;
+pub(crate) use openai_responses::OpenAIResponsesPassthroughSseReader;
 pub(crate) use passthrough::PassthroughSseUsageReader;
 
 /// 函数 `reload_from_env`

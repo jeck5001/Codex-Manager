@@ -12,9 +12,10 @@ use super::{
     collect_non_stream_json_from_sse_bytes, extract_error_hint_from_body,
     extract_error_message_from_json, looks_like_sse_payload, merge_usage, parse_usage_from_json,
     push_trace_id_header, usage_has_signal, AnthropicSseReader, GeminiSseReader,
-    OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader, PassthroughSseCollector,
-    PassthroughSseProtocol, PassthroughSseUsageReader, SseKeepAliveFrame,
-    UpstreamResponseBridgeResult, UpstreamResponseUsage,
+    OpenAIChatCompletionsSseReader, OpenAICompletionsSseReader,
+    OpenAIResponsesPassthroughSseReader, PassthroughSseCollector, PassthroughSseProtocol,
+    PassthroughSseUsageReader, SseKeepAliveFrame, UpstreamResponseBridgeResult,
+    UpstreamResponseUsage,
 };
 
 const REQUEST_ID_HEADER_CANDIDATES: &[&str] = &["x-request-id", "x-oai-request-id"];
@@ -1238,19 +1239,24 @@ pub(crate) fn respond_with_upstream(
             }
             if is_sse || is_stream {
                 let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
-                let response = Response::new(
-                    status,
-                    headers,
-                    PassthroughSseUsageReader::new(
-                        upstream,
-                        Arc::clone(&usage_collector),
-                        keepalive_frame,
-                        passthrough_sse_protocol,
-                        request_started_at,
-                    ),
-                    None,
-                    None,
-                );
+                let response_body: Box<dyn std::io::Read + Send> =
+                    if is_sse && request_path.starts_with("/v1/responses") {
+                        Box::new(OpenAIResponsesPassthroughSseReader::new(
+                            upstream,
+                            Arc::clone(&usage_collector),
+                            keepalive_frame,
+                            request_started_at,
+                        ))
+                    } else {
+                        Box::new(PassthroughSseUsageReader::new(
+                            upstream,
+                            Arc::clone(&usage_collector),
+                            keepalive_frame,
+                            passthrough_sse_protocol,
+                            request_started_at,
+                        ))
+                    };
+                let response = Response::new(status, headers, response_body, None, None);
                 let delivery_error = request.respond(response).err().map(|err| err.to_string());
                 let collector = usage_collector
                     .lock()

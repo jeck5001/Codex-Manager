@@ -473,7 +473,7 @@ where
         }
     }
 
-    if !should_treat_as_challenge_for_retry(status, upstream_content_type, upstream_cf_ray) {
+    if should_treat_as_challenge_for_retry(status, upstream_content_type, upstream_cf_ray) {
         match retry_chatgpt_challenge_without_compression(
             client,
             method,
@@ -755,6 +755,105 @@ mod tests {
             false,
             false,
             true,
+            upstream,
+            |_, _, _| {},
+        );
+
+        join.join().expect("join server");
+        assert_eq!(hit_count.load(Ordering::SeqCst), 2);
+        match decision {
+            PostRetryFlowDecision::RespondUpstream(resp) => assert_eq!(resp.status(), 200),
+            _ => panic!("unexpected decision"),
+        }
+    }
+
+    #[test]
+    fn chatgpt_challenge_on_last_candidate_retries_without_same_account_failover() {
+        let storage = Storage::open_in_memory().expect("open storage");
+        storage.init().expect("init storage");
+        let now = now_ts();
+        let account = build_account("acc-challenge-recover", now);
+        let mut token = build_token(account.id.as_str(), now);
+        let auth_token = token.access_token.clone();
+        storage.insert_account(&account).expect("insert account");
+        storage.insert_token(&token).expect("insert token");
+
+        let server = Server::http("127.0.0.1:0").expect("start server");
+        let addr = format!("http://{}", server.server_addr());
+        let hit_count = Arc::new(AtomicUsize::new(0));
+        let hit_count_thread = Arc::clone(&hit_count);
+        let join = thread::spawn(move || {
+            for index in 0..2 {
+                let mut request = server
+                    .recv_timeout(Duration::from_secs(2))
+                    .expect("receive upstream request")
+                    .expect("request present");
+                let mut body = Vec::new();
+                std::io::Read::read_to_end(request.as_reader(), &mut body)
+                    .expect("read request body");
+                hit_count_thread.fetch_add(1, Ordering::SeqCst);
+                let response = if index == 0 {
+                    Response::from_string(
+                        "<html><title>Just a moment...</title><body>cf</body></html>",
+                    )
+                    .with_status_code(StatusCode(403))
+                    .with_header(
+                        tiny_http::Header::from_bytes(
+                            &b"Content-Type"[..],
+                            &b"text/html; charset=utf-8"[..],
+                        )
+                        .expect("content type header"),
+                    )
+                } else {
+                    Response::from_string("{\"ok\":true}").with_status_code(StatusCode(200))
+                };
+                request.respond(response).expect("respond request");
+            }
+        });
+
+        let client = reqwest::blocking::Client::new();
+        let incoming_headers = IncomingHeaderSnapshot::default();
+        let request_ctx = UpstreamRequestContext {
+            request_path: "/v1/responses",
+        };
+        let body = Bytes::from_static(br#"{"model":"gpt-5.3-codex","input":"hello"}"#);
+        let upstream = super::super::transport::send_upstream_request(
+            &client,
+            &reqwest::Method::POST,
+            addr.as_str(),
+            None,
+            request_ctx,
+            &incoming_headers,
+            &body,
+            true,
+            auth_token.as_str(),
+            &account,
+            false,
+        )
+        .expect("send initial request");
+
+        let decision = process_upstream_post_retry_flow(
+            &client,
+            &storage,
+            &reqwest::Method::POST,
+            "https://chatgpt.com/backend-api/codex",
+            "/v1/responses",
+            addr.as_str(),
+            None,
+            None,
+            request_ctx,
+            &incoming_headers,
+            &body,
+            true,
+            auth_token.as_str(),
+            &account,
+            &mut token,
+            None,
+            false,
+            false,
+            false,
+            false,
+            false,
             upstream,
             |_, _, _| {},
         );

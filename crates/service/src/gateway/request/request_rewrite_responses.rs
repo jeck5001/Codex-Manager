@@ -332,14 +332,6 @@ pub(super) fn ensure_parallel_tool_calls_bool(
         None => {}
     }
 
-    let has_non_empty_tools = obj
-        .get("tools")
-        .and_then(Value::as_array)
-        .is_some_and(|items| !items.is_empty());
-    if has_non_empty_tools {
-        return false;
-    }
-
     obj.insert("parallel_tool_calls".to_string(), Value::Bool(false));
     true
 }
@@ -359,7 +351,17 @@ pub(super) fn ensure_include_list(path: &str, obj: &mut serde_json::Map<String, 
     if !is_standard_responses_path(path) {
         return false;
     }
-    obj.contains_key("include")
+    match obj.get("include") {
+        Some(Value::Array(_)) => false,
+        Some(_) => {
+            obj.insert("include".to_string(), Value::Array(Vec::new()));
+            true
+        }
+        None => {
+            obj.insert("include".to_string(), Value::Array(Vec::new()));
+            true
+        }
+    }
 }
 
 /// 函数 `ensure_reasoning_include`

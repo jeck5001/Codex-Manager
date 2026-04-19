@@ -388,9 +388,7 @@ fn storage_account_subscription_roundtrip_and_delete_cleanup() {
     assert_eq!(subscription.expires_at, Some(1_746_501_889));
     assert_eq!(subscription.renews_at, Some(1_746_501_889));
 
-    storage
-        .delete_account("acc-sub-1")
-        .expect("delete account");
+    storage.delete_account("acc-sub-1").expect("delete account");
     assert!(storage
         .find_account_subscription("acc-sub-1")
         .expect("find subscription after delete")

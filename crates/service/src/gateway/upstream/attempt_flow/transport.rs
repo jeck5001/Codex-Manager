@@ -426,6 +426,8 @@ fn send_upstream_request_with_compression_override(
         let header_input = super::super::header_profile::CodexCompactUpstreamHeaderInput {
             auth_token,
             chatgpt_account_id: resolve_chatgpt_account_header(account, target_url),
+            incoming_user_agent: incoming_headers.user_agent(),
+            incoming_originator: incoming_headers.originator(),
             incoming_session_id: request_affinity.incoming_session_id,
             incoming_window_id: incoming_headers.window_id(),
             incoming_subagent: incoming_headers.subagent(),
@@ -440,6 +442,8 @@ fn send_upstream_request_with_compression_override(
         let header_input = super::super::header_profile::CodexUpstreamHeaderInput {
             auth_token,
             chatgpt_account_id: resolve_chatgpt_account_header(account, target_url),
+            incoming_user_agent: incoming_headers.user_agent(),
+            incoming_originator: incoming_headers.originator(),
             incoming_session_id: request_affinity.incoming_session_id,
             incoming_window_id: incoming_headers.window_id(),
             incoming_client_request_id: request_affinity.incoming_client_request_id,
