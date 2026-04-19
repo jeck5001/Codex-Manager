@@ -1761,6 +1761,89 @@ fn openai_responses_passthrough_reader_parses_split_events_with_eventsource_stre
     );
 }
 
+#[test]
+fn openai_responses_passthrough_reader_collects_output_item_field_text() {
+    let (upstream, server) = open_streaming_mock_http_response(
+        "text/event-stream",
+        &[(
+            "event: response.output_item.done\n\
+             data: {\"output_item\":{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello from output_item\"}]}}\n\n\
+             event: response.completed\n\
+             data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_output_item\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n",
+            0,
+        )],
+    );
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = OpenAIResponsesPassthroughSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        SseKeepAliveFrame::OpenAIResponses,
+        std::time::Instant::now(),
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read output_item openai responses stream");
+    server.join().expect("join output_item openai responses upstream");
+
+    let collector = usage_collector
+        .lock()
+        .expect("lock usage collector")
+        .clone();
+    assert!(mapped.contains("event: response.output_item.done"));
+    assert_eq!(
+        collector.usage.output_text.as_deref(),
+        Some("hello from output_item")
+    );
+    assert_eq!(collector.usage.total_tokens, Some(2));
+    assert!(collector.saw_terminal);
+}
+
+#[test]
+fn openai_responses_passthrough_reader_marks_incomplete_terminal_error_from_status_details() {
+    let (upstream, server) = open_streaming_mock_http_response(
+        "text/event-stream",
+        &[(
+            "event: response.output_text.delta\n\
+             data: {\"delta\":{\"text\":\"partial answer\"}}\n\n\
+             event: response.incomplete\n\
+             data: {\"response\":{\"status\":\"incomplete\",\"status_details\":{\"error\":{\"message\":\"stream timeout at upstream\",\"code\":\"stream_timeout\"}}}}\n\n",
+            0,
+        )],
+    );
+    let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = OpenAIResponsesPassthroughSseReader::new(
+        upstream,
+        Arc::clone(&usage_collector),
+        SseKeepAliveFrame::OpenAIResponses,
+        std::time::Instant::now(),
+    );
+    let mut mapped = String::new();
+    reader
+        .read_to_string(&mut mapped)
+        .expect("read incomplete openai responses stream");
+    server.join().expect("join incomplete openai responses upstream");
+
+    let collector = usage_collector
+        .lock()
+        .expect("lock usage collector")
+        .clone();
+    assert!(mapped.contains("event: response.incomplete"));
+    assert_eq!(
+        collector.usage.output_text.as_deref(),
+        Some("partial answer")
+    );
+    assert_eq!(
+        collector.terminal_error.as_deref(),
+        Some("code=stream_timeout stream timeout at upstream")
+    );
+    assert!(collector.saw_terminal);
+    assert_eq!(
+        collector.last_event_type.as_deref(),
+        Some("response.incomplete")
+    );
+}
+
 /// 函数 `passthrough_sse_reader_captures_raw_html_error_body`
 ///
 /// 作者: gaohongshun

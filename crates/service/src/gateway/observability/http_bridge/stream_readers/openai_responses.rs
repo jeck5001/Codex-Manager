@@ -1,9 +1,9 @@
 use super::{
-    classify_upstream_stream_read_error, inspect_sse_frame_for_protocol, mark_first_response_ms,
-    merge_usage, should_emit_keepalive, stream_idle_timed_out, stream_idle_timeout_message,
-    stream_reader_disconnected_message, stream_wait_timeout,
+    classify_upstream_stream_read_error, inspect_openai_responses_sse_frame,
+    mark_first_response_ms, merge_usage, should_emit_keepalive, stream_idle_timed_out,
+    stream_idle_timeout_message, stream_reader_disconnected_message, stream_wait_timeout,
     upstream_hint_or_stream_incomplete_message, Arc, Cursor, Mutex, PassthroughSseCollector,
-    PassthroughSseProtocol, Read, SseKeepAliveFrame, SseTerminal,
+    Read, SseKeepAliveFrame, SseTerminal,
 };
 use bytes::Bytes;
 use eventsource_stream::{Event, Eventsource};
@@ -137,7 +137,7 @@ impl OpenAIResponsesPassthroughSseReader {
     }
 
     fn update_usage_from_frame(&self, lines: &[String]) {
-        let inspection = inspect_sse_frame_for_protocol(lines, PassthroughSseProtocol::Generic);
+        let inspection = inspect_openai_responses_sse_frame(lines);
         if let Ok(mut collector) = self.usage_collector.lock() {
             if let Some(event_type) = inspection.last_event_type {
                 collector.last_event_type = Some(event_type);

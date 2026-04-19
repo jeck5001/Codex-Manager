@@ -2,8 +2,8 @@ use serde_json::Value;
 
 use super::output_text;
 use output_text::{
-    append_output_text, collect_response_output_text, extract_error_message_from_json,
-    parse_usage_from_json, UpstreamResponseUsage,
+    append_output_text, collect_output_text_from_event_fields, collect_response_output_text,
+    extract_error_message_from_json, parse_usage_from_json, UpstreamResponseUsage,
 };
 
 /// 函数 `parse_usage_from_sse_frame`
@@ -273,6 +273,124 @@ pub(in super::super) fn inspect_sse_frame_for_protocol(
     inspection
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenAIResponsesEventKind {
+    Completed,
+    Done,
+    Failed,
+    Incomplete,
+    OutputTextDelta,
+    OutputTextDone,
+    OutputItemAdded,
+    OutputItemDone,
+    ContentPartAdded,
+    ContentPartDone,
+    Other,
+}
+
+impl OpenAIResponsesEventKind {
+    fn from_type(kind: &str) -> Self {
+        match kind.trim() {
+            "response.completed" => Self::Completed,
+            "response.done" => Self::Done,
+            "response.failed" => Self::Failed,
+            "response.incomplete" => Self::Incomplete,
+            "response.output_text.delta" => Self::OutputTextDelta,
+            "response.output_text.done" => Self::OutputTextDone,
+            "response.output_item.added" => Self::OutputItemAdded,
+            "response.output_item.done" => Self::OutputItemDone,
+            "response.content_part.added" | "response.content_part.delta" => {
+                Self::ContentPartAdded
+            }
+            "response.content_part.done" => Self::ContentPartDone,
+            _ => Self::Other,
+        }
+    }
+}
+
+fn collect_openai_responses_extra_output_text(
+    value: &Value,
+    event_kind: OpenAIResponsesEventKind,
+) -> Option<String> {
+    let mut text_out = String::new();
+
+    match event_kind {
+        OpenAIResponsesEventKind::OutputTextDelta
+        | OpenAIResponsesEventKind::OutputTextDone
+        | OpenAIResponsesEventKind::ContentPartAdded
+        | OpenAIResponsesEventKind::ContentPartDone => {
+            if let Some(delta) = value.get("delta") {
+                collect_response_output_text(delta, &mut text_out);
+            }
+            collect_output_text_from_event_fields(value, &mut text_out);
+        }
+        OpenAIResponsesEventKind::OutputItemAdded | OpenAIResponsesEventKind::OutputItemDone => {
+            collect_output_text_from_event_fields(value, &mut text_out);
+        }
+        OpenAIResponsesEventKind::Completed
+        | OpenAIResponsesEventKind::Done
+        | OpenAIResponsesEventKind::Failed
+        | OpenAIResponsesEventKind::Incomplete
+        | OpenAIResponsesEventKind::Other => {}
+    }
+
+    let text = text_out.trim();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text_out)
+    }
+}
+
+pub(in super::super) fn inspect_openai_responses_sse_frame(lines: &[String]) -> SseFrameInspection {
+    let mut inspection = inspect_sse_frame_for_protocol(lines, PassthroughSseProtocol::Generic);
+    let Some(value) = parse_sse_frame_json(lines) else {
+        return inspection;
+    };
+
+    let event_type = value
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|kind| !kind.is_empty());
+    if let Some(event_type) = event_type {
+        inspection.last_event_type = Some(event_type.to_string());
+    }
+
+    let event_kind = event_type
+        .map(OpenAIResponsesEventKind::from_type)
+        .unwrap_or(OpenAIResponsesEventKind::Other);
+    if let Some(message) = extract_error_message_from_json(&value) {
+        inspection.terminal = Some(SseTerminal::Err(message));
+    } else {
+        inspection.terminal = match event_kind {
+            OpenAIResponsesEventKind::Completed | OpenAIResponsesEventKind::Done => {
+                Some(SseTerminal::Ok)
+            }
+            OpenAIResponsesEventKind::Failed | OpenAIResponsesEventKind::Incomplete => {
+                Some(SseTerminal::Err(
+                    event_type.unwrap_or("response.failed").to_string(),
+                ))
+            }
+            OpenAIResponsesEventKind::OutputTextDelta
+            | OpenAIResponsesEventKind::OutputTextDone
+            | OpenAIResponsesEventKind::OutputItemAdded
+            | OpenAIResponsesEventKind::OutputItemDone
+            | OpenAIResponsesEventKind::ContentPartAdded
+            | OpenAIResponsesEventKind::ContentPartDone
+            | OpenAIResponsesEventKind::Other => inspection.terminal,
+        };
+    }
+
+    let mut usage = parse_usage_from_json(&value);
+    if let Some(extra_output_text) = collect_openai_responses_extra_output_text(&value, event_kind) {
+        let target = usage.output_text.get_or_insert_with(String::new);
+        append_output_text(target, extra_output_text.as_str());
+    }
+    inspection.usage = Some(usage);
+    inspection
+}
+
 pub(in super::super) fn inspect_sse_frame(lines: &[String]) -> SseFrameInspection {
     inspect_sse_frame_for_protocol(lines, PassthroughSseProtocol::Generic)
 }
@@ -366,7 +484,8 @@ pub(in super::super) fn extract_sse_frame_payload(lines: &[String]) -> Option<St
 #[cfg(test)]
 mod tests {
     use super::{
-        inspect_sse_frame, inspect_sse_frame_for_protocol, PassthroughSseProtocol, SseTerminal,
+        inspect_openai_responses_sse_frame, inspect_sse_frame, inspect_sse_frame_for_protocol,
+        PassthroughSseProtocol, SseTerminal,
     };
 
     /// 函数 `inspect_sse_frame_keeps_last_event_type_from_header`
@@ -441,6 +560,44 @@ mod tests {
             inspect_sse_frame_for_protocol(&lines, PassthroughSseProtocol::AnthropicNative);
         assert!(matches!(inspection.terminal, Some(SseTerminal::Ok)));
         assert_eq!(inspection.last_event_type.as_deref(), Some("message_stop"));
+    }
+
+    #[test]
+    fn inspect_openai_responses_sse_frame_collects_output_item_text() {
+        let lines = vec![
+            "event: response.output_item.done\n".to_string(),
+            "data: {\"output_item\":{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello from output_item\"}]}}\n".to_string(),
+            "\n".to_string(),
+        ];
+        let inspection = inspect_openai_responses_sse_frame(&lines);
+        let usage = inspection.usage.expect("usage");
+        assert_eq!(
+            usage.output_text.as_deref(),
+            Some("hello from output_item")
+        );
+        assert_eq!(
+            inspection.last_event_type.as_deref(),
+            Some("response.output_item.done")
+        );
+    }
+
+    #[test]
+    fn inspect_openai_responses_sse_frame_collects_structured_delta_text() {
+        let lines = vec![
+            "event: response.output_text.delta\n".to_string(),
+            "data: {\"delta\":{\"text\":\"hello from structured delta\"}}\n".to_string(),
+            "\n".to_string(),
+        ];
+        let inspection = inspect_openai_responses_sse_frame(&lines);
+        let usage = inspection.usage.expect("usage");
+        assert_eq!(
+            usage.output_text.as_deref(),
+            Some("hello from structured delta")
+        );
+        assert_eq!(
+            inspection.last_event_type.as_deref(),
+            Some("response.output_text.delta")
+        );
     }
 }
 

@@ -910,8 +910,8 @@ export const RU_MESSAGES: MessageCatalog = {
   "均衡轮询 (Balanced)": "Балансированный раунд‑робин (Balanced)",
   "开启后将用该 path 覆盖转发 action（例如 GLM 前缀路径）。":
     "При включении этот path переопределяет action пересылки (например, префикс GLM).",
-  "例如：/api/paas/v4/chat/completions":
-    "например: /api/paas/v4/chat/completions",
+  "例如：/api/paas/v4/responses":
+    "например: /api/paas/v4/responses",
   "例如：官方中转、XX 供应商": "например: официальный транзит, поставщик XX",
   "例如：主机房 / 测试": "например: основной / тест",
   模型转发规则: "Правила пересылки моделей",

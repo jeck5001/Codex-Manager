@@ -52,30 +52,6 @@ pub(super) fn is_responses_path(path: &str) -> bool {
     is_standard_responses_path(path) || is_compact_path(path)
 }
 
-/// 函数 `ensure_instructions`
-///
-/// 作者: gaohongshun
-///
-/// 时间: 2026-04-02
-///
-/// # 参数
-/// - super: 参数 super
-///
-/// # 返回
-/// 返回函数执行结果
-pub(super) fn ensure_instructions(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {
-    if !is_responses_path(path) {
-        return false;
-    }
-    if obj.contains_key("instructions") {
-        return false;
-    }
-    // 中文注释：对齐 Codex 请求构造：缺失 instructions 时补空字符串，
-    // 避免部分上游对字段存在性更严格导致的 400。
-    obj.insert("instructions".to_string(), Value::String(String::new()));
-    true
-}
-
 /// 函数 `ensure_input_list`
 ///
 /// 作者: gaohongshun
