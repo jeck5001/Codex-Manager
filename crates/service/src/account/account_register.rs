@@ -1195,7 +1195,11 @@ pub(crate) fn list_register_tasks(
         let page = page.max(1) as usize;
         let page_size = page_size.clamp(1, 100) as usize;
         let offset = page.saturating_sub(1) * page_size;
-        let tasks = filtered.into_iter().skip(offset).take(page_size).collect::<Vec<_>>();
+        let tasks = filtered
+            .into_iter()
+            .skip(offset)
+            .take(page_size)
+            .collect::<Vec<_>>();
         return Ok(json!({
             "total": total,
             "tasks": tasks,
@@ -1797,8 +1801,8 @@ fn import_local_register_task(task_uuid: &str) -> Result<Value, String> {
     let payload = crate::account::register_runtime::read_local_register_task_payload(task_uuid)
         .ok_or_else(|| "register task payload unavailable".to_string())?;
     let imported = crate::account_import::import_account_auth_json(vec![payload])?;
-    let mut imported_value =
-        serde_json::to_value(imported).map_err(|err| format!("encode import result failed: {err}"))?;
+    let mut imported_value = serde_json::to_value(imported)
+        .map_err(|err| format!("encode import result failed: {err}"))?;
     let imported_account_id = crate::storage_helpers::open_storage().and_then(|storage| {
         resolve_existing_imported_account_id(&storage, task.email.as_deref(), &task.result)
     });
@@ -1806,7 +1810,10 @@ fn import_local_register_task(task_uuid: &str) -> Result<Value, String> {
         crate::account::register_runtime::mark_local_register_task_imported(task_uuid, account_id);
     }
     if let Some(object) = imported_value.as_object_mut() {
-        object.insert("taskUuid".to_string(), Value::String(task_uuid.trim().to_string()));
+        object.insert(
+            "taskUuid".to_string(),
+            Value::String(task_uuid.trim().to_string()),
+        );
         if let Some(account_id) = imported_account_id {
             object.insert("importedAccountId".to_string(), Value::String(account_id));
         }
@@ -1832,7 +1839,9 @@ fn spawn_local_register_task_worker(
 
 fn spawn_local_register_batch_worker(batch_id: String) {
     thread::spawn(move || {
-        let Some(batch) = crate::account::register_runtime::read_local_register_batch(batch_id.as_str()) else {
+        let Some(batch) =
+            crate::account::register_runtime::read_local_register_batch(batch_id.as_str())
+        else {
             return;
         };
         for task_uuid in batch.task_uuids {

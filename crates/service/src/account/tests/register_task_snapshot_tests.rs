@@ -1,4 +1,6 @@
-use super::{import_register_task, read_register_task, seed_completed_local_register_task_for_test};
+use super::{
+    import_register_task, read_register_task, seed_completed_local_register_task_for_test,
+};
 use codexmanager_core::storage::Storage;
 use std::ffi::OsString;
 use std::sync::{Mutex, OnceLock};

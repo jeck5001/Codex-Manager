@@ -289,7 +289,10 @@ pub(crate) fn read_local_register_task_payload(task_uuid: &str) -> Option<String
     let runtime = runtime()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    runtime.tasks.get(task_uuid).and_then(|task| task.payload.clone())
+    runtime
+        .tasks
+        .get(task_uuid)
+        .and_then(|task| task.payload.clone())
 }
 
 pub(crate) fn mark_local_register_task_imported(task_uuid: &str, account_id: &str) {
@@ -344,13 +347,23 @@ fn build_batch_snapshot(
         .task_uuids
         .iter()
         .filter_map(|task_uuid| tasks.get(task_uuid))
-        .filter(|task| matches!(task.status.trim().to_ascii_lowercase().as_str(), "completed" | "succeeded"))
+        .filter(|task| {
+            matches!(
+                task.status.trim().to_ascii_lowercase().as_str(),
+                "completed" | "succeeded"
+            )
+        })
         .count();
     let failed = batch
         .task_uuids
         .iter()
         .filter_map(|task_uuid| tasks.get(task_uuid))
-        .filter(|task| matches!(task.status.trim().to_ascii_lowercase().as_str(), "failed" | "cancelled" | "canceled"))
+        .filter(|task| {
+            matches!(
+                task.status.trim().to_ascii_lowercase().as_str(),
+                "failed" | "cancelled" | "canceled"
+            )
+        })
         .count();
     let current_index = completed + failed;
     let finished = batch.cancelled || current_index >= batch.total;

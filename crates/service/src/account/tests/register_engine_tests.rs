@@ -1,7 +1,6 @@
 use super::{
     build_sentinel_header_for_test, normalize_register_proxy_for_test,
-    should_use_email_proxy_for_test,
-    run_local_register_flow_for_test, RegisterEngineTestScenario,
+    run_local_register_flow_for_test, should_use_email_proxy_for_test, RegisterEngineTestScenario,
 };
 use serde_json::Value;
 use std::ffi::OsString;
@@ -96,4 +95,14 @@ fn register_engine_can_enable_email_provider_proxy_via_env() {
     let _restore = override_email_proxy_env(Some("true"));
 
     assert!(should_use_email_proxy_for_test());
+}
+
+#[test]
+fn register_engine_can_disable_email_provider_proxy_via_env() {
+    let _guard = email_proxy_env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _restore = override_email_proxy_env(Some("0"));
+
+    assert!(!should_use_email_proxy_for_test());
 }

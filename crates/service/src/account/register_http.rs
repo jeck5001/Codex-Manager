@@ -1,8 +1,7 @@
 use base64::Engine;
 use codexmanager_core::auth::{
     build_authorize_url, generate_pkce, generate_state, parse_id_token_claims,
-    token_exchange_body_authorization_code, DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
-    DEFAULT_ORIGINATOR,
+    token_exchange_body_authorization_code, DEFAULT_CLIENT_ID, DEFAULT_ISSUER, DEFAULT_ORIGINATOR,
 };
 use serde_json::Value;
 use url::Url;
@@ -96,10 +95,7 @@ pub(crate) fn parse_register_callback(callback_url: &str) -> RegisterCallbackPar
         code: query.get("code").cloned().unwrap_or_default(),
         state: query.get("state").cloned().unwrap_or_default(),
         error: query.get("error").cloned().unwrap_or_default(),
-        error_description: query
-            .get("error_description")
-            .cloned()
-            .unwrap_or_default(),
+        error_description: query.get("error_description").cloned().unwrap_or_default(),
     };
 
     if !params.code.is_empty() && params.state.is_empty() && params.code.contains('#') {

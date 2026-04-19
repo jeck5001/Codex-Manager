@@ -268,10 +268,11 @@ fn load_cpa_sync_schedule_config() -> CpaSyncScheduleConfig {
     let schedule_enabled = get_persisted_app_setting(APP_SETTING_CPA_SYNC_SCHEDULE_ENABLED_KEY)
         .map(|raw| parse_bool_with_default(&raw, false))
         .unwrap_or(false);
-    let interval_minutes = get_persisted_app_setting(APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY)
-        .and_then(|raw| raw.trim().parse::<u64>().ok())
-        .map(|value| value.max(1))
-        .unwrap_or(DEFAULT_CPA_SYNC_INTERVAL_MINUTES);
+    let interval_minutes =
+        get_persisted_app_setting(APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY)
+            .and_then(|raw| raw.trim().parse::<u64>().ok())
+            .map(|value| value.max(1))
+            .unwrap_or(DEFAULT_CPA_SYNC_INTERVAL_MINUTES);
     let api_url = get_persisted_app_setting(APP_SETTING_CPA_SYNC_API_URL_KEY).unwrap_or_default();
     let has_management_key = get_persisted_app_setting(APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY)
         .map(|raw| !raw.trim().is_empty())
@@ -460,8 +461,8 @@ fn first_string_field(item: &Value, keys: &[&str]) -> Option<String> {
 }
 
 fn parse_auth_files(payload: Value) -> Result<Vec<CpaAuthFile>, String> {
-    let items =
-        array_from_container(&payload).ok_or_else(|| "CPA auth-files 响应结构不兼容".to_string())?;
+    let items = array_from_container(&payload)
+        .ok_or_else(|| "CPA auth-files 响应结构不兼容".to_string())?;
     Ok(items
         .into_iter()
         .enumerate()
@@ -497,15 +498,7 @@ fn fetch_cpa_auth_files(settings: &CpaSyncSettings) -> Result<Vec<CpaAuthFile>, 
 fn metadata_blob(item: &Value) -> String {
     let mut parts = Vec::new();
     for key in [
-        "name",
-        "filename",
-        "fileName",
-        "provider",
-        "service",
-        "type",
-        "source",
-        "label",
-        "email",
+        "name", "filename", "fileName", "provider", "service", "type", "source", "label", "email",
         "issuer",
     ] {
         if let Some(value) = item.get(key).and_then(Value::as_str) {
@@ -536,14 +529,19 @@ fn is_downloadable_file_source(file: &CpaAuthFile) -> bool {
 }
 
 fn looks_like_target_file(file: &CpaAuthFile) -> bool {
-    let metadata = format!("{} {}", file.name.to_ascii_lowercase(), metadata_blob(&file.item));
+    let metadata = format!(
+        "{} {}",
+        file.name.to_ascii_lowercase(),
+        metadata_blob(&file.item)
+    );
     ["openai", "chatgpt", "codex"]
         .iter()
         .any(|needle| metadata.contains(needle))
 }
 
 fn has_token_field(value: &Value, key: &str) -> bool {
-    value.get(key)
+    value
+        .get(key)
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -572,7 +570,9 @@ fn item_looks_importable(item: &Value) -> bool {
 
 fn resolve_download_url(settings: &CpaSyncSettings, file: &CpaAuthFile) -> Result<Url, String> {
     let mut canonical_url = build_cpa_endpoint(&settings.api_url, CPA_AUTH_FILES_DOWNLOAD_PATH)?;
-    canonical_url.query_pairs_mut().append_pair("name", &file.name);
+    canonical_url
+        .query_pairs_mut()
+        .append_pair("name", &file.name);
     Ok(canonical_url)
 }
 
@@ -605,7 +605,10 @@ fn resolve_legacy_download_url(
     Ok(None)
 }
 
-fn resolve_download_fallback_url(settings: &CpaSyncSettings, file: &CpaAuthFile) -> Result<Url, String> {
+fn resolve_download_fallback_url(
+    settings: &CpaSyncSettings,
+    file: &CpaAuthFile,
+) -> Result<Url, String> {
     let mut url = build_cpa_endpoint(&settings.api_url, CPA_AUTH_FILES_DOWNLOAD_PATH)?;
     url.query_pairs_mut().append_pair("filename", &file.name);
     Ok(url)
@@ -685,7 +688,8 @@ fn parse_auth_file_content(content: &str) -> Result<Vec<Value>, String> {
 }
 
 fn filtered_import_items(items: Vec<Value>, metadata_match: bool) -> Vec<Value> {
-    items.into_iter()
+    items
+        .into_iter()
         .filter(|item| metadata_match || item_looks_importable(item))
         .collect()
 }
@@ -699,21 +703,13 @@ fn import_payloads(payloads: Vec<String>) -> Result<ImportSummary, String> {
         return Ok(ImportSummary::default());
     }
     let result = crate::account_import::import_account_auth_json(payloads)?;
-    let value = serde_json::to_value(result).map_err(|err| format!("serialize import result failed: {err}"))?;
+    let value = serde_json::to_value(result)
+        .map_err(|err| format!("serialize import result failed: {err}"))?;
 
     Ok(ImportSummary {
-        created: value
-            .get("created")
-            .and_then(Value::as_u64)
-            .unwrap_or(0) as usize,
-        updated: value
-            .get("updated")
-            .and_then(Value::as_u64)
-            .unwrap_or(0) as usize,
-        failed: value
-            .get("failed")
-            .and_then(Value::as_u64)
-            .unwrap_or(0) as usize,
+        created: value.get("created").and_then(Value::as_u64).unwrap_or(0) as usize,
+        updated: value.get("updated").and_then(Value::as_u64).unwrap_or(0) as usize,
+        failed: value.get("failed").and_then(Value::as_u64).unwrap_or(0) as usize,
         errors: value
             .get("errors")
             .and_then(Value::as_array)
@@ -805,7 +801,10 @@ fn sync_cpa_accounts_once(params: Option<&Value>, trigger: &str) -> Result<CpaSy
 
             let filtered = filtered_import_items(parsed_items, metadata_match);
             if filtered.is_empty() {
-                errors.push(format!("{} 已跳过: 不是 Codex/OpenAI/ChatGPT auth 文件", file.name));
+                errors.push(format!(
+                    "{} 已跳过: 不是 Codex/OpenAI/ChatGPT auth 文件",
+                    file.name
+                ));
                 continue;
             }
 
@@ -894,7 +893,9 @@ pub(crate) fn auth_files_from_test_payload(payload: Value) -> Result<Vec<String>
 }
 
 #[cfg(test)]
-pub(crate) fn auth_file_flags_for_test(payload: Value) -> Result<Vec<(String, Option<String>, bool)>, String> {
+pub(crate) fn auth_file_flags_for_test(
+    payload: Value,
+) -> Result<Vec<(String, Option<String>, bool)>, String> {
     parse_auth_files(payload).map(|files| {
         files
             .into_iter()
@@ -904,7 +905,10 @@ pub(crate) fn auth_file_flags_for_test(payload: Value) -> Result<Vec<(String, Op
 }
 
 #[cfg(test)]
-pub(crate) fn filter_import_items_for_test(payload: &str, metadata_match: bool) -> Result<usize, String> {
+pub(crate) fn filter_import_items_for_test(
+    payload: &str,
+    metadata_match: bool,
+) -> Result<usize, String> {
     Ok(filtered_import_items(parse_auth_file_content(payload)?, metadata_match).len())
 }
 
@@ -926,7 +930,9 @@ pub(crate) fn download_auth_file_for_test(
 }
 
 #[cfg(test)]
-pub(crate) fn resolve_cpa_settings_for_test(payload: Option<&Value>) -> Result<(String, String), String> {
+pub(crate) fn resolve_cpa_settings_for_test(
+    payload: Option<&Value>,
+) -> Result<(String, String), String> {
     let settings = resolve_cpa_settings(payload)?;
     Ok((settings.api_url, settings.management_key))
 }

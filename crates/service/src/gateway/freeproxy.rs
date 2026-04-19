@@ -759,11 +759,15 @@ mod tests {
         .expect("serialize clear result");
 
         assert_eq!(
-            value.get("clearedGatewayProxyCount").and_then(serde_json::Value::as_u64),
+            value
+                .get("clearedGatewayProxyCount")
+                .and_then(serde_json::Value::as_u64),
             Some(2)
         );
         assert_eq!(
-            value.get("remainingRegisterProxyCount").and_then(serde_json::Value::as_u64),
+            value
+                .get("remainingRegisterProxyCount")
+                .and_then(serde_json::Value::as_u64),
             Some(0)
         );
     }

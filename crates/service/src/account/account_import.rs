@@ -605,9 +605,9 @@ fn merge_session_token_into_cookies(
         {
             Some(existing)
         }
-        (Some(existing), Some(session_token)) => {
-            Some(format!("{existing}; __Secure-next-auth.session-token={session_token}"))
-        }
+        (Some(existing), Some(session_token)) => Some(format!(
+            "{existing}; __Secure-next-auth.session-token={session_token}"
+        )),
         (None, Some(session_token)) => {
             Some(format!("__Secure-next-auth.session-token={session_token}"))
         }

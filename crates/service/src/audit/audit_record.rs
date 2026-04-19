@@ -167,14 +167,10 @@ fn classify_auditable_method(method: &str) -> Option<(&'static str, &'static str
         "account/register/start" | "account/register/task" => Some(("create", "account")),
         "account/register/batch/start"
         | "account/register/outlookBatch/start"
-        | "account/register/hotmailBatch/start" => {
-            Some(("start", "register_batch"))
-        }
+        | "account/register/hotmailBatch/start" => Some(("start", "register_batch")),
         "account/register/batch/cancel"
         | "account/register/outlookBatch/cancel"
-        | "account/register/hotmailBatch/cancel" => {
-            Some(("cancel", "register_batch"))
-        }
+        | "account/register/hotmailBatch/cancel" => Some(("cancel", "register_batch")),
         "account/register/task/cancel" => Some(("cancel", "register_task")),
         "account/register/task/delete" => Some(("delete", "register_task")),
         "account/register/tasks/deleteMany" => Some(("delete_many", "register_task")),

@@ -30,10 +30,8 @@ fn register_runtime_appends_logs_and_updates_status() {
 
     let snapshot = read_local_register_task_for_test(&task_uuid).expect("task snapshot");
     assert_eq!(snapshot.status, "submitting_signup");
-    assert!(
-        snapshot
-            .logs
-            .iter()
-            .any(|line| line.contains("signup email submitted"))
-    );
+    assert!(snapshot
+        .logs
+        .iter()
+        .any(|line| line.contains("signup email submitted")));
 }
