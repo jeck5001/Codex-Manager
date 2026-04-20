@@ -78,6 +78,7 @@ import {
   isSecondaryWindowOnlyUsage,
 } from "@/lib/utils/usage";
 import { Account } from "@/types";
+import { collectInvalidAuthCleanupAccountIds } from "./account-cleanup";
 
 type StatusFilter =
   | "all"
@@ -434,6 +435,10 @@ export default function AccountsPage() {
     () => filteredAccounts.filter((account) => account.isLowQuota),
     [filteredAccounts],
   );
+  const filteredInvalidAuthCleanupIds = useMemo(
+    () => collectInvalidAuthCleanupAccountIds(filteredAccounts),
+    [filteredAccounts],
+  );
   const scopedGovernedAccounts = useMemo(
     () => scopedAccounts.filter((account) => Boolean(account.lastGovernanceReason)),
     [scopedAccounts],
@@ -767,6 +772,18 @@ export default function AccountsPage() {
       kind: "selected",
       ids: [...effectiveSelectedIds],
       count: effectiveSelectedIds.length,
+    });
+  };
+
+  const handleDeleteInvalidAuthAccounts = () => {
+    if (!filteredInvalidAuthCleanupIds.length) {
+      toast.info("当前筛选范围内没有可清理的失效登录态账号");
+      return;
+    }
+    setDeleteDialogState({
+      kind: "selected",
+      ids: [...filteredInvalidAuthCleanupIds],
+      count: filteredInvalidAuthCleanupIds.length,
     });
   };
 
@@ -1262,6 +1279,17 @@ export default function AccountsPage() {
                     <Trash2 className="mr-2 h-4 w-4" /> 删除选中账号
                     <DropdownMenuShortcut>
                       {effectiveSelectedIds.length || "-"}
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!filteredInvalidAuthCleanupIds.length || isDeletingMany}
+                    variant="destructive"
+                    className="h-9 rounded-lg px-2"
+                    onClick={handleDeleteInvalidAuthAccounts}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" /> 一键清理失效登录态
+                    <DropdownMenuShortcut>
+                      {isDeletingMany ? "..." : filteredInvalidAuthCleanupIds.length || "-"}
                     </DropdownMenuShortcut>
                   </DropdownMenuItem>
                   <DropdownMenuItem
