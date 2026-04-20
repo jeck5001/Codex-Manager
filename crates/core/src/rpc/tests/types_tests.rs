@@ -2,9 +2,10 @@ use super::{
     AccountListParams, AccountListResult, AccountSummary, AuditLogItem, CostExportResult,
     CostSummaryParams, DashboardAccountStatusBucket, DashboardGatewayMetricsResult,
     DashboardHealthResult, DashboardTrendPoint, DashboardTrendResult, GovernanceSummaryItem,
-    HeatmapTrendResult, ModelPricingItem, ModelTrendResult, OperationAuditItem,
-    RequestLogFilterSummaryResult, RequestLogListParams, RequestLogListResult, RequestLogSummary,
-    RequestTrendResult, TrendQueryParams,
+    HeatmapTrendResult, ModelOption, ModelPricingItem, ModelTrendResult, OperationAuditItem,
+    RequestLogFilterSummaryResult, RequestLogListParams, RequestLogListResult,
+    RequestLogSummary, RequestLogTodaySummaryResult, StartupSnapshotResult, RequestTrendResult,
+    TrendQueryParams, UsageAggregateSummaryResult, UsagePredictionSummaryResult,
 };
 
 #[test]
@@ -463,4 +464,47 @@ fn request_log_filter_summary_serialization_uses_camel_case() {
     ] {
         assert!(obj.contains_key(key), "missing key: {key}");
     }
+}
+
+#[test]
+fn startup_snapshot_result_serialization_uses_lightweight_request_log_fields() {
+    let result = StartupSnapshotResult {
+        accounts: vec![],
+        usage_aggregate_summary: UsageAggregateSummaryResult::default(),
+        usage_prediction_summary: UsagePredictionSummaryResult::default(),
+        failure_reason_summary: vec![],
+        governance_summary: vec![],
+        operation_audits: vec![],
+        api_keys: vec![],
+        api_model_options: vec![ModelOption {
+            slug: "gpt-5".to_string(),
+            display_name: "GPT-5".to_string(),
+        }],
+        manual_preferred_account_id: Some("acc_manual".to_string()),
+        request_log_today_summary: RequestLogTodaySummaryResult {
+            input_tokens: 0,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            reasoning_output_tokens: 0,
+            today_tokens: 0,
+            estimated_cost: 0.0,
+        },
+        recent_request_log_count: 12,
+        latest_request_account_id: Some("acc_latest".to_string()),
+    };
+
+    let value = serde_json::to_value(result).expect("serialize startup snapshot");
+    let obj = value.as_object().expect("startup snapshot object");
+
+    assert_eq!(
+        obj.get("recentRequestLogCount").and_then(|value| value.as_i64()),
+        Some(12)
+    );
+    assert_eq!(
+        obj.get("latestRequestAccountId")
+            .and_then(|value| value.as_str()),
+        Some("acc_latest")
+    );
+    assert!(!obj.contains_key("requestLogs"));
+    assert!(!obj.contains_key("usageSnapshots"));
 }

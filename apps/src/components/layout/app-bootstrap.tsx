@@ -124,16 +124,6 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
 
       const warmupTasks = [
         queryClient.prefetchQuery({
-          queryKey: ["accounts", "list"],
-          queryFn: () => accountClient.list(),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["usage", "list"],
-          queryFn: () => accountClient.listUsage(),
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
           queryKey: ["gateway", "manual-account", addr || null],
           queryFn: () => serviceClient.getManualPreferredAccountId(),
           staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
@@ -159,11 +149,6 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
               return result;
             }, {});
           },
-          staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
-        }),
-        queryClient.prefetchQuery({
-          queryKey: ["accounts", "lookup"],
-          queryFn: () => accountClient.list(),
           staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
         }),
         queryClient.prefetchQuery({

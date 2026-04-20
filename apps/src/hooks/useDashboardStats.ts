@@ -10,9 +10,10 @@ import {
   STARTUP_SNAPSHOT_WARMUP_INTERVAL_MS,
   STARTUP_SNAPSHOT_WARMUP_TIMEOUT_MS,
 } from "@/lib/api/startup-snapshot";
+import { pickCurrentAccountId } from "@/lib/api/startup-snapshot-state";
 import { serviceClient } from "@/lib/api/service-client";
 import { useAppStore } from "@/lib/store/useAppStore";
-import { pickBestRecommendations, pickCurrentAccount } from "@/lib/utils/usage";
+import { pickBestRecommendations } from "@/lib/utils/usage";
 
 export function useDashboardStats() {
   const serviceStatus = useAppStore((state) => state.serviceStatus);
@@ -89,11 +90,13 @@ export function useDashboardStats() {
   const totalAccounts = accounts.length;
   const availableAccounts = accounts.filter((item) => item.isAvailable).length;
   const unavailableAccounts = totalAccounts - availableAccounts;
-  const currentAccount = pickCurrentAccount(
+  const currentAccountId = pickCurrentAccountId(
     accounts,
-    data?.requestLogs || [],
+    data?.latestRequestAccountId ?? null,
     data?.manualPreferredAccountId
   );
+  const currentAccount =
+    accounts.find((item) => item.id === currentAccountId) ?? null;
   const recommendations = pickBestRecommendations(accounts);
   const failureReasonSummary = data?.failureReasonSummary || [];
   const governanceSummary = data?.governanceSummary || [];
@@ -157,7 +160,7 @@ export function useDashboardStats() {
     operationAudits,
     dashboardHealth: dashboardHealthQuery.data ?? null,
     dashboardTrend: dashboardTrendQuery.data ?? null,
-    requestLogs: data?.requestLogs || [],
+    requestLogCount: data?.recentRequestLogCount ?? 0,
     isLoading: !isServiceReady || snapshotQuery.isPending || shouldWarmupPoll,
     isDashboardLoading:
       isServiceReady &&

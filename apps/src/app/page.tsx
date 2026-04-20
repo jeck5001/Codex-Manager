@@ -499,7 +499,7 @@ export default function DashboardPage() {
     operationAudits,
     dashboardHealth,
     dashboardTrend,
-    requestLogs,
+    requestLogCount,
     isLoading,
     isDashboardLoading,
     isServiceReady,
@@ -759,7 +759,7 @@ export default function DashboardPage() {
                 <p className="mt-1 text-[10px] text-muted-foreground">池中所有配置账号</p>
                 <div className="mt-4 flex w-fit items-center gap-2 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-600 dark:text-blue-400">
                   <Activity className="h-3 w-3" />
-                  最近日志 {requestLogs.length} 条
+                  最近日志 {requestLogCount} 条
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-[10px]">
                   <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">

@@ -1267,7 +1267,6 @@ export interface ServiceInitializationResult {
 
 export interface StartupSnapshot {
   accounts: Account[];
-  usageSnapshots: AccountUsage[];
   usageAggregateSummary: UsageAggregateSummary;
   usagePredictionSummary: UsagePredictionSummary;
   failureReasonSummary: FailureReasonSummaryItem[];
@@ -1277,5 +1276,6 @@ export interface StartupSnapshot {
   apiModelOptions: ModelOption[];
   manualPreferredAccountId: string;
   requestLogTodaySummary: RequestLogTodaySummary;
-  requestLogs: RequestLog[];
+  recentRequestLogCount: number;
+  latestRequestAccountId: string | null;
 }
