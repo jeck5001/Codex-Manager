@@ -616,10 +616,12 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
   const id = asString(source.id);
   if (!id) return null;
 
+  const embeddedUsage = normalizeUsageSnapshot(source.usage ?? source.usage_snapshot);
+  const resolvedUsage = usage ?? embeddedUsage ?? null;
   const name = asString(source.label || source.name) || id;
   const groupName = asString(source.groupName ?? source.group_name);
   const status = asString(source.status);
-  const isLowQuota = !isUnavailableAccountStatus(status) && isLowQuotaUsage(usage);
+  const isLowQuota = !isUnavailableAccountStatus(status) && isLowQuotaUsage(resolvedUsage);
   const healthScore = asInteger(source.healthScore ?? source.health_score, 100, 0);
   const cooldownUntil = toNullableNumber(
     source.cooldownUntil ?? source.cooldown_until
@@ -627,8 +629,8 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
   const newAccountProtectionUntil = toNullableNumber(
     source.newAccountProtectionUntil ?? source.new_account_protection_until
   );
-  const availability = calcAvailability(usage, { status });
-  const usageBuckets = getUsageDisplayBuckets(usage);
+  const availability = calcAvailability(resolvedUsage, { status });
+  const usageBuckets = getUsageDisplayBuckets(resolvedUsage);
   const healthTier = deriveAccountHealthTier({
     status,
     healthScore,
@@ -703,7 +705,7 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     isAvailable: availability.level === "ok",
     isLowQuota,
     isDeactivated: status.toLowerCase() === "deactivated",
-    lastRefreshAt: usage?.capturedAt ?? null,
+    lastRefreshAt: resolvedUsage?.capturedAt ?? null,
     availabilityText: availability.text,
     availabilityLevel: availability.level,
     primaryRemainPercent: usageBuckets.primaryRemainPercent,
@@ -722,7 +724,7 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     officialPromoLinkUpdatedAt: toNullableNumber(
       source.officialPromoLinkUpdatedAt ?? source.official_promo_link_updated_at
     ),
-    usage: usage ?? null,
+    usage: resolvedUsage,
   };
 }
 
@@ -1566,15 +1568,12 @@ export function normalizeFreeProxyClearResult(payload: unknown): FreeProxyClearR
 
 export function normalizeStartupSnapshot(payload: unknown): StartupSnapshot {
   const source = asObject(payload);
-  const usageSnapshots = normalizeUsageList(source.usageSnapshots);
-  const usageMap = buildUsageMap(usageSnapshots);
   const accounts = asArray(source.accounts)
-    .map((item) => normalizeAccount(item, usageMap.get(asString(asObject(item).id))))
+    .map((item) => normalizeAccount(item))
     .filter((item): item is Account => Boolean(item));
 
   return {
     accounts,
-    usageSnapshots,
     usageAggregateSummary: normalizeUsageAggregateSummary(source.usageAggregateSummary),
     usagePredictionSummary: normalizeUsagePredictionSummary(
       source.usagePredictionSummary ?? source.usage_prediction_summary
@@ -1592,7 +1591,8 @@ export function normalizeStartupSnapshot(payload: unknown): StartupSnapshot {
     apiModelOptions: normalizeModelOptions(source.apiModelOptions),
     manualPreferredAccountId: asString(source.manualPreferredAccountId),
     requestLogTodaySummary: normalizeTodaySummary(source.requestLogTodaySummary),
-    requestLogs: normalizeRequestLogs(source.requestLogs),
+    recentRequestLogCount: asInteger(source.recentRequestLogCount, 0, 0),
+    latestRequestAccountId: asString(source.latestRequestAccountId) || null,
   };
 }
 

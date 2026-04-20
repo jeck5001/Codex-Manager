@@ -153,7 +153,7 @@ pub struct AccountAuthRecoveryResult {
     pub warning: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageSnapshotResult {
     pub account_id: Option<String>,
@@ -905,8 +905,7 @@ pub struct HealthcheckConfigResult {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartupSnapshotResult {
-    pub accounts: Vec<AccountSummary>,
-    pub usage_snapshots: Vec<UsageSnapshotResult>,
+    pub accounts: Vec<StartupAccountSummary>,
     #[serde(default)]
     pub usage_aggregate_summary: UsageAggregateSummaryResult,
     #[serde(default)]
@@ -919,9 +918,22 @@ pub struct StartupSnapshotResult {
     pub operation_audits: Vec<OperationAuditItem>,
     pub api_keys: Vec<ApiKeySummary>,
     pub api_model_options: Vec<ModelOption>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub manual_preferred_account_id: Option<String>,
     pub request_log_today_summary: RequestLogTodaySummaryResult,
-    pub request_logs: Vec<RequestLogSummary>,
+    #[serde(default)]
+    pub recent_request_log_count: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_request_account_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupAccountSummary {
+    #[serde(flatten)]
+    pub account: AccountSummary,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageSnapshotResult>,
 }
 
 #[cfg(test)]

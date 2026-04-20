@@ -1,6 +1,7 @@
 "use client";
 
 import { StartupSnapshot } from "@/types";
+import { hasStartupSnapshotSignal as hasStartupSnapshotSignalImpl } from "./startup-snapshot-state";
 
 export const STARTUP_SNAPSHOT_REQUEST_LOG_LIMIT = 120;
 export const STARTUP_SNAPSHOT_STALE_TIME = 15_000;
@@ -17,12 +18,5 @@ export function buildStartupSnapshotQueryKey(
 export function hasStartupSnapshotSignal(
   snapshot: StartupSnapshot | undefined
 ): boolean {
-  if (!snapshot) return false;
-  if (snapshot.usageSnapshots.length > 0) return true;
-  if (snapshot.requestLogs.length > 0) return true;
-  if (snapshot.requestLogTodaySummary.todayTokens > 0) return true;
-  return (
-    snapshot.usageAggregateSummary.primaryKnownCount > 0 ||
-    snapshot.usageAggregateSummary.secondaryKnownCount > 0
-  );
+  return hasStartupSnapshotSignalImpl(snapshot);
 }
