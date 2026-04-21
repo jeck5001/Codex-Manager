@@ -91,6 +91,15 @@ def _public_hotmail_batch(batch: dict) -> dict:
         "cancelled": batch.get("cancelled", False),
         "logs": list(batch.get("logs", [])),
         "artifacts": list(batch.get("artifacts", [])),
+        "accounts": [
+            {
+                "email": record.get("email", ""),
+                "password": record.get("password", ""),
+                "target_domain": record.get("target_domain", ""),
+                "verification_email": record.get("verification_email", ""),
+            }
+            for record in batch.get("_successful_records", [])
+        ],
     }
 
 
