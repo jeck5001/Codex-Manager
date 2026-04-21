@@ -237,51 +237,91 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
             ]
         )
 
-    ARKOSE_IFRAME_SELECTORS = [
-        "iframe[title*='challenge' i]",
-        "iframe[id*='arkose' i]",
-        "iframe[name*='arkose' i]",
-        "iframe[src*='arkoselabs' i]",
-        "iframe[id*='enforcement' i]",
-        "iframe[src*='funcaptcha' i]",
-    ]
+    ARKOSE_FRAME_URL_MARKERS = (
+        "arkoselabs",
+        "funcaptcha",
+        "arkose",
+    )
     ARKOSE_HOLD_BUTTON_SELECTORS = [
         "button#home_children_button",
         "button[aria-label*='hold' i]",
+        "button[aria-label*='press' i]",
         "button:has-text('Press & Hold')",
         "button:has-text('Press and hold')",
         "button:has-text('Press and Hold')",
         "button:has-text('按住')",
+        "[role='button']:has-text('Press & Hold')",
+        "[role='button']:has-text('Press and hold')",
+        "[role='button']:has-text('按住')",
         "[data-theme='home.button']",
+        "#home_children_button",
     ]
 
-    def _locate_arkose_hold_target(self):
+    def _iter_candidate_frames(self):
         assert self.page is not None
         page = self.page
-        for selector in self.ARKOSE_IFRAME_SELECTORS:
+        seen_ids = set()
+        try:
+            frames = list(page.frames)
+        except Exception:
+            frames = []
+        for frame in frames:
             try:
-                iframe_locator = page.locator(selector).first
-                if iframe_locator.count() == 0:
-                    continue
-                frame = iframe_locator.content_frame
-                if frame is None:
-                    continue
+                frame_id = id(frame)
             except Exception:
+                frame_id = None
+            if frame_id in seen_ids:
                 continue
+            if frame_id is not None:
+                seen_ids.add(frame_id)
+            try:
+                url = (frame.url or "").lower()
+            except Exception:
+                url = ""
+            if any(marker in url for marker in self.ARKOSE_FRAME_URL_MARKERS):
+                yield frame, url
+        # Fallback: the main frame itself
+        try:
+            yield page.main_frame, str(page.main_frame.url or "").lower()
+        except Exception:
+            return
+
+    def _debug_dump_frames(self) -> None:
+        assert self.page is not None
+        try:
+            summaries = []
+            for frame in self.page.frames[:20]:
+                try:
+                    url = (frame.url or "")[:120]
+                except Exception:
+                    url = "<err>"
+                try:
+                    name = frame.name or ""
+                except Exception:
+                    name = ""
+                summaries.append(f"name='{name}' url='{url}'")
+            logger.info(
+                "[hotmail-session] frame dump at captcha (%d frames): %s",
+                len(summaries),
+                " || ".join(summaries),
+            )
+        except Exception as exc:
+            logger.info("[hotmail-session] frame dump failed: %s", exc)
+
+    def _locate_arkose_hold_target(self):
+        for frame, frame_url in self._iter_candidate_frames():
             for btn_selector in self.ARKOSE_HOLD_BUTTON_SELECTORS:
                 try:
                     btn = frame.locator(btn_selector).first
                     if btn.count() > 0:
-                        return btn, iframe_locator
+                        logger.info(
+                            "[hotmail-session] auto-hold target found: selector=%s frame_url=%s",
+                            btn_selector,
+                            frame_url[:120],
+                        )
+                        return btn, frame
                 except Exception:
                     continue
-        for btn_selector in self.ARKOSE_HOLD_BUTTON_SELECTORS:
-            try:
-                btn = page.locator(btn_selector).first
-                if btn.count() > 0:
-                    return btn, None
-            except Exception:
-                continue
         return None, None
 
     def try_auto_hold_captcha(
@@ -293,23 +333,21 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         assert self.page is not None
         page = self.page
         for attempt in range(1, max_attempts + 1):
-            target, iframe_locator = self._locate_arkose_hold_target()
+            target, _frame = self._locate_arkose_hold_target()
             if target is None:
+                self._debug_dump_frames()
                 self._log("Arkose 自动按住: 未找到按钮，跳过")
                 return False
             try:
-                iframe_box = iframe_locator.bounding_box() if iframe_locator is not None else None
                 button_box = target.bounding_box()
-            except Exception:
+            except Exception as exc:
+                logger.info("[hotmail-session] bounding_box() failed: %s", exc)
                 button_box = None
-                iframe_box = None
             if not button_box:
                 self._log("Arkose 自动按住: 无法读取按钮坐标")
                 return False
-            offset_x = iframe_box["x"] if iframe_box else 0.0
-            offset_y = iframe_box["y"] if iframe_box else 0.0
-            center_x = offset_x + button_box["x"] + button_box["width"] / 2
-            center_y = offset_y + button_box["y"] + button_box["height"] / 2
+            center_x = button_box["x"] + button_box["width"] / 2
+            center_y = button_box["y"] + button_box["height"] / 2
             try:
                 page.mouse.move(center_x - 3, center_y - 3, steps=14)
                 page.wait_for_timeout(random.randint(220, 420))
