@@ -271,7 +271,14 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         # PerimeterX/HUMAN px-captcha class pattern
         "[class*='px-captcha'] [role='button']",
         "[class*='px-captcha-container']",
+        "[class*='px-captcha-button']",
+        "[class*='captcha-button']",
+        "[class*='humanity-button']",
         "div[class*='captcha'] [role='button']",
+        # Wide fallbacks — main frames are excluded so false positives are rare
+        "div[role='button']",
+        "[role='button']",
+        "button",
     ]
     ARKOSE_HOLD_TEXT_PATTERNS = (
         "Press & Hold",
@@ -402,6 +409,26 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         except Exception as exc:
             logger.info("[hotmail-session] frame dump failed: %s", exc)
 
+    def _debug_dump_captcha_dom(self) -> None:
+        for frame, url in self._iter_candidate_frames():
+            try:
+                html = frame.evaluate(
+                    "() => (document.body && document.body.innerHTML || '').slice(0, 3500)"
+                )
+            except Exception as exc:
+                logger.info(
+                    "[hotmail-session] body dump failed frame_url=%s err=%s",
+                    url[:80],
+                    exc,
+                )
+                continue
+            if html:
+                logger.info(
+                    "[hotmail-session] body html (frame_url=%s, trim 3500): %s",
+                    url[:80],
+                    html,
+                )
+
     def _locate_arkose_hold_target(self):
         self._wait_for_captcha_frame()
         for frame, frame_url in self._iter_candidate_frames():
@@ -447,6 +474,7 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
             target, _frame = self._locate_arkose_hold_target()
             if target is None:
                 self._debug_dump_frames()
+                self._debug_dump_captcha_dom()
                 self._log("Arkose 自动按住: 未找到按钮，跳过")
                 return False
             button_box = self._wait_bounding_box(target)
