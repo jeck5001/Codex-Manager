@@ -33,7 +33,6 @@ import { appClient } from "@/lib/api/app-client";
 import { accountClient } from "@/lib/api/account-client";
 import { hotmailLocalHelperClient } from "@/lib/api/hotmail-local-helper";
 import {
-  buildHotmailBackendCallbackBase,
   buildHotmailBatchStatusText,
   buildHotmailLocalHandoffActionState,
   buildHotmailWebLocalHandoffActionState,
@@ -107,30 +106,14 @@ export default function HotmailPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const health = await hotmailLocalHelperClient.health();
-      if (!health.ok) {
-        throw new Error("Hotmail helper 不可用");
-      }
-      if (!health.playwrightReady) {
-        throw new Error("Hotmail helper 缺少 Playwright Chromium，请先执行 playwright install chromium");
-      }
-      const batch = await accountClient.startRegisterHotmailBatch({
+      return accountClient.startRegisterHotmailBatch({
         count: Math.max(1, Number(count) || 1),
         concurrency: Math.max(1, Number(concurrency) || 1),
         intervalMin: Math.max(0, Number(intervalMin) || 0),
         intervalMax: Math.max(0, Number(intervalMax) || 0),
         proxy: proxy.trim() || null,
-        executionMode: "local_first",
+        executionMode: "server",
       });
-      if (batch.currentTaskPayload && typeof window !== "undefined") {
-        await hotmailLocalHelperClient.startTask({
-          ...batch.currentTaskPayload,
-          backendCallbackBase:
-            batch.currentTaskPayload.backendCallbackBase
-            || buildHotmailBackendCallbackBase(window.location.href),
-        });
-      }
-      return batch;
     },
     onSuccess: (batch) => {
       setTrackedBatchId(batch.batchId);
@@ -139,7 +122,6 @@ export default function HotmailPage() {
       toast.success(`Hotmail 批次已启动: ${batch.batchId}`);
     },
     onError: (error: unknown) => {
-      setShowWebHelperGuide(true);
       toast.error(`启动失败: ${getAppErrorMessage(error)}`);
     },
   });
