@@ -541,12 +541,17 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 .and_then(|value| value.as_i64())
                 .unwrap_or(interval_min);
             let proxy = first_string_param(req, &["proxy", "proxyUrl", "proxy_url"]);
+            let execution_mode = first_string_param(
+                req,
+                &["executionMode", "execution_mode"],
+            );
             super::value_or_error(account_register::start_register_hotmail_batch(
                 count,
                 concurrency,
                 interval_min,
                 interval_max,
                 proxy,
+                execution_mode,
             ))
         }
         "account/register/hotmailBatch/read" => {
