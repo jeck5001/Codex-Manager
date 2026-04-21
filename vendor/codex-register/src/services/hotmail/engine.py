@@ -241,21 +241,46 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         "arkoselabs",
         "funcaptcha",
         "arkose",
+        "hsprotect",
+        "humansecurity",
+        "perimeterx",
+        "px-cdn",
+        "px-captcha",
+        "captcha",
     )
     ARKOSE_HOLD_BUTTON_SELECTORS = [
+        # Arkose Labs FunCaptcha
         "button#home_children_button",
-        "button[aria-label*='hold' i]",
-        "button[aria-label*='press' i]",
+        "#home_children_button",
+        "[data-theme='home.button']",
+        # Generic Press & Hold buttons
         "button:has-text('Press & Hold')",
         "button:has-text('Press and hold')",
         "button:has-text('Press and Hold')",
         "button:has-text('按住')",
+        "button[aria-label*='hold' i]",
+        "button[aria-label*='press' i]",
+        # Divs with button role (HUMAN Security / PerimeterX pattern)
+        "div[role='button'][aria-label*='Press' i]",
+        "div[role='button'][aria-label*='hold' i]",
+        "div[role='button'][aria-label*='human' i]",
+        "div[role='button'][aria-label*='bot' i]",
         "[role='button']:has-text('Press & Hold')",
         "[role='button']:has-text('Press and hold')",
         "[role='button']:has-text('按住')",
-        "[data-theme='home.button']",
-        "#home_children_button",
+        # PerimeterX/HUMAN px-captcha class pattern
+        "[class*='px-captcha'] [role='button']",
+        "[class*='px-captcha-container']",
+        "div[class*='captcha'] [role='button']",
     ]
+    ARKOSE_HOLD_TEXT_PATTERNS = (
+        "Press & Hold",
+        "Press and hold",
+        "Press and Hold",
+        "PRESS & HOLD",
+        "按住",
+        "长按",
+    )
 
     def _iter_candidate_frames(self):
         assert self.page is not None
@@ -265,6 +290,8 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
             frames = list(page.frames)
         except Exception:
             frames = []
+        matched = []
+        other = []
         for frame in frames:
             try:
                 frame_id = id(frame)
@@ -279,12 +306,29 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
             except Exception:
                 url = ""
             if any(marker in url for marker in self.ARKOSE_FRAME_URL_MARKERS):
-                yield frame, url
-        # Fallback: the main frame itself
+                matched.append((frame, url))
+            else:
+                other.append((frame, url))
+        for entry in matched:
+            yield entry
+        # Fall back: any non-main frame that we haven't already tried. Some
+        # Microsoft captcha embeds use plain domains (hsprotect.net subsets)
+        # that do not carry an obvious captcha marker. The button selectors
+        # themselves are specific enough to avoid false positives.
         try:
-            yield page.main_frame, str(page.main_frame.url or "").lower()
+            main_frame = page.main_frame
         except Exception:
-            return
+            main_frame = None
+        for frame, url in other:
+            if main_frame is not None and frame is main_frame:
+                continue
+            yield frame, url
+        # Finally, try the main frame itself in case the button lives there.
+        if main_frame is not None:
+            try:
+                yield main_frame, str(main_frame.url or "").lower()
+            except Exception:
+                return
 
     def _debug_dump_frames(self) -> None:
         assert self.page is not None
@@ -315,8 +359,20 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
                     btn = frame.locator(btn_selector).first
                     if btn.count() > 0:
                         logger.info(
-                            "[hotmail-session] auto-hold target found: selector=%s frame_url=%s",
+                            "[hotmail-session] auto-hold target found via selector=%s frame_url=%s",
                             btn_selector,
+                            frame_url[:120],
+                        )
+                        return btn, frame
+                except Exception:
+                    continue
+            for text_pattern in self.ARKOSE_HOLD_TEXT_PATTERNS:
+                try:
+                    btn = frame.get_by_text(text_pattern, exact=False).first
+                    if btn.count() > 0:
+                        logger.info(
+                            "[hotmail-session] auto-hold target found via text=%s frame_url=%s",
+                            text_pattern,
                             frame_url[:120],
                         )
                         return btn, frame
