@@ -1099,6 +1099,7 @@ pub(crate) fn start_register_hotmail_batch(
     interval_min: i64,
     interval_max: i64,
     proxy: Option<String>,
+    execution_mode: Option<String>,
 ) -> Result<Value, String> {
     if count < 1 {
         return Err("count must be greater than 0".to_string());
@@ -1109,16 +1110,22 @@ pub(crate) fn start_register_hotmail_batch(
     if interval_min < 0 || interval_max < interval_min {
         return Err("invalid interval range".to_string());
     }
-    register_post_json(
-        "/api/hotmail/batches",
-        &json!({
-            "count": count,
-            "concurrency": concurrency,
-            "interval_min": interval_min,
-            "interval_max": interval_max,
-            "proxy": proxy,
-        }),
-    )
+    let mut body = json!({
+        "count": count,
+        "concurrency": concurrency,
+        "interval_min": interval_min,
+        "interval_max": interval_max,
+        "proxy": proxy,
+    });
+    if let Some(mode) = execution_mode.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
+    }) {
+        if let Value::Object(ref mut map) = body {
+            map.insert("execution_mode".to_string(), Value::String(mode));
+        }
+    }
+    register_post_json("/api/hotmail/batches", &body)
 }
 
 pub(crate) fn read_register_hotmail_batch(batch_id: &str) -> Result<Value, String> {
