@@ -106,7 +106,9 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
             "headless": self._launch_headless(),
             "args": [
                 "--no-sandbox",
-                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--lang=en-US,en",
             ],
         }
         chrome_path = resolve_register_chrome_executable_path()
@@ -118,7 +120,14 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
 
         self.browser = self.playwright.chromium.launch(**launch_kwargs)
         self.context = self.browser.new_context(
-            viewport={"width": 1440, "height": 960},
+            viewport={"width": 1920, "height": 1080},
+            locale="en-US",
+            timezone_id=os.environ.get("HOTMAIL_TIMEZONE_ID", "America/Los_Angeles"),
+            user_agent=os.environ.get(
+                "HOTMAIL_USER_AGENT",
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36",
+            ),
             ignore_https_errors=True,
         )
         self.page = self.context.new_page()
