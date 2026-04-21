@@ -58,14 +58,22 @@ def _load_payload(payload_path: str):
 
 
 def get_chromium_executable_path() -> str:
-    from playwright.sync_api import sync_playwright
+    from patchright.sync_api import sync_playwright
+
+    from ...core.browser_runtime import resolve_register_chrome_executable_path
+
+    real_chrome = resolve_register_chrome_executable_path()
+    if real_chrome:
+        return real_chrome
 
     with sync_playwright() as playwright:
         return playwright.chromium.executable_path
 
 
 def launch_local_handoff(payload_path: str, profile_dir: str, wait_for_seconds: int = 300) -> None:
-    from playwright.sync_api import sync_playwright
+    from patchright.sync_api import sync_playwright
+
+    from ...core.browser_runtime import resolve_register_chrome_executable_path
 
     payload = _load_payload(payload_path)
     target_url = str(payload.get("url") or "").strip()
@@ -80,6 +88,9 @@ def launch_local_handoff(payload_path: str, profile_dir: str, wait_for_seconds: 
             "--disable-blink-features=AutomationControlled",
         ],
     }
+    chrome_path = resolve_register_chrome_executable_path()
+    if chrome_path:
+        launch_options["executable_path"] = chrome_path
     proxy = _build_proxy_config(str(payload.get("proxy_url") or ""))
     if proxy:
         launch_options["proxy"] = proxy

@@ -258,8 +258,8 @@ class HotmailEngineTests(unittest.TestCase):
             def start(self):
                 return FakePlaywright()
 
-        fake_playwright_module = types.ModuleType("playwright")
-        fake_sync_api_module = types.ModuleType("playwright.sync_api")
+        fake_playwright_module = types.ModuleType("patchright")
+        fake_sync_api_module = types.ModuleType("patchright.sync_api")
         fake_sync_api_module.sync_playwright = lambda: FakeStarter()
 
         session = PlaywrightHotmailBrowserSession()
@@ -267,8 +267,8 @@ class HotmailEngineTests(unittest.TestCase):
             with patch.dict(
                 sys.modules,
                 {
-                    "playwright": fake_playwright_module,
-                    "playwright.sync_api": fake_sync_api_module,
+                    "patchright": fake_playwright_module,
+                    "patchright.sync_api": fake_sync_api_module,
                 },
             ):
                 session.__enter__()

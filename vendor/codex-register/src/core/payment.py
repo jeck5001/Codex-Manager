@@ -196,9 +196,9 @@ def open_url_incognito(url: str, cookies_str: Optional[str] = None) -> bool:
     """用 Playwright 以无痕模式打开 URL，可注入 cookie"""
     import threading
     try:
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
     except ImportError:
-        logger.warning("playwright 未安装，回退到系统浏览器")
+        logger.warning("patchright 未安装，回退到系统浏览器")
         return _open_url_system_browser(url)
 
     def _launch():

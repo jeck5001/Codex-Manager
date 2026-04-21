@@ -16,6 +16,7 @@ import logging
 import urllib.parse
 from typing import Any, Callable, Dict, Optional
 
+from .browser_runtime import resolve_register_chrome_executable_path
 from .http_client import OPENAI_BROWSER_USER_AGENT
 
 
@@ -148,23 +149,27 @@ def fetch_browser_auth_state(
 ) -> Optional[Dict[str, Any]]:
     """在浏览器上下文中落地认证页并回收当前认证态。"""
     try:
-        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from patchright.sync_api import sync_playwright
     except ImportError:
-        _log(callback_logger, "playwright 未安装，无法使用浏览器认证态兜底")
+        _log(callback_logger, "patchright 未安装，无法使用浏览器认证态兜底")
         return None
 
     proxy = _build_playwright_proxy(proxy_url)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(
-            headless=True,
-            proxy=proxy,
-            args=[
+        launch_kwargs: Dict[str, Any] = {
+            "headless": True,
+            "proxy": proxy,
+            "args": [
                 "--no-sandbox",
                 "--disable-blink-features=AutomationControlled",
             ],
-        )
+        }
+        chrome_path = resolve_register_chrome_executable_path()
+        if chrome_path:
+            launch_kwargs["executable_path"] = chrome_path
+        browser = playwright.chromium.launch(**launch_kwargs)
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             user_agent=DEFAULT_SENTINEL_USER_AGENT,
@@ -222,10 +227,10 @@ def fetch_browser_sentinel_token(
 ) -> Optional[Dict[str, str]]:
     """在浏览器页面中调用 SentinelSDK.token(flow)，返回完整 token 载荷。"""
     try:
-        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from patchright.sync_api import sync_playwright
     except ImportError:
-        _log(callback_logger, "playwright 未安装，无法使用浏览器 Sentinel")
+        _log(callback_logger, "patchright 未安装，无法使用浏览器 Sentinel")
         return None
 
     domain = ".openai.com"
@@ -233,14 +238,18 @@ def fetch_browser_sentinel_token(
     target_urls = _build_sentinel_target_urls(referer)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(
-            headless=True,
-            proxy=proxy,
-            args=[
+        launch_kwargs: Dict[str, Any] = {
+            "headless": True,
+            "proxy": proxy,
+            "args": [
                 "--no-sandbox",
                 "--disable-blink-features=AutomationControlled",
             ],
-        )
+        }
+        chrome_path = resolve_register_chrome_executable_path()
+        if chrome_path:
+            launch_kwargs["executable_path"] = chrome_path
+        browser = playwright.chromium.launch(**launch_kwargs)
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             user_agent=DEFAULT_SENTINEL_USER_AGENT,
@@ -418,23 +427,27 @@ def fetch_browser_chatgpt_session_payload(
 ) -> Optional[Dict[str, Any]]:
     """在浏览器上下文中落地 chatgpt.com 会话并读取 /api/auth/session。"""
     try:
-        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from patchright.sync_api import sync_playwright
     except ImportError:
-        _log(callback_logger, "playwright 未安装，无法使用浏览器 ChatGPT Session")
+        _log(callback_logger, "patchright 未安装，无法使用浏览器 ChatGPT Session")
         return None
 
     proxy = _build_playwright_proxy(proxy_url)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(
-            headless=True,
-            proxy=proxy,
-            args=[
+        launch_kwargs: Dict[str, Any] = {
+            "headless": True,
+            "proxy": proxy,
+            "args": [
                 "--no-sandbox",
                 "--disable-blink-features=AutomationControlled",
             ],
-        )
+        }
+        chrome_path = resolve_register_chrome_executable_path()
+        if chrome_path:
+            launch_kwargs["executable_path"] = chrome_path
+        browser = playwright.chromium.launch(**launch_kwargs)
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             user_agent=DEFAULT_SENTINEL_USER_AGENT,
