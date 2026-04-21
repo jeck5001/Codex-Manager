@@ -1,4 +1,5 @@
 from contextlib import AbstractContextManager
+import logging
 import os
 import random
 import re
@@ -15,6 +16,9 @@ from .types import (
     HotmailRegistrationProfile,
     HotmailRegistrationResult,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 USERNAME_UNAVAILABLE_MARKERS = (
@@ -172,6 +176,7 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         return proxy
 
     def _log(self, message: str) -> None:
+        logger.info("[hotmail-session] %s", message)
         if callable(self.callback_logger):
             self.callback_logger(message)
 
@@ -811,6 +816,7 @@ class HotmailRegistrationEngine:
         self._attempt_domain = lambda domain: False
 
     def _log(self, message: str) -> None:
+        logger.info("[hotmail-session] %s", message)
         if callable(self.callback_logger):
             self.callback_logger(message)
 
@@ -981,7 +987,9 @@ class HotmailRegistrationEngine:
             return normalized
         solver = getattr(session, "try_auto_hold_captcha", None)
         if not callable(solver):
+            logger.warning("[hotmail-engine] auto-hold not available on session, skipping")
             return normalized
+        logger.info("[hotmail-engine] unsupported_challenge detected, invoking auto-hold")
         if callable(callback_reporter):
             callback_reporter(
                 "running",
@@ -991,10 +999,13 @@ class HotmailRegistrationEngine:
         try:
             passed = bool(solver())
         except Exception as exc:
+            logger.exception("[hotmail-engine] auto-hold raised: %s", exc)
             self._log(f"自动按住调用失败: {exc}")
             return normalized
         if not passed:
+            logger.info("[hotmail-engine] auto-hold did not clear challenge")
             return normalized
+        logger.info("[hotmail-engine] auto-hold passed, re-detecting state")
         if callable(callback_reporter):
             callback_reporter(
                 "running",
