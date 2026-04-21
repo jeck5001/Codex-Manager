@@ -97,7 +97,9 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         self.page = None
 
     def __enter__(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
+
+        from ...core.browser_runtime import resolve_register_chrome_executable_path
 
         self.playwright = sync_playwright().start()
         launch_kwargs: dict[str, Any] = {
@@ -107,6 +109,9 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
                 "--disable-blink-features=AutomationControlled",
             ],
         }
+        chrome_path = resolve_register_chrome_executable_path()
+        if chrome_path:
+            launch_kwargs["executable_path"] = chrome_path
         proxy = self._build_proxy_config(self.proxy_url)
         if proxy:
             launch_kwargs["proxy"] = proxy
