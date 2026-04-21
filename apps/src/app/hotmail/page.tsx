@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Archive,
+  ClipboardCopy,
   ExternalLink,
   Laptop,
   LoaderCircle,
@@ -241,6 +242,26 @@ export default function HotmailPage() {
         : [],
     [trackedBatchId, batchQuery.data?.artifacts, artifactsQuery.data],
   );
+  const accountRecords = useMemo(
+    () => (trackedBatchId ? currentBatch?.accounts ?? [] : []),
+    [trackedBatchId, currentBatch?.accounts],
+  );
+  const copyToClipboard = async (value: string, successMessage: string) => {
+    if (!value) {
+      toast.error("没有可复制的内容");
+      return;
+    }
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        throw new Error("Clipboard API unavailable");
+      }
+      toast.success(successMessage);
+    } catch (error: unknown) {
+      toast.error(`复制失败: ${getAppErrorMessage(error)}`);
+    }
+  };
   const statusMeta = formatHotmailBatchStatus(currentBatch);
   const hasPendingHandoff = hasHotmailPendingHandoff(currentBatch);
   const isLocalFirstBatch = currentBatch?.executionMode === "local_first";
@@ -640,6 +661,92 @@ python3 -m tools.hotmail_local_helper`}
                   )}
                 </div>
               </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border-border/60">
+          <CardHeader>
+            <CardTitle>成功账号</CardTitle>
+            <CardDescription>
+              已注册 Hotmail 账号的邮箱、密码与接收验证码用的临时邮箱。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {accountRecords.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      copyToClipboard(
+                        accountRecords
+                          .map((record) => `${record.email}----${record.password}`)
+                          .join("\n"),
+                        `已复制 ${accountRecords.length} 条账号（email----password）`,
+                      )
+                    }
+                  >
+                    <ClipboardCopy className="mr-2 h-4 w-4" />
+                    复制全部 (txt 格式)
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      copyToClipboard(
+                        JSON.stringify(accountRecords, null, 2),
+                        `已复制 ${accountRecords.length} 条账号（JSON 格式）`,
+                      )
+                    }
+                  >
+                    <ClipboardCopy className="mr-2 h-4 w-4" />
+                    复制全部 (JSON)
+                  </Button>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>邮箱</TableHead>
+                      <TableHead>密码</TableHead>
+                      <TableHead>验证码来源</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {accountRecords.map((record) => (
+                      <TableRow key={`${record.email}-${record.password}`}>
+                        <TableCell className="font-mono text-xs">{record.email || "--"}</TableCell>
+                        <TableCell className="font-mono text-xs">{record.password || "--"}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {record.verificationEmail || "--"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              copyToClipboard(
+                                `${record.email}----${record.password}`,
+                                "已复制该账号",
+                              )
+                            }
+                          >
+                            <ClipboardCopy className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-muted-foreground">
+                {trackedBatchId
+                  ? "批次还没有成功的 Hotmail 账号"
+                  : "先启动一个批次，或输入已有批次 ID 继续查看"}
+              </div>
             )}
           </CardContent>
         </Card>

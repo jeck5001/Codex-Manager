@@ -922,6 +922,28 @@ function normalizeRegisterHotmailBatchSnapshot(
           .filter(Boolean)
       : [],
     artifacts: normalizeRegisterHotmailArtifacts(source),
+    accounts: Array.isArray(source.accounts)
+      ? source.accounts
+          .map((item) => asRecord(item))
+          .filter((item): item is Record<string, unknown> => item !== null)
+          .map((item) => ({
+            email: typeof item.email === "string" ? item.email : "",
+            password: typeof item.password === "string" ? item.password : "",
+            targetDomain:
+              typeof item.targetDomain === "string"
+                ? item.targetDomain
+                : typeof item.target_domain === "string"
+                  ? item.target_domain
+                  : "",
+            verificationEmail:
+              typeof item.verificationEmail === "string"
+                ? item.verificationEmail
+                : typeof item.verification_email === "string"
+                  ? item.verification_email
+                  : "",
+          }))
+          .filter((item) => item.email !== "")
+      : [],
   };
 }
 

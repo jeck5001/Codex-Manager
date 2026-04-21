@@ -1066,6 +1066,13 @@ export interface RegisterHotmailLocalFirstTaskPayload {
   backendCallbackToken: string;
 }
 
+export interface RegisterHotmailAccountRecord {
+  email: string;
+  password: string;
+  targetDomain: string;
+  verificationEmail: string;
+}
+
 export interface RegisterHotmailBatchSnapshot {
   batchId: string;
   total: number;
@@ -1086,6 +1093,7 @@ export interface RegisterHotmailBatchSnapshot {
   finished: boolean;
   logs: string[];
   artifacts: RegisterHotmailArtifact[];
+  accounts: RegisterHotmailAccountRecord[];
 }
 
 export interface RegisterImportResult {

@@ -1,9 +1,11 @@
 from contextlib import AbstractContextManager
 import os
+import random
+import re
+import time
+import uuid
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
-import re
-import uuid
 
 from .profile import build_registration_profile, choose_target_domains
 from .types import (
@@ -229,6 +231,110 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
                 "button:has-text('验证')",
             ]
         )
+
+    ARKOSE_IFRAME_SELECTORS = [
+        "iframe[title*='challenge' i]",
+        "iframe[id*='arkose' i]",
+        "iframe[name*='arkose' i]",
+        "iframe[src*='arkoselabs' i]",
+        "iframe[id*='enforcement' i]",
+        "iframe[src*='funcaptcha' i]",
+    ]
+    ARKOSE_HOLD_BUTTON_SELECTORS = [
+        "button#home_children_button",
+        "button[aria-label*='hold' i]",
+        "button:has-text('Press & Hold')",
+        "button:has-text('Press and hold')",
+        "button:has-text('Press and Hold')",
+        "button:has-text('按住')",
+        "[data-theme='home.button']",
+    ]
+
+    def _locate_arkose_hold_target(self):
+        assert self.page is not None
+        page = self.page
+        for selector in self.ARKOSE_IFRAME_SELECTORS:
+            try:
+                iframe_locator = page.locator(selector).first
+                if iframe_locator.count() == 0:
+                    continue
+                frame = iframe_locator.content_frame
+                if frame is None:
+                    continue
+            except Exception:
+                continue
+            for btn_selector in self.ARKOSE_HOLD_BUTTON_SELECTORS:
+                try:
+                    btn = frame.locator(btn_selector).first
+                    if btn.count() > 0:
+                        return btn, iframe_locator
+                except Exception:
+                    continue
+        for btn_selector in self.ARKOSE_HOLD_BUTTON_SELECTORS:
+            try:
+                btn = page.locator(btn_selector).first
+                if btn.count() > 0:
+                    return btn, None
+            except Exception:
+                continue
+        return None, None
+
+    def try_auto_hold_captcha(
+        self,
+        *,
+        hold_seconds: float = 7.0,
+        max_attempts: int = 2,
+    ) -> bool:
+        assert self.page is not None
+        page = self.page
+        for attempt in range(1, max_attempts + 1):
+            target, iframe_locator = self._locate_arkose_hold_target()
+            if target is None:
+                self._log("Arkose 自动按住: 未找到按钮，跳过")
+                return False
+            try:
+                iframe_box = iframe_locator.bounding_box() if iframe_locator is not None else None
+                button_box = target.bounding_box()
+            except Exception:
+                button_box = None
+                iframe_box = None
+            if not button_box:
+                self._log("Arkose 自动按住: 无法读取按钮坐标")
+                return False
+            offset_x = iframe_box["x"] if iframe_box else 0.0
+            offset_y = iframe_box["y"] if iframe_box else 0.0
+            center_x = offset_x + button_box["x"] + button_box["width"] / 2
+            center_y = offset_y + button_box["y"] + button_box["height"] / 2
+            try:
+                page.mouse.move(center_x - 3, center_y - 3, steps=14)
+                page.wait_for_timeout(random.randint(220, 420))
+                page.mouse.move(center_x, center_y, steps=6)
+                page.mouse.down()
+                end_time = time.monotonic() + hold_seconds + random.uniform(-0.4, 0.7)
+                while time.monotonic() < end_time:
+                    jitter_x = center_x + random.uniform(-1.6, 1.6)
+                    jitter_y = center_y + random.uniform(-1.6, 1.6)
+                    page.mouse.move(jitter_x, jitter_y, steps=1)
+                    page.wait_for_timeout(random.randint(40, 95))
+                page.mouse.up()
+            except Exception as exc:
+                self._log(f"Arkose 自动按住异常: {exc}")
+                try:
+                    page.mouse.up()
+                except Exception:
+                    pass
+                return False
+            page.wait_for_timeout(2_500)
+            try:
+                state_after = self._detect_state()
+            except Exception:
+                state_after = ""
+            if state_after != "unsupported_challenge":
+                self._log(f"Arkose 自动按住成功，新状态 state={state_after}")
+                return True
+            self._log(f"Arkose 自动按住第 {attempt} 次仍失败")
+            page.wait_for_timeout(random.randint(900, 1_600))
+        return False
 
     def _select_first(self, selectors: list[str], value: str) -> bool:
         locator = self._first_locator(selectors)
@@ -869,6 +975,38 @@ class HotmailRegistrationEngine:
             return snapshot_state
         return normalized
 
+    def _try_clear_arkose_challenge(self, *, session, state: str, callback_reporter=None) -> str:
+        normalized = str(state or "").strip().lower()
+        if normalized != "unsupported_challenge":
+            return normalized
+        solver = getattr(session, "try_auto_hold_captcha", None)
+        if not callable(solver):
+            return normalized
+        if callable(callback_reporter):
+            callback_reporter(
+                "running",
+                "captcha_auto_hold_attempt",
+                log_line="尝试自动按住 Press-and-Hold",
+            )
+        try:
+            passed = bool(solver())
+        except Exception as exc:
+            self._log(f"自动按住调用失败: {exc}")
+            return normalized
+        if not passed:
+            return normalized
+        if callable(callback_reporter):
+            callback_reporter(
+                "running",
+                "captcha_auto_hold_passed",
+                log_line="自动按住通过，继续注册流程",
+            )
+        try:
+            next_state = str(session._detect_state() or "").strip().lower()
+        except Exception:
+            next_state = ""
+        return next_state or normalized
+
     def _state_to_failure(self, state: str) -> Optional[HotmailFailureCode]:
         mapping = {
             "phone_verification": HotmailFailureCode.PHONE_VERIFICATION_REQUIRED,
@@ -974,12 +1112,22 @@ class HotmailRegistrationEngine:
         callback_reporter=None,
     ) -> HotmailRegistrationResult:
         current_state = str(state or "").strip().lower()
+        current_state = self._try_clear_arkose_challenge(
+            session=session,
+            state=current_state,
+            callback_reporter=callback_reporter,
+        )
         for _ in range(3):
             if current_state not in PROFILE_PROGRESS_STATES:
                 break
             current_state = str(session.submit_profile_details(profile=profile)).strip().lower()
         raw_state = current_state
         current_state = self._promote_state_from_snapshot(current_state, session)
+        current_state = self._try_clear_arkose_challenge(
+            session=session,
+            state=current_state,
+            callback_reporter=callback_reporter,
+        )
 
         if current_state == "email_verification":
             return self._complete_email_verification(
