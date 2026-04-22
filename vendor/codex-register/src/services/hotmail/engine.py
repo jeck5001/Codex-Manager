@@ -325,10 +325,13 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
                 url = (frame.url or "").lower()
             except Exception:
                 url = ""
-            if not url or url == "about:blank":
-                continue
             if any(marker in url for marker in self.MAIN_PAGE_URL_MARKERS):
                 continue
+            # NB: intentionally keep about:blank frames. HUMAN Security
+            # injects the press-and-hold button into an <iframe> that has
+            # no src attribute (contentDocument is populated by the
+            # hsprotect client script at runtime), so Playwright reports
+            # that frame's URL as "about:blank".
             if any(marker in url for marker in self.ARKOSE_FRAME_URL_MARKERS):
                 matched.append((frame, url))
             else:
@@ -338,7 +341,7 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         for entry in other:
             yield entry
 
-    def _wait_for_captcha_frame(self, timeout_ms: int = 6_000) -> None:
+    def _wait_for_captcha_frame(self, timeout_ms: int = 12_000) -> None:
         assert self.page is not None
         deadline = time.monotonic() + timeout_ms / 1000.0
         while time.monotonic() < deadline:
@@ -350,9 +353,9 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
                     except Exception:
                         continue
             try:
-                self.page.wait_for_timeout(400)
+                self.page.wait_for_timeout(500)
             except Exception:
-                time.sleep(0.4)
+                time.sleep(0.5)
 
     def _locate_arkose_hold_target(self):
         self._wait_for_captcha_frame()
