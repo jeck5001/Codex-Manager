@@ -341,23 +341,69 @@ class PlaywrightHotmailBrowserSession(AbstractContextManager):
         for entry in other:
             yield entry
 
-    def _wait_for_captcha_frame(self, timeout_ms: int = 12_000) -> None:
+    def _wait_for_captcha_frame(self, timeout_ms: int = 15_000) -> None:
         assert self.page is not None
         deadline = time.monotonic() + timeout_ms / 1000.0
         while time.monotonic() < deadline:
             for frame, _url in self._iter_candidate_frames():
                 for btn_selector in self.ARKOSE_HOLD_BUTTON_SELECTORS:
                     try:
-                        if frame.locator(btn_selector).first.count() > 0:
-                            return
+                        btn = frame.locator(btn_selector).first
+                        if btn.count() == 0:
+                            continue
+                        box = btn.bounding_box()
                     except Exception:
                         continue
+                    if box and box.get("width") and box.get("height"):
+                        return
             try:
                 self.page.wait_for_timeout(500)
             except Exception:
                 time.sleep(0.5)
 
+    def _nudge_captcha_render(self) -> None:
+        """Trigger HUMAN Security to expand the captcha UI.
+
+        HUMAN injects the press-and-hold button inside a nested iframe
+        whose initial style is display:none. The iframe only flips to
+        display:block once the outer #px-captcha element is focused
+        or clicked — in normal browsing that happens as soon as the
+        user interacts with the surrounding signup form, but in
+        automation we have to do it explicitly.
+        """
+        assert self.page is not None
+        nudged = False
+        for frame, url in self._iter_candidate_frames():
+            if "hsprotect" not in url and "px-captcha" not in url and "px-cdn" not in url:
+                continue
+            for selector in ("#px-captcha", "div#px-captcha", "[id*='captcha']"):
+                try:
+                    locator = frame.locator(selector).first
+                    if locator.count() == 0:
+                        continue
+                except Exception:
+                    continue
+                try:
+                    locator.click(timeout=2_000, force=True)
+                    nudged = True
+                    self._log(f"nudge-captcha: clicked {selector} in {url[:60]}")
+                    break
+                except Exception:
+                    pass
+                try:
+                    locator.focus(timeout=1_000)
+                    nudged = True
+                    self._log(f"nudge-captcha: focused {selector} in {url[:60]}")
+                    break
+                except Exception:
+                    continue
+            if nudged:
+                break
+        if not nudged:
+            self._log("nudge-captcha: no #px-captcha target found")
+
     def _locate_arkose_hold_target(self):
+        self._nudge_captcha_render()
         self._wait_for_captcha_frame()
         for frame, frame_url in self._iter_candidate_frames():
             for btn_selector in self.ARKOSE_HOLD_BUTTON_SELECTORS:
