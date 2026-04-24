@@ -63,18 +63,24 @@ pub(super) fn is_responses_path(path: &str) -> bool {
 ///
 /// # 返回
 /// 返回函数执行结果
-pub(super) fn ensure_instructions(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {
+pub(super) fn omit_empty_instructions(
+    path: &str,
+    obj: &mut serde_json::Map<String, Value>,
+) -> bool {
     if !is_responses_path(path) {
         return false;
     }
-    if obj.contains_key("instructions") {
-        return false;
+    if obj
+        .get("instructions")
+        .and_then(Value::as_str)
+        .is_some_and(str::is_empty)
+    {
+        obj.remove("instructions");
+        return true;
     }
-    // 中文注释：恢复 v0.2.4 的 compat 语义。
-    // 第三方 compat `/v1/responses` / `/v1/responses/compact` 缺失 instructions 时统一补空字符串，
-    // 避免 codex backend 对字段存在性更敏感时直接返回 challenge / 非预期 HTML。
-    obj.insert("instructions".to_string(), Value::String(String::new()));
-    true
+    // 中文注释：对齐官方 `ResponsesApiRequest` 的 `skip_serializing_if = "String::is_empty"` 语义。
+    // 空 `instructions` 不应出现在 Codex backend 出口 body 中。
+    false
 }
 
 /// 函数 `ensure_input_list`
@@ -88,6 +94,43 @@ pub(super) fn ensure_instructions(path: &str, obj: &mut serde_json::Map<String, 
 ///
 /// # 返回
 /// 返回函数执行结果
+pub(super) fn ensure_client_metadata_installation_id(
+    path: &str,
+    obj: &mut serde_json::Map<String, Value>,
+    installation_id: Option<&str>,
+) -> bool {
+    if !is_standard_responses_path(path) {
+        return false;
+    }
+    let Some(installation_id) = installation_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return false;
+    };
+    let client_metadata = obj
+        .entry("client_metadata".to_string())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    if !client_metadata.is_object() {
+        *client_metadata = Value::Object(serde_json::Map::new());
+    }
+    let Some(client_metadata_obj) = client_metadata.as_object_mut() else {
+        return false;
+    };
+    if client_metadata_obj
+        .get("x-codex-installation-id")
+        .and_then(Value::as_str)
+        == Some(installation_id)
+    {
+        return false;
+    }
+    client_metadata_obj.insert(
+        "x-codex-installation-id".to_string(),
+        Value::String(installation_id.to_string()),
+    );
+    true
+}
+
 pub(super) fn ensure_input_list(path: &str, obj: &mut serde_json::Map<String, Value>) -> bool {
     if !is_responses_path(path) {
         return false;

@@ -5,8 +5,10 @@ use super::{
     apply_request_overrides_with_service_tier_and_prompt_cache_key_scope,
 };
 use serde_json::json;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const STRICT_REQUEST_PARAM_ALLOWLIST_ENV: &str = "CODEXMANAGER_STRICT_REQUEST_PARAM_ALLOWLIST";
+const CODEXMANAGER_DB_PATH_ENV: &str = "CODEXMANAGER_DB_PATH";
 
 struct RuntimeEnvGuard {
     name: &'static str,
@@ -33,6 +35,18 @@ impl Drop for RuntimeEnvGuard {
         }
         crate::gateway::reload_runtime_config_from_env();
     }
+}
+
+fn isolated_db_path(label: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time after unix epoch")
+        .as_nanos();
+    std::env::temp_dir()
+        .join(format!("codexmanager-{label}-{nanos}"))
+        .join("codexmanager.db")
+        .to_string_lossy()
+        .to_string()
 }
 
 fn apply_codex_compat_request_overrides(
@@ -738,7 +752,7 @@ fn responses_codex_backend_preserves_existing_instructions() {
 }
 
 #[test]
-fn responses_codex_backend_defaults_empty_instructions_when_missing() {
+fn responses_codex_backend_omits_instructions_when_missing() {
     let _guard = crate::test_env_guard();
     let body = json!({
         "model": "gpt-5.4",
@@ -752,12 +766,26 @@ fn responses_codex_backend_defaults_empty_instructions_when_missing() {
         Some("https://chatgpt.com/backend-api/codex"),
     );
     let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
-    assert_eq!(
-        value
-            .get("instructions")
-            .and_then(serde_json::Value::as_str),
-        Some("")
+    assert!(value.get("instructions").is_none());
+}
+
+#[test]
+fn responses_codex_backend_omits_empty_instructions() {
+    let _guard = crate::test_env_guard();
+    let body = json!({
+        "model": "gpt-5.4",
+        "instructions": "",
+        "input": "hello"
+    });
+    let out = apply_codex_compat_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
     );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+    assert!(value.get("instructions").is_none());
 }
 
 /// 函数 `responses_infers_prompt_cache_key_from_conversation_id_for_codex_backend`
@@ -1039,6 +1067,10 @@ fn responses_preserves_priority_service_tier_for_codex_backend() {
 #[test]
 fn responses_preserves_client_metadata_for_codex_backend() {
     let _guard = crate::test_env_guard();
+    let _db_guard = RuntimeEnvGuard::set(
+        CODEXMANAGER_DB_PATH_ENV,
+        isolated_db_path("responses-client-metadata").as_str(),
+    );
     let body = json!({
         "model": "gpt-5.3-codex",
         "instructions": "stay",
@@ -1074,6 +1106,13 @@ fn responses_preserves_client_metadata_for_codex_backend() {
             .and_then(serde_json::Value::as_str),
         Some("gaas")
     );
+    let installation_id = value
+        .get("client_metadata")
+        .and_then(|v| v.get("x-codex-installation-id"))
+        .and_then(serde_json::Value::as_str)
+        .expect("installation id metadata");
+    assert_eq!(installation_id.len(), 36);
+    assert_eq!(installation_id.as_bytes().get(14).copied(), Some(b'4'));
     assert!(value.get("metadata").is_none());
 }
 
@@ -1088,6 +1127,44 @@ fn responses_preserves_client_metadata_for_codex_backend() {
 ///
 /// # 返回
 /// 无
+#[test]
+fn responses_reuses_persisted_installation_id_for_codex_backend() {
+    let _guard = crate::test_env_guard();
+    let _db_guard = RuntimeEnvGuard::set(
+        CODEXMANAGER_DB_PATH_ENV,
+        isolated_db_path("responses-installation-id").as_str(),
+    );
+    let body = json!({
+        "model": "gpt-5.3-codex",
+        "input": "hello"
+    });
+    let first = apply_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize first request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let second = apply_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize second request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let first: serde_json::Value = serde_json::from_slice(&first).expect("parse first output body");
+    let second: serde_json::Value = serde_json::from_slice(&second).expect("parse second output body");
+
+    assert_eq!(
+        first
+            .pointer("/client_metadata/x-codex-installation-id")
+            .and_then(serde_json::Value::as_str),
+        second
+            .pointer("/client_metadata/x-codex-installation-id")
+            .and_then(serde_json::Value::as_str)
+    );
+}
+
 #[test]
 fn responses_defaults_tool_choice_and_reasoning_include_for_codex_backend() {
     let _guard = crate::test_env_guard();
