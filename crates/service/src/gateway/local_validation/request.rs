@@ -138,8 +138,7 @@ fn ensure_anthropic_model_is_listed(
 /// 返回函数执行结果
 fn allow_compat_responses_path_rewrite(protocol_type: &str, normalized_path: &str) -> bool {
     (protocol_type == crate::apikey_profile::PROTOCOL_OPENAI_COMPAT
-        && (normalized_path.starts_with("/v1/chat/completions")
-            || normalized_path.starts_with("/v1/completions")))
+        && normalized_path.starts_with("/v1/chat/completions"))
         || (protocol_type == PROTOCOL_GEMINI_NATIVE
             && is_gemini_generate_content_request_path(normalized_path))
 }
@@ -195,22 +194,6 @@ fn is_native_codex_client_request(incoming_headers: &super::super::IncomingHeade
         || user_agent.contains("codex_exec")
         || originator.contains("codex_exec")
         || has_codex_header_signals
-}
-
-/// 函数 `should_force_codex_compat_rewrite`
-///
-/// 作者: gaohongshun
-///
-/// 时间: 2026-04-16
-///
-/// # 参数
-/// - normalized_path: 参数 normalized_path
-/// - incoming_headers: 参数 incoming_headers
-///
-/// # 返回
-/// 返回函数执行结果
-fn should_force_codex_compat_rewrite(normalized_path: &str, native_codex_client: bool) -> bool {
-    normalized_path.starts_with("/v1/responses") && !native_codex_client
 }
 
 fn should_normalize_compat_service_tier_for_codex_backend(
@@ -524,8 +507,7 @@ pub(super) fn build_local_validation_result(
     );
     let local_conversation_id = initial_local_conversation_id.clone();
     let allow_codex_compat_rewrite =
-        allow_compat_responses_path_rewrite(effective_protocol_type, normalized_path.as_str())
-            || should_force_codex_compat_rewrite(normalized_path.as_str(), native_codex_client);
+        allow_compat_responses_path_rewrite(effective_protocol_type, normalized_path.as_str());
     let conversation_binding = super::super::conversation_binding::load_conversation_binding(
         &storage,
         api_key.key_hash.as_str(),

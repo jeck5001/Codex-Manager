@@ -146,7 +146,6 @@ pub(crate) fn validate_text_input_limit_for_path(
 fn is_text_input_limit_path(path: &str) -> bool {
     path.starts_with("/v1/responses")
         || path.starts_with("/v1/chat/completions")
-        || path.starts_with("/v1/completions")
         || path.starts_with("/v1/messages")
 }
 
@@ -169,11 +168,6 @@ fn count_path_text_input_chars(path: &str, value: &Value) -> usize {
             total += count_message_list_chars(messages);
         }
         return total;
-    }
-    if path.starts_with("/v1/completions") {
-        if let Some(prompt) = object.get("prompt") {
-            total += count_stringish_chars(prompt);
-        }
     }
     total
 }

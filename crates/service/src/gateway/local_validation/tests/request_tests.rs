@@ -449,17 +449,19 @@ fn native_codex_client_detection_uses_codex_signals_instead_of_client_brand() {
 }
 
 #[test]
-fn non_native_responses_requests_force_codex_compat_rewrite() {
-    assert!(should_force_codex_compat_rewrite("/v1/responses", false));
-    assert!(!should_force_codex_compat_rewrite(
-        "/v1/chat/completions",
-        false
-    ));
-    assert!(!should_force_codex_compat_rewrite("/v1/responses", true));
+fn responses_requests_no_longer_force_codex_compat_rewrite_for_non_native_clients() {
+    let plain_opencode_headers = sample_incoming_headers(
+        None,
+        None,
+        Some("opencode/0.1.0"),
+        Some("opencode"),
+        Some("affinity-1"),
+    );
+    assert!(!is_native_codex_client_request(&plain_opencode_headers));
 }
 
 #[test]
-fn opencode_headers_with_only_session_id_still_force_compat_rewrite() {
+fn opencode_headers_with_only_session_id_are_not_treated_as_native_codex_clients() {
     let opencode_headers = sample_incoming_headers_with_session_id(
         None,
         None,
@@ -468,10 +470,7 @@ fn opencode_headers_with_only_session_id_still_force_compat_rewrite() {
         Some("affinity-1"),
         Some("session-1"),
     );
-    assert!(should_force_codex_compat_rewrite(
-        "/v1/responses",
-        is_native_codex_client_request(&opencode_headers),
-    ));
+    assert!(!is_native_codex_client_request(&opencode_headers));
 }
 
 #[test]
