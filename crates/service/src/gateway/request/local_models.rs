@@ -1,5 +1,10 @@
-use codexmanager_core::rpc::types::ModelsResponse;
+use codexmanager_core::rpc::types::{ModelInfo, ModelsResponse};
 const MODEL_CACHE_SCOPE_DEFAULT: &str = "default";
+
+#[derive(serde::Serialize)]
+struct OfficialModelsResponse<'a> {
+    models: &'a [ModelInfo],
+}
 
 /// 函数 `serialize_models_response`
 ///
@@ -13,30 +18,19 @@ const MODEL_CACHE_SCOPE_DEFAULT: &str = "default";
 /// # 返回
 /// 返回函数执行结果
 fn serialize_models_response(models: &ModelsResponse) -> String {
-    serde_json::to_string(models).unwrap_or_else(|_| "{\"models\":[]}".to_string())
-}
-
-fn should_hide_model_descriptions_for_request(request: &tiny_http::Request) -> bool {
-    request.headers().iter().any(|header| {
-        header.field.equiv("User-Agent")
-            && header
-                .value
-                .as_str()
-                .to_ascii_lowercase()
-                .contains("codex_cli_rs")
+    serde_json::to_string(&OfficialModelsResponse {
+        models: &models.models,
     })
+    .unwrap_or_else(|_| "{\"models\":[]}".to_string())
 }
 
-fn response_models_for_client(models: &ModelsResponse, hide_descriptions: bool) -> ModelsResponse {
-    if !hide_descriptions {
-        return models.clone();
-    }
-
-    let mut response = models.clone();
-    for model in &mut response.models {
-        model.description = None;
-    }
-    response
+fn models_etag_header(models: &ModelsResponse) -> Result<Option<tiny_http::Header>, String> {
+    let Some(etag) = models.extra.get("etag").and_then(serde_json::Value::as_str) else {
+        return Ok(None);
+    };
+    let header = tiny_http::Header::from_bytes(b"etag".as_slice(), etag.as_bytes())
+        .map_err(|_| "build etag header failed".to_string())?;
+    Ok(Some(header))
 }
 
 /// 函数 `read_cached_models_response`
@@ -97,8 +91,6 @@ pub(super) fn maybe_respond_local_models(
         reasoning_for_log,
         storage,
     };
-    let hide_descriptions = should_hide_model_descriptions_for_request(&request);
-
     let cached = match read_cached_models_response(storage) {
         Ok(models) => models,
         Err(err) => {
@@ -151,13 +143,14 @@ pub(super) fn maybe_respond_local_models(
         }
     };
 
-    let response_models = response_models_for_client(&models, hide_descriptions);
-    let output = serialize_models_response(&response_models);
-    super::local_response::respond_local_json(
+    let output = serialize_models_response(&models);
+    let extra_headers = models_etag_header(&models)?.into_iter().collect();
+    super::local_response::respond_local_json_with_headers(
         request,
         &context,
         output,
         super::request_log::RequestLogUsage::default(),
+        extra_headers,
     )?;
     Ok(None)
 }

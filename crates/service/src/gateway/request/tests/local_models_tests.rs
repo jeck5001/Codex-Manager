@@ -32,6 +32,10 @@ fn serialize_models_response_outputs_official_shape() {
                 ..Default::default()
             },
         ],
+        extra: std::collections::BTreeMap::from([(
+            "etag".to_string(),
+            serde_json::json!("\"abc\""),
+        )]),
         ..Default::default()
     };
     let output = serialize_models_response(&items);
@@ -57,10 +61,12 @@ fn serialize_models_response_outputs_official_shape() {
         models[1].get("visibility").and_then(Value::as_str),
         Some("list")
     );
+    assert_eq!(value.as_object().map(|object| object.len()), Some(1));
+    assert!(value.get("etag").is_none());
 }
 
 #[test]
-fn response_models_for_client_can_hide_descriptions_without_touching_metadata() {
+fn serialize_models_response_preserves_description_for_codex_clients() {
     let items = ModelsResponse {
         models: vec![ModelInfo {
             slug: "gpt-5.3-codex".to_string(),
@@ -73,16 +79,33 @@ fn response_models_for_client_can_hide_descriptions_without_touching_metadata() 
         ..Default::default()
     };
 
-    let response = response_models_for_client(&items, true);
-    assert_eq!(response.models.len(), 1);
-    assert_eq!(response.models[0].slug, "gpt-5.3-codex");
-    assert_eq!(response.models[0].display_name, "GPT-5.3 Codex");
-    assert_eq!(response.models[0].description, None);
-    assert!(response.models[0].supported_in_api);
-    assert_eq!(response.models[0].visibility.as_deref(), Some("list"));
-
+    let output = serialize_models_response(&items);
+    let value: Value = serde_json::from_str(&output).expect("valid json");
+    let models = value
+        .get("models")
+        .and_then(Value::as_array)
+        .expect("models array");
+    assert_eq!(models.len(), 1);
     assert_eq!(
-        items.models[0].description.as_deref(),
+        models[0].get("description").and_then(Value::as_str),
         Some("Latest frontier agentic coding model.")
     );
+}
+
+#[test]
+fn models_etag_header_uses_extra_etag_value() {
+    let items = ModelsResponse {
+        models: vec![],
+        extra: std::collections::BTreeMap::from([(
+            "etag".to_string(),
+            serde_json::json!("\"remote-etag\""),
+        )]),
+    };
+
+    let header = models_etag_header(&items)
+        .expect("etag header should build")
+        .expect("etag header should exist");
+
+    assert!(header.field.equiv("etag"));
+    assert_eq!(header.value.as_str(), "\"remote-etag\"");
 }
