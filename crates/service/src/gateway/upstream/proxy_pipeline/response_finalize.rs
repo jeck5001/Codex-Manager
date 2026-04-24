@@ -244,27 +244,6 @@ pub(super) fn finalize_upstream_response(
             last_sse_event_type: bridge.last_sse_event_type.as_deref(),
         },
     );
-    if matches!(
-        response_adapter,
-        super::super::super::ResponseAdapter::GeminiJson
-            | super::super::super::ResponseAdapter::GeminiSse
-            | super::super::super::ResponseAdapter::GeminiCliJson
-            | super::super::super::ResponseAdapter::GeminiCliSse
-    ) {
-        super::super::super::trace_log::log_gemini_bridge_diagnostics(
-            trace_id,
-            format!("{response_adapter:?}").as_str(),
-            gemini_stream_output_mode.map(|mode| match mode {
-                super::super::super::GeminiStreamOutputMode::Sse => "sse",
-                super::super::super::GeminiStreamOutputMode::Raw => "raw",
-            }),
-            bridge.stream_terminal_seen,
-            bridge.stream_terminal_error.as_deref(),
-            bridge.last_sse_event_type.as_deref(),
-            bridge.upstream_content_type.as_deref(),
-        );
-    }
-
     let bridge_ok = bridge.is_ok(client_is_stream);
     let bridge_error_message = (!bridge_ok).then(|| {
         bridge

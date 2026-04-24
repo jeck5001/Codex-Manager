@@ -1280,17 +1280,6 @@ mod tests {
     }
 
     #[test]
-    fn non_passthrough_adapter_does_not_override_sse_protocol() {
-        let api = aggregate_api_with_action(None);
-        let protocol = resolve_passthrough_sse_protocol(
-            &api,
-            "/v1/messages?beta=true",
-            ResponseAdapter::AnthropicSse,
-        );
-        assert_eq!(protocol, None);
-    }
-
-    #[test]
     fn build_upstream_url_preserves_base_path_prefix() {
         let url = build_upstream_url(
             "https://open.bigmodel.cn/api/anthropic",

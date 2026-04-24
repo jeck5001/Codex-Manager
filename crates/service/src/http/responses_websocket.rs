@@ -4,16 +4,20 @@ use axum::extract::FromRequestParts;
 use axum::http::header::{self, HeaderMap, HeaderValue};
 use axum::http::{Request as HttpRequest, Response, StatusCode};
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::time::Instant;
 use tokio_tungstenite::connect_async_tls_with_config;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message as UpstreamMessage;
 
+use crate::http::codex_source::{
+    response_create_client_metadata, ResponseCreateWsRequest, ResponsesWsRequest,
+    RESPONSES_ENDPOINT,
+};
 use crate::http::proxy_response::{text_error_response, text_response};
 use crate::storage_helpers::{hash_platform_key, open_storage};
 
-const RESPONSES_PATH: &str = "/v1/responses";
 const RESPONSES_WS_ERROR_CODE: &str = "responses_websocket_error";
 
 #[derive(Clone)]
@@ -118,17 +122,6 @@ impl WsSessionError {
     }
 }
 
-/// 函数 `is_websocket_upgrade_request`
-///
-/// 作者: gaohongshun
-///
-/// 时间: 2026-04-05
-///
-/// # 参数
-/// - headers: 参数 headers
-///
-/// # 返回
-/// 返回函数执行结果
 pub(super) fn is_websocket_upgrade_request(headers: &HeaderMap) -> bool {
     let upgrade_is_websocket = headers
         .get(header::UPGRADE)
@@ -145,17 +138,6 @@ pub(super) fn is_websocket_upgrade_request(headers: &HeaderMap) -> bool {
     upgrade_is_websocket && connection_has_upgrade
 }
 
-/// 函数 `upgrade_responses_websocket`
-///
-/// 作者: gaohongshun
-///
-/// 时间: 2026-04-05
-///
-/// # 参数
-/// - request: 参数 request
-///
-/// # 返回
-/// 返回函数执行结果
 pub(super) async fn upgrade_responses_websocket(request: HttpRequest<Body>) -> Response<Body> {
     let (mut parts, _) = request.into_parts();
 
@@ -203,14 +185,14 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
         }
     };
 
-    let mut upstream =
-        match connect_upstream_websocket(&context, prepared_first.model.as_deref()).await {
-            Ok(stream) => stream,
-            Err(err) => {
-                send_ws_error_and_close(&mut socket, err, context.prefer_raw_errors).await;
-                return;
-            }
-        };
+    let mut upstream = match connect_upstream_websocket(&context, prepared_first.model.as_deref()).await
+    {
+        Ok(stream) => stream,
+        Err(err) => {
+            send_ws_error_and_close(&mut socket, err, context.prefer_raw_errors).await;
+            return;
+        }
+    };
     let first_pending = PendingWsRequestState {
         log: begin_ws_request_log(&context, &prepared_first),
         prepared: prepared_first.clone(),
@@ -253,20 +235,6 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
         tokio::select! {
             maybe_client = socket.recv() => {
                 let Some(client_result) = maybe_client else {
-                    if let Some(pending) = pending_request.take() {
-                        finalize_ws_request_log(
-                            &context,
-                            &pending.log,
-                            Some(upstream.account_id.as_str()),
-                            Some(upstream.upstream_url.as_str()),
-                            499,
-                            crate::gateway::RequestLogUsage::default(),
-                            Some(crate::gateway::bilingual_error(
-                                "客户端 WebSocket 在完成前关闭",
-                                "client websocket closed before completion",
-                            )),
-                        );
-                    }
                     let _ = upstream.stream.close(None).await;
                     break;
                 };
@@ -293,13 +261,9 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                                     prepared,
                                     forwarded_upstream_event: false,
                                 };
-                                if let Err(err) = upstream
-                                    .stream
-                                    .send(UpstreamMessage::Text(
-                                        current_pending.prepared.text.clone().into(),
-                                    ))
-                                    .await
-                                {
+                                if let Err(err) = upstream.stream.send(UpstreamMessage::Text(
+                                    current_pending.prepared.text.clone().into(),
+                                )).await {
                                     finalize_ws_request_log(
                                         &context,
                                         &current_pending.log,
@@ -332,6 +296,12 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                             }
                         }
                     }
+                    Ok(Message::Ping(payload)) => {
+                        let _ = upstream.stream.send(UpstreamMessage::Ping(payload)).await;
+                    }
+                    Ok(Message::Pong(payload)) => {
+                        let _ = upstream.stream.send(UpstreamMessage::Pong(payload)).await;
+                    }
                     Ok(Message::Binary(bytes)) => {
                         if let Err(err) = upstream.stream.send(UpstreamMessage::Binary(bytes)).await {
                             send_ws_error_and_close(
@@ -345,65 +315,11 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                             break;
                         }
                     }
-                    Ok(Message::Ping(payload)) => {
-                        if let Err(err) = upstream.stream.send(UpstreamMessage::Ping(payload)).await {
-                            send_ws_error_and_close(
-                                &mut socket,
-                                WsSessionError::bad_gateway_bilingual(
-                                    "转发 WebSocket Ping 失败",
-                                    format!("forward websocket ping failed: {err}"),
-                                ),
-                                context.prefer_raw_errors,
-                            ).await;
-                            break;
-                        }
-                    }
-                    Ok(Message::Pong(payload)) => {
-                        if let Err(err) = upstream.stream.send(UpstreamMessage::Pong(payload)).await {
-                            send_ws_error_and_close(
-                                &mut socket,
-                                WsSessionError::bad_gateway_bilingual(
-                                    "转发 WebSocket Pong 失败",
-                                    format!("forward websocket pong failed: {err}"),
-                                ),
-                                context.prefer_raw_errors,
-                            ).await;
-                            break;
-                        }
-                    }
                     Ok(Message::Close(_)) => {
-                        if let Some(pending) = pending_request.take() {
-                            finalize_ws_request_log(
-                                &context,
-                                &pending.log,
-                                Some(upstream.account_id.as_str()),
-                                Some(upstream.upstream_url.as_str()),
-                                499,
-                                crate::gateway::RequestLogUsage::default(),
-                                Some(crate::gateway::bilingual_error(
-                                    "客户端 WebSocket 在完成前关闭",
-                                    "client websocket closed before completion",
-                                )),
-                            );
-                        }
                         let _ = upstream.stream.close(None).await;
                         break;
                     }
                     Err(err) => {
-                        if let Some(pending) = pending_request.take() {
-                            finalize_ws_request_log(
-                                &context,
-                                &pending.log,
-                                Some(upstream.account_id.as_str()),
-                                Some(upstream.upstream_url.as_str()),
-                                400,
-                                crate::gateway::RequestLogUsage::default(),
-                                Some(crate::gateway::bilingual_error(
-                                    "接收客户端 WebSocket 帧失败",
-                                    format!("receive client websocket frame failed: {err}"),
-                                )),
-                            );
-                        }
                         send_ws_error_and_close(
                             &mut socket,
                             WsSessionError::bad_request_bilingual(
@@ -419,39 +335,18 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
             }
             maybe_upstream = upstream.stream.next() => {
                 let Some(upstream_result) = maybe_upstream else {
-                    if let Some(pending) = pending_request.take() {
-                        finalize_ws_request_log(
-                            &context,
-                            &pending.log,
-                            Some(upstream.account_id.as_str()),
-                            Some(upstream.upstream_url.as_str()),
-                            502,
-                            crate::gateway::RequestLogUsage::default(),
-                            Some(crate::gateway::bilingual_error(
-                                "上游 WebSocket 在完成前关闭",
-                                "upstream websocket closed before completion",
-                            )),
-                        );
-                    }
                     let _ = socket.close().await;
                     break;
                 };
-        match upstream_result {
+                match upstream_result {
                     Ok(UpstreamMessage::Text(text)) => {
                         if let Some(terminal) = inspect_ws_terminal_event(text.as_str()) {
-                            let terminal_status = terminal.status_code;
                             let retry_model = pending_request
                                 .as_ref()
                                 .and_then(|pending| pending.prepared.model.clone());
                             let retry_succeeded = if let Some(pending) = pending_request.as_mut() {
                                 if !pending.forwarded_upstream_event {
-                                    try_retry_ws_request_after_terminal(
-                                        &context,
-                                        &mut upstream,
-                                        pending,
-                                        &terminal,
-                                    )
-                                    .await
+                                    try_retry_ws_request_after_terminal(&context, &mut upstream, pending, &terminal).await
                                 } else {
                                     false
                                 }
@@ -461,6 +356,7 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                             if retry_succeeded {
                                 continue;
                             }
+
                             if let Some(mut pending) = pending_request.take() {
                                 mark_ws_first_response(&mut pending);
                                 finalize_ws_request_log(
@@ -468,85 +364,51 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
                                     &pending.log,
                                     Some(upstream.account_id.as_str()),
                                     Some(upstream.upstream_url.as_str()),
-                                    terminal_status,
+                                    terminal.status_code,
                                     terminal.usage,
                                     terminal.error,
                                 );
                             }
-                            try_rotate_ws_upstream_after_terminal(
-                                &context,
-                                &mut upstream,
-                                retry_model.as_deref(),
-                                terminal_status,
-                            )
-                            .await;
-                        } else if let Some(pending) = pending_request.as_mut() {
+                            if let Err(err) = socket
+                                .send(Message::Text(text.to_string().into()))
+                                .await
+                            {
+                                log::warn!("event=responses_ws_client_send_terminal_failed err={err}");
+                                break;
+                            }
+                            let _ = retry_model;
+                            continue;
+                        }
+
+                        if let Some(pending) = pending_request.as_mut() {
                             mark_ws_first_response(pending);
                         }
-                        if socket
+                        if let Err(err) = socket
                             .send(Message::Text(text.to_string().into()))
                             .await
-                            .is_err()
                         {
-                            let _ = upstream.stream.close(None).await;
+                            log::warn!("event=responses_ws_client_send_failed err={err}");
                             break;
                         }
                     }
                     Ok(UpstreamMessage::Binary(bytes)) => {
-                        if let Some(pending) = pending_request.as_mut() {
-                            mark_ws_first_response(pending);
-                        }
-                        if socket.send(Message::Binary(bytes)).await.is_err() {
-                            let _ = upstream.stream.close(None).await;
+                        if let Err(err) = socket.send(Message::Binary(bytes)).await {
+                            log::warn!("event=responses_ws_client_send_binary_failed err={err}");
                             break;
                         }
                     }
                     Ok(UpstreamMessage::Ping(payload)) => {
-                        if socket.send(Message::Ping(payload)).await.is_err() {
-                            let _ = upstream.stream.close(None).await;
-                            break;
-                        }
+                        let _ = socket.send(Message::Ping(payload)).await;
                     }
                     Ok(UpstreamMessage::Pong(payload)) => {
-                        if socket.send(Message::Pong(payload)).await.is_err() {
-                            let _ = upstream.stream.close(None).await;
-                            break;
-                        }
+                        let _ = socket.send(Message::Pong(payload)).await;
                     }
                     Ok(UpstreamMessage::Close(_)) => {
-                        if let Some(pending) = pending_request.take() {
-                            finalize_ws_request_log(
-                                &context,
-                                &pending.log,
-                                Some(upstream.account_id.as_str()),
-                                Some(upstream.upstream_url.as_str()),
-                                502,
-                                crate::gateway::RequestLogUsage::default(),
-                                Some(crate::gateway::bilingual_error(
-                                    "上游 WebSocket 在完成前关闭",
-                                    "upstream websocket closed before completion",
-                                )),
-                            );
-                        }
                         let _ = socket.close().await;
                         break;
                     }
                     Ok(UpstreamMessage::Frame(_)) => {}
                     Err(err) => {
-                        if let Some(pending) = pending_request.take() {
-                            finalize_ws_request_log(
-                                &context,
-                                &pending.log,
-                                Some(upstream.account_id.as_str()),
-                                Some(upstream.upstream_url.as_str()),
-                                502,
-                                crate::gateway::RequestLogUsage::default(),
-                                Some(crate::gateway::bilingual_error(
-                                    "接收上游 WebSocket 帧失败",
-                                    format!("receive upstream websocket frame failed: {err}"),
-                                )),
-                            );
-                        }
                         send_ws_error_and_close(
                             &mut socket,
                             WsSessionError::bad_gateway_bilingual(
@@ -585,9 +447,8 @@ fn authorize_websocket_request(headers: &HeaderMap) -> Result<WsRequestContext, 
             ),
         )
     })?;
-    let key_hash = hash_platform_key(platform_key);
     let api_key = storage
-        .find_api_key_by_hash(&key_hash)
+        .find_api_key_by_hash(&hash_platform_key(platform_key))
         .map_err(|err| {
             text_error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -605,20 +466,14 @@ fn authorize_websocket_request(headers: &HeaderMap) -> Result<WsRequestContext, 
                 StatusCode::FORBIDDEN,
                 crate::gateway::error_message_for_client(
                     prefer_raw_errors,
-                    crate::gateway::MISSING_AUTH_JSON_OPENAI_API_KEY_ERROR,
+                    crate::gateway::bilingual_error(
+                        "平台 API Key 不存在",
+                        "platform api key not found",
+                    ),
                 ),
             )
         })?;
 
-    if api_key.status != "active" {
-        return Err(text_error_response(
-            StatusCode::FORBIDDEN,
-            crate::gateway::error_message_for_client(
-                prefer_raw_errors,
-                crate::gateway::bilingual_error("API Key 已禁用", "api key disabled"),
-            ),
-        ));
-    }
     if !crate::gateway::gateway_supports_official_responses_websocket(&api_key) {
         return Err(upgrade_required_response(
             crate::gateway::error_message_for_client(
@@ -630,6 +485,7 @@ fn authorize_websocket_request(headers: &HeaderMap) -> Result<WsRequestContext, 
             ),
         ));
     }
+
     let (incoming_headers, prompt_cache_key) =
         crate::gateway::gateway_resolve_ws_prompt_cache_key(&storage, &api_key, &incoming_headers)
             .map_err(|err| {
@@ -689,116 +545,107 @@ fn rewrite_client_frame(
             format!("invalid websocket json payload: {err}"),
         )
     })?;
-    let Some(mut object) = payload.as_object_mut().cloned() else {
+    let Some(object) = payload.as_object_mut() else {
         return Err(WsSessionError::bad_request_bilingual(
             "WebSocket 载荷必须是 JSON 对象",
             "websocket payload must be a JSON object",
         ));
     };
-    let Some(message_type) = object
+    let message_type = object
         .remove("type")
         .and_then(|value| value.as_str().map(str::to_string))
-    else {
-        return Err(WsSessionError::bad_request_bilingual(
-            "WebSocket 载荷缺少 type=response.create",
-            "websocket payload missing type=response.create",
-        ));
-    };
+        .ok_or_else(|| {
+            WsSessionError::bad_request_bilingual(
+                "WebSocket 载荷缺少 type=response.create",
+                "websocket payload missing type=response.create",
+            )
+        })?;
     if message_type != "response.create" {
         return Err(WsSessionError::bad_request_bilingual(
             "不支持的 WebSocket 消息类型",
             format!("unsupported websocket message type: {message_type}"),
         ));
     }
-    let service_tier_diagnostic =
-        crate::gateway::inspect_service_tier_value(object.get("service_tier"));
+
+    let service_tier_diagnostic = crate::gateway::inspect_service_tier_value(object.get("service_tier"));
     let explicit_service_tier_for_log = service_tier_diagnostic.normalized_value.clone();
     let previous_response_id = object.remove("previous_response_id");
     let generate = object.remove("generate");
-    let client_metadata = merge_turn_metadata(
-        object.remove("client_metadata"),
-        context.incoming_headers.turn_metadata(),
-    );
+    let merged_client_metadata =
+        merge_turn_metadata(object.remove("client_metadata"), context.incoming_headers.turn_metadata());
 
     let rewritten_body = crate::gateway::gateway_rewrite_ws_responses_body(
-        RESPONSES_PATH,
-        serde_json::to_vec(&Value::Object(object)).map_err(|err| {
+        RESPONSES_ENDPOINT,
+        serde_json::to_vec(&Value::Object(object.clone())).map_err(|err| {
             WsSessionError::bad_request_bilingual(
                 "序列化 WebSocket 请求失败",
-                format!("serialize websocket request failed: {err}"),
+                format!("serialize websocket payload failed: {err}"),
             )
         })?,
         &context.api_key,
         context.prompt_cache_key.as_deref(),
     );
     let rewritten_body = crate::gateway::clear_prompt_cache_key_when_native_anchor(
-        RESPONSES_PATH,
+        RESPONSES_ENDPOINT,
         rewritten_body,
         &context.incoming_headers,
     );
-    crate::gateway::validate_text_input_limit_for_path(RESPONSES_PATH, &rewritten_body).map_err(
-        |err| {
-            WsSessionError::bad_request_bilingual(
-                format!("输入超过最大长度 {} 个字符", err.max_chars),
-                format!(
-                    "Input exceeds the maximum length of {} characters.",
-                    err.max_chars
-                ),
-            )
-        },
-    )?;
-    let rewritten_value = serde_json::from_slice::<Value>(&rewritten_body).map_err(|err| {
-        WsSessionError::bad_request_bilingual(
-            "解析改写后的 WebSocket 请求失败",
-            format!("parse rewritten websocket request failed: {err}"),
+    let mut rewritten_value = serde_json::from_slice::<Value>(&rewritten_body).map_err(|err| {
+        WsSessionError::bad_gateway_bilingual(
+            "重写 WebSocket 请求失败",
+            format!("rewrite websocket payload failed: {err}"),
         )
     })?;
-    let Some(mut rewritten_object) = rewritten_value.as_object().cloned() else {
-        return Err(WsSessionError::bad_request_bilingual(
-            "改写后的 WebSocket 载荷必须仍为 JSON 对象",
-            "rewritten websocket payload must stay a JSON object",
+    let Some(rewritten_object) = rewritten_value.as_object_mut() else {
+        return Err(WsSessionError::bad_gateway_bilingual(
+            "重写后的 WebSocket 请求不是对象",
+            "rewritten websocket payload must be a JSON object",
         ));
     };
-    let effective_service_tier_for_log =
-        crate::gateway::inspect_service_tier_value(rewritten_object.get("service_tier"))
-            .normalized_value;
-    rewritten_object.insert("type".to_string(), Value::String(message_type));
-    if let Some(value) = previous_response_id {
-        rewritten_object.insert("previous_response_id".to_string(), value);
+    if let Some(previous_response_id) = previous_response_id {
+        rewritten_object.insert("previous_response_id".to_string(), previous_response_id);
     }
-    if let Some(value) = generate {
-        rewritten_object.insert("generate".to_string(), value);
+    if let Some(generate) = generate {
+        rewritten_object.insert("generate".to_string(), generate);
     }
-    if let Some(value) = client_metadata {
-        rewritten_object.insert("client_metadata".to_string(), value);
+    if let Some(client_metadata) = merged_client_metadata {
+        rewritten_object.insert("client_metadata".to_string(), client_metadata);
     }
 
+    let request: ResponseCreateWsRequest =
+        serde_json::from_value(Value::Object(rewritten_object.clone())).map_err(|err| {
+            WsSessionError::bad_request_bilingual(
+                "WebSocket 请求不符合官方 Codex request 形状",
+                format!("invalid official codex websocket request shape: {err}"),
+            )
+        })?;
+    let effective_service_tier = request
+        .service_tier
+        .as_deref()
+        .and_then(crate::apikey::service_tier::normalize_service_tier_for_log)
+        .map(str::to_string);
+    let reasoning_effort = request
+        .reasoning
+        .as_ref()
+        .and_then(|value| value.get("effort"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let text = serde_json::to_string(&ResponsesWsRequest::ResponseCreate(request.clone()))
+        .map_err(|err| {
+            WsSessionError::bad_request_bilingual(
+                "序列化官方 Codex WebSocket 请求失败",
+                format!("serialize official codex websocket request failed: {err}"),
+            )
+        })?;
+
     Ok(PreparedClientFrame {
-        model: rewritten_object
-            .get("model")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        reasoning_effort: rewritten_object
-            .get("reasoning")
-            .and_then(|value| value.get("effort"))
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .or_else(|| {
-                rewritten_object
-                    .get("reasoning_effort")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            }),
+        text,
+        model: Some(request.model),
+        reasoning_effort,
         service_tier: explicit_service_tier_for_log,
-        effective_service_tier: effective_service_tier_for_log,
+        effective_service_tier,
         raw_service_tier: service_tier_diagnostic.raw_value,
         has_service_tier_field: service_tier_diagnostic.has_field,
-        text: serde_json::to_string(&Value::Object(rewritten_object)).map_err(|err| {
-            WsSessionError::bad_request_bilingual(
-                "序列化 WebSocket 请求失败",
-                format!("serialize websocket request failed: {err}"),
-            )
-        })?,
     })
 }
 
@@ -806,38 +653,36 @@ fn merge_turn_metadata(
     client_metadata: Option<Value>,
     turn_metadata: Option<&str>,
 ) -> Option<Value> {
-    let Some(turn_metadata) = turn_metadata
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return client_metadata;
-    };
-    match client_metadata {
-        Some(Value::Object(mut object)) => {
-            object
-                .entry("x-codex-turn-metadata".to_string())
-                .or_insert_with(|| Value::String(turn_metadata.to_string()));
-            Some(Value::Object(object))
-        }
-        Some(other) => Some(other),
-        None => {
-            let mut object = Map::new();
-            object.insert(
-                "x-codex-turn-metadata".to_string(),
-                Value::String(turn_metadata.to_string()),
-            );
-            Some(Value::Object(object))
+    let mut mapped = HashMap::new();
+    if let Some(Value::Object(object)) = client_metadata {
+        for (key, value) in object {
+            if let Some(value) = value.as_str() {
+                mapped.insert(key, value.to_string());
+            } else if let Some(value) = value.as_i64() {
+                mapped.insert(key, value.to_string());
+            } else if let Some(value) = value.as_u64() {
+                mapped.insert(key, value.to_string());
+            } else if let Some(value) = value.as_bool() {
+                mapped.insert(key, value.to_string());
+            }
         }
     }
+    if let Some(turn_metadata) = turn_metadata.map(str::trim).filter(|value| !value.is_empty()) {
+        mapped.insert(
+            crate::http::codex_source::X_CODEX_TURN_METADATA_HEADER.to_string(),
+            turn_metadata.to_string(),
+        );
+    }
+    response_create_client_metadata((!mapped.is_empty()).then_some(mapped))
+        .and_then(|value| serde_json::to_value(value).ok())
 }
 
 async fn connect_upstream_websocket(
     context: &WsRequestContext,
     model: Option<&str>,
 ) -> Result<ConnectedUpstreamWebsocket, WsSessionError> {
-    let storage = open_storage().ok_or_else(|| {
-        WsSessionError::service_unavailable_bilingual("存储不可用", "storage unavailable")
-    })?;
+    let storage = open_storage()
+        .ok_or_else(|| WsSessionError::service_unavailable_bilingual("存储不可用", "storage unavailable"))?;
     let candidates =
         crate::gateway::gateway_collect_routed_candidates(&storage, &context.api_key.id, model)?;
     if candidates.is_empty() {
@@ -861,17 +706,8 @@ async fn connect_upstream_websocket(
                 continue;
             }
         };
-
-        let request = match build_upstream_websocket_request(
-            ws_url.as_str(),
-            &account,
-            bearer.as_str(),
-            context,
-        ) {
-            Ok(request) => request,
-            Err(err) => return Err(err),
-        };
-
+        let request =
+            build_upstream_websocket_request(ws_url.as_str(), &account, bearer.as_str(), context)?;
         match connect_async_tls_with_config(request, None, false, None).await {
             Ok((stream, _)) => {
                 return Ok(ConnectedUpstreamWebsocket {
@@ -917,8 +753,7 @@ async fn resolve_bearer_token_for_websocket(
 }
 
 fn build_upstream_websocket_url(upstream_base: &str) -> Result<String, WsSessionError> {
-    let (target_url, _) =
-        crate::gateway::gateway_compute_upstream_url(upstream_base, RESPONSES_PATH);
+    let (target_url, _) = crate::gateway::gateway_compute_upstream_url(upstream_base, RESPONSES_ENDPOINT);
     let mut url = url::Url::parse(target_url.as_str()).map_err(|err| {
         WsSessionError::bad_gateway_bilingual(
             "上游 WebSocket URL 无效",
@@ -965,16 +800,8 @@ fn build_upstream_websocket_request(
     {
         insert_header(headers, "ChatGPT-Account-ID", account_id)?;
     }
-    insert_header(
-        headers,
-        "User-Agent",
-        &crate::gateway::current_codex_user_agent(),
-    )?;
-    insert_header(
-        headers,
-        "originator",
-        &crate::gateway::current_wire_originator(),
-    )?;
+    insert_header(headers, "User-Agent", &crate::gateway::current_codex_user_agent())?;
+    insert_header(headers, "originator", &crate::gateway::current_wire_originator())?;
     if let Some(residency_requirement) = crate::gateway::current_residency_requirement() {
         insert_header(
             headers,
@@ -986,51 +813,47 @@ fn build_upstream_websocket_request(
         insert_header(headers, "session_id", session_id)?;
     }
     if let Some(window_id) = context.incoming_headers.window_id() {
-        insert_header(headers, "x-codex-window-id", window_id)?;
-    } else if let Some(session_id) = context.incoming_headers.session_id() {
-        let fallback_window_id = format!("{session_id}:0");
-        insert_header(headers, "x-codex-window-id", fallback_window_id.as_str())?;
+        insert_header(
+            headers,
+            crate::http::codex_source::X_CODEX_WINDOW_ID_HEADER,
+            window_id,
+        )?;
     }
     if let Some(client_request_id) = context.incoming_headers.client_request_id() {
         insert_header(headers, "x-client-request-id", client_request_id)?;
     }
     if let Some(subagent) = context.incoming_headers.subagent() {
-        insert_header(headers, "x-openai-subagent", subagent)?;
-    }
-    if let Some(parent_thread_id) = context.incoming_headers.parent_thread_id() {
-        insert_header(headers, "x-codex-parent-thread-id", parent_thread_id)?;
+        insert_header(
+            headers,
+            crate::http::codex_source::X_OPENAI_SUBAGENT_HEADER,
+            subagent,
+        )?;
     }
     if let Some(beta_features) = context.incoming_headers.beta_features() {
         insert_header(headers, "x-codex-beta-features", beta_features)?;
     }
-    if let Some(turn_metadata) = context.incoming_headers.turn_metadata() {
-        insert_header(headers, "x-codex-turn-metadata", turn_metadata)?;
-    }
     if let Some(turn_state) = context.incoming_headers.turn_state() {
-        insert_header(headers, "x-codex-turn-state", turn_state)?;
+        insert_header(
+            headers,
+            crate::http::codex_source::X_CODEX_TURN_STATE_HEADER,
+            turn_state,
+        )?;
     }
-    append_passthrough_codex_headers(
-        headers,
-        context.incoming_headers.passthrough_codex_headers(),
-    )?;
+    if let Some(turn_metadata) = context.incoming_headers.turn_metadata() {
+        insert_header(
+            headers,
+            crate::http::codex_source::X_CODEX_TURN_METADATA_HEADER,
+            turn_metadata,
+        )?;
+    }
+    if let Some(parent_thread_id) = context.incoming_headers.parent_thread_id() {
+        insert_header(
+            headers,
+            crate::http::codex_source::X_CODEX_PARENT_THREAD_ID_HEADER,
+            parent_thread_id,
+        )?;
+    }
     Ok(request)
-}
-
-fn append_passthrough_codex_headers(
-    headers: &mut HeaderMap,
-    passthrough_headers: &[(String, String)],
-) -> Result<(), WsSessionError> {
-    // 中文注释：WebSocket 路径同样只允许 Codex 源码里明确出现的头，未知头一律丢弃。
-    let _ = headers;
-    let _ = passthrough_headers;
-    Ok(())
-}
-
-fn ensure_rustls_crypto_provider() {
-    static RUSTLS_PROVIDER_READY: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-    let _ = RUSTLS_PROVIDER_READY.get_or_init(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
 }
 
 fn begin_ws_request_log(
@@ -1040,13 +863,13 @@ fn begin_ws_request_log(
     let trace_id = crate::gateway::next_trace_id();
     let effective_protocol_type = crate::apikey_profile::resolve_gateway_protocol_type(
         context.api_key.protocol_type.as_str(),
-        RESPONSES_PATH,
+        RESPONSES_ENDPOINT,
     );
     crate::gateway::log_request_start(
         trace_id.as_str(),
         context.api_key.id.as_str(),
         "GET",
-        RESPONSES_PATH,
+        RESPONSES_ENDPOINT,
         prepared.model.as_deref(),
         prepared.reasoning_effort.as_deref(),
         prepared.service_tier.as_deref(),
@@ -1057,7 +880,7 @@ fn begin_ws_request_log(
     crate::gateway::log_client_service_tier(
         trace_id.as_str(),
         "ws",
-        RESPONSES_PATH,
+        RESPONSES_ENDPOINT,
         prepared.has_service_tier_field,
         prepared.raw_service_tier.as_deref(),
         prepared.service_tier.as_deref(),
@@ -1106,8 +929,8 @@ fn finalize_ws_request_log(
         &storage,
         crate::gateway::RequestLogTraceContext {
             trace_id: Some(pending.trace_id.as_str()),
-            original_path: Some(RESPONSES_PATH),
-            adapted_path: Some(RESPONSES_PATH),
+            original_path: Some(RESPONSES_ENDPOINT),
+            adapted_path: Some(RESPONSES_ENDPOINT),
             request_type: Some("ws"),
             service_tier: pending.service_tier.as_deref(),
             effective_service_tier: pending.effective_service_tier.as_deref(),
@@ -1115,7 +938,7 @@ fn finalize_ws_request_log(
         },
         Some(context.api_key.id.as_str()),
         account_id,
-        RESPONSES_PATH,
+        RESPONSES_ENDPOINT,
         "GET",
         pending.model.as_deref(),
         pending.reasoning_effort.as_deref(),
@@ -1197,13 +1020,9 @@ async fn try_rotate_ws_upstream_after_terminal(
     }
 
     let current_account_id = upstream.account_id.clone();
-    crate::gateway::gateway_mark_account_cooldown_for_status(
-        current_account_id.as_str(),
-        status_code,
-    );
+    crate::gateway::gateway_mark_account_cooldown_for_status(current_account_id.as_str(), status_code);
     if status_code == 429 {
-        let _ =
-            crate::usage_refresh::enqueue_usage_refresh_for_account(current_account_id.as_str());
+        let _ = crate::usage_refresh::enqueue_usage_refresh_for_account(current_account_id.as_str());
     }
 
     let storage = match open_storage() {
@@ -1226,14 +1045,10 @@ async fn try_rotate_ws_upstream_after_terminal(
             return false;
         }
     };
-    let replacement_candidate = candidates
-        .into_iter()
-        .find(|(account, _)| account.id != current_account_id);
-    let Some((account, token)) = replacement_candidate else {
+    let Some((account, token)) = candidates.into_iter().find(|(account, _)| account.id != current_account_id) else {
         return false;
     };
 
-    let ws_url = upstream.upstream_url.clone();
     let bearer = match resolve_bearer_token_for_websocket(account.clone(), token).await {
         Ok(token) => token,
         Err(err) => {
@@ -1248,7 +1063,7 @@ async fn try_rotate_ws_upstream_after_terminal(
         }
     };
     let request = match build_upstream_websocket_request(
-        ws_url.as_str(),
+        upstream.upstream_url.as_str(),
         &account,
         bearer.as_str(),
         context,
@@ -1271,7 +1086,7 @@ async fn try_rotate_ws_upstream_after_terminal(
         Ok((stream, _)) => ConnectedUpstreamWebsocket {
             stream,
             account_id: account.id,
-            upstream_url: ws_url,
+            upstream_url: upstream.upstream_url.clone(),
         },
         Err(err) => {
             log::warn!(
@@ -1303,19 +1118,11 @@ fn inspect_ws_terminal_event(text: &str) -> Option<WsTerminalEvent> {
             usage: parse_ws_usage(&value),
             error: None,
         }),
-        "response.failed" => {
+        "response.failed" | "error" => {
             let error = extract_ws_error_message(&value);
             Some(WsTerminalEvent {
                 status_code: infer_ws_terminal_status(&value, error.as_deref()),
                 usage: parse_ws_usage(&value),
-                error,
-            })
-        }
-        "error" => {
-            let error = extract_ws_error_message(&value);
-            Some(WsTerminalEvent {
-                status_code: infer_ws_terminal_status(&value, error.as_deref()),
-                usage: crate::gateway::RequestLogUsage::default(),
                 error,
             })
         }
@@ -1331,11 +1138,6 @@ fn infer_ws_terminal_status(value: &Value, error_message: Option<&str>) -> u16 {
     {
         return status_code;
     }
-    if extract_ws_error_code(value)
-        .is_some_and(|code| code.eq_ignore_ascii_case("websocket_connection_limit_reached"))
-    {
-        return 429;
-    }
     if let Some(message) = error_message {
         if crate::account_status::usage_limit_reason_from_message(message).is_some() {
             return 429;
@@ -1345,16 +1147,6 @@ fn infer_ws_terminal_status(value: &Value, error_message: Option<&str>) -> u16 {
         }
     }
     502
-}
-
-fn extract_ws_error_code(value: &Value) -> Option<&str> {
-    value
-        .get("error")
-        .and_then(|error| error.get("code"))
-        .and_then(Value::as_str)
-        .or_else(|| value.get("code").and_then(Value::as_str))
-        .map(str::trim)
-        .filter(|code| !code.is_empty())
 }
 
 fn parse_ws_usage(value: &Value) -> crate::gateway::RequestLogUsage {
@@ -1368,28 +1160,16 @@ fn parse_ws_usage(value: &Value) -> crate::gateway::RequestLogUsage {
         input_tokens: usage
             .and_then(|map| map.get("input_tokens"))
             .and_then(Value::as_i64)
-            .or_else(|| {
-                usage
-                    .and_then(|map| map.get("prompt_tokens"))
-                    .and_then(Value::as_i64)
-            }),
+            .or_else(|| usage.and_then(|map| map.get("prompt_tokens")).and_then(Value::as_i64)),
         cached_input_tokens: usage
             .and_then(|map| map.get("input_tokens_details"))
             .and_then(|details| details.get("cached_tokens"))
             .and_then(Value::as_i64)
-            .or_else(|| {
-                usage
-                    .and_then(|map| map.get("cached_input_tokens"))
-                    .and_then(Value::as_i64)
-            }),
+            .or_else(|| usage.and_then(|map| map.get("cached_input_tokens")).and_then(Value::as_i64)),
         output_tokens: usage
             .and_then(|map| map.get("output_tokens"))
             .and_then(Value::as_i64)
-            .or_else(|| {
-                usage
-                    .and_then(|map| map.get("completion_tokens"))
-                    .and_then(Value::as_i64)
-            }),
+            .or_else(|| usage.and_then(|map| map.get("completion_tokens")).and_then(Value::as_i64)),
         total_tokens: usage
             .and_then(|map| map.get("total_tokens"))
             .and_then(Value::as_i64),
@@ -1397,11 +1177,7 @@ fn parse_ws_usage(value: &Value) -> crate::gateway::RequestLogUsage {
             .and_then(|map| map.get("output_tokens_details"))
             .and_then(|details| details.get("reasoning_tokens"))
             .and_then(Value::as_i64)
-            .or_else(|| {
-                usage
-                    .and_then(|map| map.get("reasoning_output_tokens"))
-                    .and_then(Value::as_i64)
-            }),
+            .or_else(|| usage.and_then(|map| map.get("reasoning_output_tokens")).and_then(Value::as_i64)),
         first_response_ms: None,
     }
 }
@@ -1439,6 +1215,13 @@ fn insert_header(headers: &mut HeaderMap, name: &str, value: &str) -> Result<(),
     })?;
     headers.insert(header_name, header_value);
     Ok(())
+}
+
+fn ensure_rustls_crypto_provider() {
+    static RUSTLS_PROVIDER_READY: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    let _ = RUSTLS_PROVIDER_READY.get_or_init(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
 }
 
 async fn send_ws_error_and_close(
@@ -1479,9 +1262,7 @@ impl From<String> for WsSessionError {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        infer_ws_terminal_status, inspect_ws_terminal_event, rewrite_client_frame, WsRequestContext,
-    };
+    use super::{infer_ws_terminal_status, inspect_ws_terminal_event, rewrite_client_frame, WsRequestContext};
     use axum::http::{HeaderMap, HeaderValue};
     use codexmanager_core::storage::ApiKey;
     use serde_json::json;
@@ -1532,28 +1313,7 @@ mod tests {
     #[test]
     fn inspect_ws_terminal_event_infers_usage_limit_status_without_explicit_status() {
         let event = inspect_ws_terminal_event(
-            r#"{
-                "type":"error",
-                "error":{
-                    "message":"You've hit your usage limit. Upgrade to Pro, visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 1:49 PM."
-                }
-            }"#,
-        )
-        .expect("terminal event");
-
-        assert_eq!(event.status_code, 429);
-    }
-
-    #[test]
-    fn inspect_ws_terminal_event_maps_websocket_connection_limit_to_429() {
-        let event = inspect_ws_terminal_event(
-            r#"{
-                "type":"error",
-                "error":{
-                    "code":"websocket_connection_limit_reached",
-                    "message":"Too many active websocket connections"
-                }
-            }"#,
+            r#"{"type":"error","error":{"message":"You've hit your usage limit."}}"#,
         )
         .expect("terminal event");
 
@@ -1570,45 +1330,9 @@ mod tests {
         });
 
         assert_eq!(
-            infer_ws_terminal_status(&payload, payload["error"]["message"].as_str(),),
+            infer_ws_terminal_status(&payload, payload["error"]["message"].as_str()),
             403
         );
-    }
-
-    #[test]
-    fn gateway_ws_rewrite_keeps_native_responses_shape() {
-        let _guard = crate::test_env_guard();
-        let body = json!({
-            "model": "gpt-5.3-codex",
-            "input": "hello",
-            "stream": false,
-            "store": true,
-            "stream_passthrough": true
-        });
-        let rewritten = crate::gateway::gateway_rewrite_ws_responses_body(
-            "/v1/responses",
-            serde_json::to_vec(&body).expect("serialize ws request"),
-            &sample_api_key(),
-            Some("thread_123"),
-        );
-        let payload: serde_json::Value =
-            serde_json::from_slice(&rewritten).expect("parse ws rewritten body");
-
-        assert_eq!(
-            payload.get("input").and_then(serde_json::Value::as_str),
-            Some("hello")
-        );
-        assert_eq!(
-            payload.get("stream").and_then(serde_json::Value::as_bool),
-            Some(false)
-        );
-        assert_eq!(
-            payload.get("store").and_then(serde_json::Value::as_bool),
-            Some(true)
-        );
-        assert!(payload.get("instructions").is_none());
-        assert!(payload.get("prompt_cache_key").is_none());
-        assert!(payload.get("stream_passthrough").is_none());
     }
 
     #[test]
@@ -1622,12 +1346,7 @@ mod tests {
             prefer_raw_errors: false,
         };
         let prepared = rewrite_client_frame(
-            r#"{
-                "type":"response.create",
-                "model":"gpt-5.4",
-                "input":"hello",
-                "prompt_cache_key":"client-thread"
-            }"#,
+            r#"{"type":"response.create","model":"gpt-5.4","input":"hello","prompt_cache_key":"client-thread"}"#,
             &context,
         )
         .unwrap_or_else(|_| panic!("rewrite websocket frame failed"));

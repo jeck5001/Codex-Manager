@@ -58,7 +58,7 @@ impl OpenAIResponsesEvent {
             .get("type")
             .and_then(Value::as_str)
             .map(str::trim)
-            .filter(|kind| !kind.is_empty())
+            .filter(|kind: &&str| !kind.is_empty())
             .map(str::to_string);
         let kind = event_type
             .as_deref()

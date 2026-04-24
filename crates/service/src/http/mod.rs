@@ -8,6 +8,7 @@ pub(crate) mod backend_runtime;
 pub(crate) mod proxy_bridge;
 
 pub(crate) mod header_filter;
+pub(crate) mod codex_source;
 pub(crate) mod proxy_request;
 pub(crate) mod proxy_response;
 pub(crate) mod proxy_runtime;

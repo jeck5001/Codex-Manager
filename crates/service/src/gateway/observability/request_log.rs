@@ -245,16 +245,6 @@ fn should_write_gateway_error_fallback(status_code: Option<u16>, error: Option<&
 fn response_adapter_label(value: super::ResponseAdapter) -> &'static str {
     match value {
         super::ResponseAdapter::Passthrough => "Passthrough",
-        super::ResponseAdapter::AnthropicJson => "AnthropicJson",
-        super::ResponseAdapter::AnthropicSse => "AnthropicSse",
-        super::ResponseAdapter::GeminiJson => "GeminiJson",
-        super::ResponseAdapter::GeminiSse => "GeminiSse",
-        super::ResponseAdapter::GeminiCliJson => "GeminiCliJson",
-        super::ResponseAdapter::GeminiCliSse => "GeminiCliSse",
-        super::ResponseAdapter::OpenAIChatCompletionsJson => "OpenAIChatCompletionsJson",
-        super::ResponseAdapter::OpenAIChatCompletionsSse => "OpenAIChatCompletionsSse",
-        super::ResponseAdapter::OpenAICompletionsJson => "OpenAICompletionsJson",
-        super::ResponseAdapter::OpenAICompletionsSse => "OpenAICompletionsSse",
     }
 }
 

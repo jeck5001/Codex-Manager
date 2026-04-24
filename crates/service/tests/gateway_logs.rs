@@ -2,8 +2,6 @@
 mod anthropic;
 #[path = "gateway_logs/basic.rs"]
 mod basic;
-#[path = "gateway_logs/openai.rs"]
-mod openai;
 #[path = "gateway_logs/retry_logging.rs"]
 mod retry_logging;
 #[path = "gateway_logs/support.rs"]

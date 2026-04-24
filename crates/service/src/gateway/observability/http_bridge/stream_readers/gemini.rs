@@ -3,9 +3,9 @@ use super::{
     json, mark_collector_terminal_success, mark_first_response_ms, stream_idle_timed_out,
     stream_idle_timeout_message, stream_reader_disconnected_message, stream_wait_timeout,
     upstream_hint_or_stream_incomplete_message, Arc, Cursor, Map, Mutex, PassthroughSseCollector,
-    Read, ToolNameRestoreMap, UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
+    Read, UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
 };
-use crate::gateway::{build_gemini_error_body, GeminiStreamOutputMode};
+use crate::gateway::{build_gemini_error_body, GeminiStreamOutputMode, ToolNameRestoreMap};
 use std::collections::BTreeMap;
 use std::time::Instant;
 
@@ -720,7 +720,7 @@ fn merge_arguments(existing: &mut String, fragment: &str) {
 
 fn restore_tool_name(name: &str, tool_name_restore_map: Option<&ToolNameRestoreMap>) -> String {
     tool_name_restore_map
-        .and_then(|map| map.get(name))
+        .and_then(|map: &ToolNameRestoreMap| map.get(name))
         .cloned()
         .unwrap_or_else(|| name.to_string())
 }

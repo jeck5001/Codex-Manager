@@ -1027,32 +1027,6 @@ pub(crate) fn log_bridge_result(params: BridgeResultLog<'_>) {
     buffer_trace_line(trace_id, line);
 }
 
-pub(crate) fn log_gemini_bridge_diagnostics(
-    trace_id: &str,
-    adapter: &str,
-    output_mode: Option<&str>,
-    stream_terminal_seen: bool,
-    stream_terminal_error: Option<&str>,
-    last_sse_event_type: Option<&str>,
-    upstream_content_type: Option<&str>,
-) {
-    if !gemini_trace_diagnostics_enabled() {
-        return;
-    }
-    let line = format!(
-        "ts={} event=GEMINI_BRIDGE trace_id={} adapter={} output_mode={} terminal_seen={} terminal_error={} last_sse_event={} upstream_content_type={}",
-        current_trace_ts(),
-        sanitize_text(trace_id),
-        sanitize_text(adapter),
-        sanitize_text(output_mode.unwrap_or("-")),
-        if stream_terminal_seen { "true" } else { "false" },
-        sanitize_text(stream_terminal_error.unwrap_or("-")),
-        sanitize_text(last_sse_event_type.unwrap_or("-")),
-        sanitize_text(upstream_content_type.unwrap_or("-")),
-    );
-    buffer_trace_line(trace_id, line);
-}
-
 /// 函数 `log_attempt_profile`
 ///
 /// 作者: gaohongshun

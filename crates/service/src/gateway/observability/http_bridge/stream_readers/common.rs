@@ -38,6 +38,7 @@ pub(super) fn mark_first_response_ms(
     }
 }
 
+#[cfg(test)]
 pub(super) fn mark_first_response_ms_on_usage(
     usage_collector: &Arc<Mutex<UpstreamResponseUsage>>,
     started_at: Instant,
@@ -53,8 +54,7 @@ pub(super) fn mark_first_response_ms_on_usage(
 pub(crate) enum SseKeepAliveFrame {
     Comment,
     OpenAIResponses,
-    OpenAIChatCompletions,
-    OpenAICompletions,
+    #[cfg(test)]
     Anthropic,
 }
 
@@ -74,12 +74,7 @@ impl SseKeepAliveFrame {
         match self {
             Self::Comment => b": keep-alive\n\n",
             Self::OpenAIResponses => b"data: {\"type\":\"codexmanager.keepalive\"}\n\n",
-            Self::OpenAIChatCompletions => {
-                b"data: {\"id\":\"cm_keepalive\",\"object\":\"chat.completion.chunk\",\"created\":0,\"model\":\"codexmanager.keepalive\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":null}]}\n\n"
-            }
-            Self::OpenAICompletions => {
-                b"data: {\"id\":\"cm_keepalive\",\"object\":\"text_completion\",\"created\":0,\"model\":\"codexmanager.keepalive\",\"choices\":[{\"index\":0,\"text\":\"\",\"finish_reason\":null}]}\n\n"
-            }
+            #[cfg(test)]
             Self::Anthropic => {
                 b"event: ping\ndata: {\"type\":\"ping\"}\n\n"
             }
@@ -270,28 +265,6 @@ pub(super) fn set_sse_keepalive_interval_ms(interval_ms: u64) -> Result<u64, Str
     Ok(interval_ms)
 }
 
-/// 函数 `collector_output_text_trimmed`
-///
-/// 作者: gaohongshun
-///
-/// 时间: 2026-04-02
-///
-/// # 参数
-/// - super: 参数 super
-///
-/// # 返回
-/// 返回函数执行结果
-pub(super) fn collector_output_text_trimmed(
-    usage_collector: &Arc<Mutex<PassthroughSseCollector>>,
-) -> Option<String> {
-    usage_collector
-        .lock()
-        .ok()
-        .and_then(|collector| collector.usage.output_text.clone())
-        .map(|text| text.trim().to_string())
-        .filter(|text| !text.is_empty())
-}
-
 /// 函数 `mark_collector_terminal_success`
 ///
 /// 作者: gaohongshun
@@ -303,6 +276,7 @@ pub(super) fn collector_output_text_trimmed(
 ///
 /// # 返回
 /// 无
+#[cfg(test)]
 pub(super) fn mark_collector_terminal_success(
     usage_collector: &Arc<Mutex<PassthroughSseCollector>>,
 ) {

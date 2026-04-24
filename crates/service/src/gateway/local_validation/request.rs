@@ -56,6 +56,11 @@ fn resolve_effective_request_overrides(
     )
 }
 
+fn is_removed_openai_compat_request_path(normalized_path: &str) -> bool {
+    normalized_path.starts_with("/v1/chat/completions")
+        || normalized_path.starts_with("/v1/completions")
+}
+
 /// 函数 `ensure_anthropic_model_is_listed`
 ///
 /// 作者: gaohongshun
@@ -340,6 +345,7 @@ fn apply_passthrough_request_overrides(
             None,
             false,
         );
+    let rewritten_body = super::super::normalize_official_responses_http_body(path, rewritten_body);
     let request_meta = super::super::parse_request_metadata(&rewritten_body);
     (
         rewritten_body,
@@ -375,6 +381,15 @@ pub(super) fn build_local_validation_result(
 ) -> Result<LocalValidationResult, LocalValidationError> {
     // 按当前策略取消每次请求都更新 api_keys.last_used_at，减少并发写入冲突。
     let normalized_path = super::super::normalize_models_path(request.url());
+    if is_removed_openai_compat_request_path(normalized_path.as_str()) {
+        return Err(LocalValidationError::new(
+            410,
+            crate::gateway::bilingual_error(
+                "OpenAI 兼容请求链路已移除",
+                format!("removed request path: {normalized_path}"),
+            ),
+        ));
+    }
     let effective_protocol_type =
         resolve_gateway_protocol_type(api_key.protocol_type.as_str(), normalized_path.as_str());
     let request_method = request.method().as_str().to_string();
@@ -571,6 +586,7 @@ pub(super) fn build_local_validation_result(
         body = normalize_compat_service_tier_for_codex_backend(body);
     }
     body = super::super::clear_prompt_cache_key_when_native_anchor(&path, body, &incoming_headers);
+    body = super::super::normalize_official_responses_http_body(&path, body);
     super::super::validate_text_input_limit_for_path(&path, &body)
         .map_err(|err| LocalValidationError::new(400, err.message()))?;
 
@@ -620,3 +636,20 @@ pub(super) fn build_local_validation_result(
 #[cfg(test)]
 #[path = "tests/request_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod removed_path_tests {
+    use super::is_removed_openai_compat_request_path;
+
+    #[test]
+    fn identifies_removed_openai_compat_paths() {
+        assert!(!is_removed_openai_compat_request_path("/v1/responses"));
+        assert!(!is_removed_openai_compat_request_path("/v1/responses/compact"));
+        assert!(is_removed_openai_compat_request_path("/v1/chat/completions"));
+        assert!(is_removed_openai_compat_request_path("/v1/completions"));
+        assert!(!is_removed_openai_compat_request_path("/v1/messages"));
+        assert!(!is_removed_openai_compat_request_path(
+            "/v1beta/models/gemini-2.5-pro:generateContent"
+        ));
+    }
+}
