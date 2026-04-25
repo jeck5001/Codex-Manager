@@ -765,9 +765,11 @@ fn append_gemini_event(
         (GeminiStreamOutputMode::Raw, true) => {
             let wrapped = json!({ "response": payload });
             buffer.push_str(&serde_json::to_string(&wrapped).unwrap_or_else(|_| "{}".to_string()));
+            buffer.push('\n');
         }
         (GeminiStreamOutputMode::Raw, false) => {
             buffer.push_str(&serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string()));
+            buffer.push('\n');
         }
     }
 }
@@ -788,7 +790,11 @@ fn build_terminal_error_event(output_mode: GeminiStreamOutputMode, body: Vec<u8>
             append_gemini_sse_event(&mut out, &payload);
             out.into_bytes()
         }
-        GeminiStreamOutputMode::Raw => body,
+        GeminiStreamOutputMode::Raw => {
+            let mut body = body;
+            body.push(b'\n');
+            body
+        }
     }
 }
 

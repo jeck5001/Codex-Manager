@@ -1507,8 +1507,16 @@ fn gemini_raw_reader_outputs_plain_json_chunks() {
         .expect("read gemini raw stream");
 
     assert!(!mapped.contains("data: "));
-    assert!(mapped.contains("\"candidates\""));
-    assert!(mapped.contains("\"usageMetadata\""));
+    assert!(mapped.ends_with('\n'));
+    let raw_frames = mapped
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>();
+    assert!(raw_frames.len() >= 2, "raw stream should stay line-delimited");
+    for frame in &raw_frames {
+        let value: serde_json::Value = serde_json::from_str(frame).expect("parse raw json line");
+        assert!(value.get("candidates").is_some() || value.get("error").is_some());
+    }
 }
 
 #[test]
@@ -1613,6 +1621,7 @@ fn gemini_raw_reader_emits_plain_json_error_for_incomplete_stream() {
         .expect("read gemini incomplete raw");
 
     assert!(!mapped.starts_with("data: "));
+    assert!(mapped.ends_with('\n'));
     let value: serde_json::Value = serde_json::from_str(&mapped).expect("parse raw error json");
     assert!(value.get("error").is_some());
 }
