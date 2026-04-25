@@ -2,11 +2,11 @@ use bytes::Bytes;
 use codexmanager_core::storage::{Account, Storage, Token};
 use std::time::Instant;
 
+use super::super::attempt_flow::transport::UpstreamRequestContext;
 use super::super::executor::{
     execute_candidate_upstream_flow, resolve_gateway_upstream_executor_kind,
     CandidateUpstreamDecision,
 };
-use super::super::attempt_flow::transport::UpstreamRequestContext;
 use super::execution_context::GatewayUpstreamExecutionContext;
 use super::request_setup::UpstreamRequestSetup;
 

@@ -7,16 +7,15 @@ mod aggregate;
 mod openai;
 use aggregate::openai_responses_event::OpenAIResponsesEvent;
 pub(crate) use aggregate::PassthroughSseProtocol;
-use aggregate::{
-    collect_non_stream_json_from_sse_bytes, extract_error_hint_from_body,
-    extract_error_message_from_json, inspect_sse_frame_for_protocol, looks_like_sse_payload,
-    merge_usage, parse_usage_from_json,
-    reload_output_text_from_env, usage_has_signal, SseTerminal, UpstreamResponseBridgeResult,
-    UpstreamResponseUsage,
-};
 #[allow(unused_imports)]
 use aggregate::{
     append_output_text, collect_output_text_from_event_fields, collect_response_output_text,
+};
+use aggregate::{
+    collect_non_stream_json_from_sse_bytes, extract_error_hint_from_body,
+    extract_error_message_from_json, inspect_sse_frame_for_protocol, looks_like_sse_payload,
+    merge_usage, parse_usage_from_json, reload_output_text_from_env, usage_has_signal, SseTerminal,
+    UpstreamResponseBridgeResult, UpstreamResponseUsage,
 };
 #[cfg(test)]
 use aggregate::{

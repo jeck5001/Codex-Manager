@@ -3,8 +3,8 @@ use serde_json::Value;
 mod request_rewrite_chat_completions;
 mod request_rewrite_shared;
 
-use request_rewrite_chat_completions as chat_completions;
 use super::official_responses_http as responses;
+use request_rewrite_chat_completions as chat_completions;
 
 type RetainFn = fn(&str, &mut serde_json::Map<String, Value>) -> Vec<String>;
 const RETAIN_FN_PROBE_KEY: &str = "__codexmanager_allowlist_probe__";
@@ -711,10 +711,7 @@ fn apply_request_overrides_with_prompt_cache_key_mode(
             if use_codex_responses_compat {
                 let installation_id = crate::process_env::resolve_installation_id()
                     .inspect_err(|err| {
-                        log::warn!(
-                            "event=gateway_installation_id_resolve_failed error={}",
-                            err
-                        );
+                        log::warn!("event=gateway_installation_id_resolve_failed error={}", err);
                     })
                     .ok();
                 let codex_http_result = responses::apply_codex_http_request_rules(

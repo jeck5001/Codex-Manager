@@ -185,14 +185,14 @@ async fn run_responses_websocket_session(mut socket: WebSocket, context: WsReque
         }
     };
 
-    let mut upstream = match connect_upstream_websocket(&context, prepared_first.model.as_deref()).await
-    {
-        Ok(stream) => stream,
-        Err(err) => {
-            send_ws_error_and_close(&mut socket, err, context.prefer_raw_errors).await;
-            return;
-        }
-    };
+    let mut upstream =
+        match connect_upstream_websocket(&context, prepared_first.model.as_deref()).await {
+            Ok(stream) => stream,
+            Err(err) => {
+                send_ws_error_and_close(&mut socket, err, context.prefer_raw_errors).await;
+                return;
+            }
+        };
     let first_pending = PendingWsRequestState {
         log: begin_ws_request_log(&context, &prepared_first),
         prepared: prepared_first.clone(),
@@ -567,12 +567,15 @@ fn rewrite_client_frame(
         ));
     }
 
-    let service_tier_diagnostic = crate::gateway::inspect_service_tier_value(object.get("service_tier"));
+    let service_tier_diagnostic =
+        crate::gateway::inspect_service_tier_value(object.get("service_tier"));
     let explicit_service_tier_for_log = service_tier_diagnostic.normalized_value.clone();
     let previous_response_id = object.remove("previous_response_id");
     let generate = object.remove("generate");
-    let merged_client_metadata =
-        merge_turn_metadata(object.remove("client_metadata"), context.incoming_headers.turn_metadata());
+    let merged_client_metadata = merge_turn_metadata(
+        object.remove("client_metadata"),
+        context.incoming_headers.turn_metadata(),
+    );
 
     let rewritten_body = crate::gateway::gateway_rewrite_ws_responses_body(
         RESPONSES_ENDPOINT,
@@ -667,7 +670,10 @@ fn merge_turn_metadata(
             }
         }
     }
-    if let Some(turn_metadata) = turn_metadata.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(turn_metadata) = turn_metadata
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         mapped.insert(
             crate::http::codex_source::X_CODEX_TURN_METADATA_HEADER.to_string(),
             turn_metadata.to_string(),
@@ -681,8 +687,9 @@ async fn connect_upstream_websocket(
     context: &WsRequestContext,
     model: Option<&str>,
 ) -> Result<ConnectedUpstreamWebsocket, WsSessionError> {
-    let storage = open_storage()
-        .ok_or_else(|| WsSessionError::service_unavailable_bilingual("存储不可用", "storage unavailable"))?;
+    let storage = open_storage().ok_or_else(|| {
+        WsSessionError::service_unavailable_bilingual("存储不可用", "storage unavailable")
+    })?;
     let candidates =
         crate::gateway::gateway_collect_routed_candidates(&storage, &context.api_key.id, model)?;
     if candidates.is_empty() {
@@ -753,7 +760,8 @@ async fn resolve_bearer_token_for_websocket(
 }
 
 fn build_upstream_websocket_url(upstream_base: &str) -> Result<String, WsSessionError> {
-    let (target_url, _) = crate::gateway::gateway_compute_upstream_url(upstream_base, RESPONSES_ENDPOINT);
+    let (target_url, _) =
+        crate::gateway::gateway_compute_upstream_url(upstream_base, RESPONSES_ENDPOINT);
     let mut url = url::Url::parse(target_url.as_str()).map_err(|err| {
         WsSessionError::bad_gateway_bilingual(
             "上游 WebSocket URL 无效",
@@ -800,8 +808,16 @@ fn build_upstream_websocket_request(
     {
         insert_header(headers, "ChatGPT-Account-ID", account_id)?;
     }
-    insert_header(headers, "User-Agent", &crate::gateway::current_codex_user_agent())?;
-    insert_header(headers, "originator", &crate::gateway::current_wire_originator())?;
+    insert_header(
+        headers,
+        "User-Agent",
+        &crate::gateway::current_codex_user_agent(),
+    )?;
+    insert_header(
+        headers,
+        "originator",
+        &crate::gateway::current_wire_originator(),
+    )?;
     if let Some(residency_requirement) = crate::gateway::current_residency_requirement() {
         insert_header(
             headers,
@@ -1020,9 +1036,13 @@ async fn try_rotate_ws_upstream_after_terminal(
     }
 
     let current_account_id = upstream.account_id.clone();
-    crate::gateway::gateway_mark_account_cooldown_for_status(current_account_id.as_str(), status_code);
+    crate::gateway::gateway_mark_account_cooldown_for_status(
+        current_account_id.as_str(),
+        status_code,
+    );
     if status_code == 429 {
-        let _ = crate::usage_refresh::enqueue_usage_refresh_for_account(current_account_id.as_str());
+        let _ =
+            crate::usage_refresh::enqueue_usage_refresh_for_account(current_account_id.as_str());
     }
 
     let storage = match open_storage() {
@@ -1045,7 +1065,10 @@ async fn try_rotate_ws_upstream_after_terminal(
             return false;
         }
     };
-    let Some((account, token)) = candidates.into_iter().find(|(account, _)| account.id != current_account_id) else {
+    let Some((account, token)) = candidates
+        .into_iter()
+        .find(|(account, _)| account.id != current_account_id)
+    else {
         return false;
     };
 
@@ -1160,16 +1183,28 @@ fn parse_ws_usage(value: &Value) -> crate::gateway::RequestLogUsage {
         input_tokens: usage
             .and_then(|map| map.get("input_tokens"))
             .and_then(Value::as_i64)
-            .or_else(|| usage.and_then(|map| map.get("prompt_tokens")).and_then(Value::as_i64)),
+            .or_else(|| {
+                usage
+                    .and_then(|map| map.get("prompt_tokens"))
+                    .and_then(Value::as_i64)
+            }),
         cached_input_tokens: usage
             .and_then(|map| map.get("input_tokens_details"))
             .and_then(|details| details.get("cached_tokens"))
             .and_then(Value::as_i64)
-            .or_else(|| usage.and_then(|map| map.get("cached_input_tokens")).and_then(Value::as_i64)),
+            .or_else(|| {
+                usage
+                    .and_then(|map| map.get("cached_input_tokens"))
+                    .and_then(Value::as_i64)
+            }),
         output_tokens: usage
             .and_then(|map| map.get("output_tokens"))
             .and_then(Value::as_i64)
-            .or_else(|| usage.and_then(|map| map.get("completion_tokens")).and_then(Value::as_i64)),
+            .or_else(|| {
+                usage
+                    .and_then(|map| map.get("completion_tokens"))
+                    .and_then(Value::as_i64)
+            }),
         total_tokens: usage
             .and_then(|map| map.get("total_tokens"))
             .and_then(Value::as_i64),
@@ -1177,7 +1212,11 @@ fn parse_ws_usage(value: &Value) -> crate::gateway::RequestLogUsage {
             .and_then(|map| map.get("output_tokens_details"))
             .and_then(|details| details.get("reasoning_tokens"))
             .and_then(Value::as_i64)
-            .or_else(|| usage.and_then(|map| map.get("reasoning_output_tokens")).and_then(Value::as_i64)),
+            .or_else(|| {
+                usage
+                    .and_then(|map| map.get("reasoning_output_tokens"))
+                    .and_then(Value::as_i64)
+            }),
         first_response_ms: None,
     }
 }
@@ -1262,7 +1301,9 @@ impl From<String> for WsSessionError {
 
 #[cfg(test)]
 mod tests {
-    use super::{infer_ws_terminal_status, inspect_ws_terminal_event, rewrite_client_frame, WsRequestContext};
+    use super::{
+        infer_ws_terminal_status, inspect_ws_terminal_event, rewrite_client_frame, WsRequestContext,
+    };
     use axum::http::{HeaderMap, HeaderValue};
     use codexmanager_core::storage::ApiKey;
     use serde_json::json;

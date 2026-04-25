@@ -170,7 +170,10 @@ fn extract_instruction_text_from_message_item(item: &Value) -> Option<String> {
     extract_instruction_text_from_content(obj.get("content")?)
 }
 
-fn promote_leading_instruction_messages_to_instructions(path: &str, obj: &mut Map<String, Value>) -> bool {
+fn promote_leading_instruction_messages_to_instructions(
+    path: &str,
+    obj: &mut Map<String, Value>,
+) -> bool {
     if !is_standard_responses_path(path) {
         return false;
     }
@@ -225,7 +228,9 @@ fn ensure_stream_true(path: &str, obj: &mut Map<String, Value>) -> bool {
     if !is_standard_responses_path(path) {
         return false;
     }
-    let stream = obj.entry("stream".to_string()).or_insert(Value::Bool(false));
+    let stream = obj
+        .entry("stream".to_string())
+        .or_insert(Value::Bool(false));
     if stream.as_bool() == Some(true) {
         return false;
     }
@@ -470,15 +475,14 @@ pub(crate) fn apply_reasoning_override(
     true
 }
 
-fn retain_allowed_fields(
-    path: &str,
-    obj: &mut Map<String, Value>,
-    allow: &[&str],
-) -> Vec<String> {
+fn retain_allowed_fields(path: &str, obj: &mut Map<String, Value>, allow: &[&str]) -> Vec<String> {
     if !is_responses_path(path) {
         return Vec::new();
     }
-    let allow = allow.iter().copied().collect::<std::collections::BTreeSet<_>>();
+    let allow = allow
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
     let keys = obj.keys().cloned().collect::<Vec<_>>();
     let mut dropped = Vec::new();
     for key in keys {
@@ -495,7 +499,16 @@ pub(crate) fn retain_official_fields(path: &str, obj: &mut Map<String, Value>) -
         return retain_allowed_fields(
             path,
             obj,
-            &["input", "instructions", "metadata", "model", "parallel_tool_calls", "reasoning", "text", "tools"],
+            &[
+                "input",
+                "instructions",
+                "metadata",
+                "model",
+                "parallel_tool_calls",
+                "reasoning",
+                "text",
+                "tools",
+            ],
         );
     }
     retain_allowed_fields(
@@ -530,7 +543,15 @@ pub(crate) fn retain_codex_fields(path: &str, obj: &mut Map<String, Value>) -> V
         return retain_allowed_fields(
             path,
             obj,
-            &["model", "instructions", "input", "tools", "parallel_tool_calls", "reasoning", "text"],
+            &[
+                "model",
+                "instructions",
+                "input",
+                "tools",
+                "parallel_tool_calls",
+                "reasoning",
+                "text",
+            ],
         );
     }
     retain_allowed_fields(
@@ -705,7 +726,10 @@ mod tests {
         );
 
         assert!(result.changed);
-        assert_eq!(obj.get("instructions").and_then(Value::as_str), Some("follow rules"));
+        assert_eq!(
+            obj.get("instructions").and_then(Value::as_str),
+            Some("follow rules")
+        );
         assert_eq!(obj.get("stream").and_then(Value::as_bool), Some(true));
         assert_eq!(obj.get("store").and_then(Value::as_bool), Some(false));
         assert_eq!(obj.get("tool_choice").and_then(Value::as_str), Some("auto"));

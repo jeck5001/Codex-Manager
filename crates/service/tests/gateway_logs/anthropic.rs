@@ -1,6 +1,6 @@
 use super::*;
 
-/// 函数 `gateway_claude_protocol_keeps_messages_path_without_inventing_prompt_cache_key`
+/// 函数 `gateway_claude_protocol_rewrites_messages_path_with_sticky_prompt_cache_key`
 ///
 /// 作者: gaohongshun
 ///
@@ -12,7 +12,7 @@ use super::*;
 /// # 返回
 /// 无
 #[test]
-fn gateway_claude_protocol_keeps_messages_path_without_inventing_prompt_cache_key() {
+fn gateway_claude_protocol_rewrites_messages_path_with_sticky_prompt_cache_key() {
     let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-claude-sticky-thread-anchor");
     let db_path: PathBuf = dir.join("codexmanager.db");
@@ -131,16 +131,18 @@ fn gateway_claude_protocol_keeps_messages_path_without_inventing_prompt_cache_ke
     let second_payload: serde_json::Value =
         serde_json::from_slice(&second_body).expect("parse second upstream payload");
 
-    assert_eq!(first.path, "/backend-api/codex/messages?beta=true");
-    assert_eq!(second.path, "/backend-api/codex/messages?beta=true");
-    assert!(
-        first_payload.get("prompt_cache_key").is_none(),
-        "claude passthrough should not invent prompt_cache_key"
-    );
-    assert!(
-        second_payload.get("prompt_cache_key").is_none(),
-        "claude passthrough should not invent prompt_cache_key"
-    );
+    assert_eq!(first.path, "/backend-api/codex/responses");
+    assert_eq!(second.path, "/backend-api/codex/responses");
+    let first_prompt_cache_key = first_payload
+        .get("prompt_cache_key")
+        .and_then(serde_json::Value::as_str)
+        .expect("first prompt_cache_key");
+    let second_prompt_cache_key = second_payload
+        .get("prompt_cache_key")
+        .and_then(serde_json::Value::as_str)
+        .expect("second prompt_cache_key");
+    assert!(!first_prompt_cache_key.trim().is_empty());
+    assert_eq!(first_prompt_cache_key, second_prompt_cache_key);
 }
 
 /// 函数 `gateway_claude_messages_stay_on_chatgpt_codex_base`
@@ -259,11 +261,11 @@ fn gateway_claude_messages_stay_on_chatgpt_codex_base() {
         .recv_timeout(Duration::from_secs(2))
         .expect("receive upstream request");
     upstream_join.join().expect("join upstream");
-    assert_eq!(captured.path, "/chatgpt.com/backend-api/codex/messages?beta=true");
+    assert_eq!(captured.path, "/chatgpt.com/backend-api/codex/responses");
     let upstream_body =
         String::from_utf8(decode_upstream_request_body(&captured)).expect("upstream body utf8");
     assert!(
-        upstream_body.contains("\"service_tier\":\"fast\""),
+        upstream_body.contains("\"service_tier\":\"priority\""),
         "unexpected upstream body: {upstream_body}"
     );
 }
@@ -387,16 +389,19 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
     assert_eq!(status, 200, "gateway response: {gateway_body}");
 
     let value: serde_json::Value =
-        serde_json::from_str(&gateway_body).expect("parse passthrough response");
+        serde_json::from_str(&gateway_body).expect("parse anthropic compatibility response");
     assert_eq!(value["id"], "resp_test_1");
-    assert_eq!(value["output"][0]["content"][0]["text"], "pong");
+    assert_eq!(value["type"], "message");
+    assert_eq!(value["content"][0]["type"], "text");
+    assert_eq!(value["content"][0]["text"], "pong");
+    assert_eq!(value["stop_reason"], "end_turn");
 
     let captured = upstream_rx
         .recv_timeout(Duration::from_secs(2))
         .expect("receive upstream request");
     upstream_join.join().expect("join upstream");
 
-    assert_eq!(captured.path, "/backend-api/codex/messages");
+    assert_eq!(captured.path, "/backend-api/codex/responses");
     let authorization = captured
         .headers
         .get("authorization")
@@ -415,7 +420,10 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
         "user-agent should carry codex client version"
     );
     assert_eq!(
-        captured.headers.get("anthropic-version").map(String::as_str),
+        captured
+            .headers
+            .get("anthropic-version")
+            .map(String::as_str),
         None
     );
     assert_eq!(
@@ -426,9 +434,14 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
     let upstream_payload: serde_json::Value =
         serde_json::from_slice(&captured.body).expect("parse upstream payload");
     assert_eq!(upstream_payload["model"], "claude-3-5-sonnet-20241022");
-    assert_eq!(upstream_payload["stream"], false);
-    assert_eq!(upstream_payload["messages"][0]["role"], "user");
-    assert_eq!(upstream_payload["messages"][0]["content"], "你好");
+    assert_eq!(upstream_payload["stream"], true);
+    assert_eq!(upstream_payload["input"][0]["type"], "message");
+    assert_eq!(upstream_payload["input"][0]["role"], "user");
+    assert_eq!(
+        upstream_payload["input"][0]["content"][0]["type"],
+        "input_text"
+    );
+    assert_eq!(upstream_payload["input"][0]["content"][0]["text"], "你好");
 
     let mut matched = None;
     for _ in 0..40 {
@@ -437,7 +450,7 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
             .expect("list request logs");
         matched = logs
             .into_iter()
-            .find(|item| item.request_path == "/v1/messages" && item.status_code == Some(200));
+            .find(|item| item.request_path == "/v1/responses" && item.status_code == Some(200));
         if matched.is_some() {
             break;
         }
@@ -447,8 +460,11 @@ fn gateway_claude_protocol_end_to_end_uses_codex_headers() {
     let log = matched.expect("claude e2e request log");
     assert!(!log.trace_id.as_deref().unwrap_or("").is_empty());
     assert_eq!(log.original_path.as_deref(), Some("/v1/messages"));
-    assert_eq!(log.adapted_path.as_deref(), Some("/v1/messages"));
-    assert_eq!(log.response_adapter.as_deref(), Some("Passthrough"));
+    assert_eq!(log.adapted_path.as_deref(), Some("/v1/responses"));
+    assert_eq!(
+        log.response_adapter.as_deref(),
+        Some("AnthropicMessagesFromResponses")
+    );
 }
 
 /// 函数 `gateway_claude_failover_cross_workspace_strips_session_affinity_headers`

@@ -17,16 +17,22 @@ fn looks_like_codex_identity(value: &str) -> bool {
     value.to_ascii_lowercase().contains("codex")
 }
 
-fn resolve_originator_header(incoming_originator: Option<&str>) -> String {
+fn resolve_originator_header(
+    incoming_originator: Option<&str>,
+    preserve_client_identity: bool,
+) -> String {
     normalize_non_empty(incoming_originator)
-        .filter(|value| looks_like_codex_identity(value))
+        .filter(|value| preserve_client_identity || looks_like_codex_identity(value))
         .map(str::to_string)
         .unwrap_or_else(crate::gateway::current_wire_originator)
 }
 
-fn resolve_user_agent_header(incoming_user_agent: Option<&str>) -> String {
+fn resolve_user_agent_header(
+    incoming_user_agent: Option<&str>,
+    preserve_client_identity: bool,
+) -> String {
     normalize_non_empty(incoming_user_agent)
-        .filter(|value| looks_like_codex_identity(value))
+        .filter(|value| preserve_client_identity || looks_like_codex_identity(value))
         .map(str::to_string)
         .unwrap_or_else(crate::gateway::current_codex_user_agent)
 }
@@ -36,6 +42,7 @@ pub(crate) struct CodexUpstreamHeaderInput<'a> {
     pub(crate) chatgpt_account_id: Option<&'a str>,
     pub(crate) incoming_user_agent: Option<&'a str>,
     pub(crate) incoming_originator: Option<&'a str>,
+    pub(crate) preserve_client_identity: bool,
     pub(crate) incoming_session_id: Option<&'a str>,
     pub(crate) incoming_window_id: Option<&'a str>,
     pub(crate) incoming_client_request_id: Option<&'a str>,
@@ -56,6 +63,7 @@ pub(crate) struct CodexCompactUpstreamHeaderInput<'a> {
     pub(crate) chatgpt_account_id: Option<&'a str>,
     pub(crate) incoming_user_agent: Option<&'a str>,
     pub(crate) incoming_originator: Option<&'a str>,
+    pub(crate) preserve_client_identity: bool,
     pub(crate) incoming_session_id: Option<&'a str>,
     pub(crate) incoming_window_id: Option<&'a str>,
     pub(crate) incoming_subagent: Option<&'a str>,
@@ -80,8 +88,10 @@ pub(crate) struct CodexCompactUpstreamHeaderInput<'a> {
 pub(crate) fn build_codex_upstream_headers(
     input: CodexUpstreamHeaderInput<'_>,
 ) -> Vec<(String, String)> {
-    let user_agent = resolve_user_agent_header(input.incoming_user_agent);
-    let originator = resolve_originator_header(input.incoming_originator);
+    let user_agent =
+        resolve_user_agent_header(input.incoming_user_agent, input.preserve_client_identity);
+    let originator =
+        resolve_originator_header(input.incoming_originator, input.preserve_client_identity);
     let mut headers = Vec::with_capacity(16);
     headers.push((
         "Authorization".to_string(),
@@ -192,8 +202,10 @@ pub(crate) fn build_codex_upstream_headers(
 pub(crate) fn build_codex_compact_upstream_headers(
     input: CodexCompactUpstreamHeaderInput<'_>,
 ) -> Vec<(String, String)> {
-    let user_agent = resolve_user_agent_header(input.incoming_user_agent);
-    let originator = resolve_originator_header(input.incoming_originator);
+    let user_agent =
+        resolve_user_agent_header(input.incoming_user_agent, input.preserve_client_identity);
+    let originator =
+        resolve_originator_header(input.incoming_originator, input.preserve_client_identity);
     let mut headers = Vec::with_capacity(12);
     headers.push((
         "Authorization".to_string(),
@@ -413,6 +425,7 @@ mod tests {
             chatgpt_account_id: Some("account-123"),
             incoming_user_agent: None,
             incoming_originator: None,
+            preserve_client_identity: false,
             incoming_session_id: Some("conversation-anchor"),
             incoming_window_id: Some("conversation-anchor:7"),
             incoming_client_request_id: Some("conversation-anchor"),
@@ -509,6 +522,7 @@ mod tests {
             chatgpt_account_id: None,
             incoming_user_agent: None,
             incoming_originator: None,
+            preserve_client_identity: false,
             incoming_session_id: Some("conversation-anchor"),
             incoming_window_id: Some("conversation-anchor:9"),
             incoming_client_request_id: Some("conversation-anchor"),
@@ -571,6 +585,7 @@ mod tests {
             chatgpt_account_id: Some("account-compact"),
             incoming_user_agent: None,
             incoming_originator: None,
+            preserve_client_identity: false,
             incoming_session_id: None,
             incoming_window_id: Some("conversation-anchor:11"),
             incoming_subagent: Some("subagent-b"),
@@ -624,6 +639,7 @@ mod tests {
             chatgpt_account_id: None,
             incoming_user_agent: None,
             incoming_originator: None,
+            preserve_client_identity: false,
             incoming_session_id: Some("session-anchor"),
             incoming_window_id: Some("stale-window-anchor:9"),
             incoming_client_request_id: Some("request-anchor"),
@@ -657,6 +673,7 @@ mod tests {
             chatgpt_account_id: None,
             incoming_user_agent: Some("codex_sdk_ts/1.2.3 (Windows 11; x86_64) node"),
             incoming_originator: Some("codex_sdk_ts"),
+            preserve_client_identity: false,
             incoming_session_id: Some("thread-ident"),
             incoming_window_id: Some("thread-ident:0"),
             incoming_client_request_id: Some("thread-ident"),
@@ -677,5 +694,39 @@ mod tests {
             header_value(&headers, "User-Agent"),
             Some("codex_sdk_ts/1.2.3 (Windows 11; x86_64) node")
         );
+    }
+
+    #[test]
+    fn build_codex_upstream_headers_preserves_non_codex_identity_for_compat_routes() {
+        let _guard = crate::test_env_guard();
+        let _ = set_originator("codex_cli_rs_tests").expect("set originator");
+        let _ = set_codex_user_agent_version("0.999.5").expect("set ua version");
+
+        let headers = build_codex_upstream_headers(CodexUpstreamHeaderInput {
+            auth_token: "token-compat",
+            chatgpt_account_id: None,
+            incoming_user_agent: Some("gemini-cli/0.1.14 (Windows 11; x86_64)"),
+            incoming_originator: Some("gemini_cli"),
+            preserve_client_identity: true,
+            incoming_session_id: Some("thread-compat"),
+            incoming_window_id: Some("thread-compat:0"),
+            incoming_client_request_id: Some("thread-compat"),
+            incoming_subagent: None,
+            incoming_beta_features: None,
+            incoming_turn_metadata: None,
+            incoming_parent_thread_id: None,
+            passthrough_codex_headers: &[],
+            fallback_session_id: Some("thread-compat"),
+            incoming_turn_state: None,
+            include_turn_state: true,
+            strip_session_affinity: false,
+            has_body: true,
+        });
+
+        assert_eq!(
+            header_value(&headers, "User-Agent"),
+            Some("gemini-cli/0.1.14 (Windows 11; x86_64)")
+        );
+        assert_eq!(header_value(&headers, "originator"), Some("gemini_cli"));
     }
 }

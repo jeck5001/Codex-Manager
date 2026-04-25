@@ -5,8 +5,7 @@ use tiny_http::Request;
 
 use super::super::local_validation::LocalValidationResult;
 use super::executor::{
-    resolve_gateway_upstream_execution_plan, GatewayUpstreamExecutorKind,
-    GatewayUpstreamRouteKind,
+    resolve_gateway_upstream_execution_plan, GatewayUpstreamExecutorKind, GatewayUpstreamRouteKind,
 };
 use super::proxy_pipeline::candidate_executor::{
     execute_candidate_sequence, CandidateExecutionResult, CandidateExecutorParams,
@@ -79,7 +78,10 @@ fn resolve_upstream_is_stream(client_is_stream: bool, path: &str) -> bool {
 fn should_try_provider_executor_aggregate_route(
     execution_plan: super::executor::GatewayUpstreamExecutionPlan,
 ) -> bool {
-    matches!(execution_plan.route_kind, GatewayUpstreamRouteKind::AggregateApi)
+    matches!(
+        execution_plan.route_kind,
+        GatewayUpstreamRouteKind::AggregateApi
+    )
 }
 
 fn executor_kind_label(value: GatewayUpstreamExecutorKind) -> &'static str {
@@ -97,7 +99,9 @@ fn route_kind_label(value: GatewayUpstreamRouteKind) -> &'static str {
     }
 }
 
-fn provider_upstream_hint(value: GatewayUpstreamExecutorKind) -> Option<(&'static str, &'static str)> {
+fn provider_upstream_hint(
+    value: GatewayUpstreamExecutorKind,
+) -> Option<(&'static str, &'static str)> {
     match value {
         GatewayUpstreamExecutorKind::Claude => Some(("Claude", "claude")),
         GatewayUpstreamExecutorKind::Gemini => Some(("Gemini", "gemini")),
@@ -330,7 +334,12 @@ pub(in super::super) fn proxy_validated_request(
                     aggregate_api_candidates,
                 );
             }
-            Err(err) if matches!(execution_plan.route_kind, GatewayUpstreamRouteKind::AggregateApi) => {
+            Err(err)
+                if matches!(
+                    execution_plan.route_kind,
+                    GatewayUpstreamRouteKind::AggregateApi
+                ) =>
+            {
                 return respond_aggregate_route_error(
                     request,
                     &storage,

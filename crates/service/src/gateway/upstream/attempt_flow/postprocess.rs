@@ -717,6 +717,7 @@ mod tests {
         let incoming_headers = IncomingHeaderSnapshot::default();
         let request_ctx = UpstreamRequestContext {
             request_path: "/v1/responses",
+            protocol_type: crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
         };
         let body = Bytes::from_static(br#"{"model":"gpt-5.3-codex","input":"hello"}"#);
         let upstream = super::super::transport::send_upstream_request(
@@ -816,6 +817,7 @@ mod tests {
         let incoming_headers = IncomingHeaderSnapshot::default();
         let request_ctx = UpstreamRequestContext {
             request_path: "/v1/responses",
+            protocol_type: crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
         };
         let body = Bytes::from_static(br#"{"model":"gpt-5.3-codex","input":"hello"}"#);
         let upstream = super::super::transport::send_upstream_request(
@@ -908,6 +910,7 @@ mod tests {
         let incoming_headers = IncomingHeaderSnapshot::default();
         let request_ctx = UpstreamRequestContext {
             request_path: "/v1/responses",
+            protocol_type: crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
         };
         let body = Bytes::from_static(br#"{"model":"gpt-5.3-codex","input":"hello"}"#);
         let upstream = super::super::transport::send_upstream_request(
@@ -995,6 +998,7 @@ mod tests {
         let incoming_headers = IncomingHeaderSnapshot::default();
         let request_ctx = UpstreamRequestContext {
             request_path: "/v1/responses",
+            protocol_type: crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
         };
         let body = Bytes::from_static(br#"{"model":"gpt-5.3-codex","input":"hello"}"#);
         let upstream = super::super::transport::send_upstream_request(

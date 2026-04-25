@@ -83,12 +83,12 @@ mod local_count_tokens;
 mod local_models;
 #[path = "request/local_response.rs"]
 mod local_response;
-#[path = "request/official_responses_http.rs"]
-mod official_responses_http;
 mod local_validation;
 #[path = "observability/metrics.rs"]
 mod metrics;
 mod model_picker;
+#[path = "request/official_responses_http.rs"]
+mod official_responses_http;
 #[path = "auth/openai_fallback.rs"]
 mod openai_fallback;
 mod protocol_adapter;
@@ -131,16 +131,16 @@ pub(crate) use metrics::{
     begin_rpc_request, duration_to_millis, gateway_metrics_prometheus,
     record_usage_refresh_outcome, GatewayCandidateSkipReason,
 };
+pub(super) use official_responses_http::normalize_official_responses_http_body;
+use protocol_adapter::build_gemini_error_body;
 use protocol_adapter::{
     adapt_request_for_protocol, GeminiStreamOutputMode, ResponseAdapter, ToolNameRestoreMap,
 };
-use protocol_adapter::build_gemini_error_body;
 pub(super) use request_helpers::{
     inspect_service_tier_for_log, inspect_service_tier_value, is_html_content_type,
     is_upstream_challenge_response, normalize_models_path, parse_request_metadata,
     validate_text_input_limit_for_path,
 };
-pub(super) use official_responses_http::normalize_official_responses_http_body;
 #[cfg(test)]
 use request_helpers::{should_drop_incoming_header, should_drop_incoming_header_for_failover};
 pub(crate) use request_log::{RequestLogTraceContext, RequestLogUsage};

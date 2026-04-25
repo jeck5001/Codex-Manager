@@ -371,12 +371,7 @@ fn responses_overrides_model_and_reasoning_effort() {
             .and_then(serde_json::Value::as_str),
         Some("medium")
     );
-    assert_eq!(
-        value
-            .get("instructions")
-            .and_then(serde_json::Value::as_str),
-        Some("")
-    );
+    assert!(value.get("instructions").is_none());
 }
 
 /// 函数 `responses_input_string_normalized_to_list`
@@ -1153,7 +1148,8 @@ fn responses_reuses_persisted_installation_id_for_codex_backend() {
         Some("https://chatgpt.com/backend-api/codex"),
     );
     let first: serde_json::Value = serde_json::from_slice(&first).expect("parse first output body");
-    let second: serde_json::Value = serde_json::from_slice(&second).expect("parse second output body");
+    let second: serde_json::Value =
+        serde_json::from_slice(&second).expect("parse second output body");
 
     assert_eq!(
         first
@@ -1430,12 +1426,7 @@ fn responses_compact_uses_codex_compat_rewrite() {
         Some("https://chatgpt.com/backend-api/codex"),
     );
     let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
-    assert_eq!(
-        value
-            .get("instructions")
-            .and_then(serde_json::Value::as_str),
-        Some("")
-    );
+    assert!(value.get("instructions").is_none());
     assert!(value.get("tools").is_some());
     assert_eq!(
         value

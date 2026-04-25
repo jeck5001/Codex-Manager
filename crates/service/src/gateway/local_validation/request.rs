@@ -494,9 +494,9 @@ pub(super) fn build_local_validation_result(
         gemini_stream_output_mode = None;
         tool_name_restore_map.clear();
     }
-    // 中文注释：下游调用方的 stream 语义应在请求改写前确定；
-    // 否则上游兼容改写（例如 /responses 强制 stream=true）会污染下游响应模式判断。
-    let client_request_meta = super::super::parse_request_metadata(&body);
+    // 中文注释：下游调用方的 stream 语义必须来自原始客户端请求；
+    // 否则协议适配（例如 Anthropic/Gemini 转 /responses 强制 stream=true）会污染响应模式判断。
+    let client_request_meta = initial_request_meta.clone();
     let (effective_model, effective_reasoning, effective_service_tier) =
         resolve_effective_request_overrides(&api_key);
     let preferred_prompt_cache_key = resolve_preferred_client_prompt_cache_key(
@@ -625,8 +625,12 @@ mod removed_path_tests {
     #[test]
     fn identifies_removed_openai_compat_paths() {
         assert!(!is_removed_openai_compat_request_path("/v1/responses"));
-        assert!(!is_removed_openai_compat_request_path("/v1/responses/compact"));
-        assert!(!is_removed_openai_compat_request_path("/v1/chat/completions"));
+        assert!(!is_removed_openai_compat_request_path(
+            "/v1/responses/compact"
+        ));
+        assert!(!is_removed_openai_compat_request_path(
+            "/v1/chat/completions"
+        ));
         assert!(is_removed_openai_compat_request_path("/v1/completions"));
         assert!(!is_removed_openai_compat_request_path("/v1/messages"));
         assert!(!is_removed_openai_compat_request_path(

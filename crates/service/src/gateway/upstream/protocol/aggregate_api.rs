@@ -1246,11 +1246,11 @@ mod tests {
         build_upstream_url, effective_action_path, resolve_aggregate_api_rotation_candidates,
         resolve_passthrough_sse_protocol,
     };
-    use crate::gateway::{PassthroughSseProtocol, ResponseAdapter};
     use crate::aggregate_api::{
         AGGREGATE_API_AUTH_APIKEY, AGGREGATE_API_PROVIDER_CLAUDE, AGGREGATE_API_PROVIDER_CODEX,
         AGGREGATE_API_PROVIDER_GEMINI,
     };
+    use crate::gateway::{PassthroughSseProtocol, ResponseAdapter};
 
     fn aggregate_api_with_action(action: Option<&str>) -> AggregateApi {
         AggregateApi {
