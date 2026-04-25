@@ -9,7 +9,6 @@ pub(super) use output_text::{
     parse_usage_from_json, reload_from_env as reload_output_text_from_env, usage_has_signal,
     UpstreamResponseBridgeResult, UpstreamResponseUsage,
 };
-#[cfg(test)]
 pub(super) use output_text::append_output_text;
 #[cfg(test)]
 pub(super) use output_text::{output_text_limit_bytes, OUTPUT_TEXT_TRUNCATED_MARKER};

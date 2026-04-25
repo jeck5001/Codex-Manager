@@ -134,7 +134,6 @@ pub(crate) use metrics::{
 use protocol_adapter::{
     adapt_request_for_protocol, GeminiStreamOutputMode, ResponseAdapter, ToolNameRestoreMap,
 };
-#[cfg(test)]
 use protocol_adapter::build_gemini_error_body;
 pub(super) use request_helpers::{
     inspect_service_tier_for_log, inspect_service_tier_value, is_html_content_type,
@@ -156,7 +155,8 @@ pub(super) use thread_anchor::{
     resolve_local_conversation_id_with_sticky_fallback,
 };
 pub(crate) use trace_log::{
-    log_client_service_tier, log_request_final, log_request_start, next_trace_id,
+    log_client_service_tier, log_request_execution_plan, log_request_final, log_request_start,
+    next_trace_id,
 };
 #[cfg(test)]
 use upstream::config::normalize_upstream_base_url;

@@ -409,8 +409,13 @@ fn anthropic_sse_reader_final_usage_contains_input_cache_and_output_tokens() {
         )],
     );
     let usage_collector = Arc::new(Mutex::new(super::UpstreamResponseUsage::default()));
-    let mut reader =
-        super::AnthropicSseReader::new(response, usage_collector, None, std::time::Instant::now());
+    let mut reader = super::AnthropicSseReader::new(
+        response,
+        usage_collector,
+        None,
+        None,
+        std::time::Instant::now(),
+    );
     let mut out = String::new();
     reader
         .read_to_string(&mut out)
@@ -440,6 +445,7 @@ fn anthropic_sse_reader_uses_request_model_when_upstream_stream_omits_model() {
         response,
         usage_collector,
         Some("gpt-5.4"),
+        None,
         std::time::Instant::now(),
     );
     let mut out = String::new();

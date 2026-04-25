@@ -1,21 +1,26 @@
-use super::{AdaptedGatewayRequest, ResponseAdapter, ToolNameRestoreMap};
+use serde_json::{json, Map, Value};
+use std::collections::{BTreeMap, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-/// 函数 `adapt_request_for_protocol`
-///
-/// 作者: gaohongshun
-///
-/// 时间: 2026-04-02
-///
-/// # 参数
-/// - crate: 参数 crate
-///
-/// # 返回
-/// 返回函数执行结果
+use super::{AdaptedGatewayRequest, GeminiStreamOutputMode, ResponseAdapter, ToolNameRestoreMap};
+use crate::apikey_profile::{
+    is_anthropic_request_path, is_gemini_generate_content_request_path, PROTOCOL_ANTHROPIC_NATIVE,
+    PROTOCOL_GEMINI_NATIVE,
+};
+
 pub(crate) fn adapt_request_for_protocol(
-    _protocol_type: &str,
+    protocol_type: &str,
     path: &str,
     body: Vec<u8>,
 ) -> Result<AdaptedGatewayRequest, String> {
+    if protocol_type == PROTOCOL_ANTHROPIC_NATIVE && is_anthropic_request_path(path) {
+        return adapt_anthropic_messages_request(path, body);
+    }
+    if protocol_type == PROTOCOL_GEMINI_NATIVE && is_gemini_generate_content_request_path(path) {
+        return adapt_gemini_generate_content_request(path, body);
+    }
+
     Ok(AdaptedGatewayRequest {
         path: path.to_string(),
         body,
@@ -25,41 +30,1284 @@ pub(crate) fn adapt_request_for_protocol(
     })
 }
 
+fn adapt_anthropic_messages_request(
+    _path: &str,
+    body: Vec<u8>,
+) -> Result<AdaptedGatewayRequest, String> {
+    let payload = serde_json::from_slice::<Value>(&body)
+        .map_err(|err| format!("invalid anthropic request json: {err}"))?;
+    let obj = payload
+        .as_object()
+        .ok_or_else(|| "anthropic request body must be an object".to_string())?;
+
+    let mut rewritten = Map::new();
+    let mut tool_name_restore_map = ToolNameRestoreMap::new();
+    let short_name_map = declared_short_name_map_for_anthropic_tools(obj.get("tools"));
+    copy_string_field(obj, &mut rewritten, "model");
+
+    if let Some(system_message) = anthropic_system_to_developer_message(obj.get("system")) {
+        push_input_item(&mut rewritten, system_message);
+    }
+
+    if let Some(input) = anthropic_messages_to_input(
+        obj.get("messages"),
+        &short_name_map,
+        &mut tool_name_restore_map,
+    )? {
+        extend_input_items(&mut rewritten, input);
+    }
+
+    if let Some(tools) = anthropic_tools_to_responses(
+        obj.get("tools"),
+        &short_name_map,
+        &mut tool_name_restore_map,
+    )? {
+        rewritten.insert("tools".to_string(), tools);
+        rewritten.insert("tool_choice".to_string(), Value::String("auto".to_string()));
+    }
+    rewritten.insert(
+        "parallel_tool_calls".to_string(),
+        Value::Bool(anthropic_parallel_tool_calls(obj.get("tool_choice"))),
+    );
+    let reasoning =
+        anthropic_reasoning_to_responses(obj.get("thinking"), obj.get("output_config"))
+            .unwrap_or_else(|| json!({ "effort": "medium", "summary": "auto" }));
+    rewritten.insert("reasoning".to_string(), reasoning);
+    rewritten.insert("stream".to_string(), Value::Bool(true));
+    rewritten.insert("store".to_string(), Value::Bool(false));
+    rewritten.insert(
+        "include".to_string(),
+        Value::Array(vec![Value::String("reasoning.encrypted_content".to_string())]),
+    );
+
+    Ok(AdaptedGatewayRequest {
+        path: "/v1/responses".to_string(),
+        body: serde_json::to_vec(&Value::Object(rewritten))
+            .map_err(|err| format!("serialize anthropic compatibility request failed: {err}"))?,
+        response_adapter: ResponseAdapter::AnthropicMessagesFromResponses,
+        gemini_stream_output_mode: None,
+        tool_name_restore_map,
+    })
+}
+
+fn adapt_gemini_generate_content_request(
+    path: &str,
+    body: Vec<u8>,
+) -> Result<AdaptedGatewayRequest, String> {
+    let payload = serde_json::from_slice::<Value>(&body)
+        .map_err(|err| format!("invalid gemini request json: {err}"))?;
+    let obj = payload
+        .as_object()
+        .ok_or_else(|| "gemini request body must be an object".to_string())?;
+
+    let mut rewritten = Map::new();
+    let mut tool_name_restore_map = ToolNameRestoreMap::new();
+    let short_name_map = declared_short_name_map_for_gemini_tools(obj.get("tools"));
+    let mut pending_tool_call_ids = VecDeque::new();
+    let model = obj
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| extract_gemini_model_from_path(path));
+    if let Some(model) = model {
+        rewritten.insert("model".to_string(), Value::String(model));
+    }
+
+    if let Some(system_message) = gemini_system_instruction_to_developer_message(
+        obj.get("systemInstruction")
+            .or_else(|| obj.get("system_instruction")),
+    )
+    {
+        push_input_item(&mut rewritten, system_message);
+    }
+
+    if let Some(input) = gemini_contents_to_input(
+        obj.get("contents"),
+        &short_name_map,
+        &mut pending_tool_call_ids,
+        &mut tool_name_restore_map,
+    )? {
+        extend_input_items(&mut rewritten, input);
+    }
+
+    if let Some(tools) = gemini_tools_to_responses(
+        obj.get("tools"),
+        &short_name_map,
+        &mut tool_name_restore_map,
+    )? {
+        rewritten.insert("tools".to_string(), tools);
+        rewritten.insert("tool_choice".to_string(), Value::String("auto".to_string()));
+    }
+    let reasoning = obj
+        .get("generationConfig")
+        .and_then(Value::as_object)
+        .and_then(gemini_reasoning_to_responses)
+        .unwrap_or_else(|| json!({ "effort": "medium", "summary": "auto" }));
+    rewritten.insert("parallel_tool_calls".to_string(), Value::Bool(true));
+    rewritten.insert("reasoning".to_string(), reasoning);
+    rewritten.insert("stream".to_string(), Value::Bool(true));
+    rewritten.insert("store".to_string(), Value::Bool(false));
+    rewritten.insert(
+        "include".to_string(),
+        Value::Array(vec![Value::String("reasoning.encrypted_content".to_string())]),
+    );
+
+    let gemini_stream_output_mode = if path.contains(":streamGenerateContent") {
+        if path.to_ascii_lowercase().contains("alt=sse") {
+            Some(GeminiStreamOutputMode::Sse)
+        } else {
+            Some(GeminiStreamOutputMode::Raw)
+        }
+    } else {
+        None
+    };
+
+    Ok(AdaptedGatewayRequest {
+        path: "/v1/responses".to_string(),
+        body: serde_json::to_vec(&Value::Object(rewritten))
+            .map_err(|err| format!("serialize gemini compatibility request failed: {err}"))?,
+        response_adapter: ResponseAdapter::GeminiGenerateContentFromResponses,
+        gemini_stream_output_mode,
+        tool_name_restore_map,
+    })
+}
+
+fn copy_string_field(source: &Map<String, Value>, target: &mut Map<String, Value>, key: &str) {
+    if let Some(value) = source.get(key).and_then(Value::as_str) {
+        let value = value.trim();
+        if !value.is_empty() {
+            target.insert(key.to_string(), Value::String(value.to_string()));
+        }
+    }
+}
+
+fn push_input_item(target: &mut Map<String, Value>, item: Value) {
+    match target.entry("input".to_string()) {
+        serde_json::map::Entry::Vacant(entry) => {
+            entry.insert(Value::Array(vec![item]));
+        }
+        serde_json::map::Entry::Occupied(mut entry) => {
+            if let Value::Array(items) = entry.get_mut() {
+                items.push(item);
+            }
+        }
+    }
+}
+
+fn extend_input_items(target: &mut Map<String, Value>, items: Value) {
+    let Value::Array(items) = items else {
+        return;
+    };
+    for item in items {
+        push_input_item(target, item);
+    }
+}
+
+fn anthropic_system_to_developer_message(system: Option<&Value>) -> Option<Value> {
+    anthropic_system_to_text(system).map(|text| {
+        json!({
+            "type": "message",
+            "role": "developer",
+            "content": [{ "type": "input_text", "text": text }],
+        })
+    })
+}
+
+fn anthropic_system_to_text(system: Option<&Value>) -> Option<String> {
+    match system {
+        Some(Value::String(text)) => normalize_system_text(text),
+        Some(Value::Array(items)) => {
+            let parts = items
+                .iter()
+                .filter_map(anthropic_content_block_to_text)
+                .collect::<Vec<_>>();
+            (!parts.is_empty()).then(|| parts.join("\n\n"))
+        }
+        Some(Value::Object(_)) => anthropic_content_block_to_text(system?),
+        _ => None,
+    }
+}
+
+fn anthropic_messages_to_input(
+    messages: Option<&Value>,
+    short_name_map: &BTreeMap<String, String>,
+    tool_name_restore_map: &mut ToolNameRestoreMap,
+) -> Result<Option<Value>, String> {
+    let Some(messages) = messages else {
+        return Ok(None);
+    };
+    let items = messages
+        .as_array()
+        .ok_or_else(|| "anthropic messages must be an array".to_string())?;
+    let mut out = Vec::new();
+    for item in items {
+        let Some(message) = item.as_object() else {
+            continue;
+        };
+        let role = message
+            .get("role")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("user");
+        match message.get("content") {
+            Some(Value::String(text)) => {
+                if let Some(text) = normalize_text(text) {
+                    out.push(json!({
+                        "role": role,
+                        "content": [{ "type": "input_text", "text": text }],
+                    }));
+                }
+            }
+            Some(Value::Array(content_items)) => {
+                let mut content_parts = Vec::new();
+                for content_item in content_items {
+                    let Some(content_obj) = content_item.as_object() else {
+                        continue;
+                    };
+                    let kind = content_obj
+                        .get("type")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .unwrap_or("text");
+                    match kind {
+                        "text" | "input_text" | "image" => {
+                            if let Some(part) =
+                                anthropic_content_block_to_responses(
+                                    content_item,
+                                    role,
+                                    short_name_map,
+                                    tool_name_restore_map,
+                                )
+                            {
+                                content_parts.push(part);
+                            }
+                        }
+                        "tool_use" | "tool_result" => {
+                            if !content_parts.is_empty() {
+                                out.push(json!({
+                                    "role": role,
+                                    "content": content_parts,
+                                }));
+                                content_parts = Vec::new();
+                            }
+                            if let Some(mapped) = anthropic_content_block_to_responses(
+                                content_item,
+                                role,
+                                short_name_map,
+                                tool_name_restore_map,
+                            ) {
+                                out.push(mapped);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if !content_parts.is_empty() {
+                    out.push(json!({
+                        "role": role,
+                        "content": content_parts,
+                    }));
+                }
+            }
+            Some(Value::Object(_)) => {
+                if let Some(content) = anthropic_message_content_to_responses(
+                    message.get("content"),
+                    role,
+                    short_name_map,
+                    tool_name_restore_map,
+                )? {
+                    if matches!(content, Value::Array(_)) {
+                        out.push(json!({
+                            "role": role,
+                            "content": content,
+                        }));
+                    } else {
+                        out.push(content);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok((!out.is_empty()).then(|| Value::Array(out)))
+}
+
+fn anthropic_message_content_to_responses(
+    content: Option<&Value>,
+    role: &str,
+    short_name_map: &BTreeMap<String, String>,
+    tool_name_restore_map: &mut ToolNameRestoreMap,
+) -> Result<Option<Value>, String> {
+    match content {
+        Some(Value::String(text)) => Ok(normalize_text(text).map(|text| {
+            Value::Array(vec![json!({
+                "type": text_content_type_for_role(role),
+                "text": text,
+            })])
+        })),
+        Some(Value::Array(items)) => {
+            let mut out = Vec::new();
+            for item in items {
+                if let Some(mapped) =
+                    anthropic_content_block_to_responses(
+                        item,
+                        role,
+                        short_name_map,
+                        tool_name_restore_map,
+                    )
+                {
+                    out.push(mapped);
+                }
+            }
+            Ok((!out.is_empty()).then(|| Value::Array(out)))
+        }
+        Some(Value::Object(_)) => Ok(content
+            .and_then(|item| {
+                anthropic_content_block_to_responses(
+                    item,
+                    role,
+                    short_name_map,
+                    tool_name_restore_map,
+                )
+            })
+            .map(|item| Value::Array(vec![item]))),
+        Some(_) => Err("unsupported anthropic content payload".to_string()),
+        None => Ok(None),
+    }
+}
+
+fn anthropic_content_block_to_text(value: &Value) -> Option<String> {
+    let block = value.as_object()?;
+    let kind = block
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("text");
+    match kind {
+        "text" | "input_text" => block
+            .get("text")
+            .and_then(Value::as_str)
+            .and_then(normalize_system_text),
+        _ => None,
+    }
+}
+
+fn anthropic_content_block_to_responses(
+    value: &Value,
+    role: &str,
+    short_name_map: &BTreeMap<String, String>,
+    tool_name_restore_map: &mut ToolNameRestoreMap,
+) -> Option<Value> {
+    let block = value.as_object()?;
+    let kind = block
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("text");
+    match kind {
+        "text" | "input_text" => block
+            .get("text")
+            .and_then(Value::as_str)
+            .and_then(normalize_text)
+            .map(|text| {
+                json!({
+                    "type": text_content_type_for_role(role),
+                    "text": text,
+                })
+            }),
+        "image" => anthropic_image_block_to_responses(block),
+        "tool_use" => anthropic_tool_use_block_to_responses(
+            block,
+            short_name_map,
+            tool_name_restore_map,
+        ),
+        "tool_result" => anthropic_tool_result_block_to_responses(block),
+        _ => None,
+    }
+}
+
+fn anthropic_tools_to_responses(
+    tools: Option<&Value>,
+    short_name_map: &BTreeMap<String, String>,
+    tool_name_restore_map: &mut ToolNameRestoreMap,
+) -> Result<Option<Value>, String> {
+    let Some(tools) = tools else {
+        return Ok(None);
+    };
+    let items = tools
+        .as_array()
+        .ok_or_else(|| "anthropic tools must be an array".to_string())?;
+    let mut out = Vec::new();
+    for item in items {
+        let Some(tool) = item.as_object() else {
+            continue;
+        };
+        if tool
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|kind| kind == "web_search_20250305")
+        {
+            out.push(json!({ "type": "web_search" }));
+            continue;
+        }
+        let Some(name) = tool.get("name").and_then(Value::as_str).and_then(normalize_text) else {
+            continue;
+        };
+        let short_name = resolve_short_tool_name(name.as_str(), short_name_map);
+        tool_name_restore_map.insert(short_name.clone(), name.clone());
+        let mut mapped = Map::new();
+        mapped.insert("type".to_string(), Value::String("function".to_string()));
+        mapped.insert("name".to_string(), Value::String(short_name));
+        if let Some(description) = tool
+            .get("description")
+            .and_then(Value::as_str)
+            .and_then(normalize_text)
+        {
+            mapped.insert("description".to_string(), Value::String(description));
+        }
+        if let Some(schema) = tool.get("input_schema") {
+            mapped.insert("parameters".to_string(), normalize_tool_schema(schema.clone()));
+        }
+        mapped.insert("strict".to_string(), Value::Bool(false));
+        out.push(Value::Object(mapped));
+    }
+    Ok((!out.is_empty()).then(|| Value::Array(out)))
+}
+
+fn anthropic_parallel_tool_calls(tool_choice: Option<&Value>) -> bool {
+    tool_choice
+        .and_then(Value::as_object)
+        .and_then(|choice| choice.get("disable_parallel_tool_use"))
+        .and_then(Value::as_bool)
+        .map(|disabled| !disabled)
+        .unwrap_or(true)
+}
+
+fn anthropic_reasoning_to_responses(
+    thinking: Option<&Value>,
+    output_config: Option<&Value>,
+) -> Option<Value> {
+    let thinking = thinking?.as_object()?;
+    let kind = thinking
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    let effort = match kind {
+        value if value.eq_ignore_ascii_case("enabled") => {
+            let budget = thinking
+                .get("budget_tokens")
+                .or_else(|| thinking.get("budgetTokens"))
+                .and_then(Value::as_i64);
+            match budget {
+                Some(value) if value <= 0 => "none".to_string(),
+                Some(value) if value <= 1024 => "low".to_string(),
+                Some(value) if value <= 8192 => "medium".to_string(),
+                Some(_) => "high".to_string(),
+                None => "medium".to_string(),
+            }
+        }
+        value if value.eq_ignore_ascii_case("adaptive") || value.eq_ignore_ascii_case("auto") => {
+            output_config
+                .and_then(Value::as_object)
+                .and_then(|config| config.get("effort"))
+                .and_then(Value::as_str)
+                .and_then(normalize_text)
+                .map(|value| value.to_ascii_lowercase())
+                .unwrap_or_else(|| "high".to_string())
+        }
+        value if value.eq_ignore_ascii_case("disabled") => "none".to_string(),
+        _ => return None,
+    };
+    Some(json!({ "effort": effort, "summary": "auto" }))
+}
+
+fn extract_gemini_model_from_path(path: &str) -> Option<String> {
+    let normalized = path.split('?').next().unwrap_or(path);
+    let marker = "/models/";
+    let start = normalized.find(marker)? + marker.len();
+    let tail = &normalized[start..];
+    let end = tail.find(':').unwrap_or(tail.len());
+    let model = tail[..end].trim();
+    (!model.is_empty()).then(|| model.to_string())
+}
+
+fn gemini_reasoning_to_responses(config: &Map<String, Value>) -> Option<Value> {
+    let thinking = config
+        .get("thinkingConfig")
+        .or_else(|| config.get("thinking_config"))?
+        .as_object()?;
+    if let Some(level) = thinking
+        .get("thinkingLevel")
+        .or_else(|| thinking.get("thinking_level"))
+        .and_then(Value::as_str)
+        .and_then(normalize_text)
+    {
+        return Some(json!({ "effort": level.to_ascii_lowercase(), "summary": "auto" }));
+    }
+    let budget = thinking
+        .get("thinkingBudget")
+        .or_else(|| thinking.get("thinking_budget"))
+        .and_then(Value::as_i64)?;
+    let effort = if budget <= 0 {
+        "none"
+    } else if budget <= 1024 {
+        "low"
+    } else if budget <= 8192 {
+        "medium"
+    } else {
+        "high"
+    };
+    Some(json!({ "effort": effort, "summary": "auto" }))
+}
+
+fn gemini_system_instruction_to_developer_message(system_instruction: Option<&Value>) -> Option<Value> {
+    gemini_system_instruction_to_text(system_instruction).map(|text| {
+        json!({
+            "type": "message",
+            "role": "developer",
+            "content": [{ "type": "input_text", "text": text }],
+        })
+    })
+}
+
+fn gemini_system_instruction_to_text(system_instruction: Option<&Value>) -> Option<String> {
+    let system = system_instruction?.as_object()?;
+    let parts = system
+        .get("parts")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(gemini_part_to_text)
+        .collect::<Vec<_>>();
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
+}
+
+fn gemini_contents_to_input(
+    contents: Option<&Value>,
+    short_name_map: &BTreeMap<String, String>,
+    pending_tool_call_ids: &mut VecDeque<String>,
+    tool_name_restore_map: &mut ToolNameRestoreMap,
+) -> Result<Option<Value>, String> {
+    let Some(contents) = contents else {
+        return Ok(None);
+    };
+    let items = contents
+        .as_array()
+        .ok_or_else(|| "gemini contents must be an array".to_string())?;
+    let mut out = Vec::new();
+    for item in items {
+        let Some(content) = item.as_object() else {
+            continue;
+        };
+        let role = match content.get("role").and_then(Value::as_str).map(str::trim) {
+            Some("model") => "assistant",
+            Some("user") => "user",
+            Some(other) if !other.is_empty() => other,
+            _ => "user",
+        };
+        let Some(parts) = content.get("parts").and_then(Value::as_array) else {
+            continue;
+        };
+        let mut mapped_parts = Vec::new();
+        for part in parts {
+            let kind = part
+                .as_object()
+                .and_then(|obj| {
+                    if obj.contains_key("functionCall") {
+                        Some("functionCall")
+                    } else if obj.contains_key("functionResponse") {
+                        Some("functionResponse")
+                    } else if obj.contains_key("text") {
+                        Some("text")
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_default();
+            if let Some(mapped) = gemini_part_to_responses(
+                part,
+                role,
+                short_name_map,
+                pending_tool_call_ids,
+                tool_name_restore_map,
+            ) {
+                match kind {
+                    "text" => mapped_parts.push(mapped),
+                    "functionCall" | "functionResponse" => {
+                        if !mapped_parts.is_empty() {
+                            out.push(json!({
+                                "role": role,
+                                "content": mapped_parts,
+                            }));
+                            mapped_parts = Vec::new();
+                        }
+                        out.push(mapped);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if !mapped_parts.is_empty() {
+            out.push(json!({
+                "role": role,
+                "content": mapped_parts,
+            }));
+        }
+    }
+    Ok((!out.is_empty()).then(|| Value::Array(out)))
+}
+
+fn gemini_part_to_text(value: &Value) -> Option<String> {
+    let part = value.as_object()?;
+    part.get("text").and_then(Value::as_str).and_then(normalize_text)
+}
+
+fn gemini_part_to_responses(
+    value: &Value,
+    role: &str,
+    short_name_map: &BTreeMap<String, String>,
+    pending_tool_call_ids: &mut VecDeque<String>,
+    tool_name_restore_map: &mut ToolNameRestoreMap,
+) -> Option<Value> {
+    let part = value.as_object()?;
+    if let Some(text) = part.get("text").and_then(Value::as_str).and_then(normalize_text) {
+        return Some(json!({
+            "type": text_content_type_for_role(role),
+            "text": text,
+        }));
+    }
+    if let Some(function_call) = part.get("functionCall").and_then(Value::as_object) {
+        let name = function_call
+            .get("name")
+            .and_then(Value::as_str)
+            .and_then(normalize_text)?;
+        let short_name = resolve_short_tool_name(name.as_str(), short_name_map);
+        tool_name_restore_map.insert(short_name.clone(), name);
+        let call_id = generate_tool_call_id();
+        pending_tool_call_ids.push_back(call_id.clone());
+        return Some(json!({
+            "type": "function_call",
+            "call_id": call_id,
+            "name": short_name,
+            "arguments": function_call.get("args").cloned().unwrap_or_else(|| json!({})).to_string(),
+        }));
+    }
+    if let Some(function_response) = part.get("functionResponse").and_then(Value::as_object) {
+        let output = function_response
+            .get("response")
+            .and_then(|response| response.get("result").cloned().or_else(|| Some(response.clone())))
+            .unwrap_or_else(|| Value::String(String::new()));
+        let call_id = pending_tool_call_ids
+            .pop_front()
+            .unwrap_or_else(generate_tool_call_id);
+        return Some(json!({
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": output,
+        }));
+    }
+    None
+}
+
+fn gemini_tools_to_responses(
+    tools: Option<&Value>,
+    short_name_map: &BTreeMap<String, String>,
+    tool_name_restore_map: &mut ToolNameRestoreMap,
+) -> Result<Option<Value>, String> {
+    let Some(tools) = tools else {
+        return Ok(None);
+    };
+    let items = tools
+        .as_array()
+        .ok_or_else(|| "gemini tools must be an array".to_string())?;
+    let mut out = Vec::new();
+    for item in items {
+        let Some(tool) = item.as_object() else {
+            continue;
+        };
+        let Some(declarations) = tool.get("functionDeclarations").and_then(Value::as_array) else {
+            continue;
+        };
+        for declaration in declarations {
+            let Some(function) = declaration.as_object() else {
+                continue;
+            };
+            let Some(name) = function
+                .get("name")
+                .and_then(Value::as_str)
+                .and_then(normalize_text)
+            else {
+                continue;
+            };
+            let short_name = resolve_short_tool_name(name.as_str(), short_name_map);
+            tool_name_restore_map.insert(short_name.clone(), name);
+            let mapped = json!({
+                "type": "function",
+                "name": short_name,
+                "description": function
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .and_then(normalize_text),
+                "parameters": normalize_tool_schema(
+                    function
+                        .get("parameters")
+                        .or_else(|| function.get("parametersJsonSchema"))
+                        .cloned()
+                        .unwrap_or_else(|| json!({ "type": "object", "properties": {} })),
+                ),
+                "strict": false,
+            });
+            out.push(mapped);
+        }
+    }
+    Ok((!out.is_empty()).then(|| Value::Array(out)))
+}
+
+fn normalize_text(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+fn normalize_system_text(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() || value.starts_with("x-anthropic-billing-header: ") {
+        return None;
+    }
+    Some(value.to_string())
+}
+
+fn text_content_type_for_role(role: &str) -> &'static str {
+    if role == "assistant" {
+        "output_text"
+    } else {
+        "input_text"
+    }
+}
+
+fn anthropic_image_block_to_responses(block: &Map<String, Value>) -> Option<Value> {
+    let source = block.get("source")?.as_object()?;
+    let data = source
+        .get("data")
+        .or_else(|| source.get("base64"))
+        .and_then(Value::as_str)
+        .and_then(normalize_text)?;
+    let mime = source
+        .get("media_type")
+        .or_else(|| source.get("mime_type"))
+        .and_then(Value::as_str)
+        .and_then(normalize_text)
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    Some(json!({
+        "type": "input_image",
+        "image_url": format!("data:{mime};base64,{data}"),
+    }))
+}
+
+fn anthropic_tool_use_block_to_responses(
+    block: &Map<String, Value>,
+    short_name_map: &BTreeMap<String, String>,
+    tool_name_restore_map: &mut ToolNameRestoreMap,
+) -> Option<Value> {
+    let name = block.get("name").and_then(Value::as_str).and_then(normalize_text)?;
+    let short_name = resolve_short_tool_name(name.as_str(), short_name_map);
+    tool_name_restore_map.insert(short_name.clone(), name);
+    Some(json!({
+        "type": "function_call",
+        "call_id": block.get("id").and_then(Value::as_str).unwrap_or("toolu_unknown"),
+        "name": short_name,
+        "arguments": block.get("input").cloned().unwrap_or_else(|| json!({})).to_string(),
+    }))
+}
+
+fn anthropic_tool_result_block_to_responses(block: &Map<String, Value>) -> Option<Value> {
+    let call_id = block
+        .get("tool_use_id")
+        .and_then(Value::as_str)
+        .and_then(normalize_text)?;
+    let output = match block.get("content") {
+        Some(Value::Array(items)) => {
+            let mut parts = Vec::new();
+            for item in items {
+                if let Some(text) = item.get("text").and_then(Value::as_str).and_then(normalize_text) {
+                    parts.push(json!({ "type": "input_text", "text": text }));
+                } else if let Some(obj) = item.as_object() {
+                    if let Some(image) = anthropic_image_block_to_responses(obj) {
+                        parts.push(image);
+                    }
+                }
+            }
+            Value::Array(parts)
+        }
+        Some(Value::String(text)) => Value::String(text.clone()),
+        Some(other) => other.clone(),
+        None => Value::String(String::new()),
+    };
+    Some(json!({
+        "type": "function_call_output",
+        "call_id": call_id,
+        "output": output,
+    }))
+}
+
+fn shorten_tool_name(name: &str) -> String {
+    const LIMIT: usize = 64;
+    if name.len() <= LIMIT {
+        return name.to_string();
+    }
+    if let Some(rest) = name
+        .strip_prefix("mcp__")
+        .and_then(|value| value.rsplit_once("__").map(|(_, tail)| tail))
+    {
+        let candidate = format!("mcp__{rest}");
+        return candidate.chars().take(LIMIT).collect();
+    }
+    name.chars().take(LIMIT).collect()
+}
+
+fn resolve_short_tool_name(name: &str, short_name_map: &BTreeMap<String, String>) -> String {
+    short_name_map
+        .get(name)
+        .cloned()
+        .unwrap_or_else(|| shorten_tool_name(name))
+}
+
+fn build_short_name_map(names: &[String]) -> BTreeMap<String, String> {
+    const LIMIT: usize = 64;
+    let mut used = BTreeMap::<String, ()>::new();
+    let mut mapped = BTreeMap::new();
+
+    let base_candidate = |name: &str| -> String {
+        if name.len() <= LIMIT {
+            return name.to_string();
+        }
+        if let Some(rest) = name
+            .strip_prefix("mcp__")
+            .and_then(|value| value.rsplit_once("__").map(|(_, tail)| tail))
+        {
+            let candidate = format!("mcp__{rest}");
+            return candidate.chars().take(LIMIT).collect();
+        }
+        name.chars().take(LIMIT).collect()
+    };
+
+    for name in names {
+        let candidate = base_candidate(name);
+        let unique = if !used.contains_key(&candidate) {
+            candidate
+        } else {
+            let mut seq = 1usize;
+            loop {
+                let suffix = format!("_{seq}");
+                let allowed = LIMIT.saturating_sub(suffix.len());
+                let mut base = candidate.clone();
+                if base.len() > allowed {
+                    base = base.chars().take(allowed).collect();
+                }
+                let next = format!("{base}{suffix}");
+                if !used.contains_key(&next) {
+                    break next;
+                }
+                seq += 1;
+            }
+        };
+        used.insert(unique.clone(), ());
+        mapped.insert(name.clone(), unique);
+    }
+
+    mapped
+}
+
+fn declared_short_name_map_for_anthropic_tools(
+    tools: Option<&Value>,
+) -> BTreeMap<String, String> {
+    let names = tools
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.get("name").and_then(Value::as_str).and_then(normalize_text))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    build_short_name_map(&names)
+}
+
+fn declared_short_name_map_for_gemini_tools(tools: Option<&Value>) -> BTreeMap<String, String> {
+    let mut names = Vec::new();
+    if let Some(items) = tools.and_then(Value::as_array) {
+        for item in items {
+            if let Some(declarations) = item.get("functionDeclarations").and_then(Value::as_array) {
+                for declaration in declarations {
+                    if let Some(name) = declaration
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .and_then(normalize_text)
+                    {
+                        names.push(name);
+                    }
+                }
+            }
+        }
+    }
+    build_short_name_map(&names)
+}
+
+fn normalize_tool_schema(mut schema: Value) -> Value {
+    if let Some(obj) = schema.as_object_mut() {
+        obj.remove("$schema");
+        if !obj.contains_key("type") {
+            obj.insert("type".to_string(), Value::String("object".to_string()));
+        }
+        if obj
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|kind| kind == "object")
+            && !obj.contains_key("properties")
+        {
+            obj.insert("properties".to_string(), Value::Object(Map::new()));
+        }
+        obj.insert("additionalProperties".to_string(), Value::Bool(false));
+    }
+    schema
+}
+
+fn generate_tool_call_id() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or_default();
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!(
+        "call_{:016x}{:016x}",
+        (nanos as u64),
+        seq
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::adapt_request_for_protocol;
     use crate::apikey_profile::{PROTOCOL_ANTHROPIC_NATIVE, PROTOCOL_GEMINI_NATIVE};
-    use crate::gateway::ResponseAdapter;
+    use crate::gateway::{GeminiStreamOutputMode, ResponseAdapter};
 
     #[test]
-    fn anthropic_messages_now_passthrough_without_responses_rewrite() {
-        let body = br#"{"model":"claude-3-7-sonnet","messages":[]}"#.to_vec();
+    fn anthropic_messages_are_rewritten_to_responses() {
+        let body = br#"{"model":"claude-3-7-sonnet","system":"be helpful","messages":[{"role":"user","content":"hi"}],"stream":true}"#.to_vec();
 
         let adapted =
-            adapt_request_for_protocol(PROTOCOL_ANTHROPIC_NATIVE, "/v1/messages", body.clone())
+            adapt_request_for_protocol(PROTOCOL_ANTHROPIC_NATIVE, "/v1/messages", body)
                 .expect("adapt anthropic request");
 
-        assert_eq!(adapted.path, "/v1/messages");
-        assert_eq!(adapted.body, body);
-        assert_eq!(adapted.response_adapter, ResponseAdapter::Passthrough);
+        assert_eq!(adapted.path, "/v1/responses");
+        assert_eq!(
+            adapted.response_adapter,
+            ResponseAdapter::AnthropicMessagesFromResponses
+        );
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["model"], "claude-3-7-sonnet");
+        assert_eq!(payload["input"][0]["role"], "developer");
+        assert_eq!(payload["input"][0]["content"][0]["text"], "be helpful");
+        assert_eq!(payload["input"][1]["role"], "user");
+        assert_eq!(payload["stream"], true);
+        assert_eq!(payload["reasoning"]["effort"], "medium");
+        assert_eq!(payload["include"][0], "reasoning.encrypted_content");
+        assert_eq!(payload["parallel_tool_calls"], true);
     }
 
     #[test]
-    fn gemini_generate_content_now_passthrough_without_responses_rewrite() {
-        let body = br#"{"contents":[]}"#.to_vec();
+    fn gemini_generate_content_is_rewritten_to_responses() {
+        let body = br#"{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}"#.to_vec();
 
         let adapted = adapt_request_for_protocol(
             PROTOCOL_GEMINI_NATIVE,
             "/v1beta/models/gemini-2.5-pro:generateContent",
-            body.clone(),
+            body,
+        )
+        .expect("adapt gemini request");
+
+        assert_eq!(adapted.path, "/v1/responses");
+        assert_eq!(
+            adapted.response_adapter,
+            ResponseAdapter::GeminiGenerateContentFromResponses
+        );
+        assert_eq!(adapted.gemini_stream_output_mode, None);
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["model"], "gemini-2.5-pro");
+        assert_eq!(payload["input"][0]["role"], "user");
+        assert_eq!(payload["reasoning"]["effort"], "medium");
+        assert_eq!(payload["include"][0], "reasoning.encrypted_content");
+        assert_eq!(payload["parallel_tool_calls"], true);
+    }
+
+    #[test]
+    fn gemini_stream_generate_content_uses_raw_stream_mode_without_alt_sse() {
+        let body = br#"{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}"#.to_vec();
+
+        let adapted = adapt_request_for_protocol(
+            PROTOCOL_GEMINI_NATIVE,
+            "/v1beta/models/gemini-2.5-pro:streamGenerateContent",
+            body,
         )
         .expect("adapt gemini request");
 
         assert_eq!(
-            adapted.path,
-            "/v1beta/models/gemini-2.5-pro:generateContent"
+            adapted.gemini_stream_output_mode,
+            Some(GeminiStreamOutputMode::Raw)
         );
-        assert_eq!(adapted.body, body);
-        assert_eq!(adapted.response_adapter, ResponseAdapter::Passthrough);
+    }
+
+    #[test]
+    fn anthropic_tool_use_and_result_are_rewritten_as_responses_tool_items() {
+        let long_tool_name = "mcp__context7__query_docs_with_a_very_long_suffix_that_exceeds_sixty_four_chars_for_restore";
+        let body = br#"{
+            "model":"claude-3-7-sonnet",
+            "messages":[
+                {"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"mcp__context7__query_docs_with_a_very_long_suffix_that_exceeds_sixty_four_chars_for_restore","input":{"q":"hi"}}]},
+                {"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":[{"type":"text","text":"ok"}]}]}
+            ],
+            "tools":[{"name":"mcp__context7__query_docs_with_a_very_long_suffix_that_exceeds_sixty_four_chars_for_restore","input_schema":{"type":"object","properties":{"q":{"type":"string"}}}}]
+        }"#.to_vec();
+
+        let adapted =
+            adapt_request_for_protocol(PROTOCOL_ANTHROPIC_NATIVE, "/v1/messages", body)
+                .expect("adapt anthropic request");
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["input"][0]["type"], "function_call");
+        assert_eq!(payload["input"][0]["call_id"], "toolu_1");
+        assert_eq!(payload["input"][1]["type"], "function_call_output");
+        assert_eq!(payload["input"][1]["call_id"], "toolu_1");
+        assert_eq!(payload["tools"][0]["type"], "function");
+        assert_ne!(payload["tools"][0]["name"], long_tool_name);
+        assert_eq!(payload["tool_choice"], "auto");
+        assert_eq!(
+            adapted
+                .tool_name_restore_map
+                .get(payload["tools"][0]["name"].as_str().unwrap_or("")),
+            Some(&long_tool_name.to_string())
+        );
+    }
+
+    #[test]
+    fn gemini_function_call_and_response_are_rewritten_as_responses_tool_items() {
+        let long_tool_name = "mcp__context7__query_docs_with_a_very_long_suffix_that_exceeds_sixty_four_chars_for_restore";
+        let body = br#"{
+            "contents":[
+                {"role":"model","parts":[{"functionCall":{"name":"mcp__context7__query_docs_with_a_very_long_suffix_that_exceeds_sixty_four_chars_for_restore","args":{"q":"hi"}}}]},
+                {"role":"user","parts":[{"functionResponse":{"name":"mcp__context7__query_docs_with_a_very_long_suffix_that_exceeds_sixty_four_chars_for_restore","response":{"result":"ok"}}}]}
+            ],
+            "tools":[{"functionDeclarations":[{"name":"mcp__context7__query_docs_with_a_very_long_suffix_that_exceeds_sixty_four_chars_for_restore","parameters":{"type":"object","properties":{"q":{"type":"string"}}}}]}
+            ]
+        }"#.to_vec();
+
+        let adapted = adapt_request_for_protocol(
+            PROTOCOL_GEMINI_NATIVE,
+            "/v1beta/models/gemini-2.5-pro:generateContent",
+            body,
+        )
+        .expect("adapt gemini request");
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["input"][0]["type"], "function_call");
+        assert_eq!(payload["input"][1]["type"], "function_call_output");
+        assert_eq!(payload["input"][0]["call_id"], payload["input"][1]["call_id"]);
+        assert_eq!(payload["tools"][0]["type"], "function");
+        assert_ne!(payload["tools"][0]["name"], long_tool_name);
+        assert_eq!(payload["tool_choice"], "auto");
+        assert_eq!(
+            adapted
+                .tool_name_restore_map
+                .get(payload["tools"][0]["name"].as_str().unwrap_or("")),
+            Some(&long_tool_name.to_string())
+        );
+    }
+
+    #[test]
+    fn anthropic_disable_parallel_tool_use_and_unique_short_names_follow_cpa_shape() {
+        let tool_a = "mcp__workspace__ThisIsAnExtremelyLongToolNameThatNeedsToBeShortenedForCodexRouteAlpha";
+        let tool_b = "mcp__workspace__ThisIsAnExtremelyLongToolNameThatNeedsToBeShortenedForCodexRouteBeta";
+        let body = serde_json::json!({
+            "model": "claude-sonnet",
+            "tool_choice": {
+                "type": "tool",
+                "name": tool_b,
+                "disable_parallel_tool_use": true
+            },
+            "tools": [
+                { "name": tool_a, "input_schema": {"description":"x"} },
+                { "name": tool_b, "input_schema": {"$schema":"http://json-schema.org/draft-07/schema#"} }
+            ],
+            "messages": [{
+                "role": "assistant",
+                "content": [{ "type": "tool_use", "id": "toolu_1", "name": tool_b, "input": {} }]
+            }]
+        });
+
+        let adapted = adapt_request_for_protocol(
+            PROTOCOL_ANTHROPIC_NATIVE,
+            "/v1/messages",
+            serde_json::to_vec(&body).expect("body"),
+        )
+        .expect("adapt anthropic request");
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["parallel_tool_calls"], false);
+        assert_ne!(payload["tools"][0]["name"], payload["tools"][1]["name"]);
+        assert_eq!(payload["tool_choice"], "auto");
+        assert_eq!(payload["input"][0]["name"], payload["tools"][1]["name"]);
+        assert_eq!(payload["tools"][0]["parameters"]["type"], "object");
+        assert!(payload["tools"][0]["parameters"]["properties"].is_object());
+        assert!(payload["tools"][1]["parameters"].get("$schema").is_none());
+    }
+
+    #[test]
+    fn gemini_any_mode_allowed_function_name_maps_to_specific_function_tool_choice() {
+        let long_tool_name =
+            "mcp__workspace__ReadFileLongLongLongLongLongLongLongLongLongLong";
+        let body = serde_json::json!({
+            "tools": [{
+                "functionDeclarations": [{
+                    "name": long_tool_name,
+                    "parameters": {"description":"x"}
+                }]
+            }],
+            "toolConfig": {
+                "functionCallingConfig": {
+                    "mode": "ANY",
+                    "allowedFunctionNames": [long_tool_name]
+                }
+            },
+            "contents": [{"role":"user","parts":[{"text":"hi"}]}]
+        });
+
+        let adapted = adapt_request_for_protocol(
+            PROTOCOL_GEMINI_NATIVE,
+            "/v1beta/models/gemini-2.5-pro:generateContent",
+            serde_json::to_vec(&body).expect("body"),
+        )
+        .expect("adapt gemini request");
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["tool_choice"], "auto");
+        assert_eq!(payload["tools"][0]["parameters"]["type"], "object");
+        assert!(payload["tools"][0]["parameters"]["properties"].is_object());
+    }
+
+    #[test]
+    fn anthropic_enabled_thinking_adds_reasoning_and_include_only_when_explicit() {
+        let body = serde_json::json!({
+            "model": "claude-sonnet",
+            "thinking": {
+                "type": "enabled",
+                "budget_tokens": 4096
+            },
+            "messages": [{"role":"user","content":"hi"}]
+        });
+
+        let adapted = adapt_request_for_protocol(
+            PROTOCOL_ANTHROPIC_NATIVE,
+            "/v1/messages",
+            serde_json::to_vec(&body).expect("body"),
+        )
+        .expect("adapt anthropic request");
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["reasoning"]["effort"], "medium");
+        assert_eq!(payload["include"][0], "reasoning.encrypted_content");
+    }
+
+    #[test]
+    fn gemini_thinking_config_adds_reasoning_and_include_only_when_explicit() {
+        let body = serde_json::json!({
+            "contents": [{"role":"user","parts":[{"text":"hi"}]}],
+            "generationConfig": {
+                "thinkingConfig": {
+                    "thinkingBudget": 2048
+                }
+            }
+        });
+
+        let adapted = adapt_request_for_protocol(
+            PROTOCOL_GEMINI_NATIVE,
+            "/v1beta/models/gemini-2.5-pro:generateContent",
+            serde_json::to_vec(&body).expect("body"),
+        )
+        .expect("adapt gemini request");
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["reasoning"]["effort"], "medium");
+        assert_eq!(payload["include"][0], "reasoning.encrypted_content");
+    }
+
+    #[test]
+    fn anthropic_disabled_thinking_maps_to_none_effort_like_cpa() {
+        let body = serde_json::json!({
+            "model": "claude-sonnet",
+            "thinking": { "type": "disabled" },
+            "messages": [{"role":"user","content":"hi"}]
+        });
+
+        let adapted = adapt_request_for_protocol(
+            PROTOCOL_ANTHROPIC_NATIVE,
+            "/v1/messages",
+            serde_json::to_vec(&body).expect("body"),
+        )
+        .expect("adapt anthropic request");
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["reasoning"]["effort"], "none");
+    }
+
+    #[test]
+    fn gemini_assistant_text_maps_to_output_text_like_cpa() {
+        let body = serde_json::json!({
+            "contents": [{"role":"model","parts":[{"text":"hello"}]}]
+        });
+
+        let adapted = adapt_request_for_protocol(
+            PROTOCOL_GEMINI_NATIVE,
+            "/v1beta/models/gemini-2.5-pro:generateContent",
+            serde_json::to_vec(&body).expect("body"),
+        )
+        .expect("adapt gemini request");
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["input"][0]["role"], "assistant");
+        assert_eq!(payload["input"][0]["content"][0]["type"], "output_text");
+    }
+
+    #[test]
+    fn anthropic_web_search_tool_maps_to_codex_web_search_like_cpa() {
+        let body = serde_json::json!({
+            "model": "claude-sonnet",
+            "messages": [{"role":"user","content":"hi"}],
+            "tools": [{ "type": "web_search_20250305", "name": "search" }]
+        });
+
+        let adapted = adapt_request_for_protocol(
+            PROTOCOL_ANTHROPIC_NATIVE,
+            "/v1/messages",
+            serde_json::to_vec(&body).expect("body"),
+        )
+        .expect("adapt anthropic request");
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&adapted.body).expect("parse adapted body");
+        assert_eq!(payload["tools"][0]["type"], "web_search");
+        assert!(payload["tools"][0].get("name").is_none());
     }
 }

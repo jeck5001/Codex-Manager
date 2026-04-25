@@ -45,16 +45,19 @@ struct PendingToolCall {
 }
 
 impl GeminiSseReader {
-    pub(crate) fn new(
-        upstream: reqwest::blocking::Response,
+    pub(crate) fn from_reader<R>(
+        upstream: R,
         usage_collector: Arc<Mutex<PassthroughSseCollector>>,
         tool_name_restore_map: Option<ToolNameRestoreMap>,
         output_mode: GeminiStreamOutputMode,
         wrap_response_envelope: bool,
         request_started_at: Instant,
-    ) -> Self {
+    ) -> Self
+    where
+        R: Read + Send + 'static,
+    {
         Self {
-            upstream: UpstreamSseFramePump::new(upstream),
+            upstream: UpstreamSseFramePump::from_reader(upstream),
             out_cursor: Cursor::new(Vec::new()),
             state: GeminiSseState::default(),
             usage_collector,
@@ -64,6 +67,24 @@ impl GeminiSseReader {
             request_started_at,
             last_upstream_activity: Instant::now(),
         }
+    }
+
+    pub(crate) fn new(
+        upstream: reqwest::blocking::Response,
+        usage_collector: Arc<Mutex<PassthroughSseCollector>>,
+        tool_name_restore_map: Option<ToolNameRestoreMap>,
+        output_mode: GeminiStreamOutputMode,
+        wrap_response_envelope: bool,
+        request_started_at: Instant,
+    ) -> Self {
+        Self::from_reader(
+            upstream,
+            usage_collector,
+            tool_name_restore_map,
+            output_mode,
+            wrap_response_envelope,
+            request_started_at,
+        )
     }
 
     fn next_chunk(&mut self) -> std::io::Result<Vec<u8>> {

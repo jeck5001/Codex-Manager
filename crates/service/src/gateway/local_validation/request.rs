@@ -442,7 +442,7 @@ pub(super) fn build_local_validation_result(
             has_prompt_cache_key,
             request_shape,
             protocol_type: effective_protocol_type.to_string(),
-            rotation_strategy: api_key.rotation_strategy,
+            rotation_strategy: ROTATION_AGGREGATE_API.to_string(),
             aggregate_api_id: api_key.aggregate_api_id,
             account_plan_filter: api_key.account_plan_filter,
             response_adapter: super::super::ResponseAdapter::Passthrough,
@@ -627,6 +627,15 @@ mod removed_path_tests {
         assert!(!is_removed_openai_compat_request_path("/v1/responses"));
         assert!(!is_removed_openai_compat_request_path("/v1/responses/compact"));
         assert!(!is_removed_openai_compat_request_path("/v1/chat/completions"));
+        assert!(is_removed_openai_compat_request_path("/v1/completions"));
+        assert!(!is_removed_openai_compat_request_path("/v1/messages"));
+        assert!(!is_removed_openai_compat_request_path(
+            "/v1beta/models/gemini-2.5-pro:generateContent"
+        ));
+    }
+
+    #[test]
+    fn removed_openai_compat_paths_are_still_limited_to_legacy_completions() {
         assert!(is_removed_openai_compat_request_path("/v1/completions"));
         assert!(!is_removed_openai_compat_request_path("/v1/messages"));
         assert!(!is_removed_openai_compat_request_path(

@@ -273,7 +273,7 @@ fn retry_chatgpt_challenge_without_compression(
     }
 }
 
-pub(super) enum PostRetryFlowDecision {
+pub(in crate::gateway::upstream) enum PostRetryFlowDecision {
     Failover,
     Terminal { status_code: u16, message: String },
     RespondUpstream(GatewayUpstreamResponse),
@@ -291,7 +291,7 @@ pub(super) enum PostRetryFlowDecision {
 /// # 返回
 /// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
-pub(super) fn process_upstream_post_retry_flow<F>(
+pub(in crate::gateway::upstream) fn process_upstream_post_retry_flow<F>(
     client: &reqwest::blocking::Client,
     storage: &Storage,
     method: &reqwest::Method,

@@ -2,32 +2,17 @@ use bytes::Bytes;
 use codexmanager_core::storage::{Account, Storage, Token};
 use std::time::Instant;
 
+use super::super::attempt_flow::transport::UpstreamRequestContext;
+use super::super::attempt_flow::{
+    openai_base::{handle_openai_base_attempt, OpenAiAttemptResult},
+    postprocess::{process_upstream_post_retry_flow, PostRetryFlowDecision},
+    primary_flow::{run_primary_upstream_flow, PrimaryFlowDecision},
+};
 use super::super::support::deadline;
-use super::super::GatewayUpstreamResponse;
-use super::openai_base::{handle_openai_base_attempt, OpenAiAttemptResult};
-use super::postprocess::{process_upstream_post_retry_flow, PostRetryFlowDecision};
-use super::primary_flow::{run_primary_upstream_flow, PrimaryFlowDecision};
-use super::transport::UpstreamRequestContext;
+use super::CandidateUpstreamDecision;
 
-pub(in super::super) enum CandidateUpstreamDecision {
-    RespondUpstream(GatewayUpstreamResponse),
-    Failover,
-    Terminal { status_code: u16, message: String },
-}
-
-/// 函数 `process_candidate_upstream_flow`
-///
-/// 作者: gaohongshun
-///
-/// 时间: 2026-04-02
-///
-/// # 参数
-/// - in super: 参数 in super
-///
-/// # 返回
-/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
-pub(in super::super) fn process_candidate_upstream_flow<F>(
+pub(super) fn execute<F>(
     storage: &Storage,
     method: &reqwest::Method,
     request_ctx: UpstreamRequestContext<'_>,

@@ -6,7 +6,6 @@ pub(super) use self::types::{
     AdaptedGatewayRequest, GeminiStreamOutputMode, ResponseAdapter, ToolNameRestoreMap,
 };
 
-#[cfg(test)]
 pub(super) fn build_gemini_error_body(message: &str) -> Vec<u8> {
     serde_json::to_vec(&serde_json::json!({
         "error": { "code": 500, "message": message, "status": "INTERNAL" }

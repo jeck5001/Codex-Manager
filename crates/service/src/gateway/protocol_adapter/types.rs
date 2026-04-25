@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResponseAdapter {
     Passthrough,
+    AnthropicMessagesFromResponses,
+    GeminiGenerateContentFromResponses,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

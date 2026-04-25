@@ -1,4 +1,3 @@
-#[cfg(test)]
 use serde_json::{json, Map, Value};
 use std::io::{Cursor, Read};
 use std::sync::{Arc, Mutex};
@@ -7,19 +6,14 @@ use super::{
     inspect_sse_frame_for_protocol, OpenAIResponsesEvent, PassthroughSseProtocol, SseTerminal,
     UpstreamResponseUsage,
 };
-#[cfg(test)]
 use super::{
     append_output_text, collect_output_text_from_event_fields, collect_response_output_text,
     merge_usage,
 };
-#[cfg(not(test))]
-use super::merge_usage;
 #[path = "stream_readers/common.rs"]
 mod common;
-#[cfg(test)]
 #[path = "stream_readers/anthropic.rs"]
 mod anthropic;
-#[cfg(test)]
 #[path = "stream_readers/gemini.rs"]
 mod gemini;
 #[path = "stream_readers/openai_responses.rs"]
@@ -32,14 +26,11 @@ use common::{
     stream_idle_timed_out, stream_idle_timeout_message, stream_reader_disconnected_message,
     stream_wait_timeout, upstream_hint_or_stream_incomplete_message,
 };
-#[cfg(test)]
 use common::{mark_collector_terminal_success, mark_first_response_ms_on_usage};
 pub(crate) use common::{
     PassthroughSseCollector, SseKeepAliveFrame, UpstreamSseFramePump, UpstreamSseFramePumpItem,
 };
-#[cfg(test)]
 pub(crate) use anthropic::AnthropicSseReader;
-#[cfg(test)]
 pub(crate) use gemini::GeminiSseReader;
 pub(crate) use openai_responses::OpenAIResponsesPassthroughSseReader;
 pub(crate) use passthrough::PassthroughSseUsageReader;

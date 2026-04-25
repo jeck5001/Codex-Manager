@@ -1,5 +1,5 @@
 use super::{Arc, Mutex, UpstreamResponseUsage};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
@@ -38,7 +38,6 @@ pub(super) fn mark_first_response_ms(
     }
 }
 
-#[cfg(test)]
 pub(super) fn mark_first_response_ms_on_usage(
     usage_collector: &Arc<Mutex<UpstreamResponseUsage>>,
     started_at: Instant,
@@ -54,7 +53,6 @@ pub(super) fn mark_first_response_ms_on_usage(
 pub(crate) enum SseKeepAliveFrame {
     Comment,
     OpenAIResponses,
-    #[cfg(test)]
     Anthropic,
 }
 
@@ -74,10 +72,7 @@ impl SseKeepAliveFrame {
         match self {
             Self::Comment => b": keep-alive\n\n",
             Self::OpenAIResponses => b"data: {\"type\":\"codexmanager.keepalive\"}\n\n",
-            #[cfg(test)]
-            Self::Anthropic => {
-                b"event: ping\ndata: {\"type\":\"ping\"}\n\n"
-            }
+            Self::Anthropic => b"event: ping\ndata: {\"type\":\"ping\"}\n\n",
         }
     }
 }
@@ -94,18 +89,10 @@ pub(crate) struct UpstreamSseFramePump {
 }
 
 impl UpstreamSseFramePump {
-    /// 函数 `new`
-    ///
-    /// 作者: gaohongshun
-    ///
-    /// 时间: 2026-04-02
-    ///
-    /// # 参数
-    /// - crate: 参数 crate
-    ///
-    /// # 返回
-    /// 返回函数执行结果
-    pub(crate) fn new(upstream: reqwest::blocking::Response) -> Self {
+    pub(crate) fn from_reader<R>(upstream: R) -> Self
+    where
+        R: Read + Send + 'static,
+    {
         let (tx, rx) =
             mpsc::sync_channel::<UpstreamSseFramePumpItem>(UPSTREAM_SSE_FRAME_CHANNEL_CAPACITY);
         thread::spawn(move || {
@@ -143,6 +130,21 @@ impl UpstreamSseFramePump {
             }
         });
         Self { rx }
+    }
+
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(crate) fn new(upstream: reqwest::blocking::Response) -> Self {
+        Self::from_reader(upstream)
     }
 
     /// 函数 `recv_timeout`
@@ -276,7 +278,6 @@ pub(super) fn set_sse_keepalive_interval_ms(interval_ms: u64) -> Result<u64, Str
 ///
 /// # 返回
 /// 无
-#[cfg(test)]
 pub(super) fn mark_collector_terminal_success(
     usage_collector: &Arc<Mutex<PassthroughSseCollector>>,
 ) {

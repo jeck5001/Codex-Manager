@@ -683,6 +683,25 @@ pub(crate) fn log_request_start(
     buffer_trace_line(trace_id, line);
 }
 
+pub(crate) fn log_request_execution_plan(
+    trace_id: &str,
+    path: &str,
+    protocol_type: &str,
+    executor_kind: &str,
+    route_kind: &str,
+) {
+    let line = format!(
+        "ts={} event=REQUEST_EXECUTION_PLAN trace_id={} path={} protocol={} executor_kind={} route_kind={}",
+        current_trace_ts(),
+        sanitize_text(trace_id),
+        sanitize_text(path),
+        sanitize_text(protocol_type),
+        sanitize_text(executor_kind),
+        sanitize_text(route_kind),
+    );
+    buffer_trace_line(trace_id, line);
+}
+
 pub(crate) fn log_client_service_tier(
     trace_id: &str,
     transport: &str,

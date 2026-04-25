@@ -3,7 +3,7 @@ use codexmanager_core::storage::{Account, Storage, Token};
 use std::time::Instant;
 use tiny_http::Request;
 
-use super::super::attempt_flow::candidate_flow::CandidateUpstreamDecision;
+use super::super::executor::CandidateUpstreamDecision;
 use super::super::attempt_flow::transport::UpstreamRequestContext;
 use super::super::support::candidates::{
     allow_openai_fallback_for_account, free_account_model_override,

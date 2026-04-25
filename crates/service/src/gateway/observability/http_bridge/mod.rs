@@ -14,9 +14,12 @@ use aggregate::{
     reload_output_text_from_env, usage_has_signal, SseTerminal, UpstreamResponseBridgeResult,
     UpstreamResponseUsage,
 };
-#[cfg(test)]
+#[allow(unused_imports)]
 use aggregate::{
     append_output_text, collect_output_text_from_event_fields, collect_response_output_text,
+};
+#[cfg(test)]
+use aggregate::{
     inspect_sse_frame, output_text_limit_bytes, parse_sse_frame_json, parse_usage_from_sse_frame,
     OUTPUT_TEXT_TRUNCATED_MARKER,
 };
@@ -178,7 +181,6 @@ pub(super) use stream_readers::{
     SseKeepAliveFrame,
 };
 
-#[cfg(test)]
 pub(super) use stream_readers::{AnthropicSseReader, GeminiSseReader};
 
 #[cfg(test)]
