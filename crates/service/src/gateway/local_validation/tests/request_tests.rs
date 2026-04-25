@@ -474,6 +474,25 @@ fn opencode_headers_with_only_session_id_are_not_treated_as_native_codex_clients
 }
 
 #[test]
+fn gemini_stream_generate_content_path_forces_stream_mode_without_body_flag() {
+    assert!(resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_GEMINI_NATIVE,
+        "/v1beta/models/gemini-2.5-pro:streamGenerateContent",
+        false,
+    ));
+    assert!(resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_GEMINI_NATIVE,
+        "/v1internal:streamGenerateContent",
+        false,
+    ));
+    assert!(!resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_GEMINI_NATIVE,
+        "/v1beta/models/gemini-2.5-pro:generateContent",
+        false,
+    ));
+}
+
+#[test]
 fn aggregate_passthrough_preserves_fast_service_tier_for_log_when_request_is_rewritten() {
     let api_key = sample_api_key(
         crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,

@@ -631,20 +631,20 @@ fn replace_content_type_header(headers: &mut Vec<Header>, content_type: &str) {
 fn convert_success_body_for_adapter(
     response_adapter: ResponseAdapter,
     body: &[u8],
-    request_path: &str,
+    _request_path: &str,
     tool_name_restore_map: Option<&ToolNameRestoreMap>,
 ) -> Option<Vec<u8>> {
     match response_adapter {
         ResponseAdapter::AnthropicMessagesFromResponses => {
             convert_responses_body_to_anthropic_messages(body, tool_name_restore_map)
         }
-        ResponseAdapter::GeminiGenerateContentFromResponses => {
-            convert_responses_body_to_gemini_generate_content(
-                body,
-                request_path.starts_with("/v1internal:"),
-                tool_name_restore_map,
-            )
+        ResponseAdapter::GeminiJson => {
+            convert_responses_body_to_gemini_generate_content(body, false, tool_name_restore_map)
         }
+        ResponseAdapter::GeminiCliJson => {
+            convert_responses_body_to_gemini_generate_content(body, true, tool_name_restore_map)
+        }
+        ResponseAdapter::GeminiSse | ResponseAdapter::GeminiCliSse => None,
         ResponseAdapter::Passthrough => None,
     }
 }
@@ -654,7 +654,10 @@ fn convert_error_body_for_adapter(response_adapter: ResponseAdapter, message: &s
         ResponseAdapter::AnthropicMessagesFromResponses => {
             convert_upstream_error_to_anthropic_body(message)
         }
-        ResponseAdapter::GeminiGenerateContentFromResponses => {
+        ResponseAdapter::GeminiJson
+        | ResponseAdapter::GeminiCliJson
+        | ResponseAdapter::GeminiSse
+        | ResponseAdapter::GeminiCliSse => {
             convert_upstream_error_to_gemini_body(message)
         }
         ResponseAdapter::Passthrough => message.as_bytes().to_vec(),
@@ -667,12 +670,22 @@ fn compatibility_stream_content_type(
 ) -> &'static str {
     match response_adapter {
         ResponseAdapter::AnthropicMessagesFromResponses => "text/event-stream",
-        ResponseAdapter::GeminiGenerateContentFromResponses => match gemini_stream_output_mode {
-            Some(GeminiStreamOutputMode::Raw) => "application/json",
-            _ => "text/event-stream",
-        },
+        ResponseAdapter::GeminiJson | ResponseAdapter::GeminiCliJson => "application/json",
+        ResponseAdapter::GeminiSse | ResponseAdapter::GeminiCliSse => {
+            match gemini_stream_output_mode {
+                Some(GeminiStreamOutputMode::Raw) => "application/json",
+                _ => "text/event-stream",
+            }
+        }
         ResponseAdapter::Passthrough => "text/event-stream",
     }
+}
+
+fn gemini_cli_wrap_response_envelope(response_adapter: ResponseAdapter) -> bool {
+    matches!(
+        response_adapter,
+        ResponseAdapter::GeminiCliJson | ResponseAdapter::GeminiCliSse
+    )
 }
 
 /// 函数 `classify_compact_invalid_success_kind`
@@ -1507,14 +1520,15 @@ pub(crate) fn respond_with_upstream(
                     None,
                 ));
             }
-            ResponseAdapter::GeminiGenerateContentFromResponses => {
+            ResponseAdapter::GeminiJson | ResponseAdapter::GeminiCliJson => unreachable!(),
+            ResponseAdapter::GeminiSse | ResponseAdapter::GeminiCliSse => {
                 let usage_collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
                 let response_body: Box<dyn std::io::Read + Send> = Box::new(GeminiSseReader::new(
                     upstream,
                     Arc::clone(&usage_collector),
                     tool_name_restore_map.cloned(),
                     gemini_stream_output_mode.unwrap_or(GeminiStreamOutputMode::Sse),
-                    request_path.starts_with("/v1internal:"),
+                    gemini_cli_wrap_response_envelope(response_adapter),
                     request_started_at,
                 ));
                 let response = Response::new(status, headers, response_body, None, None);
@@ -2019,7 +2033,10 @@ pub(crate) fn respond_with_upstream(
             ))
         }
         ResponseAdapter::AnthropicMessagesFromResponses
-        | ResponseAdapter::GeminiGenerateContentFromResponses => unreachable!(),
+        | ResponseAdapter::GeminiJson
+        | ResponseAdapter::GeminiCliJson
+        | ResponseAdapter::GeminiSse
+        | ResponseAdapter::GeminiCliSse => unreachable!(),
     }
 }
 
@@ -2250,7 +2267,8 @@ pub(crate) fn respond_with_stream_upstream(
                     None,
                 ));
             }
-            ResponseAdapter::GeminiGenerateContentFromResponses => {
+            ResponseAdapter::GeminiJson | ResponseAdapter::GeminiCliJson => unreachable!(),
+            ResponseAdapter::GeminiSse | ResponseAdapter::GeminiCliSse => {
                 let upstream_body = upstream
                     .read_all_bytes()
                     .map_err(|err| format!("read upstream body failed: {err}"))?;
@@ -2261,7 +2279,7 @@ pub(crate) fn respond_with_stream_upstream(
                         Arc::clone(&usage_collector),
                         tool_name_restore_map.cloned(),
                         gemini_stream_output_mode.unwrap_or(GeminiStreamOutputMode::Sse),
-                        request_path.starts_with("/v1internal:"),
+                        gemini_cli_wrap_response_envelope(response_adapter),
                         request_started_at,
                     ));
                 let response = Response::new(status, headers, response_body, None, None);
@@ -2732,7 +2750,10 @@ pub(crate) fn respond_with_stream_upstream(
             ))
         }
         ResponseAdapter::AnthropicMessagesFromResponses
-        | ResponseAdapter::GeminiGenerateContentFromResponses => unreachable!(),
+        | ResponseAdapter::GeminiJson
+        | ResponseAdapter::GeminiCliJson
+        | ResponseAdapter::GeminiSse
+        | ResponseAdapter::GeminiCliSse => unreachable!(),
     }
 }
 
@@ -2761,7 +2782,10 @@ fn resolve_stream_keepalive_frame(
             }
         }
         ResponseAdapter::AnthropicMessagesFromResponses
-        | ResponseAdapter::GeminiGenerateContentFromResponses => SseKeepAliveFrame::Comment,
+        | ResponseAdapter::GeminiJson
+        | ResponseAdapter::GeminiCliJson
+        | ResponseAdapter::GeminiSse
+        | ResponseAdapter::GeminiCliSse => SseKeepAliveFrame::Comment,
     }
 }
 
@@ -2769,7 +2793,9 @@ fn resolve_stream_keepalive_frame(
 mod tests {
     use super::{
         classify_compact_non_success_kind, compact_non_success_body_should_be_normalized,
+        gemini_cli_wrap_response_envelope,
         convert_responses_body_to_gemini_generate_content,
+        ResponseAdapter,
     };
     use serde_json::json;
 
@@ -2889,5 +2915,15 @@ mod tests {
             "C:/Users/test/Desktop/test/gemini/plan.md"
         );
         assert_eq!(value["functionCalls"][0]["args"]["content"], "plan");
+    }
+
+    #[test]
+    fn gemini_cli_wrap_response_envelope_is_enabled_for_gemini_adapter_only() {
+        assert!(gemini_cli_wrap_response_envelope(ResponseAdapter::GeminiCliJson));
+        assert!(gemini_cli_wrap_response_envelope(ResponseAdapter::GeminiCliSse));
+        assert!(!gemini_cli_wrap_response_envelope(
+            ResponseAdapter::AnthropicMessagesFromResponses
+        ));
+        assert!(!gemini_cli_wrap_response_envelope(ResponseAdapter::Passthrough));
     }
 }

@@ -109,6 +109,10 @@ fn adapt_gemini_generate_content_request(
     let mut tool_name_restore_map = ToolNameRestoreMap::new();
     let short_name_map = declared_short_name_map_for_gemini_tools(request_obj.get("tools"));
     let mut pending_tool_call_ids = VecDeque::new();
+    let request_stream = request_obj
+        .get("stream")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| path.contains(":streamGenerateContent"));
     rewritten.insert("instructions".to_string(), Value::String(String::new()));
     let model = obj
         .get("model")
@@ -166,22 +170,55 @@ fn adapt_gemini_generate_content_request(
         )]),
     );
 
-    let gemini_stream_output_mode = if path.contains(":streamGenerateContent") {
-        // 中文注释：Gemini CLI 和上游 Gemini SDK 都消费 SSE；这里统一输出 SSE，避免
-        // 误把流式请求降级成裸 JSON 后被 CLI 解析器判定为不完整片段。
-        Some(GeminiStreamOutputMode::Sse)
+    let gemini_stream_output_mode = resolve_gemini_stream_output_mode(path, request_stream);
+    let normalized_path = path.split('?').next().unwrap_or(path);
+    let response_adapter = if normalized_path.starts_with("/v1internal:") {
+        if request_stream {
+            ResponseAdapter::GeminiCliSse
+        } else {
+            ResponseAdapter::GeminiCliJson
+        }
+    } else if request_stream {
+        ResponseAdapter::GeminiSse
     } else {
-        None
+        ResponseAdapter::GeminiJson
     };
 
     Ok(AdaptedGatewayRequest {
         path: "/v1/responses".to_string(),
         body: serde_json::to_vec(&Value::Object(rewritten))
             .map_err(|err| format!("serialize gemini compatibility request failed: {err}"))?,
-        response_adapter: ResponseAdapter::GeminiGenerateContentFromResponses,
+        response_adapter,
         gemini_stream_output_mode,
         tool_name_restore_map,
     })
+}
+
+fn resolve_gemini_stream_output_mode(
+    path: &str,
+    request_stream: bool,
+) -> Option<GeminiStreamOutputMode> {
+    if !request_stream {
+        return None;
+    }
+    let query = path
+        .split_once('?')
+        .map(|(_, query)| query)
+        .unwrap_or_default();
+    for item in query.split('&') {
+        let Some((key, value)) = item.split_once('=') else {
+            continue;
+        };
+        if !key.eq_ignore_ascii_case("alt") {
+            continue;
+        }
+        let normalized = value.trim().to_ascii_lowercase();
+        if normalized.is_empty() || normalized == "sse" {
+            return Some(GeminiStreamOutputMode::Sse);
+        }
+        return Some(GeminiStreamOutputMode::Raw);
+    }
+    Some(GeminiStreamOutputMode::Sse)
 }
 
 fn gemini_request_payload_object<'a>(obj: &'a Map<String, Value>) -> &'a Map<String, Value> {
@@ -1292,10 +1329,7 @@ mod tests {
         .expect("adapt gemini request");
 
         assert_eq!(adapted.path, "/v1/responses");
-        assert_eq!(
-            adapted.response_adapter,
-            ResponseAdapter::GeminiGenerateContentFromResponses
-        );
+        assert_eq!(adapted.response_adapter, ResponseAdapter::GeminiJson);
         assert_eq!(adapted.gemini_stream_output_mode, None);
         let payload: serde_json::Value =
             serde_json::from_slice(&adapted.body).expect("parse adapted body");
@@ -1367,10 +1401,7 @@ mod tests {
         .expect("adapt gemini cli request");
 
         assert_eq!(adapted.path, "/v1/responses");
-        assert_eq!(
-            adapted.response_adapter,
-            ResponseAdapter::GeminiGenerateContentFromResponses
-        );
+        assert_eq!(adapted.response_adapter, ResponseAdapter::GeminiCliSse);
         assert_eq!(
             adapted.gemini_stream_output_mode,
             Some(GeminiStreamOutputMode::Sse)
@@ -1418,6 +1449,7 @@ mod tests {
             adapted.gemini_stream_output_mode,
             Some(GeminiStreamOutputMode::Sse)
         );
+        assert_eq!(adapted.response_adapter, ResponseAdapter::GeminiSse);
     }
 
     #[test]
@@ -1435,6 +1467,7 @@ mod tests {
             adapted.gemini_stream_output_mode,
             Some(GeminiStreamOutputMode::Sse)
         );
+        assert_eq!(adapted.response_adapter, ResponseAdapter::GeminiCliSse);
     }
 
     #[test]

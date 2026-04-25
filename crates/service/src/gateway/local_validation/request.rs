@@ -287,6 +287,16 @@ fn resolve_local_conversation_id(
     )
 }
 
+fn resolve_client_is_stream(
+    protocol_type: &str,
+    normalized_path: &str,
+    client_is_stream: bool,
+) -> bool {
+    client_is_stream
+        || (protocol_type == PROTOCOL_GEMINI_NATIVE
+            && normalized_path.contains(":streamGenerateContent"))
+}
+
 /// 函数 `apply_passthrough_request_overrides`
 ///
 /// 作者: gaohongshun
@@ -578,7 +588,11 @@ pub(super) fn build_local_validation_result(
         .or(api_key.reasoning_effort.clone());
     let service_tier_for_log = client_request_meta.service_tier;
     let effective_service_tier_for_log = request_meta.service_tier;
-    let is_stream = client_request_meta.is_stream;
+    let is_stream = resolve_client_is_stream(
+        effective_protocol_type,
+        normalized_path.as_str(),
+        client_request_meta.is_stream,
+    );
     let has_prompt_cache_key = request_meta.has_prompt_cache_key;
     let request_shape = client_request_meta.request_shape;
 
