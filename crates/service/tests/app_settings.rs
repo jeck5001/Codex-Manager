@@ -844,6 +844,48 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
     });
 }
 
+#[test]
+fn sync_runtime_settings_from_storage_preserves_explicit_usage_workers_env() {
+    with_temp_db(|db_path| {
+        let storage = Storage::open(db_path).expect("open storage");
+        storage
+            .set_app_setting(
+                codexmanager_service::APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
+                &serde_json::to_string(&json!({
+                    "usagePollingEnabled": false,
+                    "usagePollIntervalSecs": 777,
+                    "gatewayKeepaliveEnabled": true,
+                    "gatewayKeepaliveIntervalSecs": 180,
+                    "tokenRefreshPollingEnabled": true,
+                    "tokenRefreshPollIntervalSecs": 60,
+                    "usageRefreshWorkers": 4,
+                    "httpWorkerFactor": 4,
+                    "httpWorkerMin": 8,
+                    "httpStreamWorkerFactor": 1,
+                    "httpStreamWorkerMin": 2
+                }))
+                .expect("serialize background tasks"),
+                now_ts(),
+            )
+            .expect("save background tasks");
+        drop(storage);
+
+        let _env = override_env_vars(&[("CODEXMANAGER_USAGE_REFRESH_WORKERS", Some("9"))]);
+
+        codexmanager_service::sync_runtime_settings_from_storage();
+
+        let snapshot =
+            codexmanager_service::app_settings_get().expect("get app settings after sync");
+        assert_eq!(
+            snapshot
+                .get("backgroundTasks")
+                .and_then(|value| value.get("usageRefreshWorkers"))
+                .and_then(|value| value.as_u64()),
+            Some(9)
+        );
+    });
+}
+
 /// 函数 `app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing`
 ///
 /// 作者: gaohongshun

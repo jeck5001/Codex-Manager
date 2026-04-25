@@ -436,6 +436,7 @@ pub(in super::super) fn proxy_validated_request(
         effective_service_tier_for_log.as_deref(),
         setup.candidate_count,
         setup.account_max_inflight,
+        setup.manual_preferred_account_id.as_deref(),
     );
     let allow_openai_fallback = setup.upstream_fallback_base.is_some();
     let disable_challenge_stateless_retry = !(protocol_type == PROTOCOL_ANTHROPIC_NATIVE
