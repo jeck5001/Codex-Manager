@@ -419,6 +419,32 @@ fn aggregate_passthrough_applies_model_reasoning_and_service_tier_overrides_with
 }
 
 #[test]
+fn aggregate_passthrough_openai_responses_defaults_omitted_stream_to_sse() {
+    let api_key = sample_api_key(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        None,
+        None,
+        None,
+    );
+    let body = br#"{"model":"gpt-5.4","input":"hi"}"#.to_vec();
+
+    let (rewritten_body, ..) =
+        apply_passthrough_request_overrides("/v1/responses", body, &api_key, None);
+    let defaulted_body = default_omitted_responses_stream_to_true(rewritten_body);
+    let payload: Value = serde_json::from_slice(&defaulted_body).expect("json body");
+    let is_stream = resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        false,
+        false,
+        false,
+    );
+
+    assert_eq!(payload.get("stream").and_then(Value::as_bool), Some(true));
+    assert!(is_stream);
+}
+
+#[test]
 fn native_codex_client_detection_uses_codex_signals_instead_of_client_brand() {
     let native_headers = sample_incoming_headers(
         None,
@@ -547,17 +573,73 @@ fn gemini_stream_generate_content_path_forces_stream_mode_without_body_flag() {
         crate::apikey_profile::PROTOCOL_GEMINI_NATIVE,
         "/v1beta/models/gemini-2.5-pro:streamGenerateContent",
         false,
+        false,
+        false,
     ));
     assert!(resolve_client_is_stream(
         crate::apikey_profile::PROTOCOL_GEMINI_NATIVE,
         "/v1internal:streamGenerateContent",
+        false,
+        false,
         false,
     ));
     assert!(!resolve_client_is_stream(
         crate::apikey_profile::PROTOCOL_GEMINI_NATIVE,
         "/v1beta/models/gemini-2.5-pro:generateContent",
         false,
+        false,
+        false,
     ));
+}
+
+#[test]
+fn openai_responses_api_defaults_to_stream_when_stream_is_omitted() {
+    assert!(resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        false,
+        false,
+        false,
+    ));
+    assert!(resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        true,
+        true,
+        false,
+    ));
+    assert!(!resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        false,
+        true,
+        false,
+    ));
+    assert!(!resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        false,
+        false,
+        true,
+    ));
+}
+
+#[test]
+fn openai_responses_api_body_defaults_omitted_stream_to_true_before_rewrite() {
+    let body = br#"{"model":"gpt-5.4","input":"hi"}"#.to_vec();
+    let rewritten = default_omitted_responses_stream_to_true(body);
+    let payload: Value = serde_json::from_slice(&rewritten).expect("json body");
+
+    assert_eq!(payload.get("stream").and_then(Value::as_bool), Some(true));
+}
+
+#[test]
+fn openai_responses_api_body_preserves_explicit_stream_false() {
+    let body = br#"{"model":"gpt-5.4","input":"hi","stream":false}"#.to_vec();
+    let rewritten = default_omitted_responses_stream_to_true(body);
+    let payload: Value = serde_json::from_slice(&rewritten).expect("json body");
+
+    assert_eq!(payload.get("stream").and_then(Value::as_bool), Some(false));
 }
 
 #[test]
