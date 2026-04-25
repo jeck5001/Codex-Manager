@@ -166,15 +166,10 @@ fn adapt_gemini_generate_content_request(
         )]),
     );
 
-    let normalized_path = path.split('?').next().unwrap_or(path);
     let gemini_stream_output_mode = if path.contains(":streamGenerateContent") {
-        if normalized_path == "/v1internal:streamGenerateContent"
-            || path.to_ascii_lowercase().contains("alt=sse")
-        {
-            Some(GeminiStreamOutputMode::Sse)
-        } else {
-            Some(GeminiStreamOutputMode::Raw)
-        }
+        // 中文注释：Gemini CLI 和上游 Gemini SDK 都消费 SSE；这里统一输出 SSE，避免
+        // 误把流式请求降级成裸 JSON 后被 CLI 解析器判定为不完整片段。
+        Some(GeminiStreamOutputMode::Sse)
     } else {
         None
     };
@@ -1409,7 +1404,7 @@ mod tests {
     }
 
     #[test]
-    fn gemini_stream_generate_content_uses_raw_stream_mode_without_alt_sse() {
+    fn gemini_stream_generate_content_uses_sse_stream_mode_without_alt_sse() {
         let body = br#"{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}"#.to_vec();
 
         let adapted = adapt_request_for_protocol(
@@ -1421,7 +1416,7 @@ mod tests {
 
         assert_eq!(
             adapted.gemini_stream_output_mode,
-            Some(GeminiStreamOutputMode::Raw)
+            Some(GeminiStreamOutputMode::Sse)
         );
     }
 

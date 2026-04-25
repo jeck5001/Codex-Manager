@@ -15,6 +15,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+fn unwrap_gemini_cli_response(event: &serde_json::Value) -> &serde_json::Value {
+    event.get("response").unwrap_or(event)
+}
+
 struct EnvGuard {
     key: &'static str,
     original: Option<std::ffi::OsString>,
@@ -1018,7 +1022,7 @@ fn gemini_sse_reader_prefers_completed_full_arguments_over_partial_stream_argume
         .filter(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
         .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
         .find(|event| {
-            event["candidates"][0]["content"]["parts"]
+            unwrap_gemini_cli_response(event)["candidates"][0]["content"]["parts"]
                 .as_array()
                 .is_some_and(|parts| {
                     parts
@@ -1027,6 +1031,7 @@ fn gemini_sse_reader_prefers_completed_full_arguments_over_partial_stream_argume
                 })
         })
         .expect("tool event");
+    let event = unwrap_gemini_cli_response(&event);
     let function_call = &event["candidates"][0]["content"]["parts"][0]["functionCall"];
     assert_eq!(function_call["id"], "call_write_plan_partial_1");
     assert_eq!(
@@ -1072,7 +1077,7 @@ fn gemini_sse_reader_does_not_treat_function_call_output_as_final_text() {
     let text_events = events
         .iter()
         .filter(|event| {
-            event["candidates"][0]["content"]["parts"]
+            unwrap_gemini_cli_response(event)["candidates"][0]["content"]["parts"]
                 .as_array()
                 .is_some_and(|parts| {
                     parts.iter().any(|part| {
@@ -1132,7 +1137,7 @@ fn gemini_sse_reader_completed_message_output_still_emits_final_text() {
     let text_events = events
         .iter()
         .filter_map(|event| {
-            event["candidates"][0]["content"]["parts"]
+            unwrap_gemini_cli_response(event)["candidates"][0]["content"]["parts"]
                 .as_array()
                 .and_then(|parts| parts.first())
                 .and_then(|part| part.get("text"))
@@ -1185,8 +1190,16 @@ fn gemini_cli_sse_reader_emits_raw_gemini_chunks() {
         .filter(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
         .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
         .collect::<Vec<_>>();
-    assert_eq!(events[0]["candidates"][0]["content"]["parts"][0]["text"], "已完成");
-    assert_eq!(events[1]["usageMetadata"]["totalTokenCount"], serde_json::Value::from(5));
+    let first_event = unwrap_gemini_cli_response(&events[0]);
+    let second_event = unwrap_gemini_cli_response(&events[1]);
+    assert_eq!(
+        first_event["candidates"][0]["content"]["parts"][0]["text"],
+        "已完成"
+    );
+    assert_eq!(
+        second_event["usageMetadata"]["totalTokenCount"],
+        serde_json::Value::from(5)
+    );
 
     let collector = usage_collector
         .lock()
@@ -1227,7 +1240,7 @@ fn gemini_cli_sse_reader_does_not_emit_comment_keepalive_frames() {
     server.join().expect("join streaming mock upstream");
 
     assert!(!mapped.contains(": keep-alive"));
-    assert!(!mapped.contains("\"response\""));
+    assert!(mapped.contains("\"response\""));
     assert!(mapped.contains("\"candidates\""));
 }
 
@@ -1260,9 +1273,14 @@ fn gemini_cli_sse_reader_synthesizes_stop_when_done_follows_text_without_complet
         .filter(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
         .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
         .collect::<Vec<_>>();
-    assert_eq!(events[0]["candidates"][0]["content"]["parts"][0]["text"], "我会写入计划。");
+    let first_event = unwrap_gemini_cli_response(&events[0]);
+    let last_event = unwrap_gemini_cli_response(events.last().expect("final event"));
     assert_eq!(
-        events.last().expect("final event")["candidates"][0]["finishReason"],
+        first_event["candidates"][0]["content"]["parts"][0]["text"],
+        "我会写入计划。"
+    );
+    assert_eq!(
+        last_event["candidates"][0]["finishReason"],
         "STOP"
     );
 
@@ -1307,6 +1325,7 @@ fn gemini_cli_sse_reader_synthesizes_tool_call_when_done_follows_function_call_w
         .find(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
         .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
         .expect("tool event");
+    let event = unwrap_gemini_cli_response(&event);
     let part = &event["candidates"][0]["content"]["parts"][0]["functionCall"];
     assert_eq!(part["name"], "write_file");
     assert_eq!(part["id"], "call_write_plan_1");
@@ -1354,6 +1373,7 @@ fn gemini_cli_sse_reader_decodes_double_encoded_tool_arguments() {
         .find(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
         .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
         .expect("tool event");
+    let event = unwrap_gemini_cli_response(&event);
     let part = &event["candidates"][0]["content"]["parts"][0]["functionCall"];
     assert_eq!(part["id"], "call_write_plan_2");
     assert_eq!(
@@ -1398,6 +1418,7 @@ fn gemini_cli_sse_reader_merges_custom_tool_call_input_events() {
         .find(|frame| !frame.trim().is_empty() && frame.trim() != "[DONE]")
         .map(|frame| serde_json::from_str::<serde_json::Value>(frame).expect("parse sse json"))
         .expect("tool event");
+    let event = unwrap_gemini_cli_response(&event);
     let part = &event["candidates"][0]["content"]["parts"][0]["functionCall"];
     assert_eq!(part["name"], "write_file");
     assert_eq!(part["id"], "call_write_plan_custom_1");
