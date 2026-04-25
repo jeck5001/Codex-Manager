@@ -16,7 +16,6 @@ pub(in super::super) struct UpstreamRequestSetup {
     pub(in super::super) has_sticky_fallback_conversation: bool,
     pub(in super::super) has_body_encrypted_content: bool,
     pub(in super::super) conversation_routing: Option<ConversationRoutingContext>,
-    pub(in super::super) manual_preferred_account_id: Option<String>,
 }
 
 /// 函数 `prepare_request_setup`
@@ -66,16 +65,6 @@ pub(in super::super) fn prepare_request_setup(
         key_id,
         model_for_log,
     );
-    let manual_preferred_account_id = conversation_routing
-        .as_ref()
-        .and_then(|routing| routing.manual_preferred_account_id.clone())
-        .or_else(|| {
-            super::super::super::manual_preferred_account().filter(|account_id| {
-                candidates
-                    .iter()
-                    .any(|(account, _)| account.id.as_str() == account_id.as_str())
-            })
-        });
     let candidate_order = candidates
         .iter()
         .map(|(account, _)| format!("{}#sort={}", account.id, account.sort))
@@ -106,6 +95,5 @@ pub(in super::super) fn prepare_request_setup(
         has_body_encrypted_content:
             super::super::support::payload_rewrite::body_has_encrypted_content_hint(body.as_ref()),
         conversation_routing,
-        manual_preferred_account_id,
     }
 }

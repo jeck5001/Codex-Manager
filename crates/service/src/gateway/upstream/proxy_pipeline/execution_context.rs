@@ -16,7 +16,6 @@ pub(in super::super) struct GatewayUpstreamExecutionContext<'a> {
     effective_service_tier_for_log: Option<&'a str>,
     candidate_count: usize,
     account_max_inflight: usize,
-    manual_preferred_account_id: Option<&'a str>,
 }
 
 impl<'a> GatewayUpstreamExecutionContext<'a> {
@@ -47,7 +46,6 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         effective_service_tier_for_log: Option<&'a str>,
         candidate_count: usize,
         account_max_inflight: usize,
-        manual_preferred_account_id: Option<&'a str>,
     ) -> Self {
         Self {
             trace_id,
@@ -64,7 +62,6 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
             effective_service_tier_for_log,
             candidate_count,
             account_max_inflight,
-            manual_preferred_account_id,
         }
     }
 
@@ -103,12 +100,6 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         account_id: &str,
         idx: usize,
     ) -> Option<candidates::CandidateSkipReason> {
-        if self
-            .manual_preferred_account_id
-            .is_some_and(|preferred_id| preferred_id == account_id)
-        {
-            return None;
-        }
         candidates::candidate_skip_reason_for_proxy(
             account_id,
             idx,
@@ -336,79 +327,5 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
             status_code,
             Some(self.protocol_type),
         );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::GatewayUpstreamExecutionContext;
-    use codexmanager_core::storage::Storage;
-
-    fn context<'a>(
-        storage: &'a Storage,
-        account_max_inflight: usize,
-        manual_preferred_account_id: Option<&'a str>,
-    ) -> GatewayUpstreamExecutionContext<'a> {
-        GatewayUpstreamExecutionContext::new(
-            "trace-test",
-            storage,
-            "key-test",
-            "/v1/responses",
-            "/v1/responses",
-            "POST",
-            super::super::super::super::ResponseAdapter::Passthrough,
-            "openai",
-            Some("gpt-5.4"),
-            None,
-            None,
-            None,
-            2,
-            account_max_inflight,
-            manual_preferred_account_id,
-        )
-    }
-
-    #[test]
-    fn manual_preferred_account_bypasses_inflight_soft_skip() {
-        let _guard = crate::test_env_guard();
-        let storage = Storage::open_in_memory().expect("open storage");
-        let _inflight = super::super::super::super::acquire_account_inflight("acc-preferred");
-
-        let preferred_context = context(&storage, 1, Some("acc-preferred"));
-        assert_eq!(
-            preferred_context.should_skip_candidate("acc-preferred", 0),
-            None
-        );
-
-        let normal_context = context(&storage, 1, None);
-        assert_eq!(
-            normal_context.should_skip_candidate("acc-preferred", 0),
-            Some(super::super::super::support::candidates::CandidateSkipReason::Inflight)
-        );
-    }
-
-    #[test]
-    fn manual_preferred_account_bypasses_cooldown_soft_skip() {
-        let _guard = crate::test_env_guard();
-        let storage = Storage::open_in_memory().expect("open storage");
-        super::super::super::super::clear_account_cooldown("acc-preferred");
-        super::super::super::super::mark_account_cooldown(
-            "acc-preferred",
-            super::super::super::super::CooldownReason::Default,
-        );
-
-        let preferred_context = context(&storage, 0, Some("acc-preferred"));
-        assert_eq!(
-            preferred_context.should_skip_candidate("acc-preferred", 0),
-            None
-        );
-
-        let normal_context = context(&storage, 0, None);
-        assert_eq!(
-            normal_context.should_skip_candidate("acc-preferred", 0),
-            Some(super::super::super::support::candidates::CandidateSkipReason::Cooldown)
-        );
-
-        super::super::super::super::clear_account_cooldown("acc-preferred");
     }
 }

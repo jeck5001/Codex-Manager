@@ -283,7 +283,6 @@ mod tests {
             has_sticky_fallback_conversation: false,
             has_body_encrypted_content: false,
             conversation_routing: None,
-            manual_preferred_account_id: None,
         }
     }
 
