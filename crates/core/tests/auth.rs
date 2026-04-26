@@ -120,3 +120,15 @@ fn extract_scope_ids_from_token_filters_storage_style_identity_suffix() {
         Some("org-AP6ypcMi84Thfueli6EU3B4m".to_string())
     );
 }
+
+#[test]
+fn extract_chatgpt_user_id_prefers_nested_user_identity() {
+    let token = jwt_with_json(
+        r#"{"sub":"subject-1","https://api.openai.com/auth":{"chatgpt_user_id":"user-1","user_id":"fallback-user"}}"#,
+    );
+
+    assert_eq!(
+        codexmanager_core::auth::extract_chatgpt_user_id(&token),
+        Some("user-1".to_string())
+    );
+}
