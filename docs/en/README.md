@@ -22,7 +22,7 @@ CodexManager is a local desktop + service-process account pool manager and gatew
 - Platform keys: create, disable, delete, model binding, reasoning tier, and service tier.
 - Aggregate API: create/edit/test third-party relay upstreams with supplier naming and priority ordering.
 - Plugin center: built-in, private, and custom source modes with task/log views and Rhai integration.
-- Local service + gateway: custom bind/listen settings and unified compatible endpoint.
+- Local service + gateway: custom bind/listen settings, upstream proxy, total request timeout, stream idle timeout, SSE keepalive, and a unified compatible endpoint.
 - Image generation: forwards the official Codex `image_generation` tool and exposes compatible `/v1/images/generations` and `/v1/images/edits` endpoints with `gpt-image-2` as the default image tool model.
 
 ## Quick Start
@@ -43,7 +43,7 @@ CodexManager is a local desktop + service-process account pool manager and gatew
 ![Settings](../../assets/images/themes.png)
 
 ## Scope
-- Root `README.md` / `README.en.md`: project overview and quick start.
+- Root `README.md` and localized `docs/*/README.md`: project overview and quick start.
 - Root `CHANGELOG.md`: version history and unreleased changes.
 - `report/*`: operations, troubleshooting, compatibility notes, and FAQs.
 - `release/*`: build, packaging, release, and artifact documentation.
@@ -106,6 +106,7 @@ Other supporters: [Wonderdch](https://github.com/Wonderdch), [suxinwl](https://g
 | What you need | Open this document |
 | --- | --- |
 | First launch, deployment, Docker, macOS allowlisting | [Runtime and Deployment Guide](report/runtime-and-deployment-guide.md) |
+| Configure Codex CLI / ccswitch `auth.json` and `config.toml` | [Runtime and Deployment Guide](report/runtime-and-deployment-guide.md#connect-through-ccswitch) |
 | Environment variables, database, ports, proxy, listen address | [Environment and Runtime Configuration](report/environment-and-runtime-config.md) |
 | Account routing, import errors, challenge interception | [FAQ and Account Routing Rules](report/faq-and-account-routing-rules.md) |
 | Why background jobs skip or disable accounts | [Background Task Account Skip Notes](report/background-task-account-skip-notes.md) |

@@ -16,6 +16,9 @@
 ### Changed
 - 发布版本提升到 `0.2.6`，同步更新 workspace、前端包、Tauri 桌面端与锁文件。
 - README 不再展示最近提交块，首页只保留稳定的功能与文档入口。
+- 设置页恢复“上游总超时”入口，`CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS` 可通过网关传输设置直接查看和修改，默认 `0` 表示不按总时长截断。
+- Nginx 示例配置新增 `/v1/images/` 专用代理块，覆盖图片上传、大体积 `b64_json` 响应与长耗时图片生成场景。
+- 请求日志费用估算同步官方 `gpt-5.5`、`gpt-5.5-pro` 与 `gpt-image-*` 价格；图片模型因当前 usage 无 modality 分桶，按官方 Image token 单价保守估算。
 
 ## [0.2.3] - 2026-04-15
 
@@ -251,7 +254,8 @@
 ### Changed
 - 账号管理页操作区整合为单一“账号操作”下拉菜单，替代右侧多按钮堆叠，界面更简洁。
 
-[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/qxcnm/Codex-Manager/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/qxcnm/Codex-Manager/compare/v0.2.3...v0.2.6
 [0.2.3]: https://github.com/qxcnm/Codex-Manager/compare/v0.2.0...v0.2.3
 [0.2.0]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.2.0
 [0.1.19]: https://github.com/qxcnm/Codex-Manager/releases/tag/v0.1.19
