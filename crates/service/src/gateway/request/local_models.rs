@@ -1,5 +1,7 @@
 use codexmanager_core::rpc::types::{ModelInfo, ModelsResponse};
+use serde_json::json;
 const MODEL_CACHE_SCOPE_DEFAULT: &str = "default";
+const CODEX_IMAGE_TOOL_MODEL: &str = "gpt-image-2";
 
 #[derive(serde::Serialize)]
 struct OfficialModelsResponse<'a> {
@@ -17,7 +19,38 @@ struct OfficialModelsResponse<'a> {
 ///
 /// # 返回
 /// 返回函数执行结果
+fn codex_image_tool_model_info() -> ModelInfo {
+    let mut model = ModelInfo {
+        slug: CODEX_IMAGE_TOOL_MODEL.to_string(),
+        display_name: "GPT Image 2".to_string(),
+        description: Some("Image generation tool model for Codex image workflows.".to_string()),
+        supported_in_api: true,
+        visibility: Some("list".to_string()),
+        input_modalities: vec!["text".to_string(), "image".to_string()],
+        ..Default::default()
+    };
+    model
+        .extra
+        .insert("output_modalities".to_string(), json!(["image"]));
+    model
+}
+
+fn ensure_codex_image_tool_model_listed(models: &ModelsResponse) -> ModelsResponse {
+    if models.models.iter().any(|item| {
+        item.slug
+            .trim()
+            .eq_ignore_ascii_case(CODEX_IMAGE_TOOL_MODEL)
+    }) {
+        return models.clone();
+    }
+    let mut augmented = models.clone();
+    augmented.models.push(codex_image_tool_model_info());
+    augmented.extra.remove("etag");
+    augmented
+}
+
 fn serialize_models_response(models: &ModelsResponse) -> String {
+    let models = ensure_codex_image_tool_model_listed(models);
     serde_json::to_string(&OfficialModelsResponse {
         models: &models.models,
     })
@@ -143,8 +176,9 @@ pub(super) fn maybe_respond_local_models(
         }
     };
 
-    let output = serialize_models_response(&models);
-    let extra_headers = models_etag_header(&models)?.into_iter().collect();
+    let output_models = ensure_codex_image_tool_model_listed(&models);
+    let output = serialize_models_response(&output_models);
+    let extra_headers = models_etag_header(&output_models)?.into_iter().collect();
     super::local_response::respond_local_json_with_headers(
         request,
         &context,

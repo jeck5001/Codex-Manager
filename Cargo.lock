@@ -236,6 +236,7 @@ name = "codexmanager-service"
 version = "0.2.5"
 dependencies = [
  "axum",
+ "base64",
  "bytes",
  "chrono",
  "codexmanager-core",

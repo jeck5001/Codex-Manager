@@ -1,35 +1,32 @@
 use super::{
-    chat_image_payload, classify_upstream_stream_read_error, collect_image_generation_data_urls,
-    collect_response_output_text, mark_first_response_ms, merge_usage, should_emit_keepalive,
-    stream_idle_timed_out, stream_idle_timeout_message, stream_reader_disconnected_message,
-    stream_wait_timeout, upstream_hint_or_stream_incomplete_message, Arc, Cursor, Mutex,
+    build_images_api_response, classify_upstream_stream_read_error,
+    collect_image_generation_results, image_generation_result_payload, images_usage_value,
+    mark_first_response_ms, merge_usage, should_emit_keepalive, stream_idle_timed_out,
+    stream_idle_timeout_message, stream_reader_disconnected_message, stream_wait_timeout,
+    upstream_hint_or_stream_incomplete_message, Arc, Cursor, ImagesResponseFormat, Mutex,
     PassthroughSseCollector, Read, SseKeepAliveFrame, UpstreamSseFramePump,
     UpstreamSseFramePumpItem,
 };
 use serde_json::Value;
-use std::collections::HashSet;
 use std::time::Instant;
 
-pub(crate) struct ChatCompletionsFromResponsesSseReader {
+pub(crate) struct ImagesFromResponsesSseReader {
     upstream: UpstreamSseFramePump,
     out_cursor: Cursor<Vec<u8>>,
     usage_collector: Arc<Mutex<PassthroughSseCollector>>,
     request_started_at: Instant,
     last_upstream_activity: Instant,
+    response_format: ImagesResponseFormat,
     saw_upstream_frame: bool,
     finished: bool,
-    emitted_text: bool,
-    emitted_image_urls: HashSet<String>,
-    id: Option<String>,
-    model: Option<String>,
-    created: Option<i64>,
 }
 
-impl ChatCompletionsFromResponsesSseReader {
+impl ImagesFromResponsesSseReader {
     pub(crate) fn new(
         upstream: reqwest::blocking::Response,
         usage_collector: Arc<Mutex<PassthroughSseCollector>>,
         request_started_at: Instant,
+        response_format: ImagesResponseFormat,
     ) -> Self {
         Self {
             upstream: UpstreamSseFramePump::new(upstream),
@@ -37,13 +34,9 @@ impl ChatCompletionsFromResponsesSseReader {
             usage_collector,
             request_started_at,
             last_upstream_activity: Instant::now(),
+            response_format,
             saw_upstream_frame: false,
             finished: false,
-            emitted_text: false,
-            emitted_image_urls: HashSet::new(),
-            id: None,
-            model: None,
-            created: None,
         }
     }
 
@@ -80,35 +73,44 @@ impl ChatCompletionsFromResponsesSseReader {
             .map(str::to_string)
     }
 
-    fn remember_meta(&mut self, value: &Value) {
-        let response = value.get("response");
-        if self.id.is_none() {
-            self.id = response
-                .and_then(|v| v.get("id"))
-                .or_else(|| value.get("id"))
-                .and_then(Value::as_str)
-                .map(str::to_string);
+    fn sse_event(event_name: &str, payload: Value) -> Vec<u8> {
+        format!(
+            "event: {event_name}\ndata: {}\n\n",
+            serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
+        )
+        .into_bytes()
+    }
+
+    fn partial_image_chunk(&self, value: &Value) -> Option<Vec<u8>> {
+        let b64 = value
+            .get("partial_image_b64")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())?;
+        let event_name = "image_generation.partial_image";
+        let mut payload = serde_json::json!({
+            "type": event_name,
+            "partial_image_index": value
+                .get("partial_image_index")
+                .and_then(Value::as_i64)
+                .unwrap_or(0)
+        });
+        match self.response_format {
+            ImagesResponseFormat::Url => {
+                let mime_type = super::super::mime_type_from_codex_output_format(
+                    value.get("output_format").and_then(Value::as_str),
+                );
+                payload["url"] = Value::String(format!("data:{mime_type};base64,{b64}"));
+            }
+            ImagesResponseFormat::B64Json => {
+                payload["b64_json"] = Value::String(b64.to_string());
+            }
         }
-        if self.model.is_none() {
-            self.model = response
-                .and_then(|v| v.get("model"))
-                .or_else(|| value.get("model"))
-                .and_then(Value::as_str)
-                .map(str::to_string);
-        }
-        if self.created.is_none() {
-            self.created = response
-                .and_then(|v| v.get("created_at"))
-                .or_else(|| response.and_then(|v| v.get("created")))
-                .or_else(|| value.get("created_at"))
-                .or_else(|| value.get("created"))
-                .and_then(Value::as_i64);
-        }
-        if let Some(usage) = response
-            .and_then(|v| v.get("usage"))
-            .or_else(|| value.get("usage"))
-            .cloned()
-        {
+        Some(Self::sse_event(event_name, payload))
+    }
+
+    fn completed_chunks(&mut self, response: &Value) -> Vec<u8> {
+        if let Some(usage) = images_usage_value(response) {
             if let Ok(mut collector) = self.usage_collector.lock() {
                 merge_usage(
                     &mut collector.usage,
@@ -116,76 +118,21 @@ impl ChatCompletionsFromResponsesSseReader {
                 );
             }
         }
-    }
 
-    fn chat_id(&self) -> String {
-        self.id
-            .clone()
-            .unwrap_or_else(|| "chatcmpl_codexmanager".to_string())
-    }
-
-    fn chat_model(&self) -> String {
-        self.model.clone().unwrap_or_else(|| "gpt-5.4".to_string())
-    }
-
-    fn chat_created(&self) -> i64 {
-        self.created.unwrap_or(0)
-    }
-
-    fn chunk(&self, delta: Value, finish_reason: Option<&str>, usage: Option<Value>) -> Vec<u8> {
-        let mut chunk = serde_json::json!({
-            "id": self.chat_id(),
-            "object": "chat.completion.chunk",
-            "created": self.chat_created(),
-            "model": self.chat_model(),
-            "choices": [{
-                "index": 0,
-                "delta": delta,
-                "finish_reason": finish_reason
-            }]
-        });
-        if let Some(usage) = usage {
-            chunk["usage"] = usage;
+        let results = collect_image_generation_results(response);
+        let event_name = "image_generation.completed";
+        let mut out = Vec::new();
+        for result in results {
+            let mut payload = image_generation_result_payload(&result, self.response_format);
+            if let Some(payload_obj) = payload.as_object_mut() {
+                payload_obj.insert("type".to_string(), Value::String(event_name.to_string()));
+                if let Some(usage) = images_usage_value(response) {
+                    payload_obj.insert("usage".to_string(), usage);
+                }
+            }
+            out.extend(Self::sse_event(event_name, payload));
         }
-        format!(
-            "data: {}\n\n",
-            serde_json::to_string(&chunk).unwrap_or_else(|_| "{}".to_string())
-        )
-        .into_bytes()
-    }
-
-    fn final_chunk(&self) -> Vec<u8> {
-        let usage = self.usage_collector.lock().ok().map(|collector| {
-            serde_json::json!({
-                "prompt_tokens": collector.usage.input_tokens.unwrap_or(0),
-                "completion_tokens": collector.usage.output_tokens.unwrap_or(0),
-                "total_tokens": collector.usage.total_tokens.unwrap_or(0)
-            })
-        });
-        let mut out = self.chunk(serde_json::json!({}), Some("stop"), usage);
-        out.extend_from_slice(b"data: [DONE]\n\n");
         out
-    }
-
-    fn image_delta_chunk(&mut self, value: &Value) -> Option<Vec<u8>> {
-        let images = collect_image_generation_data_urls(value)
-            .into_iter()
-            .filter(|url| self.emitted_image_urls.insert(url.clone()))
-            .enumerate()
-            .map(|(index, url)| chat_image_payload(url, index))
-            .collect::<Vec<_>>();
-        if images.is_empty() {
-            None
-        } else {
-            Some(self.chunk(
-                serde_json::json!({
-                    "role": "assistant",
-                    "images": images
-                }),
-                None,
-                None,
-            ))
-        }
     }
 
     fn update_terminal_success(&self, event_type: Option<&str>) {
@@ -199,64 +146,27 @@ impl ChatCompletionsFromResponsesSseReader {
 
     fn handle_frame(&mut self, lines: &[String]) -> Option<Vec<u8>> {
         let value = Self::data_json(lines)?;
-        self.remember_meta(&value);
         let event_type = Self::event_type(lines, &value);
-        let mut text = String::new();
-        if matches!(
-            event_type.as_deref(),
-            Some("response.output_text.delta")
-                | Some("response.output_text.done")
-                | Some("response.content_part.delta")
-                | Some("response.content_part.done")
-        ) {
-            if let Some(delta) = value.get("delta") {
-                collect_response_output_text(delta, &mut text);
+        match event_type.as_deref() {
+            Some("response.image_generation_call.partial_image") => {
+                self.partial_image_chunk(&value)
             }
-        }
-        if matches!(
-            event_type.as_deref(),
-            Some("response.completed") | Some("response.done")
-        ) {
-            let mut out = Vec::new();
-            if !self.emitted_text {
+            Some("response.completed") | Some("response.done") => {
+                let mut out = Vec::new();
                 if let Some(response) = value.get("response") {
-                    collect_response_output_text(response, &mut text);
+                    out.extend(self.completed_chunks(response));
+                } else {
+                    out.extend(Self::sse_event(
+                        "image_generation.completed",
+                        build_images_api_response(&value, self.response_format),
+                    ));
                 }
-                if !text.is_empty() {
-                    out.extend(self.chunk(serde_json::json!({ "content": text }), None, None));
-                    self.emitted_text = true;
-                }
+                self.update_terminal_success(event_type.as_deref());
+                self.finished = true;
+                Some(out)
             }
-            if let Some(response) = value.get("response") {
-                if let Some(images) = self.image_delta_chunk(response) {
-                    out.extend(images);
-                }
-            }
-            self.update_terminal_success(event_type.as_deref());
-            self.finished = true;
-            out.extend(self.final_chunk());
-            return Some(out);
+            _ => None,
         }
-        if event_type.as_deref() == Some("response.output_item.done") {
-            if let Some(images) = self.image_delta_chunk(&value) {
-                return Some(images);
-            }
-        }
-        if event_type.as_deref() == Some("response.image_generation_call.partial_image") {
-            if let Some(images) = self.image_delta_chunk(&value) {
-                return Some(images);
-            }
-        }
-        if text.is_empty() {
-            if let Some(response) = value.get("response") {
-                collect_response_output_text(response, &mut text);
-            }
-        }
-        if !text.is_empty() {
-            self.emitted_text = true;
-            return Some(self.chunk(serde_json::json!({ "content": text }), None, None));
-        }
-        None
     }
 
     fn next_chunk(&mut self) -> std::io::Result<Vec<u8>> {
@@ -325,7 +235,7 @@ impl ChatCompletionsFromResponsesSseReader {
     }
 }
 
-impl Read for ChatCompletionsFromResponsesSseReader {
+impl Read for ImagesFromResponsesSseReader {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         loop {
             let read = self.out_cursor.read(buf)?;

@@ -287,7 +287,35 @@ fn trace_file_path_from_env() -> PathBuf {
 /// # 返回
 /// 返回函数执行结果
 fn sanitize_text(value: &str) -> String {
-    value.replace(['\r', '\n'], " ")
+    redact_base64_images_for_log(value).replace(['\r', '\n'], " ")
+}
+
+fn redact_base64_images_for_log(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut rest = value;
+    loop {
+        let lower = rest.to_ascii_lowercase();
+        let Some(image_start) = lower.find("data:image/") else {
+            output.push_str(rest);
+            break;
+        };
+        output.push_str(&rest[..image_start]);
+        let image_rest = &rest[image_start..];
+        let image_lower = &lower[image_start..];
+        let Some(base64_marker) = image_lower.find(";base64,") else {
+            output.push_str(image_rest);
+            break;
+        };
+        let data_start = image_start + base64_marker + ";base64,".len();
+        output.push_str(&rest[image_start..data_start]);
+        output.push_str("<base64 image omitted>");
+        let data = &rest[data_start..];
+        let data_end = data
+            .find(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '+' | '/' | '=')))
+            .unwrap_or(data.len());
+        rest = &data[data_end..];
+    }
+    output
 }
 
 /// 函数 `short_fingerprint`
@@ -1225,7 +1253,7 @@ pub(crate) fn log_failed_request(params: FailedRequestLog<'_>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        clear_trace_error, has_error_text, log_failed_request, mark_trace_has_error,
+        clear_trace_error, has_error_text, log_failed_request, mark_trace_has_error, sanitize_text,
         trace_has_error, trace_queue_capacity,
     };
 
@@ -1309,5 +1337,16 @@ mod tests {
         std::env::set_var("CODEXMANAGER_TRACE_QUEUE_CAPACITY", "0");
 
         assert_eq!(trace_queue_capacity(), 0);
+    }
+
+    #[test]
+    fn sanitize_text_redacts_base64_image_data_urls() {
+        let sanitized = sanitize_text(
+            "payload=data:image/png;base64,aGVsbG8= next=data:text/plain;base64,dmFsdWU=",
+        );
+
+        assert!(sanitized.contains("data:image/png;base64,<base64 image omitted>"));
+        assert!(!sanitized.contains("aGVsbG8="));
+        assert!(sanitized.contains("data:text/plain;base64,dmFsdWU="));
     }
 }

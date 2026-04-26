@@ -1328,6 +1328,31 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
                 .and_then(|value| value.as_str()),
             Some("0")
         );
+        let image_generation_enabled = catalog
+            .iter()
+            .find(|item| {
+                item.get("key").and_then(|value| value.as_str())
+                    == Some("CODEXMANAGER_CODEX_IMAGE_GENERATION_ENABLED")
+            })
+            .expect("image generation catalog item");
+        assert_eq!(
+            image_generation_enabled
+                .get("label")
+                .and_then(|value| value.as_str()),
+            Some("Codex 图片生成兼容开关")
+        );
+        assert_eq!(
+            image_generation_enabled
+                .get("applyMode")
+                .and_then(|value| value.as_str()),
+            Some("runtime")
+        );
+        assert_eq!(
+            image_generation_enabled
+                .get("defaultValue")
+                .and_then(|value| value.as_str()),
+            Some("1")
+        );
         assert!(snapshot
             .get("envOverrideReservedKeys")
             .and_then(|value| value.as_array())

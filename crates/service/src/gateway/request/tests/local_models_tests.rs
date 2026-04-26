@@ -44,7 +44,7 @@ fn serialize_models_response_outputs_official_shape() {
         .get("models")
         .and_then(Value::as_array)
         .expect("models array");
-    assert_eq!(models.len(), 2);
+    assert_eq!(models.len(), 3);
     assert_eq!(
         models[0].get("slug").and_then(Value::as_str),
         Some("gpt-5.3-codex")
@@ -60,6 +60,10 @@ fn serialize_models_response_outputs_official_shape() {
     assert_eq!(
         models[1].get("visibility").and_then(Value::as_str),
         Some("list")
+    );
+    assert_eq!(
+        models[2].get("slug").and_then(Value::as_str),
+        Some("gpt-image-2")
     );
     assert_eq!(value.as_object().map(|object| object.len()), Some(1));
     assert!(value.get("etag").is_none());
@@ -85,10 +89,37 @@ fn serialize_models_response_preserves_description_for_codex_clients() {
         .get("models")
         .and_then(Value::as_array)
         .expect("models array");
-    assert_eq!(models.len(), 1);
+    assert_eq!(models.len(), 2);
     assert_eq!(
         models[0].get("description").and_then(Value::as_str),
         Some("Latest frontier agentic coding model.")
+    );
+}
+
+#[test]
+fn serialize_models_response_appends_codex_image_tool_model_once() {
+    let items = ModelsResponse {
+        models: vec![ModelInfo {
+            slug: "gpt-image-2".to_string(),
+            display_name: "GPT Image 2".to_string(),
+            supported_in_api: true,
+            visibility: Some("list".to_string()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let output = serialize_models_response(&items);
+    let value: Value = serde_json::from_str(&output).expect("valid json");
+    let models = value
+        .get("models")
+        .and_then(Value::as_array)
+        .expect("models array");
+
+    assert_eq!(models.len(), 1);
+    assert_eq!(
+        models[0].get("slug").and_then(Value::as_str),
+        Some("gpt-image-2")
     );
 }
 

@@ -5,6 +5,8 @@ pub(crate) enum ResponseAdapter {
     Passthrough,
     AnthropicMessagesFromResponses,
     ChatCompletionsFromResponses,
+    ImagesB64JsonFromResponses,
+    ImagesUrlFromResponses,
     GeminiJson,
     GeminiSse,
     GeminiCliJson,

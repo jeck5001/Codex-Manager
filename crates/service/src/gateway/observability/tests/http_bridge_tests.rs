@@ -4,8 +4,9 @@ use super::openai::{
 use super::{
     collect_non_stream_json_from_sse_bytes, inspect_sse_frame, parse_sse_frame_json,
     parse_usage_from_json, parse_usage_from_sse_frame, ChatCompletionsFromResponsesSseReader,
-    GeminiSseReader, OpenAIResponsesPassthroughSseReader, PassthroughSseCollector,
-    PassthroughSseProtocol, PassthroughSseUsageReader, SseKeepAliveFrame,
+    GeminiSseReader, ImagesFromResponsesSseReader, ImagesResponseFormat,
+    OpenAIResponsesPassthroughSseReader, PassthroughSseCollector, PassthroughSseProtocol,
+    PassthroughSseUsageReader, SseKeepAliveFrame,
 };
 use crate::gateway::GeminiStreamOutputMode;
 use serde_json::json;
@@ -687,6 +688,77 @@ fn chat_completions_reader_converts_responses_sse_to_chat_sse() {
     assert_eq!(collector.usage.total_tokens, Some(4));
 }
 
+#[test]
+fn chat_completions_reader_converts_image_generation_call_to_delta_images() {
+    let sse = concat!(
+        "data: {\"type\":\"response.output_item.done\",\"response_id\":\"resp_img_1\",\"output_index\":0,\"item\":{\"type\":\"image_generation_call\",\"id\":\"ig_1\",\"status\":\"completed\",\"output_format\":\"png\",\"result\":\"aGVsbG8=\"}}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_img_1\",\"model\":\"gpt-5.4\",\"created\":1775900000,\"usage\":{\"input_tokens\":4,\"output_tokens\":1,\"total_tokens\":5}}}\n\n",
+        "data: [DONE]\n\n"
+    );
+    let response = open_mock_http_response("text/event-stream", sse);
+    let collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = ChatCompletionsFromResponsesSseReader::new(
+        response,
+        Arc::clone(&collector),
+        std::time::Instant::now(),
+    );
+    let mut out = String::new();
+    reader.read_to_string(&mut out).expect("read chat sse");
+
+    assert!(out.contains("\"images\""));
+    assert!(out.contains("data:image/png;base64,aGVsbG8="));
+    assert!(out.contains("\"finish_reason\":\"stop\""));
+    assert!(out.contains("data: [DONE]"));
+}
+
+#[test]
+fn chat_completions_reader_dedupes_partial_image_and_done_image() {
+    let sse = concat!(
+        "data: {\"type\":\"response.image_generation_call.partial_image\",\"item_id\":\"ig_1\",\"output_format\":\"png\",\"partial_image_b64\":\"aGVsbG8=\",\"partial_image_index\":0}\n\n",
+        "data: {\"type\":\"response.output_item.done\",\"response_id\":\"resp_img_1\",\"output_index\":0,\"item\":{\"type\":\"image_generation_call\",\"id\":\"ig_1\",\"status\":\"completed\",\"output_format\":\"png\",\"result\":\"aGVsbG8=\"}}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_img_1\",\"model\":\"gpt-5.4\",\"created\":1775900000,\"usage\":{\"input_tokens\":4,\"output_tokens\":1,\"total_tokens\":5}}}\n\n",
+        "data: [DONE]\n\n"
+    );
+    let response = open_mock_http_response("text/event-stream", sse);
+    let collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = ChatCompletionsFromResponsesSseReader::new(
+        response,
+        Arc::clone(&collector),
+        std::time::Instant::now(),
+    );
+    let mut out = String::new();
+    reader.read_to_string(&mut out).expect("read chat sse");
+
+    assert_eq!(out.matches("data:image/png;base64,aGVsbG8=").count(), 1);
+    assert!(out.contains("data: [DONE]"));
+}
+
+#[test]
+fn images_reader_streams_partial_and_completed_events() {
+    let sse = concat!(
+        "data: {\"type\":\"response.image_generation_call.partial_image\",\"item_id\":\"ig_1\",\"output_format\":\"png\",\"partial_image_b64\":\"cGFydGlhbA==\",\"partial_image_index\":0}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_img_1\",\"created\":1775900000,\"model\":\"gpt-5.4\",\"output\":[{\"type\":\"image_generation_call\",\"id\":\"ig_1\",\"status\":\"completed\",\"output_format\":\"png\",\"result\":\"ZmluYWw=\"}],\"tool_usage\":{\"image_gen\":{\"input_tokens\":4,\"output_tokens\":1,\"total_tokens\":5}}}}\n\n",
+        "data: [DONE]\n\n"
+    );
+    let response = open_mock_http_response("text/event-stream", sse);
+    let collector = Arc::new(Mutex::new(PassthroughSseCollector::default()));
+    let mut reader = ImagesFromResponsesSseReader::new(
+        response,
+        Arc::clone(&collector),
+        std::time::Instant::now(),
+        ImagesResponseFormat::B64Json,
+    );
+    let mut out = String::new();
+    reader.read_to_string(&mut out).expect("read images sse");
+
+    assert!(out.contains("event: image_generation.partial_image"));
+    assert!(out.contains("\"partial_image_index\":0"));
+    assert!(out.contains("\"b64_json\":\"cGFydGlhbA==\""));
+    assert!(out.contains("event: image_generation.completed"));
+    assert!(out.contains("\"b64_json\":\"ZmluYWw=\""));
+    assert!(out.contains("\"total_tokens\":5"));
+}
+
 /// 函数 `extract_openai_completed_output_text_reads_completed_output_message_text`
 ///
 /// 作者: gaohongshun
@@ -818,6 +890,27 @@ fn collect_non_stream_json_from_sse_bytes_backfills_reasoning_output_items() {
     assert_eq!(usage.input_tokens, Some(4));
     assert_eq!(usage.output_tokens, Some(2));
     assert_eq!(usage.total_tokens, Some(6));
+}
+
+#[test]
+fn collect_non_stream_json_from_sse_bytes_backfills_image_generation_output_items() {
+    let sse = concat!(
+        "data: {\"type\":\"response.output_item.done\",\"response_id\":\"resp_image_1\",\"output_index\":0,\"item\":{\"type\":\"image_generation_call\",\"id\":\"ig_1\",\"status\":\"completed\",\"revised_prompt\":\"一只猫\",\"output_format\":\"png\",\"result\":\"aGVsbG8=\"}}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image_1\",\"created\":5,\"model\":\"gpt-5.4\",\"usage\":{\"input_tokens\":4,\"output_tokens\":1,\"total_tokens\":5}}}\n\n",
+        "data: [DONE]\n\n"
+    );
+    let (body, usage) = collect_non_stream_json_from_sse_bytes(sse.as_bytes());
+    let body = body.expect("synthesized response json");
+    let value: serde_json::Value = serde_json::from_slice(&body).expect("parse synthesized body");
+
+    assert_eq!(value["id"], "resp_image_1");
+    assert_eq!(value["output"][0]["type"], "image_generation_call");
+    assert_eq!(value["output"][0]["id"], "ig_1");
+    assert_eq!(value["output"][0]["revised_prompt"], "一只猫");
+    assert_eq!(value["output"][0]["result"], "aGVsbG8=");
+    assert_eq!(usage.input_tokens, Some(4));
+    assert_eq!(usage.output_tokens, Some(1));
+    assert_eq!(usage.total_tokens, Some(5));
 }
 
 /// 函数 `collect_non_stream_json_from_sse_bytes_backfills_function_call_output_items`

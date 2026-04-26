@@ -488,6 +488,57 @@ fn responses_default_path_preserves_native_codex_body_shape() {
 }
 
 #[test]
+fn responses_default_path_preserves_image_generation_tool() {
+    let _guard = crate::test_env_guard();
+    let body = json!({
+        "model": "gpt-5.4",
+        "input": "画一张极简风格的猫",
+        "tools": [{
+            "type": "image_generation",
+            "output_format": "png"
+        }],
+        "tool_choice": {
+            "type": "image_generation"
+        },
+        "stream": true
+    });
+    let out = apply_request_overrides(
+        "/v1/responses",
+        serde_json::to_vec(&body).expect("serialize request body"),
+        None,
+        None,
+        Some("https://chatgpt.com/backend-api/codex"),
+    );
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("parse output body");
+
+    assert_eq!(
+        value
+            .get("tools")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|tools| tools.first())
+            .and_then(|tool| tool.get("type"))
+            .and_then(serde_json::Value::as_str),
+        Some("image_generation")
+    );
+    assert_eq!(
+        value
+            .get("tools")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|tools| tools.first())
+            .and_then(|tool| tool.get("output_format"))
+            .and_then(serde_json::Value::as_str),
+        Some("png")
+    );
+    assert_eq!(
+        value
+            .get("tool_choice")
+            .and_then(|tool_choice| tool_choice.get("type"))
+            .and_then(serde_json::Value::as_str),
+        Some("image_generation")
+    );
+}
+
+#[test]
 fn responses_default_path_skips_request_rewrite_layer_prompt_cache_inference() {
     let _guard = crate::test_env_guard();
     let body = json!({
