@@ -1,10 +1,10 @@
 use super::{
     clear_pending_usage_refresh_tasks_for_tests, enqueue_usage_refresh_with_worker,
-    next_usage_poll_cursor, reset_usage_poll_cursor_for_tests, run_token_refresh_task,
-    should_retry_usage_refresh_with_token, token_refresh_due_cutoff, token_refresh_schedule,
-    usage_poll_batch_indices,
+    next_usage_poll_cursor, reset_usage_poll_cursor_for_tests, resolve_token_refresh_issuer,
+    run_token_refresh_task, should_retry_usage_refresh_with_token, token_refresh_access_exp_cutoff,
+    token_refresh_due_cutoff, token_refresh_schedule, usage_poll_batch_indices,
 };
-use codexmanager_core::storage::{now_ts, Storage, Token};
+use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 use std::collections::HashSet;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -226,6 +226,22 @@ fn due_cutoff_includes_next_poll_window_and_buffer() {
     assert_eq!(token_refresh_due_cutoff(now, 600), now + 660);
 }
 
+/// 函数 `access_exp_cutoff_includes_refresh_ahead_window`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-26
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn access_exp_cutoff_includes_refresh_ahead_window() {
+    assert_eq!(token_refresh_access_exp_cutoff(1_000, 600), 1_600);
+}
+
 /// 函数 `due_cutoff_covers_boundary_when_poll_interval_matches_refresh_ahead`
 ///
 /// 作者: gaohongshun
@@ -254,6 +270,76 @@ fn due_cutoff_covers_boundary_when_poll_interval_matches_refresh_ahead() {
     assert_eq!(scheduled_at, exp - 600);
     assert!(scheduled_at > now);
     assert!(scheduled_at <= token_refresh_due_cutoff(now, 600));
+}
+
+/// 函数 `token_refresh_issuer_uses_account_issuer`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-26
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn token_refresh_issuer_uses_account_issuer() {
+    let now = now_ts();
+    let account = Account {
+        id: "acc-custom-issuer".to_string(),
+        label: "custom issuer".to_string(),
+        issuer: "https://custom-issuer.example".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+
+    assert_eq!(
+        resolve_token_refresh_issuer(Some(&account), "https://auth.openai.com"),
+        "https://custom-issuer.example"
+    );
+}
+
+/// 函数 `token_refresh_issuer_falls_back_to_default`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-26
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn token_refresh_issuer_falls_back_to_default() {
+    let now = now_ts();
+    let account = Account {
+        id: "acc-empty-issuer".to_string(),
+        label: "empty issuer".to_string(),
+        issuer: "  ".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+
+    assert_eq!(
+        resolve_token_refresh_issuer(Some(&account), "https://auth.openai.com"),
+        "https://auth.openai.com"
+    );
+    assert_eq!(
+        resolve_token_refresh_issuer(None, "https://auth.openai.com"),
+        "https://auth.openai.com"
+    );
 }
 
 /// 函数 `run_token_refresh_task_skips_empty_refresh_token`

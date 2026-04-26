@@ -10,6 +10,7 @@ use crate::usage_http::refresh_access_token;
 
 const ACCOUNT_TOKEN_EXCHANGE_LOCK_TTL_SECS: i64 = 30 * 60;
 const ACCOUNT_TOKEN_EXCHANGE_LOCK_CLEANUP_INTERVAL_SECS: i64 = 60;
+const API_KEY_ACCESS_TOKEN_REFRESH_AHEAD_SECS: i64 = 60;
 
 struct AccountTokenExchangeLockEntry {
     lock: Arc<Mutex<()>>,
@@ -96,8 +97,24 @@ fn find_cached_api_key_access_token(storage: &Storage, account_id: &str) -> Opti
         .find_token_by_account_id(account_id)
         .ok()?
         .and_then(|t| t.api_key_access_token)
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
+        .and_then(|value| usable_api_key_access_token(&value))
+}
+
+fn usable_api_key_access_token(value: &str) -> Option<String> {
+    let token = value.trim();
+    if token.is_empty() {
+        return None;
+    }
+    if access_token_expires_within(token, API_KEY_ACCESS_TOKEN_REFRESH_AHEAD_SECS) {
+        return None;
+    }
+    Some(token.to_string())
+}
+
+fn access_token_expires_within(token: &str, ahead_secs: i64) -> bool {
+    extract_token_exp(token)
+        .map(|exp| exp <= now_ts().saturating_add(ahead_secs))
+        .unwrap_or(false)
 }
 
 /// 函数 `exchange_and_persist_api_key_access_token`
@@ -183,10 +200,9 @@ pub(super) fn resolve_openai_bearer_token(
     if let Some(existing) = token
         .api_key_access_token
         .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
+        .and_then(usable_api_key_access_token)
     {
-        return Ok(existing.to_string());
+        return Ok(existing);
     }
 
     let exchange_lock = account_token_exchange_lock(&account.id);
@@ -196,10 +212,9 @@ pub(super) fn resolve_openai_bearer_token(
     if let Some(existing) = token
         .api_key_access_token
         .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
+        .and_then(usable_api_key_access_token)
     {
-        return Ok(existing.to_string());
+        return Ok(existing);
     }
 
     if let Some(cached) = find_cached_api_key_access_token(storage, &account.id) {
