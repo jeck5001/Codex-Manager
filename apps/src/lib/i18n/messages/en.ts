@@ -789,6 +789,7 @@ export const EN_MESSAGES: MessageCatalog = {
   任务间隔已更新: "Task interval updated",
   任务已执行: "Task executed",
   "上游代理 (Proxy)": "Upstream proxy (Proxy)",
+  "上游总超时 (ms，0 为关闭)": "Upstream total timeout (ms, 0 to disable)",
   "上游流式空闲超时 (ms)": "Upstream stream idle timeout (ms)",
   设置优先账号失败: "Failed to set preferred account",
   社区插件: "Community plugins",

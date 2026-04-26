@@ -77,6 +77,7 @@ fn reset_runtime_defaults() {
         "lightweightModeOnCloseToTray": false,
         "upstreamProxyUrl": "",
         "upstreamStreamTimeoutMs": 600000,
+        "upstreamTotalTimeoutMs": 0,
         "sseKeepaliveIntervalMs": 15000,
         "envOverrides": {},
         "backgroundTasks": {
@@ -334,6 +335,7 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "gatewayResidencyRequirement": "us",
             "upstreamProxyUrl": "http://127.0.0.1:7890",
             "upstreamStreamTimeoutMs": 654321,
+            "upstreamTotalTimeoutMs": 120000,
             "sseKeepaliveIntervalMs": 17000,
             "backgroundTasks": {
                 "usagePollingEnabled": false,
@@ -397,6 +399,12 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
                 .get("upstreamStreamTimeoutMs")
                 .and_then(|value| value.as_u64()),
             Some(654321)
+        );
+        assert_eq!(
+            snapshot
+                .get("upstreamTotalTimeoutMs")
+                .and_then(|value| value.as_u64()),
+            Some(120000)
         );
         assert_eq!(
             snapshot

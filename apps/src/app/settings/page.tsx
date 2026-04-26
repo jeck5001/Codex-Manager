@@ -154,7 +154,12 @@ export default function SettingsPage() {
     useState(false);
   const [transportDraft, setTransportDraft] = useState<
     Partial<
-      Record<"sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs", string>
+      Record<
+        | "sseKeepaliveIntervalMs"
+        | "upstreamStreamTimeoutMs"
+        | "upstreamTotalTimeoutMs",
+        string
+      >
     >
   >({});
   const [backgroundTaskDraft, setBackgroundTaskDraft] = useState<
@@ -604,6 +609,9 @@ export default function SettingsPage() {
     upstreamStreamTimeoutMs:
       transportDraft.upstreamStreamTimeoutMs ??
       stringifyNumber(snapshot?.upstreamStreamTimeoutMs),
+    upstreamTotalTimeoutMs:
+      transportDraft.upstreamTotalTimeoutMs ??
+      stringifyNumber(snapshot?.upstreamTotalTimeoutMs),
   };
   const selectedEnvValue = selectedEnvKey
     ? (envDrafts[selectedEnvKey] ??
@@ -854,7 +862,10 @@ export default function SettingsPage() {
    * 返回函数执行结果
    */
   const saveTransportField = (
-    key: "sseKeepaliveIntervalMs" | "upstreamStreamTimeoutMs",
+    key:
+      | "sseKeepaliveIntervalMs"
+      | "upstreamStreamTimeoutMs"
+      | "upstreamTotalTimeoutMs",
     minimum: number,
   ) => {
     const nextValue = parseIntegerInput(transportInputValues[key], minimum);
@@ -1664,7 +1675,7 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 border-t pt-6">
+              <div className="grid gap-4 border-t pt-6 md:grid-cols-3">
                 <div className="grid gap-2">
                   <Label>{t("SSE 保活间隔 (ms)")}</Label>
                   <Input
@@ -1678,6 +1689,22 @@ export default function SettingsPage() {
                     }
                     onBlur={() =>
                       saveTransportField("sseKeepaliveIntervalMs", 1)
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>{t("上游总超时 (ms，0 为关闭)")}</Label>
+                  <Input
+                    type="number"
+                    value={transportInputValues.upstreamTotalTimeoutMs}
+                    onChange={(event) =>
+                      setTransportDraft((current) => ({
+                        ...current,
+                        upstreamTotalTimeoutMs: event.target.value,
+                      }))
+                    }
+                    onBlur={() =>
+                      saveTransportField("upstreamTotalTimeoutMs", 0)
                     }
                   />
                 </div>

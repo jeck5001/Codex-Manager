@@ -316,6 +316,25 @@ fn set_upstream_stream_timeout_ms_updates_env_and_cache() {
     );
 }
 
+#[test]
+fn set_upstream_total_timeout_ms_updates_env_and_cache() {
+    let _guard = crate::test_env_guard();
+    let _guard = EnvGuard::set(ENV_UPSTREAM_TOTAL_TIMEOUT_MS, "0");
+
+    let applied = set_upstream_total_timeout_ms(120000);
+
+    assert_eq!(applied, 120000);
+    assert_eq!(current_upstream_total_timeout_ms(), 120000);
+    assert_eq!(
+        upstream_total_timeout(),
+        Some(Duration::from_millis(120000))
+    );
+    assert_eq!(
+        std::env::var(ENV_UPSTREAM_TOTAL_TIMEOUT_MS).ok().as_deref(),
+        Some("120000")
+    );
+}
+
 /// 函数 `normalize_model_slug_maps_legacy_gpt_5_4_pro_to_gpt_5_4`
 ///
 /// 作者: gaohongshun

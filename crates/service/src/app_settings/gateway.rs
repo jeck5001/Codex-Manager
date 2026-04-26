@@ -31,7 +31,8 @@ use super::{
     APP_SETTING_GATEWAY_ORIGINATOR_KEY, APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
     APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY, APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
-    APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY, APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
+    APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+    APP_SETTING_GATEWAY_UPSTREAM_TOTAL_TIMEOUT_MS_KEY, APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
 };
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -473,6 +474,15 @@ pub fn set_gateway_upstream_stream_timeout_ms(timeout_ms: u64) -> Result<u64, St
     Ok(applied)
 }
 
+pub fn set_gateway_upstream_total_timeout_ms(timeout_ms: u64) -> Result<u64, String> {
+    let applied = gateway::set_upstream_total_timeout_ms(timeout_ms);
+    save_persisted_app_setting(
+        APP_SETTING_GATEWAY_UPSTREAM_TOTAL_TIMEOUT_MS_KEY,
+        Some(&applied.to_string()),
+    )?;
+    Ok(applied)
+}
+
 /// 函数 `current_gateway_upstream_stream_timeout_ms`
 ///
 /// 作者: gaohongshun
@@ -486,6 +496,10 @@ pub fn set_gateway_upstream_stream_timeout_ms(timeout_ms: u64) -> Result<u64, St
 /// 返回函数执行结果
 pub fn current_gateway_upstream_stream_timeout_ms() -> u64 {
     gateway::current_upstream_stream_timeout_ms()
+}
+
+pub fn current_gateway_upstream_total_timeout_ms() -> u64 {
+    gateway::current_upstream_total_timeout_ms()
 }
 
 /// 函数 `set_gateway_sse_keepalive_interval_ms`

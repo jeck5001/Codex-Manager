@@ -382,6 +382,11 @@ pub(crate) fn current_upstream_stream_timeout_ms() -> u64 {
     UPSTREAM_STREAM_TIMEOUT_MS.load(Ordering::Relaxed)
 }
 
+pub(crate) fn current_upstream_total_timeout_ms() -> u64 {
+    ensure_runtime_config_loaded();
+    UPSTREAM_TOTAL_TIMEOUT_MS.load(Ordering::Relaxed)
+}
+
 /// 函数 `request_compression_enabled`
 ///
 /// 作者: gaohongshun
@@ -917,6 +922,13 @@ pub(crate) fn set_upstream_stream_timeout_ms(timeout_ms: u64) -> u64 {
     ensure_runtime_config_loaded();
     UPSTREAM_STREAM_TIMEOUT_MS.store(timeout_ms, Ordering::Relaxed);
     std::env::set_var(ENV_UPSTREAM_STREAM_TIMEOUT_MS, timeout_ms.to_string());
+    timeout_ms
+}
+
+pub(crate) fn set_upstream_total_timeout_ms(timeout_ms: u64) -> u64 {
+    ensure_runtime_config_loaded();
+    UPSTREAM_TOTAL_TIMEOUT_MS.store(timeout_ms, Ordering::Relaxed);
+    std::env::set_var(ENV_UPSTREAM_TOTAL_TIMEOUT_MS, timeout_ms.to_string());
     timeout_ms
 }
 

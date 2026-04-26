@@ -791,6 +791,10 @@ pub(crate) fn current_upstream_stream_timeout_ms() -> u64 {
     runtime_config::current_upstream_stream_timeout_ms()
 }
 
+pub(crate) fn current_upstream_total_timeout_ms() -> u64 {
+    runtime_config::current_upstream_total_timeout_ms()
+}
+
 /// 函数 `set_upstream_stream_timeout_ms`
 ///
 /// 作者: gaohongshun
@@ -804,6 +808,10 @@ pub(crate) fn current_upstream_stream_timeout_ms() -> u64 {
 /// 返回函数执行结果
 pub(crate) fn set_upstream_stream_timeout_ms(timeout_ms: u64) -> u64 {
     runtime_config::set_upstream_stream_timeout_ms(timeout_ms)
+}
+
+pub(crate) fn set_upstream_total_timeout_ms(timeout_ms: u64) -> u64 {
+    runtime_config::set_upstream_total_timeout_ms(timeout_ms)
 }
 
 /// 函数 `current_sse_keepalive_interval_ms`
