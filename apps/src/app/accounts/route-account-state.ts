@@ -40,6 +40,9 @@ export function describeRouteAccountScope(
   const effectiveCount = normalizedRouteAccountIds.filter((accountId) =>
     knownIds.has(accountId),
   ).length;
+  if (effectiveCount === 0) {
+    return "全部可用账号参与路由";
+  }
 
   return `已限制为 ${effectiveCount} 个账号参与路由`;
 }

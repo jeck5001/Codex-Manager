@@ -18,7 +18,8 @@ use super::{
     APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
     APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
     APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
-    APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
+    APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
+    APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY, APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
     SERVICE_BIND_MODE_SETTING_KEY,
 };
@@ -38,6 +39,31 @@ pub fn sync_runtime_settings_from_storage() {
         if let Some(strategy) = normalize_optional_text(Some(strategy)) {
             if let Err(err) = gateway::set_route_strategy(&strategy) {
                 log::warn!("sync persisted route strategy failed: {err}");
+            }
+        }
+    }
+    let route_account_ids = settings
+        .get(APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY)
+        .and_then(|raw| normalize_optional_text(Some(raw)));
+    match route_account_ids {
+        Some(raw) => match serde_json::from_str::<Vec<String>>(&raw) {
+            Ok(account_ids) => {
+                if let Err(err) =
+                    gateway::sync_manual_route_account_ids_from_storage(Some(&account_ids))
+                {
+                    log::warn!("sync persisted route account ids failed: {err}");
+                }
+            }
+            Err(err) => {
+                log::warn!("parse persisted route account ids failed: {err}");
+                if let Err(clear_err) = gateway::sync_manual_route_account_ids_from_storage(None) {
+                    log::warn!("clear invalid persisted route account ids failed: {clear_err}");
+                }
+            }
+        },
+        None => {
+            if let Err(err) = gateway::sync_manual_route_account_ids_from_storage(None) {
+                log::warn!("clear persisted route account ids failed: {err}");
             }
         }
     }

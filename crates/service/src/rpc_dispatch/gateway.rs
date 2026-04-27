@@ -33,8 +33,11 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             ))
         }
         "gateway/routeAccounts/clear" => {
-            crate::gateway::clear_manual_route_account_ids();
-            super::ok_result()
+            super::value_or_error(crate::gateway::clear_manual_route_account_ids().map(|_| {
+                serde_json::json!({
+                    "accountIds": []
+                })
+            }))
         }
         "gateway/headerPolicy/get" => super::as_json(serde_json::json!({
             "cpaNoCookieHeaderModeEnabled": crate::gateway::cpa_no_cookie_header_mode_enabled(),

@@ -1609,6 +1609,9 @@ export function normalizeStartupSnapshot(payload: unknown): StartupSnapshot {
     ),
     apiKeys: normalizeApiKeyList(source.apiKeys),
     apiModelOptions: normalizeModelOptions(source.apiModelOptions),
+    manualPreferredAccountId: asString(
+      source.manualPreferredAccountId ?? source.manual_preferred_account_id
+    ),
     manualRouteAccountIds: normalizeStringList(
       source.manualRouteAccountIds ?? source.manual_route_account_ids
     ),

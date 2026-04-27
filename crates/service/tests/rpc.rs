@@ -1161,6 +1161,66 @@ fn rpc_app_settings_can_roundtrip_quota_protection_settings() {
 }
 
 #[test]
+fn rpc_route_accounts_persist_and_reload_from_storage() {
+    let ctx = RpcTestContext::new("rpc-route-accounts-persist");
+
+    let set_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let set_req = JsonRpcRequest {
+        id: 35,
+        method: "gateway/routeAccounts/set".to_string(),
+        params: Some(serde_json::json!({
+            "accountIds": ["acc-a", "acc-b"]
+        })),
+    };
+    let set_json = serde_json::to_string(&set_req).expect("serialize");
+    let set_resp = post_rpc(&set_server.addr, &set_json);
+    let set_result = set_resp.get("result").expect("result");
+    assert_eq!(
+        set_result
+            .get("accountIds")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(2)
+    );
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let persisted = storage
+        .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY)
+        .expect("read route accounts")
+        .unwrap_or_default();
+    assert_eq!(persisted, r#"["acc-a","acc-b"]"#);
+
+    storage
+        .set_app_setting(
+            codexmanager_service::APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY,
+            r#"["acc-persisted"]"#,
+            now_ts(),
+        )
+        .expect("persist route accounts");
+
+    codexmanager_service::sync_runtime_settings_from_storage();
+
+    let get_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let get_req = JsonRpcRequest {
+        id: 36,
+        method: "gateway/routeAccounts/get".to_string(),
+        params: None,
+    };
+    let get_json = serde_json::to_string(&get_req).expect("serialize");
+    let get_resp = post_rpc(&get_server.addr, &get_json);
+    let get_result = get_resp.get("result").expect("result");
+    assert_eq!(
+        get_result
+            .get("accountIds")
+            .and_then(|value| value.as_array())
+            .and_then(|items| items.first())
+            .and_then(|value| value.as_str()),
+        Some("acc-persisted")
+    );
+}
+
+#[test]
 fn rpc_app_settings_can_roundtrip_auto_register_pool_settings() {
     let _ctx = RpcTestContext::new("rpc-app-settings-auto-register-pool");
     let set_server = codexmanager_service::start_one_shot_server().expect("start server");
