@@ -84,9 +84,9 @@ export function useAccounts() {
     retry: 1,
   });
 
-  const manualPreferredAccountQuery = useQuery({
-    queryKey: ["gateway", "manual-account", serviceStatus.addr || null],
-    queryFn: () => serviceClient.getManualPreferredAccountId(),
+  const routeAccountIdsQuery = useQuery({
+    queryKey: ["gateway", "route-accounts", serviceStatus.addr || null],
+    queryFn: () => serviceClient.getRouteAccountIds(),
     enabled: serviceStatus.connected,
     retry: 1,
   });
@@ -116,14 +116,14 @@ export function useAccounts() {
       queryClient.invalidateQueries({ queryKey: ["usage-aggregate"] }),
       queryClient.invalidateQueries({ queryKey: ["today-summary"] }),
       queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
-      queryClient.invalidateQueries({ queryKey: ["gateway", "manual-account"] }),
+      queryClient.invalidateQueries({ queryKey: ["gateway", "route-accounts"] }),
       queryClient.invalidateQueries({ queryKey: ["logs"] }),
     ]);
   };
 
-  const invalidateManualPreferred = async () => {
+  const invalidateRouteAccounts = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["gateway", "manual-account"] }),
+      queryClient.invalidateQueries({ queryKey: ["gateway", "route-accounts"] }),
       queryClient.invalidateQueries({ queryKey: ["startup-snapshot"] }),
     ]);
   };
@@ -521,25 +521,25 @@ export function useAccounts() {
     },
   });
 
-  const setManualPreferredMutation = useMutation({
-    mutationFn: (accountId: string) => serviceClient.setManualPreferredAccount(accountId),
-    onSuccess: async () => {
-      await invalidateManualPreferred();
-      toast.success("已设为优先账号");
+  const setRouteAccountsMutation = useMutation({
+    mutationFn: (accountIds: string[]) => serviceClient.setRouteAccounts(accountIds),
+    onSuccess: async (_result, accountIds) => {
+      await invalidateRouteAccounts();
+      toast.success(`已限制 ${accountIds.length} 个账号参与路由`);
     },
     onError: (error: unknown) => {
-      toast.error(`设置优先账号失败: ${getAppErrorMessage(error)}`);
+      toast.error(`设置路由账号失败: ${getAppErrorMessage(error)}`);
     },
   });
 
-  const clearManualPreferredMutation = useMutation({
-    mutationFn: () => serviceClient.clearManualPreferredAccount(),
+  const clearRouteAccountsMutation = useMutation({
+    mutationFn: () => serviceClient.clearRouteAccounts(),
     onSuccess: async () => {
-      await invalidateManualPreferred();
-      toast.success("已取消优先账号");
+      await invalidateRouteAccounts();
+      toast.success("已恢复全部可用账号参与路由");
     },
     onError: (error: unknown) => {
-      toast.error(`取消优先账号失败: ${getAppErrorMessage(error)}`);
+      toast.error(`清空路由限制失败: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -570,7 +570,7 @@ export function useAccounts() {
     groups,
     total: accountsQuery.data?.total || accounts.length,
     isLoading: accountsQuery.isLoading || usagesQuery.isLoading,
-    manualPreferredAccountId: manualPreferredAccountQuery.data || "",
+    routeAccountIds: routeAccountIdsQuery.data || [],
     refreshAccount: (accountId: string) => {
       void refreshAccountMutation.mutateAsync(accountId).catch(async (error: unknown) => {
         if (!isRefreshTokenExpiredError(error)) {
@@ -598,8 +598,8 @@ export function useAccounts() {
     importByFile: () => importByFileMutation.mutate(),
     importByDirectory: () => importByDirectoryMutation.mutate(),
     exportAccounts: (accountIds?: string[]) => exportMutation.mutate(accountIds ?? []),
-    setPreferredAccount: (accountId: string) => setManualPreferredMutation.mutate(accountId),
-    clearPreferredAccount: () => clearManualPreferredMutation.mutate(),
+    setRouteAccounts: (accountIds: string[]) => setRouteAccountsMutation.mutate(accountIds),
+    clearRouteAccounts: () => clearRouteAccountsMutation.mutate(),
     updateAccountSort: (accountId: string, sort: number) =>
       updateAccountSortMutation.mutateAsync({ accountId, sort }),
     toggleAccountStatus: (
@@ -645,8 +645,8 @@ export function useAccounts() {
     isDeletingMany: deleteManyMutation.isPending,
     isDeletingBanned: deleteBannedMutation.isPending,
     isDeletingUnavailableFree: deleteUnavailableFreeMutation.isPending,
-    isUpdatingPreferred:
-      setManualPreferredMutation.isPending || clearManualPreferredMutation.isPending,
+    isUpdatingRouteAccounts:
+      setRouteAccountsMutation.isPending || clearRouteAccountsMutation.isPending,
     isUpdatingSortAccountId:
       updateAccountSortMutation.isPending &&
       updateAccountSortMutation.variables &&

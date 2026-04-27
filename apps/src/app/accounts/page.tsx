@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  ShieldOff,
   Trash2,
   X,
   type LucideIcon,
@@ -79,6 +80,10 @@ import {
 } from "@/lib/utils/usage";
 import { Account } from "@/types";
 import { collectInvalidAuthCleanupAccountIds } from "./account-cleanup";
+import {
+  describeRouteAccountScope,
+  isRouteAccountSelected,
+} from "./route-account-state";
 
 type StatusFilter =
   | "all"
@@ -289,10 +294,10 @@ export default function AccountsPage() {
     isDeletingMany,
     isDeletingBanned,
     isDeletingUnavailableFree,
-    manualPreferredAccountId,
-    setPreferredAccount,
-    clearPreferredAccount,
-    isUpdatingPreferred,
+    routeAccountIds,
+    setRouteAccounts,
+    clearRouteAccounts,
+    isUpdatingRouteAccounts,
     updateAccountSort,
     isUpdatingSortAccountId,
     toggleAccountStatus,
@@ -530,6 +535,14 @@ export default function AccountsPage() {
         .filter((account) => getAccountStatusAction(account).enable)
         .map((account) => account.id),
     [scopedGovernedAccounts],
+  );
+  const routeScopeLabel = useMemo(
+    () =>
+      describeRouteAccountScope(
+        routeAccountIds,
+        accounts.map((account) => account.id),
+      ),
+    [accounts, routeAccountIds],
   );
   const scopedBannedAccounts = useMemo(
     () => scopedAccounts.filter((account) => account.isDeactivated),
@@ -843,6 +856,14 @@ export default function AccountsPage() {
       return;
     }
     uploadManyToTeamManager(effectiveSelectedIds);
+  };
+
+  const handleRestrictRouteToSelected = () => {
+    if (!effectiveSelectedIds.length) {
+      toast.error("请先选择要参与路由的账号");
+      return;
+    }
+    setRouteAccounts(effectiveSelectedIds);
   };
 
   const openSingleMarkSubscriptionDialog = (account: Account) => {
@@ -1176,6 +1197,21 @@ export default function AccountsPage() {
                     <Pin className="mr-2 h-4 w-4" /> 批量设置标签
                     <DropdownMenuShortcut>{effectiveSelectedIds.length || "-"}</DropdownMenuShortcut>
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!effectiveSelectedIds.length || isUpdatingRouteAccounts}
+                    onClick={handleRestrictRouteToSelected}
+                  >
+                    <ShieldCheck className="mr-2 h-4 w-4" /> 仅所选参与路由
+                    <DropdownMenuShortcut>{effectiveSelectedIds.length || "-"}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={isUpdatingRouteAccounts}
+                    onClick={() => clearRouteAccounts()}
+                  >
+                    <ShieldOff className="mr-2 h-4 w-4" /> 清空路由限制
+                  </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
@@ -1334,33 +1370,38 @@ export default function AccountsPage() {
         </CardContent>
       </Card>
 
-      {activeFilterItems.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 px-1">
-          <span className="text-xs font-medium text-muted-foreground">
-            当前筛选:
-          </span>
-          {activeFilterItems.map((item) => (
-            <button
-              type="button"
-              key={item.key}
-              className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary transition-colors hover:bg-primary/15"
-              onClick={() => handleRemoveFilterItem(item.key)}
-              title={`移除筛选：${item.label}`}
-            >
-              <span>{item.label}</span>
-              <X className="h-3 w-3" />
-            </button>
-          ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 rounded-full px-3 text-xs"
-            onClick={handleClearFilters}
-          >
-            清空筛选
-          </Button>
+      <div className="flex flex-wrap items-center gap-2 px-1">
+        <div className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
+          {routeScopeLabel}
         </div>
-      ) : null}
+        {activeFilterItems.length > 0 ? (
+          <>
+            <span className="text-xs font-medium text-muted-foreground">
+              当前筛选:
+            </span>
+            {activeFilterItems.map((item) => (
+              <button
+                type="button"
+                key={item.key}
+                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary transition-colors hover:bg-primary/15"
+                onClick={() => handleRemoveFilterItem(item.key)}
+                title={`移除筛选：${item.label}`}
+              >
+                <span>{item.label}</span>
+                <X className="h-3 w-3" />
+              </button>
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={handleClearFilters}
+            >
+              清空筛选
+            </Button>
+          </>
+        ) : null}
+      </div>
 
       <Card className="glass-card overflow-hidden border-none py-0 shadow-xl backdrop-blur-md">
         <CardContent className="p-0">
@@ -1453,12 +1494,12 @@ export default function AccountsPage() {
                               >
                                 {account.group || "默认"}
                               </Badge>
-                              {manualPreferredAccountId === account.id ? (
+                              {isRouteAccountSelected(routeAccountIds, account.id) ? (
                                 <Badge
                                   variant="secondary"
-                                  className="h-4 bg-amber-500/15 px-1.5 text-[9px] text-amber-700 dark:text-amber-300"
+                                  className="h-4 bg-emerald-500/15 px-1.5 text-[9px] text-emerald-700 dark:text-emerald-300"
                                 >
-                                  优先
+                                  路由中
                                 </Badge>
                               ) : null}
                               {account.subscriptionPlanType ? (
@@ -1727,20 +1768,6 @@ export default function AccountsPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                className="gap-2"
-                                disabled={isUpdatingPreferred}
-                                onClick={() =>
-                                  manualPreferredAccountId === account.id
-                                    ? clearPreferredAccount()
-                                    : setPreferredAccount(account.id)
-                                }
-                              >
-                                <Pin className="h-4 w-4" />
-                                {manualPreferredAccountId === account.id
-                                  ? "取消优先"
-                                  : "设为优先"}
-                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="gap-2"
                                 disabled={
