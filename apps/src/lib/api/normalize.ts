@@ -45,6 +45,7 @@ import {
   GovernanceSummaryItem,
   FreeProxyClearResult,
   FreeProxySyncResult,
+  GatewayRouteStrategyInfo,
   GatewayResponseCacheStats,
   HeatmapCellItem,
   HeatmapTrendResult,
@@ -149,6 +150,12 @@ function normalizeStringRecord(payload: unknown): Record<string, string> {
     result[key] = asString(value);
     return result;
   }, {});
+}
+
+function normalizeStringList(payload: unknown): string[] {
+  return asArray(payload)
+    .map((item) => asString(item))
+    .filter(Boolean);
 }
 
 export function normalizeUsageSnapshot(payload: unknown): AccountUsage | null {
@@ -1511,6 +1518,19 @@ export function normalizeGatewayRetryPolicy(payload: unknown) {
   };
 }
 
+export function normalizeGatewayRouteStrategy(
+  payload: unknown
+): GatewayRouteStrategyInfo {
+  const source = asObject(payload);
+  return {
+    strategy: asString(source.strategy) || "ordered",
+    options: normalizeStringList(source.options),
+    routeAccountIds: normalizeStringList(
+      source.routeAccountIds ?? source.route_account_ids
+    ),
+  };
+}
+
 export function normalizeGatewayResponseCacheStats(
   payload: unknown
 ): GatewayResponseCacheStats {
@@ -1589,7 +1609,9 @@ export function normalizeStartupSnapshot(payload: unknown): StartupSnapshot {
     ),
     apiKeys: normalizeApiKeyList(source.apiKeys),
     apiModelOptions: normalizeModelOptions(source.apiModelOptions),
-    manualPreferredAccountId: asString(source.manualPreferredAccountId),
+    manualRouteAccountIds: normalizeStringList(
+      source.manualRouteAccountIds ?? source.manual_route_account_ids
+    ),
     requestLogTodaySummary: normalizeTodaySummary(source.requestLogTodaySummary),
     recentRequestLogCount: asInteger(source.recentRequestLogCount, 0, 0),
     latestRequestAccountId: asString(source.latestRequestAccountId) || null,

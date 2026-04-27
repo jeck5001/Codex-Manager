@@ -93,7 +93,7 @@ export function useDashboardStats() {
   const currentAccountId = pickCurrentAccountId(
     accounts,
     data?.latestRequestAccountId ?? null,
-    data?.manualPreferredAccountId
+    data?.manualRouteAccountIds ?? []
   );
   const currentAccount =
     accounts.find((item) => item.id === currentAccountId) ?? null;

@@ -7,8 +7,8 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let strategy = crate::gateway::current_route_strategy();
             super::as_json(serde_json::json!({
                 "strategy": strategy,
-                "options": ["ordered", "balanced"],
-                "manualPreferredAccountId": crate::gateway::manual_preferred_account(),
+                "options": ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
+                "routeAccountIds": crate::gateway::manual_route_account_ids(),
             }))
         }
         "gateway/routeStrategy/set" => {
@@ -19,15 +19,21 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 })
             }))
         }
-        "gateway/manualAccount/get" => super::as_json(serde_json::json!({
-            "accountId": crate::gateway::manual_preferred_account()
+        "gateway/routeAccounts/get" => super::as_json(serde_json::json!({
+            "accountIds": crate::gateway::manual_route_account_ids()
         })),
-        "gateway/manualAccount/set" => {
-            let account_id = super::str_param(req, "accountId").unwrap_or("");
-            super::ok_or_error(crate::gateway::set_manual_preferred_account(account_id))
+        "gateway/routeAccounts/set" => {
+            let account_ids = string_array_param(req, "accountIds").unwrap_or_default();
+            super::value_or_error(crate::gateway::set_manual_route_account_ids(&account_ids).map(
+                |applied| {
+                    serde_json::json!({
+                        "accountIds": applied
+                    })
+                },
+            ))
         }
-        "gateway/manualAccount/clear" => {
-            crate::gateway::clear_manual_preferred_account();
+        "gateway/routeAccounts/clear" => {
+            crate::gateway::clear_manual_route_account_ids();
             super::ok_result()
         }
         "gateway/headerPolicy/get" => super::as_json(serde_json::json!({
@@ -312,4 +318,17 @@ fn u16_array_param(req: &JsonRpcRequest, key: &str) -> Option<Vec<u16>> {
             _ => None,
         })
         .collect::<Option<Vec<_>>>()
+}
+
+fn string_array_param(req: &JsonRpcRequest, key: &str) -> Option<Vec<String>> {
+    let items = req.params.as_ref()?.get(key)?.as_array()?;
+    Some(
+        items
+            .iter()
+            .filter_map(|item| item.as_str())
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .map(ToString::to_string)
+            .collect(),
+    )
 }

@@ -124,13 +124,13 @@ fn classify_auditable_method(method: &str) -> Option<(&'static str, &'static str
         "webAuth/2fa/disable" => Some(("disable", "web_auth")),
         "gateway/routeStrategy/set"
         | "gateway/retryPolicy/set"
-        | "gateway/manualAccount/set"
+        | "gateway/routeAccounts/set"
         | "gateway/headerPolicy/set"
         | "gateway/backgroundTasks/set"
         | "gateway/cache/config/set"
         | "gateway/upstreamProxy/set"
         | "gateway/transport/set" => Some(("set", "gateway_settings")),
-        "gateway/manualAccount/clear" | "gateway/cache/clear" => {
+        "gateway/routeAccounts/clear" | "gateway/cache/clear" => {
             Some(("clear", "gateway_settings"))
         }
         "gateway/freeProxy/sync" => Some(("sync", "gateway_settings")),

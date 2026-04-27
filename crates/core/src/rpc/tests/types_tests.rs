@@ -467,7 +467,7 @@ fn request_log_filter_summary_serialization_uses_camel_case() {
 }
 
 #[test]
-fn startup_snapshot_result_serialization_uses_lightweight_request_log_fields() {
+fn startup_snapshot_result_serialization_uses_route_account_ids() {
     let result = StartupSnapshotResult {
         accounts: vec![],
         usage_aggregate_summary: UsageAggregateSummaryResult::default(),
@@ -480,7 +480,7 @@ fn startup_snapshot_result_serialization_uses_lightweight_request_log_fields() {
             slug: "gpt-5".to_string(),
             display_name: "GPT-5".to_string(),
         }],
-        manual_preferred_account_id: Some("acc_manual".to_string()),
+        manual_route_account_ids: vec!["acc-a".to_string(), "acc-b".to_string()],
         request_log_today_summary: RequestLogTodaySummaryResult {
             input_tokens: 0,
             cached_input_tokens: 0,
@@ -505,6 +505,13 @@ fn startup_snapshot_result_serialization_uses_lightweight_request_log_fields() {
             .and_then(|value| value.as_str()),
         Some("acc_latest")
     );
+    assert_eq!(
+        obj.get("manualRouteAccountIds")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(2)
+    );
+    assert!(!obj.contains_key("manualPreferredAccountId"));
     assert!(!obj.contains_key("requestLogs"));
     assert!(!obj.contains_key("usageSnapshots"));
 }

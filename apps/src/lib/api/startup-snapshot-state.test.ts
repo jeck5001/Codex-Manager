@@ -37,3 +37,30 @@ test("pickCurrentAccountId prefers latest request account id before scanning acc
 
   assert.equal(accountId, "acc-b");
 });
+
+test("pickCurrentAccountId scopes selection to route whitelist before using latest request", () => {
+  const accountId = pickCurrentAccountId(
+    [
+      { id: "acc-a", availabilityLevel: "ok" },
+      { id: "acc-b", availabilityLevel: "ok" },
+      { id: "acc-c", availabilityLevel: "ok" },
+    ],
+    "acc-a",
+    ["acc-b", "acc-c"],
+  );
+
+  assert.equal(accountId, "acc-b");
+});
+
+test("pickCurrentAccountId falls back to all accounts when route whitelist is empty", () => {
+  const accountId = pickCurrentAccountId(
+    [
+      { id: "acc-a", availabilityLevel: "ok" },
+      { id: "acc-b", availabilityLevel: "ok" },
+    ],
+    "acc-b",
+    [],
+  );
+
+  assert.equal(accountId, "acc-b");
+});

@@ -124,8 +124,8 @@ export function AppBootstrap({ children }: { children: React.ReactNode }) {
 
       const warmupTasks = [
         queryClient.prefetchQuery({
-          queryKey: ["gateway", "manual-account", addr || null],
-          queryFn: () => serviceClient.getManualPreferredAccountId(),
+          queryKey: ["gateway", "route-accounts", addr || null],
+          queryFn: () => serviceClient.getRouteAccountIds(),
           staleTime: PRIMARY_PAGE_WARMUP_STALE_TIME,
         }),
         queryClient.prefetchQuery({

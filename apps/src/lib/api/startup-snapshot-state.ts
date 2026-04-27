@@ -1,7 +1,9 @@
 type StartupSnapshotSignalInput = {
   accounts?: unknown[];
   usageAggregateSummary?: {
+    primaryBucketCount?: number | null;
     primaryKnownCount?: number | null;
+    secondaryBucketCount?: number | null;
     secondaryKnownCount?: number | null;
   } | null;
   requestLogTodaySummary?: {
@@ -33,30 +35,32 @@ export function hasStartupSnapshotSignal(snapshot: StartupSnapshotSignalInput): 
 export function pickCurrentAccountId(
   accounts: CurrentAccountCandidate[],
   latestRequestAccountId?: string | null,
-  manualPreferredAccountId?: string | null,
+  routeAccountIds?: string[] | null,
 ): string | null {
   if (!accounts.length) return null;
 
-  const preferredId = String(manualPreferredAccountId || "").trim();
-  if (preferredId) {
-    const preferred = accounts.find((item) => item.id === preferredId);
-    if (preferred && canParticipateInRouting(preferred.availabilityLevel)) {
-      return preferred.id;
-    }
-  }
+  const normalizedRouteAccountIds = Array.isArray(routeAccountIds)
+    ? routeAccountIds
+        .map((accountId) => String(accountId || "").trim())
+        .filter(Boolean)
+    : [];
+  const scopedAccounts =
+    normalizedRouteAccountIds.length > 0
+      ? accounts.filter((item) => normalizedRouteAccountIds.includes(item.id))
+      : accounts;
+  if (!scopedAccounts.length) return null;
 
   const latestId = String(latestRequestAccountId || "").trim();
   if (latestId) {
-    const fromLatest = accounts.find((item) => item.id === latestId);
+    const fromLatest = scopedAccounts.find((item) => item.id === latestId);
     if (fromLatest && canParticipateInRouting(fromLatest.availabilityLevel)) {
       return fromLatest.id;
     }
   }
 
   return (
-    accounts.find((item) => canParticipateInRouting(item.availabilityLevel))?.id ||
-    (preferredId ? accounts.find((item) => item.id === preferredId)?.id ?? null : null) ||
-    accounts[0]?.id ||
+    scopedAccounts.find((item) => canParticipateInRouting(item.availabilityLevel))?.id ||
+    scopedAccounts[0]?.id ||
     null
   );
 }
