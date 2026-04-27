@@ -1,3 +1,6 @@
+use crate::app_settings::{
+    save_persisted_app_setting, APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY,
+};
 use crate::storage_helpers::open_storage;
 use codexmanager_core::storage::{Account, Token};
 
@@ -410,15 +413,49 @@ pub(crate) fn set_manual_preferred_account(account_id: &str) -> Result<(), Strin
 }
 
 pub(crate) fn set_manual_route_account_ids(account_ids: &[String]) -> Result<Vec<String>, String> {
-    route_hint::set_manual_route_account_ids(account_ids)
+    let previous = route_hint::get_manual_route_account_ids();
+    let applied = route_hint::set_manual_route_account_ids(account_ids)?;
+    let persisted = if applied.is_empty() {
+        None
+    } else {
+        Some(
+            serde_json::to_string(&applied)
+                .map_err(|err| format!("serialize route account ids failed: {err}"))?,
+        )
+    };
+    if let Err(err) =
+        save_persisted_app_setting(APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY, persisted.as_deref())
+    {
+        if previous.is_empty() {
+            route_hint::clear_manual_route_account_ids();
+        } else {
+            let _ = route_hint::set_manual_route_account_ids(&previous);
+        }
+        return Err(err);
+    }
+    Ok(applied)
 }
 
 pub(crate) fn clear_manual_preferred_account() {
     route_hint::clear_manual_preferred_account();
 }
 
-pub(crate) fn clear_manual_route_account_ids() {
+pub(crate) fn clear_manual_route_account_ids() -> Result<(), String> {
+    save_persisted_app_setting(APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY, None)?;
     route_hint::clear_manual_route_account_ids();
+    Ok(())
+}
+
+pub(crate) fn sync_manual_route_account_ids_from_storage(
+    account_ids: Option<&[String]>,
+) -> Result<Vec<String>, String> {
+    match account_ids {
+        Some(account_ids) => route_hint::set_manual_route_account_ids(account_ids),
+        None => {
+            route_hint::clear_manual_route_account_ids();
+            Ok(Vec::new())
+        }
+    }
 }
 
 pub(crate) fn clear_manual_preferred_account_if(account_id: &str) -> bool {

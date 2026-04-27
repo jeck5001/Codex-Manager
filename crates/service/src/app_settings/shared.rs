@@ -8,6 +8,7 @@ pub const APP_SETTING_UI_APPEARANCE_PRESET_KEY: &str = "ui.appearance_preset";
 pub const APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY: &str = "ui.visible_menu_items";
 pub const APP_SETTING_SERVICE_ADDR_KEY: &str = "app.service_addr";
 pub const APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY: &str = "gateway.route_strategy";
+pub const APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY: &str = "gateway.route_account_ids";
 pub const APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY: &str = "gateway.free_account_max_model";
 pub const APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY: &str =
     "gateway.quota_protection_enabled";

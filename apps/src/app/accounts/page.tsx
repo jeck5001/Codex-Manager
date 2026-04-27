@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BadgeCheck,
@@ -80,6 +80,7 @@ import {
 } from "@/lib/utils/usage";
 import { Account } from "@/types";
 import { collectInvalidAuthCleanupAccountIds } from "./account-cleanup";
+import { buildAccountsFilterUrl } from "./accounts-filter-query";
 import {
   describeRouteAccountScope,
   isRouteAccountSelected,
@@ -275,6 +276,7 @@ function getSharedTags(accounts: Account[]): string[] {
 
 export default function AccountsPage() {
   const router = useRouter();
+  const filtersLoadedRef = useRef(false);
   const {
     accounts,
     groups,
@@ -611,6 +613,7 @@ export default function AccountsPage() {
     }
     const params = new URLSearchParams(window.location.search);
     queueMicrotask(() => {
+      filtersLoadedRef.current = true;
       setSearch(String(params.get("query") || "").trim());
       setGroupFilter(String(params.get("group") || "all").trim() || "all");
       setStatusFilter(normalizeStatusFilter(params.get("status")));
@@ -626,6 +629,39 @@ export default function AccountsPage() {
       setTagFilter(normalizeTagFilter(params.get("tag")));
     });
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !filtersLoadedRef.current) {
+      return;
+    }
+    const pathname = window.location.pathname || "/accounts";
+    const nextUrl = buildAccountsFilterUrl(
+      {
+        search,
+        groupFilter,
+        statusFilter,
+        governanceFilter,
+        statusReasonFilter,
+        cooldownReasonFilter,
+        tagFilter,
+      },
+      pathname,
+    );
+    const currentUrl = `${pathname}${window.location.search}`;
+    if (currentUrl === nextUrl) {
+      return;
+    }
+    router.replace(nextUrl, { scroll: false });
+  }, [
+    cooldownReasonFilter,
+    governanceFilter,
+    groupFilter,
+    router,
+    search,
+    statusFilter,
+    statusReasonFilter,
+    tagFilter,
+  ]);
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -685,69 +721,27 @@ export default function AccountsPage() {
     setCooldownReasonFilter("all");
     setTagFilter("all");
     setPage(1);
-    router.push("/accounts");
   };
 
   const handleRemoveFilterItem = (key: string) => {
-    let nextSearch = search;
-    let nextGroupFilter = groupFilter;
-    let nextStatusFilter = statusFilter;
-    let nextGovernanceFilter = governanceFilter;
-    let nextStatusReasonFilter = statusReasonFilter;
-    let nextCooldownReasonFilter = cooldownReasonFilter;
-    let nextTagFilter = tagFilter;
     if (key === "search") {
-      nextSearch = "";
       setSearch("");
     } else if (key === "group") {
-      nextGroupFilter = "all";
       setGroupFilter("all");
     } else if (key === "status") {
-      nextStatusFilter = "all";
-      nextGovernanceFilter = "all";
-      nextCooldownReasonFilter = "all";
       setStatusFilter("all");
       setGovernanceFilter("all");
       setCooldownReasonFilter("all");
     } else if (key === "governance") {
-      nextGovernanceFilter = "all";
       setGovernanceFilter("all");
     } else if (key === "statusReason") {
-      nextStatusReasonFilter = "all";
       setStatusReasonFilter("all");
     } else if (key === "cooldownReason") {
-      nextCooldownReasonFilter = "all";
       setCooldownReasonFilter("all");
     } else if (key === "tag") {
-      nextTagFilter = "all";
       setTagFilter("all");
     }
     setPage(1);
-    const params = new URLSearchParams();
-    if (nextStatusFilter !== "all") {
-      params.set("status", nextStatusFilter);
-    }
-    if (nextGovernanceFilter !== "all") {
-      params.set("governanceReason", nextGovernanceFilter);
-    }
-    if (nextStatusReasonFilter !== "all") {
-      params.set("statusReason", nextStatusReasonFilter);
-    }
-    if (nextCooldownReasonFilter !== "all") {
-      params.set("cooldownReason", nextCooldownReasonFilter);
-    }
-    if (nextTagFilter !== "all") {
-      params.set("tag", nextTagFilter);
-    }
-    if (nextSearch.trim()) {
-      params.set("query", nextSearch.trim());
-    }
-    if (nextGroupFilter !== "all") {
-      params.set("group", nextGroupFilter);
-    }
-    router.push(
-      params.size > 0 ? `/accounts?${params.toString()}` : "/accounts",
-    );
   };
 
   const toggleSelect = (id: string) => {

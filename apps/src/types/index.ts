@@ -1241,12 +1241,6 @@ export interface GatewayRetryPolicy {
   retryableStatusCodes: number[];
 }
 
-export interface GatewayRouteStrategyInfo {
-  strategy: string;
-  options: string[];
-  routeAccountIds: string[];
-}
-
 export interface WebAuthTwoFactorSetupResult {
   enabled: boolean;
   secret: string;
@@ -1260,6 +1254,12 @@ export interface WebAuthTwoFactorStatusResult {
   enabled: boolean;
   recoveryCodesRemaining: number;
   method: string;
+}
+
+export interface GatewayRouteStrategyInfo {
+  strategy: string;
+  options: string[];
+  routeAccountIds: string[];
 }
 
 export interface GatewayResponseCacheStats {
@@ -1288,6 +1288,7 @@ export interface StartupSnapshot {
   operationAudits: OperationAuditItem[];
   apiKeys: ApiKey[];
   apiModelOptions: ModelOption[];
+  manualPreferredAccountId: string;
   manualRouteAccountIds: string[];
   requestLogTodaySummary: RequestLogTodaySummary;
   recentRequestLogCount: number;

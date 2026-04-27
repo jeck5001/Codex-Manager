@@ -32,3 +32,10 @@ test("isRouteAccountSelected matches exact account ids", () => {
   assert.equal(isRouteAccountSelected(["acc-a", "acc-b"], "acc-b"), true);
   assert.equal(isRouteAccountSelected(["acc-a", "acc-b"], "acc-c"), false);
 });
+
+test("describeRouteAccountScope falls back to unrestricted when all whitelisted accounts are unknown", () => {
+  assert.equal(
+    describeRouteAccountScope(["acc-missing"], ["acc-a", "acc-b"]),
+    "全部可用账号参与路由",
+  );
+});
