@@ -84,6 +84,8 @@ import { buildAccountsFilterUrl } from "./accounts-filter-query";
 import {
   describeRouteAccountScope,
   isRouteAccountSelected,
+  mergeRouteAccountIds,
+  removeRouteAccountIds,
 } from "./route-account-state";
 
 type StatusFilter =
@@ -860,6 +862,68 @@ export default function AccountsPage() {
     setRouteAccounts(effectiveSelectedIds);
   };
 
+  const handleAddSelectedToRoute = () => {
+    if (!effectiveSelectedIds.length) {
+      toast.error("请先选择要追加到路由的账号");
+      return;
+    }
+    if (!routeAccountIds.length) {
+      toast.info("当前未限制路由范围，请使用“仅所选参与路由”开始精确路由");
+      return;
+    }
+    const nextRouteAccountIds = mergeRouteAccountIds(
+      routeAccountIds,
+      effectiveSelectedIds,
+    );
+    if (nextRouteAccountIds.length === routeAccountIds.length) {
+      toast.info("选中账号已全部参与路由");
+      return;
+    }
+    setRouteAccounts(nextRouteAccountIds);
+  };
+
+  const handleRemoveSelectedFromRoute = () => {
+    if (!effectiveSelectedIds.length) {
+      toast.error("请先选择要移出路由的账号");
+      return;
+    }
+    if (!routeAccountIds.length) {
+      toast.info("当前全部可用账号都参与路由，无法直接移除单个账号");
+      return;
+    }
+    const nextRouteAccountIds = removeRouteAccountIds(
+      routeAccountIds,
+      effectiveSelectedIds,
+    );
+    if (nextRouteAccountIds.length === routeAccountIds.length) {
+      toast.info("选中账号当前不在路由范围内");
+      return;
+    }
+    if (!nextRouteAccountIds.length) {
+      clearRouteAccounts();
+      return;
+    }
+    setRouteAccounts(nextRouteAccountIds);
+  };
+
+  const handleToggleSingleRouteAccount = (account: Account) => {
+    const currentSelected = isRouteAccountSelected(routeAccountIds, account.id);
+    if (!routeAccountIds.length) {
+      setRouteAccounts([account.id]);
+      return;
+    }
+    if (currentSelected) {
+      const nextRouteAccountIds = removeRouteAccountIds(routeAccountIds, [account.id]);
+      if (!nextRouteAccountIds.length) {
+        clearRouteAccounts();
+        return;
+      }
+      setRouteAccounts(nextRouteAccountIds);
+      return;
+    }
+    setRouteAccounts(mergeRouteAccountIds(routeAccountIds, [account.id]));
+  };
+
   const openSingleMarkSubscriptionDialog = (account: Account) => {
     setMarkSubscriptionDialogState({
       kind: "single",
@@ -1201,6 +1265,22 @@ export default function AccountsPage() {
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="h-9 rounded-lg px-2"
+                    disabled={!effectiveSelectedIds.length || isUpdatingRouteAccounts}
+                    onClick={handleAddSelectedToRoute}
+                  >
+                    <ShieldCheck className="mr-2 h-4 w-4" /> 追加所选到路由
+                    <DropdownMenuShortcut>{effectiveSelectedIds.length || "-"}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
+                    disabled={!effectiveSelectedIds.length || isUpdatingRouteAccounts}
+                    onClick={handleRemoveSelectedFromRoute}
+                  >
+                    <ShieldOff className="mr-2 h-4 w-4" /> 从路由移除所选
+                    <DropdownMenuShortcut>{effectiveSelectedIds.length || "-"}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="h-9 rounded-lg px-2"
                     disabled={isUpdatingRouteAccounts}
                     onClick={() => clearRouteAccounts()}
                   >
@@ -1467,6 +1547,15 @@ export default function AccountsPage() {
                   );
                   const statusAction = getAccountStatusAction(account);
                   const StatusActionIcon = statusAction.icon;
+                  const routeSelected = isRouteAccountSelected(
+                    routeAccountIds,
+                    account.id,
+                  );
+                  const routeActionLabel = !routeAccountIds.length
+                    ? "仅此参与路由"
+                    : routeSelected
+                      ? "移出路由"
+                      : "加入路由";
                   return (
                     <TableRow key={account.id} className="group">
                       <TableCell className="text-center">
@@ -1488,7 +1577,7 @@ export default function AccountsPage() {
                               >
                                 {account.group || "默认"}
                               </Badge>
-                              {isRouteAccountSelected(routeAccountIds, account.id) ? (
+                              {routeSelected ? (
                                 <Badge
                                   variant="secondary"
                                   className="h-4 bg-emerald-500/15 px-1.5 text-[9px] text-emerald-700 dark:text-emerald-300"
@@ -1749,6 +1838,25 @@ export default function AccountsPage() {
                           >
                             <BarChart3 className="h-4 w-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "h-8 w-8 transition-colors",
+                              routeSelected
+                                ? "text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300"
+                                : "text-muted-foreground hover:text-primary",
+                            )}
+                            disabled={isUpdatingRouteAccounts}
+                            onClick={() => handleToggleSingleRouteAccount(account)}
+                            title={routeActionLabel}
+                          >
+                            {routeSelected ? (
+                              <ShieldOff className="h-4 w-4" />
+                            ) : (
+                              <ShieldCheck className="h-4 w-4" />
+                            )}
+                          </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger>
                               <Button
@@ -1762,6 +1870,18 @@ export default function AccountsPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="gap-2"
+                                disabled={isUpdatingRouteAccounts}
+                                onClick={() => handleToggleSingleRouteAccount(account)}
+                              >
+                                {routeSelected ? (
+                                  <ShieldOff className="h-4 w-4" />
+                                ) : (
+                                  <ShieldCheck className="h-4 w-4" />
+                                )}
+                                {routeActionLabel}
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="gap-2"
                                 disabled={

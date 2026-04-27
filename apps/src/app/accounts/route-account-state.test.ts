@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import {
   describeRouteAccountScope,
   isRouteAccountSelected,
+  mergeRouteAccountIds,
   normalizeRouteAccountIds,
+  removeRouteAccountIds,
 } from "./route-account-state.ts";
 
 test("normalizeRouteAccountIds trims, dedupes, and drops empty ids", () => {
@@ -37,5 +39,19 @@ test("describeRouteAccountScope falls back to unrestricted when all whitelisted 
   assert.equal(
     describeRouteAccountScope(["acc-missing"], ["acc-a", "acc-b"]),
     "全部可用账号参与路由",
+  );
+});
+
+test("mergeRouteAccountIds preserves existing order and appends new unique ids", () => {
+  assert.deepEqual(
+    mergeRouteAccountIds([" acc-a ", "acc-b"], ["", "acc-b", "acc-c", "acc-a", "acc-d"]),
+    ["acc-a", "acc-b", "acc-c", "acc-d"],
+  );
+});
+
+test("removeRouteAccountIds removes normalized ids and preserves remaining order", () => {
+  assert.deepEqual(
+    removeRouteAccountIds(["acc-a", "acc-b", "acc-c"], [" acc-b ", "", "acc-x"]),
+    ["acc-a", "acc-c"],
   );
 });
