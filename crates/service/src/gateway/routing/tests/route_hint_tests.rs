@@ -521,3 +521,76 @@ fn manual_preferred_account_is_preserved_when_current_candidates_do_not_include_
     );
     assert_eq!(account_ids(&candidates)[0], "acc-a");
 }
+
+#[test]
+fn route_whitelist_filters_candidates_before_ordered_strategy() {
+    let _guard = route_strategy_test_guard();
+    clear_route_state_for_tests();
+    set_manual_route_account_ids(&["acc-b".to_string(), "acc-c".to_string()])
+        .expect("set route whitelist");
+
+    let mut candidates = candidate_list();
+    retain_manual_route_account_ids(&mut candidates);
+    apply_route_strategy(&mut candidates, "gk-route-whitelist", Some("gpt-5.3-codex"));
+
+    assert_eq!(
+        account_ids(&candidates),
+        vec!["acc-b".to_string(), "acc-c".to_string()]
+    );
+    assert_eq!(
+        get_manual_route_account_ids(),
+        vec!["acc-b".to_string(), "acc-c".to_string()]
+    );
+}
+
+#[test]
+fn route_whitelist_clear_restores_full_candidate_pool() {
+    let _guard = route_strategy_test_guard();
+    clear_route_state_for_tests();
+    set_manual_route_account_ids(&["acc-b".to_string()]).expect("set route whitelist");
+    clear_manual_route_account_ids();
+
+    let mut candidates = candidate_list();
+    retain_manual_route_account_ids(&mut candidates);
+    apply_route_strategy(
+        &mut candidates,
+        "gk-route-whitelist-clear",
+        Some("gpt-5.3-codex"),
+    );
+
+    assert_eq!(
+        account_ids(&candidates),
+        vec![
+            "acc-a".to_string(),
+            "acc-b".to_string(),
+            "acc-c".to_string()
+        ]
+    );
+    assert!(get_manual_route_account_ids().is_empty());
+}
+
+#[test]
+fn route_whitelist_dedupes_ids_and_ignores_missing_accounts() {
+    let _guard = route_strategy_test_guard();
+    clear_route_state_for_tests();
+    set_manual_route_account_ids(&[
+        "acc-c".to_string(),
+        "acc-c".to_string(),
+        "acc-missing".to_string(),
+    ])
+    .expect("set route whitelist");
+
+    let mut candidates = candidate_list();
+    retain_manual_route_account_ids(&mut candidates);
+    apply_route_strategy(
+        &mut candidates,
+        "gk-route-whitelist-dedupe",
+        Some("gpt-5.3-codex"),
+    );
+
+    assert_eq!(account_ids(&candidates), vec!["acc-c".to_string()]);
+    assert_eq!(
+        get_manual_route_account_ids(),
+        vec!["acc-c".to_string(), "acc-missing".to_string()]
+    );
+}

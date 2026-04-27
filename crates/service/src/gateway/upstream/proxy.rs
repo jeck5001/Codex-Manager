@@ -362,7 +362,7 @@ pub(in super::super) fn proxy_validated_request(
                 model_for_log: current_model_for_log,
                 trace_id: trace_id.as_str(),
             },
-            candidates.as_mut_slice(),
+            &mut candidates,
         );
         let context = GatewayUpstreamExecutionContext::new(
             &trace_id,

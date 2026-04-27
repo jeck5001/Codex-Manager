@@ -1,4 +1,5 @@
 use crate::storage_helpers::open_storage;
+use codexmanager_core::storage::{Account, Token};
 
 #[path = "routing/cooldown.rs"]
 mod cooldown;
@@ -386,6 +387,14 @@ pub(crate) fn manual_preferred_account() -> Option<String> {
     route_hint::get_manual_preferred_account()
 }
 
+pub(crate) fn manual_route_account_ids() -> Vec<String> {
+    route_hint::get_manual_route_account_ids()
+}
+
+pub(crate) fn retain_manual_route_account_ids(candidates: &mut Vec<(Account, Token)>) {
+    route_hint::retain_manual_route_account_ids(candidates);
+}
+
 pub(crate) fn set_manual_preferred_account(account_id: &str) -> Result<(), String> {
     let id = account_id.trim();
     if id.is_empty() {
@@ -400,8 +409,34 @@ pub(crate) fn set_manual_preferred_account(account_id: &str) -> Result<(), Strin
     route_hint::set_manual_preferred_account(id)
 }
 
+pub(crate) fn set_manual_route_account_ids(account_ids: &[String]) -> Result<Vec<String>, String> {
+    let storage = open_storage().ok_or_else(|| "storage not initialized".to_string())?;
+    let candidates = collect_gateway_candidates(&storage)?;
+    let available = candidates
+        .iter()
+        .map(|(account, _)| account.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let requested = account_ids
+        .iter()
+        .map(|account_id| account_id.trim())
+        .filter(|account_id| !account_id.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    if requested
+        .iter()
+        .any(|account_id| !available.contains(account_id.as_str()))
+    {
+        return Err("one or more accounts are not available for routing".to_string());
+    }
+    route_hint::set_manual_route_account_ids(&requested)
+}
+
 pub(crate) fn clear_manual_preferred_account() {
     route_hint::clear_manual_preferred_account();
+}
+
+pub(crate) fn clear_manual_route_account_ids() {
+    route_hint::clear_manual_route_account_ids();
 }
 
 pub(crate) fn clear_manual_preferred_account_if(account_id: &str) -> bool {

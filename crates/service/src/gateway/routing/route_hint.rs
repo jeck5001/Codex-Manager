@@ -1,7 +1,7 @@
 use super::route_quality::route_health_score;
 use codexmanager_core::storage::now_ts;
 use codexmanager_core::storage::{Account, Token};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -76,7 +76,7 @@ impl<T: Copy> RouteStateEntry<T> {
 struct RouteRoundRobinState {
     next_start_by_key_model: HashMap<String, RouteStateEntry<usize>>,
     p2c_nonce_by_key_model: HashMap<String, RouteStateEntry<u64>>,
-    manual_preferred_account_id: Option<String>,
+    manual_route_account_ids: Option<Vec<String>>,
     maintenance_tick: u64,
 }
 
@@ -161,10 +161,6 @@ pub(crate) fn apply_route_strategy(
         return;
     }
 
-    if rotate_to_manual_preferred_account(candidates) {
-        return;
-    }
-
     let strategy = current_route_strategy_impl();
     strategy.apply(candidates, key_id, model);
     apply_new_account_protection_order(candidates);
@@ -201,26 +197,6 @@ fn apply_new_account_protection_order(candidates: &mut [(Account, Token)]) {
         )
         .is_some()
     });
-}
-
-fn rotate_to_manual_preferred_account(candidates: &mut [(Account, Token)]) -> bool {
-    let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
-    let state = crate::lock_utils::lock_recover(lock, "route_state");
-    let Some(account_id) = state.manual_preferred_account_id.as_deref() else {
-        return false;
-    };
-    let Some(index) = candidates
-        .iter()
-        .position(|(account, _)| account.id.eq(account_id))
-    else {
-        // 中文注释：手动优先是用户显式选择；当前轮次未命中候选池时保持该状态，
-        // 避免一次过滤/暂时不可用就把用户设置静默清掉。
-        return false;
-    };
-    if index > 0 {
-        candidates.rotate_left(index);
-    }
-    true
 }
 
 fn route_mode() -> u8 {
@@ -371,30 +347,72 @@ fn plan_priority(plan_type: &str) -> usize {
     }
 }
 
-pub(crate) fn get_manual_preferred_account() -> Option<String> {
+pub(crate) fn get_manual_route_account_ids() -> Vec<String> {
     ensure_route_config_loaded();
     let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
     let state = crate::lock_utils::lock_recover(lock, "route_state");
-    state.manual_preferred_account_id.clone()
+    state.manual_route_account_ids.clone().unwrap_or_default()
+}
+
+pub(crate) fn set_manual_route_account_ids(account_ids: &[String]) -> Result<Vec<String>, String> {
+    ensure_route_config_loaded();
+    let mut normalized = Vec::new();
+    let mut seen = HashSet::new();
+    for account_id in account_ids {
+        let id = account_id.trim();
+        if id.is_empty() {
+            continue;
+        }
+        if !seen.insert(id.to_string()) {
+            continue;
+        }
+        normalized.push(id.to_string());
+    }
+    let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
+    let mut state = crate::lock_utils::lock_recover(lock, "route_state");
+    state.manual_route_account_ids = if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.clone())
+    };
+    Ok(normalized)
+}
+
+pub(crate) fn clear_manual_route_account_ids() {
+    ensure_route_config_loaded();
+    let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
+    let mut state = crate::lock_utils::lock_recover(lock, "route_state");
+    state.manual_route_account_ids = None;
+}
+
+pub(crate) fn retain_manual_route_account_ids(candidates: &mut Vec<(Account, Token)>) {
+    ensure_route_config_loaded();
+    let route_account_ids = get_manual_route_account_ids();
+    if route_account_ids.is_empty() {
+        return;
+    }
+    let allowed = route_account_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    candidates.retain(|(account, _)| allowed.contains(account.id.as_str()));
+}
+
+pub(crate) fn get_manual_preferred_account() -> Option<String> {
+    get_manual_route_account_ids().into_iter().next()
 }
 
 pub(crate) fn set_manual_preferred_account(account_id: &str) -> Result<(), String> {
-    ensure_route_config_loaded();
     let id = account_id.trim();
     if id.is_empty() {
         return Err("accountId is required".to_string());
     }
-    let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
-    let mut state = crate::lock_utils::lock_recover(lock, "route_state");
-    state.manual_preferred_account_id = Some(id.to_string());
+    let _ = set_manual_route_account_ids(&[id.to_string()])?;
     Ok(())
 }
 
 pub(crate) fn clear_manual_preferred_account() {
-    ensure_route_config_loaded();
-    let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
-    let mut state = crate::lock_utils::lock_recover(lock, "route_state");
-    state.manual_preferred_account_id = None;
+    clear_manual_route_account_ids();
 }
 
 pub(crate) fn clear_manual_preferred_account_if(account_id: &str) -> bool {
@@ -405,15 +423,19 @@ pub(crate) fn clear_manual_preferred_account_if(account_id: &str) -> bool {
     }
     let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
     let mut state = crate::lock_utils::lock_recover(lock, "route_state");
-    if state
-        .manual_preferred_account_id
-        .as_deref()
-        .is_some_and(|current| current == id)
-    {
-        state.manual_preferred_account_id = None;
-        return true;
+    let Some(current_ids) = state.manual_route_account_ids.as_mut() else {
+        return false;
+    };
+    let original_len = current_ids.len();
+    current_ids.retain(|current| current != id);
+    if current_ids.is_empty() {
+        state.manual_route_account_ids = None;
     }
-    false
+    original_len != state
+        .manual_route_account_ids
+        .as_ref()
+        .map(|items| items.len())
+        .unwrap_or_default()
 }
 
 fn next_start_index(key_id: &str, model: Option<&str>, candidate_count: usize) -> usize {
@@ -646,7 +668,7 @@ pub(super) fn reload_from_env() {
         let mut state = crate::lock_utils::lock_recover(lock, "route_state");
         state.next_start_by_key_model.clear();
         state.p2c_nonce_by_key_model.clear();
-        state.manual_preferred_account_id = None;
+        state.manual_route_account_ids = None;
         state.maintenance_tick = 0;
     }
 }
@@ -714,7 +736,7 @@ fn clear_route_state_for_tests() {
         let mut state = crate::lock_utils::lock_recover(lock, "route_state");
         state.next_start_by_key_model.clear();
         state.p2c_nonce_by_key_model.clear();
-        state.manual_preferred_account_id = None;
+        state.manual_route_account_ids = None;
         state.maintenance_tick = 0;
     }
 }
