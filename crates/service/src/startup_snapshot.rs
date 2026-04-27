@@ -34,7 +34,7 @@ pub(crate) fn read_startup_snapshot(
     let operation_audits = crate::operation_audit_summary::read_recent_operation_audits()?;
     let api_keys = apikey_list::read_api_keys()?;
     let api_model_options = apikey_models::read_model_options(false)?.items;
-    let manual_preferred_account_id = gateway::manual_preferred_account();
+    let manual_route_account_ids = gateway::manual_route_account_ids();
     let request_log_today_summary = requestlog_today_summary::read_requestlog_today_summary()?;
     let request_logs = requestlog_list::read_request_logs(None, request_log_limit)?;
     let recent_request_log_count = request_logs.len() as i64;
@@ -57,7 +57,7 @@ pub(crate) fn read_startup_snapshot(
         operation_audits,
         api_keys,
         api_model_options,
-        manual_preferred_account_id,
+        manual_route_account_ids,
         request_log_today_summary,
         recent_request_log_count,
         latest_request_account_id,

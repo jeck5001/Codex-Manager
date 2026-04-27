@@ -17,26 +17,26 @@ pub async fn service_gateway_route_strategy_set(
 }
 
 #[tauri::command]
-pub async fn service_gateway_manual_account_get(
+pub async fn service_gateway_route_accounts_get(
     addr: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    rpc_call_in_background("gateway/manualAccount/get", addr, None).await
+    rpc_call_in_background("gateway/routeAccounts/get", addr, None).await
 }
 
 #[tauri::command]
-pub async fn service_gateway_manual_account_set(
+pub async fn service_gateway_route_accounts_set(
     addr: Option<String>,
-    account_id: String,
+    account_ids: Vec<String>,
 ) -> Result<serde_json::Value, String> {
-    let params = serde_json::json!({ "accountId": account_id });
-    rpc_call_in_background("gateway/manualAccount/set", addr, Some(params)).await
+    let params = serde_json::json!({ "accountIds": account_ids });
+    rpc_call_in_background("gateway/routeAccounts/set", addr, Some(params)).await
 }
 
 #[tauri::command]
-pub async fn service_gateway_manual_account_clear(
+pub async fn service_gateway_route_accounts_clear(
     addr: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    rpc_call_in_background("gateway/manualAccount/clear", addr, None).await
+    rpc_call_in_background("gateway/routeAccounts/clear", addr, None).await
 }
 
 #[tauri::command]

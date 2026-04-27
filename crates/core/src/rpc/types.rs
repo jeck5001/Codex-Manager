@@ -918,8 +918,8 @@ pub struct StartupSnapshotResult {
     pub operation_audits: Vec<OperationAuditItem>,
     pub api_keys: Vec<ApiKeySummary>,
     pub api_model_options: Vec<ModelOption>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub manual_preferred_account_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub manual_route_account_ids: Vec<String>,
     pub request_log_today_summary: RequestLogTodaySummaryResult,
     #[serde(default)]
     pub recent_request_log_count: i64,

@@ -21,6 +21,7 @@ import {
   normalizeDashboardTrend,
   normalizeFreeProxyClearResult,
   normalizeFreeProxySyncResult,
+  normalizeGatewayRouteStrategy,
   normalizeGatewayRetryPolicy,
   normalizeGatewayResponseCacheStats,
   normalizeHeatmapTrends,
@@ -63,6 +64,7 @@ import {
   DashboardTrend,
   FreeProxyClearResult,
   FreeProxySyncResult,
+  GatewayRouteStrategyInfo,
   GatewayRetryPolicy,
   GatewayResponseCacheStats,
   HeatmapTrendResult,
@@ -83,12 +85,17 @@ import {
 } from "../../types";
 import { readInitializeResult } from "@/lib/utils/service";
 
-function readStringField(payload: unknown, key: string): string {
+function readStringArrayField(payload: unknown, key: string): string[] {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return "";
+    return [];
   }
   const value = (payload as Record<string, unknown>)[key];
-  return typeof value === "string" ? value.trim() : "";
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
 }
 
 export const serviceClient = {
@@ -158,18 +165,31 @@ export const serviceClient = {
     );
     return normalizeFreeProxyClearResult(result);
   },
-  getRouteStrategy: () =>
-    invoke<string>("service_gateway_route_strategy_get", withAddr()),
+  async getRouteStrategy(): Promise<GatewayRouteStrategyInfo> {
+    const result = await invoke<unknown>(
+      "service_gateway_route_strategy_get",
+      withAddr()
+    );
+    return normalizeGatewayRouteStrategy(result);
+  },
   setRouteStrategy: (strategy: string) =>
     invoke("service_gateway_route_strategy_set", withAddr({ strategy })),
+  async getRouteAccountIds(): Promise<string[]> {
+    const result = await invoke<unknown>("service_gateway_route_accounts_get", withAddr());
+    return readStringArrayField(result, "accountIds");
+  },
+  setRouteAccounts: (accountIds: string[]) =>
+    invoke("service_gateway_route_accounts_set", withAddr({ accountIds })),
+  clearRouteAccounts: () =>
+    invoke("service_gateway_route_accounts_clear", withAddr()),
   async getManualPreferredAccountId(): Promise<string> {
-    const result = await invoke<unknown>("service_gateway_manual_account_get", withAddr());
-    return readStringField(result, "accountId");
+    const accountIds = await serviceClient.getRouteAccountIds();
+    return accountIds[0] ?? "";
   },
   setManualPreferredAccount: (accountId: string) =>
-    invoke("service_gateway_manual_account_set", withAddr({ accountId })),
+    serviceClient.setRouteAccounts(accountId ? [accountId] : []),
   clearManualPreferredAccount: () =>
-    invoke("service_gateway_manual_account_clear", withAddr()),
+    serviceClient.clearRouteAccounts(),
   getHeaderPolicy: () =>
     invoke<string>("service_gateway_header_policy_get", withAddr()),
   setHeaderPolicy: (cpaNoCookieHeaderModeEnabled: boolean) =>

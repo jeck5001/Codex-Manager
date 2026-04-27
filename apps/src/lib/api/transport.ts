@@ -301,10 +301,10 @@ const WEB_COMMAND_MAP: Record<string, WebCommandDescriptor> = {
   service_gateway_upstream_proxy_set: { rpcMethod: "gateway/upstreamProxy/set" },
   service_gateway_route_strategy_get: { rpcMethod: "gateway/routeStrategy/get" },
   service_gateway_route_strategy_set: { rpcMethod: "gateway/routeStrategy/set" },
-  service_gateway_manual_account_get: { rpcMethod: "gateway/manualAccount/get" },
-  service_gateway_manual_account_set: { rpcMethod: "gateway/manualAccount/set" },
-  service_gateway_manual_account_clear: {
-    rpcMethod: "gateway/manualAccount/clear",
+  service_gateway_route_accounts_get: { rpcMethod: "gateway/routeAccounts/get" },
+  service_gateway_route_accounts_set: { rpcMethod: "gateway/routeAccounts/set" },
+  service_gateway_route_accounts_clear: {
+    rpcMethod: "gateway/routeAccounts/clear",
   },
   service_gateway_header_policy_get: { rpcMethod: "gateway/headerPolicy/get" },
   service_gateway_header_policy_set: { rpcMethod: "gateway/headerPolicy/set" },
