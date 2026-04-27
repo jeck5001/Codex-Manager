@@ -23,6 +23,31 @@ export function isRouteAccountSelected(
   return normalizeRouteAccountIds(routeAccountIds).includes(normalizedAccountId);
 }
 
+export function mergeRouteAccountIds(
+  routeAccountIds: string[],
+  accountIdsToAdd: string[],
+): string[] {
+  return normalizeRouteAccountIds([
+    ...normalizeRouteAccountIds(routeAccountIds),
+    ...normalizeRouteAccountIds(accountIdsToAdd),
+  ]);
+}
+
+export function removeRouteAccountIds(
+  routeAccountIds: string[],
+  accountIdsToRemove: string[],
+): string[] {
+  const currentIds = normalizeRouteAccountIds(routeAccountIds);
+  if (!currentIds.length) {
+    return [];
+  }
+  const idsToRemove = new Set(normalizeRouteAccountIds(accountIdsToRemove));
+  if (!idsToRemove.size) {
+    return currentIds;
+  }
+  return currentIds.filter((accountId) => !idsToRemove.has(accountId));
+}
+
 export function describeRouteAccountScope(
   routeAccountIds: string[],
   knownAccountIds: string[],
