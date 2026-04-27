@@ -30,7 +30,7 @@ pub(in super::super) struct PrepareRequestSetupInput<'a> {
 
 pub(in super::super) fn prepare_request_setup(
     input: PrepareRequestSetupInput<'_>,
-    candidates: &mut [(Account, Token)],
+    candidates: &mut Vec<(Account, Token)>,
 ) -> UpstreamRequestSetup {
     let upstream_base = super::super::super::resolve_upstream_base_url();
     let upstream_fallback_base =
@@ -41,11 +41,16 @@ pub(in super::super) fn prepare_request_setup(
     );
     let upstream_cookie = super::super::super::upstream_cookie();
 
+    super::super::super::retain_manual_route_account_ids(candidates);
     let candidate_count = candidates.len();
     let account_max_inflight = super::super::super::account_max_inflight_limit();
     let anthropic_has_prompt_cache_key =
         input.protocol_type == PROTOCOL_ANTHROPIC_NATIVE && input.has_prompt_cache_key;
-    super::super::super::apply_route_strategy(candidates, input.key_id, input.model_for_log);
+    super::super::super::apply_route_strategy(
+        candidates.as_mut_slice(),
+        input.key_id,
+        input.model_for_log,
+    );
     let candidate_order = candidates
         .iter()
         .map(|(account, _)| format!("{}#sort={}", account.id, account.sort))
