@@ -7,16 +7,138 @@ pub(crate) struct IncomingHeaderSnapshot {
     authorization_bearer_strict: Option<String>,
     authorization_bearer_case_insensitive: Option<String>,
     x_api_key: Option<String>,
+    user_agent: Option<String>,
+    originator: Option<String>,
     session_id: Option<String>,
+    session_affinity: Option<String>,
     client_request_id: Option<String>,
     subagent: Option<String>,
     beta_features: Option<String>,
+    window_id: Option<String>,
     turn_metadata: Option<String>,
     turn_state: Option<String>,
+    parent_thread_id: Option<String>,
+    passthrough_codex_headers: Vec<(String, String)>,
     conversation_id: Option<String>,
 }
 
 impl IncomingHeaderSnapshot {
+    pub(crate) fn from_http_headers(headers: &axum::http::HeaderMap) -> Self {
+        let mut snapshot = IncomingHeaderSnapshot::default();
+        for (name, value) in headers.iter() {
+            let Ok(raw_value) = value.to_str() else {
+                continue;
+            };
+            let name = name.as_str();
+            let value = raw_value.trim();
+            if name.eq_ignore_ascii_case("Authorization") {
+                snapshot.authorization_present = true;
+                if snapshot.authorization_bearer_strict.is_none() {
+                    snapshot.authorization_bearer_strict = strict_bearer_token(value);
+                }
+                if snapshot.authorization_bearer_case_insensitive.is_none() {
+                    snapshot.authorization_bearer_case_insensitive =
+                        case_insensitive_bearer_token(value);
+                }
+                continue;
+            }
+            if name.eq_ignore_ascii_case("x-api-key") || name.eq_ignore_ascii_case("x-goog-api-key")
+            {
+                snapshot.x_api_key_present = true;
+                if snapshot.x_api_key.is_none() && !value.is_empty() {
+                    snapshot.x_api_key = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.user_agent.is_none() && name.eq_ignore_ascii_case("User-Agent") {
+                if !value.is_empty() {
+                    snapshot.user_agent = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.originator.is_none() && name.eq_ignore_ascii_case("originator") {
+                if !value.is_empty() {
+                    snapshot.originator = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.session_id.is_none() && name.eq_ignore_ascii_case("session_id") {
+                if !value.is_empty() {
+                    snapshot.session_id = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.session_affinity.is_none()
+                && name.eq_ignore_ascii_case("x-session-affinity")
+            {
+                if !value.is_empty() {
+                    snapshot.session_affinity = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.client_request_id.is_none()
+                && name.eq_ignore_ascii_case("x-client-request-id")
+            {
+                if !value.is_empty() {
+                    snapshot.client_request_id = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.subagent.is_none() && name.eq_ignore_ascii_case("x-openai-subagent") {
+                if !value.is_empty() {
+                    snapshot.subagent = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.beta_features.is_none()
+                && name.eq_ignore_ascii_case("x-codex-beta-features")
+            {
+                if !value.is_empty() {
+                    snapshot.beta_features = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.window_id.is_none() && name.eq_ignore_ascii_case("x-codex-window-id") {
+                if !value.is_empty() {
+                    snapshot.window_id = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.turn_metadata.is_none()
+                && name.eq_ignore_ascii_case("x-codex-turn-metadata")
+            {
+                if !value.is_empty() {
+                    snapshot.turn_metadata = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.turn_state.is_none() && name.eq_ignore_ascii_case("x-codex-turn-state") {
+                if !value.is_empty() {
+                    snapshot.turn_state = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.parent_thread_id.is_none()
+                && name.eq_ignore_ascii_case("x-codex-parent-thread-id")
+            {
+                if !value.is_empty() {
+                    snapshot.parent_thread_id = Some(value.to_string());
+                }
+                continue;
+            }
+            if should_capture_passthrough_codex_header(name) && !value.is_empty() {
+                remember_passthrough_header(&mut snapshot.passthrough_codex_headers, name, value);
+                continue;
+            }
+            if snapshot.conversation_id.is_none() && name.eq_ignore_ascii_case("conversation_id") {
+                if !value.is_empty() {
+                    snapshot.conversation_id = Some(value.to_string());
+                }
+            }
+        }
+        snapshot
+    }
+
     pub(crate) fn from_request(request: &Request) -> Self {
         let mut snapshot = IncomingHeaderSnapshot::default();
         for header in request.headers() {
@@ -32,7 +154,7 @@ impl IncomingHeaderSnapshot {
                 }
                 continue;
             }
-            if header.field.equiv("x-api-key") {
+            if header.field.equiv("x-api-key") || header.field.equiv("x-goog-api-key") {
                 snapshot.x_api_key_present = true;
                 if snapshot.x_api_key.is_none() {
                     let value = header.value.as_str().trim();
@@ -42,10 +164,31 @@ impl IncomingHeaderSnapshot {
                 }
                 continue;
             }
+            if snapshot.user_agent.is_none() && header.field.equiv("User-Agent") {
+                let value = header.value.as_str().trim();
+                if !value.is_empty() {
+                    snapshot.user_agent = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.originator.is_none() && header.field.equiv("originator") {
+                let value = header.value.as_str().trim();
+                if !value.is_empty() {
+                    snapshot.originator = Some(value.to_string());
+                }
+                continue;
+            }
             if snapshot.session_id.is_none() && header.field.equiv("session_id") {
                 let value = header.value.as_str().trim();
                 if !value.is_empty() {
                     snapshot.session_id = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.session_affinity.is_none() && header.field.equiv("x-session-affinity") {
+                let value = header.value.as_str().trim();
+                if !value.is_empty() {
+                    snapshot.session_affinity = Some(value.to_string());
                 }
                 continue;
             }
@@ -70,6 +213,13 @@ impl IncomingHeaderSnapshot {
                 }
                 continue;
             }
+            if snapshot.window_id.is_none() && header.field.equiv("x-codex-window-id") {
+                let value = header.value.as_str().trim();
+                if !value.is_empty() {
+                    snapshot.window_id = Some(value.to_string());
+                }
+                continue;
+            }
             if snapshot.turn_metadata.is_none() && header.field.equiv("x-codex-turn-metadata") {
                 let value = header.value.as_str().trim();
                 if !value.is_empty() {
@@ -81,6 +231,26 @@ impl IncomingHeaderSnapshot {
                 let value = header.value.as_str().trim();
                 if !value.is_empty() {
                     snapshot.turn_state = Some(value.to_string());
+                }
+                continue;
+            }
+            if snapshot.parent_thread_id.is_none() && header.field.equiv("x-codex-parent-thread-id")
+            {
+                let value = header.value.as_str().trim();
+                if !value.is_empty() {
+                    snapshot.parent_thread_id = Some(value.to_string());
+                }
+                continue;
+            }
+            let header_name = header.field.to_string();
+            if should_capture_passthrough_codex_header(header_name.as_str()) {
+                let value = header.value.as_str().trim();
+                if !value.is_empty() {
+                    remember_passthrough_header(
+                        &mut snapshot.passthrough_codex_headers,
+                        header_name.as_str(),
+                        value,
+                    );
                 }
                 continue;
             }
@@ -106,6 +276,14 @@ impl IncomingHeaderSnapshot {
             .or(self.authorization_bearer_case_insensitive.as_deref())
     }
 
+    pub(crate) fn user_agent(&self) -> Option<&str> {
+        self.user_agent.as_deref()
+    }
+
+    pub(crate) fn originator(&self) -> Option<&str> {
+        self.originator.as_deref()
+    }
+
     pub(crate) fn has_authorization(&self) -> bool {
         self.authorization_present
     }
@@ -116,6 +294,10 @@ impl IncomingHeaderSnapshot {
 
     pub(crate) fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
+    }
+
+    pub(crate) fn session_affinity(&self) -> Option<&str> {
+        self.session_affinity.as_deref()
     }
 
     pub(crate) fn client_request_id(&self) -> Option<&str> {
@@ -130,6 +312,10 @@ impl IncomingHeaderSnapshot {
         self.beta_features.as_deref()
     }
 
+    pub(crate) fn window_id(&self) -> Option<&str> {
+        self.window_id.as_deref()
+    }
+
     pub(crate) fn turn_metadata(&self) -> Option<&str> {
         self.turn_metadata.as_deref()
     }
@@ -138,9 +324,54 @@ impl IncomingHeaderSnapshot {
         self.turn_state.as_deref()
     }
 
+    pub(crate) fn parent_thread_id(&self) -> Option<&str> {
+        self.parent_thread_id.as_deref()
+    }
+
+    pub(crate) fn passthrough_codex_headers(&self) -> &[(String, String)] {
+        self.passthrough_codex_headers.as_slice()
+    }
+
     pub(crate) fn conversation_id(&self) -> Option<&str> {
         self.conversation_id.as_deref()
     }
+
+    pub(crate) fn with_conversation_id_override(&self, conversation_id: Option<&str>) -> Self {
+        self.with_thread_affinity_override(conversation_id, false)
+    }
+
+    pub(crate) fn with_thread_affinity_override(
+        &self,
+        conversation_id: Option<&str>,
+        reset_session_affinity: bool,
+    ) -> Self {
+        let mut next = self.clone();
+        next.conversation_id = conversation_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if reset_session_affinity {
+            next.session_id = None;
+            next.window_id = None;
+            next.turn_state = None;
+        }
+        next
+    }
+}
+
+fn should_capture_passthrough_codex_header(name: &str) -> bool {
+    let _ = name;
+    false
+}
+
+fn remember_passthrough_header(headers: &mut Vec<(String, String)>, name: &str, value: &str) {
+    if headers
+        .iter()
+        .any(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+    {
+        return;
+    }
+    headers.push((name.to_string(), value.to_string()));
 }
 
 fn strict_bearer_token(value: &str) -> Option<String> {
