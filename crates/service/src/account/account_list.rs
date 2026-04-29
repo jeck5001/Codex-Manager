@@ -1,36 +1,33 @@
 use codexmanager_core::{
-    auth::parse_id_token_claims,
     rpc::types::{AccountListParams, AccountListResult, AccountSummary},
-    storage::Event,
-    storage::{Account, Storage},
+    storage::{Account, AccountMetadata, AccountSubscription, Token, UsageSnapshotRecord},
 };
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
+use crate::account_plan::resolve_account_plan;
 use crate::storage_helpers::open_storage;
 
 const DEFAULT_ACCOUNT_PAGE_SIZE: i64 = 5;
 const MAX_ACCOUNT_PAGE_SIZE: i64 = 500;
-const ACCOUNT_STATUS_EVENT_LIMIT: i64 = 5_000;
-
-#[derive(Debug, Clone, Default)]
-struct AccountStatusMeta {
-    last_status_reason: Option<String>,
-    last_status_changed_at: Option<i64>,
-    last_governance_reason: Option<String>,
-    last_governance_at: Option<i64>,
-    last_isolation_reason_code: Option<String>,
-    last_isolation_reason: Option<String>,
-    last_isolation_at: Option<i64>,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AccountFilter {
     All,
     Active,
     Low,
-    Deactivated,
 }
 
+/// 函数 `read_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_accounts(
     params: AccountListParams,
     pagination_requested: bool,
@@ -42,10 +39,6 @@ pub(crate) fn read_accounts(
     let query = normalize_optional_text(params.query);
     let group_filter = normalize_optional_text(params.group_filter);
     let filter = normalize_filter(params.filter);
-    let payment_state_map = crate::account_payment::read_payment_state_map();
-    let status_meta_map = read_account_status_meta_map(&storage);
-    let account_tags_map = storage.list_account_tags().unwrap_or_default();
-    let cooldown_map = crate::gateway::list_account_cooldowns();
 
     if filter == AccountFilter::All {
         if pagination_requested {
@@ -63,20 +56,9 @@ pub(crate) fn read_accounts(
                     page_size,
                 )
                 .map_err(|err| format!("list accounts failed: {err}"))?;
+            let items = to_account_summaries(&storage, accounts)?;
             return Ok(AccountListResult {
-                items: accounts
-                    .into_iter()
-                    .map(|account| {
-                        to_account_summary(
-                            &storage,
-                            account,
-                            &payment_state_map,
-                            &status_meta_map,
-                            &account_tags_map,
-                            &cooldown_map,
-                        )
-                    })
-                    .collect(),
+                items,
                 total,
                 page,
                 page_size,
@@ -87,20 +69,9 @@ pub(crate) fn read_accounts(
             .list_accounts_filtered(query.as_deref(), group_filter.as_deref())
             .map_err(|err| format!("list accounts failed: {err}"))?;
         let total = accounts.len() as i64;
+        let items = to_account_summaries(&storage, accounts)?;
         return Ok(AccountListResult {
-            items: accounts
-                .into_iter()
-                .map(|account| {
-                    to_account_summary(
-                        &storage,
-                        account,
-                        &payment_state_map,
-                        &status_meta_map,
-                        &account_tags_map,
-                        &cooldown_map,
-                    )
-                })
-                .collect(),
+            items,
             total,
             page: 1,
             page_size: if total > 0 {
@@ -124,20 +95,9 @@ pub(crate) fn read_accounts(
             group_filter.as_deref(),
             Some((offset, page_size)),
         )?;
+        let items = to_account_summaries(&storage, paged)?;
         return Ok(AccountListResult {
-            items: paged
-                .into_iter()
-                .map(|account| {
-                    to_account_summary(
-                        &storage,
-                        account,
-                        &payment_state_map,
-                        &status_meta_map,
-                        &account_tags_map,
-                        &cooldown_map,
-                    )
-                })
-                .collect(),
+            items,
             total,
             page,
             page_size,
@@ -152,21 +112,10 @@ pub(crate) fn read_accounts(
         None,
     )?;
     let total = accounts.len() as i64;
+    let items = to_account_summaries(&storage, accounts)?;
 
     Ok(AccountListResult {
-        items: accounts
-            .into_iter()
-            .map(|account| {
-                to_account_summary(
-                    &storage,
-                    account,
-                    &payment_state_map,
-                    &status_meta_map,
-                    &account_tags_map,
-                    &cooldown_map,
-                )
-            })
-            .collect(),
+        items,
         total,
         page: 1,
         page_size: if total > 0 {
@@ -177,6 +126,17 @@ pub(crate) fn read_accounts(
     })
 }
 
+/// 函数 `normalize_optional_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
     let trimmed = value.unwrap_or_default().trim().to_string();
     if trimmed.is_empty() || trimmed == "all" {
@@ -185,6 +145,17 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
     Some(trimmed)
 }
 
+/// 函数 `normalize_filter`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_filter(value: Option<String>) -> AccountFilter {
     match value
         .unwrap_or_default()
@@ -194,15 +165,38 @@ fn normalize_filter(value: Option<String>) -> AccountFilter {
     {
         "active" => AccountFilter::Active,
         "low" => AccountFilter::Low,
-        "deactivated" => AccountFilter::Deactivated,
         _ => AccountFilter::All,
     }
 }
 
+/// 函数 `normalize_page_size`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_page_size(value: i64) -> i64 {
     value.clamp(1, MAX_ACCOUNT_PAGE_SIZE)
 }
 
+/// 函数 `clamp_page`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - page: 参数 page
+/// - total: 参数 total
+/// - page_size: 参数 page_size
+///
+/// # 返回
+/// 返回函数执行结果
 fn clamp_page(page: i64, total: i64, page_size: i64) -> i64 {
     let normalized_page = page.max(1);
     let total_pages = if total <= 0 {
@@ -213,6 +207,20 @@ fn clamp_page(page: i64, total: i64, page_size: i64) -> i64 {
     normalized_page.min(total_pages)
 }
 
+/// 函数 `filtered_account_count`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - filter: 参数 filter
+/// - query: 参数 query
+/// - group_filter: 参数 group_filter
+///
+/// # 返回
+/// 返回函数执行结果
 fn filtered_account_count(
     storage: &codexmanager_core::storage::Storage,
     filter: AccountFilter,
@@ -229,12 +237,24 @@ fn filtered_account_count(
         AccountFilter::Low => storage
             .account_count_low_quota(query, group_filter)
             .map_err(|err| format!("count low quota accounts failed: {err}")),
-        AccountFilter::Deactivated => storage
-            .account_count_deactivated(query, group_filter)
-            .map_err(|err| format!("count deactivated accounts failed: {err}")),
     }
 }
 
+/// 函数 `filtered_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - filter: 参数 filter
+/// - query: 参数 query
+/// - group_filter: 参数 group_filter
+/// - pagination: 参数 pagination
+///
+/// # 返回
+/// 返回函数执行结果
 fn filtered_accounts(
     storage: &codexmanager_core::storage::Storage,
     filter: AccountFilter,
@@ -257,158 +277,170 @@ fn filtered_accounts(
         AccountFilter::Low => storage
             .list_accounts_low_quota(query, group_filter, pagination)
             .map_err(|err| format!("list low quota accounts failed: {err}")),
-        AccountFilter::Deactivated => storage
-            .list_accounts_deactivated(query, group_filter, pagination)
-            .map_err(|err| format!("list deactivated accounts failed: {err}")),
     }
 }
 
-fn to_account_summary(
-    storage: &Storage,
+/// 函数 `to_account_summary_with_reason`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - acc: 参数 acc
+/// - status_reason: 参数 status_reason
+/// - plan_type: 参数 plan_type
+/// - plan_type_raw: 参数 plan_type_raw
+/// - note: 参数 note
+/// - tags: 参数 tags
+///
+/// # 返回
+/// 返回函数执行结果
+fn to_account_summary_with_reason(
     acc: Account,
-    payment_state_map: &std::collections::BTreeMap<
-        String,
-        crate::account_payment::AccountPaymentState,
-    >,
-    status_meta_map: &BTreeMap<String, AccountStatusMeta>,
-    account_tags_map: &BTreeMap<String, Option<String>>,
-    cooldown_map: &std::collections::HashMap<String, crate::gateway::AccountCooldownSnapshot>,
+    preferred: bool,
+    status_reason: Option<String>,
+    plan_type: Option<String>,
+    plan_type_raw: Option<String>,
+    has_subscription: Option<bool>,
+    subscription_plan: Option<String>,
+    subscription_expires_at: Option<i64>,
+    subscription_renews_at: Option<i64>,
+    note: Option<String>,
+    tags: Option<String>,
 ) -> AccountSummary {
-    let health_score = i64::from(crate::gateway::route_health_score(acc.id.as_str()));
-    let payment_state = payment_state_map.get(&acc.id);
-    let status_meta = status_meta_map.get(&acc.id);
-    let cooldown = cooldown_map.get(&acc.id);
-    let protection = crate::account_risk::derive_new_account_protection_state(&acc);
-    let label = resolve_account_display_label(storage, &acc);
-    let tags = account_tags_map
-        .get(&acc.id)
-        .cloned()
-        .flatten()
-        .map(|raw| parse_account_tags(raw.as_str()))
-        .unwrap_or_default();
     AccountSummary {
         id: acc.id,
-        label,
+        label: acc.label,
         group_name: acc.group_name,
-        tags,
+        preferred,
         sort: acc.sort,
         status: acc.status,
-        health_score,
-        last_status_reason: status_meta.and_then(|meta| meta.last_status_reason.clone()),
-        last_status_changed_at: status_meta.and_then(|meta| meta.last_status_changed_at),
-        last_governance_reason: status_meta.and_then(|meta| meta.last_governance_reason.clone()),
-        last_governance_at: status_meta.and_then(|meta| meta.last_governance_at),
-        last_isolation_reason_code: status_meta
-            .and_then(|meta| meta.last_isolation_reason_code.clone()),
-        last_isolation_reason: status_meta.and_then(|meta| meta.last_isolation_reason.clone()),
-        last_isolation_at: status_meta.and_then(|meta| meta.last_isolation_at),
-        cooldown_until: cooldown.map(|entry| entry.until),
-        cooldown_reason_code: cooldown.map(|entry| entry.reason_code.clone()),
-        cooldown_reason: cooldown.map(|entry| entry.reason_label.clone()),
-        new_account_protection_until: protection.map(|state| state.until),
-        new_account_protection_reason: protection.map(|state| state.reason.to_string()),
-        subscription_plan_type: payment_state
-            .and_then(|state| state.subscription_plan_type.clone()),
-        subscription_updated_at: payment_state.and_then(|state| state.subscription_updated_at),
-        team_manager_uploaded_at: payment_state.and_then(|state| state.team_manager_uploaded_at),
-        official_promo_link: payment_state.and_then(|state| state.official_promo_link.clone()),
-        official_promo_link_updated_at: payment_state
-            .and_then(|state| state.official_promo_link_updated_at),
+        status_reason,
+        plan_type,
+        plan_type_raw,
+        has_subscription,
+        subscription_plan,
+        subscription_expires_at,
+        subscription_renews_at,
+        note,
+        tags,
     }
 }
 
-fn read_account_status_meta_map(storage: &Storage) -> BTreeMap<String, AccountStatusMeta> {
-    let Ok(events) =
-        storage.list_recent_events_by_type("account_status_update", 0, ACCOUNT_STATUS_EVENT_LIMIT)
-    else {
-        return BTreeMap::new();
+/// 函数 `to_account_summaries`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - accounts: 参数 accounts
+///
+/// # 返回
+/// 返回函数执行结果
+fn to_account_summaries(
+    storage: &codexmanager_core::storage::Storage,
+    accounts: Vec<Account>,
+) -> Result<Vec<AccountSummary>, String> {
+    let account_ids = accounts
+        .iter()
+        .map(|account| account.id.clone())
+        .collect::<Vec<_>>();
+    let preferred_account_id = storage
+        .preferred_account_id()
+        .map_err(|err| format!("load preferred account failed: {err}"))?;
+    let status_reasons = storage
+        .latest_account_status_reasons(&account_ids)
+        .map_err(|err| format!("load account status reasons failed: {err}"))?;
+    let tokens = storage
+        .list_tokens()
+        .map_err(|err| format!("load account tokens failed: {err}"))?
+        .into_iter()
+        .map(|token| (token.account_id.clone(), token))
+        .collect::<HashMap<String, Token>>();
+    let usages = storage
+        .latest_usage_snapshots_by_account()
+        .map_err(|err| format!("load account usage snapshots failed: {err}"))?
+        .into_iter()
+        .map(|snapshot| (snapshot.account_id.clone(), snapshot))
+        .collect::<HashMap<String, UsageSnapshotRecord>>();
+    let metadata = storage
+        .list_account_metadata()
+        .map_err(|err| format!("load account metadata failed: {err}"))?
+        .into_iter()
+        .map(|item| (item.account_id.clone(), item))
+        .collect::<HashMap<String, AccountMetadata>>();
+    let subscriptions = storage
+        .list_account_subscriptions()
+        .map_err(|err| format!("load account subscriptions failed: {err}"))?
+        .into_iter()
+        .map(|item| (item.account_id.clone(), item))
+        .collect::<HashMap<String, AccountSubscription>>();
+    Ok(accounts
+        .into_iter()
+        .map(|account| {
+            map_account_summary(
+                account,
+                preferred_account_id.as_deref(),
+                &status_reasons,
+                &tokens,
+                &usages,
+                &metadata,
+                &subscriptions,
+            )
+        })
+        .collect())
+}
+
+/// 函数 `map_account_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account: 参数 account
+/// - status_reasons: 参数 status_reasons
+/// - tokens: 参数 tokens
+/// - usages: 参数 usages
+/// - metadata: 参数 metadata
+///
+/// # 返回
+/// 返回函数执行结果
+fn map_account_summary(
+    account: Account,
+    preferred_account_id: Option<&str>,
+    status_reasons: &HashMap<String, String>,
+    tokens: &HashMap<String, Token>,
+    usages: &HashMap<String, UsageSnapshotRecord>,
+    metadata: &HashMap<String, AccountMetadata>,
+    subscriptions: &HashMap<String, AccountSubscription>,
+) -> AccountSummary {
+    let account_id = account.id.clone();
+    let status_reason = status_reasons.get(&account_id).cloned();
+    let preferred = preferred_account_id.is_some_and(|id| id == account_id);
+    let plan = resolve_account_plan(tokens.get(&account_id), usages.get(&account_id));
+    let account_metadata = metadata.get(&account_id);
+    let subscription = subscriptions.get(&account_id);
+    let (fallback_plan_type, plan_type_raw) = match plan {
+        Some(value) => (Some(value.normalized), value.raw),
+        None => (None, None),
     };
-    build_account_status_meta_map(events)
-}
-
-fn build_account_status_meta_map(events: Vec<Event>) -> BTreeMap<String, AccountStatusMeta> {
-    let mut result = BTreeMap::<String, AccountStatusMeta>::new();
-    for event in events {
-        let Some(account_id) = event
-            .account_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        else {
-            continue;
-        };
-        let parsed =
-            crate::account_status_reason::parse_account_status_event(event.message.as_str());
-        if parsed.reason_label.is_none() && parsed.governance_reason_label.is_none() {
-            continue;
-        }
-        let entry = result.entry(account_id.to_string()).or_default();
-        if entry.last_status_changed_at.is_none() {
-            entry.last_status_changed_at = Some(event.created_at);
-            entry.last_status_reason = parsed.reason_label.clone();
-        }
-        if entry.last_governance_at.is_none() {
-            if let Some(label) = parsed.governance_reason_label.clone() {
-                entry.last_governance_at = Some(event.created_at);
-                entry.last_governance_reason = Some(label);
-            }
-        }
-        if entry.last_isolation_at.is_none() {
-            if let Some(label) = parsed.isolation_reason_label.clone() {
-                entry.last_isolation_at = Some(event.created_at);
-                entry.last_isolation_reason = Some(label);
-                entry.last_isolation_reason_code = parsed.isolation_reason_code.clone();
-            }
-        }
-    }
-    result
-}
-
-fn resolve_account_display_label(storage: &Storage, account: &Account) -> String {
-    let label = account.label.trim();
-    let is_placeholder = label.is_empty()
-        || account
-            .chatgpt_account_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            == Some(label)
-        || account
-            .workspace_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            == Some(label);
-    if !is_placeholder {
-        return label.to_string();
-    }
-
-    let token = storage.find_token_by_account_id(&account.id).ok().flatten();
-    if let Some(token) = token {
-        for raw in [&token.id_token, &token.access_token] {
-            if let Ok(claims) = parse_id_token_claims(raw) {
-                if let Some(email) = claims
-                    .email
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                {
-                    return email.to_string();
-                }
-            }
-        }
-    }
-
-    if label.is_empty() {
-        return account.id.clone();
-    }
-    label.to_string()
-}
-
-fn parse_account_tags(raw: &str) -> Vec<String> {
-    raw.split(',')
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .collect()
+    let subscription_plan = subscription.and_then(|value| value.plan_type.clone());
+    let plan_type = subscription_plan.clone().or(fallback_plan_type);
+    to_account_summary_with_reason(
+        account,
+        preferred,
+        status_reason,
+        plan_type,
+        plan_type_raw,
+        subscription.map(|value| value.has_subscription),
+        subscription_plan,
+        subscription.and_then(|value| value.expires_at),
+        subscription.and_then(|value| value.renews_at),
+        account_metadata.and_then(|value| value.note.clone()),
+        account_metadata.and_then(|value| value.tags.clone()),
+    )
 }

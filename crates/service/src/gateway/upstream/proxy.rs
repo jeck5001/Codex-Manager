@@ -1,148 +1,35 @@
-use crate::apikey_profile::{PROTOCOL_ANTHROPIC_NATIVE, PROTOCOL_AZURE_OPENAI};
+use crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE;
 use crate::gateway::request_log::RequestLogUsage;
 use std::time::Instant;
 use tiny_http::Request;
 
 use super::super::local_validation::LocalValidationResult;
+use super::executor::{
+    resolve_gateway_upstream_execution_plan, GatewayUpstreamExecutorKind, GatewayUpstreamRouteKind,
+};
 use super::proxy_pipeline::candidate_executor::{
     execute_candidate_sequence, CandidateExecutionResult, CandidateExecutorParams,
 };
-use super::proxy_pipeline::execution_context::{
-    FinalResultLogArgs, GatewayUpstreamExecutionContext,
-};
+use super::proxy_pipeline::execution_context::GatewayUpstreamExecutionContext;
 use super::proxy_pipeline::request_gate::acquire_request_gate;
-use super::proxy_pipeline::request_setup::{prepare_request_setup, PrepareRequestSetupInput};
+use super::proxy_pipeline::request_setup::prepare_request_setup;
 use super::proxy_pipeline::response_finalize::respond_terminal;
 use super::support::precheck::{prepare_candidates_for_proxy, CandidatePrecheckResult};
 
-fn normalize_model_name(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
-}
-
-fn build_model_attempt_chain(
-    requested_model: Option<&str>,
-    configured_chain: &[String],
-) -> Vec<String> {
-    let mut chain = Vec::new();
-    if let Some(requested_model) = requested_model.and_then(normalize_model_name) {
-        chain.push(requested_model);
-    }
-    for model in configured_chain {
-        let Some(model) = normalize_model_name(model) else {
-            continue;
-        };
-        if chain.iter().any(|item| item == &model) {
-            continue;
-        }
-        chain.push(model);
-    }
-    chain
-}
-
-fn filter_model_attempt_chain_by_allowed_models(
-    model_attempt_chain: Vec<String>,
-    allowed_models: &[String],
-    primary_model: Option<&str>,
-    requested_model: Option<&str>,
-) -> Vec<String> {
-    if allowed_models.is_empty() {
-        return model_attempt_chain;
-    }
-
-    let requested_model_allowed = requested_model
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .is_some_and(|model| allowed_models.iter().any(|allowed| allowed == model));
-    let primary_model = primary_model
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-
-    model_attempt_chain
-        .into_iter()
-        .filter(|model| {
-            allowed_models.iter().any(|allowed| allowed == model)
-                || requested_model_allowed && primary_model == Some(model.as_str())
-        })
-        .collect()
-}
-
-fn load_model_attempt_chain(
-    storage: &codexmanager_core::storage::Storage,
-    key_id: &str,
-    primary_model: Option<&str>,
-    requested_model: Option<&str>,
-) -> Vec<String> {
-    let allowed_models = storage
-        .find_api_key_allowed_models_by_id(key_id)
-        .ok()
-        .flatten()
-        .map(|raw| crate::apikey_allowed_models::parse_allowed_models(raw.as_str()))
-        .unwrap_or_default();
-    let configured_chain = storage
-        .find_api_key_model_fallback_by_id(key_id)
-        .ok()
-        .flatten()
-        .map(|config| crate::apikey_model_fallback::parse_model_chain(&config.model_chain_json))
-        .unwrap_or_default();
-    filter_model_attempt_chain_by_allowed_models(
-        build_model_attempt_chain(primary_model, configured_chain.as_slice()),
-        allowed_models.as_slice(),
-        primary_model,
-        requested_model,
-    )
-}
-
-fn actual_model_header_value<'a>(
-    requested_model: Option<&str>,
-    actual_model: Option<&'a str>,
-) -> Option<&'a str> {
-    let actual_model = actual_model?;
-    let normalized_actual = normalize_model_name(actual_model)?;
-    let normalized_requested = requested_model.and_then(normalize_model_name)?;
-    if Some(normalized_requested.as_str()) == Some(normalized_actual.as_str()) {
-        None
-    } else {
-        Some(actual_model)
-    }
-}
-
-fn build_api_key_response_cache_key(
-    storage: &codexmanager_core::storage::Storage,
-    key_id: &str,
-    original_path: &str,
-    body: &[u8],
-    client_is_stream: bool,
-) -> Option<String> {
-    if client_is_stream {
-        return None;
-    }
-
-    let enabled = match storage.find_api_key_response_cache_config_by_id(key_id) {
-        Ok(Some(config)) => config.enabled,
-        Ok(None) => false,
-        Err(err) => {
-            log::warn!(
-                "event=gateway_response_cache_key_config_read_failed key_id={} error={}",
-                key_id,
-                err
-            );
-            false
-        }
-    };
-    if !enabled {
-        return None;
-    }
-
-    super::super::build_response_cache_key(original_path, body)
-}
-
-fn append_attempted_account_ids(target: &mut Vec<String>, source: &[String]) {
-    for account_id in source {
-        target.push(account_id.clone());
-    }
-}
-
+/// 函数 `exhausted_gateway_error_for_log`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - attempted_account_ids: 参数 attempted_account_ids
+/// - skipped_cooldown: 参数 skipped_cooldown
+/// - skipped_inflight: 参数 skipped_inflight
+/// - last_attempt_error: 参数 last_attempt_error
+///
+/// # 返回
+/// 返回函数执行结果
 fn exhausted_gateway_error_for_log(
     attempted_account_ids: &[String],
     skipped_cooldown: usize,
@@ -160,7 +47,10 @@ fn exhausted_gateway_error_for_log(
     } else {
         "no_available_account"
     };
-    let mut parts = vec!["no available account".to_string(), format!("kind={kind}")];
+    let mut parts = vec![
+        crate::gateway::bilingual_error("无可用账号", "no available account"),
+        format!("kind={kind}"),
+    ];
     if !attempted_account_ids.is_empty() {
         parts.push(format!("attempted={}", attempted_account_ids.join(",")));
     }
@@ -179,6 +69,167 @@ fn exhausted_gateway_error_for_log(
     parts.join("; ")
 }
 
+fn resolve_upstream_is_stream(client_is_stream: bool, path: &str) -> bool {
+    let is_compact_path =
+        path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?");
+    client_is_stream || (path.starts_with("/v1/responses") && !is_compact_path)
+}
+
+fn should_try_provider_executor_aggregate_route(
+    execution_plan: super::executor::GatewayUpstreamExecutionPlan,
+) -> bool {
+    matches!(
+        execution_plan.route_kind,
+        GatewayUpstreamRouteKind::AggregateApi
+    )
+}
+
+fn executor_kind_label(value: GatewayUpstreamExecutorKind) -> &'static str {
+    match value {
+        GatewayUpstreamExecutorKind::CodexResponses => "codex_responses",
+        GatewayUpstreamExecutorKind::Claude => "claude",
+        GatewayUpstreamExecutorKind::Gemini => "gemini",
+    }
+}
+
+fn route_kind_label(value: GatewayUpstreamRouteKind) -> &'static str {
+    match value {
+        GatewayUpstreamRouteKind::AccountRotation => "account_rotation",
+        GatewayUpstreamRouteKind::AggregateApi => "aggregate_api",
+    }
+}
+
+fn provider_upstream_hint(
+    value: GatewayUpstreamExecutorKind,
+) -> Option<(&'static str, &'static str)> {
+    match value {
+        GatewayUpstreamExecutorKind::Claude => Some(("Claude", "claude")),
+        GatewayUpstreamExecutorKind::Gemini => Some(("Gemini", "gemini")),
+        GatewayUpstreamExecutorKind::CodexResponses => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn respond_aggregate_route_error(
+    request: Request,
+    storage: &crate::storage_helpers::StorageHandle,
+    trace_id: &str,
+    key_id: &str,
+    original_path: &str,
+    path: &str,
+    request_method: &str,
+    response_adapter: super::super::ResponseAdapter,
+    effective_service_tier_for_log: Option<&str>,
+    model_for_log: Option<&str>,
+    reasoning_for_log: Option<&str>,
+    started_at: Instant,
+    message: String,
+) -> Result<(), String> {
+    super::super::record_gateway_request_outcome(path, 404, Some("aggregate_api"));
+    super::super::trace_log::log_request_final(
+        trace_id,
+        404,
+        Some(key_id),
+        None,
+        Some(message.as_str()),
+        started_at.elapsed().as_millis(),
+    );
+    super::super::write_request_log(
+        storage,
+        super::super::request_log::RequestLogTraceContext {
+            trace_id: Some(trace_id),
+            original_path: Some(original_path),
+            adapted_path: Some(path),
+            response_adapter: Some(response_adapter),
+            effective_service_tier: effective_service_tier_for_log,
+            ..Default::default()
+        },
+        Some(key_id),
+        None,
+        path,
+        request_method,
+        model_for_log,
+        reasoning_for_log,
+        None,
+        Some(404),
+        super::super::request_log::RequestLogUsage::default(),
+        Some(message.as_str()),
+        Some(started_at.elapsed().as_millis()),
+    );
+    let response = super::super::error_response::terminal_text_response(
+        404,
+        super::super::error_message_for_client(
+            super::super::prefers_raw_errors_for_tiny_http_request(&request),
+            message,
+        ),
+        Some(trace_id),
+    );
+    let _ = request.respond(response);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn proxy_with_aggregate_candidates(
+    request: Request,
+    storage: &crate::storage_helpers::StorageHandle,
+    trace_id: &str,
+    key_id: &str,
+    original_path: &str,
+    path: &str,
+    request_method: &str,
+    method: &reqwest::Method,
+    body: &bytes::Bytes,
+    client_is_stream: bool,
+    model_for_log: Option<&str>,
+    reasoning_for_log: Option<&str>,
+    effective_service_tier_for_log: Option<&str>,
+    aggregate_api_id: Option<&str>,
+    request_deadline: Option<Instant>,
+    started_at: Instant,
+    aggregate_api_candidates: Vec<codexmanager_core::storage::AggregateApi>,
+) -> Result<(), String> {
+    let mut aggregate_api_candidates = aggregate_api_candidates;
+    super::protocol::aggregate_api::apply_gateway_route_strategy_to_aggregate_candidates(
+        &mut aggregate_api_candidates,
+        key_id,
+        model_for_log,
+        aggregate_api_id,
+    );
+
+    super::protocol::aggregate_api::proxy_aggregate_request(
+        super::protocol::aggregate_api::AggregateProxyRequest {
+            request,
+            storage,
+            trace_id,
+            key_id,
+            original_path,
+            path,
+            request_method,
+            method,
+            body,
+            is_stream: client_is_stream,
+            response_adapter: super::super::ResponseAdapter::Passthrough,
+            model_for_log,
+            reasoning_for_log,
+            effective_service_tier_for_log,
+            aggregate_api_candidates,
+            request_deadline,
+            started_at,
+        },
+    )
+}
+
+/// 函数 `proxy_validated_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn proxy_validated_request(
     request: Request,
     validated: LocalValidationResult,
@@ -195,113 +246,147 @@ pub(in super::super) fn proxy_validated_request(
         has_prompt_cache_key,
         request_shape,
         protocol_type,
-        upstream_base_url,
-        static_headers_json,
+        rotation_strategy,
+        aggregate_api_id,
+        account_plan_filter,
         response_adapter,
+        gemini_stream_output_mode,
         tool_name_restore_map,
         request_method,
         key_id,
-        api_key_name,
-        requested_model_for_log,
+        platform_key_hash,
+        local_conversation_id,
+        conversation_binding,
         model_for_log,
         reasoning_for_log,
+        service_tier_for_log,
+        effective_service_tier_for_log,
         method,
     } = validated;
     let started_at = Instant::now();
     let client_is_stream = is_stream;
-    let requested_model = requested_model_for_log.clone();
-    let is_compact_path =
-        path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?");
-    // 中文注释：对齐 CPA：/v1/responses 上游固定走 SSE。
+    // 中文注释：对齐 Codex 上游协议：/v1/responses 固定走 SSE。
     // 下游是否流式仍由客户端 `stream` 参数决定（在 response bridge 层聚合/透传）。
-    let upstream_is_stream =
-        client_is_stream || (path.starts_with("/v1/responses") && !is_compact_path);
+    let upstream_is_stream = resolve_upstream_is_stream(client_is_stream, path.as_str());
     let request_deadline = super::support::deadline::request_deadline(started_at, client_is_stream);
-    let response_cache_key = build_api_key_response_cache_key(
-        &storage,
+
+    super::super::trace_log::log_request_start(
+        trace_id.as_str(),
         key_id.as_str(),
-        original_path.as_str(),
-        body.as_ref(),
+        request_method.as_str(),
+        path.as_str(),
+        model_for_log.as_deref(),
+        reasoning_for_log.as_deref(),
+        service_tier_for_log.as_deref(),
         client_is_stream,
+        "http",
+        protocol_type.as_str(),
     );
-
-    super::super::trace_log::log_request_start(super::super::trace_log::RequestStartLog {
-        trace_id: trace_id.as_str(),
-        key_id: key_id.as_str(),
-        method: request_method.as_str(),
-        path: path.as_str(),
-        model: model_for_log.as_deref(),
-        reasoning: reasoning_for_log.as_deref(),
-        is_stream: client_is_stream,
-        protocol_type: protocol_type.as_str(),
-    });
     super::super::trace_log::log_request_body_preview(trace_id.as_str(), body.as_ref());
-
-    if let Some(cache_key) = response_cache_key.as_deref() {
-        if let Some(cached) = super::super::response_cache::lookup_response_cache(cache_key) {
-            let context = GatewayUpstreamExecutionContext::new(
-                &trace_id,
-                &storage,
-                &key_id,
-                &original_path,
-                &path,
-                &request_method,
-                response_adapter,
-                protocol_type.as_str(),
-                cached.actual_model.as_deref().or(model_for_log.as_deref()),
-                requested_model.as_deref(),
-                reasoning_for_log.as_deref(),
-                None,
-                0,
-                super::super::account_max_inflight_limit(),
-            );
-            context.log_final_result_with_model(FinalResultLogArgs {
-                final_account_id: None,
-                upstream_url: Some("cache://response-cache"),
-                model_for_log: cached.actual_model.as_deref().or(model_for_log.as_deref()),
-                status_code: cached.status_code,
-                usage: cached.usage,
-                error: None,
-                elapsed_ms: started_at.elapsed().as_millis(),
-                attempted_account_ids: None,
-                skipped_cooldown_count: 0,
-                skipped_inflight_count: 0,
-            });
-            super::super::response_cache::respond_with_cached_response(
-                request,
-                trace_id.as_str(),
-                &cached,
-            )?;
-            return Ok(());
-        }
-    }
-
-    if protocol_type == PROTOCOL_AZURE_OPENAI {
-        return super::protocol::azure_openai::proxy_azure_request(
-            request,
-            &storage,
+    if protocol_type == crate::apikey_profile::PROTOCOL_GEMINI_NATIVE {
+        super::super::trace_log::log_gemini_request_diagnostics(
             trace_id.as_str(),
-            key_id.as_str(),
             original_path.as_str(),
             path.as_str(),
-            request_method.as_str(),
-            &method,
-            &body,
-            upstream_is_stream,
-            response_adapter,
-            &tool_name_restore_map,
-            model_for_log.as_deref(),
-            reasoning_for_log.as_deref(),
-            upstream_base_url.as_deref(),
-            static_headers_json.as_deref(),
-            requested_model.as_deref(),
-            actual_model_header_value(requested_model.as_deref(), model_for_log.as_deref()),
-            request_deadline,
-            started_at,
+            format!("{response_adapter:?}").as_str(),
+            gemini_stream_output_mode.map(|mode| match mode {
+                super::super::GeminiStreamOutputMode::Sse => "sse",
+                super::super::GeminiStreamOutputMode::Raw => "raw",
+            }),
+            body.as_ref(),
         );
     }
 
-    let (request, candidates) = match prepare_candidates_for_proxy(
+    let execution_plan =
+        resolve_gateway_upstream_execution_plan(protocol_type.as_str(), rotation_strategy.as_str());
+    super::super::log_request_execution_plan(
+        trace_id.as_str(),
+        path.as_str(),
+        protocol_type.as_str(),
+        executor_kind_label(execution_plan.executor_kind),
+        route_kind_label(execution_plan.route_kind),
+    );
+
+    if should_try_provider_executor_aggregate_route(execution_plan) {
+        match super::protocol::aggregate_api::resolve_aggregate_api_rotation_candidates(
+            &storage,
+            protocol_type.as_str(),
+            aggregate_api_id.as_deref(),
+        ) {
+            Ok(aggregate_api_candidates) => {
+                return proxy_with_aggregate_candidates(
+                    request,
+                    &storage,
+                    trace_id.as_str(),
+                    key_id.as_str(),
+                    original_path.as_str(),
+                    path.as_str(),
+                    request_method.as_str(),
+                    &method,
+                    &body,
+                    client_is_stream,
+                    model_for_log.as_deref(),
+                    reasoning_for_log.as_deref(),
+                    effective_service_tier_for_log.as_deref(),
+                    aggregate_api_id.as_deref(),
+                    request_deadline,
+                    started_at,
+                    aggregate_api_candidates,
+                );
+            }
+            Err(err)
+                if matches!(
+                    execution_plan.route_kind,
+                    GatewayUpstreamRouteKind::AggregateApi
+                ) =>
+            {
+                return respond_aggregate_route_error(
+                    request,
+                    &storage,
+                    trace_id.as_str(),
+                    key_id.as_str(),
+                    original_path.as_str(),
+                    path.as_str(),
+                    request_method.as_str(),
+                    super::super::ResponseAdapter::Passthrough,
+                    effective_service_tier_for_log.as_deref(),
+                    model_for_log.as_deref(),
+                    reasoning_for_log.as_deref(),
+                    started_at,
+                    err,
+                );
+            }
+            Err(err) => {
+                let (provider_name, provider_type) =
+                    provider_upstream_hint(execution_plan.executor_kind)
+                        .unwrap_or(("Codex", "codex"));
+                return respond_aggregate_route_error(
+                    request,
+                    &storage,
+                    trace_id.as_str(),
+                    key_id.as_str(),
+                    original_path.as_str(),
+                    path.as_str(),
+                    request_method.as_str(),
+                    super::super::ResponseAdapter::Passthrough,
+                    effective_service_tier_for_log.as_deref(),
+                    model_for_log.as_deref(),
+                    reasoning_for_log.as_deref(),
+                    started_at,
+                    crate::gateway::bilingual_error(
+                        format!(
+                            "未配置 {provider_name} 上游 Provider，请添加 provider_type={provider_type} 的 Aggregate API"
+                        ),
+                        format!(
+                            "{provider_name} upstream provider is not configured; add aggregate api with provider_type={provider_type}: {err}"
+                        ),
+                    ),
+                );
+            }
+        }
+    }
+
+    let (request, mut candidates) = match prepare_candidates_for_proxy(
         request,
         &storage,
         trace_id.as_str(),
@@ -312,6 +397,7 @@ pub(in super::super) fn proxy_validated_request(
         &request_method,
         model_for_log.as_deref(),
         reasoning_for_log.as_deref(),
+        account_plan_filter.as_deref(),
     ) {
         CandidatePrecheckResult::Ready {
             request,
@@ -319,149 +405,23 @@ pub(in super::super) fn proxy_validated_request(
         } => (request, candidates),
         CandidatePrecheckResult::Responded => return Ok(()),
     };
-    let base = super::config::resolve_upstream_base_url();
-    let base_candidates = candidates;
-    let primary_model = model_for_log.as_deref();
-    let model_attempt_chain =
-        load_model_attempt_chain(&storage, &key_id, primary_model, requested_model.as_deref());
-    let model_attempt_count = model_attempt_chain.len().max(1);
-    let allow_openai_fallback = false;
-    let disable_challenge_stateless_retry = !(path.starts_with("/v1/responses")
-        || protocol_type == PROTOCOL_ANTHROPIC_NATIVE && body.len() <= 2 * 1024);
-    let _request_gate_guard = acquire_request_gate(
-        trace_id.as_str(),
-        key_id.as_str(),
+    let setup = prepare_request_setup(
         path.as_str(),
+        protocol_type.as_str(),
+        has_prompt_cache_key,
+        &incoming_headers,
+        &body,
+        &mut candidates,
+        key_id.as_str(),
+        platform_key_hash.as_str(),
+        local_conversation_id.as_deref(),
+        conversation_binding.as_ref(),
         model_for_log.as_deref(),
-        request_deadline,
+        trace_id.as_str(),
     );
-    let mut request = request;
-    let mut attempted_account_ids_all = Vec::new();
-    let mut skipped_cooldown_total = 0usize;
-    let mut skipped_inflight_total = 0usize;
-    let mut last_attempt_url = None;
-    let mut last_attempt_error = None;
-    for model_idx in 0..model_attempt_count {
-        let current_model_for_log = model_attempt_chain
-            .get(model_idx)
-            .map(String::as_str)
-            .or(primary_model)
-            .or(requested_model.as_deref());
-        let model_fallback_path = (model_attempt_chain.len() > 1
-            && model_idx < model_attempt_chain.len())
-        .then_some(&model_attempt_chain[..=model_idx]);
-        let mut candidates = base_candidates.clone();
-        let setup = prepare_request_setup(
-            PrepareRequestSetupInput {
-                path: path.as_str(),
-                protocol_type: protocol_type.as_str(),
-                has_prompt_cache_key,
-                incoming_headers: &incoming_headers,
-                body: body.as_ref(),
-                key_id: key_id.as_str(),
-                model_for_log: current_model_for_log,
-                trace_id: trace_id.as_str(),
-            },
-            &mut candidates,
-        );
-        let context = GatewayUpstreamExecutionContext::new(
-            &trace_id,
-            &storage,
-            &key_id,
-            &original_path,
-            &path,
-            &request_method,
-            response_adapter,
-            protocol_type.as_str(),
-            current_model_for_log,
-            requested_model.as_deref(),
-            reasoning_for_log.as_deref(),
-            model_fallback_path.map(|items| items as &[String]),
-            setup.candidate_count,
-            setup.account_max_inflight,
-        );
-        let has_more_models = model_idx + 1 < model_attempt_chain.len();
-        match execute_candidate_sequence(
-            request,
-            candidates,
-            CandidateExecutorParams {
-                storage: &storage,
-                method: &method,
-                incoming_headers: &incoming_headers,
-                body: &body,
-                path: path.as_str(),
-                key_id: key_id.as_str(),
-                api_key_name: api_key_name.as_deref(),
-                request_shape: request_shape.as_deref(),
-                trace_id: trace_id.as_str(),
-                model_for_log: current_model_for_log,
-                request_model_override: current_model_for_log,
-                response_adapter,
-                tool_name_restore_map: &tool_name_restore_map,
-                context: &context,
-                setup: &setup,
-                request_deadline,
-                started_at,
-                client_is_stream,
-                upstream_is_stream,
-                actual_model_header: actual_model_header_value(
-                    requested_model.as_deref(),
-                    current_model_for_log,
-                ),
-                response_cache_key: response_cache_key.as_deref(),
-                has_more_models,
-                debug,
-                allow_openai_fallback,
-                disable_challenge_stateless_retry,
-            },
-        )? {
-            CandidateExecutionResult::Handled => return Ok(()),
-            CandidateExecutionResult::Exhausted {
-                request: returned_request,
-                attempted_account_ids,
-                skipped_cooldown,
-                skipped_inflight,
-                last_attempt_url: current_last_attempt_url,
-                last_attempt_error: current_last_attempt_error,
-            } => {
-                request = *returned_request;
-                append_attempted_account_ids(
-                    &mut attempted_account_ids_all,
-                    attempted_account_ids.as_slice(),
-                );
-                skipped_cooldown_total += skipped_cooldown;
-                skipped_inflight_total += skipped_inflight;
-                last_attempt_url = current_last_attempt_url;
-                last_attempt_error = current_last_attempt_error;
+    let base = setup.upstream_base.as_str();
 
-                if has_more_models {
-                    log::warn!(
-                        "event=gateway_model_fallback trace_id={} key_id={} requested_model={} next_model={}",
-                        trace_id,
-                        key_id,
-                        current_model_for_log.unwrap_or("-"),
-                        model_attempt_chain
-                            .get(model_idx + 1)
-                            .map(String::as_str)
-                            .unwrap_or("-"),
-                    );
-                }
-            }
-        }
-    }
-    let final_error = exhausted_gateway_error_for_log(
-        attempted_account_ids_all.as_slice(),
-        skipped_cooldown_total,
-        skipped_inflight_total,
-        last_attempt_error.as_deref(),
-    );
-
-    let final_model_for_log = model_attempt_chain
-        .last()
-        .map(String::as_str)
-        .or(primary_model)
-        .or(requested_model.as_deref());
-    let final_context = GatewayUpstreamExecutionContext::new(
+    let context = GatewayUpstreamExecutionContext::new(
         &trace_id,
         &storage,
         &key_id,
@@ -470,31 +430,95 @@ pub(in super::super) fn proxy_validated_request(
         &request_method,
         response_adapter,
         protocol_type.as_str(),
-        final_model_for_log,
-        requested_model.as_deref(),
+        model_for_log.as_deref(),
         reasoning_for_log.as_deref(),
-        (model_attempt_chain.len() > 1).then_some(model_attempt_chain.as_slice()),
-        base_candidates.len(),
-        crate::gateway::runtime_config::account_max_inflight_limit(),
+        service_tier_for_log.as_deref(),
+        effective_service_tier_for_log.as_deref(),
+        setup.candidate_count,
+        setup.account_max_inflight,
+    );
+    let allow_openai_fallback = setup.upstream_fallback_base.is_some();
+    let disable_challenge_stateless_retry = !(protocol_type == PROTOCOL_ANTHROPIC_NATIVE
+        && body.len() <= 2 * 1024)
+        && !path.starts_with("/v1/responses");
+    let _request_gate_guard = acquire_request_gate(
+        trace_id.as_str(),
+        key_id.as_str(),
+        path.as_str(),
+        model_for_log.as_deref(),
+        request_deadline,
+    );
+    let exhausted = match execute_candidate_sequence(
+        request,
+        candidates,
+        CandidateExecutorParams {
+            storage: &storage,
+            method: &method,
+            incoming_headers: &incoming_headers,
+            body: &body,
+            path: path.as_str(),
+            request_shape: request_shape.as_deref(),
+            trace_id: trace_id.as_str(),
+            model_for_log: model_for_log.as_deref(),
+            response_adapter,
+            gemini_stream_output_mode,
+            tool_name_restore_map: &tool_name_restore_map,
+            context: &context,
+            setup: &setup,
+            request_deadline,
+            started_at,
+            client_is_stream,
+            upstream_is_stream,
+            debug,
+            allow_openai_fallback,
+            disable_challenge_stateless_retry,
+        },
+    )? {
+        CandidateExecutionResult::Handled => return Ok(()),
+        CandidateExecutionResult::Exhausted {
+            request,
+            attempted_account_ids,
+            skipped_cooldown,
+            skipped_inflight,
+            last_attempt_url,
+            last_attempt_error,
+        } => (
+            request,
+            attempted_account_ids,
+            skipped_cooldown,
+            skipped_inflight,
+            last_attempt_url,
+            last_attempt_error,
+        ),
+    };
+    let (
+        request,
+        attempted_account_ids,
+        skipped_cooldown,
+        skipped_inflight,
+        last_attempt_url,
+        last_attempt_error,
+    ) = exhausted;
+    let final_error = exhausted_gateway_error_for_log(
+        attempted_account_ids.as_slice(),
+        skipped_cooldown,
+        skipped_inflight,
+        last_attempt_error.as_deref(),
     );
 
-    final_context.log_final_result(FinalResultLogArgs {
-        final_account_id: None,
-        upstream_url: last_attempt_url.as_deref().or(Some(base.as_str())),
-        model_for_log: None,
-        status_code: 503,
-        usage: RequestLogUsage::default(),
-        error: Some(final_error.as_str()),
-        elapsed_ms: started_at.elapsed().as_millis(),
-        attempted_account_ids: (!attempted_account_ids_all.is_empty())
-            .then_some(attempted_account_ids_all.as_slice()),
-        skipped_cooldown_count: skipped_cooldown_total,
-        skipped_inflight_count: skipped_inflight_total,
-    });
+    context.log_final_result(
+        None,
+        last_attempt_url.as_deref().or(Some(base)),
+        503,
+        RequestLogUsage::default(),
+        Some(final_error.as_str()),
+        started_at.elapsed().as_millis(),
+        (!attempted_account_ids.is_empty()).then_some(attempted_account_ids.as_slice()),
+    );
     respond_terminal(
         request,
         503,
-        "no available account".to_string(),
+        crate::gateway::bilingual_error("无可用账号", "no available account"),
         Some(trace_id.as_str()),
     )
 }
@@ -502,10 +526,24 @@ pub(in super::super) fn proxy_validated_request(
 #[cfg(test)]
 mod tests {
     use super::{
-        actual_model_header_value, build_model_attempt_chain, exhausted_gateway_error_for_log,
-        filter_model_attempt_chain_by_allowed_models,
+        exhausted_gateway_error_for_log, provider_upstream_hint, resolve_upstream_is_stream,
+        should_try_provider_executor_aggregate_route,
+    };
+    use crate::gateway::upstream::executor::{
+        GatewayUpstreamExecutionPlan, GatewayUpstreamExecutorKind, GatewayUpstreamRouteKind,
     };
 
+    /// 函数 `exhausted_gateway_error_includes_attempts_skips_and_last_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn exhausted_gateway_error_includes_attempts_skips_and_last_error() {
         let message = exhausted_gateway_error_for_log(
@@ -522,6 +560,17 @@ mod tests {
         assert!(message.contains("last_attempt=upstream challenge blocked"));
     }
 
+    /// 函数 `exhausted_gateway_error_marks_cooldown_only_skip_kind`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn exhausted_gateway_error_marks_cooldown_only_skip_kind() {
         let message = exhausted_gateway_error_for_log(&[], 2, 0, None);
@@ -530,55 +579,70 @@ mod tests {
     }
 
     #[test]
-    fn build_model_attempt_chain_keeps_requested_model_first_and_dedupes() {
-        let chain = build_model_attempt_chain(
-            Some("o3"),
-            &[
-                "o3".to_string(),
-                "o4-mini".to_string(),
-                "gpt-4o".to_string(),
-                "o4-mini".to_string(),
-            ],
-        );
-
-        assert_eq!(chain, vec!["o3", "o4-mini", "gpt-4o"]);
+    fn resolve_upstream_is_stream_keeps_non_compact_responses_on_sse_upstream() {
+        assert!(resolve_upstream_is_stream(false, "/v1/responses"));
+        assert!(resolve_upstream_is_stream(
+            false,
+            "/v1/responses?stream=false"
+        ));
+        assert!(!resolve_upstream_is_stream(false, "/v1/responses/compact"));
+        assert!(!resolve_upstream_is_stream(false, "/v1/chat/completions"));
+        assert!(resolve_upstream_is_stream(true, "/v1/chat/completions"));
     }
 
     #[test]
-    fn filter_model_attempt_chain_by_allowed_models_removes_disallowed_fallbacks() {
-        let filtered = filter_model_attempt_chain_by_allowed_models(
-            vec![
-                "o3".to_string(),
-                "o4-mini".to_string(),
-                "gpt-4o".to_string(),
-            ],
-            &["o3".to_string(), "gpt-4o".to_string()],
-            Some("o3"),
-            Some("o3"),
-        );
-
-        assert_eq!(filtered, vec!["o3", "gpt-4o"]);
+    fn only_explicit_aggregate_route_uses_aggregate_candidates() {
+        assert!(should_try_provider_executor_aggregate_route(
+            GatewayUpstreamExecutionPlan {
+                executor_kind: GatewayUpstreamExecutorKind::Claude,
+                route_kind: GatewayUpstreamRouteKind::AggregateApi,
+            }
+        ));
+        assert!(should_try_provider_executor_aggregate_route(
+            GatewayUpstreamExecutionPlan {
+                executor_kind: GatewayUpstreamExecutorKind::Gemini,
+                route_kind: GatewayUpstreamRouteKind::AggregateApi,
+            }
+        ));
+        assert!(!should_try_provider_executor_aggregate_route(
+            GatewayUpstreamExecutionPlan {
+                executor_kind: GatewayUpstreamExecutorKind::Claude,
+                route_kind: GatewayUpstreamRouteKind::AccountRotation,
+            }
+        ));
+        assert!(should_try_provider_executor_aggregate_route(
+            GatewayUpstreamExecutionPlan {
+                executor_kind: GatewayUpstreamExecutorKind::CodexResponses,
+                route_kind: GatewayUpstreamRouteKind::AggregateApi,
+            }
+        ));
+        assert!(!should_try_provider_executor_aggregate_route(
+            GatewayUpstreamExecutionPlan {
+                executor_kind: GatewayUpstreamExecutorKind::Gemini,
+                route_kind: GatewayUpstreamRouteKind::AccountRotation,
+            }
+        ));
+        assert!(!should_try_provider_executor_aggregate_route(
+            GatewayUpstreamExecutionPlan {
+                executor_kind: GatewayUpstreamExecutorKind::CodexResponses,
+                route_kind: GatewayUpstreamRouteKind::AccountRotation,
+            }
+        ));
     }
 
     #[test]
-    fn filter_model_attempt_chain_keeps_alias_selected_primary_model() {
-        let filtered = filter_model_attempt_chain_by_allowed_models(
-            vec!["o3".to_string(), "o4-mini".to_string()],
-            &["o3-auto".to_string()],
-            Some("o3"),
-            Some("o3-auto"),
-        );
-
-        assert_eq!(filtered, vec!["o3"]);
-    }
-
-    #[test]
-    fn actual_model_header_value_only_returns_when_model_changes() {
+    fn provider_upstream_hint_reports_expected_aggregate_provider_type() {
         assert_eq!(
-            actual_model_header_value(Some("o3-auto"), Some("o3")),
-            Some("o3")
+            provider_upstream_hint(GatewayUpstreamExecutorKind::Claude),
+            Some(("Claude", "claude"))
         );
-        assert_eq!(actual_model_header_value(Some("o3"), Some("o3")), None);
-        assert_eq!(actual_model_header_value(None, Some("o3")), None);
+        assert_eq!(
+            provider_upstream_hint(GatewayUpstreamExecutorKind::Gemini),
+            Some(("Gemini", "gemini"))
+        );
+        assert_eq!(
+            provider_upstream_hint(GatewayUpstreamExecutorKind::CodexResponses),
+            None
+        );
     }
 }

@@ -1,4 +1,7 @@
-use codexmanager_core::rpc::types::{InitializeResult, JsonRpcRequest, JsonRpcResponse};
+use codexmanager_core::rpc::types::{
+    InitializeResult, JsonRpcError, JsonRpcErrorObject, JsonRpcMessage, JsonRpcRequest,
+    JsonRpcResponse,
+};
 use codexmanager_core::storage::{now_ts, Event};
 use serde::Serialize;
 use serde_json::Value;
@@ -6,27 +9,59 @@ use serde_json::Value;
 use crate::storage_helpers;
 
 mod account;
-mod alert;
+mod aggregate_api;
 mod apikey;
 mod app_settings;
-mod audit;
-mod dashboard;
 mod gateway;
-mod plugin;
 mod requestlog;
 mod service_config;
 mod startup;
-mod stats;
 mod usage;
 
+/// 函数 `response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn response(req: &JsonRpcRequest, result: Value) -> JsonRpcResponse {
-    JsonRpcResponse { id: req.id, result }
+    JsonRpcResponse {
+        id: req.id.clone(),
+        result,
+    }
 }
 
+/// 函数 `as_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn as_json<T: Serialize>(value: T) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
 
+/// 函数 `str_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn str_param<'a>(req: &'a JsonRpcRequest, key: &str) -> Option<&'a str> {
     req.params
         .as_ref()
@@ -34,10 +69,32 @@ pub(super) fn str_param<'a>(req: &'a JsonRpcRequest, key: &str) -> Option<&'a st
         .and_then(|v| v.as_str())
 }
 
+/// 函数 `string_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn string_param(req: &JsonRpcRequest, key: &str) -> Option<String> {
     str_param(req, key).map(|v| v.to_string())
 }
 
+/// 函数 `i64_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn i64_param(req: &JsonRpcRequest, key: &str) -> Option<i64> {
     req.params
         .as_ref()
@@ -45,6 +102,17 @@ pub(super) fn i64_param(req: &JsonRpcRequest, key: &str) -> Option<i64> {
         .and_then(|v| v.as_i64())
 }
 
+/// 函数 `bool_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn bool_param(req: &JsonRpcRequest, key: &str) -> Option<bool> {
     req.params
         .as_ref()
@@ -52,10 +120,32 @@ pub(super) fn bool_param(req: &JsonRpcRequest, key: &str) -> Option<bool> {
         .and_then(|v| v.as_bool())
 }
 
+/// 函数 `ok_result`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ok_result() -> Value {
     serde_json::json!({ "ok": true })
 }
 
+/// 函数 `ok_or_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn ok_or_error(result: Result<(), String>) -> Value {
     match result {
         Ok(_) => ok_result(),
@@ -63,6 +153,17 @@ pub(super) fn ok_or_error(result: Result<(), String>) -> Value {
     }
 }
 
+/// 函数 `value_or_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn value_or_error<T: Serialize>(result: Result<T, String>) -> Value {
     match result {
         Ok(value) => as_json(value),
@@ -70,8 +171,18 @@ pub(super) fn value_or_error<T: Serialize>(result: Result<T, String>) -> Value {
     }
 }
 
-pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
-    let mut pending_audit = crate::audit_record::prepare_rpc_audit(&req);
+/// 函数 `handle_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
+pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcMessage {
     if req.method == "initialize" {
         let _ = storage_helpers::initialize_storage();
         if let Some(storage) = storage_helpers::open_storage() {
@@ -83,72 +194,52 @@ pub(crate) fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
             });
         }
         let result = InitializeResult {
-            server_name: "codexmanager-service".to_string(),
             version: codexmanager_core::core_version().to_string(),
             user_agent: crate::gateway::current_codex_user_agent(),
+            codex_home: crate::process_env::db_dir().to_string_lossy().to_string(),
+            platform_family: std::env::consts::FAMILY.to_string(),
+            platform_os: std::env::consts::OS.to_string(),
         };
-        let resp = response(&req, as_json(result));
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+        return JsonRpcMessage::Response(response(&req, as_json(result)));
     }
 
     if let Some(resp) = account::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+        return JsonRpcMessage::Response(resp);
     }
-    if let Some(resp) = audit::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
-    }
-    if let Some(resp) = alert::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+    if let Some(resp) = aggregate_api::try_handle(&req) {
+        return JsonRpcMessage::Response(resp);
     }
     if let Some(resp) = apikey::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+        return JsonRpcMessage::Response(resp);
     }
     if let Some(resp) = app_settings::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+        return JsonRpcMessage::Response(resp);
     }
     if let Some(resp) = usage::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+        return JsonRpcMessage::Response(resp);
     }
     if let Some(resp) = service_config::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+        return JsonRpcMessage::Response(resp);
     }
     if let Some(resp) = startup::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
-    }
-    if let Some(resp) = stats::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
-    }
-    if let Some(resp) = dashboard::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+        return JsonRpcMessage::Response(resp);
     }
     if let Some(resp) = gateway::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+        return JsonRpcMessage::Response(resp);
     }
-    if let Some(resp) = plugin::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+    if let Some(resp) = crate::plugin::try_handle(&req) {
+        return JsonRpcMessage::Response(resp);
     }
     if let Some(resp) = requestlog::try_handle(&req) {
-        crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-        return resp;
+        return JsonRpcMessage::Response(resp);
     }
 
-    let resp = response(
-        &req,
-        crate::error_codes::rpc_error_payload("unknown_method".to_string()),
-    );
-    crate::audit_record::finalize_rpc_audit(pending_audit.take(), &resp);
-    resp
+    JsonRpcMessage::Error(JsonRpcError {
+        id: req.id,
+        error: JsonRpcErrorObject {
+            code: -32601,
+            data: None,
+            message: "unknown_method".to_string(),
+        },
+    })
 }

@@ -3,10 +3,25 @@ use crate::account_status::set_account_status;
 use codexmanager_core::storage::{now_ts, Storage, UsageSnapshotRecord};
 use codexmanager_core::usage::parse_usage_snapshot;
 
-const DEFAULT_USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT: usize = 200;
+const DEFAULT_USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT: usize = 0;
 const USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT_ENV: &str =
     "CODEXMANAGER_USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT";
 
+fn usage_status_updates_blocked(current_status: &str) -> bool {
+    current_status.trim().eq_ignore_ascii_case("disabled")
+}
+
+/// 函数 `usage_snapshots_retain_per_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn usage_snapshots_retain_per_account() -> usize {
     std::env::var(USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT_ENV)
         .ok()
@@ -14,32 +29,43 @@ fn usage_snapshots_retain_per_account() -> usize {
         .unwrap_or(DEFAULT_USAGE_SNAPSHOTS_RETAIN_PER_ACCOUNT)
 }
 
+/// 函数 `apply_status_from_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn apply_status_from_snapshot(
     storage: &Storage,
     record: &UsageSnapshotRecord,
 ) -> Availability {
     let availability = evaluate_snapshot(record);
+    let current_status = storage
+        .find_account_by_id(&record.account_id)
+        .ok()
+        .flatten()
+        .map(|account| account.status)
+        .unwrap_or_default();
+
+    if usage_status_updates_blocked(&current_status) {
+        return availability;
+    }
+
     match availability {
         Availability::Available => {
-            let current_status = storage
-                .find_account_by_id(&record.account_id)
-                .ok()
-                .flatten()
-                .map(|account| account.status)
-                .unwrap_or_default();
-            if !current_status.trim().eq_ignore_ascii_case("disabled") {
-                set_account_status(storage, &record.account_id, "active", "usage_ok");
-            }
+            set_account_status(storage, &record.account_id, "active", "usage_ok");
         }
-        Availability::Unavailable(
-            "usage_protected_primary"
-            | "usage_protected_secondary"
-            | "usage_exhausted_primary"
-            | "usage_exhausted_secondary",
-        ) => {
-            crate::gateway::mark_account_cooldown(
+        Availability::Unavailable("usage_exhausted_primary" | "usage_exhausted_secondary") => {
+            set_account_status(
+                storage,
                 &record.account_id,
-                crate::gateway::CooldownReason::LowQuota,
+                "limited",
+                "usage_limit_exhausted",
             );
         }
         Availability::Unavailable(_) => {}
@@ -47,6 +73,17 @@ pub(crate) fn apply_status_from_snapshot(
     availability
 }
 
+/// 函数 `store_usage_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn store_usage_snapshot(
     storage: &Storage,
     account_id: &str,
@@ -68,7 +105,6 @@ pub(crate) fn store_usage_snapshot(
     storage
         .insert_usage_snapshot(&record)
         .map_err(|e| e.to_string())?;
-    crate::gateway::invalidate_candidate_cache();
     let retain = usage_snapshots_retain_per_account();
     if retain > 0 {
         let _ = storage.prune_usage_snapshots_for_account(account_id, retain);

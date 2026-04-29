@@ -1,12 +1,10 @@
 use axum::body::{to_bytes, Body};
 use axum::extract::State;
 use axum::http::{header, Request as HttpRequest, Response, StatusCode};
-use axum::middleware::{self, Next};
-use axum::routing::{any, get, post};
+use axum::routing::{any, post};
 use axum::Router;
 use reqwest::Client;
 use std::io;
-use std::time::Instant;
 
 use crate::http::proxy_bridge::run_proxy_server;
 use crate::http::proxy_request::{build_target_url, filter_request_headers};
@@ -18,6 +16,19 @@ struct ProxyState {
     client: Client,
 }
 
+/// 函数 `log_proxy_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - target_url: 参数 target_url
+/// - message: 参数 message
+///
+/// # 返回
+/// 无
 fn log_proxy_error(status: StatusCode, target_url: &str, message: &str) {
     log::warn!(
         "event=front_proxy_error code={} status={} target_url={} message={}",
@@ -28,19 +39,54 @@ fn log_proxy_error(status: StatusCode, target_url: &str, message: &str) {
     );
 }
 
+/// 函数 `build_backend_base_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - backend_addr: 参数 backend_addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_backend_base_url(backend_addr: &str) -> String {
     format!("http://{backend_addr}")
 }
 
+/// 函数 `build_local_backend_client`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_local_backend_client() -> Result<Client, reqwest::Error> {
     Client::builder().no_proxy().build()
 }
 
+/// 函数 `proxy_handler`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - State(state): 参数 State(state)
+/// - request: 参数 request
+///
+/// # 返回
+/// 返回函数执行结果
 async fn proxy_handler(
     State(state): State<ProxyState>,
     request: HttpRequest<Body>,
 ) -> Response<Body> {
     let (parts, body) = request.into_parts();
+    let prefer_raw_errors = crate::gateway::prefers_raw_errors_for_http_headers(&parts.headers);
     let target_url = build_target_url(&state.backend_base_url, &parts.uri);
     let max_body_bytes = crate::gateway::front_proxy_max_body_bytes();
 
@@ -50,28 +96,49 @@ async fn proxy_handler(
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.trim().parse::<u64>().ok())
     {
-        if content_length > max_body_bytes as u64 {
-            let message = format!("request body too large: content-length={content_length}");
+        if max_body_bytes > 0 && content_length > max_body_bytes as u64 {
+            let message = crate::gateway::bilingual_error(
+                "请求体过大",
+                format!("request body too large: content-length={content_length}"),
+            );
             log_proxy_error(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 target_url.as_str(),
                 message.as_str(),
             );
-            return text_error_response(StatusCode::PAYLOAD_TOO_LARGE, message);
+            return text_error_response(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                crate::gateway::error_message_for_client(prefer_raw_errors, message),
+            );
         }
     }
 
     let outbound_headers = filter_request_headers(&parts.headers);
-    let body_bytes = match to_bytes(body, max_body_bytes).await {
+    let read_limit = if max_body_bytes == 0 {
+        usize::MAX
+    } else {
+        max_body_bytes
+    };
+    let body_bytes = match to_bytes(body, read_limit).await {
         Ok(bytes) => bytes,
         Err(_) => {
-            let message = format!("request body too large: content-length>{max_body_bytes}");
+            let message = if max_body_bytes == 0 {
+                crate::gateway::bilingual_error("请求体过大", "request body too large")
+            } else {
+                crate::gateway::bilingual_error(
+                    "请求体过大",
+                    format!("request body too large: content-length>{max_body_bytes}"),
+                )
+            };
             log_proxy_error(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 target_url.as_str(),
                 message.as_str(),
             );
-            return text_error_response(StatusCode::PAYLOAD_TOO_LARGE, message);
+            return text_error_response(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                crate::gateway::error_message_for_client(prefer_raw_errors, message),
+            );
         }
     };
 
@@ -82,13 +149,19 @@ async fn proxy_handler(
     let upstream = match builder.send().await {
         Ok(response) => response,
         Err(err) => {
-            let message = format!("backend proxy error: {err}");
+            let message = crate::gateway::bilingual_error(
+                "后端代理请求失败",
+                format!("backend proxy error: {err}"),
+            );
             log_proxy_error(
                 StatusCode::BAD_GATEWAY,
                 target_url.as_str(),
                 message.as_str(),
             );
-            return text_error_response(StatusCode::BAD_GATEWAY, message);
+            return text_error_response(
+                StatusCode::BAD_GATEWAY,
+                crate::gateway::error_message_for_client(prefer_raw_errors, message),
+            );
         }
     };
 
@@ -100,65 +173,74 @@ async fn proxy_handler(
     match response_builder.body(Body::from_stream(upstream.bytes_stream())) {
         Ok(response) => response,
         Err(err) => {
-            let message = format!("build response failed: {err}");
+            let message = crate::gateway::bilingual_error(
+                "构建响应失败",
+                format!("build response failed: {err}"),
+            );
             log_proxy_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 target_url.as_str(),
                 message.as_str(),
             );
-            text_error_response(StatusCode::INTERNAL_SERVER_ERROR, message)
+            text_error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                crate::gateway::error_message_for_client(prefer_raw_errors, message),
+            )
         }
     }
 }
 
-async fn access_log(request: HttpRequest<Body>, next: Next) -> Response<Body> {
-    let method = request.method().clone();
-    let path = request
-        .uri()
-        .path_and_query()
-        .map(|value| value.as_str().to_string())
-        .unwrap_or_else(|| request.uri().path().to_string());
-    let started_at = Instant::now();
-
-    let response = next.run(request).await;
-    let status = response.status();
-    let elapsed_ms = started_at.elapsed().as_millis();
-
-    log::info!(
-        "event=http_access method={} path={} status={} duration_ms={}",
-        method,
-        path,
-        status.as_u16(),
-        elapsed_ms
-    );
-
-    response
+async fn responses_handler(
+    State(state): State<ProxyState>,
+    request: HttpRequest<Body>,
+) -> Response<Body> {
+    if request.method() == axum::http::Method::GET
+        && crate::http::responses_websocket::is_websocket_upgrade_request(request.headers())
+    {
+        return crate::http::responses_websocket::upgrade_responses_websocket(request).await;
+    }
+    proxy_handler(State(state), request).await
 }
 
+/// 函数 `build_front_proxy_app`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - state: 参数 state
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_front_proxy_app(state: ProxyState) -> Router {
     Router::new()
         .route("/rpc", post(crate::http::rpc_endpoint::handle_rpc_http))
-        .route(
-            "/export/auditlogs",
-            get(crate::http::auditlog_export_endpoint::handle_auditlog_export_http),
-        )
-        .route(
-            "/export/requestlogs",
-            get(crate::http::requestlog_export_endpoint::handle_requestlog_export_http),
-        )
+        .route("/v1/responses", any(responses_handler))
         .fallback(any(proxy_handler))
-        .layer(middleware::from_fn(access_log))
         .with_state(state)
 }
 
+/// 函数 `run_front_proxy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn run_front_proxy(addr: &str, backend_addr: &str) -> io::Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .map_err(io::Error::other)?;
+        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
 
     runtime.block_on(async move {
-        let client = build_local_backend_client().map_err(io::Error::other)?;
+        let client = build_local_backend_client()
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         let state = ProxyState {
             backend_base_url: build_backend_base_url(backend_addr),
             client,

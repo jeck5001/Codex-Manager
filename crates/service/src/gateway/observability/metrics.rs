@@ -3,16 +3,15 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use codexmanager_core::storage::now_ts;
-
 static ACCOUNT_INFLIGHT: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
 static GATEWAY_REQUEST_LABELS: OnceLock<Mutex<HashMap<GatewayRequestLabelKey, usize>>> =
-    OnceLock::new();
-static GATEWAY_LATENCY_SAMPLES: OnceLock<Mutex<std::collections::VecDeque<GatewayLatencySample>>> =
     OnceLock::new();
 static GATEWAY_TOTAL_REQUESTS: AtomicUsize = AtomicUsize::new(0);
 static GATEWAY_ACTIVE_REQUESTS: AtomicUsize = AtomicUsize::new(0);
 static GATEWAY_FAILOVER_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
+static GATEWAY_CANDIDATE_SKIPS_TOTAL: AtomicUsize = AtomicUsize::new(0);
+static GATEWAY_CANDIDATE_SKIP_COOLDOWN_TOTAL: AtomicUsize = AtomicUsize::new(0);
+static GATEWAY_CANDIDATE_SKIP_INFLIGHT_TOTAL: AtomicUsize = AtomicUsize::new(0);
 static GATEWAY_COOLDOWN_MARKS: AtomicUsize = AtomicUsize::new(0);
 static RPC_TOTAL_REQUESTS: AtomicUsize = AtomicUsize::new(0);
 static RPC_FAILED_REQUESTS: AtomicUsize = AtomicUsize::new(0);
@@ -31,8 +30,6 @@ static HTTP_QUEUE_ENQUEUE_FAILURES: AtomicUsize = AtomicUsize::new(0);
 static GATEWAY_UPSTREAM_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
 static GATEWAY_UPSTREAM_ATTEMPT_ERRORS: AtomicUsize = AtomicUsize::new(0);
 static GATEWAY_UPSTREAM_ATTEMPT_DURATION_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
-const GATEWAY_LATENCY_RING_BUFFER_MAX: usize = 4096;
-const GATEWAY_LATENCY_RING_BUFFER_TTL_SECS: i64 = 3600;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct GatewayRequestLabelKey {
@@ -42,9 +39,9 @@ struct GatewayRequestLabelKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct GatewayLatencySample {
-    created_at: i64,
-    duration_ms: i64,
+pub(crate) enum GatewayCandidateSkipReason {
+    Cooldown,
+    Inflight,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,6 +50,9 @@ pub(crate) struct GatewayMetricsSnapshot {
     pub active_requests: usize,
     pub account_inflight_total: usize,
     pub failover_attempts: usize,
+    pub candidate_skips_total: usize,
+    pub candidate_skip_cooldown_total: usize,
+    pub candidate_skip_inflight_total: usize,
     pub cooldown_marks: usize,
     pub rpc_total_requests: usize,
     pub rpc_failed_requests: usize,
@@ -80,12 +80,34 @@ pub(crate) struct RpcRequestGuard {
 }
 
 impl Drop for GatewayRequestGuard {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         GATEWAY_ACTIVE_REQUESTS.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
 impl Drop for RpcRequestGuard {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         let duration_ms = duration_to_millis(self.started_at.elapsed());
         RPC_REQUEST_DURATION_MS_TOTAL.fetch_add(duration_ms, Ordering::Relaxed);
@@ -96,17 +118,50 @@ impl Drop for RpcRequestGuard {
 }
 
 impl RpcRequestGuard {
+    /// 函数 `mark_success`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 无
     pub(crate) fn mark_success(&mut self) {
         self.failed = false;
     }
 }
 
+/// 函数 `begin_gateway_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn begin_gateway_request() -> GatewayRequestGuard {
     GATEWAY_TOTAL_REQUESTS.fetch_add(1, Ordering::Relaxed);
     GATEWAY_ACTIVE_REQUESTS.fetch_add(1, Ordering::Relaxed);
     GatewayRequestGuard
 }
 
+/// 函数 `begin_rpc_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn begin_rpc_request() -> RpcRequestGuard {
     RPC_TOTAL_REQUESTS.fetch_add(1, Ordering::Relaxed);
     RpcRequestGuard {
@@ -115,14 +170,70 @@ pub(crate) fn begin_rpc_request() -> RpcRequestGuard {
     }
 }
 
+/// 函数 `record_gateway_failover_attempt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_gateway_failover_attempt() {
     GATEWAY_FAILOVER_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
 }
 
+/// 函数 `record_gateway_candidate_skip`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-13
+///
+/// # 参数
+/// - reason: 参数 reason
+///
+/// # 返回
+/// 无
+pub(crate) fn record_gateway_candidate_skip(reason: GatewayCandidateSkipReason) {
+    GATEWAY_CANDIDATE_SKIPS_TOTAL.fetch_add(1, Ordering::Relaxed);
+    match reason {
+        GatewayCandidateSkipReason::Cooldown => {
+            GATEWAY_CANDIDATE_SKIP_COOLDOWN_TOTAL.fetch_add(1, Ordering::Relaxed);
+        }
+        GatewayCandidateSkipReason::Inflight => {
+            GATEWAY_CANDIDATE_SKIP_INFLIGHT_TOTAL.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// 函数 `record_gateway_cooldown_mark`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_gateway_cooldown_mark() {
     GATEWAY_COOLDOWN_MARKS.fetch_add(1, Ordering::Relaxed);
 }
 
+/// 函数 `record_usage_refresh_outcome`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_usage_refresh_outcome(success: bool, duration_ms: u64) {
     USAGE_REFRESH_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
     if success {
@@ -133,6 +244,17 @@ pub(crate) fn record_usage_refresh_outcome(success: bool, duration_ms: u64) {
     USAGE_REFRESH_DURATION_MS_TOTAL.fetch_add(duration_ms, Ordering::Relaxed);
 }
 
+/// 函数 `record_db_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_db_error(err: &str) {
     DB_ERRORS_TOTAL.fetch_add(1, Ordering::Relaxed);
     if is_db_busy_error(err) {
@@ -140,11 +262,33 @@ pub(crate) fn record_db_error(err: &str) {
     }
 }
 
+/// 函数 `record_http_queue_capacity`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_http_queue_capacity(normal_capacity: usize, stream_capacity: usize) {
     HTTP_QUEUE_CAPACITY.store(normal_capacity, Ordering::Relaxed);
     HTTP_STREAM_QUEUE_CAPACITY.store(stream_capacity, Ordering::Relaxed);
 }
 
+/// 函数 `record_http_queue_enqueue`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_http_queue_enqueue(is_stream_queue: bool) {
     if is_stream_queue {
         HTTP_STREAM_QUEUE_DEPTH.fetch_add(1, Ordering::Relaxed);
@@ -153,6 +297,17 @@ pub(crate) fn record_http_queue_enqueue(is_stream_queue: bool) {
     }
 }
 
+/// 函数 `record_http_queue_dequeue`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_http_queue_dequeue(is_stream_queue: bool) {
     if is_stream_queue {
         atomic_dec_saturating(&HTTP_STREAM_QUEUE_DEPTH);
@@ -161,10 +316,32 @@ pub(crate) fn record_http_queue_dequeue(is_stream_queue: bool) {
     }
 }
 
+/// 函数 `record_http_queue_enqueue_failure`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_http_queue_enqueue_failure() {
     HTTP_QUEUE_ENQUEUE_FAILURES.fetch_add(1, Ordering::Relaxed);
 }
 
+/// 函数 `record_gateway_upstream_attempt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_gateway_upstream_attempt(duration_ms: u64, failed: bool) {
     GATEWAY_UPSTREAM_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
     GATEWAY_UPSTREAM_ATTEMPT_DURATION_MS_TOTAL.fetch_add(duration_ms, Ordering::Relaxed);
@@ -173,34 +350,17 @@ pub(crate) fn record_gateway_upstream_attempt(duration_ms: u64, failed: bool) {
     }
 }
 
-pub(crate) fn record_gateway_latency_sample(created_at: i64, duration_ms: Option<i64>) {
-    let Some(duration_ms) = duration_ms.filter(|value| *value >= 0) else {
-        return;
-    };
-    let lock = GATEWAY_LATENCY_SAMPLES.get_or_init(|| Mutex::new(Default::default()));
-    let mut samples = crate::lock_utils::lock_recover(lock, "gateway_latency_samples");
-    prune_gateway_latency_samples(&mut samples, created_at);
-    samples.push_back(GatewayLatencySample {
-        created_at,
-        duration_ms,
-    });
-    while samples.len() > GATEWAY_LATENCY_RING_BUFFER_MAX {
-        samples.pop_front();
-    }
-}
-
-pub(crate) fn recent_gateway_latency_samples(window_start: i64) -> Vec<i64> {
-    let now = now_ts();
-    let lock = GATEWAY_LATENCY_SAMPLES.get_or_init(|| Mutex::new(Default::default()));
-    let mut samples = crate::lock_utils::lock_recover(lock, "gateway_latency_samples");
-    prune_gateway_latency_samples(&mut samples, now);
-    samples
-        .iter()
-        .filter(|sample| sample.created_at >= window_start)
-        .map(|sample| sample.duration_ms)
-        .collect()
-}
-
+/// 函数 `record_gateway_request_outcome`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn record_gateway_request_outcome(
     path: &str,
     status_code: u16,
@@ -217,41 +377,60 @@ pub(crate) fn record_gateway_request_outcome(
     *entry += 1;
 }
 
+/// 函数 `duration_to_millis`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn duration_to_millis(duration: Duration) -> u64 {
     duration.as_millis().min(u128::from(u64::MAX)) as u64
 }
 
+/// 函数 `account_inflight_total`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn account_inflight_total() -> usize {
     let lock = ACCOUNT_INFLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
     let map = crate::lock_utils::lock_recover(lock, "account_inflight");
     map.values().copied().sum()
 }
 
-pub(super) fn clear_runtime_state() {
-    if let Some(lock) = GATEWAY_LATENCY_SAMPLES.get() {
-        crate::lock_utils::lock_recover(lock, "gateway_latency_samples").clear();
-    }
-}
-
-fn prune_gateway_latency_samples(
-    samples: &mut std::collections::VecDeque<GatewayLatencySample>,
-    now: i64,
-) {
-    let ttl_cutoff = now - GATEWAY_LATENCY_RING_BUFFER_TTL_SECS;
-    while samples
-        .front()
-        .is_some_and(|sample| sample.created_at < ttl_cutoff)
-    {
-        samples.pop_front();
-    }
-}
-
+/// 函数 `gateway_metrics_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn gateway_metrics_snapshot() -> GatewayMetricsSnapshot {
     GatewayMetricsSnapshot {
         total_requests: GATEWAY_TOTAL_REQUESTS.load(Ordering::Relaxed),
         active_requests: GATEWAY_ACTIVE_REQUESTS.load(Ordering::Relaxed),
         account_inflight_total: account_inflight_total(),
         failover_attempts: GATEWAY_FAILOVER_ATTEMPTS.load(Ordering::Relaxed),
+        candidate_skips_total: GATEWAY_CANDIDATE_SKIPS_TOTAL.load(Ordering::Relaxed),
+        candidate_skip_cooldown_total: GATEWAY_CANDIDATE_SKIP_COOLDOWN_TOTAL
+            .load(Ordering::Relaxed),
+        candidate_skip_inflight_total: GATEWAY_CANDIDATE_SKIP_INFLIGHT_TOTAL
+            .load(Ordering::Relaxed),
         cooldown_marks: GATEWAY_COOLDOWN_MARKS.load(Ordering::Relaxed),
         rpc_total_requests: RPC_TOTAL_REQUESTS.load(Ordering::Relaxed),
         rpc_failed_requests: RPC_FAILED_REQUESTS.load(Ordering::Relaxed),
@@ -274,6 +453,17 @@ pub(crate) fn gateway_metrics_snapshot() -> GatewayMetricsSnapshot {
     }
 }
 
+/// 函数 `gateway_metrics_prometheus`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn gateway_metrics_prometheus() -> String {
     let m = gateway_metrics_snapshot();
     let labeled = gateway_labeled_metrics_prometheus();
@@ -282,6 +472,9 @@ pub(crate) fn gateway_metrics_prometheus() -> String {
 codexmanager_gateway_requests_active {}\n\
 codexmanager_gateway_account_inflight_total {}\n\
 codexmanager_gateway_failover_attempts_total {}\n\
+codexmanager_gateway_candidate_skips_total {}\n\
+codexmanager_gateway_candidate_skips_by_reason_total{{reason=\"cooldown\"}} {}\n\
+codexmanager_gateway_candidate_skips_by_reason_total{{reason=\"inflight\"}} {}\n\
 codexmanager_gateway_cooldown_marks_total {}\n\
 codexmanager_rpc_requests_total {}\n\
 codexmanager_rpc_requests_failed_total {}\n\
@@ -307,6 +500,9 @@ codexmanager_gateway_upstream_attempt_errors_total {}\n\
         m.active_requests,
         m.account_inflight_total,
         m.failover_attempts,
+        m.candidate_skips_total,
+        m.candidate_skip_cooldown_total,
+        m.candidate_skip_inflight_total,
         m.cooldown_marks,
         m.rpc_total_requests,
         m.rpc_failed_requests,
@@ -331,6 +527,17 @@ codexmanager_gateway_upstream_attempt_errors_total {}\n\
     )
 }
 
+/// 函数 `gateway_labeled_metrics_prometheus`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn gateway_labeled_metrics_prometheus() -> String {
     let lock = GATEWAY_REQUEST_LABELS.get_or_init(|| Mutex::new(HashMap::new()));
     let map = crate::lock_utils::lock_recover(lock, "gateway_request_labels");
@@ -347,6 +554,17 @@ fn gateway_labeled_metrics_prometheus() -> String {
     text
 }
 
+/// 函数 `classify_gateway_route`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_gateway_route(path: &str) -> &'static str {
     let path = path.split('?').next().unwrap_or(path);
     if path.starts_with("/v1/responses") {
@@ -373,6 +591,17 @@ fn classify_gateway_route(path: &str) -> &'static str {
     "other"
 }
 
+/// 函数 `classify_status_class`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status_code: 参数 status_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_status_class(status_code: u16) -> &'static str {
     match status_code {
         100..=199 => "1xx",
@@ -384,6 +613,17 @@ fn classify_status_class(status_code: u16) -> &'static str {
     }
 }
 
+/// 函数 `classify_protocol`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - protocol_type: 参数 protocol_type
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_protocol(protocol_type: Option<&str>) -> &'static str {
     let Some(protocol_type) = protocol_type.map(str::trim).filter(|v| !v.is_empty()) else {
         return "unknown";
@@ -398,9 +638,25 @@ fn classify_protocol(protocol_type: Option<&str>) -> &'static str {
     {
         return "anthropic_native";
     }
+    if protocol_type.eq_ignore_ascii_case("gemini_native")
+        || protocol_type.eq_ignore_ascii_case("gemini")
+    {
+        return "gemini_native";
+    }
     "other"
 }
 
+/// 函数 `account_inflight_count`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn account_inflight_count(account_id: &str) -> usize {
     let lock = ACCOUNT_INFLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
     let map = crate::lock_utils::lock_recover(lock, "account_inflight");
@@ -412,6 +668,17 @@ pub(crate) struct AccountInFlightGuard {
 }
 
 impl Drop for AccountInFlightGuard {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         let lock = ACCOUNT_INFLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
         let mut map = crate::lock_utils::lock_recover(lock, "account_inflight");
@@ -425,6 +692,17 @@ impl Drop for AccountInFlightGuard {
     }
 }
 
+/// 函数 `acquire_account_inflight`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn acquire_account_inflight(account_id: &str) -> AccountInFlightGuard {
     let lock = ACCOUNT_INFLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
     let mut map = crate::lock_utils::lock_recover(lock, "account_inflight");
@@ -435,6 +713,17 @@ pub(crate) fn acquire_account_inflight(account_id: &str) -> AccountInFlightGuard
     }
 }
 
+/// 函数 `atomic_dec_saturating`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 无
 fn atomic_dec_saturating(value: &AtomicUsize) {
     let mut current = value.load(Ordering::Relaxed);
     loop {
@@ -453,29 +742,20 @@ fn atomic_dec_saturating(value: &AtomicUsize) {
     }
 }
 
+/// 函数 `is_db_busy_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - err: 参数 err
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_db_busy_error(err: &str) -> bool {
     let normalized = err.trim().to_ascii_lowercase();
     normalized.contains("database is locked")
         || normalized.contains("sqlite_busy")
         || normalized.contains("busy timeout")
-}
-
-#[cfg(test)]
-mod tests {
-    use codexmanager_core::storage::now_ts;
-
-    use super::{
-        clear_runtime_state, recent_gateway_latency_samples, record_gateway_latency_sample,
-    };
-
-    #[test]
-    fn gateway_latency_ring_buffer_returns_recent_samples_only() {
-        clear_runtime_state();
-        let now = now_ts();
-        record_gateway_latency_sample(now - 100, Some(80));
-        record_gateway_latency_sample(now, Some(120));
-        record_gateway_latency_sample(now, None);
-
-        assert_eq!(recent_gateway_latency_samples(now - 10), vec![120]);
-    }
 }

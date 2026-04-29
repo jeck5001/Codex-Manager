@@ -1,4 +1,4 @@
-use codexmanager_core::storage::{now_ts, ApiKey, Storage};
+use codexmanager_core::storage::{ApiKey, Storage};
 
 use crate::storage_helpers::{hash_platform_key, open_storage, StorageHandle};
 
@@ -61,25 +61,6 @@ pub(super) fn load_active_api_key(
         ));
     };
 
-    if api_key.status == "expired"
-        || (api_key.status == "active"
-            && api_key
-                .expires_at
-                .is_some_and(|expires_at| expires_at <= now_ts()))
-    {
-        if api_key.status != "expired" {
-            let _ = storage.update_api_key_status(&api_key.id, "expired");
-        }
-        if debug {
-            log::warn!(
-                "event=gateway_auth_expired path={} status=401 key_id={}",
-                request_url,
-                api_key.id
-            );
-        }
-        return Err(super::LocalValidationError::new(401, "api key expired"));
-    }
-
     if api_key.status != "active" {
         if debug {
             log::warn!(
@@ -96,7 +77,3 @@ pub(super) fn load_active_api_key(
 
     Ok(api_key)
 }
-
-#[cfg(test)]
-#[path = "tests/auth_tests.rs"]
-mod tests;

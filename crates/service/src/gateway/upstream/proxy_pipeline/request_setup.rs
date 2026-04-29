@@ -1,64 +1,80 @@
-use codexmanager_core::storage::{Account, Token};
+use codexmanager_core::storage::{Account, ConversationBinding, Token};
 
 use super::super::super::IncomingHeaderSnapshot;
 use crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE;
+use crate::gateway::conversation_binding::ConversationRoutingContext;
 
 pub(in super::super) struct UpstreamRequestSetup {
     pub(in super::super) upstream_base: String,
     pub(in super::super) upstream_fallback_base: Option<String>,
     pub(in super::super) url: String,
     pub(in super::super) url_alt: Option<String>,
-    pub(in super::super) upstream_cookie: Option<String>,
     pub(in super::super) candidate_count: usize,
     pub(in super::super) account_max_inflight: usize,
-    pub(in super::super) anthropic_has_prompt_cache_key: bool,
+    pub(in super::super) anthropic_has_thread_anchor: bool,
     pub(in super::super) has_sticky_fallback_session: bool,
     pub(in super::super) has_sticky_fallback_conversation: bool,
     pub(in super::super) has_body_encrypted_content: bool,
+    pub(in super::super) conversation_routing: Option<ConversationRoutingContext>,
 }
 
-pub(in super::super) struct PrepareRequestSetupInput<'a> {
-    pub(in super::super) path: &'a str,
-    pub(in super::super) protocol_type: &'a str,
-    pub(in super::super) has_prompt_cache_key: bool,
-    pub(in super::super) incoming_headers: &'a IncomingHeaderSnapshot,
-    pub(in super::super) body: &'a [u8],
-    pub(in super::super) key_id: &'a str,
-    pub(in super::super) model_for_log: Option<&'a str>,
-    pub(in super::super) trace_id: &'a str,
-}
-
+/// 函数 `prepare_request_setup`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn prepare_request_setup(
-    input: PrepareRequestSetupInput<'_>,
+    path: &str,
+    protocol_type: &str,
+    has_prompt_cache_key: bool,
+    incoming_headers: &IncomingHeaderSnapshot,
+    body: &bytes::Bytes,
     candidates: &mut Vec<(Account, Token)>,
+    key_id: &str,
+    platform_key_hash: &str,
+    local_conversation_id: Option<&str>,
+    conversation_binding: Option<&ConversationBinding>,
+    model_for_log: Option<&str>,
+    trace_id: &str,
 ) -> UpstreamRequestSetup {
     let upstream_base = super::super::super::resolve_upstream_base_url();
     let upstream_fallback_base =
         super::super::super::resolve_upstream_fallback_base_url(upstream_base.as_str());
-    let (url, url_alt) = super::super::super::request_rewrite::compute_upstream_url(
-        upstream_base.as_str(),
-        input.path,
-    );
-    let upstream_cookie = super::super::super::upstream_cookie();
-
-    super::super::super::retain_manual_route_account_ids(candidates);
+    let (url, url_alt) =
+        super::super::super::request_rewrite::compute_upstream_url(upstream_base.as_str(), path);
     let candidate_count = candidates.len();
     let account_max_inflight = super::super::super::account_max_inflight_limit();
-    let anthropic_has_prompt_cache_key =
-        input.protocol_type == PROTOCOL_ANTHROPIC_NATIVE && input.has_prompt_cache_key;
-    super::super::super::apply_route_strategy(
-        candidates.as_mut_slice(),
-        input.key_id,
-        input.model_for_log,
+    let conversation_routing =
+        super::super::super::conversation_binding::prepare_conversation_routing(
+            platform_key_hash,
+            local_conversation_id,
+            conversation_binding,
+            candidates,
+        );
+    let anthropic_has_thread_anchor = protocol_type == PROTOCOL_ANTHROPIC_NATIVE
+        && (has_prompt_cache_key || conversation_routing.is_some());
+    let rotation_plan = super::super::super::conversation_binding::apply_candidate_rotation(
+        candidates,
+        conversation_routing.as_ref(),
+        key_id,
+        model_for_log,
     );
     let candidate_order = candidates
         .iter()
         .map(|(account, _)| format!("{}#sort={}", account.id, account.sort))
         .collect::<Vec<_>>();
     super::super::super::trace_log::log_candidate_pool(
-        input.trace_id,
-        input.key_id,
-        super::super::super::current_route_strategy(),
+        trace_id,
+        key_id,
+        rotation_plan.strategy_label,
+        rotation_plan.source.as_str(),
+        rotation_plan.strategy_applied,
         candidate_order.as_slice(),
     );
 
@@ -67,21 +83,17 @@ pub(in super::super) fn prepare_request_setup(
         upstream_fallback_base,
         url,
         url_alt,
-        upstream_cookie,
         candidate_count,
         account_max_inflight,
-        anthropic_has_prompt_cache_key,
-        has_sticky_fallback_session:
-            super::super::header_profile::derive_sticky_session_id_from_headers(
-                input.incoming_headers,
-            )
-            .is_some(),
+        anthropic_has_thread_anchor,
+        has_sticky_fallback_session: false,
         has_sticky_fallback_conversation:
             super::super::header_profile::derive_sticky_conversation_id_from_headers(
-                input.incoming_headers,
+                incoming_headers,
             )
             .is_some(),
         has_body_encrypted_content:
-            super::super::support::payload_rewrite::body_has_encrypted_content_hint(input.body),
+            super::super::support::payload_rewrite::body_has_encrypted_content_hint(body.as_ref()),
+        conversation_routing,
     }
 }

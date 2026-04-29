@@ -1,7 +1,14 @@
 use bytes::Bytes;
 use codexmanager_core::storage::Account;
+use futures_util::StreamExt;
+use rand::Rng;
+use std::sync::mpsc;
+use std::thread;
 use std::time::Instant;
 use tiny_http::Request;
+use tokio::runtime::Builder;
+
+use super::super::GatewayUpstreamResponse;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RequestCompression {
@@ -12,31 +19,40 @@ enum RequestCompression {
 #[derive(Debug, Clone, Copy)]
 pub(in super::super) struct UpstreamRequestContext<'a> {
     pub(in super::super) request_path: &'a str,
-}
-
-pub(in super::super) struct SendUpstreamRequestArgs<'a> {
-    pub(in super::super) client: &'a reqwest::blocking::Client,
-    pub(in super::super) method: &'a reqwest::Method,
-    pub(in super::super) target_url: &'a str,
-    pub(in super::super) request_deadline: Option<Instant>,
-    pub(in super::super) request_ctx: UpstreamRequestContext<'a>,
-    pub(in super::super) incoming_headers: &'a super::super::super::IncomingHeaderSnapshot,
-    pub(in super::super) body: &'a Bytes,
-    pub(in super::super) is_stream: bool,
-    pub(in super::super) upstream_cookie: Option<&'a str>,
-    pub(in super::super) auth_token: &'a str,
-    pub(in super::super) account: &'a Account,
-    pub(in super::super) strip_session_affinity: bool,
+    pub(in super::super) protocol_type: &'a str,
 }
 
 impl<'a> UpstreamRequestContext<'a> {
-    pub(in super::super) fn from_request(request: &'a Request) -> Self {
+    /// 函数 `from_request`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(in super::super) fn from_request(request: &'a Request, protocol_type: &'a str) -> Self {
         Self {
             request_path: request.url(),
+            protocol_type,
         }
     }
 }
 
+/// 函数 `should_force_connection_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - target_url: 参数 target_url
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_force_connection_close(target_url: &str) -> bool {
     reqwest::Url::parse(target_url)
         .ok()
@@ -44,6 +60,17 @@ fn should_force_connection_close(target_url: &str) -> bool {
         .is_some_and(|host| matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1"))
 }
 
+/// 函数 `force_connection_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 无
 fn force_connection_close(headers: &mut Vec<(String, String)>) {
     if let Some((_, value)) = headers
         .iter_mut()
@@ -55,6 +82,17 @@ fn force_connection_close(headers: &mut Vec<(String, String)>) {
     }
 }
 
+/// 函数 `extract_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_prompt_cache_key(body: &[u8]) -> Option<String> {
     if body.is_empty() || body.len() > 64 * 1024 {
         return None;
@@ -70,20 +108,146 @@ fn extract_prompt_cache_key(body: &[u8]) -> Option<String> {
         .map(str::to_string)
 }
 
-fn should_compact_upstream_headers() -> bool {
-    super::super::super::cpa_no_cookie_header_mode_enabled()
-}
-
+/// 函数 `is_compact_request_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_compact_request_path(path: &str) -> bool {
     path == "/v1/responses/compact" || path.starts_with("/v1/responses/compact?")
 }
 
+fn should_preserve_client_identity(protocol_type: &str) -> bool {
+    let _ = protocol_type;
+    false
+}
+
+fn is_gemini_codex_compat(protocol_type: &str, request_path: &str, target_url: &str) -> bool {
+    protocol_type == crate::apikey_profile::PROTOCOL_GEMINI_NATIVE
+        && request_path.starts_with("/v1/responses")
+        && super::super::config::is_chatgpt_backend_base(target_url)
+}
+
+const CPA_GEMINI_CODEX_USER_AGENT: &str =
+    "codex-tui/0.118.0 (Mac OS 26.3.1; arm64) iTerm.app/3.6.9 (codex-tui; 0.118.0)";
+const CPA_GEMINI_CODEX_ORIGINATOR: &str = "codex-tui";
+
+fn normalize_header_value(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+fn set_or_replace_header(headers: &mut Vec<(String, String)>, name: &str, value: String) {
+    if let Some((_, current)) = headers
+        .iter_mut()
+        .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+    {
+        *current = value;
+    } else {
+        headers.push((name.to_string(), value));
+    }
+}
+
+fn remove_header(headers: &mut Vec<(String, String)>, name: &str) {
+    headers.retain(|(header_name, _)| !header_name.eq_ignore_ascii_case(name));
+}
+
+fn random_cpa_session_id() -> String {
+    let mut rng = rand::thread_rng();
+    let a: u32 = rng.gen();
+    let b: u16 = rng.gen();
+    let c: u16 = (rng.gen::<u16>() & 0x0fff) | 0x4000;
+    let d: u16 = (rng.gen::<u16>() & 0x3fff) | 0x8000;
+    let e: u64 = rng.gen::<u64>() & 0x0000_ffff_ffff_ffff;
+    format!("{a:08x}-{b:04x}-{c:04x}-{d:04x}-{e:012x}")
+}
+
+fn apply_gemini_codex_compat_header_profile(
+    headers: &mut Vec<(String, String)>,
+    incoming_originator: Option<&str>,
+) {
+    set_or_replace_header(
+        headers,
+        "User-Agent",
+        CPA_GEMINI_CODEX_USER_AGENT.to_string(),
+    );
+    set_or_replace_header(
+        headers,
+        "originator",
+        normalize_header_value(incoming_originator)
+            .unwrap_or(CPA_GEMINI_CODEX_ORIGINATOR)
+            .to_string(),
+    );
+    set_or_replace_header(headers, "Connection", "Keep-Alive".to_string());
+    // 中文注释：CPA 的 Gemini->Codex 兼容路径只补 Session_id，不带窗口/turn 粘性头。
+    remove_header(headers, "x-codex-window-id");
+    remove_header(headers, "x-codex-turn-state");
+    remove_header(headers, "x-codex-parent-thread-id");
+    remove_header(headers, "x-openai-subagent");
+    if !has_header(headers, "session_id") {
+        headers.push(("Session_id".to_string(), random_cpa_session_id()));
+    }
+}
+
+/// 函数 `has_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn has_header(headers: &[(String, String)], name: &str) -> bool {
     headers
         .iter()
         .any(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
 }
 
+/// 函数 `resolve_chatgpt_account_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account: 参数 account
+/// - target_url: 参数 target_url
+///
+/// # 返回
+/// 返回函数执行结果
+fn resolve_chatgpt_account_header<'a>(account: &'a Account, target_url: &str) -> Option<&'a str> {
+    if !super::super::config::should_send_chatgpt_account_header(target_url) {
+        return None;
+    }
+    account
+        .chatgpt_account_id
+        .as_deref()
+        .or(account.workspace_id.as_deref())
+}
+
+/// 函数 `resolve_request_compression_with_flag`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - enabled: 参数 enabled
+/// - target_url: 参数 target_url
+/// - request_path: 参数 request_path
+/// - is_stream: 参数 is_stream
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_request_compression_with_flag(
     enabled: bool,
     target_url: &str,
@@ -105,11 +269,29 @@ fn resolve_request_compression_with_flag(
     RequestCompression::Zstd
 }
 
+/// 函数 `resolve_request_compression`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - target_url: 参数 target_url
+/// - request_path: 参数 request_path
+/// - is_stream: 参数 is_stream
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_request_compression(
+    protocol_type: &str,
     target_url: &str,
     request_path: &str,
     is_stream: bool,
 ) -> RequestCompression {
+    if is_gemini_codex_compat(protocol_type, request_path, target_url) {
+        // 中文注释：CPA 的 Gemini->Codex 路径不做 zstd 请求压缩。
+        return RequestCompression::None;
+    }
     resolve_request_compression_with_flag(
         super::super::super::request_compression_enabled(),
         target_url,
@@ -118,6 +300,118 @@ fn resolve_request_compression(
     )
 }
 
+fn should_retry_transport_without_compression(
+    target_url: &str,
+    request_path: &str,
+    is_stream: bool,
+    compression: RequestCompression,
+) -> bool {
+    compression == RequestCompression::Zstd
+        && is_stream
+        && request_path.starts_with("/v1/responses")
+        && !is_compact_request_path(request_path)
+        && super::super::config::is_chatgpt_backend_base(target_url)
+}
+
+fn should_wrap_upstream_as_stream_response(request_path: &str, is_stream: bool) -> bool {
+    is_stream && request_path.starts_with("/v1/responses") && !is_compact_request_path(request_path)
+}
+
+fn send_async_stream_request(
+    client: &reqwest::Client,
+    method: &reqwest::Method,
+    target_url: &str,
+    request_deadline: Option<Instant>,
+    request_headers: &[(String, String)],
+    request_body: &Bytes,
+    is_stream: bool,
+) -> Result<super::super::GatewayStreamResponse, reqwest::Error> {
+    let client = client.clone();
+    let method = method.clone();
+    let target_url = target_url.to_string();
+    let request_headers = request_headers.to_vec();
+    let request_body = request_body.clone();
+    let (meta_tx, meta_rx) = mpsc::sync_channel::<
+        Result<(reqwest::StatusCode, reqwest::header::HeaderMap), reqwest::Error>,
+    >(1);
+    let (body_tx, body_rx) = mpsc::sync_channel::<super::super::GatewayByteStreamItem>(128);
+    thread::spawn(move || {
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|err| panic!("build gateway upstream runtime failed: {err}"));
+        runtime.block_on(async move {
+            let mut builder = client.request(method, target_url);
+            if let Some(timeout) =
+                super::super::support::deadline::send_timeout(request_deadline, is_stream)
+            {
+                builder = builder.timeout(timeout);
+            }
+            for (name, value) in request_headers.iter() {
+                builder = builder.header(name, value);
+            }
+            if !request_body.is_empty() {
+                builder = builder.body(request_body);
+            }
+            match builder.send().await {
+                Ok(response) => {
+                    let status = response.status();
+                    let headers = response.headers().clone();
+                    if meta_tx.send(Ok((status, headers))).is_err() {
+                        return;
+                    }
+                    let mut stream = response.bytes_stream();
+                    while let Some(item) = stream.next().await {
+                        match item {
+                            Ok(bytes) => {
+                                if body_tx
+                                    .send(super::super::GatewayByteStreamItem::Chunk(bytes))
+                                    .is_err()
+                                {
+                                    return;
+                                }
+                            }
+                            Err(err) => {
+                                let _ = body_tx.send(super::super::GatewayByteStreamItem::Error(
+                                    err.to_string(),
+                                ));
+                                return;
+                            }
+                        }
+                    }
+                    let _ = body_tx.send(super::super::GatewayByteStreamItem::Eof);
+                }
+                Err(err) => {
+                    let _ = meta_tx.send(Err(err));
+                }
+            }
+        });
+    });
+    match meta_rx.recv() {
+        Ok(Ok((status, headers))) => Ok(super::super::GatewayStreamResponse::new(
+            status,
+            headers,
+            super::super::GatewayByteStream::from_receiver(body_rx),
+        )),
+        Ok(Err(err)) => Err(err),
+        Err(_) => panic!("receive gateway async upstream response metadata failed"),
+    }
+}
+
+/// 函数 `encode_request_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request_path: 参数 request_path
+/// - body: 参数 body
+/// - compression: 参数 compression
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn encode_request_body(
     request_path: &str,
     body: &Bytes,
@@ -162,10 +456,31 @@ fn encode_request_body(
     }
 }
 
+/// 函数 `send_upstream_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn send_upstream_request(
-    args: SendUpstreamRequestArgs<'_>,
-) -> Result<reqwest::blocking::Response, reqwest::Error> {
-    let SendUpstreamRequestArgs {
+    client: &reqwest::blocking::Client,
+    method: &reqwest::Method,
+    target_url: &str,
+    request_deadline: Option<Instant>,
+    request_ctx: UpstreamRequestContext<'_>,
+    incoming_headers: &super::super::super::IncomingHeaderSnapshot,
+    body: &Bytes,
+    is_stream: bool,
+    auth_token: &str,
+    account: &Account,
+    strip_session_affinity: bool,
+) -> Result<GatewayUpstreamResponse, reqwest::Error> {
+    send_upstream_request_with_compression_override(
         client,
         method,
         target_url,
@@ -174,96 +489,147 @@ pub(in super::super) fn send_upstream_request(
         incoming_headers,
         body,
         is_stream,
-        upstream_cookie,
         auth_token,
         account,
         strip_session_affinity,
-    } = args;
+        None,
+    )
+}
+
+/// 函数 `send_upstream_request_without_compression`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-04
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
+pub(in super::super) fn send_upstream_request_without_compression(
+    client: &reqwest::blocking::Client,
+    method: &reqwest::Method,
+    target_url: &str,
+    request_deadline: Option<Instant>,
+    request_ctx: UpstreamRequestContext<'_>,
+    incoming_headers: &super::super::super::IncomingHeaderSnapshot,
+    body: &Bytes,
+    is_stream: bool,
+    auth_token: &str,
+    account: &Account,
+    strip_session_affinity: bool,
+) -> Result<GatewayUpstreamResponse, reqwest::Error> {
+    send_upstream_request_with_compression_override(
+        client,
+        method,
+        target_url,
+        request_deadline,
+        request_ctx,
+        incoming_headers,
+        body,
+        is_stream,
+        auth_token,
+        account,
+        strip_session_affinity,
+        Some(RequestCompression::None),
+    )
+}
+
+/// 函数 `send_upstream_request_with_compression_override`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-04
+///
+/// # 参数
+/// - compression_override: 参数 compression_override
+///
+/// # 返回
+/// 返回函数执行结果
+fn send_upstream_request_with_compression_override(
+    client: &reqwest::blocking::Client,
+    method: &reqwest::Method,
+    target_url: &str,
+    request_deadline: Option<Instant>,
+    request_ctx: UpstreamRequestContext<'_>,
+    incoming_headers: &super::super::super::IncomingHeaderSnapshot,
+    body: &Bytes,
+    is_stream: bool,
+    auth_token: &str,
+    account: &Account,
+    strip_session_affinity: bool,
+    compression_override: Option<RequestCompression>,
+) -> Result<GatewayUpstreamResponse, reqwest::Error> {
     let attempt_started_at = Instant::now();
-    let compact_headers_mode = should_compact_upstream_headers();
-    let is_openai_api_target = super::super::super::is_openai_api_base(target_url);
-    let prompt_cache_key = if strip_session_affinity {
-        None
-    } else {
-        extract_prompt_cache_key(body.as_ref())
-    };
-    let compact_conversation_anchor = if strip_session_affinity {
-        None
-    } else {
-        incoming_headers
-            .conversation_id()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    };
-    let original_incoming_session_id = incoming_headers.session_id();
-    let mut incoming_session_id = original_incoming_session_id;
-    let incoming_client_request_id = incoming_headers.client_request_id();
-    let mut incoming_turn_state = incoming_headers.turn_state();
-    if prompt_cache_key.is_some() {
-        // 中文注释：当请求已携带线程锚点（prompt_cache_key）时，优先让上游会话头也绑定到
-        // 同一锚点，避免继续透传旧 session_id 造成线程漂移或跨账号粘性。
-        incoming_session_id = None;
-    }
-    if is_compact_request_path(request_ctx.request_path) && compact_conversation_anchor.is_some() {
-        // 中文注释：官方 compact 客户端会直接把 conversation_id 映射成 session_id。
-        // compact 请求没有 prompt_cache_key，因此这里显式让会话头退回到 conversation 锚点。
-        incoming_session_id = None;
-    }
-    if incoming_turn_state.is_some()
-        && original_incoming_session_id.is_none()
-        && prompt_cache_key.is_none()
-    {
-        // 中文注释：客户端单独塞一个 turn-state、却没有任何稳定线程锚点时，
-        // 这份状态无法证明属于当前请求线程。此时直接透传只会把上游粘到未知历史 turn。
-        incoming_turn_state = None;
-    }
-    if let (Some(cache_key), Some(legacy_session_id)) =
-        (prompt_cache_key.as_deref(), original_incoming_session_id)
-    {
-        if legacy_session_id.trim() != cache_key {
-            // 中文注释：旧 session_id 已被新的线程锚点覆盖时，继续透传旧 turn-state
-            // 只会把上游路由粘到历史 turn，和官方同 turn 回放语义相悖。
-            incoming_turn_state = None;
-        }
-    }
-    let mut derived_session_id = if !strip_session_affinity && incoming_session_id.is_none() {
-        // 中文注释：这里继续保留“基于账号/密钥的稳定 session”兼容策略，
-        // 但不再把 remote 地址混进会话锚点，避免同一客户端仅因源地址变化就得到不同 session_id，
-        // 让主路径更接近官方可见的线程锚点语义。
-        super::super::header_profile::derive_sticky_session_id_from_headers(incoming_headers)
-    } else {
-        None
-    };
-    // 中文注释：当 prompt_cache_key 存在时，用它对齐请求会话锚点。
-    // 官方可见线程锚点仍以 prompt_cache_key + session_id 为主，不额外默认补 x-client-request-id。
-    if !strip_session_affinity {
-        if let Some(cache_key) = prompt_cache_key.as_ref() {
-            derived_session_id = Some(cache_key.clone());
-        }
-    }
-    let compact_fallback_session_id = compact_conversation_anchor
-        .as_deref()
-        .or(derived_session_id.as_deref());
+    let prompt_cache_key = extract_prompt_cache_key(body.as_ref());
+    let is_compact_request = is_compact_request_path(request_ctx.request_path);
+    let request_affinity = super::super::super::session_affinity::derive_outgoing_session_affinity(
+        incoming_headers.session_id(),
+        incoming_headers.client_request_id(),
+        incoming_headers.turn_state(),
+        incoming_headers.conversation_id(),
+        prompt_cache_key.as_deref(),
+    );
     let account_id = account
         .chatgpt_account_id
         .as_deref()
-        .or(account.workspace_id.as_deref());
-    let include_account_id = !is_openai_api_target;
-    let forwarded_upstream_cookie = if is_openai_api_target {
-        None
-    } else {
-        upstream_cookie
-    };
-    let mut upstream_headers = if is_compact_request_path(request_ctx.request_path) {
+        .or_else(|| account.workspace_id.as_deref());
+    let gemini_codex_compat = is_gemini_codex_compat(
+        request_ctx.protocol_type,
+        request_ctx.request_path,
+        target_url,
+    );
+    super::super::super::session_affinity::log_thread_anchor_conflict(
+        request_ctx.request_path,
+        account_id,
+        incoming_headers.conversation_id(),
+        prompt_cache_key.as_deref(),
+    );
+    super::super::super::session_affinity::log_outgoing_session_affinity(
+        request_ctx.request_path,
+        account_id,
+        incoming_headers.session_id(),
+        incoming_headers.client_request_id(),
+        incoming_headers.turn_state(),
+        incoming_headers.conversation_id(),
+        prompt_cache_key.as_deref(),
+        request_affinity,
+        strip_session_affinity,
+    );
+    let mut upstream_headers = if is_compact_request {
         let header_input = super::super::header_profile::CodexCompactUpstreamHeaderInput {
             auth_token,
-            account_id,
-            include_account_id,
-            upstream_cookie: forwarded_upstream_cookie,
-            incoming_session_id,
-            incoming_subagent: incoming_headers.subagent(),
-            fallback_session_id: compact_fallback_session_id,
+            chatgpt_account_id: resolve_chatgpt_account_header(account, target_url),
+            incoming_user_agent: incoming_headers.user_agent(),
+            incoming_originator: incoming_headers.originator(),
+            preserve_client_identity: should_preserve_client_identity(request_ctx.protocol_type),
+            incoming_session_id: if gemini_codex_compat {
+                incoming_headers.session_id()
+            } else {
+                request_affinity.incoming_session_id
+            },
+            incoming_window_id: if gemini_codex_compat {
+                None
+            } else {
+                incoming_headers.window_id()
+            },
+            incoming_subagent: if gemini_codex_compat {
+                None
+            } else {
+                incoming_headers.subagent()
+            },
+            incoming_parent_thread_id: if gemini_codex_compat {
+                None
+            } else {
+                incoming_headers.parent_thread_id()
+            },
+            passthrough_codex_headers: incoming_headers.passthrough_codex_headers(),
+            fallback_session_id: if gemini_codex_compat {
+                None
+            } else {
+                request_affinity.fallback_session_id
+            },
             strip_session_affinity,
             has_body: !body.is_empty(),
         };
@@ -271,61 +637,263 @@ pub(in super::super) fn send_upstream_request(
     } else {
         let header_input = super::super::header_profile::CodexUpstreamHeaderInput {
             auth_token,
-            account_id,
-            include_account_id,
-            upstream_cookie: forwarded_upstream_cookie,
-            incoming_session_id,
-            incoming_client_request_id,
-            incoming_subagent: incoming_headers.subagent(),
+            chatgpt_account_id: resolve_chatgpt_account_header(account, target_url),
+            incoming_user_agent: incoming_headers.user_agent(),
+            incoming_originator: incoming_headers.originator(),
+            preserve_client_identity: should_preserve_client_identity(request_ctx.protocol_type),
+            incoming_session_id: if gemini_codex_compat {
+                incoming_headers.session_id()
+            } else {
+                request_affinity.incoming_session_id
+            },
+            incoming_window_id: if gemini_codex_compat {
+                None
+            } else {
+                incoming_headers.window_id()
+            },
+            incoming_client_request_id: if gemini_codex_compat {
+                incoming_headers.client_request_id()
+            } else {
+                request_affinity.incoming_client_request_id
+            },
+            incoming_subagent: if gemini_codex_compat {
+                None
+            } else {
+                incoming_headers.subagent()
+            },
             incoming_beta_features: incoming_headers.beta_features(),
             incoming_turn_metadata: incoming_headers.turn_metadata(),
-            fallback_session_id: derived_session_id.as_deref(),
-            incoming_turn_state,
-            include_turn_state: !compact_headers_mode,
+            incoming_parent_thread_id: if gemini_codex_compat {
+                None
+            } else {
+                incoming_headers.parent_thread_id()
+            },
+            passthrough_codex_headers: incoming_headers.passthrough_codex_headers(),
+            fallback_session_id: if gemini_codex_compat {
+                None
+            } else {
+                request_affinity.fallback_session_id
+            },
+            incoming_turn_state: if gemini_codex_compat {
+                None
+            } else {
+                request_affinity.incoming_turn_state
+            },
+            include_turn_state: !gemini_codex_compat,
             strip_session_affinity,
-            is_stream,
             has_body: !body.is_empty(),
         };
         super::super::header_profile::build_codex_upstream_headers(header_input)
     };
+    if gemini_codex_compat {
+        apply_gemini_codex_compat_header_profile(
+            &mut upstream_headers,
+            incoming_headers.originator(),
+        );
+    }
     if should_force_connection_close(target_url) {
         // 中文注释：本地 loopback mock/代理更容易复用到脏 keep-alive 连接；
         // 对 localhost/127.0.0.1 强制 close，避免请求落到已失效连接。
         force_connection_close(&mut upstream_headers);
     }
-    let request_compression =
-        resolve_request_compression(target_url, request_ctx.request_path, is_stream);
+    let upstream_headers_uncompressed = upstream_headers.clone();
+    let request_compression = compression_override.unwrap_or_else(|| {
+        resolve_request_compression(
+            request_ctx.protocol_type,
+            target_url,
+            request_ctx.request_path,
+            is_stream,
+        )
+    });
     let body_for_request = encode_request_body(
         request_ctx.request_path,
         body,
         request_compression,
         &mut upstream_headers,
     );
-    let build_request = |http: &reqwest::blocking::Client| {
+    let build_request = |http: &reqwest::blocking::Client,
+                         request_headers: &[(String, String)],
+                         request_body: &Bytes| {
         let mut builder = http.request(method.clone(), target_url);
         if let Some(timeout) =
             super::super::support::deadline::send_timeout(request_deadline, is_stream)
         {
             builder = builder.timeout(timeout);
         }
-        for (name, value) in upstream_headers.iter() {
+        for (name, value) in request_headers.iter() {
             builder = builder.header(name, value);
         }
-        if !body_for_request.is_empty() {
-            builder = builder.body(body_for_request.clone());
+        if !request_body.is_empty() {
+            builder = builder.body(request_body.clone());
         }
         builder
     };
 
-    let result = match build_request(client).send() {
-        Ok(resp) => Ok(resp),
-        Err(first_err) => {
-            // 中文注释：进程启动后才开启系统代理时，旧单例 client 可能仍走旧网络路径；
-            // 这里用 fresh client 立刻重试一次，避免必须手动重连服务。
-            let fresh = super::super::super::fresh_upstream_client_for_account(account.id.as_str());
-            match build_request(&fresh).send() {
-                Ok(resp) => Ok(resp),
-                Err(_) => Err(first_err),
+    let use_async_stream_transport =
+        should_wrap_upstream_as_stream_response(request_ctx.request_path, is_stream);
+    let result = if use_async_stream_transport {
+        let async_client =
+            super::super::super::async_upstream_client_for_account(account.id.as_str());
+        match send_async_stream_request(
+            &async_client,
+            method,
+            target_url,
+            request_deadline,
+            upstream_headers.as_slice(),
+            &body_for_request,
+            is_stream,
+        ) {
+            Ok(resp) => Ok(GatewayUpstreamResponse::Stream(resp)),
+            Err(first_err) => {
+                let fresh_async = super::super::super::fresh_async_upstream_client_for_account(
+                    account.id.as_str(),
+                );
+                if should_retry_transport_without_compression(
+                    target_url,
+                    request_ctx.request_path,
+                    is_stream,
+                    request_compression,
+                ) {
+                    log::warn!(
+                        "event=gateway_transport_retry_without_compression path={} account_id={} target_url={} first_err={}",
+                        request_ctx.request_path,
+                        account.id,
+                        target_url,
+                        first_err
+                    );
+                    match send_async_stream_request(
+                        &fresh_async,
+                        method,
+                        target_url,
+                        request_deadline,
+                        upstream_headers_uncompressed.as_slice(),
+                        body,
+                        is_stream,
+                    ) {
+                        Ok(resp) => {
+                            log::warn!(
+                                "event=gateway_transport_retry_without_compression_succeeded path={} account_id={} target_url={}",
+                                request_ctx.request_path,
+                                account.id,
+                                target_url
+                            );
+                            Ok(GatewayUpstreamResponse::Stream(resp))
+                        }
+                        Err(second_err) => {
+                            log::warn!(
+                                "event=gateway_transport_retry_without_compression_failed path={} account_id={} target_url={} first_err={} retry_err={}",
+                                request_ctx.request_path,
+                                account.id,
+                                target_url,
+                                first_err,
+                                second_err
+                            );
+                            Err(second_err)
+                        }
+                    }
+                } else {
+                    match send_async_stream_request(
+                        &fresh_async,
+                        method,
+                        target_url,
+                        request_deadline,
+                        upstream_headers.as_slice(),
+                        &body_for_request,
+                        is_stream,
+                    ) {
+                        Ok(resp) => {
+                            log::info!(
+                                "event=gateway_transport_retry_with_fresh_client_succeeded path={} account_id={} target_url={}",
+                                request_ctx.request_path,
+                                account.id,
+                                target_url
+                            );
+                            Ok(GatewayUpstreamResponse::Stream(resp))
+                        }
+                        Err(second_err) => {
+                            log::warn!(
+                                "event=gateway_transport_retry_with_fresh_client_failed path={} account_id={} target_url={} first_err={} retry_err={}",
+                                request_ctx.request_path,
+                                account.id,
+                                target_url,
+                                first_err,
+                                second_err
+                            );
+                            Err(second_err)
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        match build_request(client, upstream_headers.as_slice(), &body_for_request).send() {
+            Ok(resp) => Ok(resp.into()),
+            Err(first_err) => {
+                let fresh =
+                    super::super::super::fresh_upstream_client_for_account(account.id.as_str());
+                if should_retry_transport_without_compression(
+                    target_url,
+                    request_ctx.request_path,
+                    is_stream,
+                    request_compression,
+                ) {
+                    log::warn!(
+                        "event=gateway_transport_retry_without_compression path={} account_id={} target_url={} first_err={}",
+                        request_ctx.request_path,
+                        account.id,
+                        target_url,
+                        first_err
+                    );
+                    match build_request(&fresh, upstream_headers_uncompressed.as_slice(), body)
+                        .send()
+                    {
+                        Ok(resp) => {
+                            log::warn!(
+                                "event=gateway_transport_retry_without_compression_succeeded path={} account_id={} target_url={}",
+                                request_ctx.request_path,
+                                account.id,
+                                target_url
+                            );
+                            Ok(resp.into())
+                        }
+                        Err(second_err) => {
+                            log::warn!(
+                                "event=gateway_transport_retry_without_compression_failed path={} account_id={} target_url={} first_err={} retry_err={}",
+                                request_ctx.request_path,
+                                account.id,
+                                target_url,
+                                first_err,
+                                second_err
+                            );
+                            Err(second_err)
+                        }
+                    }
+                } else {
+                    match build_request(&fresh, upstream_headers.as_slice(), &body_for_request)
+                        .send()
+                    {
+                        Ok(resp) => {
+                            log::info!(
+                                "event=gateway_transport_retry_with_fresh_client_succeeded path={} account_id={} target_url={}",
+                                request_ctx.request_path,
+                                account.id,
+                                target_url
+                            );
+                            Ok(resp.into())
+                        }
+                        Err(second_err) => {
+                            log::warn!(
+                                "event=gateway_transport_retry_with_fresh_client_failed path={} account_id={} target_url={} first_err={} retry_err={}",
+                                request_ctx.request_path,
+                                account.id,
+                                target_url,
+                                first_err,
+                                second_err
+                            );
+                            Err(second_err)
+                        }
+                    }
+                }
             }
         }
     };
@@ -336,9 +904,31 @@ pub(in super::super) fn send_upstream_request(
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_request_body, resolve_request_compression_with_flag, RequestCompression};
+    use super::{
+        apply_gemini_codex_compat_header_profile, encode_request_body, resolve_request_compression,
+        resolve_request_compression_with_flag, should_retry_transport_without_compression,
+        should_wrap_upstream_as_stream_response, RequestCompression, CPA_GEMINI_CODEX_USER_AGENT,
+    };
     use bytes::Bytes;
 
+    fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+        headers
+            .iter()
+            .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    /// 函数 `request_compression_only_applies_to_streaming_chatgpt_responses`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn request_compression_only_applies_to_streaming_chatgpt_responses() {
         assert_eq!(
@@ -389,6 +979,69 @@ mod tests {
     }
 
     #[test]
+    fn gemini_codex_compat_disables_request_compression_like_cpa() {
+        assert_eq!(
+            resolve_request_compression(
+                crate::apikey_profile::PROTOCOL_GEMINI_NATIVE,
+                "https://chatgpt.com/backend-api/codex/responses",
+                "/v1/responses",
+                true,
+            ),
+            RequestCompression::None
+        );
+    }
+
+    #[test]
+    fn gemini_codex_compat_does_not_preserve_client_identity_like_cpa() {
+        assert!(!super::should_preserve_client_identity(
+            crate::apikey_profile::PROTOCOL_GEMINI_NATIVE
+        ));
+    }
+
+    #[test]
+    fn gemini_codex_compat_header_profile_matches_cpa_executor_shape() {
+        let mut headers = vec![
+            (
+                "User-Agent".to_string(),
+                "gemini-cli/0.1.14 (Windows 11; x86_64)".to_string(),
+            ),
+            ("originator".to_string(), "gemini_cli".to_string()),
+            ("x-codex-window-id".to_string(), "thread:0".to_string()),
+            ("x-codex-turn-state".to_string(), "turn-state".to_string()),
+            (
+                "x-codex-parent-thread-id".to_string(),
+                "parent-thread".to_string(),
+            ),
+            ("x-openai-subagent".to_string(), "subagent".to_string()),
+        ];
+
+        apply_gemini_codex_compat_header_profile(&mut headers, None);
+
+        assert_eq!(
+            header_value(&headers, "User-Agent"),
+            Some(CPA_GEMINI_CODEX_USER_AGENT)
+        );
+        assert_eq!(header_value(&headers, "originator"), Some("codex-tui"));
+        assert_eq!(header_value(&headers, "Connection"), Some("Keep-Alive"));
+        assert_eq!(header_value(&headers, "x-codex-window-id"), None);
+        assert_eq!(header_value(&headers, "x-codex-turn-state"), None);
+        assert_eq!(header_value(&headers, "x-codex-parent-thread-id"), None);
+        assert_eq!(header_value(&headers, "x-openai-subagent"), None);
+        assert_eq!(header_value(&headers, "session_id").map(str::len), Some(36));
+    }
+
+    /// 函数 `encode_request_body_adds_zstd_content_encoding`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
     fn encode_request_body_adds_zstd_content_encoding() {
         let body = Bytes::from_static(br#"{"model":"gpt-5.4","input":"compress me"}"#);
         let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
@@ -411,5 +1064,63 @@ mod tests {
             value.get("model").and_then(serde_json::Value::as_str),
             Some("gpt-5.4")
         );
+    }
+
+    #[test]
+    fn transport_retry_without_compression_only_targets_streaming_chatgpt_responses() {
+        assert!(should_retry_transport_without_compression(
+            "https://chatgpt.com/backend-api/codex/responses",
+            "/v1/responses",
+            true,
+            RequestCompression::Zstd
+        ));
+        assert!(!should_retry_transport_without_compression(
+            "https://chatgpt.com/backend-api/codex/responses",
+            "/v1/responses/compact",
+            true,
+            RequestCompression::Zstd
+        ));
+        assert!(!should_retry_transport_without_compression(
+            "https://api.openai.com/v1/responses",
+            "/v1/responses",
+            true,
+            RequestCompression::Zstd
+        ));
+        assert!(!should_retry_transport_without_compression(
+            "https://chatgpt.com/backend-api/codex/responses",
+            "/v1/responses",
+            false,
+            RequestCompression::Zstd
+        ));
+        assert!(!should_retry_transport_without_compression(
+            "https://chatgpt.com/backend-api/codex/responses",
+            "/v1/responses",
+            true,
+            RequestCompression::None
+        ));
+    }
+
+    #[test]
+    fn transport_wraps_non_compact_responses_streams_into_stream_variant() {
+        assert!(should_wrap_upstream_as_stream_response(
+            "/v1/responses",
+            true
+        ));
+        assert!(should_wrap_upstream_as_stream_response(
+            "/v1/responses?stream=false",
+            true
+        ));
+        assert!(!should_wrap_upstream_as_stream_response(
+            "/v1/responses/compact",
+            true
+        ));
+        assert!(!should_wrap_upstream_as_stream_response(
+            "/v1/chat/completions",
+            true
+        ));
+        assert!(!should_wrap_upstream_as_stream_response(
+            "/v1/responses",
+            false
+        ));
     }
 }

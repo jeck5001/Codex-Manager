@@ -1,44 +1,30 @@
-use super::{clear_candidate_cache_for_tests, collect_gateway_candidates, CANDIDATE_CACHE_TTL_ENV};
+use super::{
+    clear_candidate_cache_for_tests, collect_gateway_candidates, CANDIDATE_CACHE_TTL_ENV,
+    LOW_QUOTA_THRESHOLD_ENV,
+};
+use crate::account_status::mark_account_unavailable_for_gateway_error;
 use codexmanager_core::storage::{now_ts, Account, Storage, Token, UsageSnapshotRecord};
-use serde_json::json;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
 
-static CANDIDATE_CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
-static SELECTION_TEST_DB_SEQ: AtomicUsize = AtomicUsize::new(0);
-
-fn new_selection_test_db_path(prefix: &str) -> PathBuf {
-    let mut path = std::env::temp_dir();
-    path.push(format!(
-        "{prefix}-{}-{}-{}.db",
-        std::process::id(),
-        now_ts(),
-        SELECTION_TEST_DB_SEQ.fetch_add(1, Ordering::Relaxed)
-    ));
-    path
-}
-
-fn remove_selection_test_db_files(path: &PathBuf) {
-    let _ = std::fs::remove_file(path);
-    let _ = std::fs::remove_file(format!("{}-shm", path.display()));
-    let _ = std::fs::remove_file(format!("{}-wal", path.display()));
-}
-
+/// 函数 `candidate_snapshot_cache_reuses_recent_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn candidate_snapshot_cache_reuses_recent_snapshot() {
-    let _env_guard = crate::lock_utils::process_env_test_guard();
-    let _guard = CANDIDATE_CACHE_TEST_LOCK.lock().expect("lock");
+    let _guard = crate::test_env_guard();
     let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
-    let db_path = new_selection_test_db_path("selection-cache-test-1");
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "2000");
-    std::env::set_var("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    crate::storage_helpers::clear_storage_cache_for_tests();
+    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-1");
     super::reload_from_env();
     clear_candidate_cache_for_tests();
-    let file_storage = Storage::open(&db_path).expect("open file db");
-    file_storage.init().expect("init file db");
 
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
@@ -100,25 +86,29 @@ fn candidate_snapshot_cache_reuses_recent_snapshot() {
     } else {
         std::env::remove_var("CODEXMANAGER_DB_PATH");
     }
-    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
-    remove_selection_test_db_files(&db_path);
 }
 
+/// 函数 `candidates_follow_account_sort_order`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn candidates_follow_account_sort_order() {
-    let _env_guard = crate::lock_utils::process_env_test_guard();
-    let _guard = CANDIDATE_CACHE_TEST_LOCK.lock().expect("lock");
+    let _guard = crate::test_env_guard();
     let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
-    let db_path = new_selection_test_db_path("selection-cache-test-2");
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "0");
-    std::env::set_var("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    crate::storage_helpers::clear_storage_cache_for_tests();
+    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-2");
     super::reload_from_env();
     clear_candidate_cache_for_tests();
-    let file_storage = Storage::open(&db_path).expect("open file db");
-    file_storage.init().expect("init file db");
 
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
@@ -187,46 +177,37 @@ fn candidates_follow_account_sort_order() {
     } else {
         std::env::remove_var("CODEXMANAGER_DB_PATH");
     }
-    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
-    remove_selection_test_db_files(&db_path);
 }
 
+/// 函数 `gateway_error_status_change_invalidates_candidate_snapshot_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-03
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
-fn usage_snapshot_write_invalidates_cached_candidates() {
-    let _env_guard = crate::lock_utils::process_env_test_guard();
-    let _guard = CANDIDATE_CACHE_TEST_LOCK.lock().expect("lock");
+fn gateway_error_status_change_invalidates_candidate_snapshot_cache() {
+    let _guard = crate::test_env_guard();
     let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
-    let previous_enabled =
-        std::env::var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED).ok();
-    let previous_threshold =
-        std::env::var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT)
-            .ok();
-    let db_path = new_selection_test_db_path("selection-cache-test-3");
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "2000");
-    std::env::set_var("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    std::env::set_var(
-        crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED,
-        "1",
-    );
-    std::env::set_var(
-        crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
-        "20",
-    );
-    crate::storage_helpers::clear_storage_cache_for_tests();
+    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-3");
     super::reload_from_env();
     clear_candidate_cache_for_tests();
-    let file_storage = Storage::open(&db_path).expect("open file db");
-    file_storage.init().expect("init file db");
 
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
     let now = now_ts();
     storage
         .insert_account(&Account {
-            id: "acc-cache-quota".to_string(),
-            label: "cached".to_string(),
+            id: "acc-cache-usage-limit".to_string(),
+            label: "cache-usage-limit".to_string(),
             issuer: "issuer".to_string(),
             chatgpt_account_id: None,
             workspace_id: None,
@@ -239,7 +220,7 @@ fn usage_snapshot_write_invalidates_cached_candidates() {
         .expect("insert account");
     storage
         .insert_token(&Token {
-            account_id: "acc-cache-quota".to_string(),
+            account_id: "acc-cache-usage-limit".to_string(),
             id_token: "id".to_string(),
             access_token: "access".to_string(),
             refresh_token: "refresh".to_string(),
@@ -249,8 +230,8 @@ fn usage_snapshot_write_invalidates_cached_candidates() {
         .expect("insert token");
     storage
         .insert_usage_snapshot(&UsageSnapshotRecord {
-            account_id: "acc-cache-quota".to_string(),
-            used_percent: Some(70.0),
+            account_id: "acc-cache-usage-limit".to_string(),
+            used_percent: Some(10.0),
             window_minutes: Some(300),
             resets_at: None,
             secondary_used_percent: None,
@@ -264,22 +245,18 @@ fn usage_snapshot_write_invalidates_cached_candidates() {
     let first = collect_gateway_candidates(&storage).expect("first candidates");
     assert_eq!(first.len(), 1);
 
-    crate::usage_snapshot_store::store_usage_snapshot(
+    assert!(!mark_account_unavailable_for_gateway_error(
         &storage,
-        "acc-cache-quota",
-        json!({
-            "rate_limit": {
-                "primary_window": {
-                    "used_percent": 95.0,
-                    "limit_window_seconds": 18_000
-                }
-            }
-        }),
-    )
-    .expect("store updated snapshot");
+        "acc-cache-usage-limit",
+        "You've hit your usage limit. To get more access now, try again at 8:02 PM."
+    ));
 
     let second = collect_gateway_candidates(&storage).expect("second candidates");
-    assert!(second.is_empty());
+    assert_eq!(
+        second.len(),
+        1,
+        "usage-limit cooldown should not evict cached candidate"
+    );
 
     clear_candidate_cache_for_tests();
     if let Some(value) = previous_ttl {
@@ -292,64 +269,37 @@ fn usage_snapshot_write_invalidates_cached_candidates() {
     } else {
         std::env::remove_var("CODEXMANAGER_DB_PATH");
     }
-    if let Some(value) = previous_enabled {
-        std::env::set_var(
-            crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED,
-            value,
-        );
-    } else {
-        std::env::remove_var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED);
-    }
-    if let Some(value) = previous_threshold {
-        std::env::set_var(
-            crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
-            value,
-        );
-    } else {
-        std::env::remove_var(
-            crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
-        );
-    }
-    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
-    remove_selection_test_db_files(&db_path);
 }
 
+/// 函数 `gateway_deactivation_status_change_invalidates_candidate_snapshot_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-03
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
-fn quota_protection_setting_change_invalidates_cached_candidates() {
-    let _env_guard = crate::lock_utils::process_env_test_guard();
-    let _guard = CANDIDATE_CACHE_TEST_LOCK.lock().expect("lock");
+fn gateway_deactivation_status_change_invalidates_candidate_snapshot_cache() {
+    let _guard = crate::test_env_guard();
     let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
-    let previous_enabled =
-        std::env::var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED).ok();
-    let previous_threshold =
-        std::env::var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT)
-            .ok();
-    let db_path = new_selection_test_db_path("selection-cache-test-4");
     std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "2000");
-    std::env::set_var("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-    std::env::set_var(
-        crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED,
-        "0",
-    );
-    std::env::set_var(
-        crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
-        "20",
-    );
-    crate::storage_helpers::clear_storage_cache_for_tests();
+    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-4");
     super::reload_from_env();
     clear_candidate_cache_for_tests();
-    let file_storage = Storage::open(&db_path).expect("open file db");
-    file_storage.init().expect("init file db");
 
     let storage = Storage::open_in_memory().expect("open");
     storage.init().expect("init");
     let now = now_ts();
     storage
         .insert_account(&Account {
-            id: "acc-setting-quota".to_string(),
-            label: "cached".to_string(),
+            id: "acc-cache-deactivated".to_string(),
+            label: "cache-deactivated".to_string(),
             issuer: "issuer".to_string(),
             chatgpt_account_id: None,
             workspace_id: None,
@@ -362,7 +312,7 @@ fn quota_protection_setting_change_invalidates_cached_candidates() {
         .expect("insert account");
     storage
         .insert_token(&Token {
-            account_id: "acc-setting-quota".to_string(),
+            account_id: "acc-cache-deactivated".to_string(),
             id_token: "id".to_string(),
             access_token: "access".to_string(),
             refresh_token: "refresh".to_string(),
@@ -372,8 +322,8 @@ fn quota_protection_setting_change_invalidates_cached_candidates() {
         .expect("insert token");
     storage
         .insert_usage_snapshot(&UsageSnapshotRecord {
-            account_id: "acc-setting-quota".to_string(),
-            used_percent: Some(95.0),
+            account_id: "acc-cache-deactivated".to_string(),
+            used_percent: Some(10.0),
             window_minutes: Some(300),
             resets_at: None,
             secondary_used_percent: None,
@@ -387,10 +337,17 @@ fn quota_protection_setting_change_invalidates_cached_candidates() {
     let first = collect_gateway_candidates(&storage).expect("first candidates");
     assert_eq!(first.len(), 1);
 
-    crate::app_settings::set_gateway_quota_protection_enabled(true).expect("enable protection");
+    assert!(mark_account_unavailable_for_gateway_error(
+        &storage,
+        "acc-cache-deactivated",
+        "Your OpenAI account has been deactivated"
+    ));
 
     let second = collect_gateway_candidates(&storage).expect("second candidates");
-    assert!(second.is_empty());
+    assert!(
+        second.is_empty(),
+        "deactivation should invalidate cached candidate"
+    );
 
     clear_candidate_cache_for_tests();
     if let Some(value) = previous_ttl {
@@ -403,25 +360,287 @@ fn quota_protection_setting_change_invalidates_cached_candidates() {
     } else {
         std::env::remove_var("CODEXMANAGER_DB_PATH");
     }
-    if let Some(value) = previous_enabled {
-        std::env::set_var(
-            crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED,
-            value,
-        );
+    super::reload_from_env();
+}
+
+/// 函数 `gateway_usage_limit_with_exhausted_snapshot_invalidates_candidate_snapshot_cache`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-03
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn gateway_usage_limit_with_exhausted_snapshot_invalidates_candidate_snapshot_cache() {
+    let _guard = crate::test_env_guard();
+    let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
+    let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
+    std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "2000");
+    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-cache-test-5");
+    super::reload_from_env();
+    clear_candidate_cache_for_tests();
+
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let now = now_ts();
+    storage
+        .insert_account(&Account {
+            id: "acc-cache-usage-exhausted".to_string(),
+            label: "cache-usage-exhausted".to_string(),
+            issuer: "issuer".to_string(),
+            chatgpt_account_id: None,
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc-cache-usage-exhausted".to_string(),
+            id_token: "id".to_string(),
+            access_token: "access".to_string(),
+            refresh_token: "refresh".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert token");
+    storage
+        .insert_usage_snapshot(&UsageSnapshotRecord {
+            account_id: "acc-cache-usage-exhausted".to_string(),
+            used_percent: Some(10.0),
+            window_minutes: Some(300),
+            resets_at: None,
+            secondary_used_percent: Some(10.0),
+            secondary_window_minutes: Some(10080),
+            secondary_resets_at: None,
+            credits_json: None,
+            captured_at: now,
+        })
+        .expect("insert snapshot");
+
+    let first = collect_gateway_candidates(&storage).expect("first candidates");
+    assert_eq!(first.len(), 1);
+
+    storage
+        .insert_usage_snapshot(&UsageSnapshotRecord {
+            account_id: "acc-cache-usage-exhausted".to_string(),
+            used_percent: Some(100.0),
+            window_minutes: Some(300),
+            resets_at: None,
+            secondary_used_percent: Some(100.0),
+            secondary_window_minutes: Some(10080),
+            secondary_resets_at: None,
+            credits_json: None,
+            captured_at: now + 1,
+        })
+        .expect("insert exhausted snapshot");
+
+    assert!(mark_account_unavailable_for_gateway_error(
+        &storage,
+        "acc-cache-usage-exhausted",
+        "You've hit your usage limit. To get more access now, try again at 8:02 PM."
+    ));
+
+    let second = collect_gateway_candidates(&storage).expect("second candidates");
+    assert!(
+        second.is_empty(),
+        "confirmed exhausted snapshot should invalidate cached candidate"
+    );
+
+    clear_candidate_cache_for_tests();
+    if let Some(value) = previous_ttl {
+        std::env::set_var(CANDIDATE_CACHE_TTL_ENV, value);
     } else {
-        std::env::remove_var(crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_ENABLED);
+        std::env::remove_var(CANDIDATE_CACHE_TTL_ENV);
+    }
+    if let Some(value) = previous_db_path {
+        std::env::set_var("CODEXMANAGER_DB_PATH", value);
+    } else {
+        std::env::remove_var("CODEXMANAGER_DB_PATH");
+    }
+    super::reload_from_env();
+}
+
+/// 低配额账号（used_percent 超过阈值）应当被稳定地排到候选列表尾部，
+/// 配额充足的账号优先被挑选，避免反复打到快耗尽的号上。
+#[test]
+fn low_quota_accounts_are_demoted_to_tail() {
+    let _guard = crate::test_env_guard();
+    let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
+    let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
+    let previous_threshold = std::env::var(LOW_QUOTA_THRESHOLD_ENV).ok();
+    std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "0");
+    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-low-quota-test");
+    std::env::set_var(LOW_QUOTA_THRESHOLD_ENV, "95");
+    super::reload_from_env();
+    clear_candidate_cache_for_tests();
+
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+
+    let now = now_ts();
+    let rows: Vec<(&str, i64, f64, Option<f64>)> = vec![
+        ("acc-exhausted", 0, 99.0, None),
+        ("acc-healthy-high", 1, 10.0, None),
+        ("acc-secondary-low", 2, 10.0, Some(99.0)),
+        ("acc-healthy-low", 3, 5.0, None),
+    ];
+    for (id, sort, primary_pct, secondary_pct) in &rows {
+        storage
+            .insert_account(&Account {
+                id: (*id).to_string(),
+                label: (*id).to_string(),
+                issuer: "issuer".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: *sort,
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("insert account");
+        storage
+            .insert_token(&Token {
+                account_id: (*id).to_string(),
+                id_token: "id".to_string(),
+                access_token: "access".to_string(),
+                refresh_token: "refresh".to_string(),
+                api_key_access_token: None,
+                last_refresh: now,
+            })
+            .expect("insert token");
+        storage
+            .insert_usage_snapshot(&UsageSnapshotRecord {
+                account_id: (*id).to_string(),
+                used_percent: Some(*primary_pct),
+                window_minutes: Some(300),
+                resets_at: None,
+                secondary_used_percent: *secondary_pct,
+                secondary_window_minutes: secondary_pct.map(|_| 10_080),
+                secondary_resets_at: None,
+                credits_json: None,
+                captured_at: now,
+            })
+            .expect("insert snapshot");
+    }
+
+    let candidates = collect_gateway_candidates(&storage).expect("collect candidates");
+    let ids: Vec<&str> = candidates
+        .iter()
+        .map(|(account, _)| account.id.as_str())
+        .collect();
+    assert_eq!(ids.len(), 4);
+    assert_eq!(&ids[..2], &["acc-healthy-high", "acc-healthy-low"]);
+    let tail: Vec<&str> = ids[2..].to_vec();
+    assert!(tail.contains(&"acc-exhausted"));
+    assert!(tail.contains(&"acc-secondary-low"));
+
+    clear_candidate_cache_for_tests();
+    if let Some(value) = previous_ttl {
+        std::env::set_var(CANDIDATE_CACHE_TTL_ENV, value);
+    } else {
+        std::env::remove_var(CANDIDATE_CACHE_TTL_ENV);
+    }
+    if let Some(value) = previous_db_path {
+        std::env::set_var("CODEXMANAGER_DB_PATH", value);
+    } else {
+        std::env::remove_var("CODEXMANAGER_DB_PATH");
     }
     if let Some(value) = previous_threshold {
-        std::env::set_var(
-            crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
-            value,
-        );
+        std::env::set_var(LOW_QUOTA_THRESHOLD_ENV, value);
     } else {
-        std::env::remove_var(
-            crate::account_availability::ENV_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT,
-        );
+        std::env::remove_var(LOW_QUOTA_THRESHOLD_ENV);
     }
-    crate::storage_helpers::clear_storage_cache_for_tests();
     super::reload_from_env();
-    remove_selection_test_db_files(&db_path);
+}
+
+/// 全部账号都触阈时不应把候选清空，保底仍返回所有账号（稳定顺序）。
+#[test]
+fn all_low_quota_still_returns_candidates() {
+    let _guard = crate::test_env_guard();
+    let previous_ttl = std::env::var(CANDIDATE_CACHE_TTL_ENV).ok();
+    let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
+    let previous_threshold = std::env::var(LOW_QUOTA_THRESHOLD_ENV).ok();
+    std::env::set_var(CANDIDATE_CACHE_TTL_ENV, "0");
+    std::env::set_var("CODEXMANAGER_DB_PATH", "selection-all-low-quota-test");
+    std::env::set_var(LOW_QUOTA_THRESHOLD_ENV, "95");
+    super::reload_from_env();
+    clear_candidate_cache_for_tests();
+
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+
+    let now = now_ts();
+    for (id, sort) in &[("acc-a", 0_i64), ("acc-b", 1_i64)] {
+        storage
+            .insert_account(&Account {
+                id: (*id).to_string(),
+                label: (*id).to_string(),
+                issuer: "issuer".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: *sort,
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("insert account");
+        storage
+            .insert_token(&Token {
+                account_id: (*id).to_string(),
+                id_token: "id".to_string(),
+                access_token: "access".to_string(),
+                refresh_token: "refresh".to_string(),
+                api_key_access_token: None,
+                last_refresh: now,
+            })
+            .expect("insert token");
+        storage
+            .insert_usage_snapshot(&UsageSnapshotRecord {
+                account_id: (*id).to_string(),
+                used_percent: Some(98.0),
+                window_minutes: Some(300),
+                resets_at: None,
+                secondary_used_percent: None,
+                secondary_window_minutes: None,
+                secondary_resets_at: None,
+                credits_json: None,
+                captured_at: now,
+            })
+            .expect("insert snapshot");
+    }
+
+    let candidates = collect_gateway_candidates(&storage).expect("collect candidates");
+    let ids: Vec<&str> = candidates
+        .iter()
+        .map(|(account, _)| account.id.as_str())
+        .collect();
+    assert_eq!(ids, vec!["acc-a", "acc-b"]);
+
+    clear_candidate_cache_for_tests();
+    if let Some(value) = previous_ttl {
+        std::env::set_var(CANDIDATE_CACHE_TTL_ENV, value);
+    } else {
+        std::env::remove_var(CANDIDATE_CACHE_TTL_ENV);
+    }
+    if let Some(value) = previous_db_path {
+        std::env::set_var("CODEXMANAGER_DB_PATH", value);
+    } else {
+        std::env::remove_var("CODEXMANAGER_DB_PATH");
+    }
+    if let Some(value) = previous_threshold {
+        std::env::set_var(LOW_QUOTA_THRESHOLD_ENV, value);
+    } else {
+        std::env::remove_var(LOW_QUOTA_THRESHOLD_ENV);
+    }
+    super::reload_from_env();
 }

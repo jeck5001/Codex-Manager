@@ -1,7 +1,10 @@
+use crate::gateway::upstream::support::failover_policy::{follow_up_action, FollowUpAction};
 use bytes::Bytes;
 use codexmanager_core::storage::{Account, Storage, Token};
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
+
+use super::super::GatewayUpstreamResponse;
 
 const REQUEST_ID_HEADER: &str = "x-request-id";
 const OAI_REQUEST_ID_HEADER: &str = "x-oai-request-id";
@@ -10,16 +13,45 @@ const AUTH_ERROR_HEADER: &str = "x-openai-authorization-error";
 
 pub(super) enum FallbackBranchResult {
     NotTriggered,
-    RespondUpstream(reqwest::blocking::Response),
+    RespondUpstream(GatewayUpstreamResponse),
     Failover,
     Terminal { status_code: u16, message: String },
 }
 
+/// 函数 `should_failover_after_fallback_non_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - has_more_candidates: 参数 has_more_candidates
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_failover_after_fallback_non_success(status: u16, has_more_candidates: bool) -> bool {
-    matches!(status, 401 | 403 | 404 | 408 | 409 | 429)
-        && super::super::super::should_failover_status(status, has_more_candidates)
+    matches!(
+        follow_up_action(
+            crate::gateway::upstream::support::failover_policy::should_failover_after_fallback_non_success(status),
+            has_more_candidates,
+        ),
+        FollowUpAction::Failover
+    )
 }
 
+/// 函数 `extract_response_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)
@@ -29,6 +61,17 @@ fn extract_response_header(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+/// 函数 `looks_like_blocked_marker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn looks_like_blocked_marker(value: &str) -> bool {
     let normalized = value.trim().to_ascii_lowercase();
     normalized.contains("blocked")
@@ -37,6 +80,56 @@ fn looks_like_blocked_marker(value: &str) -> bool {
         || normalized.contains("region_restricted")
 }
 
+fn body_as_trimmed_text(body: &[u8]) -> Option<&str> {
+    std::str::from_utf8(body)
+        .ok()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn text_looks_like_html(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    normalized.contains("<html")
+        || normalized.contains("<!doctype html")
+        || normalized.contains("<body")
+        || normalized.contains("</html>")
+}
+
+fn body_looks_like_html(body: &[u8]) -> bool {
+    body_as_trimmed_text(body).is_some_and(text_looks_like_html)
+}
+
+fn body_looks_like_cloudflare_challenge(status_code: u16, body: &[u8]) -> bool {
+    body_as_trimmed_text(body).is_some_and(|text| {
+        let normalized = text.to_ascii_lowercase();
+        let looks_like_challenge = normalized.contains("cloudflare")
+            || normalized.contains("cf-chl")
+            || normalized.contains("just a moment")
+            || normalized.contains("attention required")
+            || normalized.contains("captcha")
+            || normalized.contains("security check")
+            || normalized.contains("access denied")
+            || normalized.contains("waf");
+        looks_like_challenge || (text_looks_like_html(text) && matches!(status_code, 401 | 403))
+    })
+}
+
+/// 函数 `classify_fallback_non_success_kind`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - fallback_status: 参数 fallback_status
+/// - content_type: 参数 content_type
+/// - body: 参数 body
+/// - cf_ray: 参数 cf_ray
+/// - auth_error: 参数 auth_error
+/// - identity_error_code: 参数 identity_error_code
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_fallback_non_success_kind(
     fallback_status: u16,
     content_type: Option<&str>,
@@ -56,15 +149,11 @@ fn classify_fallback_non_success_kind(
     {
         return "cloudflare_blocked";
     }
-    if let Some(hint) =
-        crate::gateway::summarize_upstream_error_hint_from_body(fallback_status, body)
-    {
-        if hint.contains("Cloudflare") {
-            return "cloudflare_challenge";
-        }
-        if hint.contains("HTML 错误页") {
-            return "html";
-        }
+    if body_looks_like_cloudflare_challenge(fallback_status, body) {
+        return "cloudflare_challenge";
+    }
+    if body_looks_like_html(body) {
+        return "html";
     }
     if content_type
         .map(crate::gateway::is_html_content_type)
@@ -94,6 +183,20 @@ fn classify_fallback_non_success_kind(
     }
 }
 
+/// 函数 `summarize_fallback_non_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - primary_status: 参数 primary_status
+/// - fallback_status: 参数 fallback_status
+/// - headers: 参数 headers
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_fallback_non_success(
     primary_status: u16,
     fallback_status: u16,
@@ -144,6 +247,19 @@ fn summarize_fallback_non_success(
     )
 }
 
+/// 函数 `summarize_fallback_non_success_headers_only`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - primary_status: 参数 primary_status
+/// - fallback_status: 参数 fallback_status
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_fallback_non_success_headers_only(
     primary_status: u16,
     fallback_status: u16,
@@ -190,6 +306,17 @@ fn summarize_fallback_non_success_headers_only(
     )
 }
 
+/// 函数 `handle_openai_fallback_branch`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_openai_fallback_branch<F>(
     client: &reqwest::blocking::Client,
@@ -203,7 +330,6 @@ pub(super) fn handle_openai_fallback_branch<F>(
     fallback_base: Option<&str>,
     account: &Account,
     token: &mut Token,
-    upstream_cookie: Option<&str>,
     strip_session_affinity: bool,
     debug: bool,
     allow_openai_fallback: bool,
@@ -241,26 +367,25 @@ where
             fallback_base
         );
     }
-    match super::super::super::try_openai_fallback(super::super::super::TryOpenAiFallbackArgs {
+    match super::super::super::try_openai_fallback(
         client,
         storage,
         method,
-        request_path: path,
+        path,
         incoming_headers,
         body,
         is_stream,
-        upstream_base: fallback_base,
+        fallback_base,
         account,
         token,
-        upstream_cookie,
         strip_session_affinity,
         debug,
-    }) {
+    ) {
         Ok(Some(resp)) => {
             if resp.status().is_success() {
                 super::super::super::clear_account_cooldown(&account.id);
                 log_gateway_result(Some(fallback_base), resp.status().as_u16(), None);
-                return FallbackBranchResult::RespondUpstream(resp);
+                return FallbackBranchResult::RespondUpstream(resp.into());
             }
             let fallback_status = resp.status().as_u16();
             super::super::super::mark_account_cooldown_for_status(&account.id, fallback_status);
@@ -293,7 +418,7 @@ where
                     fallback_status,
                     Some(fallback_error.as_str()),
                 );
-                FallbackBranchResult::RespondUpstream(resp)
+                FallbackBranchResult::RespondUpstream(resp.into())
             }
         }
         Ok(None) => {
@@ -311,8 +436,7 @@ where
             } else {
                 FallbackBranchResult::Terminal {
                     status_code: 502,
-                    message: "upstream blocked by Cloudflare; set CODEXMANAGER_UPSTREAM_COOKIE"
-                        .to_string(),
+                    message: "upstream blocked by Cloudflare".to_string(),
                 }
             }
         }

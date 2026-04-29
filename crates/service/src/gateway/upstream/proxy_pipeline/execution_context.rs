@@ -11,27 +11,25 @@ pub(in super::super) struct GatewayUpstreamExecutionContext<'a> {
     response_adapter: super::super::super::ResponseAdapter,
     protocol_type: &'a str,
     model_for_log: Option<&'a str>,
-    requested_model: Option<&'a str>,
     reasoning_for_log: Option<&'a str>,
-    model_fallback_path: Option<&'a [String]>,
+    service_tier_for_log: Option<&'a str>,
+    effective_service_tier_for_log: Option<&'a str>,
     candidate_count: usize,
     account_max_inflight: usize,
 }
 
-pub(in super::super) struct FinalResultLogArgs<'a> {
-    pub(in super::super) final_account_id: Option<&'a str>,
-    pub(in super::super) upstream_url: Option<&'a str>,
-    pub(in super::super) model_for_log: Option<&'a str>,
-    pub(in super::super) status_code: u16,
-    pub(in super::super) usage: super::super::super::request_log::RequestLogUsage,
-    pub(in super::super) error: Option<&'a str>,
-    pub(in super::super) elapsed_ms: u128,
-    pub(in super::super) attempted_account_ids: Option<&'a [String]>,
-    pub(in super::super) skipped_cooldown_count: usize,
-    pub(in super::super) skipped_inflight_count: usize,
-}
-
 impl<'a> GatewayUpstreamExecutionContext<'a> {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     #[allow(clippy::too_many_arguments)]
     pub(in super::super) fn new(
         trace_id: &'a str,
@@ -43,9 +41,9 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         response_adapter: super::super::super::ResponseAdapter,
         protocol_type: &'a str,
         model_for_log: Option<&'a str>,
-        requested_model: Option<&'a str>,
         reasoning_for_log: Option<&'a str>,
-        model_fallback_path: Option<&'a [String]>,
+        service_tier_for_log: Option<&'a str>,
+        effective_service_tier_for_log: Option<&'a str>,
         candidate_count: usize,
         account_max_inflight: usize,
     ) -> Self {
@@ -59,18 +57,44 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
             response_adapter,
             protocol_type,
             model_for_log,
-            requested_model,
             reasoning_for_log,
-            model_fallback_path,
+            service_tier_for_log,
+            effective_service_tier_for_log,
             candidate_count,
             account_max_inflight,
         }
     }
 
+    /// 函数 `has_more_candidates`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(in super::super) fn has_more_candidates(&self, idx: usize) -> bool {
         idx + 1 < self.candidate_count
     }
 
+    pub(in super::super) fn protocol_type(&self) -> &str {
+        self.protocol_type
+    }
+
+    /// 函数 `should_skip_candidate`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(in super::super) fn should_skip_candidate(
         &self,
         account_id: &str,
@@ -84,6 +108,17 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         )
     }
 
+    /// 函数 `log_candidate_start`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 无
     pub(in super::super) fn log_candidate_start(
         &self,
         account_id: &str,
@@ -99,6 +134,17 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         );
     }
 
+    /// 函数 `log_candidate_skip`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 无
     pub(in super::super) fn log_candidate_skip(
         &self,
         account_id: &str,
@@ -118,6 +164,17 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         );
     }
 
+    /// 函数 `log_attempt_result`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 无
     pub(super) fn log_attempt_result(
         &self,
         account_id: &str,
@@ -134,64 +191,128 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
         );
     }
 
-    pub(in super::super) fn log_final_result(&self, args: FinalResultLogArgs<'_>) {
-        self.log_final_result_with_model(FinalResultLogArgs {
-            model_for_log: self.model_for_log,
-            ..args
-        });
+    /// 函数 `mark_account_unavailable_for_gateway_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(in super::super) fn mark_account_unavailable_for_gateway_error(
+        &self,
+        account_id: &str,
+        err: &str,
+    ) -> bool {
+        crate::account_status::mark_account_unavailable_for_gateway_error(
+            self.storage,
+            account_id,
+            err,
+        )
     }
 
-    pub(in super::super) fn log_final_result_with_model(&self, args: FinalResultLogArgs<'_>) {
-        let FinalResultLogArgs {
+    pub(in super::super) fn apply_gateway_error_follow_up(
+        &self,
+        account_id: &str,
+        err: &str,
+        has_more_candidates: bool,
+    ) -> crate::account_status::GatewayErrorFollowUp {
+        let follow_up = crate::account_status::analyze_gateway_error(err, has_more_candidates);
+        if follow_up.should_mark_default_cooldown {
+            super::super::super::mark_account_cooldown(
+                account_id,
+                super::super::super::CooldownReason::Default,
+            );
+        }
+        if follow_up.should_mark_account_unavailable {
+            let _ = self.mark_account_unavailable_for_gateway_error(account_id, err);
+        }
+        follow_up
+    }
+
+    /// 函数 `log_final_result`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 无
+    pub(in super::super) fn log_final_result(
+        &self,
+        final_account_id: Option<&str>,
+        upstream_url: Option<&str>,
+        status_code: u16,
+        usage: super::super::super::request_log::RequestLogUsage,
+        error: Option<&str>,
+        elapsed_ms: u128,
+        attempted_account_ids: Option<&[String]>,
+    ) {
+        self.log_final_result_with_model(
             final_account_id,
             upstream_url,
-            model_for_log,
+            self.model_for_log,
             status_code,
             usage,
             error,
             elapsed_ms,
             attempted_account_ids,
-            skipped_cooldown_count,
-            skipped_inflight_count,
-        } = args;
-        let has_candidate_stats = self.candidate_count > 0
-            || attempted_account_ids.is_some()
-            || skipped_cooldown_count > 0
-            || skipped_inflight_count > 0;
-        super::super::super::request_log::write_request_log_with_attempts_and_model_fallback(
+        );
+    }
+
+    /// 函数 `log_final_result_with_model`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - in super: 参数 in super
+    ///
+    /// # 返回
+    /// 无
+    #[allow(clippy::too_many_arguments)]
+    pub(in super::super) fn log_final_result_with_model(
+        &self,
+        final_account_id: Option<&str>,
+        upstream_url: Option<&str>,
+        model_for_log: Option<&str>,
+        status_code: u16,
+        usage: super::super::super::request_log::RequestLogUsage,
+        error: Option<&str>,
+        elapsed_ms: u128,
+        attempted_account_ids: Option<&[String]>,
+    ) {
+        super::super::super::request_log::write_request_log_with_attempts(
             self.storage,
             super::super::super::request_log::RequestLogTraceContext {
                 trace_id: Some(self.trace_id),
                 original_path: Some(self.original_path),
                 adapted_path: Some(self.path),
                 response_adapter: Some(self.response_adapter),
+                request_type: Some("http"),
+                service_tier: self.service_tier_for_log,
+                effective_service_tier: self.effective_service_tier_for_log,
+                ..Default::default()
             },
-            super::super::super::request_log::RequestLogEntry {
-                key_id: Some(self.key_id),
-                account_id: final_account_id,
-                request_path: self.path,
-                method: self.request_method,
-                model: model_for_log,
-                reasoning_effort: self.reasoning_for_log,
-                upstream_url,
-                status_code: Some(status_code),
-                usage,
-                error,
-                duration_ms: Some(elapsed_ms),
-            },
-            super::super::super::request_log::RequestLogRouteMeta {
-                attempted_account_ids,
-                candidate_count: has_candidate_stats
-                    .then_some(self.candidate_count)
-                    .filter(|count| *count > 0),
-                attempted_count: attempted_account_ids.map(|items| items.len()),
-                skipped_count: has_candidate_stats
-                    .then_some(skipped_cooldown_count + skipped_inflight_count),
-                skipped_cooldown_count: has_candidate_stats.then_some(skipped_cooldown_count),
-                skipped_inflight_count: has_candidate_stats.then_some(skipped_inflight_count),
-                requested_model: self.requested_model,
-                model_fallback_path: self.model_fallback_path,
-            },
+            Some(self.key_id),
+            final_account_id,
+            self.path,
+            self.request_method,
+            model_for_log,
+            self.reasoning_for_log,
+            upstream_url,
+            Some(status_code),
+            usage,
+            error,
+            Some(elapsed_ms),
+            attempted_account_ids,
         );
         super::super::super::trace_log::log_request_final(
             self.trace_id,
@@ -206,8 +327,5 @@ impl<'a> GatewayUpstreamExecutionContext<'a> {
             status_code,
             Some(self.protocol_type),
         );
-        if let Some(account_id) = final_account_id {
-            super::super::super::record_route_latency(account_id, elapsed_ms);
-        }
     }
 }

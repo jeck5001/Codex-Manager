@@ -1,10 +1,10 @@
 use bytes::Bytes;
+use codexmanager_core::storage::ConversationBinding;
 use reqwest::Method;
 use tiny_http::Request;
 
 mod auth;
 mod io;
-mod rate_limit;
 mod request;
 
 pub(super) struct LocalValidationResult {
@@ -18,41 +18,60 @@ pub(super) struct LocalValidationResult {
     pub(super) has_prompt_cache_key: bool,
     pub(super) request_shape: Option<String>,
     pub(super) protocol_type: String,
-    pub(super) upstream_base_url: Option<String>,
-    pub(super) static_headers_json: Option<String>,
+    pub(super) rotation_strategy: String,
+    pub(super) aggregate_api_id: Option<String>,
+    pub(super) account_plan_filter: Option<String>,
     pub(super) response_adapter: super::ResponseAdapter,
+    pub(super) gemini_stream_output_mode: Option<super::GeminiStreamOutputMode>,
     pub(super) tool_name_restore_map: super::ToolNameRestoreMap,
     pub(super) request_method: String,
     pub(super) key_id: String,
-    pub(super) api_key_name: Option<String>,
-    pub(super) requested_model_for_log: Option<String>,
+    pub(super) platform_key_hash: String,
+    pub(super) local_conversation_id: Option<String>,
+    pub(super) conversation_binding: Option<ConversationBinding>,
     pub(super) model_for_log: Option<String>,
     pub(super) reasoning_for_log: Option<String>,
+    pub(super) service_tier_for_log: Option<String>,
+    pub(super) effective_service_tier_for_log: Option<String>,
     pub(super) method: Method,
 }
 
-#[derive(Debug)]
 pub(super) struct LocalValidationError {
     pub(super) status_code: u16,
     pub(super) message: String,
-    pub(super) retry_after_secs: Option<u64>,
 }
 
 impl LocalValidationError {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn new(status_code: u16, message: impl Into<String>) -> Self {
         Self {
             status_code,
             message: message.into(),
-            retry_after_secs: None,
         }
-    }
-
-    pub(super) fn with_retry_after_secs(mut self, retry_after_secs: u64) -> Self {
-        self.retry_after_secs = Some(retry_after_secs.max(1));
-        self
     }
 }
 
+/// 函数 `prepare_local_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn prepare_local_request(
     request: &mut Request,
     trace_id: String,
@@ -64,7 +83,6 @@ pub(super) fn prepare_local_request(
 
     let storage = auth::open_storage_or_error()?;
     let api_key = auth::load_active_api_key(&storage, &platform_key, request.url(), debug)?;
-    rate_limit::check_api_key_rate_limit(&storage, &api_key, &body, request.url(), debug)?;
 
     request::build_local_validation_result(
         request,

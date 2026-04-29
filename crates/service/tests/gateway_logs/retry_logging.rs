@@ -95,7 +95,6 @@ fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
-            expires_at: None,
         })
         .expect("insert api key");
 
@@ -248,7 +247,6 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
-            expires_at: None,
         })
         .expect("insert api key");
 
@@ -395,7 +393,6 @@ fn gateway_error_logging_writes_only_trace_log_file() {
             status: "active".to_string(),
             created_at: now,
             last_used_at: None,
-            expires_at: None,
         })
         .expect("insert api key");
 

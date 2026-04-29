@@ -1,28 +1,37 @@
-use codexmanager_core::rpc::types::{RequestLogFilterParams, RequestLogFilterSummaryResult};
-use codexmanager_core::storage::RequestLogFilterInput;
+use codexmanager_core::rpc::types::{RequestLogFilterSummaryResult, RequestLogListParams};
 
 use crate::storage_helpers::open_storage;
 
-use super::list::{normalize_filter_params, to_storage_filters};
+use super::list::{normalize_optional_text, normalize_status_filter, normalize_time_range};
 
+/// 函数 `read_request_log_filter_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_request_log_filter_summary(
-    params: RequestLogFilterParams,
+    params: RequestLogListParams,
 ) -> Result<RequestLogFilterSummaryResult, String> {
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
-    let params = normalize_filter_params(params);
+    let query = normalize_optional_text(params.query);
+    let status_filter = normalize_status_filter(params.status_filter);
+    let (start_ts, end_ts) = normalize_time_range(params.start_ts, params.end_ts);
     let total_count = storage
-        .count_request_logs_filtered(RequestLogFilterInput {
-            query: params.query.as_deref(),
-            status_filter: None,
-            key_id: params.key_id.as_deref(),
-            key_ids: params.key_ids.as_slice(),
-            model: params.model.as_deref(),
-            time_from: params.time_from,
-            time_to: params.time_to,
-        })
+        .count_request_logs(query.as_deref(), None, start_ts, end_ts)
         .map_err(|err| format!("count request logs failed: {err}"))?;
     let filtered = storage
-        .summarize_request_logs_filtered_with_filters(to_storage_filters(&params, None, None))
+        .summarize_request_logs_filtered(
+            query.as_deref(),
+            status_filter.as_deref(),
+            start_ts,
+            end_ts,
+        )
         .map_err(|err| format!("summarize request logs failed: {err}"))?;
 
     Ok(RequestLogFilterSummaryResult {
@@ -31,5 +40,6 @@ pub(crate) fn read_request_log_filter_summary(
         success_count: filtered.success_count,
         error_count: filtered.error_count,
         total_tokens: filtered.total_tokens,
+        total_cost_usd: filtered.estimated_cost_usd,
     })
 }

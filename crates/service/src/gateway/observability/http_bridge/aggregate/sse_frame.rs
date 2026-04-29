@@ -1,11 +1,24 @@
 use serde_json::Value;
 
+#[cfg(test)]
+use super::openai_responses_event::OpenAIResponsesEvent;
 use super::output_text;
 use output_text::{
     append_output_text, collect_response_output_text, extract_error_message_from_json,
     parse_usage_from_json, UpstreamResponseUsage,
 };
 
+/// 函数 `parse_usage_from_sse_frame`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 pub(in super::super) fn parse_usage_from_sse_frame(
     lines: &[String],
@@ -59,6 +72,13 @@ pub(in super::super) enum SseTerminal {
     Err(String),
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PassthroughSseProtocol {
+    #[default]
+    Generic,
+    AnthropicNative,
+}
+
 #[derive(Debug, Clone, Default)]
 pub(in super::super) struct SseFrameInspection {
     pub saw_data: bool,
@@ -67,10 +87,27 @@ pub(in super::super) struct SseFrameInspection {
     pub last_event_type: Option<String>,
 }
 
-fn classify_terminal_event_name(name: &str) -> Option<SseTerminal> {
+/// 函数 `classify_terminal_event_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
+fn classify_terminal_event_name(
+    name: &str,
+    protocol: PassthroughSseProtocol,
+) -> Option<SseTerminal> {
     let normalized = name.trim().to_ascii_lowercase();
     if normalized.is_empty() {
         return None;
+    }
+    if protocol == PassthroughSseProtocol::AnthropicNative && normalized == "message_stop" {
+        return Some(SseTerminal::Ok);
     }
     if normalized == "done"
         || is_response_completed_event_name(normalized.as_str())
@@ -91,11 +128,33 @@ fn classify_terminal_event_name(name: &str) -> Option<SseTerminal> {
     None
 }
 
+/// 函数 `is_response_completed_event_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn is_response_completed_event_name(name: &str) -> bool {
     let normalized = name.trim().to_ascii_lowercase();
     normalized == "response.completed" || normalized == "response.done"
 }
 
+/// 函数 `is_chat_completion_terminal_chunk`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_chat_completion_terminal_chunk(value: &Value) -> bool {
     if value.get("object").and_then(Value::as_str) != Some("chat.completion.chunk") {
         return false;
@@ -112,7 +171,21 @@ fn is_chat_completion_terminal_chunk(value: &Value) -> bool {
         })
 }
 
-pub(in super::super) fn inspect_sse_frame(lines: &[String]) -> SseFrameInspection {
+/// 函数 `inspect_sse_frame`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
+pub(in super::super) fn inspect_sse_frame_for_protocol(
+    lines: &[String],
+    protocol: PassthroughSseProtocol,
+) -> SseFrameInspection {
     let mut inspection = SseFrameInspection::default();
     let mut data_lines = Vec::new();
     let mut event_name: Option<String> = None;
@@ -135,7 +208,7 @@ pub(in super::super) fn inspect_sse_frame(lines: &[String]) -> SseFrameInspectio
     }
 
     if let Some(name) = event_name.as_deref() {
-        inspection.terminal = classify_terminal_event_name(name);
+        inspection.terminal = classify_terminal_event_name(name, protocol);
         inspection.last_event_type = Some(name.to_string());
     }
 
@@ -162,7 +235,7 @@ pub(in super::super) fn inspect_sse_frame(lines: &[String]) -> SseFrameInspectio
         if let Some(message) = extract_error_message_from_json(&value) {
             inspection.terminal = Some(SseTerminal::Err(message));
         } else if let Some(kind) = value.get("type").and_then(Value::as_str) {
-            if let Some(terminal) = classify_terminal_event_name(kind) {
+            if let Some(terminal) = classify_terminal_event_name(kind, protocol) {
                 inspection.terminal = Some(terminal);
             }
         } else if is_chat_completion_terminal_chunk(&value) {
@@ -202,6 +275,36 @@ pub(in super::super) fn inspect_sse_frame(lines: &[String]) -> SseFrameInspectio
     inspection
 }
 
+#[cfg(test)]
+pub(in super::super) fn inspect_openai_responses_sse_frame(lines: &[String]) -> SseFrameInspection {
+    let mut inspection = inspect_sse_frame_for_protocol(lines, PassthroughSseProtocol::Generic);
+    let Some(event) = OpenAIResponsesEvent::parse(lines) else {
+        return inspection;
+    };
+
+    if let Some(event_type) = event.event_type {
+        inspection.last_event_type = Some(event_type);
+    }
+    inspection.terminal = event.terminal;
+    inspection.usage = Some(event.usage);
+    inspection
+}
+
+pub(in super::super) fn inspect_sse_frame(lines: &[String]) -> SseFrameInspection {
+    inspect_sse_frame_for_protocol(lines, PassthroughSseProtocol::Generic)
+}
+
+/// 函数 `extract_sse_event_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn extract_sse_event_name(lines: &[String]) -> Option<String> {
     for line in lines {
         let trimmed = line.trim_end_matches(['\r', '\n']);
@@ -215,6 +318,17 @@ pub(in super::super) fn extract_sse_event_name(lines: &[String]) -> Option<Strin
     None
 }
 
+/// 函数 `normalize_sse_event_name_for_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - event_name: 参数 event_name
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_sse_event_name_for_type(event_name: &str) -> Option<&str> {
     let normalized = event_name.trim();
     if normalized.is_empty() || normalized.eq_ignore_ascii_case("message") {
@@ -223,6 +337,17 @@ fn normalize_sse_event_name_for_type(event_name: &str) -> Option<&str> {
     Some(normalized)
 }
 
+/// 函数 `extract_sse_frame_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn extract_sse_frame_payload(lines: &[String]) -> Option<String> {
     let mut data_lines = Vec::new();
     for line in lines {
@@ -255,6 +380,135 @@ pub(in super::super) fn extract_sse_frame_payload(lines: &[String]) -> Option<St
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{
+        inspect_openai_responses_sse_frame, inspect_sse_frame, inspect_sse_frame_for_protocol,
+        PassthroughSseProtocol, SseTerminal,
+    };
+
+    /// 函数 `inspect_sse_frame_keeps_last_event_type_from_header`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn inspect_sse_frame_keeps_last_event_type_from_header() {
+        let lines = vec![
+            "event: response.completed\n".to_string(),
+            "data: {\"type\":\"response.completed\"}\n".to_string(),
+            "\n".to_string(),
+        ];
+        let inspection = inspect_sse_frame(&lines);
+        assert_eq!(
+            inspection.last_event_type.as_deref(),
+            Some("response.completed")
+        );
+    }
+
+    /// 函数 `inspect_sse_frame_keeps_last_event_type_from_json_type`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn inspect_sse_frame_keeps_last_event_type_from_json_type() {
+        let lines = vec![
+            "data: {\"type\":\"response.failed\",\"error\":{\"message\":\"oops\"}}\n".to_string(),
+            "\n".to_string(),
+        ];
+        let inspection = inspect_sse_frame(&lines);
+        assert_eq!(
+            inspection.last_event_type.as_deref(),
+            Some("response.failed")
+        );
+    }
+
+    #[test]
+    fn inspect_sse_frame_generic_mode_does_not_treat_message_stop_as_terminal() {
+        let lines = vec![
+            "event: message_stop\n".to_string(),
+            "data: {\"type\":\"message_stop\"}\n".to_string(),
+            "\n".to_string(),
+        ];
+        let inspection = inspect_sse_frame_for_protocol(&lines, PassthroughSseProtocol::Generic);
+        assert!(inspection.terminal.is_none());
+        assert_eq!(inspection.last_event_type.as_deref(), Some("message_stop"));
+    }
+
+    #[test]
+    fn inspect_sse_frame_anthropic_native_treats_message_stop_as_terminal() {
+        let lines = vec![
+            "event: message_stop\n".to_string(),
+            "data: {\"type\":\"message_stop\"}\n".to_string(),
+            "\n".to_string(),
+        ];
+        let inspection =
+            inspect_sse_frame_for_protocol(&lines, PassthroughSseProtocol::AnthropicNative);
+        assert!(matches!(inspection.terminal, Some(SseTerminal::Ok)));
+        assert_eq!(inspection.last_event_type.as_deref(), Some("message_stop"));
+    }
+
+    #[test]
+    fn inspect_openai_responses_sse_frame_collects_output_item_text() {
+        let lines = vec![
+            "event: response.output_item.done\n".to_string(),
+            "data: {\"output_item\":{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello from output_item\"}]}}\n".to_string(),
+            "\n".to_string(),
+        ];
+        let inspection = inspect_openai_responses_sse_frame(&lines);
+        let usage = inspection.usage.expect("usage");
+        assert_eq!(usage.output_text.as_deref(), Some("hello from output_item"));
+        assert_eq!(
+            inspection.last_event_type.as_deref(),
+            Some("response.output_item.done")
+        );
+    }
+
+    #[test]
+    fn inspect_openai_responses_sse_frame_collects_structured_delta_text() {
+        let lines = vec![
+            "event: response.output_text.delta\n".to_string(),
+            "data: {\"delta\":{\"text\":\"hello from structured delta\"}}\n".to_string(),
+            "\n".to_string(),
+        ];
+        let inspection = inspect_openai_responses_sse_frame(&lines);
+        let usage = inspection.usage.expect("usage");
+        assert_eq!(
+            usage.output_text.as_deref(),
+            Some("hello from structured delta")
+        );
+        assert_eq!(
+            inspection.last_event_type.as_deref(),
+            Some("response.output_text.delta")
+        );
+    }
+}
+
+/// 函数 `ensure_value_has_sse_event_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - lines: 参数 lines
+/// - value: 参数 value
+///
+/// # 返回
+/// 无
 fn ensure_value_has_sse_event_type(lines: &[String], value: &mut Value) {
     let Some(event_name) = extract_sse_event_name(lines) else {
         return;
@@ -274,41 +528,20 @@ fn ensure_value_has_sse_event_type(lines: &[String], value: &mut Value) {
     }
 }
 
+/// 函数 `parse_sse_frame_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn parse_sse_frame_json(lines: &[String]) -> Option<Value> {
     let payload = extract_sse_frame_payload(lines)?;
     let mut value = serde_json::from_str::<Value>(&payload).ok()?;
     ensure_value_has_sse_event_type(lines, &mut value);
     Some(value)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::inspect_sse_frame;
-
-    #[test]
-    fn inspect_sse_frame_keeps_last_event_type_from_header() {
-        let lines = vec![
-            "event: response.completed\n".to_string(),
-            "data: {\"type\":\"response.completed\"}\n".to_string(),
-            "\n".to_string(),
-        ];
-        let inspection = inspect_sse_frame(&lines);
-        assert_eq!(
-            inspection.last_event_type.as_deref(),
-            Some("response.completed")
-        );
-    }
-
-    #[test]
-    fn inspect_sse_frame_keeps_last_event_type_from_json_type() {
-        let lines = vec![
-            "data: {\"type\":\"response.failed\",\"error\":{\"message\":\"oops\"}}\n".to_string(),
-            "\n".to_string(),
-        ];
-        let inspection = inspect_sse_frame(&lines);
-        assert_eq!(
-            inspection.last_event_type.as_deref(),
-            Some("response.failed")
-        );
-    }
 }

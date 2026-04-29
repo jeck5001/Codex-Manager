@@ -204,7 +204,7 @@ pub(in super::super) fn reload_from_env() {
 /// # 返回
 /// 无
 fn ensure_config_loaded() {
-    let _ = CONFIG_LOADED.get_or_init(reload_from_env);
+    let _ = CONFIG_LOADED.get_or_init(|| reload_from_env());
 }
 
 /// 函数 `upstream_base_url_cell`

@@ -2,17 +2,13 @@
 mod anthropic;
 #[path = "gateway_logs/basic.rs"]
 mod basic;
-#[path = "gateway_logs/cache.rs"]
-mod cache;
-#[path = "gateway_logs/cpa.rs"]
-mod cpa;
-#[path = "gateway_logs/fallback.rs"]
-mod fallback;
-#[path = "gateway_logs/openai.rs"]
-mod openai;
+#[path = "gateway_logs/images.rs"]
+mod images;
 #[path = "gateway_logs/retry_logging.rs"]
 mod retry_logging;
 #[path = "gateway_logs/support.rs"]
 mod support;
+#[path = "gateway_logs/usage_limit_failover.rs"]
+mod usage_limit_failover;
 
 pub(crate) use support::*;

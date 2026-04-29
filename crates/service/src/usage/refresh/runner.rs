@@ -4,20 +4,29 @@ use std::thread;
 use std::time::Duration;
 
 use super::{
-    is_keepalive_error_ignorable, maybe_trigger_auto_account_governance,
-    maybe_trigger_auto_register_pool_fill, parse_interval_secs,
+    is_keepalive_error_ignorable, parse_interval_secs,
     refresh_tokens_before_expiry_for_all_accounts, refresh_usage_for_polling_batch,
-    run_gateway_keepalive_once, run_session_probe_batch, COMMON_POLL_FAILURE_BACKOFF_MAX_ENV,
-    COMMON_POLL_JITTER_ENV, DEFAULT_GATEWAY_KEEPALIVE_FAILURE_BACKOFF_MAX_SECS,
-    DEFAULT_GATEWAY_KEEPALIVE_JITTER_SECS, DEFAULT_USAGE_POLL_FAILURE_BACKOFF_MAX_SECS,
-    DEFAULT_USAGE_POLL_JITTER_SECS, GATEWAY_KEEPALIVE_ENABLED,
-    GATEWAY_KEEPALIVE_FAILURE_BACKOFF_MAX_ENV, GATEWAY_KEEPALIVE_INTERVAL_SECS,
-    GATEWAY_KEEPALIVE_JITTER_ENV, SESSION_PROBE_INTERVAL_SECS, SESSION_PROBE_POLLING_ENABLED,
+    run_gateway_keepalive_once, COMMON_POLL_FAILURE_BACKOFF_MAX_ENV, COMMON_POLL_JITTER_ENV,
+    DEFAULT_GATEWAY_KEEPALIVE_FAILURE_BACKOFF_MAX_SECS, DEFAULT_GATEWAY_KEEPALIVE_JITTER_SECS,
+    DEFAULT_USAGE_POLL_FAILURE_BACKOFF_MAX_SECS, DEFAULT_USAGE_POLL_JITTER_SECS,
+    GATEWAY_KEEPALIVE_ENABLED, GATEWAY_KEEPALIVE_FAILURE_BACKOFF_MAX_ENV,
+    GATEWAY_KEEPALIVE_INTERVAL_SECS, GATEWAY_KEEPALIVE_JITTER_ENV,
     TOKEN_REFRESH_FAILURE_BACKOFF_MAX_SECS, TOKEN_REFRESH_POLLING_ENABLED,
     TOKEN_REFRESH_POLL_INTERVAL_SECS_ATOMIC, USAGE_POLLING_ENABLED,
     USAGE_POLL_FAILURE_BACKOFF_MAX_ENV, USAGE_POLL_INTERVAL_SECS, USAGE_POLL_JITTER_ENV,
 };
 
+/// 函数 `usage_polling_loop`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn usage_polling_loop() {
     run_dynamic_poll_loop(
         "usage polling",
@@ -39,20 +48,22 @@ pub(super) fn usage_polling_loop() {
                 interval_secs,
             )
         },
-        || {
-            refresh_usage_for_polling_batch()?;
-            if let Err(err) = maybe_trigger_auto_register_pool_fill() {
-                log::warn!("usage polling auto-fill check failed: {err}");
-            }
-            if let Err(err) = maybe_trigger_auto_account_governance() {
-                log::warn!("usage polling auto-governance check failed: {err}");
-            }
-            Ok(())
-        },
+        refresh_usage_for_polling_batch,
         |_| true,
     );
 }
 
+/// 函数 `gateway_keepalive_loop`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn gateway_keepalive_loop() {
     run_dynamic_poll_loop(
         "gateway keepalive",
@@ -79,6 +90,17 @@ pub(super) fn gateway_keepalive_loop() {
     );
 }
 
+/// 函数 `token_refresh_polling_loop`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn token_refresh_polling_loop() {
     run_dynamic_poll_loop(
         "token refresh polling",
@@ -91,18 +113,20 @@ pub(super) fn token_refresh_polling_loop() {
     );
 }
 
-pub(super) fn session_probe_polling_loop() {
-    run_dynamic_poll_loop(
-        "session probe polling",
-        || SESSION_PROBE_POLLING_ENABLED.load(Ordering::Relaxed),
-        || SESSION_PROBE_INTERVAL_SECS.load(Ordering::Relaxed),
-        || 0,
-        |interval_secs| TOKEN_REFRESH_FAILURE_BACKOFF_MAX_SECS.max(interval_secs),
-        || run_session_probe_batch().map(|_| ()),
-        |_| true,
-    );
-}
-
+/// 函数 `parse_interval_with_fallback`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - primary_env: 参数 primary_env
+/// - fallback_env: 参数 fallback_env
+/// - default_secs: 参数 default_secs
+/// - min_secs: 参数 min_secs
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_interval_with_fallback(
     primary_env: &str,
     fallback_env: &str,
@@ -115,6 +139,23 @@ fn parse_interval_with_fallback(
     parse_interval_secs(raw, default_secs, min_secs)
 }
 
+/// 函数 `run_dynamic_poll_loop`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - loop_name: 参数 loop_name
+/// - enabled: 参数 enabled
+/// - interval_secs: 参数 interval_secs
+/// - jitter_secs: 参数 jitter_secs
+/// - failure_backoff_cap_secs: 参数 failure_backoff_cap_secs
+/// - task: 参数 task
+/// - should_log_error: 参数 should_log_error
+///
+/// # 返回
+/// 无
 fn run_dynamic_poll_loop<F, L, E, I, J, B>(
     loop_name: &str,
     enabled: E,
@@ -176,6 +217,21 @@ fn run_dynamic_poll_loop<F, L, E, I, J, B>(
     }
 }
 
+/// 函数 `next_dynamic_poll_delay`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - interval: 参数 interval
+/// - jitter_cap: 参数 jitter_cap
+/// - failure_backoff_cap: 参数 failure_backoff_cap
+/// - consecutive_failures: 参数 consecutive_failures
+/// - sampled_jitter: 参数 sampled_jitter
+///
+/// # 返回
+/// 返回函数执行结果
 fn next_dynamic_poll_delay(
     interval: Duration,
     jitter_cap: Duration,
@@ -195,6 +251,19 @@ fn next_dynamic_poll_delay(
         .unwrap_or(Duration::MAX)
 }
 
+/// 函数 `next_dynamic_failure_backoff`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - interval: 参数 interval
+/// - failure_backoff_cap: 参数 failure_backoff_cap
+/// - consecutive_failures: 参数 consecutive_failures
+///
+/// # 返回
+/// 返回函数执行结果
 fn next_dynamic_failure_backoff(
     interval: Duration,
     failure_backoff_cap: Duration,

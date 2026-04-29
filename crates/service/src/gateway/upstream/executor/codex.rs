@@ -2,20 +2,17 @@ use bytes::Bytes;
 use codexmanager_core::storage::{Account, Storage, Token};
 use std::time::Instant;
 
+use super::super::attempt_flow::transport::UpstreamRequestContext;
+use super::super::attempt_flow::{
+    openai_base::{handle_openai_base_attempt, OpenAiAttemptResult},
+    postprocess::{process_upstream_post_retry_flow, PostRetryFlowDecision},
+    primary_flow::{run_primary_upstream_flow, PrimaryFlowDecision},
+};
 use super::super::support::deadline;
-use super::openai_base::{handle_openai_base_attempt, OpenAiAttemptResult, OpenAiBaseAttemptArgs};
-use super::postprocess::{process_upstream_post_retry_flow, PostRetryFlowDecision};
-use super::primary_flow::{run_primary_upstream_flow, PrimaryFlowDecision};
-use super::transport::UpstreamRequestContext;
-
-pub(in super::super) enum CandidateUpstreamDecision {
-    RespondUpstream(reqwest::blocking::Response),
-    Failover,
-    Terminal { status_code: u16, message: String },
-}
+use super::CandidateUpstreamDecision;
 
 #[allow(clippy::too_many_arguments)]
-pub(in super::super) fn process_candidate_upstream_flow<F>(
+pub(super) fn execute<F>(
     storage: &Storage,
     method: &reqwest::Method,
     request_ctx: UpstreamRequestContext<'_>,
@@ -30,7 +27,6 @@ pub(in super::super) fn process_candidate_upstream_flow<F>(
     upstream_fallback_base: Option<&str>,
     account: &Account,
     token: &mut Token,
-    upstream_cookie: Option<&str>,
     strip_session_affinity: bool,
     debug: bool,
     allow_openai_fallback: bool,
@@ -51,22 +47,19 @@ where
     }
     if super::super::super::is_openai_api_base(base) {
         match handle_openai_base_attempt(
-            OpenAiBaseAttemptArgs {
-                client: &client,
-                storage,
-                method,
-                path,
-                incoming_headers,
-                body,
-                is_stream,
-                base,
-                account,
-                token,
-                upstream_cookie,
-                strip_session_affinity,
-                debug,
-                has_more_candidates,
-            },
+            &client,
+            storage,
+            method,
+            path,
+            incoming_headers,
+            body,
+            is_stream,
+            base,
+            account,
+            token,
+            strip_session_affinity,
+            debug,
+            has_more_candidates,
             &mut log_gateway_result,
         ) {
             OpenAiAttemptResult::Upstream(resp) => {
@@ -102,7 +95,6 @@ where
         upstream_fallback_base,
         account,
         token,
-        upstream_cookie,
         strip_session_affinity,
         debug,
         allow_openai_fallback,
@@ -143,7 +135,6 @@ where
         incoming_headers,
         body,
         is_stream,
-        upstream_cookie,
         auth_token.as_str(),
         account,
         token,

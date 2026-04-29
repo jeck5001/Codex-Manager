@@ -1,15 +1,38 @@
 use super::*;
+use crate::gateway::{
+    adapt_request_for_protocol, apply_request_overrides_with_service_tier_and_prompt_cache_key,
+};
+use axum::http::{HeaderMap, HeaderValue};
+use codexmanager_core::rpc::types::{ModelInfo, ModelsResponse};
+use codexmanager_core::storage::Storage;
+use serde_json::Value;
 
+/// 函数 `sample_api_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - protocol_type: 参数 protocol_type
+/// - model_slug: 参数 model_slug
+/// - reasoning: 参数 reasoning
+/// - service_tier: 参数 service_tier
+///
+/// # 返回
+/// 返回函数执行结果
 fn sample_api_key(
     protocol_type: &str,
     model_slug: Option<&str>,
     reasoning: Option<&str>,
+    service_tier: Option<&str>,
 ) -> ApiKey {
     ApiKey {
         id: "gk_test".to_string(),
         name: Some("test".to_string()),
         model_slug: model_slug.map(|value| value.to_string()),
         reasoning_effort: reasoning.map(|value| value.to_string()),
+        service_tier: service_tier.map(|value| value.to_string()),
         client_type: "codex".to_string(),
         protocol_type: protocol_type.to_string(),
         auth_scheme: "authorization_bearer".to_string(),
@@ -19,102 +42,724 @@ fn sample_api_key(
         status: "active".to_string(),
         created_at: 0,
         last_used_at: None,
-        expires_at: None,
+        rotation_strategy: crate::apikey_profile::ROTATION_ACCOUNT.to_string(),
+        aggregate_api_id: None,
+        aggregate_api_url: None,
+        account_plan_filter: None,
     }
 }
 
+/// 函数 `anthropic_key_keeps_empty_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_key_keeps_empty_overrides() {
-    let api_key = sample_api_key(crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE, None, None);
-    let (model, reasoning) = resolve_effective_request_overrides(&api_key);
+    let api_key = sample_api_key(
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        None,
+        None,
+        None,
+    );
+    let (model, reasoning, service_tier) = resolve_effective_request_overrides(&api_key);
     assert_eq!(model, None);
     assert_eq!(reasoning, None);
+    assert_eq!(service_tier, None);
 }
 
+/// 函数 `anthropic_key_applies_custom_model_and_reasoning`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn anthropic_key_applies_custom_model_and_reasoning() {
     let api_key = sample_api_key(
         crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
         Some("gpt-5.3-codex"),
         Some("extra_high"),
+        Some("fast"),
     );
-    let (model, reasoning) = resolve_effective_request_overrides(&api_key);
+    let (model, reasoning, service_tier) = resolve_effective_request_overrides(&api_key);
     assert_eq!(model.as_deref(), Some("gpt-5.3-codex"));
     assert_eq!(reasoning.as_deref(), Some("xhigh"));
+    assert_eq!(service_tier.as_deref(), Some("fast"));
 }
 
+#[test]
+fn anthropic_key_maps_fast_service_tier_to_priority_on_adapted_responses_request() {
+    let api_key = sample_api_key(
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        Some("gpt-5.3-codex"),
+        Some("high"),
+        Some("fast"),
+    );
+    let body = serde_json::json!({
+        "model": "gpt-5.3-codex",
+        "messages": [{ "role": "user", "content": "hi" }],
+        "stream": false
+    });
+    let body = serde_json::to_vec(&body).expect("serialize anthropic request");
+
+    let adapted = adapt_request_for_protocol(
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        "/v1/messages",
+        body,
+    )
+    .expect("adapt anthropic request");
+    let (model, reasoning, service_tier) = resolve_effective_request_overrides(&api_key);
+    let rewritten = apply_request_overrides_with_service_tier_and_prompt_cache_key(
+        adapted.path.as_str(),
+        adapted.body,
+        model.as_deref(),
+        reasoning.as_deref(),
+        service_tier.as_deref(),
+        None,
+        None,
+    );
+    let normalized = normalize_compat_service_tier_for_codex_backend(rewritten);
+    let payload: Value = serde_json::from_slice(&normalized).expect("json body");
+
+    assert_eq!(
+        payload.get("service_tier").and_then(Value::as_str),
+        Some("priority")
+    );
+}
+
+#[test]
+fn anthropic_key_ignores_unsupported_flex_service_tier_on_responses_request() {
+    let api_key = sample_api_key(
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        Some("gpt-5.3-codex"),
+        Some("high"),
+        Some("flex"),
+    );
+    let body = serde_json::json!({
+        "model": "gpt-5.3-codex",
+        "messages": [{ "role": "user", "content": "hi" }],
+        "stream": false
+    });
+    let body = serde_json::to_vec(&body).expect("serialize anthropic request");
+
+    let adapted = adapt_request_for_protocol(
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        "/v1/messages",
+        body,
+    )
+    .expect("adapt anthropic request");
+    let (model, reasoning, service_tier) = resolve_effective_request_overrides(&api_key);
+    let rewritten = apply_request_overrides_with_service_tier_and_prompt_cache_key(
+        adapted.path.as_str(),
+        adapted.body,
+        model.as_deref(),
+        reasoning.as_deref(),
+        service_tier.as_deref(),
+        None,
+        None,
+    );
+    let payload: Value = serde_json::from_slice(&rewritten).expect("json body");
+
+    assert!(payload.get("service_tier").is_none());
+}
+
+/// 函数 `openai_key_keeps_empty_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn openai_key_keeps_empty_overrides() {
-    let api_key = sample_api_key("openai_compat", None, None);
-    let (model, reasoning) = resolve_effective_request_overrides(&api_key);
+    let api_key = sample_api_key("openai_compat", None, None, None);
+    let (model, reasoning, service_tier) = resolve_effective_request_overrides(&api_key);
     assert_eq!(model, None);
     assert_eq!(reasoning, None);
+    assert_eq!(service_tier, None);
 }
 
 #[test]
-fn validate_api_key_allowed_model_accepts_allowed_model() {
-    let result =
-        validate_api_key_allowed_model(&["o3".to_string(), "o4-mini".to_string()], Some("o4-mini"));
+fn openai_key_keeps_codex_long_tail_slug_override() {
+    let api_key = sample_api_key(
+        "openai_compat",
+        Some("gpt-5.3-codex-spark"),
+        Some("medium"),
+        None,
+    );
+    let (model, reasoning, service_tier) = resolve_effective_request_overrides(&api_key);
+    assert_eq!(model.as_deref(), Some("gpt-5.3-codex-spark"));
+    assert_eq!(reasoning.as_deref(), Some("medium"));
+    assert_eq!(service_tier, None);
+}
 
-    assert!(result.is_ok());
+fn sample_request_metadata(prompt_cache_key: Option<&str>) -> ParsedRequestMetadata {
+    ParsedRequestMetadata {
+        prompt_cache_key: prompt_cache_key.map(str::to_string),
+        has_prompt_cache_key: prompt_cache_key.is_some(),
+        ..Default::default()
+    }
+}
+
+fn sample_incoming_headers(
+    conversation_id: Option<&str>,
+    turn_state: Option<&str>,
+    user_agent: Option<&str>,
+    originator: Option<&str>,
+    session_affinity: Option<&str>,
+) -> super::super::super::IncomingHeaderSnapshot {
+    sample_incoming_headers_with_session_id(
+        conversation_id,
+        turn_state,
+        user_agent,
+        originator,
+        session_affinity,
+        None,
+    )
+}
+
+fn sample_incoming_headers_with_session_id(
+    conversation_id: Option<&str>,
+    turn_state: Option<&str>,
+    user_agent: Option<&str>,
+    originator: Option<&str>,
+    session_affinity: Option<&str>,
+    session_id: Option<&str>,
+) -> super::super::super::IncomingHeaderSnapshot {
+    let mut headers = HeaderMap::new();
+    if let Some(conversation_id) = conversation_id {
+        headers.insert(
+            "conversation_id",
+            HeaderValue::from_str(conversation_id).expect("header"),
+        );
+    }
+    if let Some(turn_state) = turn_state {
+        headers.insert(
+            "x-codex-turn-state",
+            HeaderValue::from_str(turn_state).expect("header"),
+        );
+    }
+    if let Some(user_agent) = user_agent {
+        headers.insert(
+            "User-Agent",
+            HeaderValue::from_str(user_agent).expect("header"),
+        );
+    }
+    if let Some(originator) = originator {
+        headers.insert(
+            "originator",
+            HeaderValue::from_str(originator).expect("header"),
+        );
+    }
+    if let Some(session_affinity) = session_affinity {
+        headers.insert(
+            "x-session-affinity",
+            HeaderValue::from_str(session_affinity).expect("header"),
+        );
+    }
+    if let Some(session_id) = session_id {
+        headers.insert(
+            "session_id",
+            HeaderValue::from_str(session_id).expect("header"),
+        );
+    }
+    super::super::super::IncomingHeaderSnapshot::from_http_headers(&headers)
 }
 
 #[test]
-fn validate_api_key_allowed_model_rejects_disallowed_model() {
-    let error =
-        validate_api_key_allowed_model(&["o3".to_string(), "o4-mini".to_string()], Some("gpt-4o"))
-            .expect_err("disallowed model should be rejected");
+fn preferred_client_prompt_cache_key_is_used_without_native_anchor() {
+    let incoming_headers = sample_incoming_headers(None, None, None, None, None);
+    let initial_request_meta = sample_request_metadata(Some("client_thread"));
+    let client_request_meta = sample_request_metadata(Some("client_thread"));
 
-    assert_eq!(error.status_code, 403);
-    assert!(error.message.contains("gpt-4o"));
-}
-
-#[test]
-fn validate_api_key_allowed_models_rejects_disallowed_requested_model_before_override() {
-    let error =
-        validate_api_key_allowed_models(&["o3".to_string()], Some("gpt-4o"), Some("o3"), false)
-            .expect_err("disallowed requested model should be rejected before rewrite");
-
-    assert_eq!(error.status_code, 403);
-    assert!(error.message.contains("gpt-4o"));
-}
-
-#[test]
-fn validate_api_key_allowed_models_allows_all_models_when_allowlist_is_empty() {
-    let result = validate_api_key_allowed_models(&[], Some("gpt-4o"), Some("o3"), false);
-
-    assert!(result.is_ok());
-}
-
-#[test]
-fn validate_api_key_allowed_models_accepts_alias_when_alias_itself_is_allowed() {
-    let result = validate_api_key_allowed_models(
-        &["o3-auto".to_string()],
-        Some("o3-auto"),
-        Some("o3"),
-        true,
+    let actual = resolve_preferred_client_prompt_cache_key(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        &incoming_headers,
+        &initial_request_meta,
+        &client_request_meta,
     );
 
-    assert!(result.is_ok());
+    assert_eq!(actual.as_deref(), Some("client_thread"));
 }
 
 #[test]
-fn validate_api_key_allowed_models_accepts_alias_when_selected_model_is_allowed() {
-    let result =
-        validate_api_key_allowed_models(&["o3".to_string()], Some("o3-auto"), Some("o3"), true);
+fn preferred_client_prompt_cache_key_is_ignored_when_conversation_anchor_exists() {
+    let incoming_headers = sample_incoming_headers(Some("conv_anchor"), None, None, None, None);
+    let initial_request_meta = sample_request_metadata(Some("client_thread"));
+    let client_request_meta = sample_request_metadata(Some("client_thread"));
 
-    assert!(result.is_ok());
+    let actual = resolve_preferred_client_prompt_cache_key(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        &incoming_headers,
+        &initial_request_meta,
+        &client_request_meta,
+    );
+
+    assert_eq!(actual, None);
 }
 
 #[test]
-fn validate_api_key_allowed_models_rejects_alias_when_neither_alias_nor_selected_model_is_allowed()
-{
-    let error =
-        validate_api_key_allowed_models(&["gpt-4o".to_string()], Some("o3-auto"), Some("o3"), true)
-            .expect_err(
-                "alias should be rejected when allowlist matches neither alias nor selected model",
-            );
+fn preferred_client_prompt_cache_key_is_ignored_when_turn_state_exists() {
+    let incoming_headers =
+        sample_incoming_headers(None, Some("turn_state_anchor"), None, None, None);
+    let initial_request_meta = sample_request_metadata(Some("client_thread"));
+    let client_request_meta = sample_request_metadata(Some("client_thread"));
 
-    assert_eq!(error.status_code, 403);
-    assert!(error.message.contains("o3"));
+    let actual = resolve_preferred_client_prompt_cache_key(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        &incoming_headers,
+        &initial_request_meta,
+        &client_request_meta,
+    );
+
+    assert_eq!(actual, None);
+}
+
+#[test]
+fn preferred_client_prompt_cache_key_is_ignored_even_when_matching_native_anchor() {
+    let incoming_headers = sample_incoming_headers(Some("shared_anchor"), None, None, None, None);
+    let initial_request_meta = sample_request_metadata(Some("shared_anchor"));
+    let client_request_meta = sample_request_metadata(Some("shared_anchor"));
+
+    let actual = resolve_preferred_client_prompt_cache_key(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        &incoming_headers,
+        &initial_request_meta,
+        &client_request_meta,
+    );
+
+    assert_eq!(actual, None);
+}
+
+#[test]
+fn preferred_client_prompt_cache_key_is_disabled_for_anthropic_native_requests() {
+    let incoming_headers = sample_incoming_headers(None, None, None, None, None);
+    let initial_request_meta = sample_request_metadata(Some("client_thread"));
+    let client_request_meta = sample_request_metadata(Some("client_thread"));
+
+    let actual = resolve_preferred_client_prompt_cache_key(
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        &incoming_headers,
+        &initial_request_meta,
+        &client_request_meta,
+    );
+
+    assert_eq!(actual, None);
+}
+
+/// 函数 `aggregate_passthrough_applies_model_reasoning_and_service_tier_overrides_without_forcing_log_tier`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn aggregate_passthrough_applies_model_reasoning_and_service_tier_overrides_without_forcing_log_tier(
+) {
+    let api_key = sample_api_key(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        Some("gpt-5.4"),
+        Some("high"),
+        Some("fast"),
+    );
+    let body = br#"{"model":"gpt-4.1","input":"hi","reasoning":{"effort":"low"}}"#.to_vec();
+
+    let (
+        rewritten_body,
+        model_for_log,
+        reasoning_for_log,
+        service_tier_for_log,
+        effective_service_tier_for_log,
+        _has_prompt_cache_key,
+        _request_shape,
+    ) = apply_passthrough_request_overrides("/v1/responses", body, &api_key, None);
+    let payload: Value = serde_json::from_slice(&rewritten_body).expect("json body");
+
+    assert_eq!(
+        payload.get("model").and_then(Value::as_str),
+        Some("gpt-5.4")
+    );
+    assert_eq!(
+        payload
+            .get("reasoning")
+            .and_then(Value::as_object)
+            .and_then(|reasoning| reasoning.get("effort"))
+            .and_then(Value::as_str),
+        Some("high")
+    );
+    assert_eq!(
+        payload.get("service_tier").and_then(Value::as_str),
+        Some("priority")
+    );
+    assert_eq!(model_for_log.as_deref(), Some("gpt-5.4"));
+    assert_eq!(reasoning_for_log.as_deref(), Some("high"));
+    assert_eq!(service_tier_for_log, None);
+    assert_eq!(effective_service_tier_for_log.as_deref(), Some("fast"));
+}
+
+#[test]
+fn aggregate_passthrough_openai_responses_defaults_omitted_stream_to_sse() {
+    let api_key = sample_api_key(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        None,
+        None,
+        None,
+    );
+    let body = br#"{"model":"gpt-5.4","input":"hi"}"#.to_vec();
+
+    let (rewritten_body, ..) =
+        apply_passthrough_request_overrides("/v1/responses", body, &api_key, None);
+    let defaulted_body = default_omitted_responses_stream_to_true(rewritten_body);
+    let payload: Value = serde_json::from_slice(&defaulted_body).expect("json body");
+    let is_stream = resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        false,
+        false,
+        false,
+    );
+
+    assert_eq!(payload.get("stream").and_then(Value::as_bool), Some(true));
+    assert!(is_stream);
+}
+
+#[test]
+fn native_codex_client_detection_uses_codex_signals_instead_of_client_brand() {
+    let native_headers = sample_incoming_headers(
+        None,
+        None,
+        Some("codex_exec/0.999.0"),
+        Some("codex_exec"),
+        Some("affinity-1"),
+    );
+    assert!(is_native_codex_client_request(&native_headers));
+
+    let plain_opencode_headers = sample_incoming_headers(
+        None,
+        None,
+        Some("opencode/0.1.0"),
+        Some("opencode"),
+        Some("affinity-1"),
+    );
+    assert!(!is_native_codex_client_request(&plain_opencode_headers));
+
+    let opencode_with_codex_signals = sample_incoming_headers(
+        None,
+        Some("turn-state-1"),
+        Some("opencode/0.1.0"),
+        Some("opencode"),
+        Some("affinity-1"),
+    );
+    assert!(is_native_codex_client_request(&opencode_with_codex_signals));
+}
+
+#[test]
+fn openai_responses_api_clients_use_codex_compat_rewrite_but_native_codex_does_not() {
+    assert!(allow_codex_compat_rewrite_for_client(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        false,
+    ));
+    assert!(allow_codex_compat_rewrite_for_client(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/chat/completions",
+        false,
+    ));
+    assert!(!allow_codex_compat_rewrite_for_client(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        true,
+    ));
+    assert!(!allow_codex_compat_rewrite_for_client(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/chat/completions",
+        true,
+    ));
+}
+
+#[test]
+fn openai_chat_completions_api_body_is_adapted_to_responses_for_codex_backend() {
+    let body = serde_json::json!({
+        "model": "gpt-5.5",
+        "stream": true,
+        "messages": [{ "role": "user", "content": "你好" }],
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "ping",
+                "description": "Ping",
+                "parameters": { "type": "object", "properties": {} }
+            }
+        }],
+        "tool_choice": { "type": "function", "function": { "name": "ping" } }
+    });
+    let adapted = adapt_openai_chat_completions_body_to_responses(
+        serde_json::to_vec(&body).expect("serialize chat body"),
+    )
+    .expect("adapt chat body");
+    let payload: Value = serde_json::from_slice(&adapted).expect("json body");
+
+    assert_eq!(
+        payload.get("model").and_then(Value::as_str),
+        Some("gpt-5.5")
+    );
+    assert_eq!(
+        payload
+            .get("input")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("content"))
+            .and_then(Value::as_array)
+            .and_then(|parts| parts.first())
+            .and_then(|part| part.get("text"))
+            .and_then(Value::as_str),
+        Some("你好")
+    );
+    assert_eq!(
+        payload
+            .get("tools")
+            .and_then(Value::as_array)
+            .and_then(|tools| tools.first())
+            .and_then(|tool| tool.get("name"))
+            .and_then(Value::as_str),
+        Some("ping")
+    );
+    assert_eq!(
+        payload
+            .get("tool_choice")
+            .and_then(|choice| choice.get("name"))
+            .and_then(Value::as_str),
+        Some("ping")
+    );
+}
+
+#[test]
+fn opencode_headers_with_only_session_id_are_not_treated_as_native_codex_clients() {
+    let opencode_headers = sample_incoming_headers_with_session_id(
+        None,
+        None,
+        Some("opencode/0.1.0"),
+        Some("opencode"),
+        Some("affinity-1"),
+        Some("session-1"),
+    );
+    assert!(!is_native_codex_client_request(&opencode_headers));
+}
+
+#[test]
+fn gemini_stream_generate_content_path_forces_stream_mode_without_body_flag() {
+    assert!(resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_GEMINI_NATIVE,
+        "/v1beta/models/gemini-2.5-pro:streamGenerateContent",
+        false,
+        false,
+        false,
+    ));
+    assert!(resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_GEMINI_NATIVE,
+        "/v1internal:streamGenerateContent",
+        false,
+        false,
+        false,
+    ));
+    assert!(!resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_GEMINI_NATIVE,
+        "/v1beta/models/gemini-2.5-pro:generateContent",
+        false,
+        false,
+        false,
+    ));
+}
+
+#[test]
+fn openai_responses_api_defaults_to_stream_when_stream_is_omitted() {
+    assert!(resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        false,
+        false,
+        false,
+    ));
+    assert!(resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        true,
+        true,
+        false,
+    ));
+    assert!(!resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        false,
+        true,
+        false,
+    ));
+    assert!(!resolve_client_is_stream(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        "/v1/responses",
+        false,
+        false,
+        true,
+    ));
+}
+
+#[test]
+fn openai_responses_api_body_defaults_omitted_stream_to_true_before_rewrite() {
+    let body = br#"{"model":"gpt-5.4","input":"hi"}"#.to_vec();
+    let rewritten = default_omitted_responses_stream_to_true(body);
+    let payload: Value = serde_json::from_slice(&rewritten).expect("json body");
+
+    assert_eq!(payload.get("stream").and_then(Value::as_bool), Some(true));
+}
+
+#[test]
+fn openai_responses_api_body_preserves_explicit_stream_false() {
+    let body = br#"{"model":"gpt-5.4","input":"hi","stream":false}"#.to_vec();
+    let rewritten = default_omitted_responses_stream_to_true(body);
+    let payload: Value = serde_json::from_slice(&rewritten).expect("json body");
+
+    assert_eq!(payload.get("stream").and_then(Value::as_bool), Some(false));
+}
+
+#[test]
+fn aggregate_passthrough_preserves_fast_service_tier_for_log_when_request_is_rewritten() {
+    let api_key = sample_api_key(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        Some("gpt-5.4"),
+        Some("high"),
+        None,
+    );
+    let body =
+        br#"{"model":"gpt-4.1","input":"hi","reasoning":{"effort":"low"},"service_tier":"Fast"}"#
+            .to_vec();
+
+    let (
+        rewritten_body,
+        model_for_log,
+        reasoning_for_log,
+        service_tier_for_log,
+        effective_service_tier_for_log,
+        _has_prompt_cache_key,
+        _request_shape,
+    ) = apply_passthrough_request_overrides(
+        "/v1/responses",
+        body,
+        &api_key,
+        Some("fast".to_string()),
+    );
+    let payload: Value = serde_json::from_slice(&rewritten_body).expect("json body");
+
+    assert_eq!(
+        payload.get("service_tier").and_then(Value::as_str),
+        Some("priority")
+    );
+    assert_eq!(model_for_log.as_deref(), Some("gpt-5.4"));
+    assert_eq!(reasoning_for_log.as_deref(), Some("high"));
+    assert_eq!(service_tier_for_log.as_deref(), Some("fast"));
+    assert_eq!(effective_service_tier_for_log.as_deref(), Some("fast"));
+}
+
+#[test]
+fn codex_backend_passthrough_maps_fast_to_priority_but_keeps_fast_for_log() {
+    let mut api_key = sample_api_key(
+        crate::apikey_profile::PROTOCOL_OPENAI_COMPAT,
+        Some("gpt-5.4"),
+        Some("high"),
+        Some("fast"),
+    );
+    api_key.upstream_base_url = Some("https://chatgpt.com/backend-api/codex".to_string());
+    let body = br#"{"model":"gpt-4.1","input":"hi","reasoning":{"effort":"low"}}"#.to_vec();
+
+    let (
+        rewritten_body,
+        model_for_log,
+        reasoning_for_log,
+        service_tier_for_log,
+        effective_service_tier_for_log,
+        _has_prompt_cache_key,
+        _request_shape,
+    ) = apply_passthrough_request_overrides("/v1/responses", body, &api_key, None);
+    let payload: Value = serde_json::from_slice(&rewritten_body).expect("json body");
+    let request_meta = crate::gateway::parse_request_metadata(&rewritten_body);
+
+    assert_eq!(
+        payload.get("service_tier").and_then(Value::as_str),
+        Some("priority")
+    );
+    assert_eq!(request_meta.service_tier.as_deref(), Some("fast"));
+    assert_eq!(model_for_log.as_deref(), Some("gpt-5.4"));
+    assert_eq!(reasoning_for_log.as_deref(), Some("high"));
+    assert_eq!(service_tier_for_log, None);
+    assert_eq!(effective_service_tier_for_log.as_deref(), Some("fast"));
+}
+
+/// 函数 `anthropic_model_must_exist_in_cached_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn anthropic_model_must_exist_in_cached_model_options() {
+    let storage = Storage::open_in_memory().expect("open storage");
+    storage.init().expect("init storage");
+    crate::apikey_models::save_model_options_with_storage(
+        &storage,
+        &ModelsResponse {
+            models: vec![
+                ModelInfo {
+                    slug: "claude-sonnet-4".to_string(),
+                    display_name: "claude-sonnet-4".to_string(),
+                    ..Default::default()
+                },
+                ModelInfo {
+                    slug: "gpt-5.4-mini".to_string(),
+                    display_name: "gpt-5.4-mini".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        },
+    )
+    .expect("save model catalog");
+
+    assert!(ensure_anthropic_model_is_listed(
+        &storage,
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        Some("claude-sonnet-4")
+    )
+    .is_ok());
+    let err = ensure_anthropic_model_is_listed(
+        &storage,
+        crate::apikey_profile::PROTOCOL_ANTHROPIC_NATIVE,
+        Some("claude-sonnet-4-5"),
+    )
+    .expect_err("missing model should fail");
+    assert!(err.message.contains("claude model not found in model list"));
 }

@@ -1,5 +1,16 @@
 use tiny_http::{Request, Response};
 
+/// 函数 `handle_gateway_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String> {
     // 处理代理请求（鉴权后转发到上游）
     let debug = super::DEFAULT_GATEWAY_DEBUG;
@@ -19,21 +30,23 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
     let trace_id = super::trace_log::next_trace_id();
     let request_path_for_log = super::normalize_models_path(request.url());
     let request_method_for_log = request.method().as_str().to_string();
-    let mut validated =
+    let validated =
         match super::local_validation::prepare_local_request(&mut request, trace_id.clone(), debug)
         {
             Ok(v) => v,
             Err(err) => {
-                super::trace_log::log_request_start(super::trace_log::RequestStartLog {
-                    trace_id: trace_id.as_str(),
-                    key_id: "-",
-                    method: request_method_for_log.as_str(),
-                    path: request_path_for_log.as_str(),
-                    model: None,
-                    reasoning: None,
-                    is_stream: false,
-                    protocol_type: "-",
-                });
+                super::trace_log::log_request_start(
+                    trace_id.as_str(),
+                    "-",
+                    request_method_for_log.as_str(),
+                    request_path_for_log.as_str(),
+                    None,
+                    None,
+                    None,
+                    false,
+                    "http",
+                    "-",
+                );
                 super::trace_log::log_request_final(
                     trace_id.as_str(),
                     err.status_code,
@@ -55,143 +68,84 @@ pub(crate) fn handle_gateway_request(mut request: Request) -> Result<(), String>
                             original_path: Some(request_path_for_log.as_str()),
                             adapted_path: Some(request_path_for_log.as_str()),
                             response_adapter: None,
+                            ..Default::default()
                         },
-                        super::request_log::RequestLogEntry {
-                            key_id: None,
-                            account_id: None,
-                            request_path: &request_path_for_log,
-                            method: &request_method_for_log,
-                            model: None,
-                            reasoning_effort: None,
-                            upstream_url: None,
-                            status_code: Some(err.status_code),
-                            usage: super::request_log::RequestLogUsage::default(),
-                            error: Some(err.message.as_str()),
-                            duration_ms: None,
-                        },
+                        None,
+                        None,
+                        &request_path_for_log,
+                        &request_method_for_log,
+                        None,
+                        None,
+                        None,
+                        Some(err.status_code),
+                        super::request_log::RequestLogUsage::default(),
+                        Some(err.message.as_str()),
+                        None,
                     );
                 }
-                let response = super::error_response::with_retry_after_header(
-                    super::error_response::terminal_text_response(
-                        err.status_code,
-                        err.message,
-                        Some(trace_id.as_str()),
-                    ),
-                    err.retry_after_secs,
+                let response_message = super::error_message_for_client(
+                    super::prefers_raw_errors_for_tiny_http_request(&request),
+                    err.message.as_str(),
+                );
+                let response = super::error_response::terminal_text_response(
+                    err.status_code,
+                    response_message,
+                    Some(trace_id.as_str()),
                 );
                 let _ = request.respond(response);
                 return Ok(());
             }
         };
 
-    let request = match super::maybe_respond_local_models(
-        request,
-        super::local_models::LocalModelsRequestContext {
-            trace_id: validated.trace_id.as_str(),
-            key_id: validated.key_id.as_str(),
-            protocol_type: validated.protocol_type.as_str(),
-            original_path: validated.original_path.as_str(),
-            path: validated.path.as_str(),
-            response_adapter: validated.response_adapter,
-            request_method: validated.request_method.as_str(),
-            model_for_log: validated.model_for_log.as_deref(),
-            reasoning_for_log: validated.reasoning_for_log.as_deref(),
-            storage: &validated.storage,
-        },
-    )? {
-        Some(request) => request,
-        None => return Ok(()),
+    let request = if validated.rotation_strategy == crate::apikey_profile::ROTATION_AGGREGATE_API {
+        request
+    } else {
+        match super::maybe_respond_local_models(
+            request,
+            validated.trace_id.as_str(),
+            validated.key_id.as_str(),
+            validated.protocol_type.as_str(),
+            validated.original_path.as_str(),
+            validated.path.as_str(),
+            validated.response_adapter,
+            validated.request_method.as_str(),
+            validated.model_for_log.as_deref(),
+            validated.reasoning_for_log.as_deref(),
+            &validated.storage,
+        )? {
+            Some(request) => request,
+            None => return Ok(()),
+        }
     };
 
-    let request = match super::maybe_respond_local_count_tokens(
-        request,
-        super::local_count_tokens::LocalCountTokensRequestContext {
-            trace_id: validated.trace_id.as_str(),
-            key_id: validated.key_id.as_str(),
-            protocol_type: validated.protocol_type.as_str(),
-            original_path: validated.original_path.as_str(),
-            path: validated.path.as_str(),
-            response_adapter: validated.response_adapter,
-            request_method: validated.request_method.as_str(),
-            body: validated.body.as_ref(),
-            model_for_log: validated.model_for_log.as_deref(),
-            reasoning_for_log: validated.reasoning_for_log.as_deref(),
-            storage: &validated.storage,
-        },
-    )? {
-        Some(request) => request,
-        None => return Ok(()),
+    let trace_id_for_count_tokens = validated.trace_id.clone();
+    let key_id_for_count_tokens = validated.key_id.clone();
+    let protocol_type_for_count_tokens = validated.protocol_type.clone();
+    let path_for_count_tokens = validated.path.clone();
+    let request_method_for_count_tokens = validated.request_method.clone();
+    let model_for_count_tokens = validated.model_for_log.clone();
+    let reasoning_for_count_tokens = validated.reasoning_for_log.clone();
+    let request = if validated.rotation_strategy == crate::apikey_profile::ROTATION_AGGREGATE_API {
+        request
+    } else {
+        match super::maybe_respond_local_count_tokens(
+            request,
+            trace_id_for_count_tokens.as_str(),
+            key_id_for_count_tokens.as_str(),
+            protocol_type_for_count_tokens.as_str(),
+            validated.original_path.as_str(),
+            path_for_count_tokens.as_str(),
+            validated.response_adapter,
+            request_method_for_count_tokens.as_str(),
+            validated.body.as_ref(),
+            model_for_count_tokens.as_deref(),
+            reasoning_for_count_tokens.as_deref(),
+            &validated.storage,
+        )? {
+            Some(request) => request,
+            None => return Ok(()),
+        }
     };
-
-    match crate::plugin_runtime::execute_pre_route_plugins(
-        crate::plugin_runtime::PreRoutePluginInput {
-            storage: &validated.storage,
-            trace_id: validated.trace_id.as_str(),
-            key_id: validated.key_id.as_str(),
-            api_key_name: validated.api_key_name.as_deref(),
-            path: validated.path.as_str(),
-            method: validated.request_method.as_str(),
-            body: &validated.body,
-            model_for_log: validated.model_for_log.as_deref(),
-            is_stream: validated.is_stream,
-        },
-    ) {
-        crate::plugin_runtime::RequestHookOutcome::Continue(patch) => {
-            validated.body = patch.body;
-            validated.model_for_log = patch.model_for_log;
-        }
-        crate::plugin_runtime::RequestHookOutcome::Reject(reject) => {
-            log::info!(
-                "event=plugin_request_reject trace_id={} plugin_id={} plugin_name={} hook_point=pre_route status_code={}",
-                validated.trace_id,
-                reject.plugin_id,
-                reject.plugin_name,
-                reject.status_code
-            );
-            super::trace_log::log_request_final(
-                validated.trace_id.as_str(),
-                reject.status_code,
-                None,
-                None,
-                Some(reject.message.as_str()),
-                0,
-            );
-            super::record_gateway_request_outcome(
-                validated.path.as_str(),
-                reject.status_code,
-                Some(validated.protocol_type.as_str()),
-            );
-            super::write_request_log(
-                &validated.storage,
-                super::request_log::RequestLogTraceContext {
-                    trace_id: Some(validated.trace_id.as_str()),
-                    original_path: Some(validated.original_path.as_str()),
-                    adapted_path: Some(validated.path.as_str()),
-                    response_adapter: Some(validated.response_adapter),
-                },
-                super::request_log::RequestLogEntry {
-                    key_id: Some(validated.key_id.as_str()),
-                    account_id: None,
-                    request_path: validated.path.as_str(),
-                    method: validated.request_method.as_str(),
-                    model: validated.model_for_log.as_deref(),
-                    reasoning_effort: validated.reasoning_for_log.as_deref(),
-                    upstream_url: None,
-                    status_code: Some(reject.status_code),
-                    usage: super::request_log::RequestLogUsage::default(),
-                    error: Some(reject.message.as_str()),
-                    duration_ms: None,
-                },
-            );
-            let response = super::error_response::json_value_response(
-                reject.status_code,
-                &reject.body,
-                Some(validated.trace_id.as_str()),
-            );
-            let _ = request.respond(response);
-            return Ok(());
-        }
-    }
 
     super::proxy_validated_request(request, validated, debug)
 }

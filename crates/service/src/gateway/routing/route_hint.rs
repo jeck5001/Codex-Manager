@@ -1,7 +1,6 @@
 use super::route_quality::route_health_score;
-use codexmanager_core::storage::now_ts;
 use codexmanager_core::storage::{Account, Token};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -9,14 +8,8 @@ use std::time::{Duration, Instant};
 const ROUTE_STRATEGY_ENV: &str = "CODEXMANAGER_ROUTE_STRATEGY";
 const ROUTE_MODE_ORDERED: u8 = 0;
 const ROUTE_MODE_BALANCED_ROUND_ROBIN: u8 = 1;
-const ROUTE_MODE_WEIGHTED: u8 = 2;
-const ROUTE_MODE_LEAST_LATENCY: u8 = 3;
-const ROUTE_MODE_COST_FIRST: u8 = 4;
 const ROUTE_STRATEGY_ORDERED: &str = "ordered";
 const ROUTE_STRATEGY_BALANCED: &str = "balanced";
-const ROUTE_STRATEGY_WEIGHTED: &str = "weighted";
-const ROUTE_STRATEGY_LEAST_LATENCY: &str = "least-latency";
-const ROUTE_STRATEGY_COST_FIRST: &str = "cost-first";
 const ROUTE_HEALTH_P2C_ENABLED_ENV: &str = "CODEXMANAGER_ROUTE_HEALTH_P2C_ENABLED";
 const ROUTE_HEALTH_P2C_ORDERED_WINDOW_ENV: &str = "CODEXMANAGER_ROUTE_HEALTH_P2C_ORDERED_WINDOW";
 const ROUTE_HEALTH_P2C_BALANCED_WINDOW_ENV: &str = "CODEXMANAGER_ROUTE_HEALTH_P2C_BALANCED_WINDOW";
@@ -27,9 +20,9 @@ const DEFAULT_ROUTE_HEALTH_P2C_ORDERED_WINDOW: usize = 3;
 // 中文注释：balanced 默认应严格轮询所有可用账号；仅在显式调大窗口时才启用健康度换头。
 const DEFAULT_ROUTE_HEALTH_P2C_BALANCED_WINDOW: usize = 1;
 // 中文注释：Route 状态（按 key_id + model 维度）用于 round-robin 起点与 P2C nonce。
-// 为避免 key/model 高基数导致 HashMap 无限增长，默认增加 TTL + 容量上限；不会影响“短时间内连续请求”的既有语义。
-const DEFAULT_ROUTE_STATE_TTL_SECS: u64 = 6 * 60 * 60;
-const DEFAULT_ROUTE_STATE_CAPACITY: usize = 4096;
+// 为贴近 Codex 默认行为，TTL 与容量默认关闭；只有显式配置时才启用回收限制。
+const DEFAULT_ROUTE_STATE_TTL_SECS: u64 = 0;
+const DEFAULT_ROUTE_STATE_CAPACITY: usize = 0;
 const ROUTE_STATE_MAINTENANCE_EVERY: u64 = 64;
 
 static ROUTE_MODE: AtomicU8 = AtomicU8::new(ROUTE_MODE_ORDERED);
@@ -42,23 +35,6 @@ static ROUTE_STATE_TTL_SECS: AtomicU64 = AtomicU64::new(DEFAULT_ROUTE_STATE_TTL_
 static ROUTE_STATE_CAPACITY: AtomicUsize = AtomicUsize::new(DEFAULT_ROUTE_STATE_CAPACITY);
 static ROUTE_STATE: OnceLock<Mutex<RouteRoundRobinState>> = OnceLock::new();
 static ROUTE_CONFIG_LOADED: OnceLock<()> = OnceLock::new();
-static ORDERED_ROUTE_STRATEGY: OrderedRouteStrategy = OrderedRouteStrategy;
-static BALANCED_ROUTE_STRATEGY: BalancedRouteStrategy = BalancedRouteStrategy;
-static WEIGHTED_ROUTE_STRATEGY: WeightedRouteStrategy = WeightedRouteStrategy;
-static LEAST_LATENCY_ROUTE_STRATEGY: LeastLatencyRouteStrategy = LeastLatencyRouteStrategy;
-static COST_FIRST_ROUTE_STRATEGY: CostFirstRouteStrategy = CostFirstRouteStrategy;
-
-trait RouteStrategy: Sync {
-    fn mode(&self) -> u8;
-    fn label(&self) -> &'static str;
-    fn apply(&self, candidates: &mut [(Account, Token)], key_id: &str, model: Option<&str>);
-}
-
-struct OrderedRouteStrategy;
-struct BalancedRouteStrategy;
-struct WeightedRouteStrategy;
-struct LeastLatencyRouteStrategy;
-struct CostFirstRouteStrategy;
 
 #[derive(Clone, Copy)]
 struct RouteStateEntry<T: Copy> {
@@ -67,6 +43,18 @@ struct RouteStateEntry<T: Copy> {
 }
 
 impl<T: Copy> RouteStateEntry<T> {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    /// - last_seen: 参数 last_seen
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new(value: T, last_seen: Instant) -> Self {
         Self { value, last_seen }
     }
@@ -76,81 +64,21 @@ impl<T: Copy> RouteStateEntry<T> {
 struct RouteRoundRobinState {
     next_start_by_key_model: HashMap<String, RouteStateEntry<usize>>,
     p2c_nonce_by_key_model: HashMap<String, RouteStateEntry<u64>>,
-    manual_route_account_ids: Option<Vec<String>>,
+    manual_preferred_account_id: Option<String>,
     maintenance_tick: u64,
 }
 
-impl RouteStrategy for OrderedRouteStrategy {
-    fn mode(&self) -> u8 {
-        ROUTE_MODE_ORDERED
-    }
-
-    fn label(&self) -> &'static str {
-        ROUTE_STRATEGY_ORDERED
-    }
-
-    fn apply(&self, _candidates: &mut [(Account, Token)], _key_id: &str, _model: Option<&str>) {}
-}
-
-impl RouteStrategy for BalancedRouteStrategy {
-    fn mode(&self) -> u8 {
-        ROUTE_MODE_BALANCED_ROUND_ROBIN
-    }
-
-    fn label(&self) -> &'static str {
-        ROUTE_STRATEGY_BALANCED
-    }
-
-    fn apply(&self, candidates: &mut [(Account, Token)], key_id: &str, model: Option<&str>) {
-        let start = next_start_index(key_id, model, candidates.len());
-        if start > 0 {
-            candidates.rotate_left(start);
-        }
-    }
-}
-
-impl RouteStrategy for WeightedRouteStrategy {
-    fn mode(&self) -> u8 {
-        ROUTE_MODE_WEIGHTED
-    }
-
-    fn label(&self) -> &'static str {
-        ROUTE_STRATEGY_WEIGHTED
-    }
-
-    fn apply(&self, candidates: &mut [(Account, Token)], key_id: &str, model: Option<&str>) {
-        apply_weighted_rotation(candidates, key_id, model);
-    }
-}
-
-impl RouteStrategy for LeastLatencyRouteStrategy {
-    fn mode(&self) -> u8 {
-        ROUTE_MODE_LEAST_LATENCY
-    }
-
-    fn label(&self) -> &'static str {
-        ROUTE_STRATEGY_LEAST_LATENCY
-    }
-
-    fn apply(&self, candidates: &mut [(Account, Token)], _key_id: &str, _model: Option<&str>) {
-        apply_least_latency_order(candidates);
-    }
-}
-
-impl RouteStrategy for CostFirstRouteStrategy {
-    fn mode(&self) -> u8 {
-        ROUTE_MODE_COST_FIRST
-    }
-
-    fn label(&self) -> &'static str {
-        ROUTE_STRATEGY_COST_FIRST
-    }
-
-    fn apply(&self, candidates: &mut [(Account, Token)], _key_id: &str, _model: Option<&str>) {
-        apply_cost_first_order(candidates);
-    }
-}
-
+/// 函数 `apply_route_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn apply_route_strategy(
     candidates: &mut [(Account, Token)],
     key_id: &str,
@@ -161,88 +89,158 @@ pub(crate) fn apply_route_strategy(
         return;
     }
 
-    let strategy = current_route_strategy_impl();
-    strategy.apply(candidates, key_id, model);
-    apply_new_account_protection_order(candidates);
-    apply_health_p2c(candidates, key_id, model, strategy.mode());
-}
-
-fn apply_new_account_protection_order(candidates: &mut [(Account, Token)]) {
-    let window_secs = crate::account_risk::current_new_account_protection_window_secs();
-    if window_secs <= 0 || candidates.len() <= 1 {
+    if rotate_to_manual_preferred_account(candidates) {
         return;
     }
 
-    let now = now_ts();
-    let protected_count = candidates
+    let mode = route_mode();
+    if mode == ROUTE_MODE_BALANCED_ROUND_ROBIN {
+        apply_balanced_round_robin(candidates, key_id, model);
+    }
+
+    apply_health_p2c(candidates, key_id, model, mode);
+}
+
+/// 函数 `apply_balanced_round_robin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
+pub(crate) fn apply_balanced_round_robin<T>(
+    candidates: &mut [T],
+    key_id: &str,
+    model: Option<&str>,
+) {
+    ensure_route_config_loaded();
+    if candidates.len() <= 1 {
+        return;
+    }
+    let start = next_start_index(key_id, model, candidates.len());
+    if start > 0 {
+        candidates.rotate_left(start);
+    }
+}
+
+/// 函数 `rotate_to_manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 返回函数执行结果
+fn rotate_to_manual_preferred_account(candidates: &mut [(Account, Token)]) -> bool {
+    let Some(account_id) = get_manual_preferred_account() else {
+        return false;
+    };
+    let Some(index) = candidates
         .iter()
-        .filter(|(account, _)| {
-            crate::account_risk::derive_new_account_protection_state_with_window(
-                account,
-                now,
-                window_secs,
-            )
-            .is_some()
-        })
-        .count();
-    if protected_count == 0 || protected_count == candidates.len() {
-        return;
+        .position(|(account, _)| account.id == account_id)
+    else {
+        return false;
+    };
+    if index > 0 {
+        candidates.rotate_left(index);
     }
-
-    candidates.sort_by_key(|(account, _)| {
-        crate::account_risk::derive_new_account_protection_state_with_window(
-            account,
-            now,
-            window_secs,
-        )
-        .is_some()
-    });
+    true
 }
 
+/// 函数 `route_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_mode() -> u8 {
     ROUTE_MODE.load(Ordering::Relaxed)
 }
 
-fn route_strategy_impl(mode: u8) -> &'static dyn RouteStrategy {
-    match mode {
-        ROUTE_MODE_BALANCED_ROUND_ROBIN => &BALANCED_ROUTE_STRATEGY,
-        ROUTE_MODE_WEIGHTED => &WEIGHTED_ROUTE_STRATEGY,
-        ROUTE_MODE_LEAST_LATENCY => &LEAST_LATENCY_ROUTE_STRATEGY,
-        ROUTE_MODE_COST_FIRST => &COST_FIRST_ROUTE_STRATEGY,
-        _ => &ORDERED_ROUTE_STRATEGY,
+/// 函数 `route_mode_label`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - mode: 参数 mode
+///
+/// # 返回
+/// 返回函数执行结果
+fn route_mode_label(mode: u8) -> &'static str {
+    if mode == ROUTE_MODE_BALANCED_ROUND_ROBIN {
+        ROUTE_STRATEGY_BALANCED
+    } else {
+        ROUTE_STRATEGY_ORDERED
     }
 }
 
-fn current_route_strategy_impl() -> &'static dyn RouteStrategy {
-    route_strategy_impl(route_mode())
-}
-
+/// 函数 `parse_route_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_route_mode(raw: &str) -> Option<u8> {
     match raw.trim().to_ascii_lowercase().as_str() {
         ROUTE_STRATEGY_ORDERED | "order" | "priority" | "sequential" => Some(ROUTE_MODE_ORDERED),
         ROUTE_STRATEGY_BALANCED | "round_robin" | "round-robin" | "rr" => {
             Some(ROUTE_MODE_BALANCED_ROUND_ROBIN)
         }
-        ROUTE_STRATEGY_WEIGHTED | "weighted_round_robin" | "weighted-rr" => {
-            Some(ROUTE_MODE_WEIGHTED)
-        }
-        ROUTE_STRATEGY_LEAST_LATENCY | "least_latency" | "latency" => {
-            Some(ROUTE_MODE_LEAST_LATENCY)
-        }
-        ROUTE_STRATEGY_COST_FIRST | "cost_first" => Some(ROUTE_MODE_COST_FIRST),
         _ => None,
     }
 }
 
+/// 函数 `current_route_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn current_route_strategy() -> &'static str {
     ensure_route_config_loaded();
-    current_route_strategy_impl().label()
+    route_mode_label(route_mode())
 }
 
+/// 函数 `set_route_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_route_strategy(strategy: &str) -> Result<&'static str, String> {
+    ensure_route_config_loaded();
     let Some(mode) = parse_route_mode(strategy) else {
         return Err(
-            "invalid strategy; use ordered / balanced / weighted / least-latency / cost-first"
+            "invalid strategy; use ordered or balanced (aliases: round_robin/round-robin/rr)"
                 .to_string(),
         );
     };
@@ -253,191 +251,80 @@ pub(crate) fn set_route_strategy(strategy: &str) -> Result<&'static str, String>
         state.p2c_nonce_by_key_model.clear();
         state.maintenance_tick = 0;
     }
-    Ok(route_strategy_impl(mode).label())
+    Ok(route_mode_label(mode))
 }
 
-fn apply_weighted_rotation(candidates: &mut [(Account, Token)], key_id: &str, model: Option<&str>) {
-    let weights = load_route_weights(candidates);
-    let Some(selected_idx) = weighted_rotation_index(weights.as_slice(), key_id, model) else {
-        return;
-    };
-    if selected_idx > 0 {
-        candidates.rotate_left(selected_idx);
-    }
-}
-
-fn apply_least_latency_order(candidates: &mut [(Account, Token)]) {
-    candidates.sort_by(|left, right| {
-        let left_latency =
-            super::route_latency::average_route_latency_ms(left.0.id.as_str()).unwrap_or(i64::MAX);
-        let right_latency =
-            super::route_latency::average_route_latency_ms(right.0.id.as_str()).unwrap_or(i64::MAX);
-        left_latency
-            .cmp(&right_latency)
-            .then_with(|| left.0.sort.cmp(&right.0.sort))
-            .then_with(|| left.0.id.cmp(&right.0.id))
-    });
-}
-
-fn apply_cost_first_order(candidates: &mut [(Account, Token)]) {
-    let payment_state_map = crate::account_payment::read_payment_state_map();
-    candidates.sort_by(|left, right| {
-        let left_priority = payment_state_map
-            .get(left.0.id.as_str())
-            .and_then(|state| state.subscription_plan_type.as_deref())
-            .map(plan_priority)
-            .unwrap_or(3);
-        let right_priority = payment_state_map
-            .get(right.0.id.as_str())
-            .and_then(|state| state.subscription_plan_type.as_deref())
-            .map(plan_priority)
-            .unwrap_or(3);
-        left_priority
-            .cmp(&right_priority)
-            .then_with(|| left.0.sort.cmp(&right.0.sort))
-            .then_with(|| left.0.id.cmp(&right.0.id))
-    });
-}
-
-fn load_route_weights(candidates: &[(Account, Token)]) -> Vec<usize> {
-    let usage_map = crate::storage_helpers::open_storage()
-        .and_then(|storage| storage.latest_usage_snapshots_by_account().ok())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|item| (item.account_id, usage_weight(item.used_percent)))
-        .collect::<HashMap<_, _>>();
-
-    candidates
-        .iter()
-        .map(|(account, _)| usage_map.get(account.id.as_str()).copied().unwrap_or(10))
-        .collect()
-}
-
-fn weighted_rotation_index(weights: &[usize], key_id: &str, model: Option<&str>) -> Option<usize> {
-    let total_weight = weights.iter().copied().sum::<usize>();
-    if total_weight == 0 {
-        return None;
-    }
-    let ticket = next_start_index(key_id, model, total_weight);
-    let mut running = 0_usize;
-    Some(
-        weights
-            .iter()
-            .position(|weight| {
-                running = running.saturating_add(*weight);
-                ticket < running
-            })
-            .unwrap_or(0),
-    )
-}
-
-fn usage_weight(used_percent: Option<f64>) -> usize {
-    let remain = used_percent
-        .map(|value| (100.0 - value).clamp(1.0, 100.0))
-        .unwrap_or(10.0);
-    remain.round() as usize
-}
-
-fn plan_priority(plan_type: &str) -> usize {
-    match plan_type.trim().to_ascii_lowercase().as_str() {
-        "free" => 0,
-        "plus" => 1,
-        "pro" | "team" | "business" | "enterprise" => 2,
-        _ => 3,
-    }
-}
-
-pub(crate) fn get_manual_route_account_ids() -> Vec<String> {
-    ensure_route_config_loaded();
-    let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
-    let state = crate::lock_utils::lock_recover(lock, "route_state");
-    state.manual_route_account_ids.clone().unwrap_or_default()
-}
-
-pub(crate) fn set_manual_route_account_ids(account_ids: &[String]) -> Result<Vec<String>, String> {
-    ensure_route_config_loaded();
-    let mut normalized = Vec::new();
-    let mut seen = HashSet::new();
-    for account_id in account_ids {
-        let id = account_id.trim();
-        if id.is_empty() {
-            continue;
-        }
-        if !seen.insert(id.to_string()) {
-            continue;
-        }
-        normalized.push(id.to_string());
-    }
-    let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
-    let mut state = crate::lock_utils::lock_recover(lock, "route_state");
-    state.manual_route_account_ids = if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized.clone())
-    };
-    Ok(normalized)
-}
-
-pub(crate) fn clear_manual_route_account_ids() {
-    ensure_route_config_loaded();
-    let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
-    let mut state = crate::lock_utils::lock_recover(lock, "route_state");
-    state.manual_route_account_ids = None;
-}
-
-pub(crate) fn retain_manual_route_account_ids(candidates: &mut Vec<(Account, Token)>) {
-    ensure_route_config_loaded();
-    let route_account_ids = get_manual_route_account_ids();
-    if route_account_ids.is_empty() {
-        return;
-    }
-    let allowed = route_account_ids
-        .iter()
-        .map(String::as_str)
-        .collect::<HashSet<_>>();
-    candidates.retain(|(account, _)| allowed.contains(account.id.as_str()));
-}
-
+/// 函数 `get_manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn get_manual_preferred_account() -> Option<String> {
-    get_manual_route_account_ids().into_iter().next()
+    crate::storage_helpers::open_storage()
+        .and_then(|storage| storage.preferred_account_id().ok())
+        .flatten()
 }
 
+/// 函数 `set_manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_manual_preferred_account(account_id: &str) -> Result<(), String> {
     let id = account_id.trim();
     if id.is_empty() {
         return Err("accountId is required".to_string());
     }
-    let _ = set_manual_route_account_ids(&[id.to_string()])?;
+    let mut storage = crate::storage_helpers::open_storage()
+        .ok_or_else(|| "storage not initialized".to_string())?;
+    storage
+        .set_preferred_account(Some(id))
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
+/// 函数 `clear_manual_preferred_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn clear_manual_preferred_account() {
-    clear_manual_route_account_ids();
+    if let Some(mut storage) = crate::storage_helpers::open_storage() {
+        let _ = storage.set_preferred_account(None);
+    }
 }
 
-pub(crate) fn clear_manual_preferred_account_if(account_id: &str) -> bool {
-    ensure_route_config_loaded();
-    let id = account_id.trim();
-    if id.is_empty() {
-        return false;
-    }
-    let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
-    let mut state = crate::lock_utils::lock_recover(lock, "route_state");
-    let Some(current_ids) = state.manual_route_account_ids.as_mut() else {
-        return false;
-    };
-    let original_len = current_ids.len();
-    current_ids.retain(|current| current != id);
-    if current_ids.is_empty() {
-        state.manual_route_account_ids = None;
-    }
-    original_len != state
-        .manual_route_account_ids
-        .as_ref()
-        .map(|items| items.len())
-        .unwrap_or_default()
-}
-
+/// 函数 `next_start_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key_id: 参数 key_id
+/// - model: 参数 model
+/// - candidate_count: 参数 candidate_count
+///
+/// # 返回
+/// 返回函数执行结果
 fn next_start_index(key_id: &str, model: Option<&str>, candidate_count: usize) -> usize {
     let lock = ROUTE_STATE.get_or_init(|| Mutex::new(RouteRoundRobinState::default()));
     let mut state_guard = crate::lock_utils::lock_recover(lock, "route_state");
@@ -467,6 +354,20 @@ fn next_start_index(key_id: &str, model: Option<&str>, candidate_count: usize) -
     start
 }
 
+/// 函数 `apply_health_p2c`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+/// - key_id: 参数 key_id
+/// - model: 参数 model
+/// - mode: 参数 mode
+///
+/// # 返回
+/// 无
 fn apply_health_p2c(
     candidates: &mut [(Account, Token)],
     key_id: &str,
@@ -491,6 +392,19 @@ fn apply_health_p2c(
     }
 }
 
+/// 函数 `p2c_challenger_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key_id: 参数 key_id
+/// - model: 参数 model
+/// - candidate_count: 参数 candidate_count
+///
+/// # 返回
+/// 返回函数执行结果
 fn p2c_challenger_index(
     key_id: &str,
     model: Option<&str>,
@@ -531,6 +445,17 @@ fn p2c_challenger_index(
     Some(offset + 1)
 }
 
+/// 函数 `stable_hash_u64`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - input: 参数 input
+///
+/// # 返回
+/// 返回函数执行结果
 fn stable_hash_u64(input: &[u8]) -> u64 {
     let mut hash = 14695981039346656037_u64;
     for byte in input {
@@ -540,10 +465,32 @@ fn stable_hash_u64(input: &[u8]) -> u64 {
     hash
 }
 
+/// 函数 `route_health_p2c_enabled`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_health_p2c_enabled() -> bool {
     ROUTE_HEALTH_P2C_ENABLED.load(Ordering::Relaxed)
 }
 
+/// 函数 `route_health_window`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - mode: 参数 mode
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_health_window(mode: u8) -> usize {
     if mode == ROUTE_MODE_BALANCED_ROUND_ROBIN {
         ROUTE_HEALTH_P2C_BALANCED_WINDOW.load(Ordering::Relaxed)
@@ -552,14 +499,49 @@ fn route_health_window(mode: u8) -> usize {
     }
 }
 
+/// 函数 `route_state_ttl`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_state_ttl() -> Duration {
     Duration::from_secs(ROUTE_STATE_TTL_SECS.load(Ordering::Relaxed))
 }
 
+/// 函数 `route_state_capacity`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn route_state_capacity() -> usize {
     ROUTE_STATE_CAPACITY.load(Ordering::Relaxed)
 }
 
+/// 函数 `is_entry_expired`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - last_seen: 参数 last_seen
+/// - now: 参数 now
+/// - ttl: 参数 ttl
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_entry_expired(last_seen: Instant, now: Instant, ttl: Duration) -> bool {
     if ttl.is_zero() {
         return false;
@@ -568,6 +550,20 @@ fn is_entry_expired(last_seen: Instant, now: Instant, ttl: Duration) -> bool {
         .is_some_and(|age| age > ttl)
 }
 
+/// 函数 `remove_entry_if_expired`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - map: 参数 map
+/// - key: 参数 key
+/// - now: 参数 now
+/// - ttl: 参数 ttl
+///
+/// # 返回
+/// 无
 fn remove_entry_if_expired<T: Copy>(
     map: &mut HashMap<String, RouteStateEntry<T>>,
     key: &str,
@@ -585,6 +581,19 @@ fn remove_entry_if_expired<T: Copy>(
     }
 }
 
+/// 函数 `prune_expired_entries`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - map: 参数 map
+/// - now: 参数 now
+/// - ttl: 参数 ttl
+///
+/// # 返回
+/// 无
 fn prune_expired_entries<T: Copy>(
     map: &mut HashMap<String, RouteStateEntry<T>>,
     now: Instant,
@@ -596,6 +605,19 @@ fn prune_expired_entries<T: Copy>(
     map.retain(|_, entry| !is_entry_expired(entry.last_seen, now, ttl));
 }
 
+/// 函数 `enforce_capacity_pair`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - map: 参数 map
+/// - other: 参数 other
+/// - capacity: 参数 capacity
+///
+/// # 返回
+/// 无
 fn enforce_capacity_pair<T: Copy, U: Copy>(
     map: &mut HashMap<String, RouteStateEntry<T>>,
     other: &mut HashMap<String, RouteStateEntry<U>>,
@@ -613,12 +635,35 @@ fn enforce_capacity_pair<T: Copy, U: Copy>(
     }
 }
 
+/// 函数 `find_oldest_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - map: 参数 map
+///
+/// # 返回
+/// 返回函数执行结果
 fn find_oldest_key<T: Copy>(map: &HashMap<String, RouteStateEntry<T>>) -> Option<String> {
     map.iter()
         .min_by(|(ka, ea), (kb, eb)| ea.last_seen.cmp(&eb.last_seen).then_with(|| ka.cmp(kb)))
         .map(|(key, _)| key.clone())
 }
 
+/// 函数 `key_model_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - key_id: 参数 key_id
+/// - model: 参数 model
+///
+/// # 返回
+/// 返回函数执行结果
 fn key_model_key(key_id: &str, model: Option<&str>) -> String {
     format!(
         "{}|{}",
@@ -630,6 +675,17 @@ fn key_model_key(key_id: &str, model: Option<&str>) -> String {
     )
 }
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn reload_from_env() {
     let raw = std::env::var(ROUTE_STRATEGY_ENV).unwrap_or_default();
     let mode = parse_route_mode(raw.as_str()).unwrap_or(ROUTE_MODE_ORDERED);
@@ -668,15 +724,38 @@ pub(super) fn reload_from_env() {
         let mut state = crate::lock_utils::lock_recover(lock, "route_state");
         state.next_start_by_key_model.clear();
         state.p2c_nonce_by_key_model.clear();
-        state.manual_route_account_ids = None;
+        state.manual_preferred_account_id = None;
         state.maintenance_tick = 0;
     }
 }
 
+/// 函数 `ensure_route_config_loaded`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn ensure_route_config_loaded() {
-    let _ = ROUTE_CONFIG_LOADED.get_or_init(reload_from_env);
+    let _ = ROUTE_CONFIG_LOADED.get_or_init(|| reload_from_env());
 }
 
+/// 函数 `env_bool_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_bool_or(name: &str, default: bool) -> bool {
     let Ok(raw) = std::env::var(name) else {
         return default;
@@ -688,6 +767,18 @@ fn env_bool_or(name: &str, default: bool) -> bool {
     }
 }
 
+/// 函数 `env_usize_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_usize_or(name: &str, default: usize) -> usize {
     std::env::var(name)
         .ok()
@@ -695,6 +786,18 @@ fn env_usize_or(name: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+/// 函数 `env_u64_or`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+/// - default: 参数 default
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_u64_or(name: &str, default: u64) -> u64 {
     std::env::var(name)
         .ok()
@@ -703,12 +806,21 @@ fn env_u64_or(name: &str, default: u64) -> u64 {
 }
 
 impl RouteRoundRobinState {
+    /// 函数 `maybe_maintain`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - now: 参数 now
+    ///
+    /// # 返回
+    /// 无
     fn maybe_maintain(&mut self, now: Instant) {
         self.maintenance_tick = self.maintenance_tick.wrapping_add(1);
-        if !self
-            .maintenance_tick
-            .is_multiple_of(ROUTE_STATE_MAINTENANCE_EVERY)
-        {
+        if self.maintenance_tick % ROUTE_STATE_MAINTENANCE_EVERY != 0 {
             return;
         }
         let ttl = route_state_ttl();
@@ -728,26 +840,27 @@ impl RouteRoundRobinState {
     }
 }
 
+/// 函数 `clear_route_state_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn clear_route_state_for_tests() {
     super::route_quality::clear_route_quality_for_tests();
-    super::route_latency::clear_route_latency_for_tests();
     if let Some(lock) = ROUTE_STATE.get() {
         let mut state = crate::lock_utils::lock_recover(lock, "route_state");
         state.next_start_by_key_model.clear();
         state.p2c_nonce_by_key_model.clear();
-        state.manual_route_account_ids = None;
+        state.manual_preferred_account_id = None;
         state.maintenance_tick = 0;
     }
-}
-
-#[cfg(test)]
-fn route_strategy_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    static ROUTE_STRATEGY_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    crate::lock_utils::lock_recover(
-        ROUTE_STRATEGY_TEST_MUTEX.get_or_init(|| Mutex::new(())),
-        "route strategy test mutex",
-    )
 }
 
 #[cfg(test)]

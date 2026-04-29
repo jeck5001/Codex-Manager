@@ -4,6 +4,17 @@ use std::path::PathBuf;
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// 函数 `temp_db_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn temp_db_path(name: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -12,6 +23,17 @@ fn temp_db_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("codexmanager-{name}-{}-{nanos}.db", process::id()))
 }
 
+/// 函数 `init_tracks_schema_migrations_and_is_idempotent`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn init_tracks_schema_migrations_and_is_idempotent() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -186,26 +208,53 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
     let applied_034: i64 = storage
         .conn
         .query_row(
-            "SELECT COUNT(1) FROM schema_migrations WHERE version = '034_restore_account_tags'",
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '034_conversation_bindings'",
             [],
             |row| row.get(0),
         )
         .expect("count 034 migration");
     assert_eq!(applied_034, 1);
-    let applied_045: i64 = storage
+    let applied_035: i64 = storage
         .conn
         .query_row(
-            "SELECT COUNT(1) FROM schema_migrations WHERE version = '045_plugins'",
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '035_api_key_profiles_service_tier'",
             [],
             |row| row.get(0),
         )
-        .expect("count 045 migration");
-    assert_eq!(applied_045, 1);
+        .expect("count 035 migration");
+    assert_eq!(applied_035, 1);
+    let applied_043: i64 = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '043_request_logs_effective_service_tier'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count 043 migration");
+    assert_eq!(applied_043, 1);
+    let applied_050: i64 = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '050_api_key_profiles_drop_azure_protocol'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count 050 migration");
+    assert_eq!(applied_050, 1);
+    let applied_052: i64 = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM schema_migrations WHERE version = '052_account_subscriptions'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count 052 migration");
+    assert_eq!(applied_052, 1);
 
     assert!(!storage
         .has_column("accounts", "note")
         .expect("check accounts.note"));
-    assert!(storage
+    assert!(!storage
         .has_column("accounts", "tags")
         .expect("check accounts.tags"));
     assert!(!storage
@@ -233,11 +282,23 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
         .has_column("request_logs", "duration_ms")
         .expect("check request_logs.duration_ms"));
     assert!(storage
+        .has_column("request_logs", "first_response_ms")
+        .expect("check request_logs.first_response_ms"));
+    assert!(storage
         .has_column("request_logs", "initial_account_id")
         .expect("check request_logs.initial_account_id"));
     assert!(storage
         .has_column("request_logs", "attempted_account_ids_json")
         .expect("check request_logs.attempted_account_ids_json"));
+    assert!(storage
+        .has_column("request_logs", "initial_aggregate_api_id")
+        .expect("check request_logs.initial_aggregate_api_id"));
+    assert!(storage
+        .has_column("request_logs", "attempted_aggregate_api_ids_json")
+        .expect("check request_logs.attempted_aggregate_api_ids_json"));
+    assert!(storage
+        .has_column("request_logs", "effective_service_tier")
+        .expect("check request_logs.effective_service_tier"));
     assert!(storage
         .has_column("app_settings", "value")
         .expect("check app_settings.value"));
@@ -245,11 +306,29 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
         .has_column("login_sessions", "workspace_id")
         .expect("check login_sessions.workspace_id"));
     assert!(storage
-        .has_column("plugins", "hook_points_json")
-        .expect("check plugins.hook_points_json"));
+        .has_column("conversation_bindings", "thread_anchor")
+        .expect("check conversation_bindings.thread_anchor"));
     assert!(storage
-        .has_column("plugins", "script_content")
-        .expect("check plugins.script_content"));
+        .has_column("conversation_bindings", "last_switch_reason")
+        .expect("check conversation_bindings.last_switch_reason"));
+    assert!(storage
+        .has_table("account_subscriptions")
+        .expect("check account_subscriptions table"));
+    assert!(storage
+        .has_column("account_subscriptions", "has_subscription")
+        .expect("check account_subscriptions.has_subscription"));
+    assert!(storage
+        .has_column("account_subscriptions", "plan_type")
+        .expect("check account_subscriptions.plan_type"));
+    assert!(storage
+        .has_column("account_subscriptions", "expires_at")
+        .expect("check account_subscriptions.expires_at"));
+    assert!(storage
+        .has_column("account_subscriptions", "renews_at")
+        .expect("check account_subscriptions.renews_at"));
+    assert!(storage
+        .has_column("api_key_profiles", "service_tier")
+        .expect("check api_key_profiles.service_tier"));
     assert!(!storage
         .has_column("request_logs", "input_tokens")
         .expect("check request_logs.input_tokens"));
@@ -267,6 +346,17 @@ fn init_tracks_schema_migrations_and_is_idempotent() {
         .expect("check request_logs.reasoning_output_tokens"));
 }
 
+/// 函数 `file_open_enables_wal_and_normal_synchronous`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn file_open_enables_wal_and_normal_synchronous() {
     let path = temp_db_path("sqlite-pragmas");
@@ -288,6 +378,17 @@ fn file_open_enables_wal_and_normal_synchronous() {
     let _ = fs::remove_file(path);
 }
 
+/// 函数 `account_meta_sql_migration_coexists_with_legacy_compat_marker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn account_meta_sql_migration_coexists_with_legacy_compat_marker() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -363,6 +464,17 @@ fn account_meta_sql_migration_coexists_with_legacy_compat_marker() {
     assert_eq!(legacy_compat_marker, 1);
 }
 
+/// 函数 `sql_migration_can_fallback_to_compat_when_schema_already_exists`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn sql_migration_can_fallback_to_compat_when_schema_already_exists() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -403,6 +515,17 @@ fn sql_migration_can_fallback_to_compat_when_schema_already_exists() {
     assert_eq!(applied_004, 1);
 }
 
+/// 函数 `api_key_profile_migration_backfills_existing_keys`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn api_key_profile_migration_backfills_existing_keys() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -434,11 +557,26 @@ fn api_key_profile_migration_backfills_existing_keys() {
             |s| s.ensure_api_key_profiles_table(),
         )
         .expect("apply 015 migration with fallback");
+    storage
+        .apply_sql_or_compat_migration(
+            "035_api_key_profiles_service_tier",
+            include_str!("../../migrations/035_api_key_profiles_service_tier.sql"),
+            |s| s.ensure_api_key_service_tier_column(),
+        )
+        .expect("apply 035 migration with fallback");
 
-    let profile_row: (String, String, String, String, Option<String>, Option<String>) = storage
+    let profile_row: (
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = storage
         .conn
         .query_row(
-            "SELECT client_type, protocol_type, auth_scheme, default_model, reasoning_effort, upstream_base_url
+            "SELECT client_type, protocol_type, auth_scheme, default_model, reasoning_effort, upstream_base_url, service_tier
              FROM api_key_profiles
              WHERE key_id = 'key-1'",
             [],
@@ -450,6 +588,7 @@ fn api_key_profile_migration_backfills_existing_keys() {
                     row.get(3)?,
                     row.get(4)?,
                     row.get(5)?,
+                    row.get(6)?,
                 ))
             },
         )
@@ -461,8 +600,138 @@ fn api_key_profile_migration_backfills_existing_keys() {
     assert_eq!(profile_row.3, "gpt-5");
     assert_eq!(profile_row.4.as_deref(), Some("low"));
     assert_eq!(profile_row.5, None);
+    assert_eq!(profile_row.6, None);
 }
 
+#[test]
+fn api_key_profile_drop_azure_protocol_migration_normalizes_legacy_rows() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage
+        .conn
+        .execute_batch(
+            "CREATE TABLE api_keys (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                model_slug TEXT,
+                reasoning_effort TEXT,
+                key_hash TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_used_at INTEGER
+            );
+            CREATE TABLE api_key_profiles (
+                key_id TEXT PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
+                client_type TEXT NOT NULL CHECK (client_type IN ('codex', 'claude_code')),
+                protocol_type TEXT NOT NULL CHECK (protocol_type IN ('openai_compat', 'anthropic_native', 'azure_openai')),
+                auth_scheme TEXT NOT NULL CHECK (auth_scheme IN ('authorization_bearer', 'x_api_key', 'api_key')),
+                upstream_base_url TEXT,
+                static_headers_json TEXT,
+                default_model TEXT,
+                reasoning_effort TEXT,
+                service_tier TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            INSERT INTO api_keys (id, name, model_slug, reasoning_effort, key_hash, status, created_at, last_used_at)
+            VALUES ('key-azure', 'azure', NULL, NULL, 'hash-azure', 'active', 100, NULL);
+            INSERT INTO api_key_profiles (
+                key_id,
+                client_type,
+                protocol_type,
+                auth_scheme,
+                upstream_base_url,
+                static_headers_json,
+                default_model,
+                reasoning_effort,
+                service_tier,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                'key-azure',
+                'codex',
+                'azure_openai',
+                'api_key',
+                'https://legacy-resource.openai.azure.com',
+                '{\"api-key\":\"legacy\"}',
+                'gpt-4o',
+                'medium',
+                'fast',
+                100,
+                100
+            );",
+        )
+        .expect("prepare legacy azure profile");
+    storage
+        .ensure_migrations_table()
+        .expect("ensure migration tracker");
+
+    storage
+        .apply_sql_migration(
+            "050_api_key_profiles_drop_azure_protocol",
+            include_str!("../../migrations/050_api_key_profiles_drop_azure_protocol.sql"),
+        )
+        .expect("apply 050 migration");
+
+    let status: String = storage
+        .conn
+        .query_row(
+            "SELECT status FROM api_keys WHERE id = 'key-azure'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("load migrated key status");
+    assert_eq!(status, "disabled");
+
+    let profile_row: (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = storage
+        .conn
+        .query_row(
+            "SELECT protocol_type, auth_scheme, upstream_base_url, static_headers_json, default_model, reasoning_effort, service_tier
+             FROM api_key_profiles
+             WHERE key_id = 'key-azure'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            },
+        )
+        .expect("load migrated profile");
+
+    assert_eq!(profile_row.0, "openai_compat");
+    assert_eq!(profile_row.1, "authorization_bearer");
+    assert_eq!(profile_row.2, None);
+    assert_eq!(profile_row.3, None);
+    assert_eq!(profile_row.4.as_deref(), Some("gpt-4o"));
+    assert_eq!(profile_row.5.as_deref(), Some("medium"));
+    assert_eq!(profile_row.6.as_deref(), Some("fast"));
+}
+
+/// 函数 `key_hash_index_migration_adds_api_keys_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn key_hash_index_migration_adds_api_keys_index() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -482,6 +751,17 @@ fn key_hash_index_migration_adds_api_keys_index() {
     assert!(index_sql.contains("key_hash"));
 }
 
+/// 函数 `usage_snapshot_latest_index_migration_adds_captured_id_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_snapshot_latest_index_migration_adds_captured_id_index() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -502,6 +782,17 @@ fn usage_snapshot_latest_index_migration_adds_captured_id_index() {
     assert!(index_sql.contains("id DESC"));
 }
 
+/// 函数 `accounts_sort_index_migration_adds_sort_updated_at_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn accounts_sort_index_migration_adds_sort_updated_at_index() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -522,6 +813,60 @@ fn accounts_sort_index_migration_adds_sort_updated_at_index() {
     assert!(index_sql.contains("updated_at DESC"));
 }
 
+/// 函数 `conversation_bindings_migration_adds_indexes`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn conversation_bindings_migration_adds_indexes() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    let account_index_sql: String = storage
+        .conn
+        .query_row(
+            "SELECT sql
+             FROM sqlite_master
+             WHERE type = 'index' AND name = 'idx_conversation_bindings_account_id'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("load account index definition");
+    assert!(account_index_sql.contains("conversation_bindings"));
+    assert!(account_index_sql.contains("account_id"));
+
+    let last_used_index_sql: String = storage
+        .conn
+        .query_row(
+            "SELECT sql
+             FROM sqlite_master
+             WHERE type = 'index' AND name = 'idx_conversation_bindings_last_used_at'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("load last_used index definition");
+    assert!(last_used_index_sql.contains("conversation_bindings"));
+    assert!(last_used_index_sql.contains("last_used_at DESC"));
+}
+
+/// 函数 `request_logs_compact_migration_drops_legacy_usage_columns_and_preserves_rows`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_logs_compact_migration_drops_legacy_usage_columns_and_preserves_rows() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -587,13 +932,16 @@ fn request_logs_compact_migration_drops_legacy_usage_columns_and_preserves_rows(
     assert!(storage
         .has_column("request_logs", "duration_ms")
         .expect("check compact duration_ms"));
+    assert!(storage
+        .has_column("request_logs", "effective_service_tier")
+        .expect("check compact effective_service_tier"));
 
-    let request_log_row: (i64, String, Option<String>, Option<i64>) = storage
+    let request_log_row: (i64, String, Option<String>, Option<String>, Option<i64>) = storage
         .conn
         .query_row(
-            "SELECT id, request_path, response_adapter, duration_ms FROM request_logs WHERE id = 7",
+            "SELECT id, request_path, response_adapter, effective_service_tier, duration_ms FROM request_logs WHERE id = 7",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         )
         .expect("load compacted request log row");
     assert_eq!(request_log_row.0, 7);
@@ -603,6 +951,7 @@ fn request_logs_compact_migration_drops_legacy_usage_columns_and_preserves_rows(
         Some("OpenAIChatCompletionsJson")
     );
     assert_eq!(request_log_row.3, None);
+    assert_eq!(request_log_row.4, None);
 
     let token_row: (Option<i64>, Option<i64>, Option<f64>, Option<i64>, Option<i64>) = storage
         .conn
@@ -627,4 +976,104 @@ fn request_logs_compact_migration_drops_legacy_usage_columns_and_preserves_rows(
     assert_eq!(token_row.2, Some(0.25));
     assert_eq!(token_row.3, Some(3));
     assert_eq!(token_row.4, Some(2));
+}
+
+#[test]
+fn init_upgrades_legacy_model_catalog_table_to_structured_schema() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage
+        .conn
+        .execute_batch(
+            "CREATE TABLE model_catalog_models (
+                scope TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                model_json TEXT NOT NULL,
+                sort_index INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (scope, slug)
+            );",
+        )
+        .expect("create legacy model catalog table");
+    storage
+        .conn
+        .execute(
+            "CREATE TABLE model_options_cache (
+                scope TEXT PRIMARY KEY,
+                items_json TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )
+        .expect("create legacy model options cache");
+    storage
+        .ensure_migrations_table()
+        .expect("ensure migration tracker");
+
+    storage.init().expect("run init on legacy model catalog");
+
+    assert!(storage
+        .has_column("model_catalog_models", "description")
+        .expect("description column"));
+    assert!(storage
+        .has_column("model_catalog_models", "supported_in_api")
+        .expect("supported_in_api column"));
+    assert!(storage
+        .has_column("model_catalog_models", "source_kind")
+        .expect("source_kind column"));
+    assert!(storage
+        .has_column("model_catalog_models", "user_edited")
+        .expect("user_edited column"));
+    assert!(storage
+        .has_column("model_catalog_models", "minimal_client_version_json")
+        .expect("minimal client version column"));
+    assert!(storage
+        .has_column("model_catalog_models", "extra_json")
+        .expect("extra_json column"));
+    assert!(!storage
+        .has_column("model_catalog_models", "model_json")
+        .expect("model_json column removed"));
+    assert!(!storage
+        .has_table("model_options_cache")
+        .expect("model_options_cache removed"));
+
+    let scope_table_exists = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'model_catalog_scopes'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("check scope table");
+    assert_eq!(scope_table_exists, 1);
+
+    let reasoning_table_exists = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'model_catalog_reasoning_levels'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("check reasoning table");
+    assert_eq!(reasoning_table_exists, 1);
+
+    let string_items_table_exists = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'model_catalog_string_items'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("check string items table");
+    assert_eq!(string_items_table_exists, 1);
+
+    let legacy_plans_table_exists = storage
+        .conn
+        .query_row(
+            "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'model_catalog_available_in_plans'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("check legacy plans table");
+    assert_eq!(legacy_plans_table_exists, 0);
 }

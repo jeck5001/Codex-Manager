@@ -1,10 +1,6 @@
-use codexmanager_core::{
-    auth::parse_id_token_claims,
-    storage::{now_ts, Account, Token},
-};
+use codexmanager_core::storage::{now_ts, Account, Token};
 use serde::Serialize;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::storage_helpers::open_storage;
@@ -35,37 +31,65 @@ pub(crate) struct ExportAccountFile {
     content: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct ExportAccountPayload {
     tokens: ExportTokensPayload,
     meta: ExportMetaPayload,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct ExportTokensPayload {
     access_token: String,
     id_token: String,
     refresh_token: String,
     account_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cookies: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ExportMetaPayload {
     label: String,
     issuer: String,
-    group_name: Option<String>,
+    note: Option<String>,
+    tags: Option<String>,
     status: String,
     workspace_id: Option<String>,
     chatgpt_account_id: Option<String>,
     exported_at: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AccountExportMode {
+    SingleJson,
+    MultipleJson,
+}
+
+impl AccountExportMode {
+    fn parse(value: Option<&str>) -> Self {
+        let normalized = value.unwrap_or("multiple").trim().to_ascii_lowercase();
+        if normalized == "single" {
+            Self::SingleJson
+        } else {
+            Self::MultipleJson
+        }
+    }
+}
+
+/// 函数 `export_accounts_to_directory`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn export_accounts_to_directory(
     output_dir: &str,
-    account_ids: &[String],
+    selected_account_ids: &[String],
+    export_mode: Option<&str>,
 ) -> Result<AccountExportResult, String> {
     let normalized_output_dir = output_dir.trim();
     if normalized_output_dir.is_empty() {
@@ -81,31 +105,57 @@ pub(crate) fn export_accounts_to_directory(
     })?;
 
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let accounts = load_accounts_for_export(&storage, account_ids)?;
+    let accounts = select_accounts_for_export(
+        storage.list_accounts().map_err(|err| err.to_string())?,
+        selected_account_ids,
+    );
+    let metadata = storage
+        .list_account_metadata()
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .map(|item| (item.account_id.clone(), item))
+        .collect::<HashMap<_, _>>();
     let total_accounts = accounts.len();
     let mut exported = 0usize;
     let mut skipped_missing_token = 0usize;
     let mut files = Vec::new();
     let mut file_name_counter: HashMap<String, usize> = HashMap::new();
+    let export_mode = AccountExportMode::parse(export_mode);
 
-    for account in accounts {
-        let token = storage
-            .find_token_by_account_id(&account.id)
-            .map_err(|err| err.to_string())?;
-        let Some(token) = token else {
-            skipped_missing_token += 1;
-            continue;
-        };
-        let account = with_resolved_export_label(account, &token);
+    match export_mode {
+        AccountExportMode::MultipleJson => {
+            for account in accounts {
+                let token = storage
+                    .find_token_by_account_id(&account.id)
+                    .map_err(|err| err.to_string())?;
+                let Some(token) = token else {
+                    skipped_missing_token += 1;
+                    continue;
+                };
 
-        let file_path =
-            build_account_export_file_path(&output_path, &account, &mut file_name_counter);
-        let json = build_account_export_json(&account, &token)?;
-        std::fs::write(&file_path, json)
-            .map_err(|err| format!("write export file failed ({}): {err}", file_path.display()))?;
+                let file_path =
+                    build_account_export_file_path(&output_path, &account, &mut file_name_counter);
+                let json = build_account_export_json(&account, &token, metadata.get(&account.id))?;
+                std::fs::write(&file_path, json).map_err(|err| {
+                    format!("write export file failed ({}): {err}", file_path.display())
+                })?;
 
-        exported += 1;
-        files.push(file_path.display().to_string());
+                exported += 1;
+                files.push(file_path.display().to_string());
+            }
+        }
+        AccountExportMode::SingleJson => {
+            let bundle = build_single_export_bundle_json(&storage, &accounts, &metadata)?;
+            exported = bundle.exported;
+            skipped_missing_token = bundle.skipped_missing_token;
+            if let Some(content) = bundle.content {
+                let file_path = output_path.join("accounts.json");
+                std::fs::write(&file_path, content).map_err(|err| {
+                    format!("write export file failed ({}): {err}", file_path.display())
+                })?;
+                files.push(file_path.display().to_string());
+            }
+        }
     }
 
     Ok(AccountExportResult {
@@ -117,80 +167,76 @@ pub(crate) fn export_accounts_to_directory(
     })
 }
 
-pub(crate) fn export_accounts_data() -> Result<AccountExportDataResult, String> {
-    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let accounts = load_accounts_for_export(&storage, &[])?;
-    let total_accounts = accounts.len();
-    let mut exported = 0usize;
-    let mut skipped_missing_token = 0usize;
-    let mut files = Vec::new();
-    let mut file_name_counter: HashMap<String, usize> = HashMap::new();
-
-    for account in accounts {
-        let token = storage
-            .find_token_by_account_id(&account.id)
-            .map_err(|err| err.to_string())?;
-        let Some(token) = token else {
-            skipped_missing_token += 1;
-            continue;
-        };
-        let account = with_resolved_export_label(account, &token);
-
-        let file_path =
-            build_account_export_file_path(Path::new(""), &account, &mut file_name_counter);
-        let file_name = file_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .map(str::to_string)
-            .ok_or_else(|| "build export file name failed".to_string())?;
-        let json = build_account_export_json(&account, &token)?;
-        let content =
-            String::from_utf8(json).map_err(|err| format!("encode export utf8 failed: {err}"))?;
-        files.push(ExportAccountFile { file_name, content });
-        exported += 1;
-    }
-
-    Ok(AccountExportDataResult {
-        total_accounts,
-        exported,
-        skipped_missing_token,
-        files,
-    })
-}
-
-pub(crate) fn export_accounts_data_by_ids(
-    account_ids: &[String],
+/// 函数 `export_accounts_data`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - selected_account_ids: 参数 selected_account_ids
+/// - export_mode: 参数 export_mode
+///
+/// # 返回
+/// 返回函数执行结果
+pub(crate) fn export_accounts_data(
+    selected_account_ids: &[String],
+    export_mode: Option<&str>,
 ) -> Result<AccountExportDataResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let accounts = load_accounts_for_export(&storage, account_ids)?;
+    let accounts = select_accounts_for_export(
+        storage.list_accounts().map_err(|err| err.to_string())?,
+        selected_account_ids,
+    );
+    let metadata = storage
+        .list_account_metadata()
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .map(|item| (item.account_id.clone(), item))
+        .collect::<HashMap<_, _>>();
     let total_accounts = accounts.len();
     let mut exported = 0usize;
     let mut skipped_missing_token = 0usize;
     let mut files = Vec::new();
     let mut file_name_counter: HashMap<String, usize> = HashMap::new();
 
-    for account in accounts {
-        let token = storage
-            .find_token_by_account_id(&account.id)
-            .map_err(|err| err.to_string())?;
-        let Some(token) = token else {
-            skipped_missing_token += 1;
-            continue;
-        };
-        let account = with_resolved_export_label(account, &token);
+    match AccountExportMode::parse(export_mode) {
+        AccountExportMode::MultipleJson => {
+            for account in accounts {
+                let token = storage
+                    .find_token_by_account_id(&account.id)
+                    .map_err(|err| err.to_string())?;
+                let Some(token) = token else {
+                    skipped_missing_token += 1;
+                    continue;
+                };
 
-        let file_path =
-            build_account_export_file_path(Path::new(""), &account, &mut file_name_counter);
-        let file_name = file_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .map(str::to_string)
-            .ok_or_else(|| "build export file name failed".to_string())?;
-        let json = build_account_export_json(&account, &token)?;
-        let content =
-            String::from_utf8(json).map_err(|err| format!("encode export utf8 failed: {err}"))?;
-        files.push(ExportAccountFile { file_name, content });
-        exported += 1;
+                let file_path =
+                    build_account_export_file_path(Path::new(""), &account, &mut file_name_counter);
+                let file_name = file_path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(str::to_string)
+                    .ok_or_else(|| "build export file name failed".to_string())?;
+                let json = build_account_export_json(&account, &token, metadata.get(&account.id))?;
+                let content = String::from_utf8(json)
+                    .map_err(|err| format!("encode export utf8 failed: {err}"))?;
+                files.push(ExportAccountFile { file_name, content });
+                exported += 1;
+            }
+        }
+        AccountExportMode::SingleJson => {
+            let bundle = build_single_export_bundle_json(&storage, &accounts, &metadata)?;
+            exported = bundle.exported;
+            skipped_missing_token = bundle.skipped_missing_token;
+            if let Some(content) = bundle.content {
+                files.push(ExportAccountFile {
+                    file_name: "accounts.json".to_string(),
+                    content: String::from_utf8(content)
+                        .map_err(|err| format!("encode export utf8 failed: {err}"))?,
+                });
+            }
+        }
     }
 
     Ok(AccountExportDataResult {
@@ -201,24 +247,88 @@ pub(crate) fn export_accounts_data_by_ids(
     })
 }
 
-fn load_accounts_for_export(
+struct SingleExportBundleResult {
+    content: Option<Vec<u8>>,
+    exported: usize,
+    skipped_missing_token: usize,
+}
+
+fn build_single_export_bundle_json(
     storage: &codexmanager_core::storage::Storage,
-    account_ids: &[String],
-) -> Result<Vec<Account>, String> {
-    let selected_ids = account_ids
+    accounts: &[Account],
+    metadata: &HashMap<String, codexmanager_core::storage::AccountMetadata>,
+) -> Result<SingleExportBundleResult, String> {
+    let mut exported = 0usize;
+    let mut skipped_missing_token = 0usize;
+    let mut payloads = Vec::new();
+
+    for account in accounts {
+        let token = storage
+            .find_token_by_account_id(&account.id)
+            .map_err(|err| err.to_string())?;
+        let Some(token) = token else {
+            skipped_missing_token += 1;
+            continue;
+        };
+
+        payloads.push(build_account_export_payload(
+            account,
+            &token,
+            metadata.get(&account.id),
+        ));
+        exported += 1;
+    }
+
+    let content = if payloads.is_empty() {
+        None
+    } else {
+        Some(
+            serde_json::to_vec_pretty(&payloads)
+                .map_err(|err| format!("encode export json failed: {err}"))?,
+        )
+    };
+
+    Ok(SingleExportBundleResult {
+        content,
+        exported,
+        skipped_missing_token,
+    })
+}
+
+fn select_accounts_for_export(
+    accounts: Vec<Account>,
+    selected_account_ids: &[String],
+) -> Vec<Account> {
+    if selected_account_ids.is_empty() {
+        return accounts;
+    }
+    let selected = selected_account_ids
         .iter()
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .collect::<BTreeSet<_>>();
-    let mut accounts = storage.list_accounts().map_err(|err| err.to_string())?;
-    if selected_ids.is_empty() {
-        return Ok(accounts);
+        .collect::<HashSet<_>>();
+    if selected.is_empty() {
+        return accounts;
     }
-    accounts.retain(|account| selected_ids.contains(&account.id));
-    Ok(accounts)
+    accounts
+        .into_iter()
+        .filter(|account| selected.contains(account.id.as_str()))
+        .collect()
 }
 
+/// 函数 `build_account_export_file_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - output_dir: 参数 output_dir
+/// - account: 参数 account
+/// - file_name_counter: 参数 file_name_counter
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_account_export_file_path(
     output_dir: &Path,
     account: &Account,
@@ -248,28 +358,64 @@ fn build_account_export_file_path(
     output_dir.join(format!("{file_stem}.json"))
 }
 
-fn build_account_export_json(account: &Account, token: &Token) -> Result<Vec<u8>, String> {
-    let payload = ExportAccountPayload {
+/// 函数 `build_account_export_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account: 参数 account
+/// - token: 参数 token
+/// - metadata: 参数 metadata
+///
+/// # 返回
+/// 返回函数执行结果
+fn build_account_export_json(
+    account: &Account,
+    token: &Token,
+    metadata: Option<&codexmanager_core::storage::AccountMetadata>,
+) -> Result<Vec<u8>, String> {
+    serde_json::to_vec_pretty(&build_account_export_payload(account, token, metadata))
+        .map_err(|err| format!("encode export json failed: {err}"))
+}
+
+fn build_account_export_payload(
+    account: &Account,
+    token: &Token,
+    metadata: Option<&codexmanager_core::storage::AccountMetadata>,
+) -> ExportAccountPayload {
+    ExportAccountPayload {
         tokens: ExportTokensPayload {
             access_token: token.access_token.clone(),
             id_token: token.id_token.clone(),
             refresh_token: token.refresh_token.clone(),
             account_id: account.id.clone(),
-            cookies: crate::account_payment::read_account_cookies(&account.id),
         },
         meta: ExportMetaPayload {
             label: account.label.clone(),
             issuer: account.issuer.clone(),
-            group_name: account.group_name.clone(),
+            note: metadata.and_then(|value| value.note.clone()),
+            tags: metadata.and_then(|value| value.tags.clone()),
             status: account.status.clone(),
             workspace_id: account.workspace_id.clone(),
             chatgpt_account_id: account.chatgpt_account_id.clone(),
             exported_at: now_ts(),
         },
-    };
-    serde_json::to_vec_pretty(&payload).map_err(|err| format!("encode export json failed: {err}"))
+    }
 }
 
+/// 函数 `sanitize_file_stem`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn sanitize_file_stem(value: &str) -> String {
     let mut out = String::with_capacity(value.len().min(96));
     for ch in value.trim().chars() {
@@ -290,179 +436,125 @@ fn sanitize_file_stem(value: &str) -> String {
         .to_string()
 }
 
-fn with_resolved_export_label(mut account: Account, token: &Token) -> Account {
-    let label = account.label.trim();
-    let is_placeholder = label.is_empty()
-        || account
-            .chatgpt_account_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            == Some(label)
-        || account
-            .workspace_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            == Some(label);
-
-    if !is_placeholder {
-        account.label = label.to_string();
-        return account;
-    }
-
-    for raw in [&token.id_token, &token.access_token] {
-        if let Ok(claims) = parse_id_token_claims(raw) {
-            if let Some(email) = claims
-                .email
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                account.label = email.to_string();
-                return account;
-            }
-        }
-    }
-
-    account.label = if label.is_empty() {
-        account.id.clone()
-    } else {
-        label.to_string()
-    };
-    account
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{build_account_export_json, sanitize_file_stem};
-    use codexmanager_core::storage::{now_ts, Account, Storage, Token};
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::MutexGuard;
+    use super::{build_single_export_bundle_json, sanitize_file_stem, select_accounts_for_export};
+    use codexmanager_core::storage::{Account, Storage, Token};
+    use std::collections::HashMap;
 
-    static TEST_DB_SEQ: AtomicUsize = AtomicUsize::new(0);
-
-    struct EnvGuard {
-        key: &'static str,
-        previous: Option<String>,
-    }
-
-    impl EnvGuard {
-        fn set(key: &'static str, value: &str) -> Self {
-            let previous = std::env::var(key).ok();
-            std::env::set_var(key, value);
-            Self { key, previous }
+    fn sample_account(id: &str, label: &str) -> Account {
+        Account {
+            id: id.to_string(),
+            label: label.to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: None,
+            workspace_id: None,
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: 0,
+            updated_at: 0,
         }
     }
 
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            match &self.previous {
-                Some(value) => std::env::set_var(self.key, value),
-                None => std::env::remove_var(self.key),
-            }
+    fn sample_token(account_id: &str) -> Token {
+        Token {
+            account_id: account_id.to_string(),
+            id_token: "id".to_string(),
+            access_token: "access".to_string(),
+            refresh_token: "refresh".to_string(),
+            api_key_access_token: None,
+            last_refresh: 0,
         }
     }
 
-    struct TestDbScope {
-        _env_lock: MutexGuard<'static, ()>,
-        _db_guard: EnvGuard,
-        db_path: PathBuf,
-    }
-
-    impl Drop for TestDbScope {
-        fn drop(&mut self) {
-            crate::storage_helpers::clear_storage_cache_for_tests();
-            let _ = fs::remove_file(&self.db_path);
-            let _ = fs::remove_file(format!("{}-shm", self.db_path.display()));
-            let _ = fs::remove_file(format!("{}-wal", self.db_path.display()));
-        }
-    }
-
-    fn new_test_db_path(prefix: &str) -> PathBuf {
-        let mut path = std::env::temp_dir();
-        path.push(format!(
-            "{prefix}-{}-{}-{}.db",
-            std::process::id(),
-            now_ts(),
-            TEST_DB_SEQ.fetch_add(1, Ordering::Relaxed)
-        ));
-        path
-    }
-
-    fn setup_test_db(prefix: &str) -> (TestDbScope, Storage) {
-        let env_lock = crate::lock_utils::process_env_test_guard();
-        crate::storage_helpers::clear_storage_cache_for_tests();
-        let db_path = new_test_db_path(prefix);
-        let db_guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
-        let storage = Storage::open(&db_path).expect("open db");
-        storage.init().expect("init schema");
-        (
-            TestDbScope {
-                _env_lock: env_lock,
-                _db_guard: db_guard,
-                db_path,
-            },
-            storage,
-        )
-    }
-
+    /// 函数 `sanitize_file_stem_replaces_windows_invalid_chars`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn sanitize_file_stem_replaces_windows_invalid_chars() {
         let actual = sanitize_file_stem(r#"a<b>c:d"e/f\g|h?i*j"#);
         assert_eq!(actual, "a_b_c_d_e_f_g_h_i_j");
     }
 
+    /// 函数 `sanitize_file_stem_trims_tailing_space_and_dot`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn sanitize_file_stem_trims_tailing_space_and_dot() {
         let actual = sanitize_file_stem(" demo. ");
         assert_eq!(actual, "demo");
     }
 
+    /// 函数 `select_accounts_for_export_returns_selected_subset`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
-    fn build_account_export_json_includes_stored_cookies() {
-        let (_scope, storage) = setup_test_db("account-export-cookies");
-        let now = now_ts();
-        let account = Account {
-            id: "acc-export-cookie".to_string(),
-            label: "export-cookie@example.com".to_string(),
-            issuer: "https://auth.openai.com".to_string(),
-            chatgpt_account_id: Some("cgpt-export-cookie".to_string()),
-            workspace_id: Some("ws-export-cookie".to_string()),
-            group_name: Some("EXPORT".to_string()),
-            sort: 0,
-            status: "active".to_string(),
-            created_at: now,
-            updated_at: now,
-        };
-        let token = Token {
-            account_id: account.id.clone(),
-            access_token: "access-export-cookie".to_string(),
-            id_token: "id-export-cookie".to_string(),
-            refresh_token: "".to_string(),
-            api_key_access_token: None,
-            last_refresh: now,
-        };
+    fn select_accounts_for_export_returns_selected_subset() {
+        let accounts = vec![
+            sample_account("acc-1", "first"),
+            sample_account("acc-2", "second"),
+            sample_account("acc-3", "third"),
+        ];
+        let selected = vec!["acc-2".to_string(), "acc-3".to_string()];
+        let actual = select_accounts_for_export(accounts, &selected);
+
+        assert_eq!(actual.len(), 2);
+        assert_eq!(actual[0].id, "acc-2");
+        assert_eq!(actual[1].id, "acc-3");
+    }
+
+    /// 函数 `single_export_bundle_uses_array_shape_for_reimport`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn single_export_bundle_uses_array_shape_for_reimport() {
+        let storage = Storage::open_in_memory().expect("open in memory");
+        storage.init().expect("init");
+        let account = sample_account("acc-1", "first");
         storage.insert_account(&account).expect("insert account");
-        storage.insert_token(&token).expect("insert token");
-        crate::account_payment::store_account_cookies(
-            &account.id,
-            Some("__Secure-next-auth.session-token=export-cookie-session; oai-did=export-cookie-device"),
-        )
-        .expect("store cookies");
+        storage
+            .insert_token(&sample_token("acc-1"))
+            .expect("insert token");
 
-        let encoded = build_account_export_json(&account, &token).expect("build export");
-        let payload: serde_json::Value =
-            serde_json::from_slice(&encoded).expect("parse export json");
+        let bundle = build_single_export_bundle_json(&storage, &[account], &HashMap::new())
+            .expect("build export bundle");
+        let content = bundle.content.expect("bundle content");
+        let value: serde_json::Value = serde_json::from_slice(&content).expect("parse bundle");
 
-        assert_eq!(
-            payload
-                .get("tokens")
-                .and_then(|value| value.get("cookies"))
-                .and_then(|value| value.as_str()),
-            Some("__Secure-next-auth.session-token=export-cookie-session; oai-did=export-cookie-device")
-        );
+        assert!(value.is_array());
+        assert_eq!(value.as_array().map(Vec::len), Some(1));
     }
 }

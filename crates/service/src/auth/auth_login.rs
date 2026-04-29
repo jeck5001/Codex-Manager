@@ -1,39 +1,57 @@
 use codexmanager_core::auth::{
-    build_authorize_url, device_redirect_uri, device_token_url, device_usercode_url,
-    device_verification_url, generate_pkce, generate_state, parse_id_token_claims,
-    DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
+    build_authorize_url, generate_pkce, generate_state, DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
 };
-use codexmanager_core::rpc::types::{AccountAuthRecoveryResult, DeviceAuthInfo, LoginStartResult};
-use codexmanager_core::storage::{now_ts, Account, Event, LoginSession, Storage};
+use codexmanager_core::rpc::types::LoginStartResult;
+use codexmanager_core::storage::{now_ts, Event, LoginSession};
 
 use crate::auth_callback::{ensure_login_server, resolve_redirect_uri};
 use crate::storage_helpers::open_storage;
 
-fn recovered_account_result(account_id: String) -> AccountAuthRecoveryResult {
-    AccountAuthRecoveryResult {
-        status: "recovered".to_string(),
-        account_id,
-        login_id: None,
-        auth_url: None,
-        warning: None,
-    }
+/// 函数 `is_device_login_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - login_type: 参数 login_type
+///
+/// # 返回
+/// 返回函数执行结果
+fn is_device_login_type(login_type: &str) -> bool {
+    login_type.eq_ignore_ascii_case("chatgptDeviceCode")
+        || login_type.eq_ignore_ascii_case("device")
 }
 
-fn activate_recovered_account(storage: &Storage, account_id: &str) {
-    crate::account_status::set_account_status(storage, account_id, "active", "auth_recovered");
+/// 函数 `is_supported_chatgpt_login_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - login_type: 参数 login_type
+///
+/// # 返回
+/// 返回函数执行结果
+fn is_supported_chatgpt_login_type(login_type: &str) -> bool {
+    let normalized = login_type.trim();
+    normalized.eq_ignore_ascii_case("chatgpt")
+        || normalized.eq_ignore_ascii_case("chatgptDeviceCode")
+        || normalized.eq_ignore_ascii_case("device")
 }
 
-fn imported_account_id(payload: &serde_json::Value) -> Result<String, String> {
-    payload
-        .get("accountId")
-        .or_else(|| payload.get("account_id"))
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .ok_or_else(|| "recovery import result missing accountId".to_string())
-}
-
+/// 函数 `login_start`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn login_start(
     login_type: &str,
     open_browser: bool,
@@ -47,11 +65,19 @@ pub(crate) fn login_start(
         std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
     let client_id =
         std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
-    let originator = crate::gateway::current_originator();
-    if login_type != "device" {
+    let originator = crate::gateway::current_wire_originator();
+    let normalized_login_type = login_type.trim();
+    if normalized_login_type.eq_ignore_ascii_case("apiKey") {
+        return Ok(LoginStartResult::ApiKey {});
+    }
+    if !is_supported_chatgpt_login_type(normalized_login_type) {
+        return Err(format!("unsupported login type: {normalized_login_type}"));
+    }
+    let is_device = is_device_login_type(normalized_login_type);
+    if !is_device {
         ensure_login_server()?;
     }
-    let redirect_uri = if login_type == "device" {
+    let redirect_uri = if is_device {
         std::env::var("CODEXMANAGER_REDIRECT_URI")
             .unwrap_or_else(|_| "http://localhost:1455/auth/callback".to_string())
     } else {
@@ -61,11 +87,55 @@ pub(crate) fn login_start(
     // 生成 PKCE 与状态
     let pkce = generate_pkce();
     let state = generate_state();
+    let login_id = if is_device {
+        generate_state()
+    } else {
+        state.clone()
+    };
+
+    if is_device {
+        let device = crate::auth_tokens::request_device_code(&issuer, &client_id)?;
+        if let Some(storage) = open_storage() {
+            let _ = storage.insert_login_session(&LoginSession {
+                login_id: login_id.clone(),
+                code_verifier: pkce.code_verifier.clone(),
+                state: login_id.clone(),
+                status: "pending".to_string(),
+                error: None,
+                workspace_id: workspace_id.clone(),
+                note,
+                tags,
+                group_name,
+                created_at: now_ts(),
+                updated_at: now_ts(),
+            });
+            let _ = storage.insert_event(&Event {
+                account_id: None,
+                event_type: "login_start".to_string(),
+                message: format!(
+                    "{{\"login_id\":\"{}\",\"code_verifier\":\"{}\"}}",
+                    login_id, pkce.code_verifier
+                ),
+                created_at: now_ts(),
+            });
+        }
+        crate::auth_tokens::spawn_device_code_login_completion(
+            issuer.clone(),
+            login_id.clone(),
+            device.clone(),
+        );
+
+        return Ok(LoginStartResult::ChatgptDeviceCode {
+            login_id,
+            verification_url: device.verification_url,
+            user_code: device.user_code,
+        });
+    }
 
     // 写入登录会话
     if let Some(storage) = open_storage() {
         let _ = storage.insert_login_session(&LoginSession {
-            login_id: state.clone(),
+            login_id: login_id.clone(),
             code_verifier: pkce.code_verifier.clone(),
             state: state.clone(),
             status: "pending".to_string(),
@@ -80,31 +150,15 @@ pub(crate) fn login_start(
     }
 
     // 构造登录地址
-    let auth_url = if login_type == "device" {
-        device_verification_url(&issuer)
-    } else {
-        build_authorize_url(
-            &issuer,
-            &client_id,
-            &redirect_uri,
-            &pkce.code_challenge,
-            &state,
-            &originator,
-            workspace_id.as_deref(),
-        )
-    };
-
-    // 设备登录信息
-    let device = if login_type == "device" {
-        Some(DeviceAuthInfo {
-            user_code_url: device_usercode_url(&issuer),
-            token_url: device_token_url(&issuer),
-            verification_url: device_verification_url(&issuer),
-            redirect_uri: device_redirect_uri(&issuer),
-        })
-    } else {
-        None
-    };
+    let auth_url = build_authorize_url(
+        &issuer,
+        &client_id,
+        &redirect_uri,
+        &pkce.code_challenge,
+        &state,
+        &originator,
+        workspace_id.as_deref(),
+    );
 
     // 写入事件日志
     if let Some(storage) = open_storage() {
@@ -120,22 +174,27 @@ pub(crate) fn login_start(
     }
 
     // 可选自动打开浏览器
-    if login_type != "device" && open_browser {
+    if open_browser {
         let _ = webbrowser::open(&auth_url);
     }
 
-    Ok(LoginStartResult {
-        auth_url,
+    Ok(LoginStartResult::Chatgpt {
         login_id: state,
-        login_type: login_type.to_string(),
-        issuer,
-        client_id,
-        redirect_uri,
-        warning: None,
-        device,
+        auth_url,
     })
 }
 
+/// 函数 `login_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn login_status(login_id: &str) -> serde_json::Value {
     // 查询登录会话状态
     if login_id.is_empty() {
@@ -154,102 +213,4 @@ pub(crate) fn login_status(login_id: &str) -> serde_json::Value {
         "error": session.error,
         "updatedAt": session.updated_at
     })
-}
-
-pub(crate) fn recover_account_auth(
-    account_id: &str,
-    _open_browser: bool,
-) -> Result<AccountAuthRecoveryResult, String> {
-    let normalized_account_id = account_id.trim();
-    if normalized_account_id.is_empty() {
-        return Err("missing accountId".to_string());
-    }
-
-    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let account = storage
-        .find_account_by_id(normalized_account_id)
-        .map_err(|err| err.to_string())?
-        .ok_or_else(|| format!("account not found: {normalized_account_id}"))?;
-
-    if crate::auth_account::refresh_chatgpt_auth_tokens_for_account(normalized_account_id).is_ok() {
-        activate_recovered_account(&storage, &account.id);
-        return Ok(recovered_account_result(account.id));
-    }
-
-    let recovery_email = resolve_account_recovery_email(&storage, &account);
-    let mut recovery_errors = Vec::new();
-
-    if crate::account_recovery_source::recovery_source_configured() {
-        match crate::account_recovery_source::import_remote_recovery_account(
-            recovery_email.as_deref(),
-            account.chatgpt_account_id.as_deref(),
-            account.workspace_id.as_deref(),
-        ) {
-            Ok(imported) => {
-                let recovered_account_id = imported_account_id(&imported)?;
-                activate_recovered_account(&storage, recovered_account_id.as_str());
-                return Ok(recovered_account_result(recovered_account_id));
-            }
-            Err(err) => recovery_errors.push(err),
-        }
-    }
-
-    if let Some(email) = recovery_email.as_deref() {
-        match crate::account_register::refresh_and_import_register_account_by_email(
-            email,
-            account.chatgpt_account_id.clone(),
-            account.workspace_id.clone(),
-        ) {
-            Ok(imported) => {
-                let recovered_account_id = imported_account_id(&imported)?;
-                activate_recovered_account(&storage, recovered_account_id.as_str());
-                return Ok(recovered_account_result(recovered_account_id));
-            }
-            Err(err) => recovery_errors.push(err),
-        }
-    } else {
-        recovery_errors.push(format!("account {} missing recoverable email", account.id));
-    }
-
-    match crate::account_register::auto_register_and_import_account() {
-        Ok(imported) => {
-            let recovered_account_id = imported_account_id(&imported)?;
-            activate_recovered_account(&storage, recovered_account_id.as_str());
-            return Ok(recovered_account_result(recovered_account_id));
-        }
-        Err(err) => recovery_errors.push(err),
-    }
-
-    Err(recovery_errors
-        .into_iter()
-        .find(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| format!("account {} missing recoverable email", account.id)))
-}
-
-fn resolve_account_recovery_email(storage: &Storage, account: &Account) -> Option<String> {
-    let label = account.label.trim();
-    if label.contains('@') {
-        return Some(label.to_string());
-    }
-
-    let token = storage
-        .find_token_by_account_id(&account.id)
-        .ok()
-        .flatten()?;
-    for raw_token in [&token.id_token, &token.access_token] {
-        let normalized = raw_token.trim();
-        if normalized.is_empty() {
-            continue;
-        }
-        if let Ok(claims) = parse_id_token_claims(normalized) {
-            if let Some(email) = claims.email.as_deref() {
-                let normalized_email = email.trim();
-                if !normalized_email.is_empty() {
-                    return Some(normalized_email.to_string());
-                }
-            }
-        }
-    }
-
-    None
 }

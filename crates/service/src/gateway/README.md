@@ -36,6 +36,7 @@
 
 - 模型选择与解析
 - 与请求模型决策相关的轻量逻辑
+- `/v1/models` 目录解析与结构化模型目录对接
 
 ### `observability/`
 
@@ -54,17 +55,14 @@
 
 负责：
 
-- OpenAI/Codex 输入输出适配
-- request mapping
-- response conversion
-- prompt cache
-- tools / `tool_calls` 聚合与还原
+- 生成 gateway 内部统一请求结构
+- 为当前保留链路标记透传响应模式
+- 保留 Gemini stream 输出模式与 tool name map 占位
 
 高风险文件：
 
-- `protocol_adapter/request_mapping.rs`
-- `protocol_adapter/response_conversion.rs`
-- `protocol_adapter/response_conversion/sse_conversion.rs`
+- `protocol_adapter/mod.rs`
+- `protocol_adapter/request_router.rs`
 
 ### `request/`
 
@@ -107,7 +105,7 @@
 1. `request/` 处理传入请求
 2. `routing/` 选择候选账号与策略
 3. `auth/` / `upstream/` 组装并发送上游请求
-4. `protocol_adapter/` 转换输入输出
+4. `protocol_adapter/` 产出内部请求元数据
 5. `observability/` 写入 trace、日志和指标
 
 ## 账号选路策略
@@ -142,10 +140,7 @@
 
 额外覆盖规则：
 
-- 如果设置了路由账号白名单（route account whitelist），会先按白名单过滤候选池
-- 不在白名单内的账号不会参与本次路由
-- 白名单内账号仍然会继续经过现有可用性、冷却、并发、模型、健康度与新号保护规则
-- 清空白名单后，恢复默认的全量可用账号参与路由
+- 如果设置了手动指定账号（manual preferred account），会先把该账号旋转到队首
 - 只要该账号仍在可用候选池内，就会覆盖普通 `ordered / balanced` 轮转逻辑
 - 手动优先是显式用户选择，不会因为一次 failover、一次 4xx/5xx，或一次临时过滤就被自动清掉
 
@@ -183,6 +178,8 @@
 
 设置入口：
 
+- 前端 `系统设置` -> `Worker 并发参数` -> `单账号并发上限`
+- 持久化键 `gateway.account_max_inflight`
 - 环境变量 `CODEXMANAGER_ACCOUNT_MAX_INFLIGHT`
 
 行为：
@@ -192,18 +189,19 @@
 - 当并发 Codex 会话较多时，候选预检会优先跳过已满载账号，避免多个长连接同时压到同一账号上
 - 如果你明确需要更高吞吐，可以显式调大；设置为 `0` 表示关闭该保护
 
-### 新号保护期
+### 系统推导
 
 设置入口：
 
-- 环境变量 `CODEXMANAGER_NEW_ACCOUNT_PROTECTION_DAYS`
+- 前端 `系统设置` -> `Worker 并发参数` -> `系统推导`
+- RPC `gateway/concurrencyRecommendation/get`
 
 行为：
 
-- 默认值是 `3`
-- 创建时间在保护期内的新账号，仍可参与调度，但会在最终候选顺序里自动降到成熟账号之后
-- 这样可以避免刚注册 / 刚导入的新账号一上来就承受主流量
-- 设置为 `0` 表示关闭该保护
+- 只返回推荐值，不会自动保存
+- 会根据当前机器 CPU / 内存推导 `usageRefreshWorkers`、HTTP / 流式 worker 因子和最低保底、以及单账号并发上限
+- 默认值不会被改写，只有用户点按钮后才会把推荐值填进草稿
+- 入口侧仍然使用短队列等待，队列满后会快速退化，避免进程被拖死
 
 ### `ordered`
 
@@ -244,16 +242,16 @@
 
 优先查看：
 
-- `protocol_adapter/request_mapping.rs`
+- `protocol_adapter/request_router.rs`
 - `request/request_rewrite_*.rs`
 
 ### 改 tools / `tool_calls`
 
 优先查看：
 
-- `protocol_adapter/response_conversion/tool_mapping.rs`
-- `protocol_adapter/response_conversion.rs`
-- `protocol_adapter/response_conversion/sse_conversion.rs`
+- `official_responses_http.rs`
+- `http/responses_websocket.rs`
+- `observability/http_bridge/aggregate/*.rs`
 
 ### 改日志/错误头/trace
 
@@ -283,6 +281,6 @@
 ## 当前治理重点
 
 - 持续拆小 `http_bridge.rs`
-- 持续拆小 `request_mapping.rs`
-- 持续拆小 `response_conversion.rs` / `sse_conversion.rs`
+- 继续压缩 `protocol_adapter/` 的历史占位字段
 - 把协议兼容回归固定到脚本与 Rust 测试双路径
+- 持续保持 `/v1/models` 与平台模型目录、桌面端 `models_cache.json` 预期之间的行为对齐

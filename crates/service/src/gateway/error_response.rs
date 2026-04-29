@@ -1,6 +1,17 @@
 use serde_json::json;
 use tiny_http::{Header, Response};
 
+/// 函数 `with_trace_id_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn with_trace_id_header<R: std::io::Read>(
     mut response: Response<R>,
     trace_id: Option<&str>,
@@ -16,25 +27,23 @@ pub(super) fn with_trace_id_header<R: std::io::Read>(
     response
 }
 
-pub(super) fn with_retry_after_header<R: std::io::Read>(
-    mut response: Response<R>,
-    retry_after_secs: Option<u64>,
-) -> Response<R> {
-    if let Some(retry_after_secs) = retry_after_secs {
-        let retry_after = retry_after_secs.max(1).to_string();
-        if let Ok(header) = Header::from_bytes(b"Retry-After".as_slice(), retry_after.as_bytes()) {
-            response.add_header(header);
-        }
-    }
-    response
-}
-
+/// 函数 `terminal_text_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn terminal_text_response(
     status_code: u16,
     message: impl Into<String>,
     trace_id: Option<&str>,
 ) -> Response<std::io::Cursor<Vec<u8>>> {
-    let message = message.into();
+    let message = crate::gateway::error_message_for_client(false, message);
     let code = crate::error_codes::code_for_message(message.as_str()).to_string();
     let error_type = match status_code {
         400 => "invalid_request_error",
@@ -63,24 +72,6 @@ pub(super) fn terminal_text_response(
     if let Ok(header) = Header::from_bytes(
         crate::error_codes::ERROR_CODE_HEADER_NAME.as_bytes(),
         code.as_bytes(),
-    ) {
-        response.add_header(header);
-    }
-    with_trace_id_header(response, trace_id)
-}
-
-pub(super) fn json_value_response(
-    status_code: u16,
-    body: &serde_json::Value,
-    trace_id: Option<&str>,
-) -> Response<std::io::Cursor<Vec<u8>>> {
-    let body = serde_json::to_string(body).unwrap_or_else(|_| {
-        "{\"error\":{\"message\":\"invalid plugin response body\"}}".to_string()
-    });
-    let mut response = Response::from_string(body).with_status_code(status_code);
-    if let Ok(header) = Header::from_bytes(
-        b"Content-Type".as_slice(),
-        b"application/json; charset=utf-8".as_slice(),
     ) {
         response.add_header(header);
     }

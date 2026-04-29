@@ -307,14 +307,14 @@ pub(crate) fn open_storage() -> Option<StorageHandle> {
 /// # 返回
 /// 返回函数执行结果
 fn open_storage_at_path(path: &str) -> Option<StorageHandle> {
-    if let Some(storage) = take_cached_storage(path) {
+    if let Some(storage) = take_cached_storage(&path) {
         return Some(StorageHandle::new(path.to_string(), storage));
     }
 
     if !Path::new(&path).exists() {
         log::warn!("storage path missing: {}", path);
     }
-    let storage = match Storage::open(path) {
+    let storage = match Storage::open(&path) {
         Ok(storage) => storage,
         Err(err) => {
             log::error!("open storage failed: {} ({})", path, err);
@@ -391,7 +391,7 @@ fn take_cached_storage(path: &str) -> Option<Storage> {
 /// # 返回
 /// 无
 #[cfg(test)]
-pub(crate) fn clear_storage_cache_for_tests() {
+fn clear_storage_cache_for_tests() {
     STORAGE_CACHE.with(|cell| {
         *cell.borrow_mut() = None;
     });

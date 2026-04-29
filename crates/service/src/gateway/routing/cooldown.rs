@@ -4,43 +4,21 @@ use std::sync::{Mutex, OnceLock};
 use codexmanager_core::storage::now_ts;
 
 const DEFAULT_ACCOUNT_COOLDOWN_SECS: i64 = 20;
+const DEFAULT_ACCOUNT_COOLDOWN_NETWORK_SECS: i64 = DEFAULT_ACCOUNT_COOLDOWN_SECS;
+const DEFAULT_ACCOUNT_COOLDOWN_429_SECS: i64 = 45;
+const DEFAULT_ACCOUNT_COOLDOWN_5XX_SECS: i64 = 30;
 const DEFAULT_ACCOUNT_COOLDOWN_4XX_SECS: i64 = DEFAULT_ACCOUNT_COOLDOWN_SECS;
-const ENV_ACCOUNT_COOLDOWN_AUTH_SECS: &str = "CODEXMANAGER_ACCOUNT_COOLDOWN_AUTH_SECS";
-const ENV_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS: &str =
-    "CODEXMANAGER_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS";
-const ENV_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS: &str =
-    "CODEXMANAGER_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS";
-const ENV_ACCOUNT_COOLDOWN_NETWORK_SECS: &str = "CODEXMANAGER_ACCOUNT_COOLDOWN_NETWORK_SECS";
-const ENV_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS: &str = "CODEXMANAGER_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS";
-const ENV_ACCOUNT_COOLDOWN_DEACTIVATED_SECS: &str =
-    "CODEXMANAGER_ACCOUNT_COOLDOWN_DEACTIVATED_SECS";
-const DEFAULT_ACCOUNT_COOLDOWN_AUTH_SECS: u64 = 300;
-const DEFAULT_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS: u64 = 45;
-const DEFAULT_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS: u64 = 30;
-const DEFAULT_ACCOUNT_COOLDOWN_NETWORK_SECS: u64 = 20;
-const DEFAULT_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS: u64 = 1800;
-const DEFAULT_ACCOUNT_COOLDOWN_DEACTIVATED_SECS: u64 = 21600;
+const DEFAULT_ACCOUNT_COOLDOWN_CHALLENGE_SECS: i64 = 6;
+const ACCOUNT_RATE_LIMIT_COOLDOWN_LADDER_SECS: [i64; 4] =
+    [DEFAULT_ACCOUNT_COOLDOWN_429_SECS, 300, 1800, 7200];
 // 中文注释：offense 只用于“短时间内持续 429”场景；超过该时间视为新一轮，避免长期记仇导致误伤。
 const ACCOUNT_RATE_LIMIT_OFFENSE_FORGET_AFTER_SECS: i64 = 30 * 60;
 
 const ACCOUNT_COOLDOWN_CLEANUP_INTERVAL_SECS: i64 = 30;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct AccountCooldownEntry {
-    until: i64,
-    reason: CooldownReason,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AccountCooldownSnapshot {
-    pub until: i64,
-    pub reason_code: String,
-    pub reason_label: String,
-}
-
 #[derive(Default)]
 struct AccountCooldownState {
-    entries: HashMap<String, AccountCooldownEntry>,
+    entries: HashMap<String, i64>,
     offense_counts: HashMap<String, u32>,
     offense_last_at: HashMap<String, i64>,
     last_cleanup_at: i64,
@@ -49,97 +27,70 @@ struct AccountCooldownState {
 static ACCOUNT_COOLDOWN_UNTIL: OnceLock<Mutex<AccountCooldownState>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CooldownReason {
+pub(super) enum CooldownReason {
     Default,
     Network,
     RateLimited,
     Upstream5xx,
     Upstream4xx,
     Challenge,
-    LowQuota,
-    Deactivated,
 }
 
-impl CooldownReason {
-    fn as_code(self) -> &'static str {
-        match self {
-            CooldownReason::Default => "default",
-            CooldownReason::Network => "network",
-            CooldownReason::RateLimited => "rate_limited",
-            CooldownReason::Upstream5xx => "upstream_5xx",
-            CooldownReason::Upstream4xx => "upstream_4xx",
-            CooldownReason::Challenge => "auth",
-            CooldownReason::LowQuota => "low_quota",
-            CooldownReason::Deactivated => "deactivated",
-        }
-    }
-
-    fn as_label(self) -> &'static str {
-        match self {
-            CooldownReason::Default => "默认冷却",
-            CooldownReason::Network => "网络异常",
-            CooldownReason::RateLimited => "速率限制",
-            CooldownReason::Upstream5xx => "上游 5xx",
-            CooldownReason::Upstream4xx => "上游 4xx",
-            CooldownReason::Challenge => "401/403 授权异常",
-            CooldownReason::LowQuota => "低配额保护",
-            CooldownReason::Deactivated => "账号已停用",
-        }
-    }
-}
-
-fn u64_to_i64_saturating(value: u64) -> i64 {
-    i64::try_from(value).unwrap_or(i64::MAX)
-}
-
-fn env_u64_or(name: &str, default: u64) -> u64 {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .unwrap_or(default)
-}
-
+/// 函数 `cooldown_secs_for_reason`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - reason: 参数 reason
+///
+/// # 返回
+/// 返回函数执行结果
 fn cooldown_secs_for_reason(reason: CooldownReason) -> i64 {
     match reason {
         CooldownReason::Default => DEFAULT_ACCOUNT_COOLDOWN_SECS,
-        CooldownReason::Network => u64_to_i64_saturating(env_u64_or(
-            ENV_ACCOUNT_COOLDOWN_NETWORK_SECS,
-            DEFAULT_ACCOUNT_COOLDOWN_NETWORK_SECS,
-        )),
-        CooldownReason::RateLimited => u64_to_i64_saturating(env_u64_or(
-            ENV_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS,
-            DEFAULT_ACCOUNT_COOLDOWN_RATE_LIMITED_SECS,
-        )),
-        CooldownReason::Upstream5xx => u64_to_i64_saturating(env_u64_or(
-            ENV_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS,
-            DEFAULT_ACCOUNT_COOLDOWN_SERVER_ERROR_SECS,
-        )),
+        CooldownReason::Network => DEFAULT_ACCOUNT_COOLDOWN_NETWORK_SECS,
+        CooldownReason::RateLimited => DEFAULT_ACCOUNT_COOLDOWN_429_SECS,
+        CooldownReason::Upstream5xx => DEFAULT_ACCOUNT_COOLDOWN_5XX_SECS,
         CooldownReason::Upstream4xx => DEFAULT_ACCOUNT_COOLDOWN_4XX_SECS,
-        CooldownReason::Challenge => u64_to_i64_saturating(env_u64_or(
-            ENV_ACCOUNT_COOLDOWN_AUTH_SECS,
-            DEFAULT_ACCOUNT_COOLDOWN_AUTH_SECS,
-        )),
-        CooldownReason::LowQuota => u64_to_i64_saturating(env_u64_or(
-            ENV_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS,
-            DEFAULT_ACCOUNT_COOLDOWN_LOW_QUOTA_SECS,
-        )),
-        CooldownReason::Deactivated => u64_to_i64_saturating(env_u64_or(
-            ENV_ACCOUNT_COOLDOWN_DEACTIVATED_SECS,
-            DEFAULT_ACCOUNT_COOLDOWN_DEACTIVATED_SECS,
-        )),
+        CooldownReason::Challenge => DEFAULT_ACCOUNT_COOLDOWN_CHALLENGE_SECS,
     }
 }
 
+/// 函数 `rate_limit_cooldown_secs_for_offense`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - offense_count: 参数 offense_count
+///
+/// # 返回
+/// 返回函数执行结果
 fn rate_limit_cooldown_secs_for_offense(offense_count: u32) -> i64 {
-    let base = cooldown_secs_for_reason(CooldownReason::RateLimited);
-    match offense_count {
-        0 | 1 => base,
-        2 => base.max(300),
-        3 => base.max(1800),
-        _ => base.max(7200),
-    }
+    let idx = offense_count
+        .saturating_sub(1)
+        .min((ACCOUNT_RATE_LIMIT_COOLDOWN_LADDER_SECS.len() - 1) as u32) as usize;
+    ACCOUNT_RATE_LIMIT_COOLDOWN_LADDER_SECS[idx]
 }
 
+/// 函数 `cooldown_secs_for_mark`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - offense_counts: 参数 offense_counts
+/// - offense_last_at: 参数 offense_last_at
+/// - account_id: 参数 account_id
+/// - reason: 参数 reason
+/// - now: 参数 now
+///
+/// # 返回
+/// 返回函数执行结果
 fn cooldown_secs_for_mark(
     offense_counts: &mut HashMap<String, u32>,
     offense_last_at: &mut HashMap<String, i64>,
@@ -165,6 +116,19 @@ fn cooldown_secs_for_mark(
     }
 }
 
+/// 函数 `decay_offense_count_for_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - offense_counts: 参数 offense_counts
+/// - offense_last_at: 参数 offense_last_at
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 无
 fn decay_offense_count_for_success(
     offense_counts: &mut HashMap<String, u32>,
     offense_last_at: &mut HashMap<String, i64>,
@@ -184,7 +148,18 @@ fn decay_offense_count_for_success(
     }
 }
 
-pub(crate) fn cooldown_reason_for_status(status: u16) -> CooldownReason {
+/// 函数 `cooldown_reason_for_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
+pub(super) fn cooldown_reason_for_status(status: u16) -> CooldownReason {
     match status {
         429 => CooldownReason::RateLimited,
         500..=599 => CooldownReason::Upstream5xx,
@@ -194,12 +169,23 @@ pub(crate) fn cooldown_reason_for_status(status: u16) -> CooldownReason {
     }
 }
 
-pub(crate) fn is_account_in_cooldown(account_id: &str) -> bool {
+/// 函数 `is_account_in_cooldown`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
+pub(super) fn is_account_in_cooldown(account_id: &str) -> bool {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut state = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
     let now = now_ts();
     match state.entries.get(account_id).copied() {
-        Some(entry) if entry.until > now => true,
+        Some(until) if until > now => true,
         Some(_) => {
             state.entries.remove(account_id);
             false
@@ -208,28 +194,18 @@ pub(crate) fn is_account_in_cooldown(account_id: &str) -> bool {
     }
 }
 
-pub(crate) fn list_account_cooldowns() -> HashMap<String, AccountCooldownSnapshot> {
-    let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
-    let mut state = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
-    let now = now_ts();
-    maybe_cleanup_expired_cooldowns(&mut state, now);
-    state
-        .entries
-        .iter()
-        .map(|(account_id, entry)| {
-            (
-                account_id.clone(),
-                AccountCooldownSnapshot {
-                    until: entry.until,
-                    reason_code: entry.reason.as_code().to_string(),
-                    reason_label: entry.reason.as_label().to_string(),
-                },
-            )
-        })
-        .collect()
-}
-
-pub(crate) fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
+/// 函数 `mark_account_cooldown`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
+pub(super) fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut guard = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
     let state = &mut *guard;
@@ -244,28 +220,46 @@ pub(crate) fn mark_account_cooldown(account_id: &str, reason: CooldownReason) {
             reason,
             now,
         );
-    let next_entry = AccountCooldownEntry {
-        until: cooldown_until,
-        reason,
-    };
     // 中文注释：同账号短时间内可能触发不同失败类型；保留更晚的 until 可避免被较短冷却覆盖。
     match state.entries.get_mut(account_id) {
-        Some(entry) => {
-            if next_entry.until > entry.until {
-                *entry = next_entry;
+        Some(until) => {
+            if cooldown_until > *until {
+                *until = cooldown_until;
             }
         }
         None => {
-            state.entries.insert(account_id.to_string(), next_entry);
+            state.entries.insert(account_id.to_string(), cooldown_until);
         }
     }
 }
 
-pub(crate) fn mark_account_cooldown_for_status(account_id: &str, status: u16) {
+/// 函数 `mark_account_cooldown_for_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
+pub(super) fn mark_account_cooldown_for_status(account_id: &str, status: u16) {
     mark_account_cooldown(account_id, cooldown_reason_for_status(status));
 }
 
-pub(crate) fn clear_account_cooldown(account_id: &str) {
+/// 函数 `clear_account_cooldown`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
+pub(super) fn clear_account_cooldown(account_id: &str) {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut guard = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
     let state = &mut *guard;
@@ -277,6 +271,18 @@ pub(crate) fn clear_account_cooldown(account_id: &str) {
     );
 }
 
+/// 函数 `maybe_cleanup_expired_cooldowns`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - state: 参数 state
+/// - now: 参数 now
+///
+/// # 返回
+/// 无
 fn maybe_cleanup_expired_cooldowns(state: &mut AccountCooldownState, now: i64) {
     if state.last_cleanup_at != 0
         && now.saturating_sub(state.last_cleanup_at) < ACCOUNT_COOLDOWN_CLEANUP_INTERVAL_SECS
@@ -284,7 +290,7 @@ fn maybe_cleanup_expired_cooldowns(state: &mut AccountCooldownState, now: i64) {
         return;
     }
     state.last_cleanup_at = now;
-    state.entries.retain(|_, entry| entry.until > now);
+    state.entries.retain(|_, until| *until > now);
     let mut stale_offenses = Vec::new();
     for (account_id, last) in state.offense_last_at.iter() {
         if now.saturating_sub(*last) > ACCOUNT_RATE_LIMIT_OFFENSE_FORGET_AFTER_SECS {
@@ -297,6 +303,17 @@ fn maybe_cleanup_expired_cooldowns(state: &mut AccountCooldownState, now: i64) {
     }
 }
 
+/// 函数 `clear_runtime_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn clear_runtime_state() {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut state = crate::lock_utils::lock_recover(lock, "account_cooldown_until");
@@ -306,18 +323,20 @@ pub(super) fn clear_runtime_state() {
     state.last_cleanup_at = 0;
 }
 
+/// 函数 `clear_account_cooldown_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn clear_account_cooldown_for_tests() {
     clear_runtime_state();
-}
-
-#[cfg(test)]
-fn cooldown_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    static COOLDOWN_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    COOLDOWN_TEST_MUTEX
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("cooldown test mutex")
 }
 
 #[cfg(test)]

@@ -3,13 +3,15 @@ use std::path::Path;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod account_metadata;
+mod account_subscriptions;
 mod accounts;
-mod alerts;
+mod aggregate_apis;
 mod api_keys;
-mod audit_logs;
+mod conversation_bindings;
 mod events;
+mod gateway_error_logs;
 mod model_options;
-mod model_pricing;
 mod plugins;
 mod request_log_query;
 mod request_logs;
@@ -17,8 +19,6 @@ mod request_token_stats;
 mod settings;
 mod tokens;
 mod usage;
-
-pub use request_logs::RequestLogFilterInput;
 
 #[derive(Debug, Clone)]
 pub struct Account {
@@ -31,6 +31,24 @@ pub struct Account {
     pub sort: i64,
     pub status: String,
     pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccountMetadata {
+    pub account_id: String,
+    pub note: Option<String>,
+    pub tags: Option<String>,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccountSubscription {
+    pub account_id: String,
+    pub has_subscription: bool,
+    pub plan_type: Option<String>,
+    pub expires_at: Option<i64>,
+    pub renews_at: Option<i64>,
     pub updated_at: i64,
 }
 
@@ -81,50 +99,48 @@ pub struct Event {
 }
 
 #[derive(Debug, Clone)]
-pub struct AuditLog {
-    pub id: i64,
-    pub action: String,
-    pub object_type: String,
-    pub object_id: Option<String>,
-    pub operator: String,
-    pub changes_json: String,
+pub struct ConversationBinding {
+    pub platform_key_hash: String,
+    pub conversation_id: String,
+    pub account_id: String,
+    pub thread_epoch: i64,
+    pub thread_anchor: String,
+    pub status: String,
+    pub last_model: Option<String>,
+    pub last_switch_reason: Option<String>,
     pub created_at: i64,
+    pub updated_at: i64,
+    pub last_used_at: i64,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct AuditLogFilterInput<'a> {
-    pub action: Option<&'a str>,
-    pub object_type: Option<&'a str>,
-    pub object_id: Option<&'a str>,
-    pub time_from: Option<i64>,
-    pub time_to: Option<i64>,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RequestLog {
     pub trace_id: Option<String>,
     pub key_id: Option<String>,
     pub account_id: Option<String>,
     pub initial_account_id: Option<String>,
     pub attempted_account_ids_json: Option<String>,
-    pub candidate_count: Option<i64>,
-    pub attempted_count: Option<i64>,
-    pub skipped_count: Option<i64>,
-    pub skipped_cooldown_count: Option<i64>,
-    pub skipped_inflight_count: Option<i64>,
-    pub route_strategy: Option<String>,
-    pub requested_model: Option<String>,
-    pub model_fallback_path_json: Option<String>,
+    pub initial_aggregate_api_id: Option<String>,
+    pub attempted_aggregate_api_ids_json: Option<String>,
     pub request_path: String,
     pub original_path: Option<String>,
     pub adapted_path: Option<String>,
     pub method: String,
+    pub request_type: Option<String>,
+    pub gateway_mode: Option<String>,
+    pub transparent_mode: Option<bool>,
+    pub enhanced_mode: Option<bool>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub service_tier: Option<String>,
+    pub effective_service_tier: Option<String>,
     pub response_adapter: Option<String>,
     pub upstream_url: Option<String>,
+    pub aggregate_api_supplier_name: Option<String>,
+    pub aggregate_api_url: Option<String>,
     pub status_code: Option<i64>,
     pub duration_ms: Option<i64>,
+    pub first_response_ms: Option<i64>,
     pub input_tokens: Option<i64>,
     pub cached_input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
@@ -135,7 +151,7 @@ pub struct RequestLog {
     pub created_at: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RequestTokenStat {
     pub request_log_id: i64,
     pub key_id: Option<String>,
@@ -165,12 +181,32 @@ pub struct RequestLogQuerySummary {
     pub success_count: i64,
     pub error_count: i64,
     pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct GatewayErrorLog {
+    pub trace_id: Option<String>,
+    pub key_id: Option<String>,
+    pub account_id: Option<String>,
+    pub request_path: String,
+    pub method: String,
+    pub stage: String,
+    pub error_kind: Option<String>,
+    pub upstream_url: Option<String>,
+    pub cf_ray: Option<String>,
+    pub status_code: Option<i64>,
+    pub compression_enabled: bool,
+    pub compression_retry_attempted: bool,
+    pub message: String,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Clone)]
 pub struct ApiKeyTokenUsageSummary {
     pub key_id: String,
     pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -179,6 +215,11 @@ pub struct ApiKey {
     pub name: Option<String>,
     pub model_slug: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub service_tier: Option<String>,
+    pub rotation_strategy: String,
+    pub aggregate_api_id: Option<String>,
+    pub account_plan_filter: Option<String>,
+    pub aggregate_api_url: Option<String>,
     pub client_type: String,
     pub protocol_type: String,
     pub auth_scheme: String,
@@ -188,233 +229,141 @@ pub struct ApiKey {
     pub status: String,
     pub created_at: i64,
     pub last_used_at: Option<i64>,
-    pub expires_at: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ApiKeyRateLimit {
-    pub key_id: String,
-    pub rpm: Option<i64>,
-    pub tpm: Option<i64>,
-    pub daily_limit: Option<i64>,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct ApiKeyModelFallback {
-    pub key_id: String,
-    pub model_chain_json: String,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct ApiKeyResponseCacheConfig {
-    pub key_id: String,
-    pub enabled: bool,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct AlertRule {
+pub struct AggregateApi {
     pub id: String,
-    pub name: String,
-    pub rule_type: String,
-    pub config_json: String,
-    pub enabled: bool,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct AlertChannel {
-    pub id: String,
-    pub name: String,
-    pub channel_type: String,
-    pub config_json: String,
-    pub enabled: bool,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct AlertHistoryEntry {
-    pub id: i64,
-    pub rule_id: Option<String>,
-    pub rule_name: Option<String>,
-    pub channel_id: Option<String>,
-    pub channel_name: Option<String>,
+    pub provider_type: String,
+    pub supplier_name: Option<String>,
+    pub sort: i64,
+    pub url: String,
+    pub auth_type: String,
+    pub auth_params_json: Option<String>,
+    pub action: Option<String>,
     pub status: String,
-    pub message: String,
     pub created_at: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct ModelPricing {
-    pub model_slug: String,
-    pub input_price_per_1k: f64,
-    pub output_price_per_1k: f64,
     pub updated_at: i64,
+    pub last_test_at: Option<i64>,
+    pub last_test_status: Option<String>,
+    pub last_test_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-pub struct PluginRecord {
+pub struct PluginInstall {
+    pub plugin_id: String,
+    pub source_url: Option<String>,
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub homepage_url: Option<String>,
+    pub script_url: Option<String>,
+    pub script_body: String,
+    pub permissions_json: String,
+    pub manifest_json: String,
+    pub status: String,
+    pub installed_at: i64,
+    pub updated_at: i64,
+    pub last_run_at: Option<i64>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PluginTask {
     pub id: String,
+    pub plugin_id: String,
     pub name: String,
     pub description: Option<String>,
-    pub runtime: String,
-    pub hook_points_json: String,
-    pub script_content: String,
+    pub entrypoint: String,
+    pub schedule_kind: String,
+    pub interval_seconds: Option<i64>,
     pub enabled: bool,
-    pub timeout_ms: i64,
+    pub next_run_at: Option<i64>,
+    pub last_run_at: Option<i64>,
+    pub last_status: Option<String>,
+    pub last_error: Option<String>,
+    pub task_json: String,
     pub created_at: i64,
     pub updated_at: i64,
 }
 
 #[derive(Debug, Clone)]
-pub struct CostUsageSummary {
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
+pub struct PluginRunLog {
+    pub id: Option<i64>,
+    pub plugin_id: String,
+    pub task_id: Option<String>,
+    pub run_type: String,
+    pub status: String,
+    pub started_at: i64,
+    pub finished_at: Option<i64>,
+    pub duration_ms: Option<i64>,
+    pub output_json: Option<String>,
+    pub error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct CostSummaryKeyRow {
-    pub key_id: String,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct CostSummaryModelRow {
-    pub model: String,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct CostSummaryDayRow {
-    pub day: String,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-// -- Consumer Analytics --
-
-#[derive(Debug, Clone)]
-pub struct ConsumerOverviewRow {
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-    pub success_count: i64,
-    pub avg_duration_ms: Option<f64>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ConsumerDayRow {
-    pub day: String,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub output_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct ConsumerModelRow {
-    pub model: String,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-// -- Cache Analytics --
-
-#[derive(Debug, Clone)]
-pub struct CacheSummaryRow {
-    pub total_requests: i64,
-    pub cached_requests: i64,
-    pub total_input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub estimated_savings_usd: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct CacheSummaryDayRow {
-    pub day: String,
-    pub total_requests: i64,
-    pub cached_requests: i64,
-    pub total_input_tokens: i64,
-    pub cached_input_tokens: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct CacheSummaryModelRow {
-    pub model: String,
-    pub total_requests: i64,
-    pub cached_requests: i64,
-    pub total_input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub estimated_savings_usd: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct CacheSummaryKeyRow {
-    pub key_id: String,
-    pub total_requests: i64,
-    pub cached_requests: i64,
-    pub total_input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub estimated_savings_usd: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct RequestTrendRow {
-    pub bucket: String,
-    pub request_count: i64,
-    pub success_count: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct RequestModelTrendRow {
-    pub model: String,
-    pub request_count: i64,
-    pub success_count: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct RequestHeatmapRow {
-    pub weekday: i64,
-    pub hour: i64,
-    pub request_count: i64,
-    pub success_count: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct ModelOptionsCacheRecord {
+#[derive(Debug, Clone, Default)]
+pub struct ModelCatalogScopeRecord {
     pub scope: String,
-    pub items_json: String,
+    pub extra_json: String,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ModelCatalogModelRecord {
+    pub scope: String,
+    pub slug: String,
+    pub display_name: String,
+    pub source_kind: String,
+    pub user_edited: bool,
+    pub description: Option<String>,
+    pub default_reasoning_level: Option<String>,
+    pub shell_type: Option<String>,
+    pub visibility: Option<String>,
+    pub supported_in_api: Option<bool>,
+    pub priority: Option<i64>,
+    pub availability_nux_json: Option<String>,
+    pub upgrade_json: Option<String>,
+    pub base_instructions: Option<String>,
+    pub model_messages_json: Option<String>,
+    pub supports_reasoning_summaries: Option<bool>,
+    pub default_reasoning_summary: Option<String>,
+    pub support_verbosity: Option<bool>,
+    pub default_verbosity_json: Option<String>,
+    pub apply_patch_tool_type: Option<String>,
+    pub web_search_tool_type: Option<String>,
+    pub truncation_mode: Option<String>,
+    pub truncation_limit: Option<i64>,
+    pub truncation_extra_json: Option<String>,
+    pub supports_parallel_tool_calls: Option<bool>,
+    pub supports_image_detail_original: Option<bool>,
+    pub context_window: Option<i64>,
+    pub auto_compact_token_limit: Option<i64>,
+    pub effective_context_window_percent: Option<i64>,
+    pub minimal_client_version_json: Option<String>,
+    pub supports_search_tool: Option<bool>,
+    pub extra_json: String,
+    pub sort_index: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ModelCatalogReasoningLevelRecord {
+    pub scope: String,
+    pub slug: String,
+    pub effort: String,
+    pub description: String,
+    pub extra_json: String,
+    pub sort_index: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ModelCatalogStringItemRecord {
+    pub scope: String,
+    pub slug: String,
+    pub value: String,
+    pub sort_index: i64,
     pub updated_at: i64,
 }
 
@@ -424,24 +373,58 @@ pub struct Storage {
 }
 
 impl Storage {
+    /// 函数 `open`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - path: 参数 path
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let conn = Connection::open(path)?;
         // 中文注释：并发写入时给 SQLite 一点等待时间，避免瞬时 lock 导致请求直接失败。
         conn.busy_timeout(Duration::from_millis(3000))?;
-        // 中文注释：文件库优先启用 WAL + NORMAL，可明显降低并发读写互斥开销。
-        // 某些容器 bind mount / 网络盘环境在重复设置 journal_mode=WAL 时会偶发 disk I/O error，
-        // 这里降级为“尽量开启 WAL，至少保证连接可继续使用”，避免读接口整体失败。
-        let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
-        conn.execute_batch("PRAGMA synchronous=NORMAL;")?;
+        // 中文注释：文件库启用 WAL + NORMAL，可明显降低并发读写互斥开销；
+        // 仅在 open(path) 上设置，避免影响 open_in_memory 的行为预期。
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA synchronous=NORMAL;",
+        )?;
         Ok(Self { conn })
     }
 
+    /// 函数 `open_in_memory`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         conn.busy_timeout(Duration::from_millis(3000))?;
         Ok(Self { conn })
     }
 
+    /// 函数 `init`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn init(&self) -> Result<()> {
         self.ensure_migrations_table()?;
 
@@ -549,10 +532,6 @@ impl Storage {
             include_str!("../../migrations/023_request_token_stats_total_tokens.sql"),
             |s| s.ensure_request_token_stats_table(),
         )?;
-        self.apply_sql_migration(
-            "024_model_options_cache",
-            include_str!("../../migrations/024_model_options_cache.sql"),
-        )?;
         self.apply_sql_or_compat_migration(
             "025_tokens_refresh_schedule",
             include_str!("../../migrations/025_tokens_refresh_schedule.sql"),
@@ -596,77 +575,127 @@ impl Storage {
             include_str!("../../migrations/033_login_sessions_workspace_id.sql"),
             |s| s.ensure_login_session_workspace_column(),
         )?;
-        self.apply_sql_or_compat_migration(
-            "034_restore_account_tags",
-            include_str!("../../migrations/034_restore_account_tags.sql"),
-            |s| s.ensure_account_tags_column(),
-        )?;
-        self.apply_sql_or_compat_migration(
-            "035_request_logs_route_strategy",
-            include_str!("../../migrations/035_request_logs_route_strategy.sql"),
-            |s| s.ensure_request_log_route_strategy_column(),
+        self.apply_sql_migration(
+            "034_conversation_bindings",
+            include_str!("../../migrations/034_conversation_bindings.sql"),
         )?;
         self.apply_sql_or_compat_migration(
-            "036_api_keys_expires_at",
-            include_str!("../../migrations/036_api_keys_expires_at.sql"),
-            |s| s.ensure_api_key_expires_at_column(),
+            "035_api_key_profiles_service_tier",
+            include_str!("../../migrations/035_api_key_profiles_service_tier.sql"),
+            |s| s.ensure_api_key_service_tier_column(),
         )?;
         self.apply_sql_migration(
-            "037_api_key_rate_limits",
-            include_str!("../../migrations/037_api_key_rate_limits.sql"),
-        )?;
-        self.ensure_api_key_rate_limits_table()?;
-        self.apply_sql_migration(
-            "038_api_key_model_fallbacks",
-            include_str!("../../migrations/038_api_key_model_fallbacks.sql"),
-        )?;
-        self.ensure_api_key_model_fallbacks_table()?;
-        self.apply_sql_or_compat_migration(
-            "039_request_logs_model_fallback",
-            include_str!("../../migrations/039_request_logs_model_fallback.sql"),
-            |s| s.ensure_request_log_model_fallback_columns(),
-        )?;
-        self.apply_sql_migration(
-            "040_model_pricing",
-            include_str!("../../migrations/040_model_pricing.sql"),
-        )?;
-        self.apply_sql_migration(
-            "041_api_key_response_cache",
-            include_str!("../../migrations/041_api_key_response_cache.sql"),
+            "036_accounts_metadata_and_drop_group_name",
+            include_str!("../../migrations/036_accounts_metadata_and_drop_group_name.sql"),
         )?;
         self.apply_sql_or_compat_migration(
-            "042_api_keys_allowed_models",
-            include_str!("../../migrations/042_api_keys_allowed_models.sql"),
-            |s| s.ensure_api_key_allowed_models_column(),
-        )?;
-        self.apply_sql_migration(
-            "043_alerting",
-            include_str!("../../migrations/043_alerting.sql"),
-        )?;
-        self.apply_sql_migration(
-            "044_audit_logs",
-            include_str!("../../migrations/044_audit_logs.sql"),
-        )?;
-        self.apply_sql_migration(
-            "045_plugins",
-            include_str!("../../migrations/045_plugins.sql"),
+            "037_aggregate_api_routing",
+            include_str!("../../migrations/037_aggregate_api_routing.sql"),
+            |s| {
+                s.ensure_api_key_rotation_columns()?;
+                s.ensure_aggregate_apis_table()?;
+                s.ensure_aggregate_api_secrets_table()
+            },
         )?;
         self.apply_sql_or_compat_migration(
-            "046_request_logs_candidate_stats",
-            include_str!("../../migrations/046_request_logs_candidate_stats.sql"),
-            |s| s.ensure_request_log_candidate_stats_columns(),
+            "038_request_logs_aggregate_api_context",
+            include_str!("../../migrations/038_request_logs_aggregate_api_context.sql"),
+            |s| s.ensure_request_log_aggregate_api_context_columns(),
         )?;
-        self.ensure_alerting_tables()?;
-        self.ensure_audit_logs_table()?;
-        self.ensure_model_pricing_table()?;
-        self.ensure_plugins_table()?;
+        self.apply_sql_or_compat_migration(
+            "039_request_logs_aggregate_api_attempt_chain",
+            include_str!("../../migrations/039_request_logs_aggregate_api_attempt_chain.sql"),
+            |s| s.ensure_request_log_aggregate_api_attempt_chain_columns(),
+        )?;
+        self.apply_sql_migration(
+            "040_plugins",
+            include_str!("../../migrations/040_plugins.sql"),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "041_gateway_error_logs",
+            include_str!("../../migrations/041_gateway_error_logs.sql"),
+            |s| s.ensure_gateway_error_logs_table(),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "042_request_logs_request_type_service_tier",
+            include_str!("../../migrations/042_request_logs_request_type_service_tier.sql"),
+            |s| s.ensure_request_log_request_type_and_service_tier_columns(),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "043_request_logs_effective_service_tier",
+            include_str!("../../migrations/043_request_logs_effective_service_tier.sql"),
+            |s| s.ensure_request_log_effective_service_tier_column(),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "044_api_keys_account_plan_filter",
+            include_str!("../../migrations/044_api_keys_account_plan_filter.sql"),
+            |s| s.ensure_api_key_rotation_columns(),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "045_accounts_preferred",
+            include_str!("../../migrations/045_accounts_preferred.sql"),
+            |s| s.ensure_account_meta_columns(),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "046_request_logs_gateway_mode",
+            include_str!("../../migrations/046_request_logs_gateway_mode.sql"),
+            |s| s.ensure_request_log_request_type_and_service_tier_columns(),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "047_model_catalog_models",
+            include_str!("../../migrations/047_model_catalog_models.sql"),
+            |s| s.ensure_model_catalog_models_table(),
+        )?;
+        self.apply_sql_migration(
+            "048_drop_model_options_cache",
+            include_str!("../../migrations/048_drop_model_options_cache.sql"),
+        )?;
+        self.apply_sql_migration(
+            "049_model_catalog_string_items",
+            include_str!("../../migrations/049_model_catalog_string_items.sql"),
+        )?;
+        self.apply_sql_migration(
+            "050_api_key_profiles_drop_azure_protocol",
+            include_str!("../../migrations/050_api_key_profiles_drop_azure_protocol.sql"),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "051_request_logs_first_response_ms",
+            include_str!("../../migrations/051_request_logs_first_response_ms.sql"),
+            |s| s.ensure_request_log_first_response_column(),
+        )?;
+        self.apply_sql_or_compat_migration(
+            "052_account_subscriptions",
+            include_str!("../../migrations/052_account_subscriptions.sql"),
+            |s| s.ensure_account_subscriptions_table(),
+        )?;
+        self.ensure_api_key_rotation_columns()?;
+        self.ensure_aggregate_apis_table()?;
+        self.ensure_aggregate_api_secrets_table()?;
         self.ensure_request_token_stats_table()?;
+        self.ensure_gateway_error_logs_table()?;
+        self.ensure_request_log_request_type_and_service_tier_columns()?;
+        self.ensure_request_log_effective_service_tier_column()?;
+        self.ensure_request_log_first_response_column()?;
+        self.ensure_model_catalog_models_table()?;
+        self.ensure_account_subscriptions_table()?;
         Ok(())
     }
 
+    /// 函数 `insert_login_session`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - session: 参数 session
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_login_session(&self, session: &LoginSession) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO login_sessions (login_id, code_verifier, state, status, error, workspace_id, note, tags, group_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO login_sessions (login_id, code_verifier, state, status, error, workspace_id, note, tags, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             (
                 &session.login_id,
                 &session.code_verifier,
@@ -676,7 +705,6 @@ impl Storage {
                 &session.workspace_id,
                 &session.note,
                 &session.tags,
-                &session.group_name,
                 session.created_at,
                 session.updated_at,
             ),
@@ -684,9 +712,21 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `get_login_session`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - login_id: 参数 login_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn get_login_session(&self, login_id: &str) -> Result<Option<LoginSession>> {
         let mut stmt = self.conn.prepare(
-            "SELECT login_id, code_verifier, state, status, error, workspace_id, note, tags, group_name, created_at, updated_at FROM login_sessions WHERE login_id = ?1",
+            "SELECT login_id, code_verifier, state, status, error, workspace_id, note, tags, created_at, updated_at FROM login_sessions WHERE login_id = ?1",
         )?;
         let mut rows = stmt.query([login_id])?;
         if let Some(row) = rows.next()? {
@@ -699,15 +739,29 @@ impl Storage {
                 workspace_id: row.get(5)?,
                 note: row.get(6)?,
                 tags: row.get(7)?,
-                group_name: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
+                group_name: None,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
             }))
         } else {
             Ok(None)
         }
     }
 
+    /// 函数 `update_login_session_status`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - login_id: 参数 login_id
+    /// - status: 参数 status
+    /// - error: 参数 error
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn update_login_session_status(
         &self,
         login_id: &str,
@@ -721,6 +775,45 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `update_login_session_code_verifier`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - login_id: 参数 login_id
+    /// - code_verifier: 参数 code_verifier
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub fn update_login_session_code_verifier(
+        &self,
+        login_id: &str,
+        code_verifier: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE login_sessions SET code_verifier = ?1, updated_at = ?2 WHERE login_id = ?3",
+            (code_verifier, now_ts(), login_id),
+        )?;
+        Ok(())
+    }
+
+    /// 函数 `ensure_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - table: 参数 table
+    /// - column: 参数 column
+    /// - column_type: 参数 column_type
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn ensure_column(&self, table: &str, column: &str, column_type: &str) -> Result<()> {
         if self.has_column(table, column)? {
             return Ok(());
@@ -730,6 +823,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `has_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - table: 参数 table
+    /// - column: 参数 column
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn has_column(&self, table: &str, column: &str) -> Result<bool> {
         let sql = format!("PRAGMA table_info({table})");
         let mut stmt = self.conn.prepare(&sql)?;
@@ -743,6 +849,27 @@ impl Storage {
         Ok(false)
     }
 
+    fn has_table(&self, table: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                [table],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|count| count > 0)
+    }
+
+    /// 函数 `ensure_migrations_table`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn ensure_migrations_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -754,6 +881,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `has_migration`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - version: 参数 version
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn has_migration(&self, version: &str) -> Result<bool> {
         let mut stmt = self
             .conn
@@ -762,6 +901,18 @@ impl Storage {
         Ok(rows.next()?.is_some())
     }
 
+    /// 函数 `mark_migration`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - version: 参数 version
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn mark_migration(&self, version: &str) -> Result<()> {
         self.conn.execute(
             "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
@@ -770,6 +921,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `apply_sql_migration`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - version: 参数 version
+    /// - sql: 参数 sql
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn apply_sql_migration(&self, version: &str, sql: &str) -> Result<()> {
         if self.has_migration(version)? {
             return Ok(());
@@ -778,6 +942,20 @@ impl Storage {
         self.mark_migration(version)
     }
 
+    /// 函数 `apply_sql_or_compat_migration`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - version: 参数 version
+    /// - sql: 参数 sql
+    /// - compat: 参数 compat
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn apply_sql_or_compat_migration<F>(&self, version: &str, sql: &str, compat: F) -> Result<()>
     where
         F: FnOnce(&Self) -> Result<()>,
@@ -798,6 +976,19 @@ impl Storage {
         self.mark_migration(version)
     }
 
+    /// 函数 `apply_compat_migration`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - version: 参数 version
+    /// - compat: 参数 compat
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn apply_compat_migration<F>(&self, version: &str, compat: F) -> Result<()>
     where
         F: FnOnce(&Self) -> Result<()>,
@@ -809,6 +1000,17 @@ impl Storage {
         self.mark_migration(version)
     }
 
+    /// 函数 `is_schema_conflict_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - err: 参数 err
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn is_schema_conflict_error(err: &rusqlite::Error) -> bool {
         match err {
             rusqlite::Error::SqliteFailure(_, maybe_message) => maybe_message
@@ -826,6 +1028,17 @@ impl Storage {
 #[path = "../../tests/storage/migration_tests.rs"]
 mod migration_tests;
 
+/// 函数 `now_ts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn now_ts() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

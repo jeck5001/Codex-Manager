@@ -1,9 +1,22 @@
-use super::{terminal_text_response, with_retry_after_header, with_trace_id_header};
+use super::{terminal_text_response, with_trace_id_header};
+use std::io::Read;
 use tiny_http::Response;
 
+/// 函数 `terminal_text_response_sets_error_code_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn terminal_text_response_sets_error_code_header() {
-    let response = terminal_text_response(503, "no available account", Some("trc_test_1"));
+    let response =
+        terminal_text_response(503, "无可用账号(no available account)", Some("trc_test_1"));
     let content_type = response
         .headers()
         .iter()
@@ -41,8 +54,33 @@ fn terminal_text_response_sets_error_code_header() {
         })
         .map(|item| item.value.as_str().to_string());
     assert_eq!(trace_header.as_deref(), Some("trc_test_1"));
+
+    let mut body = String::new();
+    response
+        .into_reader()
+        .read_to_string(&mut body)
+        .expect("read response body");
+    assert!(
+        body.contains("\"message\":\"no available account\""),
+        "unexpected response body: {body}"
+    );
+    assert!(
+        !body.contains("无可用账号("),
+        "response should return raw message only: {body}"
+    );
 }
 
+/// 函数 `with_trace_id_header_appends_trace_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn with_trace_id_header_appends_trace_header() {
     let response = with_trace_id_header(Response::from_string("ok"), Some("trc_ok_1"));
@@ -57,20 +95,4 @@ fn with_trace_id_header_appends_trace_header() {
         })
         .map(|item| item.value.as_str().to_string());
     assert_eq!(trace_header.as_deref(), Some("trc_ok_1"));
-}
-
-#[test]
-fn with_retry_after_header_appends_retry_after_header() {
-    let response = with_retry_after_header(Response::from_string("ok"), Some(12));
-    let retry_after = response
-        .headers()
-        .iter()
-        .find(|item| {
-            item.field
-                .as_str()
-                .as_str()
-                .eq_ignore_ascii_case("Retry-After")
-        })
-        .map(|item| item.value.as_str().to_string());
-    assert_eq!(retry_after.as_deref(), Some("12"));
 }

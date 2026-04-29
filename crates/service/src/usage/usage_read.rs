@@ -1,7 +1,6 @@
 use codexmanager_core::rpc::types::UsageSnapshotResult;
 use codexmanager_core::storage::UsageSnapshotRecord;
 
-use crate::account_availability::usage_window_is_unavailable;
 use crate::storage_helpers::open_storage;
 
 /// 函数 `usage_snapshot_result_from_record`
@@ -50,7 +49,7 @@ fn classify_availability_status(snap: &UsageSnapshotRecord) -> &'static str {
     }
     if snap
         .used_percent
-        .map(usage_window_is_unavailable)
+        .map(|value| value >= 100.0)
         .unwrap_or(false)
     {
         return "unavailable";
@@ -71,7 +70,7 @@ fn classify_availability_status(snap: &UsageSnapshotRecord) -> &'static str {
     }
     if snap
         .secondary_used_percent
-        .map(usage_window_is_unavailable)
+        .map(|value| value >= 100.0)
         .unwrap_or(false)
     {
         return "unavailable";

@@ -3,9 +3,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::account_availability::{evaluate_snapshot, Availability};
-use crate::account_plan::{
-    extract_plan_type_from_id_token, is_free_plan_from_credits_json, is_free_plan_type,
-};
+use crate::account_plan::{resolve_account_plan, ResolvedAccountPlan};
 use crate::storage_helpers::open_storage;
 
 #[derive(Debug, Serialize)]
@@ -23,13 +21,25 @@ pub(crate) struct DeleteUnavailableFreeResult {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct DeleteBannedAccountsResult {
+pub(crate) struct DeleteBannedResult {
     scanned: usize,
     deleted: usize,
-    skipped_non_banned: usize,
+    skipped_disabled: usize,
+    skipped_not_banned: usize,
     deleted_account_ids: Vec<String>,
 }
 
+/// 函数 `delete_unavailable_free_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFreeResult, String> {
     let mut storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
@@ -54,42 +64,52 @@ pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFree
     for account in accounts {
         result.scanned += 1;
 
-        if account.status.trim().eq_ignore_ascii_case("disabled") {
+        let normalized_status = account.status.trim().to_ascii_lowercase();
+        if normalized_status == "disabled" {
             result.skipped_disabled += 1;
             continue;
         }
 
         let snapshot = usage_by_account.get(&account.id);
-        let Some(snapshot) = snapshot else {
-            result.skipped_missing_usage += 1;
-            continue;
-        };
-        if matches!(evaluate_snapshot(snapshot), Availability::Available) {
-            result.skipped_available += 1;
-            continue;
+        if normalized_status != "unavailable" && normalized_status != "banned" {
+            let Some(snapshot) = snapshot else {
+                result.skipped_missing_usage += 1;
+                continue;
+            };
+            if matches!(evaluate_snapshot(snapshot), Availability::Available) {
+                result.skipped_available += 1;
+                continue;
+            }
         }
 
         let token = storage
             .find_token_by_account_id(&account.id)
             .map_err(|err| err.to_string())?;
-        let Some(token) = token else {
-            result.skipped_missing_token += 1;
+        let resolved_plan = resolve_account_plan(token.as_ref(), snapshot);
+        let Some(plan) = resolved_plan.as_ref() else {
+            if snapshot.is_none() && token.is_none() {
+                result.skipped_missing_usage += 1;
+            } else if token.is_none() {
+                result.skipped_missing_token += 1;
+            } else {
+                result.skipped_non_free += 1;
+            }
             continue;
         };
-
-        let plan_type = extract_plan_type_from_id_token(&token.id_token);
-        if !is_free_plan_type(plan_type.as_deref())
-            && !is_free_plan_from_credits_json(snapshot.credits_json.as_deref())
-        {
+        if plan.normalized != "free" {
             result.skipped_non_free += 1;
             continue;
         }
+        let Some(_token) = token else {
+            result.skipped_missing_token += 1;
+            continue;
+        };
 
         storage
             .delete_account(&account.id)
             .map_err(|err| err.to_string())?;
 
-        let event_message = match plan_type.as_deref() {
+        let event_message = match plan_label_for_event(resolved_plan.as_ref()) {
             Some(plan) => format!("bulk delete unavailable free account: plan={plan}"),
             None => "bulk delete unavailable free account".to_string(),
         };
@@ -104,45 +124,48 @@ pub(crate) fn delete_unavailable_free_accounts() -> Result<DeleteUnavailableFree
         result.deleted_account_ids.push(account.id);
     }
 
-    crate::operation_audit::record_operation_audit(
-        "cleanup_unavailable_free_accounts",
-        "清理不可用免费号",
-        format!(
-            "扫描 {} 个账号，删除 {} 个，跳过可用 {} 个，跳过禁用 {} 个，跳过非免费 {} 个",
-            result.scanned,
-            result.deleted,
-            result.skipped_available,
-            result.skipped_disabled,
-            result.skipped_non_free
-        ),
-    );
-
     Ok(result)
 }
 
-pub(crate) fn delete_banned_accounts() -> Result<DeleteBannedAccountsResult, String> {
+/// 函数 `delete_banned_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
+pub(crate) fn delete_banned_accounts() -> Result<DeleteBannedResult, String> {
     let mut storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
 
-    let mut result = DeleteBannedAccountsResult {
+    let mut result = DeleteBannedResult {
         scanned: 0,
         deleted: 0,
-        skipped_non_banned: 0,
+        skipped_disabled: 0,
+        skipped_not_banned: 0,
         deleted_account_ids: Vec::new(),
     };
 
     for account in accounts {
         result.scanned += 1;
 
-        if !is_banned_account_status(&account.status) {
-            result.skipped_non_banned += 1;
+        let normalized_status = account.status.trim().to_ascii_lowercase();
+        if normalized_status == "disabled" {
+            result.skipped_disabled += 1;
+            continue;
+        }
+        if normalized_status != "banned" {
+            result.skipped_not_banned += 1;
             continue;
         }
 
         storage
             .delete_account(&account.id)
             .map_err(|err| err.to_string())?;
-
         let _ = storage.insert_event(&Event {
             account_id: Some(account.id.clone()),
             event_type: "account_bulk_delete_banned".to_string(),
@@ -154,52 +177,167 @@ pub(crate) fn delete_banned_accounts() -> Result<DeleteBannedAccountsResult, Str
         result.deleted_account_ids.push(account.id);
     }
 
-    crate::operation_audit::record_operation_audit(
-        "cleanup_banned_accounts",
-        "清理封禁账号",
-        format!(
-            "扫描 {} 个账号，删除 {} 个，跳过未封禁 {} 个",
-            result.scanned, result.deleted, result.skipped_non_banned
-        ),
-    );
-
     Ok(result)
 }
 
-fn is_banned_account_status(status: &str) -> bool {
-    status.trim().eq_ignore_ascii_case("deactivated")
+/// 函数 `plan_label_for_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - plan: 参数 plan
+///
+/// # 返回
+/// 返回函数执行结果
+fn plan_label_for_event(plan: Option<&ResolvedAccountPlan>) -> Option<&str> {
+    plan.and_then(|value| {
+        if value.normalized == "unknown" {
+            value.raw.as_deref()
+        } else {
+            Some(value.normalized.as_str())
+        }
+    })
 }
+
 #[cfg(test)]
 mod tests {
-    use super::{is_banned_account_status, is_free_plan_from_credits_json, is_free_plan_type};
+    use super::delete_banned_accounts;
+    use codexmanager_core::storage::{Account, Storage};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    #[test]
-    fn free_plan_detection_accepts_common_variants() {
-        assert!(is_free_plan_type(Some("free")));
-        assert!(is_free_plan_type(Some("ChatGPT_Free")));
-        assert!(is_free_plan_type(Some("free_tier")));
+    use crate::test_env_guard;
+
+    static CLEANUP_TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+    /// 函数 `new_test_dir`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - prefix: 参数 prefix
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    fn new_test_dir(prefix: &str) -> PathBuf {
+        let seq = CLEANUP_TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("{prefix}-{}-{seq}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        dir
     }
 
-    #[test]
-    fn free_plan_detection_rejects_paid_or_unknown_variants() {
-        assert!(!is_free_plan_type(None));
-        assert!(!is_free_plan_type(Some("")));
-        assert!(!is_free_plan_type(Some("plus")));
-        assert!(!is_free_plan_type(Some("pro")));
-        assert!(!is_free_plan_type(Some("team")));
+    struct EnvGuard {
+        key: &'static str,
+        original: Option<std::ffi::OsString>,
     }
 
-    #[test]
-    fn free_plan_detection_accepts_credits_json_marker() {
-        let credits_json = r#"{"planType":"free"}"#;
-        assert!(is_free_plan_from_credits_json(Some(credits_json)));
+    impl EnvGuard {
+        /// 函数 `set`
+        ///
+        /// 作者: gaohongshun
+        ///
+        /// 时间: 2026-04-02
+        ///
+        /// # 参数
+        /// - key: 参数 key
+        /// - value: 参数 value
+        ///
+        /// # 返回
+        /// 返回函数执行结果
+        fn set(key: &'static str, value: &str) -> Self {
+            let original = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, original }
+        }
     }
 
+    impl Drop for EnvGuard {
+        /// 函数 `drop`
+        ///
+        /// 作者: gaohongshun
+        ///
+        /// 时间: 2026-04-02
+        ///
+        /// # 参数
+        /// - self: 参数 self
+        ///
+        /// # 返回
+        /// 无
+        fn drop(&mut self) {
+            if let Some(value) = &self.original {
+                std::env::set_var(self.key, value);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    /// 函数 `delete_banned_accounts_removes_only_banned_accounts`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
-    fn banned_cleanup_matches_deactivated_accounts_only() {
-        assert!(is_banned_account_status("deactivated"));
-        assert!(is_banned_account_status(" DeActivated "));
-        assert!(!is_banned_account_status("disabled"));
-        assert!(!is_banned_account_status("active"));
+    fn delete_banned_accounts_removes_only_banned_accounts() {
+        let _lock = test_env_guard();
+        let dir = new_test_dir("cleanup-banned-accounts");
+        let db_path = dir.join("codexmanager.db");
+        let _guard = EnvGuard::set("CODEXMANAGER_DB_PATH", db_path.to_string_lossy().as_ref());
+
+        let storage = Storage::open(&db_path).expect("open db");
+        storage.init().expect("init db");
+        storage
+            .insert_account(&Account {
+                id: "acc-banned".to_string(),
+                label: "Banned".to_string(),
+                issuer: "chatgpt".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: 1,
+                status: "banned".to_string(),
+                created_at: 1,
+                updated_at: 1,
+            })
+            .expect("insert banned");
+        storage
+            .insert_account(&Account {
+                id: "acc-active".to_string(),
+                label: "Active".to_string(),
+                issuer: "chatgpt".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: 2,
+                status: "active".to_string(),
+                created_at: 1,
+                updated_at: 1,
+            })
+            .expect("insert active");
+
+        let result = delete_banned_accounts().expect("cleanup result");
+        assert_eq!(result.deleted, 1);
+        assert_eq!(result.deleted_account_ids, vec!["acc-banned".to_string()]);
+        assert!(Storage::open(&db_path)
+            .expect("reopen db")
+            .find_account_by_id("acc-banned")
+            .expect("find banned")
+            .is_none());
+        assert!(Storage::open(&db_path)
+            .expect("reopen db")
+            .find_account_by_id("acc-active")
+            .expect("find active")
+            .is_some());
     }
 }

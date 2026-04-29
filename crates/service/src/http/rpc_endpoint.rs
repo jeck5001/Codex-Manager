@@ -1,11 +1,24 @@
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response as AxumResponse};
-use codexmanager_core::rpc::types::{JsonRpcRequest, JsonRpcResponse};
+use codexmanager_core::rpc::types::{
+    JsonRpcError, JsonRpcErrorObject, JsonRpcMessage, JsonRpcRequest, JsonRpcResponse,
+};
 use std::panic::AssertUnwindSafe;
 use tiny_http::Request;
 use tiny_http::Response;
 use url::Url;
 
+/// 函数 `rpc_response_failed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - resp: 参数 resp
+///
+/// # 返回
+/// 返回函数执行结果
 fn rpc_response_failed(resp: &codexmanager_core::rpc::types::JsonRpcResponse) -> bool {
     if resp.result.get("error").is_some() {
         return true;
@@ -16,6 +29,18 @@ fn rpc_response_failed(resp: &codexmanager_core::rpc::types::JsonRpcResponse) ->
     )
 }
 
+/// 函数 `get_header_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn get_header_value<'a>(request: &'a Request, name: &str) -> Option<&'a str> {
     request
         .headers()
@@ -25,6 +50,17 @@ fn get_header_value<'a>(request: &'a Request, name: &str) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
+/// 函数 `is_json_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_json_content_type(request: &Request) -> bool {
     get_header_value(request, "Content-Type")
         .and_then(|value| value.split(';').next())
@@ -32,6 +68,17 @@ fn is_json_content_type(request: &Request) -> bool {
         .unwrap_or(false)
 }
 
+/// 函数 `is_loopback_origin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - origin: 参数 origin
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_loopback_origin(origin: &str) -> bool {
     let Ok(url) = Url::parse(origin) else {
         return false;
@@ -42,6 +89,17 @@ fn is_loopback_origin(origin: &str) -> bool {
     matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"))
 }
 
+/// 函数 `panic_payload_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - payload: 参数 payload
+///
+/// # 返回
+/// 返回函数执行结果
 fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
     if let Some(message) = payload.downcast_ref::<&str>() {
         return (*message).to_string();
@@ -52,16 +110,51 @@ fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
     "unknown panic payload".to_string()
 }
 
+/// 函数 `jsonrpc_message_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
+fn jsonrpc_message_success(message: &JsonRpcMessage) -> bool {
+    match message {
+        JsonRpcMessage::Response(resp) => !rpc_response_failed(resp),
+        JsonRpcMessage::Notification(_) => true,
+        JsonRpcMessage::Error(_) => false,
+        JsonRpcMessage::Request(_) => true,
+    }
+}
+
+/// 函数 `handle_parsed_rpc_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - handler: 参数 handler
+///
+/// # 返回
+/// 返回函数执行结果
 fn handle_parsed_rpc_request<F>(req: JsonRpcRequest, handler: F) -> (String, bool)
 where
-    F: FnOnce(JsonRpcRequest) -> JsonRpcResponse,
+    F: FnOnce(JsonRpcRequest) -> JsonRpcMessage,
 {
-    let request_id = req.id;
+    let request_id = req.id.clone();
     let request_method = req.method.clone();
     match std::panic::catch_unwind(AssertUnwindSafe(|| handler(req))) {
-        Ok(resp) => {
-            let success = !rpc_response_failed(&resp);
-            let json = serde_json::to_string(&resp).unwrap_or_else(|_| "{}".to_string());
+        Ok(message) => {
+            let success = jsonrpc_message_success(&message);
+            let json = match message {
+                JsonRpcMessage::Notification(_) => String::new(),
+                _ => serde_json::to_string(&message).unwrap_or_else(|_| "{}".to_string()),
+            };
             (json, success)
         }
         Err(payload) => {
@@ -72,32 +165,61 @@ where
                 request_id,
                 panic_message
             );
-            let resp = JsonRpcResponse {
+            let message = JsonRpcMessage::Error(JsonRpcError {
                 id: request_id,
-                result: crate::error_codes::rpc_error_payload(format!(
-                    "internal_error: {panic_message}"
-                )),
-            };
-            let json = serde_json::to_string(&resp).unwrap_or_else(|_| "{}".to_string());
+                error: JsonRpcErrorObject {
+                    code: -32603,
+                    data: None,
+                    message: format!("internal_error: {panic_message}"),
+                },
+            });
+            let json = serde_json::to_string(&message).unwrap_or_else(|_| "{}".to_string());
             (json, false)
         }
     }
 }
 
-fn handle_rpc_body(body: &str, operator: Option<&str>) -> (u16, String, bool) {
+/// 函数 `handle_rpc_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
+fn handle_rpc_body(body: &str) -> (u16, String, bool) {
     if body.trim().is_empty() {
         return (400, "{}".to_string(), false);
     }
 
-    let mut req: JsonRpcRequest = match serde_json::from_str(body) {
+    let msg: JsonRpcMessage = match serde_json::from_str(body) {
         Ok(v) => v,
         Err(_) => return (400, "{}".to_string(), false),
     };
-    crate::audit_record::attach_operator_to_request(&mut req, operator);
-    let (json, success) = handle_parsed_rpc_request(req, crate::handle_request);
+    let (json, success) = match msg {
+        JsonRpcMessage::Request(req) => handle_parsed_rpc_request(req, crate::handle_request),
+        JsonRpcMessage::Notification(_) => (String::new(), true),
+        JsonRpcMessage::Response(_) | JsonRpcMessage::Error(_) => {
+            return (400, "{}".to_string(), false)
+        }
+    };
     (200, json, success)
 }
 
+/// 函数 `is_axum_json_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_axum_json_content_type(headers: &HeaderMap) -> bool {
     headers
         .get("Content-Type")
@@ -107,6 +229,17 @@ fn is_axum_json_content_type(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
+/// 函数 `validate_axum_headers`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn validate_axum_headers(headers: &HeaderMap) -> Option<AxumResponse> {
     if !is_axum_json_content_type(headers) {
         return Some((StatusCode::UNSUPPORTED_MEDIA_TYPE, "{}").into_response());
@@ -148,36 +281,38 @@ fn validate_axum_headers(headers: &HeaderMap) -> Option<AxumResponse> {
     None
 }
 
+/// 函数 `handle_rpc_http`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) async fn handle_rpc_http(headers: HeaderMap, body: String) -> AxumResponse {
     let mut rpc_metrics_guard = crate::gateway::begin_rpc_request();
     if let Some(response) = validate_axum_headers(&headers) {
         return response;
     }
     let body_for_task = body;
-    let operator = headers
-        .get("X-CodexManager-Operator")
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    let (status, response_body, success) = match tokio::task::spawn_blocking(move || {
-        handle_rpc_body(&body_for_task, operator.as_deref())
-    })
-    .await
-    {
-        Ok(result) => result,
-        Err(err) => {
-            log::error!("rpc http blocking task failed: {}", err);
-            let fallback = JsonRpcResponse {
-                id: 0,
-                result: crate::error_codes::rpc_error_payload(
-                    "internal_error: rpc task failed".to_string(),
-                ),
-            };
-            let body = serde_json::to_string(&fallback).unwrap_or_else(|_| "{}".to_string());
-            (200, body, false)
-        }
-    };
+    let (status, response_body, success) =
+        match tokio::task::spawn_blocking(move || handle_rpc_body(&body_for_task)).await {
+            Ok(result) => result,
+            Err(err) => {
+                log::error!("rpc http blocking task failed: {}", err);
+                let fallback = JsonRpcResponse {
+                    id: 0.into(),
+                    result: crate::error_codes::rpc_error_payload(
+                        "internal_error: rpc task failed".to_string(),
+                    ),
+                };
+                let body = serde_json::to_string(&fallback).unwrap_or_else(|_| "{}".to_string());
+                (200, body, false)
+            }
+        };
     if success {
         rpc_metrics_guard.mark_success();
     }
@@ -188,6 +323,17 @@ pub(crate) async fn handle_rpc_http(headers: HeaderMap, body: String) -> AxumRes
         .into_response()
 }
 
+/// 函数 `handle_rpc`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - request: 参数 request
+///
+/// # 返回
+/// 无
 pub fn handle_rpc(mut request: Request) {
     let mut rpc_metrics_guard = crate::gateway::begin_rpc_request();
     if request.method().as_str() != "POST" {
@@ -235,8 +381,7 @@ pub fn handle_rpc(mut request: Request) {
         return;
     }
 
-    let operator = get_header_value(&request, "X-CodexManager-Operator");
-    let (status, response_body, success) = handle_rpc_body(&body, operator);
+    let (status, response_body, success) = handle_rpc_body(&body);
     if success {
         rpc_metrics_guard.mark_success();
     }
@@ -246,14 +391,28 @@ pub fn handle_rpc(mut request: Request) {
 #[cfg(test)]
 mod tests {
     use super::handle_parsed_rpc_request;
-    use codexmanager_core::rpc::types::{JsonRpcRequest, JsonRpcResponse};
+    use codexmanager_core::rpc::types::{
+        JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse,
+    };
 
+    /// 函数 `panicking_rpc_handler_returns_structured_json_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn panicking_rpc_handler_returns_structured_json_error() {
         let request = JsonRpcRequest {
-            id: 7,
+            id: 7.into(),
             method: "account/usage/refresh".to_string(),
             params: None,
+            trace: None,
         };
 
         let (body, success) = handle_parsed_rpc_request(request, |_req| {
@@ -266,31 +425,45 @@ mod tests {
         assert_eq!(parsed.get("id").and_then(|value| value.as_u64()), Some(7));
         assert_eq!(
             parsed
-                .get("result")
-                .and_then(|value| value.get("error"))
+                .get("error")
+                .and_then(|value| value.get("message"))
                 .and_then(|value| value.as_str()),
             Some("internal_error: usage refresh boom")
         );
         assert_eq!(
             parsed
-                .get("result")
-                .and_then(|value| value.get("errorCode"))
-                .and_then(|value| value.as_str()),
-            Some("unknown_error")
+                .get("error")
+                .and_then(|value| value.get("code"))
+                .and_then(|value| value.as_i64()),
+            Some(-32603)
         );
     }
 
+    /// 函数 `normal_rpc_handler_keeps_success_shape`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normal_rpc_handler_keeps_success_shape() {
         let request = JsonRpcRequest {
-            id: 9,
+            id: 9.into(),
             method: "noop".to_string(),
             params: None,
+            trace: None,
         };
 
-        let (body, success) = handle_parsed_rpc_request(request, |req| JsonRpcResponse {
-            id: req.id,
-            result: serde_json::json!({ "ok": true }),
+        let (body, success) = handle_parsed_rpc_request(request, |req| {
+            JsonRpcMessage::Response(JsonRpcResponse {
+                id: req.id,
+                result: serde_json::json!({ "ok": true }),
+            })
         });
 
         assert!(success);
@@ -303,5 +476,36 @@ mod tests {
                 .and_then(|value| value.as_bool()),
             Some(true)
         );
+    }
+
+    /// 函数 `notification_handler_returns_empty_body`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn notification_handler_returns_empty_body() {
+        let request = JsonRpcRequest {
+            id: 11.into(),
+            method: "noop".to_string(),
+            params: None,
+            trace: None,
+        };
+
+        let (body, success) = handle_parsed_rpc_request(request, |_req| {
+            JsonRpcMessage::Notification(JsonRpcNotification {
+                method: "initialized".to_string(),
+                params: None,
+            })
+        });
+
+        assert!(success);
+        assert!(body.is_empty());
     }
 }

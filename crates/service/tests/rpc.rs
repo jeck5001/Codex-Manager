@@ -1,50 +1,32 @@
 use codexmanager_core::rpc::types::JsonRpcRequest;
 use codexmanager_core::storage::{
-    now_ts, Account, RequestLog, RequestTokenStat, Storage, UsageSnapshotRecord,
+    now_ts, Account, Event, RequestLog, RequestTokenStat, Storage, Token, UsageSnapshotRecord,
 };
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::MutexGuard;
 use std::thread;
 use std::time::Duration;
 use tiny_http::{Header, Response, Server, StatusCode};
 
-struct EnvGuard {
-    key: &'static str,
-    original: Option<std::ffi::OsString>,
-}
-
-impl EnvGuard {
-    fn set(key: &'static str, value: &str) -> Self {
-        let original = std::env::var_os(key);
-        std::env::set_var(key, value);
-        Self { key, original }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        if let Some(value) = &self.original {
-            std::env::set_var(self.key, value);
-        } else {
-            std::env::remove_var(self.key);
-        }
-    }
-}
-
-static RPC_TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
+mod support;
+use support::{test_env_guard, EnvGuard};
 static RPC_TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
 
-fn lock_rpc_test_env() -> MutexGuard<'static, ()> {
-    // 中文注释：RPC 集成测试依赖进程级环境变量，串行化可避免不同用例互相污染数据库路径。
-    RPC_TEST_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
+/// 函数 `new_test_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - prefix: 参数 prefix
+///
+/// # 返回
+/// 返回函数执行结果
 fn new_test_dir(prefix: &str) -> PathBuf {
     // 中文注释：用进程号 + 自增序号构造临时目录，避免 Windows 复用旧目录导致脏数据串用。
     let seq = RPC_TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -61,8 +43,19 @@ struct RpcTestContext {
 }
 
 impl RpcTestContext {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - prefix: 参数 prefix
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new(prefix: &str) -> Self {
-        let env_lock = lock_rpc_test_env();
+        let env_lock = test_env_guard();
         let dir = new_test_dir(prefix);
         let db_path = dir.join("codexmanager.db");
         let db_path_guard =
@@ -74,10 +67,33 @@ impl RpcTestContext {
         }
     }
 
+    /// 函数 `db_path`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn db_path(&self) -> PathBuf {
         self.dir.join("codexmanager.db")
     }
 
+    /// 函数 `seed_accounts`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - count: 参数 count
+    ///
+    /// # 返回
+    /// 无
     fn seed_accounts(&self, count: usize) {
         let storage = Storage::open(self.db_path()).expect("open db");
         storage.init().expect("init schema");
@@ -103,13 +119,37 @@ impl RpcTestContext {
 }
 
 impl Drop for RpcTestContext {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.dir);
     }
 }
 
+/// 函数 `post_rpc_raw`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - body: 参数 body
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn post_rpc_raw(addr: &str, body: &str, headers: &[(&str, &str)]) -> (u16, String) {
-    let mut stream = connect_with_retry(addr);
+    let mut stream = TcpStream::connect(addr).expect("connect server");
     let mut request = format!("POST /rpc HTTP/1.1\r\nHost: {addr}\r\n");
     for (name, value) in headers {
         request.push_str(name);
@@ -133,20 +173,18 @@ fn post_rpc_raw(addr: &str, body: &str, headers: &[(&str, &str)]) -> (u16, Strin
     (status, body)
 }
 
-fn connect_with_retry(addr: &str) -> TcpStream {
-    let mut last_error = None;
-    for _ in 0..100 {
-        match TcpStream::connect(addr) {
-            Ok(stream) => return stream,
-            Err(err) => {
-                last_error = Some(err);
-                thread::sleep(Duration::from_millis(50));
-            }
-        }
-    }
-    panic!("connect server: {:?}", last_error.expect("connect error"));
-}
-
+/// 函数 `post_rpc`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn post_rpc(addr: &str, body: &str) -> serde_json::Value {
     let token = codexmanager_service::rpc_auth_token().to_string();
     let (status, body) = post_rpc_raw(
@@ -161,6 +199,17 @@ fn post_rpc(addr: &str, body: &str) -> serde_json::Value {
     serde_json::from_str(&body).expect("parse response")
 }
 
+/// 函数 `encode_base64url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - bytes: 参数 bytes
+///
+/// # 返回
+/// 返回函数执行结果
 fn encode_base64url(bytes: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut out = String::new();
@@ -192,70 +241,20 @@ fn encode_base64url(bytes: &[u8]) -> String {
     out
 }
 
-#[test]
-fn rpc_register_task_read_returns_local_status_and_logs() {
-    let _ctx = RpcTestContext::new("rpc-register-task-read");
-    let _engine_guard = EnvGuard::set("CODEXMANAGER_REGISTER_ENGINE_TEST_MODE", "success");
-
-    let start_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let start_json = serde_json::to_string(&JsonRpcRequest {
-        id: 1,
-        method: "account/register/start".to_string(),
-        params: Some(serde_json::json!({
-            "emailServiceType": "generator_email",
-            "registerMode": "standard"
-        })),
-    })
-    .expect("serialize start rpc");
-    let start_resp = post_rpc(&start_server.addr, &start_json);
-    start_server.join();
-
-    let task_uuid = start_resp
-        .get("result")
-        .and_then(|value| value.get("taskUuid"))
-        .and_then(|value| value.as_str())
-        .expect("task uuid")
-        .to_string();
-
-    let mut read_resp = serde_json::Value::Null;
-    for _ in 0..10 {
-        let read_server = codexmanager_service::start_one_shot_server().expect("start read server");
-        let read_json = serde_json::to_string(&JsonRpcRequest {
-            id: 2,
-            method: "account/register/task".to_string(),
-            params: Some(serde_json::json!({ "taskUuid": task_uuid })),
-        })
-        .expect("serialize read rpc");
-        read_resp = post_rpc(&read_server.addr, &read_json);
-        read_server.join();
-
-        let status = read_resp
-            .get("result")
-            .and_then(|value| value.get("status"))
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string();
-        if matches!(status.as_str(), "completed" | "succeeded") {
-            break;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-
-    assert_eq!(
-        read_resp
-            .get("result")
-            .and_then(|value| value.get("status"))
-            .and_then(|value| value.as_str()),
-        Some("completed")
-    );
-    assert!(read_resp
-        .get("result")
-        .and_then(|value| value.get("logs"))
-        .and_then(|value| value.as_array())
-        .map(|items| !items.is_empty())
-        .unwrap_or(false));
-}
-
+/// 函数 `build_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - subject: 参数 subject
+/// - email: 参数 email
+/// - chatgpt_account_id: 参数 chatgpt_account_id
+/// - plan_type: 参数 plan_type
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_access_token(
     subject: &str,
     email: &str,
@@ -280,6 +279,18 @@ fn build_access_token(
     format!("{header}.{payload}.sig")
 }
 
+/// 函数 `start_mock_oauth_token_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status: 参数 status
+/// - response_body: 参数 response_body
+///
+/// # 返回
+/// 返回函数执行结果
 fn start_mock_oauth_token_server(
     status: u16,
     response_body: String,
@@ -310,661 +321,279 @@ fn start_mock_oauth_token_server(
     (addr, rx, handle)
 }
 
-fn start_mock_session_refresh_server(
+#[derive(Debug)]
+struct RecordedHeaderRequest {
+    path: String,
+    authorization: Option<String>,
+    chatgpt_account_id: Option<String>,
+}
+
+fn start_mock_subscription_server(
+    status: u16,
     response_body: String,
 ) -> (
     String,
-    std::sync::mpsc::Receiver<String>,
+    std::sync::mpsc::Receiver<RecordedHeaderRequest>,
     thread::JoinHandle<()>,
 ) {
-    let server = Server::http("127.0.0.1:0").expect("start mock session refresh server");
+    let server = Server::http("127.0.0.1:0").expect("start mock subscription server");
     let addr = format!("http://{}", server.server_addr());
     let (tx, rx) = std::sync::mpsc::channel();
     let handle = thread::spawn(move || {
-        let request = server.recv().expect("receive session refresh request");
-        let cookie_header = request
+        let request = server.recv().expect("receive subscription request");
+        let path = request.url().to_string();
+        let authorization = request
             .headers()
             .iter()
-            .find(|header| header.field.equiv("Cookie"))
-            .map(|header| header.value.as_str().to_string())
-            .unwrap_or_default();
-        tx.send(cookie_header).expect("send session refresh cookie");
+            .find(|header| header.field.equiv("Authorization"))
+            .map(|header| header.value.as_str().to_string());
+        let chatgpt_account_id = request
+            .headers()
+            .iter()
+            .find(|header| header.field.equiv("ChatGPT-Account-ID"))
+            .map(|header| header.value.as_str().to_string());
+        tx.send(RecordedHeaderRequest {
+            path,
+            authorization,
+            chatgpt_account_id,
+        })
+        .expect("send subscription request");
         let response = Response::from_string(response_body)
-            .with_status_code(StatusCode(200))
+            .with_status_code(StatusCode(status))
             .with_header(
                 Header::from_bytes("Content-Type", "application/json")
                     .expect("content-type header"),
             );
         request
             .respond(response)
-            .expect("respond session refresh request");
+            .expect("respond subscription request");
     });
     (addr, rx, handle)
 }
 
-fn start_mock_register_service_server(
-    expected_email: String,
-    refreshed_access_token: String,
-    refreshed_refresh_token: String,
-    refreshed_id_token: String,
-    cookies: String,
+fn start_mock_usage_refresh_server(
+    subscription_response_body: String,
+    usage_response_body: String,
 ) -> (
     String,
-    std::sync::mpsc::Receiver<(String, String)>,
+    std::sync::mpsc::Receiver<RecordedHeaderRequest>,
     thread::JoinHandle<()>,
 ) {
-    let server = Server::http("127.0.0.1:0").expect("start mock register server");
-    let addr = format!("http://{}", server.server_addr());
-    let (tx, rx) = std::sync::mpsc::channel();
-    let handle = thread::spawn(move || {
-        for _ in 0..3 {
-            let request = server.recv().expect("receive register request");
-            let method = request.method().as_str().to_string();
-            let path = request.url().to_string();
-            tx.send((method.clone(), path.clone()))
-                .expect("send register request");
-
-            let response_body = if method == "GET" && path.starts_with("/api/accounts?") {
-                serde_json::json!({
-                    "accounts": [{
-                        "id": 123,
-                        "email": expected_email,
-                        "account_id": "chatgpt-register-fallback",
-                        "workspace_id": "workspace-register-fallback",
-                        "cookies": cookies,
-                    }]
-                })
-                .to_string()
-            } else if method == "POST" && path == "/api/accounts/123/refresh" {
-                serde_json::json!({
-                    "success": true,
-                    "message": "Token refreshed"
-                })
-                .to_string()
-            } else if method == "GET" && path == "/api/accounts/123/tokens" {
-                serde_json::json!({
-                    "access_token": refreshed_access_token,
-                    "refresh_token": refreshed_refresh_token,
-                    "id_token": refreshed_id_token
-                })
-                .to_string()
-            } else {
-                serde_json::json!({
-                    "error": format!("unexpected request: {method} {path}")
-                })
-                .to_string()
-            };
-
-            let response = Response::from_string(response_body)
-                .with_status_code(StatusCode(200))
-                .with_header(
-                    Header::from_bytes("Content-Type", "application/json")
-                        .expect("content-type header"),
-                );
-            request.respond(response).expect("respond register request");
-        }
-    });
-    (addr, rx, handle)
-}
-
-fn start_mock_register_service_server_with_session_token_only(
-    expected_email: String,
-    imported_access_token: String,
-    session_token: String,
-) -> (
-    String,
-    std::sync::mpsc::Receiver<(String, String)>,
-    thread::JoinHandle<()>,
-) {
-    let server = Server::http("127.0.0.1:0").expect("start mock register session-token server");
+    let server = Server::http("127.0.0.1:0").expect("start mock usage refresh server");
     let addr = format!("http://{}", server.server_addr());
     let (tx, rx) = std::sync::mpsc::channel();
     let handle = thread::spawn(move || {
         for _ in 0..2 {
-            let request = server.recv().expect("receive register request");
-            let method = request.method().as_str().to_string();
+            let request = server
+                .recv_timeout(Duration::from_secs(5))
+                .expect("usage refresh server timeout")
+                .expect("receive usage refresh request");
             let path = request.url().to_string();
-            tx.send((method.clone(), path.clone()))
-                .expect("send register request");
+            let authorization = request
+                .headers()
+                .iter()
+                .find(|header| header.field.equiv("Authorization"))
+                .map(|header| header.value.as_str().to_string());
+            let chatgpt_account_id = request
+                .headers()
+                .iter()
+                .find(|header| header.field.equiv("ChatGPT-Account-ID"))
+                .map(|header| header.value.as_str().to_string());
+            tx.send(RecordedHeaderRequest {
+                path: path.clone(),
+                authorization,
+                chatgpt_account_id,
+            })
+            .expect("send usage refresh request");
 
-            let response_body = if method == "GET" && path.starts_with("/api/accounts?") {
-                serde_json::json!({
-                    "accounts": [{
-                        "id": 777,
-                        "email": expected_email,
-                        "account_id": "chatgpt-session-import",
-                        "workspace_id": "workspace-session-import",
-                        "cookies": ""
-                    }]
-                })
-                .to_string()
-            } else if method == "GET" && path == "/api/accounts/777/tokens" {
-                serde_json::json!({
-                    "access_token": imported_access_token,
-                    "refresh_token": "",
-                    "id_token": "",
-                    "session_token": session_token
-                })
-                .to_string()
-            } else {
-                serde_json::json!({
-                    "error": format!("unexpected request: {method} {path}")
-                })
-                .to_string()
+            let response_body = match path.as_str() {
+                "/subscriptions?account_id=org-usage-refresh" => subscription_response_body.clone(),
+                "/api/codex/usage" => usage_response_body.clone(),
+                other => panic!("unexpected usage refresh path: {other}"),
             };
-
             let response = Response::from_string(response_body)
                 .with_status_code(StatusCode(200))
                 .with_header(
                     Header::from_bytes("Content-Type", "application/json")
                         .expect("content-type header"),
                 );
-            request.respond(response).expect("respond register request");
+            request
+                .respond(response)
+                .expect("respond usage refresh request");
         }
     });
     (addr, rx, handle)
 }
 
-fn start_mock_register_service_server_email_miss_account_match(
-    missed_email: String,
-    account_search: String,
-    remote_email: String,
-    refreshed_access_token: String,
-    refreshed_refresh_token: String,
-    refreshed_id_token: String,
-    cookies: String,
-) -> (
+#[derive(Debug)]
+struct RecordedRequest {
+    path: String,
+    body: String,
+}
+
+/// 函数 `start_mock_device_login_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
+fn start_mock_device_login_server() -> (
     String,
-    std::sync::mpsc::Receiver<(String, String)>,
+    std::sync::mpsc::Receiver<RecordedRequest>,
     thread::JoinHandle<()>,
 ) {
-    let server = Server::http("127.0.0.1:0").expect("start mock register fallback server");
+    let server = Server::http("127.0.0.1:0").expect("start mock device server");
     let addr = format!("http://{}", server.server_addr());
     let (tx, rx) = std::sync::mpsc::channel();
     let handle = thread::spawn(move || {
         for _ in 0..4 {
-            let request = server.recv().expect("receive register request");
-            let method = request.method().as_str().to_string();
+            let mut request = server
+                .recv_timeout(Duration::from_secs(5))
+                .expect("device login server timeout")
+                .expect("receive device request");
             let path = request.url().to_string();
-            tx.send((method.clone(), path.clone()))
-                .expect("send register request");
-
-            let response_body = if method == "GET"
-                && path
-                    == format!(
-                        "/api/accounts?page=1&page_size=20&search={}",
-                        urlencoding::encode(&missed_email)
-                    ) {
-                serde_json::json!({ "accounts": [] }).to_string()
-            } else if method == "GET"
-                && path
-                    == format!(
-                        "/api/accounts?page=1&page_size=20&search={}",
-                        urlencoding::encode(&account_search)
-                    )
-            {
-                serde_json::json!({
-                    "accounts": [{
-                        "id": 321,
-                        "email": remote_email,
-                        "account_id": account_search,
-                        "workspace_id": "workspace-register-fallback",
-                        "cookies": cookies,
-                    }]
-                })
-                .to_string()
-            } else if method == "POST" && path == "/api/accounts/321/refresh" {
-                serde_json::json!({
-                    "success": true,
-                    "message": "Token refreshed"
-                })
-                .to_string()
-            } else if method == "GET" && path == "/api/accounts/321/tokens" {
-                serde_json::json!({
-                    "access_token": refreshed_access_token,
-                    "refresh_token": refreshed_refresh_token,
-                    "id_token": refreshed_id_token
-                })
-                .to_string()
-            } else {
-                serde_json::json!({
-                    "error": format!("unexpected request: {method} {path}")
-                })
-                .to_string()
-            };
-
-            let response = Response::from_string(response_body)
-                .with_status_code(StatusCode(200))
-                .with_header(
-                    Header::from_bytes("Content-Type", "application/json")
-                        .expect("content-type header"),
-                );
-            request.respond(response).expect("respond register request");
-        }
-    });
-    (addr, rx, handle)
-}
-
-fn start_mock_recovery_manager_server(
-    email: String,
-    remote_account_id: String,
-    chatgpt_account_id: String,
-    workspace_id: String,
-    refreshed_access_token: String,
-    refreshed_refresh_token: String,
-    refreshed_id_token: String,
-) -> (
-    String,
-    std::sync::mpsc::Receiver<(String, serde_json::Value)>,
-    thread::JoinHandle<()>,
-) {
-    let server = Server::http("127.0.0.1:0").expect("start mock recovery manager server");
-    let addr = format!("http://{}", server.server_addr());
-    let (tx, rx) = std::sync::mpsc::channel();
-    let handle = thread::spawn(move || {
-        for _ in 0..2 {
-            let mut request = server.recv().expect("receive recovery manager request");
             let mut body = String::new();
             request
                 .as_reader()
                 .read_to_string(&mut body)
-                .expect("read recovery manager body");
-            let payload: serde_json::Value =
-                serde_json::from_str(&body).expect("parse recovery manager body");
-            let method = payload
-                .get("method")
-                .and_then(|value| value.as_str())
-                .unwrap_or_default()
-                .to_string();
-            tx.send((method.clone(), payload.clone()))
-                .expect("send recovery manager request");
+                .expect("read device request body");
+            tx.send(RecordedRequest {
+                path: path.clone(),
+                body: body.clone(),
+            })
+            .expect("send device request body");
 
-            let response_body = if method == "account/list" {
-                serde_json::json!({
-                    "id": payload.get("id").cloned().unwrap_or(serde_json::json!(1)),
-                    "result": {
-                        "items": [{
-                            "id": remote_account_id,
-                            "label": email,
-                            "groupName": "REMOTE",
-                            "tags": [],
-                            "sort": 0,
-                            "status": "active",
-                            "healthScore": 100
-                        }],
-                        "total": 1,
-                        "page": 1,
-                        "pageSize": 500
-                    }
-                })
-                .to_string()
-            } else if method == "account/exportData" {
-                serde_json::json!({
-                    "id": payload.get("id").cloned().unwrap_or(serde_json::json!(2)),
-                    "result": {
-                        "totalAccounts": 1,
-                        "exported": 1,
-                        "skippedMissingToken": 0,
-                        "files": [{
-                            "fileName": "remote-account.json",
-                            "content": serde_json::json!({
-                                "tokens": {
-                                    "access_token": refreshed_access_token,
-                                    "refresh_token": refreshed_refresh_token,
-                                    "id_token": refreshed_id_token,
-                                    "account_id": remote_account_id,
-                                },
-                                "meta": {
-                                    "label": email,
-                                    "issuer": "https://auth.openai.com",
-                                    "groupName": "REMOTE",
-                                    "status": "active",
-                                    "workspaceId": workspace_id,
-                                    "chatgptAccountId": chatgpt_account_id,
-                                    "exportedAt": 1
-                                }
-                            })
-                            .to_string()
-                        }]
-                    }
-                })
-                .to_string()
-            } else {
-                serde_json::json!({
-                    "id": payload.get("id").cloned().unwrap_or(serde_json::json!(999)),
-                    "result": {
-                        "error": format!("unexpected method: {method}")
-                    }
-                })
-                .to_string()
-            };
-
-            let response = Response::from_string(response_body)
-                .with_status_code(StatusCode(200))
-                .with_header(
-                    Header::from_bytes("Content-Type", "application/json")
-                        .expect("content-type header"),
-                );
-            request
-                .respond(response)
-                .expect("respond recovery manager request");
-        }
-    });
-    (addr, rx, handle)
-}
-
-fn start_mock_recovery_manager_server_with_cookies(
-    email: String,
-    remote_account_id: String,
-    chatgpt_account_id: String,
-    workspace_id: String,
-    imported_access_token: String,
-    imported_id_token: String,
-    cookies: String,
-) -> (
-    String,
-    std::sync::mpsc::Receiver<(String, serde_json::Value)>,
-    thread::JoinHandle<()>,
-) {
-    let server = Server::http("127.0.0.1:0").expect("start mock recovery manager cookie server");
-    let addr = format!("http://{}", server.server_addr());
-    let (tx, rx) = std::sync::mpsc::channel();
-    let handle = thread::spawn(move || {
-        for _ in 0..2 {
-            let mut request = server.recv().expect("receive recovery manager request");
-            let mut body = String::new();
-            request
-                .as_reader()
-                .read_to_string(&mut body)
-                .expect("read recovery manager body");
-            let payload: serde_json::Value =
-                serde_json::from_str(&body).expect("parse recovery manager body");
-            let method = payload
-                .get("method")
-                .and_then(|value| value.as_str())
-                .unwrap_or_default()
-                .to_string();
-            tx.send((method.clone(), payload.clone()))
-                .expect("send recovery manager request");
-
-            let response_body = if method == "account/list" {
-                serde_json::json!({
-                    "id": payload.get("id").cloned().unwrap_or(serde_json::json!(1)),
-                    "result": {
-                        "items": [{
-                            "id": remote_account_id,
-                            "label": email,
-                            "groupName": "REMOTE",
-                            "tags": [],
-                            "sort": 0,
-                            "status": "active",
-                            "healthScore": 100
-                        }],
-                        "total": 1,
-                        "page": 1,
-                        "pageSize": 500
-                    }
-                })
-                .to_string()
-            } else if method == "account/exportData" {
-                serde_json::json!({
-                    "id": payload.get("id").cloned().unwrap_or(serde_json::json!(2)),
-                    "result": {
-                        "totalAccounts": 1,
-                        "exported": 1,
-                        "skippedMissingToken": 0,
-                        "files": [{
-                            "fileName": "remote-account-cookie.json",
-                            "content": serde_json::json!({
-                                "tokens": {
-                                    "access_token": imported_access_token,
-                                    "refresh_token": "",
-                                    "id_token": imported_id_token,
-                                    "account_id": remote_account_id,
-                                    "cookies": cookies,
-                                },
-                                "meta": {
-                                    "label": email,
-                                    "issuer": "https://auth.openai.com",
-                                    "groupName": "REMOTE",
-                                    "status": "active",
-                                    "workspaceId": workspace_id,
-                                    "chatgptAccountId": chatgpt_account_id,
-                                    "exportedAt": 1
-                                }
-                            })
-                            .to_string()
-                        }]
-                    }
-                })
-                .to_string()
-            } else {
-                serde_json::json!({
-                    "id": payload.get("id").cloned().unwrap_or(serde_json::json!(999)),
-                    "result": {
-                        "error": format!("unexpected method: {method}")
-                    }
-                })
-                .to_string()
-            };
-
-            let response = Response::from_string(response_body)
-                .with_status_code(StatusCode(200))
-                .with_header(
-                    Header::from_bytes("Content-Type", "application/json")
-                        .expect("content-type header"),
-                );
-            request
-                .respond(response)
-                .expect("respond recovery manager request");
-        }
-    });
-    (addr, rx, handle)
-}
-
-fn start_mock_register_service_probe_server() -> (
-    String,
-    std::sync::mpsc::Receiver<(String, String)>,
-    thread::JoinHandle<()>,
-) {
-    let server = Server::http("127.0.0.1:0").expect("start mock register probe server");
-    let addr = format!("http://{}", server.server_addr());
-    let (tx, rx) = std::sync::mpsc::channel();
-    let handle = thread::spawn(move || {
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while std::time::Instant::now() < deadline {
-            let Some(request) = server
-                .recv_timeout(Duration::from_millis(200))
-                .expect("receive register probe request")
-            else {
-                continue;
-            };
-            let method = request.method().as_str().to_string();
-            let path = request.url().to_string();
-            tx.send((method.clone(), path.clone()))
-                .expect("send register probe request");
-
-            let response = Response::from_string(
-                serde_json::json!({
-                    "error": format!("register probe should not be called: {method} {path}")
+            let response_body = match path.as_str() {
+                "/api/accounts/deviceauth/usercode" => serde_json::json!({
+                    "device_auth_id": "device-auth-123",
+                    "user_code": "ABCD-1234",
+                    "interval": 1
                 })
                 .to_string(),
-            )
-            .with_status_code(StatusCode(500))
-            .with_header(
-                Header::from_bytes("Content-Type", "application/json")
-                    .expect("content-type header"),
-            );
-            request
-                .respond(response)
-                .expect("respond register probe request");
-        }
-    });
-    (addr, rx, handle)
-}
-
-fn start_mock_register_service_server_auto_register_login(
-    old_email: String,
-    old_chatgpt_account_id: String,
-    old_workspace_id: String,
-    new_email: String,
-    new_chatgpt_account_id: String,
-    new_workspace_id: String,
-    refreshed_access_token: String,
-    refreshed_refresh_token: String,
-    refreshed_id_token: String,
-) -> (
-    String,
-    std::sync::mpsc::Receiver<(String, String)>,
-    std::sync::mpsc::Receiver<String>,
-    thread::JoinHandle<()>,
-) {
-    let server = Server::http("127.0.0.1:0").expect("start mock auto register server");
-    let addr = format!("http://{}", server.server_addr());
-    let (tx, rx) = std::sync::mpsc::channel();
-    let (body_tx, body_rx) = std::sync::mpsc::channel();
-    let handle = thread::spawn(move || {
-        for _ in 0..11 {
-            let mut request = server.recv().expect("receive auto register request");
-            let method = request.method().as_str().to_string();
-            let path = request.url().to_string();
-            tx.send((method.clone(), path.clone()))
-                .expect("send auto register request");
-
-            let response_body = if method == "GET"
-                && path
-                    == format!(
-                        "/api/accounts?page=1&page_size=20&search={}",
-                        urlencoding::encode(&old_email)
-                    ) {
-                serde_json::json!({ "accounts": [] }).to_string()
-            } else if method == "GET"
-                && path
-                    == format!(
-                        "/api/accounts?page=1&page_size=20&search={}",
-                        urlencoding::encode(&old_chatgpt_account_id)
-                    )
-            {
-                serde_json::json!({ "accounts": [] }).to_string()
-            } else if method == "GET"
-                && path
-                    == format!(
-                        "/api/accounts?page=1&page_size=20&search={}",
-                        urlencoding::encode(&old_workspace_id)
-                    )
-            {
-                serde_json::json!({ "accounts": [] }).to_string()
-            } else if method == "GET" && path == "/api/registration/available-services" {
-                serde_json::json!({
-                    "customDomain": {
-                        "available": true,
-                        "services": [{
-                            "id": 12,
-                            "name": "Recover Domain"
-                        }]
+                "/api/accounts/deviceauth/token" => {
+                    assert!(body.contains("\"device_auth_id\":\"device-auth-123\""));
+                    assert!(body.contains("\"user_code\":\"ABCD-1234\""));
+                    serde_json::json!({
+                        "authorization_code": "auth-code-device-123",
+                        "code_challenge": "challenge-device-123",
+                        "code_verifier": "verifier-device-123"
+                    })
+                    .to_string()
+                }
+                "/oauth/token" => {
+                    if body.contains("grant_type=authorization_code") {
+                        assert!(body.contains("code=auth-code-device-123"));
+                        assert!(body.contains("redirect_uri=http%3A%2F%2F127.0.0.1"));
+                        serde_json::json!({
+                            "id_token": build_access_token(
+                                "sub-device",
+                                "device@example.com",
+                                "org-device",
+                                "pro"
+                            ),
+                            "access_token": build_access_token(
+                                "sub-device",
+                                "device@example.com",
+                                "org-device",
+                                "pro"
+                            ),
+                            "refresh_token": "refresh-device-123"
+                        })
+                        .to_string()
+                    } else {
+                        assert!(body.contains(
+                            "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange"
+                        ));
+                        serde_json::json!({
+                            "access_token": "api-access-token-device-123"
+                        })
+                        .to_string()
                     }
-                })
-                .to_string()
-            } else if method == "POST" && path == "/api/registration/batch" {
-                let mut request_body = String::new();
-                request
-                    .as_reader()
-                    .read_to_string(&mut request_body)
-                    .expect("read auto register batch body");
-                body_tx
-                    .send(request_body)
-                    .expect("send auto register batch body");
-                serde_json::json!({
-                    "tasks": [{
-                        "task_uuid": "task-auto-1"
-                    }]
-                })
-                .to_string()
-            } else if method == "GET" && path == "/api/registration/tasks/task-auto-1" {
-                serde_json::json!({
-                    "status": "completed",
-                    "email_service_id": 12,
-                    "result": {
-                        "email": new_email,
-                        "account_id": new_chatgpt_account_id,
-                        "workspace_id": new_workspace_id
-                    }
-                })
-                .to_string()
-            } else if method == "GET" && path == "/api/registration/tasks/task-auto-1/logs" {
-                serde_json::json!({
-                    "logs": []
-                })
-                .to_string()
-            } else if method == "GET"
-                && path
-                    == format!(
-                        "/api/accounts?page=1&page_size=20&search={}",
-                        urlencoding::encode(&new_email)
-                    )
-            {
-                serde_json::json!({
-                    "accounts": [{
-                        "id": 900,
-                        "email": new_email,
-                        "account_id": new_chatgpt_account_id,
-                        "workspace_id": new_workspace_id
-                    }]
-                })
-                .to_string()
-            } else if method == "GET" && path == "/api/accounts/900/tokens" {
-                serde_json::json!({
-                    "access_token": refreshed_access_token,
-                    "refresh_token": refreshed_refresh_token,
-                    "id_token": refreshed_id_token
-                })
-                .to_string()
-            } else {
-                serde_json::json!({
-                    "error": format!("unexpected request: {method} {path}")
-                })
-                .to_string()
+                }
+                other => panic!("unexpected device login path: {other}"),
             };
-
             let response = Response::from_string(response_body)
                 .with_status_code(StatusCode(200))
                 .with_header(
                     Header::from_bytes("Content-Type", "application/json")
                         .expect("content-type header"),
                 );
-            request
-                .respond(response)
-                .expect("respond auto register request");
+            request.respond(response).expect("respond device request");
         }
     });
-    (addr, rx, body_rx, handle)
+    (addr, rx, handle)
 }
 
+/// 函数 `rpc_initialize_roundtrip`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_initialize_roundtrip() {
     let _ctx = RpcTestContext::new("rpc-initialize");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 1,
+        id: 1.into(),
         method: "initialize".to_string(),
         params: None,
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
     let result = v.get("result").expect("result");
-    assert_eq!(result.get("server_name").unwrap(), "codexmanager-service");
+    assert!(result.get("serverName").is_none());
+    assert!(result
+        .get("codexHome")
+        .and_then(|value| value.as_str())
+        .is_some());
+    assert!(result
+        .get("platformFamily")
+        .and_then(|value| value.as_str())
+        .is_some());
+    assert!(result
+        .get("platformOs")
+        .and_then(|value| value.as_str())
+        .is_some());
+    assert!(result
+        .get("userAgent")
+        .and_then(|value| value.as_str())
+        .is_some());
 }
 
+/// 函数 `rpc_account_list_empty_uses_default_pagination`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_list_empty_uses_default_pagination() {
     let _ctx = RpcTestContext::new("rpc-account-list-empty");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 2,
+        id: 2.into(),
         method: "account/list".to_string(),
         params: None,
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
@@ -986,6 +615,17 @@ fn rpc_account_list_empty_uses_default_pagination() {
     );
 }
 
+/// 函数 `rpc_account_list_supports_pagination`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_list_supports_pagination() {
     let ctx = RpcTestContext::new("rpc-account-list-page");
@@ -993,9 +633,10 @@ fn rpc_account_list_supports_pagination() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 3,
+        id: 3.into(),
         method: "account/list".to_string(),
         params: Some(serde_json::json!({"page": 2, "pageSize": 3})),
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
@@ -1030,17 +671,165 @@ fn rpc_account_list_supports_pagination() {
         items[0].get("status").and_then(|value| value.as_str()),
         Some("active")
     );
+    assert!(
+        items[0].get("planType").is_some(),
+        "missing planType field: {result}"
+    );
 }
 
+/// 函数 `rpc_account_list_includes_account_plan_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn rpc_account_list_includes_account_plan_type() {
+    let ctx = RpcTestContext::new("rpc-account-list-plan-type");
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let now = now_ts();
+    storage
+        .insert_account(&Account {
+            id: "acc-plan-team".to_string(),
+            label: "Team Account".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("org-team".to_string()),
+            workspace_id: Some("org-team".to_string()),
+            group_name: Some("team".to_string()),
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc-plan-team".to_string(),
+            id_token: build_access_token("sub-team", "team@example.com", "org-team", "team"),
+            access_token: build_access_token("sub-team", "team@example.com", "org-team", "team"),
+            refresh_token: "refresh-team".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert token");
+    storage
+        .upsert_account_metadata("acc-plan-team", Some("主账号"), Some("高频,团队A"))
+        .expect("insert account metadata");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 76.into(),
+        method: "account/list".to_string(),
+        params: None,
+        trace: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let item = v
+        .get("result")
+        .and_then(|value| value.get("items"))
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .expect("account item");
+
+    assert_eq!(
+        item.get("planType").and_then(|value| value.as_str()),
+        Some("team")
+    );
+    assert_eq!(
+        item.get("note").and_then(|value| value.as_str()),
+        Some("主账号")
+    );
+    assert_eq!(
+        item.get("tags").and_then(|value| value.as_str()),
+        Some("高频,团队A")
+    );
+    assert!(
+        item.get("planTypeRaw").is_some(),
+        "missing planTypeRaw field: {item}"
+    );
+}
+
+/// 函数 `rpc_account_update_profile_updates_label_note_tags_and_sort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn rpc_account_update_profile_updates_label_note_tags_and_sort() {
+    let ctx = RpcTestContext::new("rpc-account-update-profile");
+    ctx.seed_accounts(1);
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 78.into(),
+        method: "account/update".to_string(),
+        params: Some(serde_json::json!({
+            "accountId": "acc-0",
+            "label": "主账号A",
+            "note": "团队共享主号",
+            "tags": "高频,团队A",
+            "sort": 7
+        })),
+        trace: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+    assert_eq!(
+        result.get("ok").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    let account = storage
+        .find_account_by_id("acc-0")
+        .expect("find account")
+        .expect("account exists");
+    assert_eq!(account.label, "主账号A");
+    assert_eq!(account.sort, 7);
+
+    let metadata = storage
+        .find_account_metadata("acc-0")
+        .expect("find account metadata")
+        .expect("metadata exists");
+    assert_eq!(metadata.note.as_deref(), Some("团队共享主号"));
+    assert_eq!(metadata.tags.as_deref(), Some("高频,团队A"));
+}
+
+/// 函数 `rpc_app_settings_set_invalid_payload_returns_structured_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_app_settings_set_invalid_payload_returns_structured_error() {
     let _ctx = RpcTestContext::new("rpc-app-settings-invalid-payload");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 30,
+        id: 30.into(),
         method: "appSettings/set".to_string(),
         params: Some(serde_json::json!("invalid-payload")),
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
@@ -1069,17 +858,29 @@ fn rpc_app_settings_set_invalid_payload_returns_structured_error() {
     );
 }
 
+/// 函数 `rpc_app_settings_can_roundtrip_free_account_max_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_app_settings_can_roundtrip_free_account_max_model() {
     let _ctx = RpcTestContext::new("rpc-app-settings-free-max-model");
     let set_server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let set_req = JsonRpcRequest {
-        id: 31,
+        id: 31.into(),
         method: "appSettings/set".to_string(),
         params: Some(serde_json::json!({
             "freeAccountMaxModel": "gpt-5.3-codex"
         })),
+        trace: None,
     };
     let set_json = serde_json::to_string(&set_req).expect("serialize");
     let set_resp = post_rpc(&set_server.addr, &set_json);
@@ -1093,9 +894,10 @@ fn rpc_app_settings_can_roundtrip_free_account_max_model() {
 
     let get_server = codexmanager_service::start_one_shot_server().expect("start server");
     let get_req = JsonRpcRequest {
-        id: 32,
+        id: 32.into(),
         method: "appSettings/get".to_string(),
         params: None,
+        trace: None,
     };
     let get_json = serde_json::to_string(&get_req).expect("serialize");
     let get_resp = post_rpc(&get_server.addr, &get_json);
@@ -1108,277 +910,17 @@ fn rpc_app_settings_can_roundtrip_free_account_max_model() {
     );
 }
 
-#[test]
-fn rpc_app_settings_can_roundtrip_quota_protection_settings() {
-    let _ctx = RpcTestContext::new("rpc-app-settings-quota-protection");
-    let set_server = codexmanager_service::start_one_shot_server().expect("start server");
-
-    let set_req = JsonRpcRequest {
-        id: 33,
-        method: "appSettings/set".to_string(),
-        params: Some(serde_json::json!({
-            "quotaProtectionEnabled": true,
-            "quotaProtectionThresholdPercent": 8
-        })),
-    };
-    let set_json = serde_json::to_string(&set_req).expect("serialize");
-    let set_resp = post_rpc(&set_server.addr, &set_json);
-    let set_result = set_resp.get("result").expect("result");
-    assert_eq!(
-        set_result
-            .get("quotaProtectionEnabled")
-            .and_then(|value| value.as_bool()),
-        Some(true)
-    );
-    assert_eq!(
-        set_result
-            .get("quotaProtectionThresholdPercent")
-            .and_then(|value| value.as_u64()),
-        Some(8)
-    );
-
-    let get_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let get_req = JsonRpcRequest {
-        id: 34,
-        method: "appSettings/get".to_string(),
-        params: None,
-    };
-    let get_json = serde_json::to_string(&get_req).expect("serialize");
-    let get_resp = post_rpc(&get_server.addr, &get_json);
-    let get_result = get_resp.get("result").expect("result");
-    assert_eq!(
-        get_result
-            .get("quotaProtectionEnabled")
-            .and_then(|value| value.as_bool()),
-        Some(true)
-    );
-    assert_eq!(
-        get_result
-            .get("quotaProtectionThresholdPercent")
-            .and_then(|value| value.as_u64()),
-        Some(8)
-    );
-}
-
-#[test]
-fn rpc_route_accounts_persist_and_reload_from_storage() {
-    let ctx = RpcTestContext::new("rpc-route-accounts-persist");
-
-    let set_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let set_req = JsonRpcRequest {
-        id: 35,
-        method: "gateway/routeAccounts/set".to_string(),
-        params: Some(serde_json::json!({
-            "accountIds": ["acc-a", "acc-b"]
-        })),
-    };
-    let set_json = serde_json::to_string(&set_req).expect("serialize");
-    let set_resp = post_rpc(&set_server.addr, &set_json);
-    let set_result = set_resp.get("result").expect("result");
-    assert_eq!(
-        set_result
-            .get("accountIds")
-            .and_then(|value| value.as_array())
-            .map(|items| items.len()),
-        Some(2)
-    );
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    storage.init().expect("init schema");
-    let persisted = storage
-        .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY)
-        .expect("read route accounts")
-        .unwrap_or_default();
-    assert_eq!(persisted, r#"["acc-a","acc-b"]"#);
-
-    storage
-        .set_app_setting(
-            codexmanager_service::APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY,
-            r#"["acc-persisted"]"#,
-            now_ts(),
-        )
-        .expect("persist route accounts");
-
-    codexmanager_service::sync_runtime_settings_from_storage();
-
-    let get_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let get_req = JsonRpcRequest {
-        id: 36,
-        method: "gateway/routeAccounts/get".to_string(),
-        params: None,
-    };
-    let get_json = serde_json::to_string(&get_req).expect("serialize");
-    let get_resp = post_rpc(&get_server.addr, &get_json);
-    let get_result = get_resp.get("result").expect("result");
-    assert_eq!(
-        get_result
-            .get("accountIds")
-            .and_then(|value| value.as_array())
-            .and_then(|items| items.first())
-            .and_then(|value| value.as_str()),
-        Some("acc-persisted")
-    );
-}
-
-#[test]
-fn rpc_app_settings_can_roundtrip_auto_register_pool_settings() {
-    let _ctx = RpcTestContext::new("rpc-app-settings-auto-register-pool");
-    let set_server = codexmanager_service::start_one_shot_server().expect("start server");
-
-    let set_req = JsonRpcRequest {
-        id: 35,
-        method: "appSettings/set".to_string(),
-        params: Some(serde_json::json!({
-            "backgroundTasks": {
-                "autoRegisterPoolEnabled": true,
-                "autoRegisterReadyAccountCount": 3,
-                "autoRegisterReadyRemainPercent": 25
-            }
-        })),
-    };
-    let set_json = serde_json::to_string(&set_req).expect("serialize");
-    let set_resp = post_rpc(&set_server.addr, &set_json);
-    let set_result = set_resp.get("result").expect("result");
-    let set_background_tasks = set_result
-        .get("backgroundTasks")
-        .expect("background tasks snapshot");
-    assert_eq!(
-        set_background_tasks
-            .get("autoRegisterPoolEnabled")
-            .and_then(|value| value.as_bool()),
-        Some(true)
-    );
-    assert_eq!(
-        set_background_tasks
-            .get("autoRegisterReadyAccountCount")
-            .and_then(|value| value.as_u64()),
-        Some(3)
-    );
-    assert_eq!(
-        set_background_tasks
-            .get("autoRegisterReadyRemainPercent")
-            .and_then(|value| value.as_u64()),
-        Some(25)
-    );
-
-    let get_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let get_req = JsonRpcRequest {
-        id: 36,
-        method: "appSettings/get".to_string(),
-        params: None,
-    };
-    let get_json = serde_json::to_string(&get_req).expect("serialize");
-    let get_resp = post_rpc(&get_server.addr, &get_json);
-    let get_result = get_resp.get("result").expect("result");
-    let get_background_tasks = get_result
-        .get("backgroundTasks")
-        .expect("background tasks snapshot");
-    assert_eq!(
-        get_background_tasks
-            .get("autoRegisterPoolEnabled")
-            .and_then(|value| value.as_bool()),
-        Some(true)
-    );
-    assert_eq!(
-        get_background_tasks
-            .get("autoRegisterReadyAccountCount")
-            .and_then(|value| value.as_u64()),
-        Some(3)
-    );
-    assert_eq!(
-        get_background_tasks
-            .get("autoRegisterReadyRemainPercent")
-            .and_then(|value| value.as_u64()),
-        Some(25)
-    );
-}
-
-#[test]
-fn rpc_app_settings_can_roundtrip_auto_disable_risky_accounts_settings() {
-    let _ctx = RpcTestContext::new("rpc-app-settings-auto-disable-risky");
-    let set_server = codexmanager_service::start_one_shot_server().expect("start server");
-
-    let set_req = JsonRpcRequest {
-        id: 37,
-        method: "appSettings/set".to_string(),
-        params: Some(serde_json::json!({
-            "backgroundTasks": {
-                "autoDisableRiskyAccountsEnabled": true,
-                "autoDisableRiskyAccountsFailureThreshold": 4,
-                "autoDisableRiskyAccountsHealthScoreThreshold": 55,
-                "autoDisableRiskyAccountsLookbackMins": 90
-            }
-        })),
-    };
-    let set_json = serde_json::to_string(&set_req).expect("serialize");
-    let set_resp = post_rpc(&set_server.addr, &set_json);
-    let set_result = set_resp.get("result").expect("result");
-    let set_background_tasks = set_result
-        .get("backgroundTasks")
-        .expect("background tasks snapshot");
-    assert_eq!(
-        set_background_tasks
-            .get("autoDisableRiskyAccountsEnabled")
-            .and_then(|value| value.as_bool()),
-        Some(true)
-    );
-    assert_eq!(
-        set_background_tasks
-            .get("autoDisableRiskyAccountsFailureThreshold")
-            .and_then(|value| value.as_u64()),
-        Some(4)
-    );
-    assert_eq!(
-        set_background_tasks
-            .get("autoDisableRiskyAccountsHealthScoreThreshold")
-            .and_then(|value| value.as_u64()),
-        Some(55)
-    );
-    assert_eq!(
-        set_background_tasks
-            .get("autoDisableRiskyAccountsLookbackMins")
-            .and_then(|value| value.as_u64()),
-        Some(90)
-    );
-
-    let get_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let get_req = JsonRpcRequest {
-        id: 38,
-        method: "appSettings/get".to_string(),
-        params: None,
-    };
-    let get_json = serde_json::to_string(&get_req).expect("serialize");
-    let get_resp = post_rpc(&get_server.addr, &get_json);
-    let get_result = get_resp.get("result").expect("result");
-    let get_background_tasks = get_result
-        .get("backgroundTasks")
-        .expect("background tasks snapshot");
-    assert_eq!(
-        get_background_tasks
-            .get("autoDisableRiskyAccountsEnabled")
-            .and_then(|value| value.as_bool()),
-        Some(true)
-    );
-    assert_eq!(
-        get_background_tasks
-            .get("autoDisableRiskyAccountsFailureThreshold")
-            .and_then(|value| value.as_u64()),
-        Some(4)
-    );
-    assert_eq!(
-        get_background_tasks
-            .get("autoDisableRiskyAccountsHealthScoreThreshold")
-            .and_then(|value| value.as_u64()),
-        Some(55)
-    );
-    assert_eq!(
-        get_background_tasks
-            .get("autoDisableRiskyAccountsLookbackMins")
-            .and_then(|value| value.as_u64()),
-        Some(90)
-    );
-}
-
+/// 函数 `rpc_account_list_active_filter_uses_backend_filtered_pagination`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
     let ctx = RpcTestContext::new("rpc-account-list-active-filter");
@@ -1426,7 +968,7 @@ fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let req = JsonRpcRequest {
-        id: 30,
+        id: 30.into(),
         method: "account/list".to_string(),
         params: Some(serde_json::json!({
             "page": 1,
@@ -1434,6 +976,7 @@ fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
             "filter": "active",
             "groupFilter": "group-a"
         })),
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
@@ -1446,7 +989,7 @@ fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
     assert_eq!(items.len(), 2, "unexpected filtered page size: {result}");
     assert_eq!(
         result.get("total").and_then(|value| value.as_i64()),
-        Some(3)
+        Some(4)
     );
     let ids = items
         .iter()
@@ -1460,6 +1003,17 @@ fn rpc_account_list_active_filter_uses_backend_filtered_pagination() {
     assert_eq!(ids, vec!["acc-active-1", "acc-active-2"]);
 }
 
+/// 函数 `rpc_account_delete_many_deletes_requested_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_delete_many_deletes_requested_accounts() {
     let ctx = RpcTestContext::new("rpc-account-delete-many");
@@ -1467,11 +1021,12 @@ fn rpc_account_delete_many_deletes_requested_accounts() {
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 11,
+        id: 11.into(),
         method: "account/deleteMany".to_string(),
         params: Some(serde_json::json!({
             "accountIds": ["acc-1", "acc-3", "missing"]
         })),
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
@@ -1504,6 +1059,178 @@ fn rpc_account_delete_many_deletes_requested_accounts() {
     assert_eq!(ids, vec!["acc-0", "acc-2"]);
 }
 
+/// 函数 `rpc_account_delete_unavailable_free_removes_refresh_invalid_free_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn rpc_account_delete_unavailable_free_removes_refresh_invalid_free_accounts() {
+    let ctx = RpcTestContext::new("rpc-account-delete-unavailable-free");
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    let now = now_ts();
+    storage
+        .insert_account(&Account {
+            id: "acc-free-invalid".to_string(),
+            label: "Free Invalid".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("org-free-invalid".to_string()),
+            workspace_id: Some("org-free-invalid".to_string()),
+            group_name: None,
+            sort: 0,
+            status: "unavailable".to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .expect("insert banned free account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc-free-invalid".to_string(),
+            id_token: build_access_token(
+                "sub-free-invalid",
+                "free-invalid@example.com",
+                "org-free-invalid",
+                "free",
+            ),
+            access_token: build_access_token(
+                "sub-free-invalid",
+                "free-invalid@example.com",
+                "org-free-invalid",
+                "free",
+            ),
+            refresh_token: "refresh-free-invalid".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert free token");
+    storage
+        .insert_event(&Event {
+            account_id: Some("acc-free-invalid".to_string()),
+            event_type: "account_status_update".to_string(),
+            message: "status=banned reason=account_deactivated".to_string(),
+            created_at: now,
+        })
+        .expect("insert status reason");
+
+    storage
+        .insert_account(&Account {
+            id: "acc-free-unavailable".to_string(),
+            label: "Free Unavailable".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("org-free-unavailable".to_string()),
+            workspace_id: Some("org-free-unavailable".to_string()),
+            group_name: None,
+            sort: 1,
+            status: "unavailable".to_string(),
+            created_at: now + 1,
+            updated_at: now + 1,
+        })
+        .expect("insert unavailable free account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc-free-unavailable".to_string(),
+            id_token: build_access_token(
+                "sub-free-unavailable",
+                "free-unavailable@example.com",
+                "org-free-unavailable",
+                "free",
+            ),
+            access_token: build_access_token(
+                "sub-free-unavailable",
+                "free-unavailable@example.com",
+                "org-free-unavailable",
+                "free",
+            ),
+            refresh_token: "refresh-free-unavailable".to_string(),
+            api_key_access_token: None,
+            last_refresh: now + 1,
+        })
+        .expect("insert unavailable token");
+
+    storage
+        .insert_account(&Account {
+            id: "acc-pro-invalid".to_string(),
+            label: "Pro Invalid".to_string(),
+            issuer: "https://auth.openai.com".to_string(),
+            chatgpt_account_id: Some("org-pro-invalid".to_string()),
+            workspace_id: Some("org-pro-invalid".to_string()),
+            group_name: None,
+            sort: 1,
+            status: "unavailable".to_string(),
+            created_at: now + 1,
+            updated_at: now + 1,
+        })
+        .expect("insert unavailable pro account");
+    storage
+        .insert_token(&Token {
+            account_id: "acc-pro-invalid".to_string(),
+            id_token: build_access_token(
+                "sub-pro-invalid",
+                "pro-invalid@example.com",
+                "org-pro-invalid",
+                "pro",
+            ),
+            access_token: build_access_token(
+                "sub-pro-invalid",
+                "pro-invalid@example.com",
+                "org-pro-invalid",
+                "pro",
+            ),
+            refresh_token: "refresh-pro-invalid".to_string(),
+            api_key_access_token: None,
+            last_refresh: now + 1,
+        })
+        .expect("insert pro token");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 77.into(),
+        method: "account/deleteUnavailableFree".to_string(),
+        params: None,
+        trace: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize delete");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+
+    assert_eq!(
+        result.get("deleted").and_then(|value| value.as_u64()),
+        Some(2)
+    );
+    let deleted_ids = result
+        .get("deletedAccountIds")
+        .and_then(|value| value.as_array())
+        .expect("deleted ids");
+    assert_eq!(deleted_ids.len(), 2);
+    assert_eq!(deleted_ids[0].as_str(), Some("acc-free-invalid"));
+    assert_eq!(deleted_ids[1].as_str(), Some("acc-free-unavailable"));
+
+    let remaining = storage.list_accounts().expect("list accounts");
+    let remaining_ids = remaining
+        .into_iter()
+        .map(|item| item.id)
+        .collect::<Vec<_>>();
+    assert_eq!(remaining_ids, vec!["acc-pro-invalid"]);
+}
+
+/// 函数 `rpc_account_update_status_toggles_manual_enable_disable`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_account_update_status_toggles_manual_enable_disable() {
     let ctx = RpcTestContext::new("rpc-account-update-status");
@@ -1511,12 +1238,13 @@ fn rpc_account_update_status_toggles_manual_enable_disable() {
 
     let disable_server = codexmanager_service::start_one_shot_server().expect("start server");
     let disable_req = JsonRpcRequest {
-        id: 12,
+        id: 12.into(),
         method: "account/update".to_string(),
         params: Some(serde_json::json!({
             "accountId": "acc-0",
             "status": "disabled"
         })),
+        trace: None,
     };
     let disable_json = serde_json::to_string(&disable_req).expect("serialize");
     let disable_resp = post_rpc(&disable_server.addr, &disable_json);
@@ -1535,12 +1263,13 @@ fn rpc_account_update_status_toggles_manual_enable_disable() {
 
     let enable_server = codexmanager_service::start_one_shot_server().expect("start server");
     let enable_req = JsonRpcRequest {
-        id: 13,
+        id: 13.into(),
         method: "account/update".to_string(),
         params: Some(serde_json::json!({
             "accountId": "acc-0",
             "status": "active"
         })),
+        trace: None,
     };
     let enable_json = serde_json::to_string(&enable_req).expect("serialize");
     let enable_resp = post_rpc(&enable_server.addr, &enable_json);
@@ -1557,25 +1286,178 @@ fn rpc_account_update_status_toggles_manual_enable_disable() {
     assert_eq!(active.status, "active");
 }
 
+/// 函数 `rpc_login_start_returns_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_login_start_returns_url() {
     let _ctx = RpcTestContext::new("rpc-login-start");
+    let _login_addr_guard = EnvGuard::set("CODEXMANAGER_LOGIN_ADDR", "127.0.0.1:0");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 4,
+        id: 4.into(),
         method: "account/login/start".to_string(),
         params: Some(serde_json::json!({"type": "chatgpt", "openBrowser": false})),
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
     let result = v.get("result").expect("result");
+    assert_eq!(result.get("type").and_then(|v| v.as_str()), Some("chatgpt"));
     let auth_url = result.get("authUrl").and_then(|v| v.as_str()).unwrap();
     let login_id = result.get("loginId").and_then(|v| v.as_str()).unwrap();
     assert!(auth_url.contains("oauth/authorize"));
     assert!(!login_id.is_empty());
 }
 
+/// 函数 `rpc_login_start_returns_api_key_variant`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn rpc_login_start_returns_api_key_variant() {
+    let _ctx = RpcTestContext::new("rpc-login-api-key");
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+
+    let req = JsonRpcRequest {
+        id: 44.into(),
+        method: "account/login/start".to_string(),
+        params: Some(serde_json::json!({"type": "apiKey", "openBrowser": false})),
+        trace: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+    assert_eq!(
+        result.get("type").and_then(|value| value.as_str()),
+        Some("apiKey")
+    );
+}
+
+/// 函数 `rpc_login_start_chatgpt_device_code_returns_user_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn rpc_login_start_chatgpt_device_code_returns_user_code() {
+    let _ctx = RpcTestContext::new("rpc-login-device-code");
+    let (issuer, request_rx, request_join) = start_mock_device_login_server();
+    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let req = JsonRpcRequest {
+        id: 4.into(),
+        method: "account/login/start".to_string(),
+        params: Some(serde_json::json!({"type": "chatgptDeviceCode", "openBrowser": false})),
+        trace: None,
+    };
+    let json = serde_json::to_string(&req).expect("serialize");
+    let v = post_rpc(&server.addr, &json);
+    let result = v.get("result").expect("result");
+    assert_eq!(
+        result.get("type").and_then(|v| v.as_str()),
+        Some("chatgptDeviceCode")
+    );
+    assert!(result
+        .get("verificationUrl")
+        .and_then(|v| v.as_str())
+        .is_some_and(|value| value.contains("/codex/device")));
+    assert_eq!(
+        result.get("userCode").and_then(|v| v.as_str()),
+        Some("ABCD-1234")
+    );
+    let login_id = result
+        .get("loginId")
+        .and_then(|v| v.as_str())
+        .expect("login id")
+        .to_string();
+
+    let mut requests = Vec::new();
+    for _ in 0..4 {
+        requests.push(
+            request_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("receive device request"),
+        );
+    }
+    request_join.join().expect("join mock device server");
+
+    assert_eq!(
+        requests[0].path, "/api/accounts/deviceauth/usercode",
+        "unexpected first request: {requests:?}"
+    );
+    assert!(requests[0].body.contains("client_id"));
+    assert_eq!(requests[1].path, "/api/accounts/deviceauth/token");
+    assert!(requests[1]
+        .body
+        .contains("\"device_auth_id\":\"device-auth-123\""));
+    assert!(requests[1].body.contains("\"user_code\":\"ABCD-1234\""));
+    assert_eq!(requests[2].path, "/oauth/token");
+    assert!(requests[2].body.contains("grant_type=authorization_code"));
+    assert_eq!(requests[3].path, "/oauth/token");
+    assert!(requests[3]
+        .body
+        .contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange"));
+
+    let status_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let status_req = JsonRpcRequest {
+        id: 5.into(),
+        method: "account/login/status".to_string(),
+        params: Some(serde_json::json!({ "loginId": login_id })),
+        trace: None,
+    };
+    let status_json = serde_json::to_string(&status_req).expect("serialize status");
+    let status_resp = post_rpc(&status_server.addr, &status_json);
+    let status_result = status_resp.get("result").expect("status result");
+    assert_eq!(
+        status_result.get("status").and_then(|value| value.as_str()),
+        Some("success")
+    );
+
+    let storage = Storage::open(_ctx.db_path()).expect("open db");
+    let accounts = storage.list_accounts().expect("list accounts");
+    assert!(
+        accounts
+            .iter()
+            .any(|account| account.id.contains("sub-device")),
+        "device login should persist an account: {accounts:?}"
+    );
+}
+
+/// 函数 `rpc_chatgpt_auth_tokens_login_read_logout_roundtrip`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     let ctx = RpcTestContext::new("rpc-chatgpt-auth-tokens-roundtrip");
@@ -1587,7 +1469,7 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     );
 
     let login_req = JsonRpcRequest {
-        id: 41,
+        id: 41.into(),
         method: "account/login/start".to_string(),
         params: Some(serde_json::json!({
             "type": "chatgptAuthTokens",
@@ -1595,35 +1477,29 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
             "chatgptAccountId": "org-embedded",
             "chatgptPlanType": "pro"
         })),
+        trace: None,
     };
     let login_json = serde_json::to_string(&login_req).expect("serialize login");
     let login_server = codexmanager_service::start_one_shot_server().expect("start server");
     let login_resp = post_rpc(&login_server.addr, &login_json);
     let login_result = login_resp.get("result").expect("login result");
-    let account_id = login_result
-        .get("accountId")
-        .and_then(|value| value.as_str())
-        .expect("account id")
-        .to_string();
     assert_eq!(
         login_result.get("type").and_then(|value| value.as_str()),
         Some("chatgptAuthTokens")
     );
 
     let read_req = JsonRpcRequest {
-        id: 42,
+        id: 42.into(),
         method: "account/read".to_string(),
         params: Some(serde_json::json!({ "refreshToken": false })),
+        trace: None,
     };
     let read_json = serde_json::to_string(&read_req).expect("serialize read");
     let read_server = codexmanager_service::start_one_shot_server().expect("start server");
     let read_resp = post_rpc(&read_server.addr, &read_json);
     let read_result = read_resp.get("result").expect("read result");
     let account = read_result.get("account").expect("current account");
-    assert_eq!(
-        read_result.get("authMode").and_then(|value| value.as_str()),
-        Some("chatgptAuthTokens")
-    );
+    assert!(read_result.get("authMode").is_none());
     assert_eq!(
         account.get("email").and_then(|value| value.as_str()),
         Some("embedded@example.com")
@@ -1640,24 +1516,18 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     );
 
     let logout_req = JsonRpcRequest {
-        id: 43,
+        id: 43.into(),
         method: "account/logout".to_string(),
         params: None,
+        trace: None,
     };
     let logout_json = serde_json::to_string(&logout_req).expect("serialize logout");
     let logout_server = codexmanager_service::start_one_shot_server().expect("start server");
     let logout_resp = post_rpc(&logout_server.addr, &logout_json);
     let logout_result = logout_resp.get("result").expect("logout result");
-    assert_eq!(
-        logout_result.get("ok").and_then(|value| value.as_bool()),
-        Some(true)
-    );
-    assert_eq!(
-        logout_result
-            .get("accountId")
-            .and_then(|value| value.as_str()),
-        Some(account_id.as_str())
-    );
+    assert!(logout_result
+        .as_object()
+        .is_some_and(|value| value.is_empty()));
 
     let read_after_logout_server =
         codexmanager_service::start_one_shot_server().expect("start server");
@@ -1666,6 +1536,13 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     assert!(read_after_logout_result.get("account").unwrap().is_null());
 
     let storage = Storage::open(ctx.db_path()).expect("open db");
+    let account_id = storage
+        .list_accounts()
+        .expect("list accounts")
+        .into_iter()
+        .find(|account| account.chatgpt_account_id.as_deref() == Some("org-embedded"))
+        .map(|account| account.id)
+        .expect("account id");
     let account = storage
         .find_account_by_id(&account_id)
         .expect("find account")
@@ -1673,11 +1550,29 @@ fn rpc_chatgpt_auth_tokens_login_read_logout_roundtrip() {
     assert_eq!(account.status, "inactive");
 }
 
+/// 函数 `rpc_chatgpt_auth_tokens_refresh_updates_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
     let _ctx = RpcTestContext::new("rpc-chatgpt-auth-tokens-refresh");
     let refreshed_access_token =
         build_access_token("sub-refresh", "refreshed@example.com", "org-refresh", "pro");
+    let subscription_response = serde_json::json!({
+        "id": "sub-record-refresh",
+        "plan_type": "plus",
+        "active_until": "2026-05-06T03:31:29Z",
+        "next_credit_grant_update": "2026-04-20T03:31:29Z",
+        "will_renew": true
+    });
     let refresh_response = serde_json::json!({
         "access_token": refreshed_access_token,
         "refresh_token": "refresh-token-new"
@@ -1686,11 +1581,16 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
         200,
         serde_json::to_string(&refresh_response).expect("serialize refresh response"),
     );
+    let (usage_base_url, subscription_rx, subscription_join) = start_mock_subscription_server(
+        200,
+        serde_json::to_string(&subscription_response).expect("serialize subscription response"),
+    );
     let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
     let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-rpc-refresh");
+    let _usage_base_url_guard = EnvGuard::set("CODEXMANAGER_USAGE_BASE_URL", &usage_base_url);
 
     let login_req = JsonRpcRequest {
-        id: 44,
+        id: 44.into(),
         method: "account/login/start".to_string(),
         params: Some(serde_json::json!({
             "type": "chatgptAuthTokens",
@@ -1703,24 +1603,25 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
             "refreshToken": "refresh-token-old",
             "chatgptAccountId": "org-refresh"
         })),
+        trace: None,
     };
     let login_json = serde_json::to_string(&login_req).expect("serialize login");
     let login_server = codexmanager_service::start_one_shot_server().expect("start server");
     let login_resp = post_rpc(&login_server.addr, &login_json);
-    let account_id = login_resp
-        .get("result")
-        .and_then(|value| value.get("accountId"))
-        .and_then(|value| value.as_str())
-        .expect("account id")
-        .to_string();
+    let login_result = login_resp.get("result").expect("login result");
+    assert_eq!(
+        login_result.get("type").and_then(|value| value.as_str()),
+        Some("chatgptAuthTokens")
+    );
 
     let refresh_req = JsonRpcRequest {
-        id: 45,
+        id: 45.into(),
         method: "account/chatgptAuthTokens/refresh".to_string(),
         params: Some(serde_json::json!({
             "reason": "unauthorized",
             "previousAccountId": "org-refresh"
         })),
+        trace: None,
     };
     let refresh_json = serde_json::to_string(&refresh_req).expect("serialize refresh");
     let refresh_server = codexmanager_service::start_one_shot_server().expect("start server");
@@ -1734,6 +1635,36 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
     );
     assert_eq!(
         refresh_result
+            .get("chatgptPlanType")
+            .and_then(|value| value.as_str()),
+        Some("plus")
+    );
+    assert_eq!(
+        refresh_result
+            .get("hasSubscription")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        refresh_result
+            .get("subscriptionPlan")
+            .and_then(|value| value.as_str()),
+        Some("plus")
+    );
+    assert_eq!(
+        refresh_result
+            .get("subscriptionExpiresAt")
+            .and_then(|value| value.as_i64()),
+        Some(1_778_038_289)
+    );
+    assert_eq!(
+        refresh_result
+            .get("subscriptionRenewsAt")
+            .and_then(|value| value.as_i64()),
+        Some(1_776_655_889)
+    );
+    assert_eq!(
+        refresh_result
             .get("accessToken")
             .and_then(|value| value.as_str()),
         Some(refreshed_access_token.as_str())
@@ -1742,1394 +1673,231 @@ fn rpc_chatgpt_auth_tokens_refresh_updates_access_token() {
     let refresh_body = refresh_rx
         .recv_timeout(Duration::from_secs(2))
         .expect("receive refresh request");
+    let subscription_request = subscription_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("receive subscription request");
     refresh_join.join().expect("join mock oauth server");
+    subscription_join
+        .join()
+        .expect("join mock subscription server");
     assert!(refresh_body.contains("grant_type=refresh_token"));
     assert!(refresh_body.contains("refresh_token=refresh-token-old"));
+    assert_eq!(
+        subscription_request.path,
+        "/subscriptions?account_id=org-refresh"
+    );
+    assert_eq!(
+        subscription_request.authorization.as_deref(),
+        Some(format!("Bearer {refreshed_access_token}").as_str())
+    );
+    assert_eq!(subscription_request.chatgpt_account_id, None);
 
     let storage =
         Storage::open(std::env::var("CODEXMANAGER_DB_PATH").expect("db path")).expect("open db");
+    let account_id = storage
+        .list_accounts()
+        .expect("list accounts")
+        .into_iter()
+        .find(|account| account.chatgpt_account_id.as_deref() == Some("org-refresh"))
+        .map(|account| account.id)
+        .expect("account id");
     let token = storage
         .find_token_by_account_id(&account_id)
         .expect("find token")
         .expect("token exists");
     assert_eq!(token.access_token, refreshed_access_token);
     assert_eq!(token.refresh_token, "refresh-token-new");
+    let subscription = storage
+        .find_account_subscription(&account_id)
+        .expect("find subscription")
+        .expect("subscription exists");
+    assert!(subscription.has_subscription);
+    assert_eq!(subscription.plan_type.as_deref(), Some("plus"));
+    assert_eq!(subscription.expires_at, Some(1_778_038_289));
+    assert_eq!(subscription.renews_at, Some(1_776_655_889));
 }
 
 #[test]
-fn rpc_account_read_refresh_token_uses_session_cookie_fallback_for_chatgpt_auth_tokens() {
-    let ctx = RpcTestContext::new("rpc-account-read-refresh-session-cookie");
-    let email = "read-refresh@example.com";
-    let account_identity = "workspace-read-refresh";
-    let expired_access_token =
-        build_access_token("subject-read-old", email, account_identity, "free");
-    let refreshed_access_token =
-        build_access_token("subject-read-new", email, account_identity, "plus");
-    let (issuer, _refresh_rx, oauth_join) =
-        start_mock_oauth_token_server(401, r#"{"error":"refresh_token_reused"}"#.to_string());
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let _client_id_guard =
-        EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-read-session-cookie");
-    let (session_url, session_rx, session_join) = start_mock_session_refresh_server(
-        serde_json::json!({
-            "accessToken": refreshed_access_token,
-            "expires": "2026-04-01T18:00:00Z"
-        })
-        .to_string(),
+fn rpc_usage_refresh_persists_subscription_fields() {
+    let ctx = RpcTestContext::new("rpc-usage-refresh-subscription");
+    let access_token = build_access_token(
+        "sub-usage-refresh",
+        "usage-refresh@example.com",
+        "org-usage-refresh",
+        "pro",
     );
-    let _session_url_guard = EnvGuard::set("CODEX_SESSION_REFRESH_URL_OVERRIDE", &session_url);
+    let subscription_response = serde_json::json!({
+        "id": "sub-record-usage-refresh",
+        "plan_type": "plus",
+        "active_until": "2026-05-06T03:31:29Z",
+        "next_credit_grant_update": "2026-04-20T03:31:29Z",
+        "will_renew": true
+    });
+    let usage_response = serde_json::json!({
+        "rate_limit": {
+            "primary_window": {
+                "used_percent": 25.0,
+                "limit_window_seconds": 18000,
+                "reset_at": 1776655889
+            },
+            "secondary_window": {
+                "used_percent": 10.0,
+                "limit_window_seconds": 604800,
+                "reset_at": 1778038289
+            }
+        },
+        "additional_rate_limits": [
+            {
+                "limit_name": "Spark",
+                "metered_feature": "codex_other",
+                "rate_limit": {
+                    "allowed": true,
+                    "limit_reached": false,
+                    "primary_window": {
+                        "used_percent": 40.0,
+                        "limit_window_seconds": 86400,
+                        "reset_at": 1776742289
+                    }
+                }
+            }
+        ]
+    });
+    let (usage_base_url, request_rx, request_join) = start_mock_usage_refresh_server(
+        serde_json::to_string(&subscription_response)
+            .expect("serialize usage refresh subscription response"),
+        serde_json::to_string(&usage_response).expect("serialize usage response"),
+    );
+    let _usage_base_url_guard = EnvGuard::set("CODEXMANAGER_USAGE_BASE_URL", &usage_base_url);
 
     let login_req = JsonRpcRequest {
-        id: 445,
+        id: 46.into(),
         method: "account/login/start".to_string(),
         params: Some(serde_json::json!({
             "type": "chatgptAuthTokens",
-            "accessToken": expired_access_token,
-            "refreshToken": "refresh-token-reused",
-            "idToken": "",
-            "cookies": "__Secure-next-auth.session-token=session-read-refresh; oai-did=device-read-123",
-            "email": email,
-            "chatgptAccountId": account_identity,
-            "workspaceId": account_identity,
+            "accessToken": access_token.clone(),
+            "chatgptAccountId": "org-usage-refresh"
         })),
+        trace: None,
     };
     let login_json = serde_json::to_string(&login_req).expect("serialize login");
     let login_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let login_resp = post_rpc(&login_server.addr, &login_json);
-    let account_id = login_resp
-        .get("result")
-        .and_then(|value| value.get("accountId"))
-        .and_then(|value| value.as_str())
-        .expect("account id")
-        .to_string();
-
-    let read_req = JsonRpcRequest {
-        id: 446,
-        method: "account/read".to_string(),
-        params: Some(serde_json::json!({ "refreshToken": true })),
-    };
-    let read_json = serde_json::to_string(&read_req).expect("serialize read");
-    let read_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let read_resp = post_rpc(&read_server.addr, &read_json);
-    let read_result = read_resp.get("result").expect("read result");
-    let account = read_result.get("account").expect("current account");
-    assert_eq!(
-        read_result.get("authMode").and_then(|value| value.as_str()),
-        Some("chatgptAuthTokens"),
-        "read response: {read_resp}"
-    );
-    assert_eq!(
-        account.get("email").and_then(|value| value.as_str()),
-        Some(email),
-        "read response: {read_resp}"
-    );
-    assert_eq!(
-        account.get("planType").and_then(|value| value.as_str()),
-        Some("plus"),
-        "read response: {read_resp}"
-    );
-
-    oauth_join.join().expect("join oauth server");
-    let cookie_header = session_rx
-        .recv_timeout(Duration::from_secs(2))
-        .expect("receive session refresh cookie");
-    session_join.join().expect("join session server");
-    assert!(
-        cookie_header.contains("__Secure-next-auth.session-token=session-read-refresh"),
-        "unexpected cookie header: {cookie_header}"
-    );
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    let updated_token = storage
-        .find_token_by_account_id(&account_id)
-        .expect("find token")
-        .expect("token exists");
-    assert_eq!(updated_token.access_token, refreshed_access_token);
-    assert_eq!(updated_token.refresh_token, "refresh-token-reused");
-}
-
-#[test]
-fn rpc_account_auth_recover_silently_refreshes_and_reactivates_account() {
-    let ctx = RpcTestContext::new("rpc-account-auth-recover-silent");
-    let refreshed_access_token =
-        build_access_token("sub-recover", "recovered@example.com", "org-recover", "pro");
-    let refresh_response = serde_json::json!({
-        "access_token": refreshed_access_token,
-        "refresh_token": "refresh-token-recovered"
-    });
-    let (issuer, refresh_rx, refresh_join) = start_mock_oauth_token_server(
-        200,
-        serde_json::to_string(&refresh_response).expect("serialize refresh response"),
-    );
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-auth-recover");
-
-    let login_req = JsonRpcRequest {
-        id: 46,
-        method: "account/login/start".to_string(),
-        params: Some(serde_json::json!({
-            "type": "chatgptAuthTokens",
-            "accessToken": build_access_token(
-                "sub-recover",
-                "initial-recover@example.com",
-                "org-recover",
-                "pro"
-            ),
-            "refreshToken": "refresh-token-old",
-            "chatgptAccountId": "org-recover"
-        })),
-    };
-    let login_json = serde_json::to_string(&login_req).expect("serialize login");
-    let login_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let login_resp = post_rpc(&login_server.addr, &login_json);
-    let account_id = login_resp
-        .get("result")
-        .and_then(|value| value.get("accountId"))
-        .and_then(|value| value.as_str())
-        .expect("account id")
-        .to_string();
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    storage
-        .update_account_status(&account_id, "unavailable")
-        .expect("mark unavailable");
-
-    let recover_req = JsonRpcRequest {
-        id: 47,
-        method: "account/auth/recover".to_string(),
-        params: Some(serde_json::json!({
-            "accountId": account_id
-        })),
-    };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
-    assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("recovered"),
-        "recover response: {recover_resp}"
-    );
-    assert_eq!(
-        recover_result
-            .get("accountId")
-            .and_then(|value| value.as_str()),
-        Some(account_id.as_str())
-    );
-
-    let refresh_body = refresh_rx
-        .recv_timeout(Duration::from_secs(2))
-        .expect("receive refresh request");
-    refresh_join.join().expect("join mock oauth server");
-    assert!(refresh_body.contains("grant_type=refresh_token"));
-    assert!(refresh_body.contains("refresh_token=refresh-token-old"));
-
-    let updated_account = storage
-        .find_account_by_id(&account_id)
-        .expect("find account")
-        .expect("account exists");
-    assert_eq!(updated_account.status, "active");
-
-    let updated_token = storage
-        .find_token_by_account_id(&account_id)
-        .expect("find token")
-        .expect("token exists");
-    assert_eq!(updated_token.access_token, refreshed_access_token);
-    assert_eq!(updated_token.refresh_token, "refresh-token-recovered");
-}
-
-#[test]
-fn rpc_account_auth_recover_refreshes_target_account_instead_of_current_auth_account() {
-    let ctx = RpcTestContext::new("rpc-account-auth-recover-target-account");
-    let refreshed_access_token = build_access_token(
-        "sub-target-recover",
-        "target-recover@example.com",
-        "org-target-recover",
-        "plus",
-    );
-    let refresh_response = serde_json::json!({
-        "access_token": refreshed_access_token,
-        "refresh_token": "refresh-token-target-new"
-    });
-    let (issuer, refresh_rx, refresh_join) = start_mock_oauth_token_server(
-        200,
-        serde_json::to_string(&refresh_response).expect("serialize refresh response"),
-    );
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-target-recover");
-
-    let current_login_req = JsonRpcRequest {
-        id: 471,
-        method: "account/login/start".to_string(),
-        params: Some(serde_json::json!({
-            "type": "chatgptAuthTokens",
-            "accessToken": build_access_token(
-                "sub-current-auth",
-                "current-auth@example.com",
-                "org-current-auth",
-                "pro"
-            ),
-            "refreshToken": "refresh-token-current-old",
-            "chatgptAccountId": "org-current-auth"
-        })),
-    };
-    let current_login_json =
-        serde_json::to_string(&current_login_req).expect("serialize current login");
-    let current_login_server =
-        codexmanager_service::start_one_shot_server().expect("start current login server");
-    let current_login_resp = post_rpc(&current_login_server.addr, &current_login_json);
-    let current_account_id = current_login_resp
-        .get("result")
-        .and_then(|value| value.get("accountId"))
-        .and_then(|value| value.as_str())
-        .expect("current account id")
-        .to_string();
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    let now = now_ts();
-    storage
-        .insert_account(&Account {
-            id: "acc-target-recover".to_string(),
-            label: "target-recover@example.com".to_string(),
-            issuer: issuer.clone(),
-            chatgpt_account_id: Some("org-target-recover".to_string()),
-            workspace_id: Some("workspace-target-recover".to_string()),
-            group_name: Some("TEAM".to_string()),
-            sort: 1,
-            status: "unavailable".to_string(),
-            created_at: now,
-            updated_at: now,
-        })
-        .expect("insert target account");
-    storage
-        .insert_token(&codexmanager_core::storage::Token {
-            account_id: "acc-target-recover".to_string(),
-            id_token: build_access_token(
-                "sub-target-recover",
-                "target-recover@example.com",
-                "org-target-recover",
-                "free",
-            ),
-            access_token: build_access_token(
-                "sub-target-recover",
-                "target-recover@example.com",
-                "org-target-recover",
-                "free",
-            ),
-            refresh_token: "refresh-token-target-old".to_string(),
-            api_key_access_token: None,
-            last_refresh: now,
-        })
-        .expect("insert target token");
-
-    let recover_req = JsonRpcRequest {
-        id: 472,
-        method: "account/auth/recover".to_string(),
-        params: Some(serde_json::json!({
-            "accountId": "acc-target-recover",
-            "openBrowser": false
-        })),
-    };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server =
-        codexmanager_service::start_one_shot_server().expect("start recover server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
-    assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("recovered"),
-        "recover response: {recover_resp}"
-    );
-    assert_eq!(
-        recover_result
-            .get("accountId")
-            .and_then(|value| value.as_str()),
-        Some("acc-target-recover")
-    );
-
-    let refresh_body = refresh_rx
-        .recv_timeout(Duration::from_secs(2))
-        .expect("receive refresh request");
-    refresh_join.join().expect("join mock oauth server");
-    assert!(
-        refresh_body.contains("refresh_token=refresh-token-target-old"),
-        "unexpected refresh body: {refresh_body}"
-    );
-
-    let target_token = storage
-        .find_token_by_account_id("acc-target-recover")
-        .expect("find target token")
-        .expect("target token exists");
-    assert_eq!(target_token.access_token, refreshed_access_token);
-    assert_eq!(target_token.refresh_token, "refresh-token-target-new");
-
-    let current_token = storage
-        .find_token_by_account_id(&current_account_id)
-        .expect("find current token")
-        .expect("current token exists");
-    assert_eq!(current_token.refresh_token, "refresh-token-current-old");
-}
-
-#[test]
-fn rpc_account_auth_recover_returns_error_when_no_noninteractive_recovery_available() {
-    let ctx = RpcTestContext::new("rpc-account-auth-recover-login");
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    storage.init().expect("init schema");
-    let now = now_ts();
-    storage
-        .insert_account(&Account {
-            id: "acc-recover-login".to_string(),
-            label: "Recover Login".to_string(),
-            issuer: "https://auth.openai.com".to_string(),
-            chatgpt_account_id: Some("chatgpt-recover-login".to_string()),
-            workspace_id: Some("workspace-recover-login".to_string()),
-            group_name: Some("TEAM".to_string()),
-            sort: 0,
-            status: "unavailable".to_string(),
-            created_at: now,
-            updated_at: now,
-        })
-        .expect("insert account");
-
-    let recover_req = JsonRpcRequest {
-        id: 48,
-        method: "account/auth/recover".to_string(),
-        params: Some(serde_json::json!({
-            "accountId": "acc-recover-login",
-            "openBrowser": false
-        })),
-    };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
-    assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        None
-    );
-    let error_message = recover_result
-        .get("error")
-        .and_then(|value| value.as_str())
-        .expect("error message");
-    assert!(
-        error_message.contains("missing recoverable email")
-            || error_message.contains("register service account not found"),
-        "unexpected error: {error_message}"
-    );
-}
-
-#[test]
-fn rpc_account_auth_recover_falls_back_to_register_service_refresh() {
-    let ctx = RpcTestContext::new("rpc-account-auth-recover-register-fallback");
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-id-register-fallback");
-    let email = "recover-register@example.com";
-    let expired_access_token = build_access_token(
-        "subject-register-old",
-        email,
-        "chatgpt-register-fallback",
-        "free",
-    );
-    let refreshed_access_token = build_access_token(
-        "subject-register-new",
-        email,
-        "chatgpt-register-fallback",
-        "plus",
-    );
-    let refreshed_id_token = build_access_token(
-        "subject-register-new",
-        email,
-        "chatgpt-register-fallback",
-        "plus",
-    );
-    let (issuer, _refresh_rx, oauth_join) = start_mock_oauth_token_server(
-        401,
-        r#"{"error":"invalid_grant","error_description":"refresh token expired"}"#.to_string(),
-    );
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let (register_url, register_rx, register_join) = start_mock_register_service_server(
-        email.to_string(),
-        refreshed_access_token.clone(),
-        "refresh-token-register-new".to_string(),
-        refreshed_id_token.clone(),
-        "cf_clearance=register-cookie; oai-did=device-id".to_string(),
-    );
-    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    storage.init().expect("init schema");
-    let now = now_ts();
-    storage
-        .insert_account(&Account {
-            id: "acc-recover-register".to_string(),
-            label: email.to_string(),
-            issuer: issuer.clone(),
-            chatgpt_account_id: Some("chatgpt-register-fallback".to_string()),
-            workspace_id: Some("workspace-register-fallback".to_string()),
-            group_name: Some("TEAM".to_string()),
-            sort: 0,
-            status: "unavailable".to_string(),
-            created_at: now,
-            updated_at: now,
-        })
-        .expect("insert account");
-    storage
-        .insert_token(&codexmanager_core::storage::Token {
-            account_id: "acc-recover-register".to_string(),
-            id_token: expired_access_token.clone(),
-            access_token: expired_access_token,
-            refresh_token: "refresh-token-expired".to_string(),
-            api_key_access_token: None,
-            last_refresh: now,
-        })
-        .expect("insert token");
-
-    let recover_req = JsonRpcRequest {
-        id: 49,
-        method: "account/auth/recover".to_string(),
-        params: Some(serde_json::json!({
-            "accountId": "acc-recover-register",
-            "openBrowser": false
-        })),
-    };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
-    assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("recovered")
-    );
-    assert_eq!(
-        recover_result
-            .get("loginId")
-            .and_then(|value| value.as_str()),
-        None
-    );
-    assert_eq!(
-        recover_result
-            .get("authUrl")
-            .and_then(|value| value.as_str()),
-        None
-    );
-
-    oauth_join.join().expect("join oauth server");
-    let register_requests = (0..3)
-        .map(|_| {
-            register_rx
-                .recv_timeout(Duration::from_secs(2))
-                .expect("receive register request")
-        })
-        .collect::<Vec<_>>();
-    register_join.join().expect("join register server");
-    assert_eq!(
-        register_requests,
-        vec![
-            (
-                "GET".to_string(),
-                "/api/accounts?page=1&page_size=20&search=recover-register%40example.com"
-                    .to_string(),
-            ),
-            ("POST".to_string(), "/api/accounts/123/refresh".to_string()),
-            ("GET".to_string(), "/api/accounts/123/tokens".to_string()),
-        ]
-    );
-
-    let updated_account = storage
-        .find_account_by_id("acc-recover-register")
-        .expect("find account")
-        .expect("account exists");
-    assert_eq!(updated_account.status, "active");
-
-    let updated_token = storage
-        .find_token_by_account_id("acc-recover-register")
-        .expect("find token")
-        .expect("token exists");
-    assert_eq!(updated_token.access_token, refreshed_access_token);
-    assert_eq!(updated_token.refresh_token, "refresh-token-register-new");
-    assert_eq!(updated_token.id_token, refreshed_id_token);
-}
-
-#[test]
-fn rpc_account_auth_recover_falls_back_to_register_account_id_when_email_misses() {
-    let ctx = RpcTestContext::new("rpc-account-auth-recover-register-account-id");
-    let local_email = "guavrybt52g@wwjjff.qzz.io";
-    let remote_email = "recover-register@example.com";
-    let account_identity = "chatgpt-register-fallback";
-    let expired_access_token = build_access_token(
-        "subject-register-old",
-        local_email,
-        account_identity,
-        "free",
-    );
-    let refreshed_access_token = build_access_token(
-        "subject-register-new",
-        remote_email,
-        account_identity,
-        "plus",
-    );
-    let refreshed_id_token = build_access_token(
-        "subject-register-new",
-        remote_email,
-        account_identity,
-        "plus",
-    );
-    let (issuer, _refresh_rx, oauth_join) = start_mock_oauth_token_server(
-        401,
-        r#"{"error":"invalid_grant","error_description":"refresh token expired"}"#.to_string(),
-    );
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let (register_url, register_rx, register_join) =
-        start_mock_register_service_server_email_miss_account_match(
-            local_email.to_string(),
-            account_identity.to_string(),
-            remote_email.to_string(),
-            refreshed_access_token.clone(),
-            "refresh-token-register-new".to_string(),
-            refreshed_id_token.clone(),
-            "cf_clearance=register-cookie; oai-did=device-id".to_string(),
-        );
-    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    storage.init().expect("init schema");
-    let now = now_ts();
-    storage
-        .insert_account(&Account {
-            id: "acc-recover-register-account-id".to_string(),
-            label: local_email.to_string(),
-            issuer: issuer.clone(),
-            chatgpt_account_id: Some(account_identity.to_string()),
-            workspace_id: Some("workspace-register-fallback".to_string()),
-            group_name: Some("TEAM".to_string()),
-            sort: 0,
-            status: "unavailable".to_string(),
-            created_at: now,
-            updated_at: now,
-        })
-        .expect("insert account");
-    storage
-        .insert_token(&codexmanager_core::storage::Token {
-            account_id: "acc-recover-register-account-id".to_string(),
-            id_token: expired_access_token.clone(),
-            access_token: expired_access_token,
-            refresh_token: "refresh-token-expired".to_string(),
-            api_key_access_token: None,
-            last_refresh: now,
-        })
-        .expect("insert token");
-
-    let recover_req = JsonRpcRequest {
-        id: 50,
-        method: "account/auth/recover".to_string(),
-        params: Some(serde_json::json!({
-            "accountId": "acc-recover-register-account-id",
-            "openBrowser": false
-        })),
-    };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server = codexmanager_service::start_one_shot_server().expect("start server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
-    assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("recovered")
-    );
-
-    oauth_join.join().expect("join oauth server");
-    let register_requests = (0..4)
-        .map(|_| {
-            register_rx
-                .recv_timeout(Duration::from_secs(2))
-                .expect("receive register request")
-        })
-        .collect::<Vec<_>>();
-    register_join.join().expect("join register server");
-    assert_eq!(
-        register_requests,
-        vec![
-            (
-                "GET".to_string(),
-                "/api/accounts?page=1&page_size=20&search=guavrybt52g%40wwjjff.qzz.io".to_string(),
-            ),
-            (
-                "GET".to_string(),
-                "/api/accounts?page=1&page_size=20&search=chatgpt-register-fallback".to_string(),
-            ),
-            ("POST".to_string(), "/api/accounts/321/refresh".to_string()),
-            ("GET".to_string(), "/api/accounts/321/tokens".to_string()),
-        ]
-    );
-
-    let updated_token = storage
-        .find_token_by_account_id("acc-recover-register-account-id")
-        .expect("find token")
-        .expect("token exists");
-    assert_eq!(updated_token.access_token, refreshed_access_token);
-    assert_eq!(updated_token.refresh_token, "refresh-token-register-new");
-}
-
-#[test]
-fn rpc_account_auth_recover_falls_back_to_session_cookies_when_refresh_token_reused() {
-    let ctx = RpcTestContext::new("rpc-account-auth-recover-session-cookie");
-    let email = "recover-session@example.com";
-    let account_identity = "workspace-session-recover";
-    let expired_access_token =
-        build_access_token("subject-session-old", email, account_identity, "free");
-    let refreshed_access_token =
-        build_access_token("subject-session-new", email, account_identity, "plus");
-    let (issuer, _refresh_rx, oauth_join) =
-        start_mock_oauth_token_server(401, r#"{"error":"refresh_token_reused"}"#.to_string());
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-session-cookie");
-    let (session_url, session_rx, session_join) = start_mock_session_refresh_server(
-        serde_json::json!({
-            "accessToken": refreshed_access_token,
-            "expires": "2026-03-26T16:00:00Z"
-        })
-        .to_string(),
-    );
-    let _session_url_guard = EnvGuard::set("CODEX_SESSION_REFRESH_URL_OVERRIDE", &session_url);
-
-    let login_server = codexmanager_service::start_one_shot_server().expect("start login server");
-    let login_req = JsonRpcRequest {
-        id: 60,
-        method: "account/login/start".to_string(),
-        params: Some(serde_json::json!({
-            "type": "chatgptAuthTokens",
-            "accessToken": expired_access_token,
-            "refreshToken": "refresh-token-reused",
-            "idToken": "",
-            "cookies": "__Secure-next-auth.session-token=session-recover; oai-did=device-123",
-            "email": email,
-            "chatgptAccountId": account_identity,
-            "workspaceId": account_identity,
-        })),
-    };
-    let login_json = serde_json::to_string(&login_req).expect("serialize login");
     let login_resp = post_rpc(&login_server.addr, &login_json);
     let login_result = login_resp.get("result").expect("login result");
-    let account_id = login_result
-        .get("accountId")
-        .and_then(|value| value.as_str())
+    assert_eq!(
+        login_result.get("type").and_then(|value| value.as_str()),
+        Some("chatgptAuthTokens")
+    );
+
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    let account_id = storage
+        .list_accounts()
+        .expect("list accounts")
+        .into_iter()
+        .find(|account| account.chatgpt_account_id.as_deref() == Some("org-usage-refresh"))
+        .map(|account| account.id)
         .expect("account id");
 
-    let recover_req = JsonRpcRequest {
-        id: 61,
-        method: "account/auth/recover".to_string(),
+    let refresh_req = JsonRpcRequest {
+        id: 47.into(),
+        method: "account/usage/refresh".to_string(),
         params: Some(serde_json::json!({
-            "accountId": account_id,
-            "openBrowser": false
+            "accountId": account_id.clone()
         })),
+        trace: None,
     };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server =
-        codexmanager_service::start_one_shot_server().expect("start recover server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
+    let refresh_json = serde_json::to_string(&refresh_req).expect("serialize usage refresh");
+    let refresh_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let refresh_resp = post_rpc(&refresh_server.addr, &refresh_json);
     assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("recovered")
+        refresh_resp
+            .get("result")
+            .and_then(|value| value.get("ok"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
     );
 
-    oauth_join.join().expect("join oauth server");
-    let cookie_header = session_rx
+    let first_request = request_rx
         .recv_timeout(Duration::from_secs(2))
-        .expect("receive session refresh cookie");
-    session_join.join().expect("join session server");
-    assert!(
-        cookie_header.contains("__Secure-next-auth.session-token=session-recover"),
-        "unexpected cookie header: {cookie_header}"
-    );
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    let updated_token = storage
-        .find_token_by_account_id(account_id)
-        .expect("find token")
-        .expect("token exists");
-    assert_eq!(
-        updated_token.access_token,
-        build_access_token("subject-session-new", email, account_identity, "plus")
-    );
-    assert_eq!(updated_token.refresh_token, "refresh-token-reused");
-}
-
-#[test]
-fn rpc_register_import_by_email_uses_remote_session_token_as_cookie_fallback() {
-    let ctx = RpcTestContext::new("rpc-register-import-session-token-fallback");
-    let email = "import-session@example.com";
-    let account_identity = "workspace-session-import";
-    let imported_access_token = build_access_token(
-        "subject-session-import-old",
-        email,
-        account_identity,
-        "free",
-    );
-    let refreshed_access_token = build_access_token(
-        "subject-session-import-new",
-        email,
-        account_identity,
-        "plus",
-    );
-    let remote_session_token = "remote-session-token-777";
-
-    let (register_url, register_rx, register_join) =
-        start_mock_register_service_server_with_session_token_only(
-            email.to_string(),
-            imported_access_token.clone(),
-            remote_session_token.to_string(),
-        );
-    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
-
-    let import_req = JsonRpcRequest {
-        id: 62,
-        method: "account/register/importByEmail".to_string(),
-        params: Some(serde_json::json!({
-            "email": email
-        })),
-    };
-    let import_json = serde_json::to_string(&import_req).expect("serialize import request");
-    let import_server = codexmanager_service::start_one_shot_server().expect("start import server");
-    let import_resp = post_rpc(&import_server.addr, &import_json);
-    let import_result = import_resp.get("result").expect("import result");
-    let account_id = import_result
-        .get("accountId")
-        .and_then(|value| value.as_str())
-        .expect("imported account id")
-        .to_string();
-
-    let (session_url, session_rx, session_join) = start_mock_session_refresh_server(
-        serde_json::json!({
-            "accessToken": refreshed_access_token,
-            "expires": "2026-04-01T18:00:00Z"
-        })
-        .to_string(),
-    );
-    let _session_url_guard = EnvGuard::set("CODEX_SESSION_REFRESH_URL_OVERRIDE", &session_url);
-
-    let recover_req = JsonRpcRequest {
-        id: 63,
-        method: "account/auth/recover".to_string(),
-        params: Some(serde_json::json!({
-            "accountId": account_id,
-            "openBrowser": false
-        })),
-    };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server =
-        codexmanager_service::start_one_shot_server().expect("start recover server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
-    assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("recovered")
-    );
-
-    let register_requests = (0..2)
-        .map(|_| {
-            register_rx
-                .recv_timeout(Duration::from_secs(2))
-                .expect("receive register request")
-        })
-        .collect::<Vec<_>>();
-    register_join.join().expect("join register server");
-    assert_eq!(
-        register_requests,
-        vec![
-            (
-                "GET".to_string(),
-                "/api/accounts?page=1&page_size=20&search=import-session%40example.com".to_string(),
-            ),
-            ("GET".to_string(), "/api/accounts/777/tokens".to_string()),
-        ]
-    );
-
-    let cookie_header = session_rx
+        .expect("receive first usage refresh request");
+    let second_request = request_rx
         .recv_timeout(Duration::from_secs(2))
-        .expect("receive session refresh cookie");
-    session_join.join().expect("join session server");
-    assert!(
-        cookie_header.contains("__Secure-next-auth.session-token=remote-session-token-777"),
-        "unexpected cookie header: {cookie_header}"
+        .expect("receive second usage refresh request");
+    request_join.join().expect("join usage refresh server");
+
+    assert_eq!(
+        first_request.path,
+        "/subscriptions?account_id=org-usage-refresh"
+    );
+    assert_eq!(
+        first_request.authorization.as_deref(),
+        Some(format!("Bearer {access_token}").as_str())
+    );
+    assert_eq!(first_request.chatgpt_account_id, None);
+    assert_eq!(second_request.path, "/api/codex/usage");
+    assert_eq!(
+        second_request.authorization.as_deref(),
+        Some(format!("Bearer {access_token}").as_str())
+    );
+    assert_eq!(
+        second_request.chatgpt_account_id.as_deref(),
+        Some("org-usage-refresh")
     );
 
     let storage = Storage::open(ctx.db_path()).expect("open db");
-    let updated_token = storage
-        .find_token_by_account_id(&account_id)
-        .expect("find token")
-        .expect("token exists");
-    assert_eq!(updated_token.access_token, refreshed_access_token);
-    assert_eq!(updated_token.refresh_token, "");
+    let subscription = storage
+        .find_account_subscription(&account_id)
+        .expect("find subscription")
+        .expect("subscription exists");
+    assert!(subscription.has_subscription);
+    assert_eq!(subscription.plan_type.as_deref(), Some("plus"));
+    assert_eq!(subscription.expires_at, Some(1_778_038_289));
+    assert_eq!(subscription.renews_at, Some(1_776_655_889));
+
+    let snapshot = storage
+        .latest_usage_snapshot_for_account(&account_id)
+        .expect("find usage snapshot")
+        .expect("usage snapshot exists");
+    assert_eq!(snapshot.used_percent, Some(25.0));
+    assert_eq!(snapshot.window_minutes, Some(300));
+    assert_eq!(snapshot.secondary_used_percent, Some(10.0));
+    assert_eq!(snapshot.secondary_window_minutes, Some(10080));
+    let credits: serde_json::Value = serde_json::from_str(
+        snapshot
+            .credits_json
+            .as_deref()
+            .expect("credits json with extra rate limits"),
+    )
+    .expect("parse credits json");
+    let extras = credits["_codexmanager_extra_rate_limits"]
+        .as_array()
+        .expect("extra rate limits array");
+    assert_eq!(extras.len(), 1);
+    assert_eq!(extras[0]["source_key"], "codex_other");
+    assert_eq!(extras[0]["limit_name"], "Spark");
+    assert_eq!(extras[0]["primary_window"]["used_percent"], 40.0);
 }
 
-#[test]
-fn rpc_account_auth_recover_uses_remote_manager_when_configured() {
-    let ctx = RpcTestContext::new("rpc-account-auth-recover-remote-manager");
-    let email = "recover-remote@example.com";
-    let chatgpt_account_id = "chatgpt-remote-recovery";
-    let workspace_id = "workspace-remote-recovery";
-    let expired_access_token =
-        build_access_token("subject-remote-old", email, chatgpt_account_id, "free");
-    let refreshed_access_token =
-        build_access_token("subject-remote-new", email, chatgpt_account_id, "plus");
-    let refreshed_id_token =
-        build_access_token("subject-remote-new", email, chatgpt_account_id, "plus");
-    let (issuer, _refresh_rx, oauth_join) =
-        start_mock_oauth_token_server(401, r#"{"error":"refresh_token_reused"}"#.to_string());
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-remote-manager");
-    let (register_url, register_rx, register_join) = start_mock_register_service_probe_server();
-    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
-    let (recovery_url, recovery_rx, recovery_join) = start_mock_recovery_manager_server(
-        email.to_string(),
-        "remote-account-1".to_string(),
-        chatgpt_account_id.to_string(),
-        workspace_id.to_string(),
-        refreshed_access_token.clone(),
-        "refresh-token-remote-new".to_string(),
-        refreshed_id_token.clone(),
-    );
-    let _recovery_guard = EnvGuard::set("CODEXMANAGER_ACCOUNT_RECOVERY_SOURCE_URL", &recovery_url);
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    storage.init().expect("init schema");
-    let now = now_ts();
-    storage
-        .insert_account(&Account {
-            id: "acc-recover-remote-manager".to_string(),
-            label: email.to_string(),
-            issuer: issuer.clone(),
-            chatgpt_account_id: Some(chatgpt_account_id.to_string()),
-            workspace_id: Some(workspace_id.to_string()),
-            group_name: Some("TEAM".to_string()),
-            sort: 0,
-            status: "unavailable".to_string(),
-            created_at: now,
-            updated_at: now,
-        })
-        .expect("insert account");
-    storage
-        .insert_token(&codexmanager_core::storage::Token {
-            account_id: "acc-recover-remote-manager".to_string(),
-            id_token: expired_access_token.clone(),
-            access_token: expired_access_token,
-            refresh_token: "refresh-token-reused".to_string(),
-            api_key_access_token: None,
-            last_refresh: now,
-        })
-        .expect("insert token");
-
-    let recover_req = JsonRpcRequest {
-        id: 62,
-        method: "account/auth/recover".to_string(),
-        params: Some(serde_json::json!({
-            "accountId": "acc-recover-remote-manager",
-            "openBrowser": false
-        })),
-    };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server =
-        codexmanager_service::start_one_shot_server().expect("start recover server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
-    assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("recovered")
-    );
-
-    oauth_join.join().expect("join oauth server");
-    register_join.join().expect("join register miss server");
-    assert!(
-        register_rx
-            .recv_timeout(Duration::from_millis(200))
-            .is_err(),
-        "register service should not be used when remote recovery source is configured"
-    );
-
-    let recovery_requests = (0..2)
-        .map(|_| {
-            recovery_rx
-                .recv_timeout(Duration::from_secs(2))
-                .expect("receive recovery manager request")
-        })
-        .collect::<Vec<_>>();
-    recovery_join.join().expect("join recovery manager server");
-    assert_eq!(recovery_requests[0].0, "account/list");
-    assert_eq!(recovery_requests[1].0, "account/exportData");
-    assert_eq!(
-        recovery_requests[1]
-            .1
-            .get("params")
-            .and_then(|value| value.get("accountIds"))
-            .and_then(|value| value.as_array())
-            .expect("accountIds"),
-        &vec![serde_json::json!("remote-account-1")]
-    );
-
-    let updated_account = storage
-        .find_account_by_id("acc-recover-remote-manager")
-        .expect("find account")
-        .expect("account exists");
-    assert_eq!(updated_account.status, "active");
-
-    let updated_token = storage
-        .find_token_by_account_id("acc-recover-remote-manager")
-        .expect("find token")
-        .expect("token exists");
-    assert_eq!(updated_token.access_token, refreshed_access_token);
-    assert_eq!(updated_token.refresh_token, "refresh-token-remote-new");
-    assert_eq!(updated_token.id_token, refreshed_id_token);
-}
-
-#[test]
-fn rpc_account_auth_recover_prefers_remote_manager_when_configured() {
-    let ctx = RpcTestContext::new("rpc-account-auth-recover-prefer-remote-manager");
-    let email = "recover-preferred@example.com";
-    let chatgpt_account_id = "chatgpt-remote-preferred";
-    let workspace_id = "workspace-remote-preferred";
-    let expired_access_token =
-        build_access_token("subject-remote-old", email, chatgpt_account_id, "free");
-    let refreshed_access_token =
-        build_access_token("subject-remote-new", email, chatgpt_account_id, "plus");
-    let refreshed_id_token =
-        build_access_token("subject-remote-new", email, chatgpt_account_id, "plus");
-    let (issuer, _refresh_rx, oauth_join) =
-        start_mock_oauth_token_server(401, r#"{"error":"refresh_token_reused"}"#.to_string());
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-remote-preferred");
-    let (register_url, register_rx, register_join) = start_mock_register_service_probe_server();
-    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
-    let (recovery_url, recovery_rx, recovery_join) = start_mock_recovery_manager_server(
-        email.to_string(),
-        "remote-account-9".to_string(),
-        chatgpt_account_id.to_string(),
-        workspace_id.to_string(),
-        refreshed_access_token.clone(),
-        "refresh-token-remote-new".to_string(),
-        refreshed_id_token.clone(),
-    );
-    let _recovery_guard = EnvGuard::set("CODEXMANAGER_ACCOUNT_RECOVERY_SOURCE_URL", &recovery_url);
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    storage.init().expect("init schema");
-    let now = now_ts();
-    storage
-        .insert_account(&Account {
-            id: "acc-recover-remote-preferred".to_string(),
-            label: email.to_string(),
-            issuer: issuer.clone(),
-            chatgpt_account_id: Some(chatgpt_account_id.to_string()),
-            workspace_id: Some(workspace_id.to_string()),
-            group_name: Some("TEAM".to_string()),
-            sort: 0,
-            status: "unavailable".to_string(),
-            created_at: now,
-            updated_at: now,
-        })
-        .expect("insert account");
-    storage
-        .insert_token(&codexmanager_core::storage::Token {
-            account_id: "acc-recover-remote-preferred".to_string(),
-            id_token: expired_access_token.clone(),
-            access_token: expired_access_token,
-            refresh_token: "refresh-token-reused".to_string(),
-            api_key_access_token: None,
-            last_refresh: now,
-        })
-        .expect("insert token");
-
-    let recover_req = JsonRpcRequest {
-        id: 63,
-        method: "account/auth/recover".to_string(),
-        params: Some(serde_json::json!({
-            "accountId": "acc-recover-remote-preferred",
-            "openBrowser": false
-        })),
-    };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server =
-        codexmanager_service::start_one_shot_server().expect("start recover server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
-    assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("recovered")
-    );
-
-    oauth_join.join().expect("join oauth server");
-    recovery_join.join().expect("join recovery manager server");
-    let recovery_requests = (0..2)
-        .map(|_| {
-            recovery_rx
-                .recv_timeout(Duration::from_secs(2))
-                .expect("receive recovery manager request")
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(recovery_requests[0].0, "account/list");
-    assert_eq!(recovery_requests[1].0, "account/exportData");
-
-    register_join.join().expect("join register server");
-    assert!(
-        register_rx
-            .recv_timeout(Duration::from_millis(200))
-            .is_err(),
-        "register service should not be used when remote recovery source is configured"
-    );
-
-    let updated_token = storage
-        .find_token_by_account_id("acc-recover-remote-preferred")
-        .expect("find token")
-        .expect("token exists");
-    assert_eq!(updated_token.access_token, refreshed_access_token);
-    assert_eq!(updated_token.refresh_token, "refresh-token-remote-new");
-    assert_eq!(updated_token.id_token, refreshed_id_token);
-}
-
-#[test]
-fn rpc_account_auth_recover_remote_manager_preserves_cookie_only_session_for_followup_refresh() {
-    let ctx = RpcTestContext::new("rpc-account-auth-recover-remote-manager-cookie");
-    let email = "recover-remote-cookie@example.com";
-    let chatgpt_account_id = "chatgpt-remote-cookie";
-    let workspace_id = "workspace-remote-cookie";
-    let expired_access_token = build_access_token(
-        "subject-remote-cookie-old",
-        email,
-        chatgpt_account_id,
-        "free",
-    );
-    let imported_access_token = build_access_token(
-        "subject-remote-cookie-imported",
-        email,
-        chatgpt_account_id,
-        "free",
-    );
-    let refreshed_access_token = build_access_token(
-        "subject-remote-cookie-new",
-        email,
-        chatgpt_account_id,
-        "plus",
-    );
-    let (issuer, _refresh_rx, oauth_join) =
-        start_mock_oauth_token_server(401, r#"{"error":"refresh_token_reused"}"#.to_string());
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let _client_id_guard = EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-remote-cookie");
-    let (register_url, register_rx, register_join) = start_mock_register_service_probe_server();
-    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
-    let (recovery_url, recovery_rx, recovery_join) =
-        start_mock_recovery_manager_server_with_cookies(
-            email.to_string(),
-            "remote-account-cookie-1".to_string(),
-            chatgpt_account_id.to_string(),
-            workspace_id.to_string(),
-            imported_access_token.clone(),
-            "".to_string(),
-            "__Secure-next-auth.session-token=remote-cookie-session; oai-did=remote-cookie-device"
-                .to_string(),
-        );
-    let _recovery_guard = EnvGuard::set("CODEXMANAGER_ACCOUNT_RECOVERY_SOURCE_URL", &recovery_url);
-    let (session_url, session_rx, session_join) = start_mock_session_refresh_server(
-        serde_json::json!({
-            "accessToken": refreshed_access_token,
-            "expires": "2026-04-01T18:00:00Z"
-        })
-        .to_string(),
-    );
-    let _session_url_guard = EnvGuard::set("CODEX_SESSION_REFRESH_URL_OVERRIDE", &session_url);
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    storage.init().expect("init schema");
-    let now = now_ts();
-    storage
-        .insert_account(&Account {
-            id: "acc-recover-remote-cookie".to_string(),
-            label: email.to_string(),
-            issuer: issuer.clone(),
-            chatgpt_account_id: Some(chatgpt_account_id.to_string()),
-            workspace_id: Some(workspace_id.to_string()),
-            group_name: Some("TEAM".to_string()),
-            sort: 0,
-            status: "unavailable".to_string(),
-            created_at: now,
-            updated_at: now,
-        })
-        .expect("insert account");
-    storage
-        .insert_token(&codexmanager_core::storage::Token {
-            account_id: "acc-recover-remote-cookie".to_string(),
-            id_token: expired_access_token.clone(),
-            access_token: expired_access_token,
-            refresh_token: "refresh-token-reused".to_string(),
-            api_key_access_token: None,
-            last_refresh: now,
-        })
-        .expect("insert token");
-
-    let recover_req = JsonRpcRequest {
-        id: 631,
-        method: "account/auth/recover".to_string(),
-        params: Some(serde_json::json!({
-            "accountId": "acc-recover-remote-cookie",
-            "openBrowser": false
-        })),
-    };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server =
-        codexmanager_service::start_one_shot_server().expect("start recover server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
-    assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("recovered"),
-        "recover response: {recover_resp}"
-    );
-
-    let read_req = JsonRpcRequest {
-        id: 632,
-        method: "account/read".to_string(),
-        params: Some(serde_json::json!({ "refreshToken": true })),
-    };
-    let read_json = serde_json::to_string(&read_req).expect("serialize read");
-    let read_server = codexmanager_service::start_one_shot_server().expect("start read server");
-    let read_resp = post_rpc(&read_server.addr, &read_json);
-    let read_result = read_resp.get("result").expect("read result");
-    let account = read_result.get("account").expect("current account");
-    assert_eq!(
-        account.get("planType").and_then(|value| value.as_str()),
-        Some("plus"),
-        "read response: {read_resp}"
-    );
-
-    oauth_join.join().expect("join oauth server");
-    register_join.join().expect("join register server");
-    assert!(
-        register_rx
-            .recv_timeout(Duration::from_millis(200))
-            .is_err(),
-        "register service should not be used when remote recovery source is configured"
-    );
-
-    let recovery_requests = (0..2)
-        .map(|_| {
-            recovery_rx
-                .recv_timeout(Duration::from_secs(2))
-                .expect("receive recovery manager request")
-        })
-        .collect::<Vec<_>>();
-    recovery_join.join().expect("join recovery manager server");
-    assert_eq!(recovery_requests[0].0, "account/list");
-    assert_eq!(recovery_requests[1].0, "account/exportData");
-
-    let cookie_header = session_rx
-        .recv_timeout(Duration::from_secs(2))
-        .expect("receive session refresh cookie");
-    session_join.join().expect("join session server");
-    assert!(
-        cookie_header.contains("__Secure-next-auth.session-token=remote-cookie-session"),
-        "unexpected cookie header: {cookie_header}"
-    );
-
-    let updated_token = storage
-        .find_token_by_account_id("acc-recover-remote-cookie")
-        .expect("find token")
-        .expect("token exists");
-    assert_eq!(updated_token.access_token, refreshed_access_token);
-    assert_eq!(updated_token.refresh_token, "");
-}
-
-#[test]
-fn rpc_account_auth_recover_auto_registers_new_account_when_all_existing_recovery_fails() {
-    let ctx = RpcTestContext::new("rpc-account-auth-recover-auto-register-login");
-    let old_email = "recover-old@example.com";
-    let old_chatgpt_account_id = "chatgpt-old-recovery";
-    let old_workspace_id = "workspace-old-recovery";
-    let new_email = "recover-new@example.com";
-    let new_chatgpt_account_id = "chatgpt-new-recovery";
-    let new_workspace_id = "workspace-new-recovery";
-    let expired_access_token =
-        build_access_token("subject-old", old_email, old_chatgpt_account_id, "free");
-    let refreshed_access_token =
-        build_access_token("subject-new", new_email, new_chatgpt_account_id, "plus");
-    let refreshed_id_token =
-        build_access_token("subject-new", new_email, new_chatgpt_account_id, "plus");
-    let (issuer, _refresh_rx, oauth_join) =
-        start_mock_oauth_token_server(401, r#"{"error":"refresh_token_reused"}"#.to_string());
-    let _issuer_guard = EnvGuard::set("CODEXMANAGER_ISSUER", &issuer);
-    let _client_id_guard =
-        EnvGuard::set("CODEXMANAGER_CLIENT_ID", "client-test-auto-register-login");
-    let (register_url, register_rx, register_body_rx, register_join) =
-        start_mock_register_service_server_auto_register_login(
-            old_email.to_string(),
-            old_chatgpt_account_id.to_string(),
-            old_workspace_id.to_string(),
-            new_email.to_string(),
-            new_chatgpt_account_id.to_string(),
-            new_workspace_id.to_string(),
-            refreshed_access_token.clone(),
-            "refresh-token-new".to_string(),
-            refreshed_id_token.clone(),
-        );
-    let _register_guard = EnvGuard::set("CODEXMANAGER_REGISTER_SERVICE_URL", &register_url);
-
-    let storage = Storage::open(ctx.db_path()).expect("open db");
-    storage.init().expect("init schema");
-    let now = now_ts();
-    storage
-        .insert_account(&Account {
-            id: "acc-recover-auto-register".to_string(),
-            label: old_email.to_string(),
-            issuer: issuer.clone(),
-            chatgpt_account_id: Some(old_chatgpt_account_id.to_string()),
-            workspace_id: Some(old_workspace_id.to_string()),
-            group_name: Some("TEAM".to_string()),
-            sort: 0,
-            status: "unavailable".to_string(),
-            created_at: now,
-            updated_at: now,
-        })
-        .expect("insert account");
-    storage
-        .insert_token(&codexmanager_core::storage::Token {
-            account_id: "acc-recover-auto-register".to_string(),
-            id_token: expired_access_token.clone(),
-            access_token: expired_access_token,
-            refresh_token: "refresh-token-reused".to_string(),
-            api_key_access_token: None,
-            last_refresh: now,
-        })
-        .expect("insert token");
-
-    let recover_req = JsonRpcRequest {
-        id: 64,
-        method: "account/auth/recover".to_string(),
-        params: Some(serde_json::json!({
-            "accountId": "acc-recover-auto-register",
-            "openBrowser": false
-        })),
-    };
-    let recover_json = serde_json::to_string(&recover_req).expect("serialize recover");
-    let recover_server =
-        codexmanager_service::start_one_shot_server().expect("start recover server");
-    let recover_resp = post_rpc(&recover_server.addr, &recover_json);
-    let recover_result = recover_resp.get("result").expect("recover result");
-    assert_eq!(
-        recover_result
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("recovered")
-    );
-    let recovered_account_id = recover_result
-        .get("accountId")
-        .and_then(|value| value.as_str())
-        .expect("recovered account id");
-    assert_ne!(recovered_account_id, "acc-recover-auto-register");
-
-    oauth_join.join().expect("join oauth server");
-    let register_batch_body = register_body_rx
-        .recv_timeout(Duration::from_secs(2))
-        .expect("receive auto register batch body");
-    let register_requests = (0..11)
-        .map(|_| {
-            register_rx
-                .recv_timeout(Duration::from_secs(2))
-                .expect("receive auto register request")
-        })
-        .collect::<Vec<_>>();
-    register_join.join().expect("join auto register server");
-    assert_eq!(
-        register_requests,
-        vec![
-            (
-                "GET".to_string(),
-                "/api/accounts?page=1&page_size=20&search=recover-old%40example.com".to_string(),
-            ),
-            (
-                "GET".to_string(),
-                "/api/accounts?page=1&page_size=20&search=chatgpt-old-recovery".to_string(),
-            ),
-            (
-                "GET".to_string(),
-                "/api/accounts?page=1&page_size=20&search=workspace-old-recovery".to_string(),
-            ),
-            (
-                "GET".to_string(),
-                "/api/registration/available-services".to_string()
-            ),
-            ("POST".to_string(), "/api/registration/batch".to_string()),
-            (
-                "GET".to_string(),
-                "/api/registration/tasks/task-auto-1".to_string()
-            ),
-            (
-                "GET".to_string(),
-                "/api/registration/tasks/task-auto-1/logs".to_string()
-            ),
-            (
-                "GET".to_string(),
-                "/api/registration/tasks/task-auto-1".to_string()
-            ),
-            (
-                "GET".to_string(),
-                "/api/registration/tasks/task-auto-1/logs".to_string()
-            ),
-            (
-                "GET".to_string(),
-                "/api/accounts?page=1&page_size=20&search=recover-new%40example.com".to_string(),
-            ),
-            ("GET".to_string(), "/api/accounts/900/tokens".to_string()),
-        ]
-    );
-    assert!(
-        register_batch_body.contains("\"register_mode\":\"any_auto\""),
-        "unexpected register batch body: {register_batch_body}"
-    );
-    assert!(
-        register_batch_body.contains("\"email_service_type\":\"custom_domain\""),
-        "unexpected register batch body: {register_batch_body}"
-    );
-
-    let recovered_token = storage
-        .find_token_by_account_id(recovered_account_id)
-        .expect("find recovered token")
-        .expect("recovered token exists");
-    assert_eq!(recovered_token.access_token, refreshed_access_token);
-    assert_eq!(recovered_token.refresh_token, "refresh-token-new");
-    assert_eq!(recovered_token.id_token, refreshed_id_token);
-
-    let old_account = storage
-        .find_account_by_id("acc-recover-auto-register")
-        .expect("find old account")
-        .expect("old account exists");
-    assert_eq!(old_account.status, "unavailable");
-}
-
+/// 函数 `rpc_usage_read_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_usage_read_empty() {
     let _ctx = RpcTestContext::new("rpc-usage-read");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 5,
+        id: 5.into(),
         method: "account/usage/read".to_string(),
         params: None,
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
@@ -3137,15 +1905,27 @@ fn rpc_usage_read_empty() {
     assert!(result.get("snapshot").is_some());
 }
 
+/// 函数 `rpc_login_status_pending`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_login_status_pending() {
     let _ctx = RpcTestContext::new("rpc-login-status");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 6,
+        id: 6.into(),
         method: "account/login/status".to_string(),
         params: Some(serde_json::json!({"loginId": "login-1"})),
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
@@ -3153,15 +1933,27 @@ fn rpc_login_status_pending() {
     assert!(result.get("status").is_some());
 }
 
+/// 函数 `rpc_usage_list_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_usage_list_empty() {
     let _ctx = RpcTestContext::new("rpc-usage-list");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 7,
+        id: 7.into(),
         method: "account/usage/list".to_string(),
         params: None,
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
@@ -3176,6 +1968,17 @@ fn rpc_usage_list_empty() {
     );
 }
 
+/// 函数 `rpc_usage_aggregate_returns_backend_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_usage_aggregate_returns_backend_summary() {
     let ctx = RpcTestContext::new("rpc-usage-aggregate");
@@ -3241,9 +2044,10 @@ fn rpc_usage_aggregate_returns_backend_summary() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let req = JsonRpcRequest {
-        id: 71,
+        id: 71.into(),
         method: "account/usage/aggregate".to_string(),
         params: None,
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let v = post_rpc(&server.addr, &json);
@@ -3275,6 +2079,17 @@ fn rpc_usage_aggregate_returns_backend_summary() {
     );
 }
 
+/// 函数 `rpc_requestlog_list_and_summary_support_pagination`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_requestlog_list_and_summary_support_pagination() {
     let ctx = RpcTestContext::new("rpc-requestlog-page");
@@ -3291,14 +2106,6 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
                 account_id: Some("acc-page".to_string()),
                 initial_account_id: Some("acc-free".to_string()),
                 attempted_account_ids_json: Some(r#"["acc-free","acc-page"]"#.to_string()),
-                candidate_count: Some(9),
-                attempted_count: Some(2),
-                skipped_count: Some(7),
-                skipped_cooldown_count: Some(6),
-                skipped_inflight_count: Some(1),
-                route_strategy: Some("least-latency".to_string()),
-                requested_model: None,
-                model_fallback_path_json: None,
                 request_path: "/v1/responses".to_string(),
                 original_path: Some("/v1/responses".to_string()),
                 adapted_path: Some("/v1/responses".to_string()),
@@ -3307,8 +2114,11 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
                 reasoning_effort: Some("medium".to_string()),
                 response_adapter: Some("Passthrough".to_string()),
                 upstream_url: Some("https://chatgpt.com/backend-api/codex/responses".to_string()),
+                aggregate_api_supplier_name: None,
+                aggregate_api_url: None,
                 status_code,
                 duration_ms: Some(500 + index),
+                first_response_ms: None,
                 input_tokens: None,
                 cached_input_tokens: None,
                 output_tokens: None,
@@ -3321,6 +2131,7 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
                     None
                 },
                 created_at,
+                ..Default::default()
             })
             .expect("insert request log");
         storage
@@ -3342,13 +2153,14 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let list_req = JsonRpcRequest {
-        id: 72,
+        id: 72.into(),
         method: "requestlog/list".to_string(),
         params: Some(serde_json::json!({
             "page": 2,
             "pageSize": 1,
             "statusFilter": "5xx"
         })),
+        trace: None,
     };
     let list_json = serde_json::to_string(&list_req).expect("serialize requestlog list");
     let list_resp = post_rpc(&server.addr, &list_json);
@@ -3387,38 +2199,15 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
             .map(|items| items.len()),
         Some(2)
     );
-    assert_eq!(
-        items[0]
-            .get("candidateCount")
-            .and_then(|value| value.as_i64()),
-        Some(9)
-    );
-    assert_eq!(
-        items[0]
-            .get("attemptedCount")
-            .and_then(|value| value.as_i64()),
-        Some(2)
-    );
-    assert_eq!(
-        items[0]
-            .get("skippedCount")
-            .and_then(|value| value.as_i64()),
-        Some(7)
-    );
-    assert_eq!(
-        items[0]
-            .get("routeStrategy")
-            .and_then(|value| value.as_str()),
-        Some("least-latency")
-    );
 
     let summary_server = codexmanager_service::start_one_shot_server().expect("start server");
     let summary_req = JsonRpcRequest {
-        id: 73,
+        id: 73.into(),
         method: "requestlog/summary".to_string(),
         params: Some(serde_json::json!({
             "statusFilter": "5xx"
         })),
+        trace: None,
     };
     let summary_json = serde_json::to_string(&summary_req).expect("serialize requestlog summary");
     let summary_resp = post_rpc(&summary_server.addr, &summary_json);
@@ -3451,30 +2240,145 @@ fn rpc_requestlog_list_and_summary_support_pagination() {
     );
 }
 
+/// 函数 `rpc_apikey_update_model_updates_name_with_chinese`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn rpc_apikey_update_model_updates_name_with_chinese() {
+    let ctx = RpcTestContext::new("rpc-apikey-update-name");
+    let storage = Storage::open(ctx.db_path()).expect("open db");
+    storage.init().expect("init schema");
+    storage
+        .insert_api_key(&codexmanager_core::storage::ApiKey {
+            id: "gk-update-name".to_string(),
+            name: Some("old-name".to_string()),
+            model_slug: Some("gpt-5.4".to_string()),
+            reasoning_effort: Some("medium".to_string()),
+            service_tier: None,
+            rotation_strategy: "account_rotation".to_string(),
+            aggregate_api_id: None,
+            account_plan_filter: None,
+            aggregate_api_url: None,
+            client_type: "codex".to_string(),
+            protocol_type: "openai_compat".to_string(),
+            auth_scheme: "authorization_bearer".to_string(),
+            upstream_base_url: None,
+            static_headers_json: None,
+            key_hash: "hash-update-name".to_string(),
+            status: "active".to_string(),
+            created_at: now_ts(),
+            last_used_at: None,
+        })
+        .expect("insert api key");
+
+    let server = codexmanager_service::start_one_shot_server().expect("start server");
+    let update_req = JsonRpcRequest {
+        id: 74.into(),
+        method: "apikey/updateModel".to_string(),
+        params: Some(serde_json::json!({
+            "id": "gk-update-name",
+            "name": "中文名称",
+            "modelSlug": "gpt-5.4",
+            "reasoningEffort": "medium"
+        })),
+        trace: None,
+    };
+    let update_json = serde_json::to_string(&update_req).expect("serialize apikey update");
+    let update_resp = post_rpc(&server.addr, &update_json);
+    assert_eq!(
+        update_resp
+            .get("result")
+            .and_then(|value| value.get("ok"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+
+    let list_server = codexmanager_service::start_one_shot_server().expect("start server");
+    let list_req = JsonRpcRequest {
+        id: 75.into(),
+        method: "apikey/list".to_string(),
+        params: None,
+        trace: None,
+    };
+    let list_json = serde_json::to_string(&list_req).expect("serialize apikey list");
+    let list_resp = post_rpc(&list_server.addr, &list_json);
+    let items = list_resp
+        .get("result")
+        .and_then(|value| value.get("items"))
+        .and_then(|value| value.as_array())
+        .expect("apikey items");
+    let updated = items
+        .iter()
+        .find(|value| {
+            value
+                .get("id")
+                .and_then(|item| item.as_str())
+                .map(|id| id == "gk-update-name")
+                .unwrap_or(false)
+        })
+        .expect("updated api key");
+    assert_eq!(
+        updated.get("name").and_then(|value| value.as_str()),
+        Some("中文名称")
+    );
+}
+
+/// 函数 `rpc_rejects_missing_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_rejects_missing_token() {
     let _ctx = RpcTestContext::new("rpc-missing-token");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 8,
+        id: 8.into(),
         method: "initialize".to_string(),
         params: None,
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let (status, _) = post_rpc_raw(&server.addr, &json, &[("Content-Type", "application/json")]);
     assert_eq!(status, 401);
 }
 
+/// 函数 `rpc_rejects_cross_site_origin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_rejects_cross_site_origin() {
     let _ctx = RpcTestContext::new("rpc-cross-site-origin");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 9,
+        id: 9.into(),
         method: "initialize".to_string(),
         params: None,
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let token = codexmanager_service::rpc_auth_token().to_string();
@@ -3491,15 +2395,27 @@ fn rpc_rejects_cross_site_origin() {
     assert_eq!(status, 403);
 }
 
+/// 函数 `rpc_accepts_loopback_origin`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_accepts_loopback_origin() {
     let _ctx = RpcTestContext::new("rpc-loopback-origin");
     let server = codexmanager_service::start_one_shot_server().expect("start server");
 
     let req = JsonRpcRequest {
-        id: 10,
+        id: 10.into(),
         method: "initialize".to_string(),
         params: None,
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let token = codexmanager_service::rpc_auth_token().to_string();
@@ -3514,23 +2430,4 @@ fn rpc_accepts_loopback_origin() {
         ],
     );
     assert_eq!(status, 200, "unexpected status {status}: {body}");
-}
-
-#[test]
-fn rpc_account_cpa_sync_status_returns_structured_snapshot() {
-    let _ctx = RpcTestContext::new("rpc-cpa-sync-status");
-    let server = codexmanager_service::start_one_shot_server().expect("start server");
-
-    let req = JsonRpcRequest {
-        id: 11,
-        method: "account/cpa/syncStatus".to_string(),
-        params: None,
-    };
-    let json = serde_json::to_string(&req).expect("serialize");
-    let response = post_rpc(&server.addr, &json);
-    let result = response.get("result").expect("rpc result");
-
-    assert!(result.get("status").is_some());
-    assert!(result.get("intervalMinutes").is_some());
-    assert!(result.get("isRunning").is_some());
 }

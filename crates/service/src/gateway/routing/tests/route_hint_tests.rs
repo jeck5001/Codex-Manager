@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `candidate_list`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn candidate_list() -> Vec<(Account, Token)> {
     vec![
         (
@@ -71,6 +82,17 @@ fn candidate_list() -> Vec<(Account, Token)> {
     ]
 }
 
+/// 函数 `account_ids`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 返回函数执行结果
 fn account_ids(candidates: &[(Account, Token)]) -> Vec<String> {
     candidates
         .iter()
@@ -78,22 +100,20 @@ fn account_ids(candidates: &[(Account, Token)]) -> Vec<String> {
         .collect()
 }
 
-fn set_candidate_created_at(
-    candidates: &mut [(Account, Token)],
-    account_id: &str,
-    created_at: i64,
-) {
-    let entry = candidates
-        .iter_mut()
-        .find(|(account, _)| account.id == account_id)
-        .expect("candidate account");
-    entry.0.created_at = created_at;
-    entry.0.updated_at = created_at;
-}
-
+/// 函数 `defaults_to_ordered_strategy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn defaults_to_ordered_strategy() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     let previous = std::env::var(ROUTE_STRATEGY_ENV).ok();
     std::env::remove_var(ROUTE_STRATEGY_ENV);
     reload_from_env();
@@ -129,9 +149,20 @@ fn defaults_to_ordered_strategy() {
     reload_from_env();
 }
 
+/// 函数 `balanced_round_robin_rotates_start_by_key_and_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn balanced_round_robin_rotates_start_by_key_and_model() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     let previous = std::env::var(ROUTE_STRATEGY_ENV).ok();
     std::env::set_var(ROUTE_STRATEGY_ENV, "balanced");
     reload_from_env();
@@ -178,9 +209,20 @@ fn balanced_round_robin_rotates_start_by_key_and_model() {
     reload_from_env();
 }
 
+/// 函数 `balanced_round_robin_isolated_by_key_and_model`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn balanced_round_robin_isolated_by_key_and_model() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     let previous = std::env::var(ROUTE_STRATEGY_ENV).ok();
     std::env::set_var(ROUTE_STRATEGY_ENV, "balanced");
     reload_from_env();
@@ -210,9 +252,23 @@ fn balanced_round_robin_isolated_by_key_and_model() {
     reload_from_env();
 }
 
+/// 函数 `set_route_strategy_accepts_aliases_and_reports_canonical_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn set_route_strategy_accepts_aliases_and_reports_canonical_name() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
+    let previous = std::env::var(ROUTE_STRATEGY_ENV).ok();
+    std::env::set_var(ROUTE_STRATEGY_ENV, "ordered");
+    reload_from_env();
     clear_route_state_for_tests();
     assert_eq!(
         set_route_strategy("ordered").expect("set ordered"),
@@ -223,103 +279,30 @@ fn set_route_strategy_accepts_aliases_and_reports_canonical_name() {
         "balanced"
     );
     assert_eq!(current_route_strategy(), "balanced");
-    assert_eq!(
-        set_route_strategy("weighted").expect("set weighted"),
-        "weighted"
-    );
-    assert_eq!(
-        set_route_strategy("least_latency").expect("set least latency alias"),
-        "least-latency"
-    );
-    assert_eq!(
-        set_route_strategy("cost_first").expect("set cost-first alias"),
-        "cost-first"
-    );
     assert!(set_route_strategy("unsupported").is_err());
-}
-
-#[test]
-fn weighted_rotation_prefers_higher_weight_candidate() {
-    let _guard = route_strategy_test_guard();
-    clear_route_state_for_tests();
-
-    let mut low = 0;
-    let mut high = 0;
-    for _ in 0..100 {
-        let index =
-            weighted_rotation_index(&[20, 80], "gk_weighted", Some("gpt-5.3-codex")).unwrap();
-        if index == 0 {
-            low += 1;
-        } else {
-            high += 1;
-        }
-    }
-
-    assert!(high > low);
-}
-
-#[test]
-fn least_latency_prefers_account_with_lower_recent_latency() {
-    let _guard = route_strategy_test_guard();
-    clear_route_state_for_tests();
-    super::super::route_latency::record_route_latency("acc-a", 600);
-    super::super::route_latency::record_route_latency("acc-b", 120);
-
-    let mut candidates = candidate_list();
-    apply_least_latency_order(&mut candidates);
-    assert_eq!(account_ids(&candidates)[0], "acc-b");
-}
-
-#[test]
-fn new_account_protection_moves_recent_accounts_after_mature_candidates() {
-    let _guard = route_strategy_test_guard();
-    let previous = std::env::var(crate::account_risk::ENV_NEW_ACCOUNT_PROTECTION_DAYS).ok();
-    std::env::set_var(crate::account_risk::ENV_NEW_ACCOUNT_PROTECTION_DAYS, "3");
-    reload_from_env();
-    clear_route_state_for_tests();
-
-    let now = codexmanager_core::storage::now_ts();
-    let mut candidates = candidate_list();
-    set_candidate_created_at(&mut candidates, "acc-a", now - 10 * 24 * 60 * 60);
-    set_candidate_created_at(&mut candidates, "acc-b", now - 2 * 60 * 60);
-    set_candidate_created_at(&mut candidates, "acc-c", now - 12 * 24 * 60 * 60);
-
-    apply_route_strategy(&mut candidates, "gk-protected", Some("gpt-5.3-codex"));
-    assert_eq!(
-        account_ids(&candidates),
-        vec![
-            "acc-a".to_string(),
-            "acc-c".to_string(),
-            "acc-b".to_string()
-        ]
-    );
 
     if let Some(value) = previous {
-        std::env::set_var(crate::account_risk::ENV_NEW_ACCOUNT_PROTECTION_DAYS, value);
+        std::env::set_var(ROUTE_STRATEGY_ENV, value);
     } else {
-        std::env::remove_var(crate::account_risk::ENV_NEW_ACCOUNT_PROTECTION_DAYS);
+        std::env::remove_var(ROUTE_STRATEGY_ENV);
     }
     reload_from_env();
 }
 
-#[test]
-fn plan_priority_orders_free_before_plus_and_team() {
-    assert!(plan_priority("free") < plan_priority("plus"));
-    assert!(plan_priority("plus") < plan_priority("team"));
-}
-
-#[test]
-fn plan_priority_normalizes_paid_variants_into_stable_buckets() {
-    assert_eq!(plan_priority("pro"), plan_priority("team"));
-    assert_eq!(plan_priority("team"), plan_priority("business"));
-    assert_eq!(plan_priority("team"), plan_priority("enterprise"));
-    assert!(plan_priority("plus") < plan_priority("pro"));
-    assert!(plan_priority("unknown") > plan_priority("team"));
-}
-
+/// 函数 `route_state_ttl_expires_per_key_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn route_state_ttl_expires_per_key_state() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     let prev_strategy = std::env::var(ROUTE_STRATEGY_ENV).ok();
     let prev_ttl = std::env::var(ROUTE_STATE_TTL_SECS_ENV).ok();
     let prev_cap = std::env::var(ROUTE_STATE_CAPACITY_ENV).ok();
@@ -377,9 +360,20 @@ fn route_state_ttl_expires_per_key_state() {
     reload_from_env();
 }
 
+/// 函数 `route_state_capacity_evicts_lru_and_keeps_maps_in_sync`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn route_state_capacity_evicts_lru_and_keeps_maps_in_sync() {
-    let _guard = route_strategy_test_guard();
+    let _guard = crate::test_env_guard();
     let prev_ttl = std::env::var(ROUTE_STATE_TTL_SECS_ENV).ok();
     let prev_cap = std::env::var(ROUTE_STATE_CAPACITY_ENV).ok();
 
@@ -434,10 +428,21 @@ fn route_state_capacity_evicts_lru_and_keeps_maps_in_sync() {
     reload_from_env();
 }
 
+/// 函数 `health_p2c_promotes_healthier_candidate_in_ordered_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn health_p2c_promotes_healthier_candidate_in_ordered_mode() {
-    let _guard = route_strategy_test_guard();
-    let _quality_guard = super::super::route_quality::route_quality_test_guard();
+    let _guard = crate::test_env_guard();
+    let _quality_guard = super::super::route_quality::route_quality_tests_guard();
     super::super::route_quality::clear_route_quality_for_tests();
     std::env::set_var(ROUTE_HEALTH_P2C_ENABLED_ENV, "1");
     // 中文注释：窗口=2 时挑战者固定为 index=1，确保测试稳定可复现。
@@ -461,10 +466,21 @@ fn health_p2c_promotes_healthier_candidate_in_ordered_mode() {
     reload_from_env();
 }
 
+/// 函数 `balanced_mode_keeps_strict_round_robin_by_default`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn balanced_mode_keeps_strict_round_robin_by_default() {
-    let _guard = route_strategy_test_guard();
-    let _quality_guard = super::super::route_quality::route_quality_test_guard();
+    let _guard = crate::test_env_guard();
+    let _quality_guard = super::super::route_quality::route_quality_tests_guard();
     let prev_strategy = std::env::var(ROUTE_STRATEGY_ENV).ok();
     let prev_p2c = std::env::var(ROUTE_HEALTH_P2C_ENABLED_ENV).ok();
     let prev_balanced_window = std::env::var(ROUTE_HEALTH_P2C_BALANCED_WINDOW_ENV).ok();
@@ -506,91 +522,59 @@ fn balanced_mode_keeps_strict_round_robin_by_default() {
     reload_from_env();
 }
 
+/// 函数 `persisted_preferred_account_rotates_to_head`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
-fn manual_preferred_account_is_preserved_when_current_candidates_do_not_include_it() {
-    let _guard = route_strategy_test_guard();
+fn persisted_preferred_account_rotates_to_head() {
+    let _guard = crate::test_env_guard();
     clear_route_state_for_tests();
-    set_manual_preferred_account("acc-missing").expect("set manual preferred");
+    let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
+    let db_path = std::env::temp_dir().join(format!(
+        "codexmanager-route-hint-preferred-{}.db",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&db_path);
+    std::env::set_var("CODEXMANAGER_DB_PATH", &db_path);
+    crate::initialize_storage_if_needed().expect("init storage");
+    let storage = crate::storage_helpers::open_storage().expect("open storage");
+    let now = codexmanager_core::storage::now_ts();
+    for (account_id, sort) in [("acc-a", 0_i64), ("acc-b", 1_i64)] {
+        storage
+            .insert_account(&Account {
+                id: account_id.to_string(),
+                label: account_id.to_string(),
+                issuer: "issuer".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort,
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("insert account");
+    }
+    set_manual_preferred_account("acc-b").expect("set preferred");
 
     let mut candidates = candidate_list();
-    apply_route_strategy(&mut candidates, "gk-manual-missing", Some("gpt-5.3-codex"));
+    apply_route_strategy(&mut candidates, "gk-preferred", Some("gpt-5.3-codex"));
 
-    assert_eq!(
-        get_manual_preferred_account().as_deref(),
-        Some("acc-missing")
-    );
-    assert_eq!(account_ids(&candidates)[0], "acc-a");
-}
+    assert_eq!(get_manual_preferred_account().as_deref(), Some("acc-b"));
+    assert_eq!(account_ids(&candidates)[0], "acc-b");
 
-#[test]
-fn route_whitelist_filters_candidates_before_ordered_strategy() {
-    let _guard = route_strategy_test_guard();
-    clear_route_state_for_tests();
-    set_manual_route_account_ids(&["acc-b".to_string(), "acc-c".to_string()])
-        .expect("set route whitelist");
-
-    let mut candidates = candidate_list();
-    retain_manual_route_account_ids(&mut candidates);
-    apply_route_strategy(&mut candidates, "gk-route-whitelist", Some("gpt-5.3-codex"));
-
-    assert_eq!(
-        account_ids(&candidates),
-        vec!["acc-b".to_string(), "acc-c".to_string()]
-    );
-    assert_eq!(
-        get_manual_route_account_ids(),
-        vec!["acc-b".to_string(), "acc-c".to_string()]
-    );
-}
-
-#[test]
-fn route_whitelist_clear_restores_full_candidate_pool() {
-    let _guard = route_strategy_test_guard();
-    clear_route_state_for_tests();
-    set_manual_route_account_ids(&["acc-b".to_string()]).expect("set route whitelist");
-    clear_manual_route_account_ids();
-
-    let mut candidates = candidate_list();
-    retain_manual_route_account_ids(&mut candidates);
-    apply_route_strategy(
-        &mut candidates,
-        "gk-route-whitelist-clear",
-        Some("gpt-5.3-codex"),
-    );
-
-    assert_eq!(
-        account_ids(&candidates),
-        vec![
-            "acc-a".to_string(),
-            "acc-b".to_string(),
-            "acc-c".to_string()
-        ]
-    );
-    assert!(get_manual_route_account_ids().is_empty());
-}
-
-#[test]
-fn route_whitelist_dedupes_ids_and_ignores_missing_accounts() {
-    let _guard = route_strategy_test_guard();
-    clear_route_state_for_tests();
-    set_manual_route_account_ids(&[
-        "acc-c".to_string(),
-        "acc-c".to_string(),
-        "acc-missing".to_string(),
-    ])
-    .expect("set route whitelist");
-
-    let mut candidates = candidate_list();
-    retain_manual_route_account_ids(&mut candidates);
-    apply_route_strategy(
-        &mut candidates,
-        "gk-route-whitelist-dedupe",
-        Some("gpt-5.3-codex"),
-    );
-
-    assert_eq!(account_ids(&candidates), vec!["acc-c".to_string()]);
-    assert_eq!(
-        get_manual_route_account_ids(),
-        vec!["acc-c".to_string(), "acc-missing".to_string()]
-    );
+    if let Some(value) = previous_db_path {
+        std::env::set_var("CODEXMANAGER_DB_PATH", value);
+    } else {
+        std::env::remove_var("CODEXMANAGER_DB_PATH");
+    }
+    let _ = std::fs::remove_file(&db_path);
 }

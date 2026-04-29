@@ -3,14 +3,26 @@ use codexmanager_core::storage::Account;
 use std::time::Instant;
 
 use super::super::support::deadline;
-use super::transport::{SendUpstreamRequestArgs, UpstreamRequestContext};
+use super::super::GatewayUpstreamResponse;
+use super::transport::UpstreamRequestContext;
 
 pub(super) enum PrimaryAttemptResult {
-    Upstream(reqwest::blocking::Response),
+    Upstream(GatewayUpstreamResponse),
     Failover,
     Terminal { status_code: u16, message: String },
 }
 
+/// 函数 `run_primary_upstream_attempt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_primary_upstream_attempt<F>(
     client: &reqwest::blocking::Client,
@@ -21,7 +33,6 @@ pub(super) fn run_primary_upstream_attempt<F>(
     incoming_headers: &super::super::super::IncomingHeaderSnapshot,
     body: &Bytes,
     is_stream: bool,
-    upstream_cookie: Option<&str>,
     auth_token: &str,
     account: &Account,
     strip_session_affinity: bool,
@@ -38,20 +49,19 @@ where
             message: "upstream total timeout exceeded".to_string(),
         };
     }
-    match super::transport::send_upstream_request(SendUpstreamRequestArgs {
+    match super::transport::send_upstream_request(
         client,
         method,
-        target_url: url,
+        url,
         request_deadline,
         request_ctx,
         incoming_headers,
         body,
         is_stream,
-        upstream_cookie,
         auth_token,
         account,
         strip_session_affinity,
-    }) {
+    ) {
         Ok(resp) => PrimaryAttemptResult::Upstream(resp),
         Err(err) => {
             let err_msg = err.to_string();
@@ -60,9 +70,7 @@ where
                 super::super::super::CooldownReason::Network,
             );
             log_gateway_result(Some(url), 502, Some(err_msg.as_str()));
-            // 中文注释：主链路首次请求失败不代表所有候选都失败，
-            // 先 failover 才能避免单账号抖动放大成全局不可用。
-            if has_more_candidates {
+            if has_more_candidates && !super::super::config::is_official_openai_target(url) {
                 PrimaryAttemptResult::Failover
             } else {
                 PrimaryAttemptResult::Terminal {

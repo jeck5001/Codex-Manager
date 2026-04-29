@@ -1,15 +1,48 @@
 use codexmanager_core::storage::{now_ts, Storage};
 use serde_json::json;
-use std::ffi::OsString;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
+mod support;
+use support::test_env_guard;
 
+const ISOLATED_RUNTIME_ENV_KEYS: &[&str] = &[
+    "CODEXMANAGER_SERVICE_ADDR",
+    "CODEXMANAGER_WEB_ADDR",
+    "CODEXMANAGER_ROUTE_STRATEGY",
+    "CODEXMANAGER_FREE_ACCOUNT_MAX_MODEL",
+    "CODEXMANAGER_MODEL_FORWARD_RULES",
+    "CODEXMANAGER_ENABLE_REQUEST_COMPRESSION",
+    "CODEXMANAGER_ORIGINATOR",
+    "CODEXMANAGER_RESIDENCY_REQUIREMENT",
+    "CODEXMANAGER_UPSTREAM_PROXY_URL",
+    "CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS",
+    "CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS",
+    "CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS",
+    "CODEXMANAGER_USAGE_POLLING_ENABLED",
+    "CODEXMANAGER_USAGE_POLL_INTERVAL_SECS",
+    "CODEXMANAGER_GATEWAY_KEEPALIVE_ENABLED",
+    "CODEXMANAGER_GATEWAY_KEEPALIVE_INTERVAL_SECS",
+    "CODEXMANAGER_TOKEN_REFRESH_POLLING_ENABLED",
+    "CODEXMANAGER_TOKEN_REFRESH_POLL_INTERVAL_SECS",
+    "CODEXMANAGER_USAGE_REFRESH_WORKERS",
+    "CODEXMANAGER_HTTP_WORKER_FACTOR",
+    "CODEXMANAGER_HTTP_WORKER_MIN",
+    "CODEXMANAGER_HTTP_STREAM_WORKER_FACTOR",
+    "CODEXMANAGER_HTTP_STREAM_WORKER_MIN",
+];
+
+/// 函数 `unique_temp_db_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn unique_temp_db_path() -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -18,6 +51,17 @@ fn unique_temp_db_path() -> PathBuf {
     std::env::temp_dir().join(format!("codexmanager-app-settings-test-{unique}.db"))
 }
 
+/// 函数 `reset_runtime_defaults`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn reset_runtime_defaults() {
     let _ = codexmanager_service::set_service_bind_mode(
         codexmanager_service::SERVICE_BIND_MODE_LOOPBACK,
@@ -25,20 +69,15 @@ fn reset_runtime_defaults() {
     let _ = codexmanager_service::app_settings_set(Some(&json!({
         "routeStrategy": "balanced",
         "freeAccountMaxModel": "gpt-5.2",
-        "newAccountProtectionDays": 3,
-        "quotaProtectionEnabled": false,
-        "quotaProtectionThresholdPercent": 10,
-        "requestCompressionEnabled": true,
-        "payloadRewriteRulesJson": "[]",
-        "modelAliasPoolsJson": "[]",
-        "visibleMenuItems": ["dashboard", "accounts", "register", "payment", "emailServices", "hotmail", "apiKeys", "logs", "audit", "costs", "analytics", "settings"],
+        "modelForwardRules": "",
         "gatewayOriginator": "codex_cli_rs",
+        "gatewayUserAgentVersion": "0.101.0",
         "gatewayResidencyRequirement": "",
         "appearancePreset": "classic",
         "lightweightModeOnCloseToTray": false,
-        "cpaNoCookieHeaderModeEnabled": false,
         "upstreamProxyUrl": "",
-        "upstreamStreamTimeoutMs": 1800000,
+        "upstreamStreamTimeoutMs": 600000,
+        "upstreamTotalTimeoutMs": 0,
         "sseKeepaliveIntervalMs": 15000,
         "envOverrides": {},
         "backgroundTasks": {
@@ -52,24 +91,34 @@ fn reset_runtime_defaults() {
             "httpWorkerFactor": 4,
             "httpWorkerMin": 8,
             "httpStreamWorkerFactor": 1,
-            "httpStreamWorkerMin": 2,
-            "autoDisableRiskyAccountsEnabled": false,
-            "autoDisableRiskyAccountsFailureThreshold": 3,
-            "autoDisableRiskyAccountsHealthScoreThreshold": 60,
-            "autoDisableRiskyAccountsLookbackMins": 60
+            "httpStreamWorkerMin": 2
         }
     })));
 }
 
+/// 函数 `with_temp_db`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - test: 参数 test
+///
+/// # 返回
+/// 无
 fn with_temp_db(test: impl FnOnce(&PathBuf)) {
-    let _guard = env_lock()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = test_env_guard();
     let db_path = unique_temp_db_path();
     let previous_db_path = std::env::var("CODEXMANAGER_DB_PATH").ok();
     std::env::set_var("CODEXMANAGER_DB_PATH", &db_path);
     codexmanager_service::initialize_storage_if_needed().expect("init storage");
     reset_runtime_defaults();
+    let isolated_env_vars = ISOLATED_RUNTIME_ENV_KEYS
+        .iter()
+        .map(|key| (*key, None))
+        .collect::<Vec<_>>();
+    let _isolated_env = override_env_vars(&isolated_env_vars);
 
     test(&db_path);
 
@@ -82,9 +131,20 @@ fn with_temp_db(test: impl FnOnce(&PathBuf)) {
     let _ = std::fs::remove_file(&db_path);
 }
 
-struct EnvRestore(Vec<(String, Option<OsString>)>);
+struct EnvRestore(Vec<(String, Option<std::ffi::OsString>)>);
 
 impl Drop for EnvRestore {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         for (key, value) in self.0.drain(..) {
             if let Some(value) = value {
@@ -96,6 +156,17 @@ impl Drop for EnvRestore {
     }
 }
 
+/// 函数 `override_env_vars`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - vars: 参数 vars
+///
+/// # 返回
+/// 返回函数执行结果
 fn override_env_vars(vars: &[(&str, Option<&str>)]) -> EnvRestore {
     let previous = vars
         .iter()
@@ -111,6 +182,17 @@ fn override_env_vars(vars: &[(&str, Option<&str>)]) -> EnvRestore {
     EnvRestore(previous)
 }
 
+/// 函数 `read_env_overrides_map`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - db_path: 参数 db_path
+///
+/// # 返回
+/// 返回函数执行结果
 fn read_env_overrides_map(db_path: &PathBuf) -> serde_json::Map<String, serde_json::Value> {
     let storage = Storage::open(db_path).expect("open storage");
     let raw = storage
@@ -120,6 +202,17 @@ fn read_env_overrides_map(db_path: &PathBuf) -> serde_json::Map<String, serde_js
     serde_json::from_str(&raw).expect("parse env overrides json")
 }
 
+/// 函数 `sync_runtime_settings_from_storage_preserves_process_env_when_override_not_persisted`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn sync_runtime_settings_from_storage_preserves_process_env_when_override_not_persisted() {
     with_temp_db(|db_path| {
@@ -149,6 +242,17 @@ fn sync_runtime_settings_from_storage_preserves_process_env_when_override_not_pe
     });
 }
 
+/// 函数 `sync_runtime_settings_from_storage_preserves_explicit_process_env_over_persisted_override`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn sync_runtime_settings_from_storage_preserves_explicit_process_env_over_persisted_override() {
     with_temp_db(|db_path| {
@@ -177,35 +281,61 @@ fn sync_runtime_settings_from_storage_preserves_explicit_process_env_over_persis
 }
 
 #[test]
+fn app_settings_gateway_mode_is_no_longer_a_persisted_runtime_setting() {
+    with_temp_db(|db_path| {
+        let storage = Storage::open(db_path).expect("open storage");
+        storage
+            .set_app_setting("gateway.mode", "enhanced", now_ts())
+            .expect("save legacy gateway mode");
+        drop(storage);
+
+        codexmanager_service::sync_runtime_settings_from_storage();
+
+        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
+            "gatewayMode": "enhanced"
+        })))
+        .expect("legacy gatewayMode patch should be ignored");
+
+        assert!(
+            snapshot.get("gatewayMode").is_none(),
+            "app settings snapshot must not expose gatewayMode as a product setting"
+        );
+    });
+}
+
+/// 函数 `app_settings_set_persists_snapshot_and_password_hash`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
 fn app_settings_set_persists_snapshot_and_password_hash() {
     with_temp_db(|db_path| {
         let snapshot = codexmanager_service::app_settings_set(Some(&json!({
             "updateAutoCheck": false,
             "closeToTrayOnClose": true,
             "lightweightModeOnCloseToTray": true,
+            "codexCliGuideDismissed": true,
             "lowTransparency": true,
             "theme": "dark",
             "appearancePreset": "classic",
-            "visibleMenuItems": ["dashboard", "accounts", "logs"],
             "serviceAddr": "127.0.0.1:4999",
             "serviceListenMode": "all_interfaces",
-            "mcpEnabled": false,
-            "mcpPort": 48888,
-            "remoteManagementEnabled": true,
-            "remoteManagementSecret": "manage-me",
             "routeStrategy": "rr",
             "freeAccountMaxModel": "gpt-5.3-codex",
-            "newAccountProtectionDays": 5,
-            "quotaProtectionEnabled": true,
-            "quotaProtectionThresholdPercent": 12,
-            "requestCompressionEnabled": false,
-            "payloadRewriteRulesJson": "[{\"path\":\"/v1/responses\",\"field\":\"service_tier\",\"mode\":\"set_if_missing\",\"value\":\"flex\"}]",
-            "modelAliasPoolsJson": "[{\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"model\":\"o3\"}]}]",
+            "modelForwardRules": "spark*=gpt-5.4-mini",
             "gatewayOriginator": "codex_cli_rs_test",
+            "gatewayUserAgentVersion": "0.101.2",
             "gatewayResidencyRequirement": "us",
-            "cpaNoCookieHeaderModeEnabled": true,
             "upstreamProxyUrl": "http://127.0.0.1:7890",
             "upstreamStreamTimeoutMs": 654321,
+            "upstreamTotalTimeoutMs": 120000,
             "sseKeepaliveIntervalMs": 17000,
             "backgroundTasks": {
                 "usagePollingEnabled": false,
@@ -243,6 +373,12 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             Some(true)
         );
         assert_eq!(
+            snapshot
+                .get("codexCliGuideDismissed")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
             snapshot.get("theme").and_then(|value| value.as_str()),
             Some("dark")
         );
@@ -254,45 +390,21 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             snapshot
-                .get("visibleMenuItems")
-                .and_then(|value| value.as_array())
-                .map(|items| items
-                    .iter()
-                    .filter_map(|item| item.as_str())
-                    .collect::<Vec<_>>()),
-            Some(vec!["dashboard", "accounts", "logs", "settings"])
-        );
-        assert_eq!(
-            snapshot
                 .get("serviceListenMode")
                 .and_then(|value| value.as_str()),
             Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES)
-        );
-        assert_eq!(
-            snapshot.get("mcpEnabled").and_then(|value| value.as_bool()),
-            Some(false)
-        );
-        assert_eq!(
-            snapshot.get("mcpPort").and_then(|value| value.as_u64()),
-            Some(48888)
-        );
-        assert_eq!(
-            snapshot
-                .get("remoteManagementEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(true)
-        );
-        assert_eq!(
-            snapshot
-                .get("remoteManagementSecretConfigured")
-                .and_then(|value| value.as_bool()),
-            Some(true)
         );
         assert_eq!(
             snapshot
                 .get("upstreamStreamTimeoutMs")
                 .and_then(|value| value.as_u64()),
             Some(654321)
+        );
+        assert_eq!(
+            snapshot
+                .get("upstreamTotalTimeoutMs")
+                .and_then(|value| value.as_u64()),
+            Some(120000)
         );
         assert_eq!(
             snapshot
@@ -314,49 +426,33 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             snapshot
-                .get("newAccountProtectionDays")
-                .and_then(|value| value.as_u64()),
-            Some(5)
-        );
-        assert_eq!(
-            snapshot
-                .get("quotaProtectionEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(true)
-        );
-        assert_eq!(
-            snapshot
-                .get("quotaProtectionThresholdPercent")
-                .and_then(|value| value.as_u64()),
-            Some(12)
-        );
-        assert_eq!(
-            snapshot
-                .get("requestCompressionEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(false)
-        );
-        assert_eq!(
-            snapshot
-                .get("payloadRewriteRulesJson")
+                .get("modelForwardRules")
                 .and_then(|value| value.as_str()),
-            Some(
-                "[{\"enabled\":true,\"path\":\"/v1/responses\",\"field\":\"service_tier\",\"mode\":\"set_if_missing\",\"value\":\"flex\"}]"
-            )
-        );
-        assert_eq!(
-            snapshot
-                .get("modelAliasPoolsJson")
-                .and_then(|value| value.as_str()),
-            Some(
-                "[{\"enabled\":true,\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"enabled\":true,\"model\":\"o3\",\"weight\":1,\"channel\":null}]}]"
-            )
+            Some("spark*=gpt-5.4-mini")
         );
         assert_eq!(
             snapshot
                 .get("gatewayOriginator")
                 .and_then(|value| value.as_str()),
             Some("codex_cli_rs_test")
+        );
+        assert_eq!(
+            snapshot
+                .get("gatewayOriginatorDefault")
+                .and_then(|value| value.as_str()),
+            Some("codex_cli_rs")
+        );
+        assert_eq!(
+            snapshot
+                .get("gatewayUserAgentVersion")
+                .and_then(|value| value.as_str()),
+            Some("0.101.2")
+        );
+        assert_eq!(
+            snapshot
+                .get("gatewayUserAgentVersionDefault")
+                .and_then(|value| value.as_str()),
+            Some("0.101.0")
         );
         assert_eq!(
             snapshot
@@ -372,9 +468,6 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert!(codexmanager_service::verify_web_access_password(
             "secret-pass"
-        ));
-        assert!(codexmanager_service::verify_remote_management_secret(
-            "manage-me"
         ));
 
         let storage = Storage::open(db_path).expect("open storage");
@@ -394,26 +487,8 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             storage
-                .get_app_setting(codexmanager_service::APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY)
-                .expect("read visible menu items"),
-            Some("[\"dashboard\",\"accounts\",\"logs\",\"settings\"]".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(codexmanager_service::APP_SETTING_MCP_ENABLED_KEY)
-                .expect("read mcp enabled"),
-            Some("0".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(codexmanager_service::APP_SETTING_MCP_PORT_KEY)
-                .expect("read mcp port"),
-            Some("48888".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY)
-                .expect("read remote management enabled"),
+                .get_app_setting(codexmanager_service::APP_SETTING_UI_CODEX_CLI_GUIDE_DISMISSED_KEY)
+                .expect("read codex cli guide dismissed"),
             Some("1".to_string())
         );
         assert_eq!(
@@ -426,63 +501,21 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY
-                )
-                .expect("read new account protection days"),
-            Some("5".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY
-                )
-                .expect("read quota protection enabled"),
-            Some("1".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY
-                )
-                .expect("read quota protection threshold"),
-            Some("12".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY
-                )
-                .expect("read request compression enabled"),
-            Some("0".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY
-                )
-                .expect("read payload rewrite rules"),
-            Some(
-                "[{\"enabled\":true,\"path\":\"/v1/responses\",\"field\":\"service_tier\",\"mode\":\"set_if_missing\",\"value\":\"flex\"}]"
-                    .to_string()
-            )
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY
-                )
-                .expect("read model alias pools"),
-            Some(
-                "[{\"enabled\":true,\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"enabled\":true,\"model\":\"o3\",\"weight\":1,\"channel\":null}]}]"
-                    .to_string()
-            )
+                .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY)
+                .expect("read model forward rules"),
+            Some("spark*=gpt-5.4-mini".to_string())
         );
         assert_eq!(
             storage
                 .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_ORIGINATOR_KEY)
                 .expect("read gateway originator"),
             Some("codex_cli_rs_test".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY)
+                .expect("read gateway user agent version"),
+            Some("0.101.2".to_string())
         );
         assert_eq!(
             storage
@@ -514,15 +547,20 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         assert!(stored_password
             .as_deref()
             .is_some_and(|value| value.starts_with("sha256$")));
-        let stored_secret = storage
-            .get_app_setting(codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_SECRET_HASH_KEY)
-            .expect("read remote management secret hash");
-        assert!(stored_secret
-            .as_deref()
-            .is_some_and(|value| value.starts_with("sha256$")));
     });
 }
 
+/// 函数 `app_settings_set_preserves_dark_one_theme`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_preserves_dark_one_theme() {
     with_temp_db(|_| {
@@ -552,6 +590,62 @@ fn app_settings_set_preserves_dark_one_theme() {
 }
 
 #[test]
+fn app_settings_set_preserves_model_forward_rules_case() {
+    with_temp_db(|db_path| {
+        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
+            "modelForwardRules": "Spark*=GPT-5.4-mini\nClaude-Sonnet-4*=Gemini-2.5-Pro"
+        })))
+        .expect("save mixed-case model forward rules");
+
+        assert_eq!(
+            snapshot
+                .get("modelForwardRules")
+                .and_then(|value| value.as_str()),
+            Some("Spark*=GPT-5.4-mini\nClaude-Sonnet-4*=Gemini-2.5-Pro")
+        );
+
+        let storage = Storage::open(db_path).expect("open storage");
+        assert_eq!(
+            storage
+                .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY)
+                .expect("read model forward rules"),
+            Some("Spark*=GPT-5.4-mini\nClaude-Sonnet-4*=Gemini-2.5-Pro".to_string())
+        );
+    });
+}
+
+#[test]
+fn app_settings_get_defaults_codex_cli_guide_to_false() {
+    with_temp_db(|db_path| {
+        let storage = Storage::open(db_path).expect("open storage");
+        storage
+            .delete_app_setting(codexmanager_service::APP_SETTING_UI_CODEX_CLI_GUIDE_DISMISSED_KEY)
+            .expect("delete codex cli guide dismissed");
+        drop(storage);
+
+        let snapshot = codexmanager_service::app_settings_get().expect("get app settings");
+
+        assert_eq!(
+            snapshot
+                .get("codexCliGuideDismissed")
+                .and_then(|value| value.as_bool()),
+            Some(false)
+        );
+    });
+}
+
+/// 函数 `sync_runtime_settings_from_storage_applies_saved_runtime_values`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
 fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
     with_temp_db(|db_path| {
         let storage = Storage::open(db_path).expect("open storage");
@@ -571,6 +665,13 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
             .expect("save free account max model");
         storage
             .set_app_setting(
+                codexmanager_service::APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY,
+                "spark*=gpt-5.4-mini",
+                now_ts(),
+            )
+            .expect("save model forward rules");
+        storage
+            .set_app_setting(
                 codexmanager_service::APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
                 "0",
                 now_ts(),
@@ -585,18 +686,18 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
             .expect("save gateway originator");
         storage
             .set_app_setting(
+                codexmanager_service::APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
+                "0.101.3",
+                now_ts(),
+            )
+            .expect("save gateway user agent version");
+        storage
+            .set_app_setting(
                 codexmanager_service::APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY,
                 "us",
                 now_ts(),
             )
             .expect("save gateway residency requirement");
-        storage
-            .set_app_setting(
-                codexmanager_service::APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
-                "1",
-                now_ts(),
-            )
-            .expect("save cpa mode");
         storage
             .set_app_setting(
                 codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
@@ -669,9 +770,9 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
         );
         assert_eq!(
             snapshot
-                .get("requestCompressionEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(false)
+                .get("modelForwardRules")
+                .and_then(|value| value.as_str()),
+            Some("spark*=gpt-5.4-mini")
         );
         assert_eq!(
             snapshot
@@ -681,15 +782,27 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
         );
         assert_eq!(
             snapshot
-                .get("gatewayResidencyRequirement")
+                .get("gatewayOriginatorDefault")
                 .and_then(|value| value.as_str()),
-            Some("us")
+            Some("codex_cli_rs")
         );
         assert_eq!(
             snapshot
-                .get("cpaNoCookieHeaderModeEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(true)
+                .get("gatewayUserAgentVersion")
+                .and_then(|value| value.as_str()),
+            Some("0.101.3")
+        );
+        assert_eq!(
+            snapshot
+                .get("gatewayUserAgentVersionDefault")
+                .and_then(|value| value.as_str()),
+            Some("0.101.0")
+        );
+        assert_eq!(
+            snapshot
+                .get("gatewayResidencyRequirement")
+                .and_then(|value| value.as_str()),
+            Some("us")
         );
         assert_eq!(
             snapshot
@@ -740,94 +853,58 @@ fn sync_runtime_settings_from_storage_applies_saved_runtime_values() {
 }
 
 #[test]
-fn app_settings_set_persists_cpa_sync_snapshot_without_exposing_key() {
-    with_temp_db(|_| {
-        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
-            "cpaSyncEnabled": true,
-            "cpaSyncApiUrl": "https://cpa.example.com",
-            "cpaSyncManagementKey": "mgmt-key-123",
-        })))
-        .expect("set settings");
-
-        assert_eq!(
-            snapshot.get("cpaSyncEnabled").and_then(|v| v.as_bool()),
-            Some(true)
-        );
-        assert_eq!(
-            snapshot.get("cpaSyncApiUrl").and_then(|v| v.as_str()),
-            Some("https://cpa.example.com")
-        );
-        assert_eq!(
-            snapshot
-                .get("cpaSyncHasManagementKey")
-                .and_then(|v| v.as_bool()),
-            Some(true)
-        );
-        assert!(snapshot.get("cpaSyncManagementKey").is_none());
-    });
-}
-
-#[test]
-fn app_settings_preserves_cpa_management_key_when_blank_patch_sent() {
+fn sync_runtime_settings_from_storage_preserves_explicit_usage_workers_env() {
     with_temp_db(|db_path| {
-        codexmanager_service::app_settings_set(Some(&json!({
-            "cpaSyncEnabled": true,
-            "cpaSyncApiUrl": "https://cpa.example.com",
-            "cpaSyncManagementKey": "keep-me",
-        })))
-        .expect("set initial management key");
+        let storage = Storage::open(db_path).expect("open storage");
+        storage
+            .set_app_setting(
+                codexmanager_service::APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
+                &serde_json::to_string(&json!({
+                    "usagePollingEnabled": false,
+                    "usagePollIntervalSecs": 777,
+                    "gatewayKeepaliveEnabled": true,
+                    "gatewayKeepaliveIntervalSecs": 180,
+                    "tokenRefreshPollingEnabled": true,
+                    "tokenRefreshPollIntervalSecs": 60,
+                    "usageRefreshWorkers": 4,
+                    "httpWorkerFactor": 4,
+                    "httpWorkerMin": 8,
+                    "httpStreamWorkerFactor": 1,
+                    "httpStreamWorkerMin": 2
+                }))
+                .expect("serialize background tasks"),
+                now_ts(),
+            )
+            .expect("save background tasks");
+        drop(storage);
 
-        codexmanager_service::app_settings_set(Some(&json!({
-            "cpaSyncManagementKey": "   ",
-        })))
-        .expect("apply blank patch");
+        let _env = override_env_vars(&[("CODEXMANAGER_USAGE_REFRESH_WORKERS", Some("9"))]);
+
+        codexmanager_service::sync_runtime_settings_from_storage();
 
         let snapshot =
-            codexmanager_service::app_settings_get().expect("get settings after blank patch");
+            codexmanager_service::app_settings_get().expect("get app settings after sync");
         assert_eq!(
             snapshot
-                .get("cpaSyncHasManagementKey")
-                .and_then(|v| v.as_bool()),
-            Some(true)
-        );
-        assert!(snapshot.get("cpaSyncManagementKey").is_none());
-
-        let storage = Storage::open(db_path).expect("open storage");
-        assert_eq!(
-            storage
-                .get_app_setting(codexmanager_service::APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY)
-                .expect("read management key"),
-            Some("keep-me".to_string())
+                .get("backgroundTasks")
+                .and_then(|value| value.get("usageRefreshWorkers"))
+                .and_then(|value| value.as_u64()),
+            Some(9)
         );
     });
 }
 
-#[test]
-fn app_settings_set_persists_cpa_schedule_snapshot() {
-    with_temp_db(|_| {
-        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
-            "cpaSyncEnabled": true,
-            "cpaSyncApiUrl": "https://cpa.example.com",
-            "cpaSyncScheduleEnabled": true,
-            "cpaSyncScheduleIntervalMinutes": 30
-        })))
-        .expect("set cpa schedule");
-
-        assert_eq!(
-            snapshot
-                .get("cpaSyncScheduleEnabled")
-                .and_then(|v| v.as_bool()),
-            Some(true)
-        );
-        assert_eq!(
-            snapshot
-                .get("cpaSyncScheduleIntervalMinutes")
-                .and_then(|v| v.as_u64()),
-            Some(30)
-        );
-    });
-}
-
+/// 函数 `app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
     with_temp_db(|db_path| {
@@ -835,25 +912,16 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
         for key in [
             codexmanager_service::APP_SETTING_SERVICE_ADDR_KEY,
             codexmanager_service::SERVICE_BIND_MODE_SETTING_KEY,
-            codexmanager_service::APP_SETTING_MCP_ENABLED_KEY,
-            codexmanager_service::APP_SETTING_MCP_PORT_KEY,
-            codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
-            codexmanager_service::APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
-            codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
-            codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
-            codexmanager_service::APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
-            codexmanager_service::APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
-            codexmanager_service::APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+            codexmanager_service::APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_ORIGINATOR_KEY,
+            codexmanager_service::APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY,
-            codexmanager_service::APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
             codexmanager_service::APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
-            codexmanager_service::APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY,
         ] {
             storage.delete_app_setting(key).expect("delete app setting");
         }
@@ -861,34 +929,15 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
 
         let _env = override_env_vars(&[
             ("CODEXMANAGER_SERVICE_ADDR", Some("0.0.0.0:4999")),
-            ("CODEXMANAGER_MCP_ENABLED", Some("0")),
-            ("CODEXMANAGER_MCP_PORT", Some("49962")),
-            ("CODEXMANAGER_REMOTE_MANAGEMENT_ENABLED", Some("1")),
-            ("CODEXMANAGER_REMOTE_MANAGEMENT_SECRET", Some("env-manage")),
             ("CODEXMANAGER_ROUTE_STRATEGY", Some("balanced")),
             ("CODEXMANAGER_FREE_ACCOUNT_MAX_MODEL", Some("gpt-5.2-codex")),
-            ("CODEXMANAGER_NEW_ACCOUNT_PROTECTION_DAYS", Some("6")),
-            ("CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_ENABLED", Some("1")),
             (
-                "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT",
-                Some("7"),
+                "CODEXMANAGER_MODEL_FORWARD_RULES",
+                Some("spark*=gpt-5.4-mini"),
             ),
             ("CODEXMANAGER_ENABLE_REQUEST_COMPRESSION", Some("0")),
-            (
-                "CODEXMANAGER_PAYLOAD_REWRITE_RULES",
-                Some("[{\"path\":\"*\",\"field\":\"service_tier\",\"mode\":\"set\",\"value\":\"priority\"}]"),
-            ),
-            (
-                "CODEXMANAGER_MODEL_ALIAS_POOLS",
-                Some("[{\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"model\":\"o3\"}]}]"),
-            ),
-            (
-                "CODEXMANAGER_UI_VISIBLE_MENU_ITEMS",
-                Some("dashboard,logs,analytics"),
-            ),
             ("CODEXMANAGER_ORIGINATOR", Some("codex_cli_rs_env")),
             ("CODEXMANAGER_RESIDENCY_REQUIREMENT", Some("us")),
-            ("CODEXMANAGER_CPA_NO_COOKIE_HEADER_MODE", Some("1")),
             (
                 "CODEXMANAGER_UPSTREAM_PROXY_URL",
                 Some("http://127.0.0.1:7899"),
@@ -921,52 +970,6 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
             Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES)
         );
         assert_eq!(
-            snapshot.get("mcpEnabled").and_then(|value| value.as_bool()),
-            Some(false)
-        );
-        assert_eq!(
-            snapshot.get("mcpPort").and_then(|value| value.as_u64()),
-            Some(49962)
-        );
-        assert_eq!(
-            snapshot
-                .get("payloadRewriteRulesJson")
-                .and_then(|value| value.as_str()),
-            Some(
-                "[{\"enabled\":true,\"path\":\"*\",\"field\":\"service_tier\",\"mode\":\"set\",\"value\":\"priority\"}]"
-            )
-        );
-        assert_eq!(
-            snapshot
-                .get("modelAliasPoolsJson")
-                .and_then(|value| value.as_str()),
-            Some(
-                "[{\"enabled\":true,\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"enabled\":true,\"model\":\"o3\",\"weight\":1,\"channel\":null}]}]"
-            )
-        );
-        assert_eq!(
-            snapshot
-                .get("visibleMenuItems")
-                .and_then(|value| value.as_array())
-                .map(|items| items
-                    .iter()
-                    .filter_map(|item| item.as_str())
-                    .collect::<Vec<_>>()),
-            Some(vec!["dashboard", "logs", "analytics", "settings"])
-        );
-        assert_eq!(
-            snapshot
-                .get("remoteManagementEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(true)
-        );
-        assert_eq!(
-            snapshot
-                .get("remoteManagementSecretConfigured")
-                .and_then(|value| value.as_bool()),
-            Some(true)
-        );
-        assert_eq!(
             snapshot
                 .get("routeStrategy")
                 .and_then(|value| value.as_str()),
@@ -980,27 +983,9 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
         );
         assert_eq!(
             snapshot
-                .get("newAccountProtectionDays")
-                .and_then(|value| value.as_u64()),
-            Some(6)
-        );
-        assert_eq!(
-            snapshot
-                .get("quotaProtectionEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(true)
-        );
-        assert_eq!(
-            snapshot
-                .get("quotaProtectionThresholdPercent")
-                .and_then(|value| value.as_u64()),
-            Some(7)
-        );
-        assert_eq!(
-            snapshot
-                .get("requestCompressionEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(false)
+                .get("modelForwardRules")
+                .and_then(|value| value.as_str()),
+            Some("spark*=gpt-5.4-mini")
         );
         assert_eq!(
             snapshot
@@ -1010,15 +995,27 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
         );
         assert_eq!(
             snapshot
-                .get("gatewayResidencyRequirement")
+                .get("gatewayOriginatorDefault")
                 .and_then(|value| value.as_str()),
-            Some("us")
+            Some("codex_cli_rs")
         );
         assert_eq!(
             snapshot
-                .get("cpaNoCookieHeaderModeEnabled")
-                .and_then(|value| value.as_bool()),
-            Some(true)
+                .get("gatewayUserAgentVersion")
+                .and_then(|value| value.as_str()),
+            Some("0.101.0")
+        );
+        assert_eq!(
+            snapshot
+                .get("gatewayUserAgentVersionDefault")
+                .and_then(|value| value.as_str()),
+            Some("0.101.0")
+        );
+        assert_eq!(
+            snapshot
+                .get("gatewayResidencyRequirement")
+                .and_then(|value| value.as_str()),
+            Some("us")
         );
         assert_eq!(
             snapshot
@@ -1082,24 +1079,6 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
         );
         assert_eq!(
             storage
-                .get_app_setting(codexmanager_service::APP_SETTING_MCP_ENABLED_KEY)
-                .expect("read mcp enabled"),
-            Some("0".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(codexmanager_service::APP_SETTING_MCP_PORT_KEY)
-                .expect("read mcp port"),
-            Some("49962".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY)
-                .expect("read remote management enabled"),
-            Some("1".to_string())
-        );
-        assert_eq!(
-            storage
                 .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY)
                 .expect("read route strategy"),
             Some("balanced".to_string())
@@ -1114,41 +1093,21 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
         );
         assert_eq!(
             storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY
-                )
-                .expect("read new account protection days"),
-            Some("6".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY
-                )
-                .expect("read quota protection enabled"),
-            Some("1".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY
-                )
-                .expect("read quota protection threshold"),
-            Some("7".to_string())
-        );
-        assert_eq!(
-            storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY
-                )
-                .expect("read request compression enabled"),
-            Some("0".to_string())
+                .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY)
+                .expect("read model forward rules"),
+            Some("spark*=gpt-5.4-mini".to_string())
         );
         assert_eq!(
             storage
                 .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_ORIGINATOR_KEY)
                 .expect("read gateway originator"),
             Some("codex_cli_rs_env".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY)
+                .expect("read gateway user agent version"),
+            Some("0.101.0".to_string())
         );
         assert_eq!(
             storage
@@ -1174,56 +1133,160 @@ fn app_settings_get_loads_env_backed_dedicated_settings_when_storage_missing() {
                 .expect("read sse keepalive interval"),
             Some("14000".to_string())
         );
+    });
+}
+
+/// 函数 `loopback_service_addr_env_keeps_saved_bind_mode_effective`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn loopback_service_addr_env_keeps_saved_bind_mode_effective() {
+    with_temp_db(|db_path| {
+        let storage = Storage::open(db_path).expect("open storage");
+        storage
+            .set_app_setting(
+                codexmanager_service::SERVICE_BIND_MODE_SETTING_KEY,
+                codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES,
+                now_ts(),
+            )
+            .expect("save service bind mode");
+        drop(storage);
+
+        let _env = override_env_vars(&[("CODEXMANAGER_SERVICE_ADDR", Some("localhost:49760"))]);
+
+        let snapshot = codexmanager_service::app_settings_get().expect("get app settings");
+
         assert_eq!(
-            storage
-                .get_app_setting(
-                    codexmanager_service::APP_SETTING_REMOTE_MANAGEMENT_SECRET_HASH_KEY
-                )
-                .expect("read remote management secret hash"),
-            None
+            snapshot.get("serviceAddr").and_then(|value| value.as_str()),
+            Some("localhost:49760")
+        );
+        assert_eq!(
+            snapshot
+                .get("serviceListenMode")
+                .and_then(|value| value.as_str()),
+            Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES)
+        );
+        assert_eq!(
+            codexmanager_service::listener_bind_addr("localhost:49760"),
+            "0.0.0.0:49760"
+        );
+        assert_eq!(
+            std::env::var("CODEXMANAGER_SERVICE_ADDR").ok().as_deref(),
+            Some("0.0.0.0:49760")
         );
     });
 }
 
+/// 函数 `app_settings_set_service_listen_mode_overrides_loopback_env_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
-fn app_settings_set_preserves_hotmail_menu_item() {
-    with_temp_db(|_db_path| {
-        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
-            "visibleMenuItems": ["dashboard", "hotmail", "settings"]
-        })))
-        .expect("save app settings");
-
-        let items = snapshot
-            .get("visibleMenuItems")
-            .and_then(|value| value.as_array())
-            .expect("visibleMenuItems array")
-            .iter()
-            .filter_map(|value| value.as_str())
-            .collect::<Vec<_>>();
-
-        assert!(items.contains(&"hotmail"));
-    });
-}
-
-#[test]
-fn app_settings_set_rejects_enabling_remote_management_without_secret() {
+fn app_settings_set_service_listen_mode_overrides_loopback_env_snapshot() {
     with_temp_db(|_| {
-        let err = codexmanager_service::app_settings_set(Some(&json!({
-            "remoteManagementEnabled": true
-        })))
-        .expect_err("remote management should require secret");
+        let _env = override_env_vars(&[("CODEXMANAGER_SERVICE_ADDR", Some("localhost:49760"))]);
 
-        assert!(err.contains("访问密钥"), "unexpected error message: {err}");
+        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
+            "serviceListenMode": "all_interfaces"
+        })))
+        .expect("save service listen mode");
+
+        assert_eq!(
+            snapshot.get("serviceAddr").and_then(|value| value.as_str()),
+            Some("localhost:49760")
+        );
+        assert_eq!(
+            snapshot
+                .get("serviceListenMode")
+                .and_then(|value| value.as_str()),
+            Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES)
+        );
+
+        let refreshed = codexmanager_service::app_settings_get().expect("get app settings");
+        assert_eq!(
+            refreshed
+                .get("serviceListenMode")
+                .and_then(|value| value.as_str()),
+            Some(codexmanager_service::SERVICE_BIND_MODE_ALL_INTERFACES)
+        );
+        assert_eq!(
+            codexmanager_service::listener_bind_addr("localhost:49760"),
+            "0.0.0.0:49760"
+        );
     });
 }
 
+/// 函数 `app_settings_set_service_listen_mode_can_switch_back_from_all_interfaces_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn app_settings_set_service_listen_mode_can_switch_back_from_all_interfaces_snapshot() {
+    with_temp_db(|_| {
+        let _env = override_env_vars(&[("CODEXMANAGER_SERVICE_ADDR", Some("0.0.0.0:49760"))]);
+
+        let snapshot = codexmanager_service::app_settings_set(Some(&json!({
+            "serviceListenMode": "loopback"
+        })))
+        .expect("save service listen mode");
+
+        assert_eq!(
+            snapshot.get("serviceAddr").and_then(|value| value.as_str()),
+            Some("localhost:49760")
+        );
+        assert_eq!(
+            snapshot
+                .get("serviceListenMode")
+                .and_then(|value| value.as_str()),
+            Some(codexmanager_service::SERVICE_BIND_MODE_LOOPBACK)
+        );
+        assert_eq!(
+            std::env::var("CODEXMANAGER_SERVICE_ADDR").ok().as_deref(),
+            Some("localhost:49760")
+        );
+    });
+}
+
+/// 函数 `app_settings_set_persists_env_overrides_and_exposes_catalog`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
     with_temp_db(|db_path| {
         let snapshot = codexmanager_service::app_settings_set(Some(&json!({
             "envOverrides": {
                 "CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS": "321000",
-                "CODEXMANAGER_UPSTREAM_COOKIE": "cf_clearance=test"
+                "CODEXMANAGER_WEB_ROOT": "D:/tmp/web"
             }
         })))
         .expect("save env overrides");
@@ -1234,13 +1297,6 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
                 .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS"))
                 .and_then(|value| value.as_str()),
             Some("321000")
-        );
-        assert_eq!(
-            snapshot
-                .get("envOverrides")
-                .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_COOKIE"))
-                .and_then(|value| value.as_str()),
-            Some("cf_clearance=test")
         );
         assert_eq!(
             snapshot
@@ -1272,14 +1328,45 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
             .expect("catalog item");
         assert_eq!(
             total_timeout.get("label").and_then(|value| value.as_str()),
-            Some("上游总超时（毫秒）")
+            Some("上游总超时（毫秒，0 为关闭）")
         );
         assert_eq!(
             total_timeout
                 .get("defaultValue")
                 .and_then(|value| value.as_str()),
-            Some("120000")
+            Some("0")
         );
+        let image_generation_enabled = catalog
+            .iter()
+            .find(|item| {
+                item.get("key").and_then(|value| value.as_str())
+                    == Some("CODEXMANAGER_CODEX_IMAGE_GENERATION_ENABLED")
+            })
+            .expect("image generation catalog item");
+        assert_eq!(
+            image_generation_enabled
+                .get("label")
+                .and_then(|value| value.as_str()),
+            Some("Codex 图片生成兼容开关")
+        );
+        assert_eq!(
+            image_generation_enabled
+                .get("applyMode")
+                .and_then(|value| value.as_str()),
+            Some("runtime")
+        );
+        assert_eq!(
+            image_generation_enabled
+                .get("defaultValue")
+                .and_then(|value| value.as_str()),
+            Some("1")
+        );
+        assert!(snapshot
+            .get("envOverrideReservedKeys")
+            .and_then(|value| value.as_array())
+            .is_some_and(|items| items
+                .iter()
+                .any(|item| item.as_str() == Some("CODEXMANAGER_WEB_ADDR"))));
         assert!(snapshot
             .get("envOverrideReservedKeys")
             .and_then(|value| value.as_array())
@@ -1302,9 +1389,9 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
         );
         assert_eq!(
             stored
-                .get("CODEXMANAGER_UPSTREAM_COOKIE")
+                .get("CODEXMANAGER_WEB_ROOT")
                 .and_then(|value| value.as_str()),
-            Some("cf_clearance=test")
+            Some("D:/tmp/web")
         );
         assert_eq!(
             stored
@@ -1317,6 +1404,70 @@ fn app_settings_set_persists_env_overrides_and_exposes_catalog() {
     });
 }
 
+/// 函数 `app_settings_get_drops_web_addr_from_persisted_env_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn app_settings_get_drops_web_addr_from_persisted_env_snapshot() {
+    with_temp_db(|db_path| {
+        let storage = Storage::open(db_path).expect("open storage");
+        storage
+            .set_app_setting(
+                codexmanager_service::APP_SETTING_ENV_OVERRIDES_KEY,
+                &serde_json::to_string(&json!({
+                    "CODEXMANAGER_WEB_ADDR": "0.0.0.0:48761",
+                    "CODEXMANAGER_WEB_ROOT": "D:/tmp/web"
+                }))
+                .expect("serialize env overrides"),
+                now_ts(),
+            )
+            .expect("save env overrides");
+        drop(storage);
+
+        let snapshot = codexmanager_service::app_settings_get().expect("get app settings");
+
+        assert!(snapshot
+            .get("envOverrides")
+            .and_then(|value| value.get("CODEXMANAGER_WEB_ADDR"))
+            .is_none());
+        assert_eq!(
+            snapshot
+                .get("envOverrides")
+                .and_then(|value| value.get("CODEXMANAGER_WEB_ROOT"))
+                .and_then(|value| value.as_str()),
+            Some("D:/tmp/web")
+        );
+
+        let stored = read_env_overrides_map(db_path);
+        assert!(!stored.contains_key("CODEXMANAGER_WEB_ADDR"));
+        assert_eq!(
+            stored
+                .get("CODEXMANAGER_WEB_ROOT")
+                .and_then(|value| value.as_str()),
+            Some("D:/tmp/web")
+        );
+    });
+}
+
+/// 函数 `app_settings_get_seeds_full_env_override_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_get_seeds_full_env_override_snapshot() {
     with_temp_db(|db_path| {
@@ -1330,7 +1481,7 @@ fn app_settings_get_seeds_full_env_override_snapshot() {
                 .get("envOverrides")
                 .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS"))
                 .and_then(|value| value.as_str()),
-            Some("120000")
+            Some("0")
         );
         assert_eq!(
             snapshot
@@ -1353,7 +1504,7 @@ fn app_settings_get_seeds_full_env_override_snapshot() {
             stored
                 .get("CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS")
                 .and_then(|value| value.as_str()),
-            Some("120000")
+            Some("0")
         );
         assert_eq!(
             stored
@@ -1366,6 +1517,17 @@ fn app_settings_get_seeds_full_env_override_snapshot() {
     });
 }
 
+/// 函数 `app_settings_get_drops_reserved_env_overrides_from_persisted_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_get_drops_reserved_env_overrides_from_persisted_snapshot() {
     with_temp_db(|db_path| {
@@ -1441,22 +1603,33 @@ fn app_settings_get_drops_reserved_env_overrides_from_persisted_snapshot() {
     });
 }
 
+/// 函数 `app_settings_set_env_overrides_patch_preserves_other_values_and_reset_to_default`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_env_overrides_patch_preserves_other_values_and_reset_to_default() {
     with_temp_db(|_| {
         let first = codexmanager_service::app_settings_set(Some(&json!({
             "envOverrides": {
                 "CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS": "321000",
-                "CODEXMANAGER_UPSTREAM_COOKIE": "cf_clearance=test"
+                "CODEXMANAGER_WEB_ROOT": "D:/tmp/web"
             }
         })))
         .expect("save first env overrides");
         assert_eq!(
             first
                 .get("envOverrides")
-                .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_COOKIE"))
+                .and_then(|value| value.get("CODEXMANAGER_WEB_ROOT"))
                 .and_then(|value| value.as_str()),
-            Some("cf_clearance=test")
+            Some("D:/tmp/web")
         );
 
         let second = codexmanager_service::app_settings_set(Some(&json!({
@@ -1471,30 +1644,39 @@ fn app_settings_set_env_overrides_patch_preserves_other_values_and_reset_to_defa
                 .get("envOverrides")
                 .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS"))
                 .and_then(|value| value.as_str()),
-            Some("120000")
+            Some("0")
         );
         assert_eq!(
             second
                 .get("envOverrides")
-                .and_then(|value| value.get("CODEXMANAGER_UPSTREAM_COOKIE"))
+                .and_then(|value| value.get("CODEXMANAGER_WEB_ROOT"))
                 .and_then(|value| value.as_str()),
-            Some("cf_clearance=test")
+            Some("D:/tmp/web")
         );
         assert_eq!(
             std::env::var("CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS")
                 .ok()
                 .as_deref(),
-            Some("120000")
+            Some("0")
         );
         assert_eq!(
-            std::env::var("CODEXMANAGER_UPSTREAM_COOKIE")
-                .ok()
-                .as_deref(),
-            Some("cf_clearance=test")
+            std::env::var("CODEXMANAGER_WEB_ROOT").ok().as_deref(),
+            Some("D:/tmp/web")
         );
     });
 }
 
+/// 函数 `app_settings_set_rejects_reserved_and_bootstrap_env_override_keys`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn app_settings_set_rejects_reserved_and_bootstrap_env_override_keys() {
     with_temp_db(|_| {

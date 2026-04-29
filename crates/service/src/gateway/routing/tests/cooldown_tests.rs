@@ -18,20 +18,8 @@ fn lookup_evicts_expired_target_entry_without_full_scan() {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut state = lock.lock().expect("cooldown state lock");
     let now = now_ts();
-    state.entries.insert(
-        "acc-a".to_string(),
-        AccountCooldownEntry {
-            until: now - 1,
-            reason: CooldownReason::Default,
-        },
-    );
-    state.entries.insert(
-        "acc-b".to_string(),
-        AccountCooldownEntry {
-            until: now - 1,
-            reason: CooldownReason::Default,
-        },
-    );
+    state.entries.insert("acc-a".to_string(), now - 1);
+    state.entries.insert("acc-b".to_string(), now - 1);
     drop(state);
 
     assert!(!is_account_in_cooldown("acc-a"));
@@ -59,13 +47,7 @@ fn mark_path_cleanup_prunes_expired_entries() {
     let lock = ACCOUNT_COOLDOWN_UNTIL.get_or_init(|| Mutex::new(AccountCooldownState::default()));
     let mut state = lock.lock().expect("cooldown state lock");
     let now = now_ts();
-    state.entries.insert(
-        "stale".to_string(),
-        AccountCooldownEntry {
-            until: now - 1,
-            reason: CooldownReason::Default,
-        },
-    );
+    state.entries.insert("stale".to_string(), now - 1);
     state.last_cleanup_at = now - ACCOUNT_COOLDOWN_CLEANUP_INTERVAL_SECS - 1;
     drop(state);
 
@@ -190,18 +172,4 @@ fn rate_limited_offense_resets_after_quiet_period() {
 
     let state = lock.lock().expect("cooldown state lock");
     assert_eq!(state.offense_counts.get("acc"), Some(&1));
-}
-
-#[test]
-fn list_account_cooldowns_returns_reason_snapshot() {
-    let _guard = cooldown_test_guard();
-    clear_account_cooldown_for_tests();
-
-    mark_account_cooldown("acc", CooldownReason::LowQuota);
-
-    let snapshots = list_account_cooldowns();
-    let snapshot = snapshots.get("acc").expect("cooldown snapshot");
-    assert_eq!(snapshot.reason_code, "low_quota");
-    assert_eq!(snapshot.reason_label, "低配额保护");
-    assert!(snapshot.until > now_ts());
 }

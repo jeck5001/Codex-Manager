@@ -1,24 +1,175 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::fmt;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RequestId {
+    String(String),
+    Integer(i64),
+}
+
+impl fmt::Display for RequestId {
+    /// 函数 `fmt`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - f: 参数 f
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::String(value) => f.write_str(value),
+            Self::Integer(value) => write!(f, "{value}"),
+        }
+    }
+}
+
+impl From<i64> for RequestId {
+    /// 函数 `from`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    fn from(value: i64) -> Self {
+        Self::Integer(value)
+    }
+}
+
+impl From<i32> for RequestId {
+    /// 函数 `from`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    fn from(value: i32) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+impl From<u64> for RequestId {
+    /// 函数 `from`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    fn from(value: u64) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+impl From<u32> for RequestId {
+    /// 函数 `from`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    fn from(value: u32) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+impl From<usize> for RequestId {
+    /// 函数 `from`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    fn from(value: usize) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JsonRpcMessage {
+    Request(JsonRpcRequest),
+    Notification(JsonRpcNotification),
+    Response(JsonRpcResponse),
+    Error(JsonRpcError),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonRpcRequest {
-    pub id: u64,
+    pub id: RequestId,
+    pub method: String,
+    #[serde(default)]
+    pub params: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JsonRpcNotification {
     pub method: String,
     #[serde(default)]
     pub params: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonRpcResponse {
-    pub id: u64,
+    pub id: RequestId,
     pub result: serde_json::Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JsonRpcError {
+    pub error: JsonRpcErrorObject,
+    pub id: RequestId,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JsonRpcErrorObject {
+    pub code: i64,
+    #[serde(default)]
+    pub data: Option<serde_json::Value>,
+    pub message: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeResult {
-    pub server_name: String,
     pub version: String,
     pub user_agent: String,
+    pub codex_home: String,
+    pub platform_family: String,
+    pub platform_os: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -27,46 +178,18 @@ pub struct AccountSummary {
     pub id: String,
     pub label: String,
     pub group_name: Option<String>,
-    #[serde(default)]
-    pub tags: Vec<String>,
+    pub preferred: bool,
     pub sort: i64,
     pub status: String,
-    #[serde(default)]
-    pub health_score: i64,
-    #[serde(default)]
-    pub last_status_reason: Option<String>,
-    #[serde(default)]
-    pub last_status_changed_at: Option<i64>,
-    #[serde(default)]
-    pub last_governance_reason: Option<String>,
-    #[serde(default)]
-    pub last_governance_at: Option<i64>,
-    #[serde(default)]
-    pub last_isolation_reason_code: Option<String>,
-    #[serde(default)]
-    pub last_isolation_reason: Option<String>,
-    #[serde(default)]
-    pub last_isolation_at: Option<i64>,
-    #[serde(default)]
-    pub cooldown_until: Option<i64>,
-    #[serde(default)]
-    pub cooldown_reason_code: Option<String>,
-    #[serde(default)]
-    pub cooldown_reason: Option<String>,
-    #[serde(default)]
-    pub new_account_protection_until: Option<i64>,
-    #[serde(default)]
-    pub new_account_protection_reason: Option<String>,
-    #[serde(default)]
-    pub subscription_plan_type: Option<String>,
-    #[serde(default)]
-    pub subscription_updated_at: Option<i64>,
-    #[serde(default)]
-    pub team_manager_uploaded_at: Option<i64>,
-    #[serde(default)]
-    pub official_promo_link: Option<String>,
-    #[serde(default)]
-    pub official_promo_link_updated_at: Option<i64>,
+    pub status_reason: Option<String>,
+    pub plan_type: Option<String>,
+    pub plan_type_raw: Option<String>,
+    pub has_subscription: Option<bool>,
+    pub subscription_plan: Option<String>,
+    pub subscription_expires_at: Option<i64>,
+    pub subscription_renews_at: Option<i64>,
+    pub note: Option<String>,
+    pub tags: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +203,17 @@ pub struct AccountListParams {
 }
 
 impl Default for AccountListParams {
+    /// 函数 `default`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn default() -> Self {
         Self {
             page: 1,
@@ -92,6 +226,17 @@ impl Default for AccountListParams {
 }
 
 impl AccountListParams {
+    /// 函数 `normalized`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn normalized(self) -> Self {
         // 中文注释：分页参数小于 1 时回退到默认值，避免出现负偏移或零页大小。
         Self {
@@ -127,33 +272,23 @@ pub struct DeviceAuthInfo {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LoginStartResult {
-    pub auth_url: String,
-    pub login_id: String,
-    pub login_type: String,
-    pub issuer: String,
-    pub client_id: String,
-    pub redirect_uri: String,
-    #[serde(default)]
-    pub warning: Option<String>,
-    pub device: Option<DeviceAuthInfo>,
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum LoginStartResult {
+    #[serde(rename = "apiKey", rename_all = "camelCase")]
+    ApiKey {},
+    #[serde(rename = "chatgpt", rename_all = "camelCase")]
+    Chatgpt { login_id: String, auth_url: String },
+    #[serde(rename = "chatgptDeviceCode", rename_all = "camelCase")]
+    ChatgptDeviceCode {
+        login_id: String,
+        verification_url: String,
+        user_code: String,
+    },
+    #[serde(rename = "chatgptAuthTokens", rename_all = "camelCase")]
+    ChatgptAuthTokens {},
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountAuthRecoveryResult {
-    pub status: String,
-    pub account_id: String,
-    #[serde(default)]
-    pub login_id: Option<String>,
-    #[serde(default)]
-    pub auth_url: Option<String>,
-    #[serde(default)]
-    pub warning: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageSnapshotResult {
     pub account_id: Option<String>,
@@ -218,49 +353,6 @@ pub struct UsageAggregateSummaryResult {
     pub secondary_remain_percent: Option<i64>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FailureReasonSummaryItem {
-    pub code: String,
-    pub label: String,
-    pub count: i64,
-    pub affected_accounts: i64,
-    pub last_seen_at: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GovernanceSummaryItem {
-    pub code: String,
-    pub label: String,
-    pub target_status: String,
-    pub count: i64,
-    pub affected_accounts: i64,
-    pub last_seen_at: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OperationAuditItem {
-    pub action: String,
-    pub label: String,
-    pub detail: String,
-    pub account_id: Option<String>,
-    pub created_at: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UsagePredictionSummaryResult {
-    pub quota_protection_enabled: bool,
-    pub quota_protection_threshold_percent: i64,
-    pub ready_account_count: i64,
-    pub estimated_hours_to_threshold: Option<f64>,
-    pub estimated_hours_to_pool_exhaustion: Option<f64>,
-    pub threshold_limited_by: Option<String>,
-    pub pool_limited_by: Option<String>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiKeySummary {
@@ -268,6 +360,11 @@ pub struct ApiKeySummary {
     pub name: Option<String>,
     pub model_slug: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub service_tier: Option<String>,
+    pub rotation_strategy: String,
+    pub aggregate_api_id: Option<String>,
+    pub account_plan_filter: Option<String>,
+    pub aggregate_api_url: Option<String>,
     pub client_type: String,
     pub protocol_type: String,
     pub auth_scheme: String,
@@ -276,7 +373,6 @@ pub struct ApiKeySummary {
     pub status: String,
     pub created_at: i64,
     pub last_used_at: Option<i64>,
-    pub expires_at: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -289,6 +385,7 @@ pub struct ApiKeyListResult {
 pub struct ApiKeyUsageStatSummary {
     pub key_id: String,
     pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -303,288 +400,6 @@ pub struct ApiKeyCreateResult {
     pub key: String,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApiKeyRateLimitConfig {
-    pub key_id: String,
-    pub rpm: Option<i64>,
-    pub tpm: Option<i64>,
-    pub daily_limit: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApiKeyModelFallbackConfig {
-    pub key_id: String,
-    #[serde(default)]
-    pub model_chain: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApiKeyAllowedModelsConfig {
-    pub key_id: String,
-    #[serde(default)]
-    pub allowed_models: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApiKeyResponseCacheConfig {
-    pub key_id: String,
-    pub enabled: bool,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AlertRuleItem {
-    pub id: String,
-    pub name: String,
-    pub rule_type: String,
-    #[serde(default)]
-    pub config: serde_json::Value,
-    pub enabled: bool,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AlertRuleListResult {
-    pub items: Vec<AlertRuleItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AlertChannelItem {
-    pub id: String,
-    pub name: String,
-    pub channel_type: String,
-    #[serde(default)]
-    pub config: serde_json::Value,
-    pub enabled: bool,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AlertChannelListResult {
-    pub items: Vec<AlertChannelItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AlertHistoryItem {
-    pub id: i64,
-    pub rule_id: Option<String>,
-    pub rule_name: Option<String>,
-    pub channel_id: Option<String>,
-    pub channel_name: Option<String>,
-    pub status: String,
-    pub message: String,
-    pub created_at: i64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AlertHistoryListResult {
-    pub items: Vec<AlertHistoryItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PluginItem {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub runtime: String,
-    #[serde(default)]
-    pub hook_points: Vec<String>,
-    pub script_content: String,
-    pub enabled: bool,
-    pub timeout_ms: i64,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PluginListResult {
-    pub items: Vec<PluginItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AlertChannelTestResult {
-    pub channel_id: String,
-    pub status: String,
-    pub sent_at: i64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelPricingItem {
-    pub model_slug: String,
-    pub input_price_per_1k: f64,
-    pub output_price_per_1k: f64,
-    #[serde(default)]
-    pub updated_at: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ModelPricingListResult {
-    pub items: Vec<ModelPricingItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CostSummaryParams {
-    #[serde(default)]
-    pub preset: Option<String>,
-    #[serde(default)]
-    pub start_ts: Option<i64>,
-    #[serde(default)]
-    pub end_ts: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CostUsageSummaryResult {
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CostSummaryKeyItem {
-    pub key_id: String,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CostSummaryModelItem {
-    pub model: String,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CostSummaryDayItem {
-    pub day: String,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CostSummaryResult {
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    pub total: CostUsageSummaryResult,
-    #[serde(default)]
-    pub by_key: Vec<CostSummaryKeyItem>,
-    #[serde(default)]
-    pub by_model: Vec<CostSummaryModelItem>,
-    #[serde(default)]
-    pub by_day: Vec<CostSummaryDayItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CostExportResult {
-    pub file_name: String,
-    pub content: String,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TrendQueryParams {
-    #[serde(default)]
-    pub preset: Option<String>,
-    #[serde(default)]
-    pub start_ts: Option<i64>,
-    #[serde(default)]
-    pub end_ts: Option<i64>,
-    #[serde(default)]
-    pub granularity: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequestTrendItem {
-    pub bucket: String,
-    pub request_count: i64,
-    pub success_count: i64,
-    pub success_rate: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequestTrendResult {
-    pub preset: String,
-    pub granularity: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    #[serde(default)]
-    pub items: Vec<RequestTrendItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelTrendItem {
-    pub model: String,
-    pub request_count: i64,
-    pub success_count: i64,
-    pub success_rate: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelTrendResult {
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    #[serde(default)]
-    pub items: Vec<ModelTrendItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HeatmapCellItem {
-    pub weekday: i64,
-    pub hour: i64,
-    pub request_count: i64,
-    pub success_count: i64,
-    pub success_rate: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HeatmapTrendResult {
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    #[serde(default)]
-    pub items: Vec<HeatmapCellItem>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiKeySecretResult {
@@ -594,17 +409,298 @@ pub struct ApiKeySecretResult {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ModelOption {
+pub struct AggregateApiSummary {
+    pub id: String,
+    pub provider_type: String,
+    pub supplier_name: Option<String>,
+    pub sort: i64,
+    pub url: String,
+    pub auth_type: String,
+    pub auth_params: Option<serde_json::Value>,
+    pub action: Option<String>,
+    pub status: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub last_test_at: Option<i64>,
+    pub last_test_status: Option<String>,
+    pub last_test_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCatalogEntry {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub homepage_url: Option<String>,
+    pub script_url: Option<String>,
+    pub script_body: Option<String>,
+    pub permissions: Vec<String>,
+    pub tasks: Vec<PluginCatalogTask>,
+    pub manifest_version: String,
+    pub category: Option<String>,
+    pub runtime_kind: String,
+    pub tags: Vec<String>,
+    pub source_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCatalogTask {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub entrypoint: String,
+    pub schedule_kind: String,
+    pub interval_seconds: Option<i64>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledPluginSummary {
+    pub plugin_id: String,
+    pub source_url: Option<String>,
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub homepage_url: Option<String>,
+    pub script_url: Option<String>,
+    pub permissions: Vec<String>,
+    pub status: String,
+    pub installed_at: i64,
+    pub updated_at: i64,
+    pub last_run_at: Option<i64>,
+    pub last_error: Option<String>,
+    pub task_count: i64,
+    pub enabled_task_count: i64,
+    pub manifest_version: String,
+    pub category: Option<String>,
+    pub runtime_kind: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginTaskSummary {
+    pub id: String,
+    pub plugin_id: String,
+    pub plugin_name: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub entrypoint: String,
+    pub schedule_kind: String,
+    pub interval_seconds: Option<i64>,
+    pub enabled: bool,
+    pub next_run_at: Option<i64>,
+    pub last_run_at: Option<i64>,
+    pub last_status: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginRunLogSummary {
+    pub id: i64,
+    pub plugin_id: String,
+    pub plugin_name: Option<String>,
+    pub task_id: Option<String>,
+    pub task_name: Option<String>,
+    pub run_type: String,
+    pub status: String,
+    pub started_at: i64,
+    pub finished_at: Option<i64>,
+    pub duration_ms: Option<i64>,
+    pub output: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AggregateApiListResult {
+    pub items: Vec<AggregateApiSummary>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregateApiCreateResult {
+    pub id: String,
+    pub key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregateApiSecretResult {
+    pub id: String,
+    pub key: String,
+    pub auth_type: String,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregateApiTestResult {
+    pub id: String,
+    pub ok: bool,
+    pub status_code: Option<i64>,
+    pub message: Option<String>,
+    pub tested_at: i64,
+    pub latency_ms: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelsResponse {
+    #[serde(default)]
+    pub models: Vec<ModelInfo>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+impl ModelsResponse {
+    pub fn is_empty(&self) -> bool {
+        self.models.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedModelCatalogEntry {
+    #[serde(flatten)]
+    pub model: ModelInfo,
+    #[serde(default = "default_model_source_kind")]
+    pub source_kind: String,
+    #[serde(default)]
+    pub user_edited: bool,
+    #[serde(default)]
+    pub sort_index: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedModelCatalogResult {
+    #[serde(default)]
+    pub items: Vec<ManagedModelCatalogEntry>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedModelCatalogUpsertParams {
+    #[serde(default)]
+    pub previous_slug: Option<String>,
+    #[serde(default)]
+    pub source_kind: Option<String>,
+    #[serde(default)]
+    pub user_edited: Option<bool>,
+    #[serde(default)]
+    pub sort_index: Option<i64>,
+    #[serde(flatten)]
+    pub model: ModelInfo,
+}
+
+fn default_model_source_kind() -> String {
+    "remote".to_string()
+}
+
+fn default_supported_in_api() -> bool {
+    true
+}
+
+fn default_input_modalities() -> Vec<String> {
+    vec!["text".to_string(), "image".to_string()]
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelInfo {
     pub slug: String,
     pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_level: Option<String>,
+    #[serde(default)]
+    pub supported_reasoning_levels: Vec<ModelReasoningLevel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<String>,
+    #[serde(default = "default_supported_in_api")]
+    pub supported_in_api: bool,
+    #[serde(default)]
+    pub priority: i64,
+    #[serde(default)]
+    pub additional_speed_tiers: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub availability_nux: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upgrade: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_instructions: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_messages: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_reasoning_summaries: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_verbosity: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_verbosity: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apply_patch_tool_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search_tool_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truncation_policy: Option<ModelTruncationPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_parallel_tool_calls: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_image_detail_original: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_compact_token_limit: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_context_window_percent: Option<i64>,
+    #[serde(default)]
+    pub experimental_supported_tools: Vec<String>,
+    #[serde(default = "default_input_modalities")]
+    pub input_modalities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimal_client_version: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_search_tool: Option<bool>,
+    #[serde(default)]
+    pub available_in_plans: Vec<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ApiKeyModelListResult {
-    pub items: Vec<ModelOption>,
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelReasoningLevel {
+    pub effort: String,
+    pub description: String,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelTruncationPolicy {
+    pub mode: String,
+    pub limit: i64,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequestLogSummary {
     pub trace_id: Option<String>,
@@ -613,25 +709,30 @@ pub struct RequestLogSummary {
     pub initial_account_id: Option<String>,
     #[serde(default)]
     pub attempted_account_ids: Vec<String>,
-    pub candidate_count: Option<i64>,
-    pub attempted_count: Option<i64>,
-    pub skipped_count: Option<i64>,
-    pub skipped_cooldown_count: Option<i64>,
-    pub skipped_inflight_count: Option<i64>,
-    pub route_strategy: Option<String>,
-    pub requested_model: Option<String>,
+    pub initial_aggregate_api_id: Option<String>,
     #[serde(default)]
-    pub model_fallback_path: Vec<String>,
+    pub attempted_aggregate_api_ids: Vec<String>,
     pub request_path: String,
     pub original_path: Option<String>,
     pub adapted_path: Option<String>,
     pub method: String,
+    pub request_type: Option<String>,
+    pub gateway_mode: Option<String>,
+    pub transparent_mode: Option<bool>,
+    pub enhanced_mode: Option<bool>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub service_tier: Option<String>,
+    pub effective_service_tier: Option<String>,
     pub response_adapter: Option<String>,
+    pub canonical_source: Option<String>,
+    pub size_reject_stage: Option<String>,
     pub upstream_url: Option<String>,
+    pub aggregate_api_supplier_name: Option<String>,
+    pub aggregate_api_url: Option<String>,
     pub status_code: Option<i64>,
     pub duration_ms: Option<i64>,
+    pub first_response_ms: Option<i64>,
     pub input_tokens: Option<i64>,
     pub cached_input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
@@ -642,39 +743,53 @@ pub struct RequestLogSummary {
     pub created_at: i64,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct RequestLogFilterParams {
-    pub query: Option<String>,
-    pub status_filter: Option<String>,
-    pub key_id: Option<String>,
-    #[serde(default)]
-    pub key_ids: Vec<String>,
-    pub model: Option<String>,
-    pub time_from: Option<i64>,
-    pub time_to: Option<i64>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RequestLogListParams {
     pub page: i64,
     pub page_size: i64,
-    #[serde(flatten)]
-    pub filters: RequestLogFilterParams,
+    pub query: Option<String>,
+    pub status_filter: Option<String>,
+    pub start_ts: Option<i64>,
+    pub end_ts: Option<i64>,
 }
 
 impl Default for RequestLogListParams {
+    /// 函数 `default`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn default() -> Self {
         Self {
             page: 1,
             page_size: 20,
-            filters: RequestLogFilterParams::default(),
+            query: None,
+            status_filter: None,
+            start_ts: None,
+            end_ts: None,
         }
     }
 }
 
 impl RequestLogListParams {
+    /// 函数 `normalized`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn normalized(self) -> Self {
         Self {
             page: if self.page < 1 { 1 } else { self.page },
@@ -683,7 +798,10 @@ impl RequestLogListParams {
             } else {
                 self.page_size
             },
-            filters: self.filters,
+            query: self.query,
+            status_filter: self.status_filter,
+            start_ts: self.start_ts.filter(|value| *value > 0),
+            end_ts: self.end_ts.filter(|value| *value > 0),
         }
     }
 }
@@ -697,104 +815,66 @@ pub struct RequestLogListResult {
     pub page_size: i64,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RequestLogExportParams {
-    #[serde(default)]
-    pub format: Option<String>,
-    #[serde(flatten)]
-    pub filters: RequestLogFilterParams,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequestLogExportResult {
-    pub format: String,
-    pub file_name: String,
-    pub content: String,
-    pub record_count: i64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AuditLogItem {
-    pub id: i64,
-    pub action: String,
-    pub object_type: String,
-    pub object_id: Option<String>,
-    pub operator: String,
-    pub changes: serde_json::Value,
+pub struct GatewayErrorLogSummary {
+    pub trace_id: Option<String>,
+    pub key_id: Option<String>,
+    pub account_id: Option<String>,
+    pub request_path: String,
+    pub method: String,
+    pub stage: String,
+    pub error_kind: Option<String>,
+    pub upstream_url: Option<String>,
+    pub cf_ray: Option<String>,
+    pub status_code: Option<i64>,
+    pub compression_enabled: bool,
+    pub compression_retry_attempted: bool,
+    pub message: String,
     pub created_at: i64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct AuditLogFilterParams {
-    pub action: Option<String>,
-    pub object_type: Option<String>,
-    pub object_id: Option<String>,
-    pub time_from: Option<i64>,
-    pub time_to: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct AuditLogListParams {
+pub struct GatewayErrorLogListParams {
     pub page: i64,
     pub page_size: i64,
-    #[serde(flatten)]
-    pub filters: AuditLogFilterParams,
+    pub stage_filter: Option<String>,
 }
 
-impl Default for AuditLogListParams {
+impl Default for GatewayErrorLogListParams {
     fn default() -> Self {
         Self {
             page: 1,
-            page_size: 20,
-            filters: AuditLogFilterParams::default(),
+            page_size: 10,
+            stage_filter: None,
         }
     }
 }
 
-impl AuditLogListParams {
+impl GatewayErrorLogListParams {
     pub fn normalized(self) -> Self {
         Self {
             page: if self.page < 1 { 1 } else { self.page },
             page_size: if self.page_size < 1 {
-                20
+                10
             } else {
                 self.page_size
             },
-            filters: self.filters,
+            stage_filter: self.stage_filter,
         }
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AuditLogListResult {
-    pub items: Vec<AuditLogItem>,
+pub struct GatewayErrorLogListResult {
+    pub items: Vec<GatewayErrorLogSummary>,
     pub total: i64,
     pub page: i64,
     pub page_size: i64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AuditLogExportParams {
     #[serde(default)]
-    pub format: Option<String>,
-    #[serde(flatten)]
-    pub filters: AuditLogFilterParams,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AuditLogExportResult {
-    pub format: String,
-    pub file_name: String,
-    pub content: String,
-    pub record_count: i64,
+    pub stages: Vec<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -805,6 +885,7 @@ pub struct RequestLogFilterSummaryResult {
     pub success_count: i64,
     pub error_count: i64,
     pub total_tokens: i64,
+    pub total_cost_usd: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -818,303 +899,20 @@ pub struct RequestLogTodaySummaryResult {
     pub estimated_cost: f64,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DashboardAccountStatusBucket {
-    pub key: String,
-    pub label: String,
-    pub count: i64,
-    pub percent: i64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DashboardGatewayMetricsResult {
-    pub window_minutes: i64,
-    pub total_requests: i64,
-    pub success_requests: i64,
-    pub error_requests: i64,
-    pub qps: f64,
-    pub success_rate: f64,
-    pub p50_latency_ms: Option<i64>,
-    pub p95_latency_ms: Option<i64>,
-    pub p99_latency_ms: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DashboardHealthResult {
-    pub generated_at: i64,
-    #[serde(default)]
-    pub account_status_buckets: Vec<DashboardAccountStatusBucket>,
-    #[serde(default)]
-    pub gateway_metrics: DashboardGatewayMetricsResult,
-    #[serde(default)]
-    pub recent_healthcheck: Option<HealthcheckRunResult>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DashboardTrendPoint {
-    pub bucket_ts: i64,
-    pub request_count: i64,
-    pub error_count: i64,
-    pub error_rate: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DashboardTrendResult {
-    pub generated_at: i64,
-    pub bucket_minutes: i64,
-    #[serde(default)]
-    pub points: Vec<DashboardTrendPoint>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HealthcheckFailureAccountResult {
-    pub account_id: String,
-    pub label: Option<String>,
-    pub reason: String,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HealthcheckRunResult {
-    pub started_at: Option<i64>,
-    pub finished_at: Option<i64>,
-    pub total_accounts: i64,
-    pub sampled_accounts: i64,
-    pub success_count: i64,
-    pub failure_count: i64,
-    #[serde(default)]
-    pub failed_accounts: Vec<HealthcheckFailureAccountResult>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HealthcheckConfigResult {
-    pub enabled: bool,
-    pub interval_secs: u64,
-    pub sample_size: usize,
-    #[serde(default)]
-    pub recent_run: Option<HealthcheckRunResult>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartupSnapshotResult {
-    pub accounts: Vec<StartupAccountSummary>,
+    pub accounts: Vec<AccountSummary>,
+    pub usage_snapshots: Vec<UsageSnapshotResult>,
     #[serde(default)]
     pub usage_aggregate_summary: UsageAggregateSummaryResult,
-    #[serde(default)]
-    pub usage_prediction_summary: UsagePredictionSummaryResult,
-    #[serde(default)]
-    pub failure_reason_summary: Vec<FailureReasonSummaryItem>,
-    #[serde(default)]
-    pub governance_summary: Vec<GovernanceSummaryItem>,
-    #[serde(default)]
-    pub operation_audits: Vec<OperationAuditItem>,
     pub api_keys: Vec<ApiKeySummary>,
-    pub api_model_options: Vec<ModelOption>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub manual_route_account_ids: Vec<String>,
+    pub api_models: ModelsResponse,
+    pub manual_preferred_account_id: Option<String>,
     pub request_log_today_summary: RequestLogTodaySummaryResult,
-    #[serde(default)]
-    pub recent_request_log_count: i64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub latest_request_account_id: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartupAccountSummary {
-    #[serde(flatten)]
-    pub account: AccountSummary,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub usage: Option<UsageSnapshotResult>,
+    pub request_logs: Vec<RequestLogSummary>,
 }
 
 #[cfg(test)]
 #[path = "tests/types_tests.rs"]
 mod tests;
-
-// -- Consumer Analytics types --
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConsumerDetailParams {
-    pub key_id: String,
-    #[serde(default)]
-    pub preset: Option<String>,
-    #[serde(default)]
-    pub start_ts: Option<i64>,
-    #[serde(default)]
-    pub end_ts: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConsumerOverviewResult {
-    pub key_id: String,
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-    pub success_rate: f64,
-    pub avg_duration_ms: Option<f64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConsumerTrendDayItem {
-    pub day: String,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub output_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConsumerTrendResult {
-    pub key_id: String,
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    #[serde(default)]
-    pub items: Vec<ConsumerTrendDayItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConsumerModelItem {
-    pub model: String,
-    pub request_count: i64,
-    pub input_tokens: i64,
-    pub output_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConsumerModelBreakdownResult {
-    pub key_id: String,
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    #[serde(default)]
-    pub items: Vec<ConsumerModelItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConsumerRankingParams {
-    #[serde(default)]
-    pub preset: Option<String>,
-    #[serde(default)]
-    pub start_ts: Option<i64>,
-    #[serde(default)]
-    pub end_ts: Option<i64>,
-    #[serde(default)]
-    pub limit: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConsumerRankingResult {
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    #[serde(default)]
-    pub items: Vec<CostSummaryKeyItem>,
-}
-
-// -- Cache Analytics types --
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheAnalyticsSummaryResult {
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    pub total_requests: i64,
-    pub cached_requests: i64,
-    pub hit_rate: f64,
-    pub total_input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub cache_token_ratio: f64,
-    pub estimated_savings_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheAnalyticsTrendDayItem {
-    pub day: String,
-    pub total_requests: i64,
-    pub cached_requests: i64,
-    pub hit_rate: f64,
-    pub total_input_tokens: i64,
-    pub cached_input_tokens: i64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheAnalyticsTrendResult {
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    #[serde(default)]
-    pub items: Vec<CacheAnalyticsTrendDayItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheAnalyticsModelItem {
-    pub model: String,
-    pub total_requests: i64,
-    pub cached_requests: i64,
-    pub hit_rate: f64,
-    pub total_input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub estimated_savings_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheAnalyticsByModelResult {
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    #[serde(default)]
-    pub items: Vec<CacheAnalyticsModelItem>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheAnalyticsKeyItem {
-    pub key_id: String,
-    pub total_requests: i64,
-    pub cached_requests: i64,
-    pub hit_rate: f64,
-    pub total_input_tokens: i64,
-    pub cached_input_tokens: i64,
-    pub estimated_savings_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheAnalyticsByKeyResult {
-    pub preset: String,
-    pub range_start: i64,
-    pub range_end: i64,
-    #[serde(default)]
-    pub items: Vec<CacheAnalyticsKeyItem>,
-}

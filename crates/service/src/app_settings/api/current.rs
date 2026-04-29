@@ -1,53 +1,34 @@
-use crate::app_settings::{
-    APP_SETTING_CPA_SYNC_API_URL_KEY, APP_SETTING_CPA_SYNC_ENABLED_KEY,
-    APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY, APP_SETTING_CPA_SYNC_SCHEDULE_ENABLED_KEY,
-    APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY,
-};
+use crate::app_settings::{list_app_settings_map, listener_bind_addr_for_mode};
 use crate::initialize_storage_if_needed;
 use crate::web_access_password_configured;
-use codexmanager_core::rpc::types::ModelOption;
+use codexmanager_core::rpc::types::ModelInfo;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
 use super::{
     current_background_tasks_snapshot_value, current_close_to_tray_on_close_setting,
-    current_env_overrides, current_gateway_free_account_max_model,
-    current_gateway_model_alias_pools_json, current_gateway_new_account_protection_days,
-    current_gateway_originator, current_gateway_payload_rewrite_rules_json,
-    current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
-    current_gateway_request_compression_enabled, current_gateway_residency_requirement,
-    current_gateway_response_cache_enabled, current_gateway_response_cache_max_entries,
-    current_gateway_response_cache_ttl_secs, current_gateway_retry_policy,
+    current_codex_cli_guide_dismissed, current_env_overrides, current_gateway_account_max_inflight,
+    current_gateway_free_account_max_model, current_gateway_model_forward_rules,
+    current_gateway_originator, current_gateway_residency_requirement,
     current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
-    current_lightweight_mode_on_close_to_tray_setting, current_mcp_enabled, current_mcp_port,
-    current_remote_management_enabled, current_saved_service_addr, current_service_bind_mode,
-    current_ui_appearance_preset, current_ui_low_transparency_enabled, current_ui_theme,
-    current_ui_visible_menu_items, current_update_auto_check_enabled, env_override_catalog_value,
-    env_override_reserved_keys, env_override_unsupported_keys, get_persisted_app_setting,
-    parse_bool_with_default, residency_requirement_options, save_env_overrides_value,
-    save_persisted_app_setting, save_persisted_bool_setting, sync_runtime_settings_from_storage,
-    APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
-    APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
-    APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
-    APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
-    APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
-    APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
-    APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
-    APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
-    APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY, APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
-    APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
-    APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY,
-    APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
-    APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
-    APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
+    current_gateway_upstream_total_timeout_ms, current_gateway_user_agent_version,
+    current_lightweight_mode_on_close_to_tray_setting, current_saved_service_addr,
+    current_service_bind_mode, current_ui_appearance_preset, current_ui_locale,
+    current_ui_low_transparency_enabled, current_ui_theme, current_update_auto_check_enabled,
+    default_gateway_originator, default_gateway_user_agent_version, env_override_catalog_value,
+    env_override_reserved_keys, env_override_unsupported_keys, residency_requirement_options,
+    save_env_overrides_value, save_persisted_app_setting, save_persisted_bool_setting,
+    sync_runtime_settings_from_storage, APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
+    APP_SETTING_GATEWAY_ACCOUNT_MAX_INFLIGHT_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
+    APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY,
+    APP_SETTING_GATEWAY_ORIGINATOR_KEY, APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY,
     APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY, APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
-    APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_MCP_ENABLED_KEY,
-    APP_SETTING_MCP_PORT_KEY, APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY,
-    APP_SETTING_SERVICE_ADDR_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
-    APP_SETTING_TEAM_MANAGER_API_URL_KEY, APP_SETTING_TEAM_MANAGER_ENABLED_KEY,
-    APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY,
-    APP_SETTING_UI_THEME_KEY, APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY,
+    APP_SETTING_GATEWAY_UPSTREAM_TOTAL_TIMEOUT_MS_KEY, APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
+    APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_PLUGIN_MARKET_MODE_KEY,
+    APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY, APP_SETTING_SERVICE_ADDR_KEY,
+    APP_SETTING_UI_APPEARANCE_PRESET_KEY, APP_SETTING_UI_CODEX_CLI_GUIDE_DISMISSED_KEY,
+    APP_SETTING_UI_LOCALE_KEY, APP_SETTING_UI_LOW_TRANSPARENCY_KEY, APP_SETTING_UI_THEME_KEY,
     APP_SETTING_UPDATE_AUTO_CHECK_KEY, SERVICE_BIND_MODE_ALL_INTERFACES,
     SERVICE_BIND_MODE_LOOPBACK, SERVICE_BIND_MODE_SETTING_KEY,
 };
@@ -64,49 +45,47 @@ const DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS: &[&str] = &[
     "gpt-5.2",
     "gpt-5.2-codex",
     "gpt-5.3-codex",
+    "gpt-5.4-mini",
     "gpt-5.4",
 ];
 
-struct PersistCurrentSnapshotInput<'a> {
-    update_auto_check: bool,
-    persisted_close_to_tray: bool,
-    lightweight_mode_on_close_to_tray: bool,
-    low_transparency: bool,
-    theme: &'a str,
-    appearance_preset: &'a str,
-    visible_menu_items: &'a [String],
-    service_addr: &'a str,
-    service_listen_mode: &'a str,
-    mcp_enabled: bool,
-    mcp_port: u16,
-    remote_management_enabled: bool,
-    route_strategy: &'a str,
-    free_account_max_model: &'a str,
-    new_account_protection_days: u64,
-    quota_protection_enabled: bool,
-    quota_protection_threshold_percent: u64,
-    request_compression_enabled: bool,
-    payload_rewrite_rules_json: &'a str,
-    model_alias_pools_json: &'a str,
-    retry_policy_max_retries: usize,
-    retry_policy_backoff_strategy: &'a str,
-    retry_policy_retryable_status_codes: &'a [u16],
-    response_cache_enabled: bool,
-    response_cache_ttl_secs: u64,
-    response_cache_max_entries: usize,
-    gateway_originator: &'a str,
-    gateway_residency_requirement: &'a str,
-    cpa_no_cookie_header_mode_enabled: bool,
-    upstream_proxy_url: Option<&'a str>,
-    upstream_stream_timeout_ms: u64,
-    sse_keepalive_interval_ms: u64,
-    background_tasks_raw: &'a str,
-    env_overrides: &'a BTreeMap<String, String>,
+/// 函数 `normalize_service_bind_mode_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
+fn normalize_service_bind_mode_value(raw: Option<&str>) -> &'static str {
+    let Some(value) = raw else {
+        return SERVICE_BIND_MODE_LOOPBACK;
+    };
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "all_interfaces" | "all-interfaces" | "all" | "0.0.0.0" => SERVICE_BIND_MODE_ALL_INTERFACES,
+        _ => SERVICE_BIND_MODE_LOOPBACK,
+    }
 }
 
+/// 函数 `current_app_settings_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn current_app_settings_value(
     close_to_tray_on_close: Option<bool>,
     close_to_tray_supported: Option<bool>,
+    service_listen_mode_override: Option<&str>,
 ) -> Result<Value, String> {
     initialize_storage_if_needed()?;
     sync_runtime_settings_from_storage();
@@ -115,168 +94,164 @@ pub(super) fn current_app_settings_value(
     let persisted_close_to_tray = current_close_to_tray_on_close_setting();
     let close_to_tray = close_to_tray_on_close.unwrap_or(persisted_close_to_tray);
     let lightweight_mode_on_close_to_tray = current_lightweight_mode_on_close_to_tray_setting();
+    let codex_cli_guide_dismissed = current_codex_cli_guide_dismissed();
     let low_transparency = current_ui_low_transparency_enabled();
     let theme = current_ui_theme();
     let appearance_preset = current_ui_appearance_preset();
-    let visible_menu_items = current_ui_visible_menu_items();
+    let locale = current_ui_locale();
+    let settings = list_app_settings_map();
     let service_addr = current_saved_service_addr();
-    let service_listen_mode = current_service_bind_mode();
-    let mcp_enabled = current_mcp_enabled();
-    let mcp_port = current_mcp_port();
-    let remote_management_enabled = current_remote_management_enabled();
+    let service_listen_mode = if let Some(mode) = service_listen_mode_override {
+        normalize_service_bind_mode_value(Some(mode)).to_string()
+    } else if let Some(mode) = settings.get(SERVICE_BIND_MODE_SETTING_KEY) {
+        normalize_service_bind_mode_value(Some(mode)).to_string()
+    } else {
+        current_service_bind_mode()
+    };
     let route_strategy = crate::gateway::current_route_strategy().to_string();
     let free_account_max_model = current_gateway_free_account_max_model();
-    let new_account_protection_days = current_gateway_new_account_protection_days();
-    let quota_protection_enabled = current_gateway_quota_protection_enabled();
-    let quota_protection_threshold_percent = current_gateway_quota_protection_threshold_percent();
-    let request_compression_enabled = current_gateway_request_compression_enabled();
-    let payload_rewrite_rules_json = current_gateway_payload_rewrite_rules_json();
-    let model_alias_pools_json = current_gateway_model_alias_pools_json();
-    let retry_policy = current_gateway_retry_policy();
-    let response_cache_enabled = current_gateway_response_cache_enabled();
-    let response_cache_ttl_secs = current_gateway_response_cache_ttl_secs();
-    let response_cache_max_entries = current_gateway_response_cache_max_entries();
+    let model_forward_rules = current_gateway_model_forward_rules();
+    let account_max_inflight = current_gateway_account_max_inflight();
     let gateway_originator = current_gateway_originator();
+    let gateway_user_agent_version = current_gateway_user_agent_version();
+    let gateway_originator_default = default_gateway_originator();
+    let gateway_user_agent_version_default = default_gateway_user_agent_version();
     let gateway_residency_requirement = current_gateway_residency_requirement().unwrap_or_default();
     let free_account_max_model_options =
         load_free_account_max_model_options(&free_account_max_model);
-    let cpa_no_cookie_header_mode_enabled = crate::gateway::cpa_no_cookie_header_mode_enabled();
     let upstream_proxy_url = crate::gateway::current_upstream_proxy_url();
     let upstream_stream_timeout_ms = current_gateway_upstream_stream_timeout_ms();
+    let upstream_total_timeout_ms = current_gateway_upstream_total_timeout_ms();
     let sse_keepalive_interval_ms = current_gateway_sse_keepalive_interval_ms();
-    let cpa_sync_enabled = get_persisted_app_setting(APP_SETTING_CPA_SYNC_ENABLED_KEY)
-        .map(|raw| parse_bool_with_default(&raw, false))
-        .unwrap_or(false);
-    let cpa_sync_api_url =
-        get_persisted_app_setting(APP_SETTING_CPA_SYNC_API_URL_KEY).unwrap_or_default();
-    let cpa_sync_has_management_key =
-        get_persisted_app_setting(APP_SETTING_CPA_SYNC_MANAGEMENT_KEY_KEY).is_some();
-    let cpa_sync_schedule_enabled =
-        get_persisted_app_setting(APP_SETTING_CPA_SYNC_SCHEDULE_ENABLED_KEY)
-            .map(|raw| parse_bool_with_default(&raw, false))
-            .unwrap_or(false);
-    let cpa_sync_schedule_interval_minutes =
-        get_persisted_app_setting(APP_SETTING_CPA_SYNC_SCHEDULE_INTERVAL_MINUTES_KEY)
-            .and_then(|raw| raw.trim().parse::<u64>().ok())
-            .map(|value| value.max(1))
-            .unwrap_or(30);
-    let team_manager_enabled = get_persisted_app_setting(APP_SETTING_TEAM_MANAGER_ENABLED_KEY)
-        .map(|raw| parse_bool_with_default(&raw, false))
-        .unwrap_or(false);
-    let team_manager_api_url =
-        get_persisted_app_setting(APP_SETTING_TEAM_MANAGER_API_URL_KEY).unwrap_or_default();
-    let team_manager_has_api_key =
-        get_persisted_app_setting(APP_SETTING_TEAM_MANAGER_API_KEY_KEY).is_some();
+    let plugin_market_source_url = settings
+        .get(APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY)
+        .cloned()
+        .unwrap_or_default();
+    let plugin_market_mode = settings
+        .get(APP_SETTING_PLUGIN_MARKET_MODE_KEY)
+        .map(|value| normalize_market_mode(value))
+        .unwrap_or_else(|| {
+            if plugin_market_source_url.trim().is_empty() {
+                "builtin"
+            } else {
+                "custom"
+            }
+        })
+        .to_string();
     let background_tasks_raw = serde_json::to_string(&background_tasks)
         .map_err(|err| format!("serialize background tasks failed: {err}"))?;
     let env_overrides = current_env_overrides();
 
-    persist_current_snapshot(PersistCurrentSnapshotInput {
+    persist_current_snapshot(
         update_auto_check,
         persisted_close_to_tray,
         lightweight_mode_on_close_to_tray,
+        codex_cli_guide_dismissed,
         low_transparency,
-        theme: &theme,
-        appearance_preset: &appearance_preset,
-        visible_menu_items: &visible_menu_items,
-        service_addr: &service_addr,
-        service_listen_mode: &service_listen_mode,
-        mcp_enabled,
-        mcp_port,
-        remote_management_enabled,
-        route_strategy: &route_strategy,
-        free_account_max_model: &free_account_max_model,
-        new_account_protection_days,
-        quota_protection_enabled,
-        quota_protection_threshold_percent,
-        request_compression_enabled,
-        payload_rewrite_rules_json: &payload_rewrite_rules_json,
-        model_alias_pools_json: &model_alias_pools_json,
-        retry_policy_max_retries: retry_policy.max_retries,
-        retry_policy_backoff_strategy: &retry_policy.backoff_strategy,
-        retry_policy_retryable_status_codes: &retry_policy.retryable_status_codes,
-        response_cache_enabled,
-        response_cache_ttl_secs,
-        response_cache_max_entries,
-        gateway_originator: &gateway_originator,
-        gateway_residency_requirement: &gateway_residency_requirement,
-        cpa_no_cookie_header_mode_enabled,
-        upstream_proxy_url: upstream_proxy_url.as_deref(),
+        &theme,
+        &appearance_preset,
+        &locale,
+        &service_addr,
+        &service_listen_mode,
+        &route_strategy,
+        &free_account_max_model,
+        &model_forward_rules,
+        account_max_inflight,
+        &gateway_originator,
+        &gateway_user_agent_version,
+        &gateway_residency_requirement,
+        &plugin_market_mode,
+        &plugin_market_source_url,
+        upstream_proxy_url.as_deref(),
         upstream_stream_timeout_ms,
+        upstream_total_timeout_ms,
         sse_keepalive_interval_ms,
-        background_tasks_raw: &background_tasks_raw,
-        env_overrides: &env_overrides,
-    });
+        &background_tasks_raw,
+        &env_overrides,
+    );
+
+    if service_listen_mode_override.is_none() {
+        if let Some(mode) = settings.get(SERVICE_BIND_MODE_SETTING_KEY) {
+            let synced_addr = listener_bind_addr_for_mode(&service_addr, mode);
+            std::env::set_var("CODEXMANAGER_SERVICE_ADDR", synced_addr);
+        }
+    }
 
     Ok(serde_json::json!({
         "updateAutoCheck": update_auto_check,
         "closeToTrayOnClose": close_to_tray,
         "closeToTraySupported": close_to_tray_supported,
         "lightweightModeOnCloseToTray": lightweight_mode_on_close_to_tray,
+        "codexCliGuideDismissed": codex_cli_guide_dismissed,
         "lowTransparency": low_transparency,
         "theme": theme,
         "appearancePreset": appearance_preset,
-        "visibleMenuItems": visible_menu_items,
+        "locale": locale,
+        "localeOptions": ["zh-CN", "en", "ru", "ko"],
         "serviceAddr": service_addr,
         "serviceListenMode": service_listen_mode,
         "serviceListenModeOptions": [
             SERVICE_BIND_MODE_LOOPBACK,
             SERVICE_BIND_MODE_ALL_INTERFACES
         ],
-        "mcpEnabled": mcp_enabled,
-        "mcpPort": mcp_port,
-        "remoteManagementEnabled": remote_management_enabled,
-        "remoteManagementSecretConfigured": crate::remote_management_secret_configured(),
         "routeStrategy": route_strategy,
-        "routeStrategyOptions": ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
+        "routeStrategyOptions": ["ordered", "balanced"],
         "freeAccountMaxModel": free_account_max_model,
+        "modelForwardRules": model_forward_rules,
+        "accountMaxInflight": account_max_inflight,
         "freeAccountMaxModelOptions": free_account_max_model_options,
-        "newAccountProtectionDays": new_account_protection_days,
-        "quotaProtectionEnabled": quota_protection_enabled,
-        "quotaProtectionThresholdPercent": quota_protection_threshold_percent,
-        "requestCompressionEnabled": request_compression_enabled,
-        "payloadRewriteRulesJson": payload_rewrite_rules_json,
-        "modelAliasPoolsJson": model_alias_pools_json,
-        "retryPolicyMaxRetries": retry_policy.max_retries,
-        "retryPolicyBackoffStrategy": retry_policy.backoff_strategy,
-        "retryPolicyRetryableStatusCodes": retry_policy.retryable_status_codes,
-        "responseCacheEnabled": response_cache_enabled,
-        "responseCacheTtlSecs": response_cache_ttl_secs,
-        "responseCacheMaxEntries": response_cache_max_entries,
         "gatewayOriginator": gateway_originator,
+        "gatewayOriginatorDefault": gateway_originator_default,
+        "gatewayUserAgentVersion": gateway_user_agent_version,
+        "gatewayUserAgentVersionDefault": gateway_user_agent_version_default,
         "gatewayResidencyRequirement": gateway_residency_requirement,
+        "pluginMarketMode": plugin_market_mode,
+        "pluginMarketSourceUrl": plugin_market_source_url,
         "gatewayResidencyRequirementOptions": residency_requirement_options(),
-        "cpaNoCookieHeaderModeEnabled": cpa_no_cookie_header_mode_enabled,
         "upstreamProxyUrl": upstream_proxy_url.unwrap_or_default(),
         "upstreamStreamTimeoutMs": upstream_stream_timeout_ms,
+        "upstreamTotalTimeoutMs": upstream_total_timeout_ms,
         "sseKeepaliveIntervalMs": sse_keepalive_interval_ms,
-        "cpaSyncEnabled": cpa_sync_enabled,
-        "cpaSyncApiUrl": cpa_sync_api_url,
-        "cpaSyncHasManagementKey": cpa_sync_has_management_key,
-        "cpaSyncScheduleEnabled": cpa_sync_schedule_enabled,
-        "cpaSyncScheduleIntervalMinutes": cpa_sync_schedule_interval_minutes,
-        "teamManagerEnabled": team_manager_enabled,
-        "teamManagerApiUrl": team_manager_api_url,
-        "teamManagerHasApiKey": team_manager_has_api_key,
         "backgroundTasks": background_tasks,
         "envOverrides": env_overrides,
         "envOverrideCatalog": env_override_catalog_value(),
         "envOverrideReservedKeys": env_override_reserved_keys(),
         "envOverrideUnsupportedKeys": env_override_unsupported_keys(),
         "webAccessPasswordConfigured": web_access_password_configured(),
-        "webAccessTwoFactorEnabled": crate::web_auth_two_factor_enabled(),
-        "webAccessRecoveryCodesRemaining": crate::auth::web_access_2fa::web_auth_two_factor_recovery_codes_remaining(),
     }))
 }
 
+/// 函数 `load_free_account_max_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - current: 参数 current
+///
+/// # 返回
+/// 返回函数执行结果
 fn load_free_account_max_model_options(current: &str) -> Vec<String> {
     let cached = crate::apikey_models::read_model_options(false)
-        .map(|result| result.items)
+        .map(|result| result.models)
         .unwrap_or_default();
     collect_free_account_max_model_options(current, &cached)
 }
 
-fn collect_free_account_max_model_options(current: &str, cached: &[ModelOption]) -> Vec<String> {
+/// 函数 `collect_free_account_max_model_options`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - current: 参数 current
+/// - cached: 参数 cached
+///
+/// # 返回
+/// 返回函数执行结果
+fn collect_free_account_max_model_options(current: &str, cached: &[ModelInfo]) -> Vec<String> {
     let mut items = vec!["auto".to_string()];
     for slug in cached
         .iter()
@@ -305,48 +280,81 @@ fn collect_free_account_max_model_options(current: &str, cached: &[ModelOption])
     items
 }
 
+/// 函数 `is_free_account_max_model_option`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - slug: 参数 slug
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_free_account_max_model_option(slug: &str) -> bool {
     let normalized = slug.trim().to_ascii_lowercase();
     !normalized.is_empty() && normalized.starts_with("gpt-") && normalized != "gpt-5.4-pro"
 }
 
-fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
-    let PersistCurrentSnapshotInput {
-        update_auto_check,
-        persisted_close_to_tray,
-        lightweight_mode_on_close_to_tray,
-        low_transparency,
-        theme,
-        appearance_preset,
-        visible_menu_items,
-        service_addr,
-        service_listen_mode,
-        mcp_enabled,
-        mcp_port,
-        remote_management_enabled,
-        route_strategy,
-        free_account_max_model,
-        new_account_protection_days,
-        quota_protection_enabled,
-        quota_protection_threshold_percent,
-        request_compression_enabled,
-        payload_rewrite_rules_json,
-        model_alias_pools_json,
-        retry_policy_max_retries,
-        retry_policy_backoff_strategy,
-        retry_policy_retryable_status_codes,
-        response_cache_enabled,
-        response_cache_ttl_secs,
-        response_cache_max_entries,
-        gateway_originator,
-        gateway_residency_requirement,
-        cpa_no_cookie_header_mode_enabled,
-        upstream_proxy_url,
-        upstream_stream_timeout_ms,
-        sse_keepalive_interval_ms,
-        background_tasks_raw,
-        env_overrides,
-    } = input;
+/// 函数 `persist_current_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - update_auto_check: 参数 update_auto_check
+/// - persisted_close_to_tray: 参数 persisted_close_to_tray
+/// - lightweight_mode_on_close_to_tray: 参数 lightweight_mode_on_close_to_tray
+/// - low_transparency: 参数 low_transparency
+/// - theme: 参数 theme
+/// - appearance_preset: 参数 appearance_preset
+/// - service_addr: 参数 service_addr
+/// - service_listen_mode: 参数 service_listen_mode
+/// - route_strategy: 参数 route_strategy
+/// - free_account_max_model: 参数 free_account_max_model
+/// - account_max_inflight: 参数 account_max_inflight
+/// - gateway_originator: 参数 gateway_originator
+/// - gateway_user_agent_version: 参数 gateway_user_agent_version
+/// - gateway_residency_requirement: 参数 gateway_residency_requirement
+/// - plugin_market_mode: 参数 plugin_market_mode
+/// - plugin_market_source_url: 参数 plugin_market_source_url
+/// - upstream_proxy_url: 参数 upstream_proxy_url
+/// - upstream_stream_timeout_ms: 参数 upstream_stream_timeout_ms
+/// - upstream_total_timeout_ms: 参数 upstream_total_timeout_ms
+/// - sse_keepalive_interval_ms: 参数 sse_keepalive_interval_ms
+/// - background_tasks_raw: 参数 background_tasks_raw
+/// - env_overrides: 参数 env_overrides
+///
+/// # 返回
+/// 无
+fn persist_current_snapshot(
+    update_auto_check: bool,
+    persisted_close_to_tray: bool,
+    lightweight_mode_on_close_to_tray: bool,
+    codex_cli_guide_dismissed: bool,
+    low_transparency: bool,
+    theme: &str,
+    appearance_preset: &str,
+    locale: &str,
+    service_addr: &str,
+    service_listen_mode: &str,
+    route_strategy: &str,
+    free_account_max_model: &str,
+    model_forward_rules: &str,
+    account_max_inflight: usize,
+    gateway_originator: &str,
+    gateway_user_agent_version: &str,
+    gateway_residency_requirement: &str,
+    plugin_market_mode: &str,
+    plugin_market_source_url: &str,
+    upstream_proxy_url: Option<&str>,
+    upstream_stream_timeout_ms: u64,
+    upstream_total_timeout_ms: u64,
+    sse_keepalive_interval_ms: u64,
+    background_tasks_raw: &str,
+    env_overrides: &BTreeMap<String, String>,
+) {
     let _ = save_persisted_bool_setting(APP_SETTING_UPDATE_AUTO_CHECK_KEY, update_auto_check);
     let _ = save_persisted_bool_setting(
         APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY,
@@ -356,24 +364,19 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
         APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY,
         lightweight_mode_on_close_to_tray,
     );
+    let _ = save_persisted_bool_setting(
+        APP_SETTING_UI_CODEX_CLI_GUIDE_DISMISSED_KEY,
+        codex_cli_guide_dismissed,
+    );
     let _ = save_persisted_bool_setting(APP_SETTING_UI_LOW_TRANSPARENCY_KEY, low_transparency);
     let _ = save_persisted_app_setting(APP_SETTING_UI_THEME_KEY, Some(theme));
     let _ = save_persisted_app_setting(
         APP_SETTING_UI_APPEARANCE_PRESET_KEY,
         Some(appearance_preset),
     );
-    let _ = save_persisted_app_setting(
-        APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY,
-        serde_json::to_string(visible_menu_items).ok().as_deref(),
-    );
+    let _ = save_persisted_app_setting(APP_SETTING_UI_LOCALE_KEY, Some(locale));
     let _ = save_persisted_app_setting(APP_SETTING_SERVICE_ADDR_KEY, Some(service_addr));
     let _ = save_persisted_app_setting(SERVICE_BIND_MODE_SETTING_KEY, Some(service_listen_mode));
-    let _ = save_persisted_bool_setting(APP_SETTING_MCP_ENABLED_KEY, mcp_enabled);
-    let _ = save_persisted_app_setting(APP_SETTING_MCP_PORT_KEY, Some(&mcp_port.to_string()));
-    let _ = save_persisted_bool_setting(
-        APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY,
-        remote_management_enabled,
-    );
     let _ =
         save_persisted_app_setting(APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, Some(route_strategy));
     let _ = save_persisted_app_setting(
@@ -381,57 +384,23 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
         Some(free_account_max_model),
     );
     let _ = save_persisted_app_setting(
-        APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
-        Some(&new_account_protection_days.to_string()),
-    );
-    let _ = save_persisted_bool_setting(
-        APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
-        quota_protection_enabled,
-    );
-    let _ = save_persisted_app_setting(
-        APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY,
-        Some(&quota_protection_threshold_percent.to_string()),
-    );
-    let _ = save_persisted_bool_setting(
-        APP_SETTING_GATEWAY_REQUEST_COMPRESSION_ENABLED_KEY,
-        request_compression_enabled,
+        APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY,
+        if model_forward_rules.trim().is_empty() {
+            None
+        } else {
+            Some(model_forward_rules)
+        },
     );
     let _ = save_persisted_app_setting(
-        APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
-        Some(payload_rewrite_rules_json),
-    );
-    let _ = save_persisted_app_setting(
-        APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
-        Some(model_alias_pools_json),
-    );
-    let _ = save_persisted_app_setting(
-        APP_SETTING_GATEWAY_RETRY_POLICY_MAX_RETRIES_KEY,
-        Some(&retry_policy_max_retries.to_string()),
-    );
-    let _ = save_persisted_app_setting(
-        APP_SETTING_GATEWAY_RETRY_POLICY_BACKOFF_STRATEGY_KEY,
-        Some(retry_policy_backoff_strategy),
-    );
-    let _ = save_persisted_app_setting(
-        APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
-        serde_json::to_string(retry_policy_retryable_status_codes)
-            .ok()
-            .as_deref(),
-    );
-    let _ = save_persisted_bool_setting(
-        APP_SETTING_GATEWAY_RESPONSE_CACHE_ENABLED_KEY,
-        response_cache_enabled,
-    );
-    let _ = save_persisted_app_setting(
-        APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY,
-        Some(&response_cache_ttl_secs.to_string()),
-    );
-    let _ = save_persisted_app_setting(
-        APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY,
-        Some(&response_cache_max_entries.to_string()),
+        APP_SETTING_GATEWAY_ACCOUNT_MAX_INFLIGHT_KEY,
+        Some(&account_max_inflight.to_string()),
     );
     let _ =
         save_persisted_app_setting(APP_SETTING_GATEWAY_ORIGINATOR_KEY, Some(gateway_originator));
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
+        Some(gateway_user_agent_version),
+    );
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY,
         if gateway_residency_requirement.trim().is_empty() {
@@ -440,9 +409,21 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
             Some(gateway_residency_requirement)
         },
     );
-    let _ = save_persisted_bool_setting(
-        APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
-        cpa_no_cookie_header_mode_enabled,
+    let _ = save_persisted_app_setting(
+        APP_SETTING_PLUGIN_MARKET_SOURCE_URL_KEY,
+        if plugin_market_source_url.trim().is_empty() {
+            None
+        } else {
+            Some(plugin_market_source_url)
+        },
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_PLUGIN_MARKET_MODE_KEY,
+        if plugin_market_mode.trim().is_empty() {
+            None
+        } else {
+            Some(plugin_market_mode)
+        },
     );
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY,
@@ -451,6 +432,10 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
         Some(&upstream_stream_timeout_ms.to_string()),
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_UPSTREAM_TOTAL_TIMEOUT_MS_KEY,
+        Some(&upstream_total_timeout_ms.to_string()),
     );
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
@@ -463,11 +448,44 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
     let _ = save_env_overrides_value(env_overrides);
 }
 
+/// 函数 `normalize_market_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
+fn normalize_market_mode(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "private" => "private",
+        "custom" => "custom",
+        _ => "builtin",
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{collect_free_account_max_model_options, DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS};
-    use codexmanager_core::rpc::types::ModelOption;
+    use super::{
+        collect_free_account_max_model_options, normalize_market_mode,
+        DEFAULT_FREE_ACCOUNT_MAX_MODEL_OPTIONS,
+    };
+    use codexmanager_core::rpc::types::ModelInfo;
 
+    /// 函数 `free_account_max_model_options_fallback_to_curated_defaults`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_account_max_model_options_fallback_to_curated_defaults() {
         let actual = collect_free_account_max_model_options("auto", &[]);
@@ -478,30 +496,46 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    /// 函数 `free_account_max_model_options_reuse_cached_model_picker_options`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_account_max_model_options_reuse_cached_model_picker_options() {
         let actual = collect_free_account_max_model_options(
             "gpt-5.2",
             &[
-                ModelOption {
+                ModelInfo {
                     slug: "gpt-5".to_string(),
                     display_name: "gpt-5".to_string(),
+                    ..Default::default()
                 },
-                ModelOption {
+                ModelInfo {
                     slug: "gpt-5.1-codex".to_string(),
                     display_name: "gpt-5.1-codex".to_string(),
+                    ..Default::default()
                 },
-                ModelOption {
+                ModelInfo {
                     slug: "gpt-5.4-pro".to_string(),
                     display_name: "gpt-5.4-pro".to_string(),
+                    ..Default::default()
                 },
-                ModelOption {
+                ModelInfo {
                     slug: "o3".to_string(),
                     display_name: "o3".to_string(),
+                    ..Default::default()
                 },
-                ModelOption {
+                ModelInfo {
                     slug: "gpt-5.1-codex".to_string(),
                     display_name: "gpt-5.1-codex".to_string(),
+                    ..Default::default()
                 },
             ],
         );
@@ -515,5 +549,24 @@ mod tests {
                 "gpt-5.2".to_string()
             ]
         );
+    }
+
+    /// 函数 `plugin_market_mode_normalization_defaults_to_builtin`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn plugin_market_mode_normalization_defaults_to_builtin() {
+        assert_eq!(normalize_market_mode(""), "builtin");
+        assert_eq!(normalize_market_mode("private"), "private");
+        assert_eq!(normalize_market_mode("custom"), "custom");
+        assert_eq!(normalize_market_mode("unknown"), "builtin");
     }
 }

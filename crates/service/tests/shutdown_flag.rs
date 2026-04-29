@@ -11,9 +11,9 @@
 /// 无
 #[test]
 fn shutdown_flag_can_toggle() {
-    assert!(!codexmanager_service::shutdown_requested());
+    assert_eq!(codexmanager_service::shutdown_requested(), false);
     codexmanager_service::request_shutdown("localhost:0");
-    assert!(codexmanager_service::shutdown_requested());
+    assert_eq!(codexmanager_service::shutdown_requested(), true);
     codexmanager_service::clear_shutdown_flag();
-    assert!(!codexmanager_service::shutdown_requested());
+    assert_eq!(codexmanager_service::shutdown_requested(), false);
 }

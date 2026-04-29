@@ -1,11 +1,22 @@
 use rusqlite::{params, params_from_iter, types::Value, Result, Row};
 
 use super::{
-    request_log_query, RequestHeatmapRow, RequestLog, RequestLogQuerySummary,
-    RequestLogTodaySummary, RequestModelTrendRow, RequestTokenStat, RequestTrendRow, Storage,
+    request_log_query, RequestLog, RequestLogQuerySummary, RequestLogTodaySummary,
+    RequestTokenStat, Storage,
 };
 
 impl Storage {
+    /// 函数 `ensure_request_logs_indexes`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn ensure_request_logs_indexes(&self) -> Result<()> {
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_request_logs_created_at ON request_logs(created_at DESC)",
@@ -38,40 +49,52 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `insert_request_log`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - log: 参数 log
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_request_log(&self, log: &RequestLog) -> Result<i64> {
         self.conn.execute(
             "INSERT INTO request_logs (
-                trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json,
-                candidate_count, attempted_count, skipped_count, skipped_cooldown_count, skipped_inflight_count,
-                route_strategy,
-                requested_model, model_fallback_path_json,
+                trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json, initial_aggregate_api_id, attempted_aggregate_api_ids_json,
                 request_path, original_path, adapted_path,
-                method, model, reasoning_effort, response_adapter, upstream_url, status_code, duration_ms, error, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
+                method, request_type, gateway_mode, transparent_mode, enhanced_mode, model, reasoning_effort, service_tier, effective_service_tier, response_adapter, upstream_url, aggregate_api_supplier_name, aggregate_api_url, status_code, duration_ms, first_response_ms, error, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
             params![
                 &log.trace_id,
                 &log.key_id,
                 &log.account_id,
                 &log.initial_account_id,
                 &log.attempted_account_ids_json,
-                log.candidate_count,
-                log.attempted_count,
-                log.skipped_count,
-                log.skipped_cooldown_count,
-                log.skipped_inflight_count,
-                &log.route_strategy,
-                &log.requested_model,
-                &log.model_fallback_path_json,
+                &log.initial_aggregate_api_id,
+                &log.attempted_aggregate_api_ids_json,
                 &log.request_path,
                 &log.original_path,
                 &log.adapted_path,
                 &log.method,
+                &log.request_type,
+                &log.gateway_mode,
+                log.transparent_mode,
+                log.enhanced_mode,
                 &log.model,
                 &log.reasoning_effort,
+                &log.service_tier,
+                &log.effective_service_tier,
                 &log.response_adapter,
                 &log.upstream_url,
+                &log.aggregate_api_supplier_name,
+                &log.aggregate_api_url,
                 log.status_code,
                 log.duration_ms,
+                log.first_response_ms,
                 &log.error,
                 log.created_at,
             ],
@@ -79,6 +102,19 @@ impl Storage {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// 函数 `insert_request_log_with_token_stat`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - log: 参数 log
+    /// - stat: 参数 stat
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_request_log_with_token_stat(
         &self,
         log: &RequestLog,
@@ -87,37 +123,37 @@ impl Storage {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "INSERT INTO request_logs (
-                trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json,
-                candidate_count, attempted_count, skipped_count, skipped_cooldown_count, skipped_inflight_count,
-                route_strategy,
-                requested_model, model_fallback_path_json,
+                trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json, initial_aggregate_api_id, attempted_aggregate_api_ids_json,
                 request_path, original_path, adapted_path,
-                method, model, reasoning_effort, response_adapter, upstream_url, status_code, duration_ms, error, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
+                method, request_type, gateway_mode, transparent_mode, enhanced_mode, model, reasoning_effort, service_tier, effective_service_tier, response_adapter, upstream_url, aggregate_api_supplier_name, aggregate_api_url, status_code, duration_ms, first_response_ms, error, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
             params![
                 &log.trace_id,
                 &log.key_id,
                 &log.account_id,
                 &log.initial_account_id,
                 &log.attempted_account_ids_json,
-                log.candidate_count,
-                log.attempted_count,
-                log.skipped_count,
-                log.skipped_cooldown_count,
-                log.skipped_inflight_count,
-                &log.route_strategy,
-                &log.requested_model,
-                &log.model_fallback_path_json,
+                &log.initial_aggregate_api_id,
+                &log.attempted_aggregate_api_ids_json,
                 &log.request_path,
                 &log.original_path,
                 &log.adapted_path,
                 &log.method,
+                &log.request_type,
+                &log.gateway_mode,
+                log.transparent_mode,
+                log.enhanced_mode,
                 &log.model,
                 &log.reasoning_effort,
+                &log.service_tier,
+                &log.effective_service_tier,
                 &log.response_adapter,
                 &log.upstream_url,
+                &log.aggregate_api_supplier_name,
+                &log.aggregate_api_url,
                 log.status_code,
                 log.duration_ms,
+                log.first_response_ms,
                 &log.error,
                 log.created_at,
             ],
@@ -154,56 +190,71 @@ impl Storage {
         Ok((request_log_id, token_stat_error))
     }
 
+    /// 函数 `list_request_logs`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - limit: 参数 limit
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_request_logs(&self, query: Option<&str>, limit: i64) -> Result<Vec<RequestLog>> {
-        self.list_request_logs_paginated(query, None, 0, limit)
+        self.list_request_logs_paginated(query, None, None, None, 0, limit)
     }
 
+    /// 函数 `list_request_logs_paginated`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - status_filter: 参数 status_filter
+    /// - offset: 参数 offset
+    /// - limit: 参数 limit
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_request_logs_paginated(
         &self,
         query: Option<&str>,
         status_filter: Option<&str>,
-        offset: i64,
-        limit: i64,
-    ) -> Result<Vec<RequestLog>> {
-        self.list_request_logs_paginated_filtered(
-            RequestLogFilterInput {
-                query,
-                status_filter,
-                key_id: None,
-                key_ids: &[],
-                model: None,
-                time_from: None,
-                time_to: None,
-            },
-            offset,
-            limit,
-        )
-    }
-
-    pub fn list_request_logs_paginated_filtered(
-        &self,
-        filters: RequestLogFilterInput<'_>,
+        start_ts: Option<i64>,
+        end_ts: Option<i64>,
         offset: i64,
         limit: i64,
     ) -> Result<Vec<RequestLog>> {
         let normalized_limit = normalize_request_log_limit(limit);
         let normalized_offset = offset.max(0);
-        let filters = build_request_log_filters(filters);
+        let include_account_lookup = self.has_table("accounts")?;
+        let filters = build_request_log_filters(
+            query,
+            status_filter,
+            start_ts,
+            end_ts,
+            include_account_lookup,
+        );
         let sql = format!(
             "SELECT
-                r.trace_id, r.key_id, r.account_id, r.initial_account_id, r.attempted_account_ids_json,
-                r.candidate_count, r.attempted_count, r.skipped_count, r.skipped_cooldown_count, r.skipped_inflight_count,
-                r.route_strategy,
-                r.requested_model, r.model_fallback_path_json,
+                r.trace_id, r.key_id, r.account_id, r.initial_account_id, r.attempted_account_ids_json, r.initial_aggregate_api_id, r.attempted_aggregate_api_ids_json,
                 r.request_path, r.original_path, r.adapted_path,
-                r.method, r.model, r.reasoning_effort, r.response_adapter, r.upstream_url, r.status_code, r.duration_ms,
+                r.method, r.request_type, r.gateway_mode, r.transparent_mode, r.enhanced_mode, r.model, r.reasoning_effort, r.service_tier, r.effective_service_tier, r.response_adapter, r.upstream_url, r.aggregate_api_supplier_name, r.aggregate_api_url, r.status_code, r.duration_ms, r.first_response_ms,
                 t.input_tokens, t.cached_input_tokens, t.output_tokens, t.total_tokens, t.reasoning_output_tokens, t.estimated_cost_usd,
                 r.error, r.created_at
              FROM request_logs r
+             {account_join}
              LEFT JOIN request_token_stats t ON t.request_log_id = r.id
              {where_clause}
              ORDER BY r.created_at DESC, r.id DESC
              LIMIT ? OFFSET ?",
+            account_join = account_join_clause(include_account_lookup),
             where_clause = filters.where_clause
         );
         let mut params = filters.params;
@@ -219,29 +270,41 @@ impl Storage {
         Ok(out)
     }
 
+    /// 函数 `count_request_logs`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - status_filter: 参数 status_filter
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn count_request_logs(
         &self,
         query: Option<&str>,
         status_filter: Option<&str>,
+        start_ts: Option<i64>,
+        end_ts: Option<i64>,
     ) -> Result<i64> {
-        self.count_request_logs_filtered(RequestLogFilterInput {
+        let include_account_lookup = self.has_table("accounts")?;
+        let filters = build_request_log_filters(
             query,
             status_filter,
-            key_id: None,
-            key_ids: &[],
-            model: None,
-            time_from: None,
-            time_to: None,
-        })
-    }
-
-    pub fn count_request_logs_filtered(&self, filters: RequestLogFilterInput<'_>) -> Result<i64> {
-        let filters = build_request_log_filters(filters);
+            start_ts,
+            end_ts,
+            include_account_lookup,
+        );
         let sql = format!(
             "SELECT COUNT(1)
              FROM request_logs r
+             {account_join}
              LEFT JOIN request_token_stats t ON t.request_log_id = r.id
              {where_clause}",
+            account_join = account_join_clause(include_account_lookup),
             where_clause = filters.where_clause
         );
         self.conn
@@ -250,27 +313,34 @@ impl Storage {
             })
     }
 
+    /// 函数 `summarize_request_logs_filtered`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - query: 参数 query
+    /// - status_filter: 参数 status_filter
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn summarize_request_logs_filtered(
         &self,
         query: Option<&str>,
         status_filter: Option<&str>,
+        start_ts: Option<i64>,
+        end_ts: Option<i64>,
     ) -> Result<RequestLogQuerySummary> {
-        self.summarize_request_logs_filtered_with_filters(RequestLogFilterInput {
+        let include_account_lookup = self.has_table("accounts")?;
+        let filters = build_request_log_filters(
             query,
             status_filter,
-            key_id: None,
-            key_ids: &[],
-            model: None,
-            time_from: None,
-            time_to: None,
-        })
-    }
-
-    pub fn summarize_request_logs_filtered_with_filters(
-        &self,
-        filters: RequestLogFilterInput<'_>,
-    ) -> Result<RequestLogQuerySummary> {
-        let filters = build_request_log_filters(filters);
+            start_ts,
+            end_ts,
+            include_account_lookup,
+        );
         let sql = format!(
             "SELECT
                 COUNT(1),
@@ -287,10 +357,13 @@ impl Storage {
                                 ELSE 0
                             END
                     END
-                ), 0)
+                ), 0),
+                IFNULL(SUM(IFNULL(t.estimated_cost_usd, 0.0)), 0.0)
              FROM request_logs r
+             {account_join}
              LEFT JOIN request_token_stats t ON t.request_log_id = r.id
              {where_clause}",
+            account_join = account_join_clause(include_account_lookup),
             where_clause = filters.where_clause
         );
         self.conn
@@ -300,16 +373,41 @@ impl Storage {
                     success_count: row.get(1)?,
                     error_count: row.get(2)?,
                     total_tokens: row.get(3)?,
+                    estimated_cost_usd: row.get(4)?,
                 })
             })
     }
 
+    /// 函数 `clear_request_logs`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn clear_request_logs(&self) -> Result<()> {
         // 只清理请求明细日志，保留 token 统计用于仪表盘历史用量与费用汇总。
         self.conn.execute("DELETE FROM request_logs", [])?;
         Ok(())
     }
 
+    /// 函数 `summarize_request_logs_between`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - start_ts: 参数 start_ts
+    /// - end_ts: 参数 end_ts
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn summarize_request_logs_between(
         &self,
         start_ts: i64,
@@ -318,97 +416,17 @@ impl Storage {
         self.summarize_request_token_stats_between(start_ts, end_ts)
     }
 
-    pub fn summarize_request_trends_between(
-        &self,
-        start_ts: i64,
-        end_ts: i64,
-        granularity: &str,
-    ) -> Result<Vec<RequestTrendRow>> {
-        let bucket_expr = match granularity.trim().to_ascii_lowercase().as_str() {
-            "week" => "strftime('%Y-W%W', datetime(r.created_at, 'unixepoch', 'localtime'))",
-            "month" => "strftime('%Y-%m', datetime(r.created_at, 'unixepoch', 'localtime'))",
-            _ => "strftime('%Y-%m-%d', datetime(r.created_at, 'unixepoch', 'localtime'))",
-        };
-        let sql = format!(
-            "SELECT
-                {bucket_expr} AS bucket,
-                COUNT(1),
-                IFNULL(SUM(CASE WHEN r.status_code >= 200 AND r.status_code <= 299 THEN 1 ELSE 0 END), 0)
-             FROM request_logs r
-             WHERE r.created_at >= ?1 AND r.created_at < ?2
-             GROUP BY bucket
-             ORDER BY bucket ASC"
-        );
-        let mut stmt = self.conn.prepare(&sql)?;
-        let mut rows = stmt.query((start_ts, end_ts))?;
-        let mut items = Vec::new();
-        while let Some(row) = rows.next()? {
-            items.push(RequestTrendRow {
-                bucket: row.get(0)?,
-                request_count: row.get(1)?,
-                success_count: row.get(2)?,
-            });
-        }
-        Ok(items)
-    }
-
-    pub fn summarize_request_model_trends_between(
-        &self,
-        start_ts: i64,
-        end_ts: i64,
-    ) -> Result<Vec<RequestModelTrendRow>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT
-                r.model,
-                COUNT(1),
-                IFNULL(SUM(CASE WHEN r.status_code >= 200 AND r.status_code <= 299 THEN 1 ELSE 0 END), 0)
-             FROM request_logs r
-             WHERE r.created_at >= ?1 AND r.created_at < ?2
-               AND r.model IS NOT NULL AND TRIM(r.model) <> ''
-             GROUP BY r.model
-             ORDER BY COUNT(1) DESC, r.model ASC",
-        )?;
-        let mut rows = stmt.query((start_ts, end_ts))?;
-        let mut items = Vec::new();
-        while let Some(row) = rows.next()? {
-            items.push(RequestModelTrendRow {
-                model: row.get(0)?,
-                request_count: row.get(1)?,
-                success_count: row.get(2)?,
-            });
-        }
-        Ok(items)
-    }
-
-    pub fn summarize_request_heatmap_between(
-        &self,
-        start_ts: i64,
-        end_ts: i64,
-    ) -> Result<Vec<RequestHeatmapRow>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT
-                CAST(strftime('%w', datetime(r.created_at, 'unixepoch', 'localtime')) AS INTEGER) AS weekday,
-                CAST(strftime('%H', datetime(r.created_at, 'unixepoch', 'localtime')) AS INTEGER) AS hour,
-                COUNT(1),
-                IFNULL(SUM(CASE WHEN r.status_code >= 200 AND r.status_code <= 299 THEN 1 ELSE 0 END), 0)
-             FROM request_logs r
-             WHERE r.created_at >= ?1 AND r.created_at < ?2
-             GROUP BY weekday, hour
-             ORDER BY weekday ASC, hour ASC",
-        )?;
-        let mut rows = stmt.query((start_ts, end_ts))?;
-        let mut items = Vec::new();
-        while let Some(row) = rows.next()? {
-            items.push(RequestHeatmapRow {
-                weekday: row.get(0)?,
-                hour: row.get(1)?,
-                request_count: row.get(2)?,
-                success_count: row.get(3)?,
-            });
-        }
-        Ok(items)
-    }
-
+    /// 函数 `ensure_request_logs_table`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_logs_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS request_logs (
@@ -418,24 +436,27 @@ impl Storage {
                 account_id TEXT,
                 initial_account_id TEXT,
                 attempted_account_ids_json TEXT,
-                candidate_count INTEGER,
-                attempted_count INTEGER,
-                skipped_count INTEGER,
-                skipped_cooldown_count INTEGER,
-                skipped_inflight_count INTEGER,
-                route_strategy TEXT,
-                requested_model TEXT,
-                model_fallback_path_json TEXT,
+                initial_aggregate_api_id TEXT,
+                attempted_aggregate_api_ids_json TEXT,
                 request_path TEXT NOT NULL,
                 original_path TEXT,
                 adapted_path TEXT,
                 method TEXT NOT NULL,
+                request_type TEXT,
+                gateway_mode TEXT,
+                transparent_mode INTEGER,
+                enhanced_mode INTEGER,
                 model TEXT,
                 reasoning_effort TEXT,
+                service_tier TEXT,
+                effective_service_tier TEXT,
                 response_adapter TEXT,
                 upstream_url TEXT,
+                aggregate_api_supplier_name TEXT,
+                aggregate_api_url TEXT,
                 status_code INTEGER,
                 duration_ms INTEGER,
+                first_response_ms INTEGER,
                 error TEXT,
                 created_at INTEGER NOT NULL
             )",
@@ -445,11 +466,33 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_reasoning_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_reasoning_column(&self) -> Result<()> {
         self.ensure_column("request_logs", "reasoning_effort", "TEXT")?;
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_account_tokens_cost_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_account_tokens_cost_columns(&self) -> Result<()> {
         self.ensure_column("request_logs", "account_id", "TEXT")?;
         self.conn.execute(
@@ -463,10 +506,32 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_cached_reasoning_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_cached_reasoning_columns(&self) -> Result<()> {
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_trace_context_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_trace_context_columns(&self) -> Result<()> {
         self.ensure_column("request_logs", "trace_id", "TEXT")?;
         self.ensure_column("request_logs", "original_path", "TEXT")?;
@@ -479,44 +544,108 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `ensure_request_log_aggregate_api_context_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(super) fn ensure_request_log_aggregate_api_context_columns(&self) -> Result<()> {
+        self.ensure_column("request_logs", "aggregate_api_supplier_name", "TEXT")?;
+        self.ensure_column("request_logs", "aggregate_api_url", "TEXT")?;
+        Ok(())
+    }
+
+    /// 函数 `ensure_request_log_attempt_chain_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_attempt_chain_columns(&self) -> Result<()> {
         self.ensure_column("request_logs", "initial_account_id", "TEXT")?;
         self.ensure_column("request_logs", "attempted_account_ids_json", "TEXT")?;
         Ok(())
     }
 
-    pub(super) fn ensure_request_log_candidate_stats_columns(&self) -> Result<()> {
-        self.ensure_column("request_logs", "candidate_count", "INTEGER")?;
-        self.ensure_column("request_logs", "attempted_count", "INTEGER")?;
-        self.ensure_column("request_logs", "skipped_count", "INTEGER")?;
-        self.ensure_column("request_logs", "skipped_cooldown_count", "INTEGER")?;
-        self.ensure_column("request_logs", "skipped_inflight_count", "INTEGER")?;
+    /// 函数 `ensure_request_log_aggregate_api_attempt_chain_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(super) fn ensure_request_log_aggregate_api_attempt_chain_columns(&self) -> Result<()> {
+        self.ensure_column("request_logs", "initial_aggregate_api_id", "TEXT")?;
+        self.ensure_column("request_logs", "attempted_aggregate_api_ids_json", "TEXT")?;
         Ok(())
     }
 
-    pub(super) fn ensure_request_log_route_strategy_column(&self) -> Result<()> {
-        self.ensure_column("request_logs", "route_strategy", "TEXT")?;
-        Ok(())
-    }
-
-    pub(super) fn ensure_request_log_model_fallback_columns(&self) -> Result<()> {
-        self.ensure_column("request_logs", "requested_model", "TEXT")?;
-        self.ensure_column("request_logs", "model_fallback_path_json", "TEXT")?;
-        Ok(())
-    }
-
+    /// 函数 `ensure_request_log_duration_column`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_request_log_duration_column(&self) -> Result<()> {
         self.ensure_column("request_logs", "duration_ms", "INTEGER")?;
         Ok(())
     }
 
+    pub(super) fn ensure_request_log_first_response_column(&self) -> Result<()> {
+        self.ensure_column("request_logs", "first_response_ms", "INTEGER")?;
+        Ok(())
+    }
+
+    pub(super) fn ensure_request_log_request_type_and_service_tier_columns(&self) -> Result<()> {
+        self.ensure_column("request_logs", "request_type", "TEXT")?;
+        self.ensure_column("request_logs", "gateway_mode", "TEXT")?;
+        self.ensure_column("request_logs", "transparent_mode", "INTEGER")?;
+        self.ensure_column("request_logs", "enhanced_mode", "INTEGER")?;
+        self.ensure_column("request_logs", "service_tier", "TEXT")?;
+        Ok(())
+    }
+
+    pub(super) fn ensure_request_log_effective_service_tier_column(&self) -> Result<()> {
+        self.ensure_column("request_logs", "effective_service_tier", "TEXT")?;
+        Ok(())
+    }
+
+    /// 函数 `compact_request_logs_legacy_usage_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn compact_request_logs_legacy_usage_columns(&self) -> Result<()> {
         self.ensure_request_logs_table()?;
         self.ensure_request_log_reasoning_column()?;
         self.ensure_request_log_account_tokens_cost_columns()?;
         self.ensure_request_log_trace_context_columns()?;
-        self.ensure_request_log_route_strategy_column()?;
-        self.ensure_request_log_model_fallback_columns()?;
 
         let legacy_columns = [
             "input_tokens",
@@ -546,38 +675,38 @@ impl Storage {
                 account_id TEXT,
                 initial_account_id TEXT,
                 attempted_account_ids_json TEXT,
-                candidate_count INTEGER,
-                attempted_count INTEGER,
-                skipped_count INTEGER,
-                skipped_cooldown_count INTEGER,
-                skipped_inflight_count INTEGER,
-                route_strategy TEXT,
-                requested_model TEXT,
-                model_fallback_path_json TEXT,
+                initial_aggregate_api_id TEXT,
+                attempted_aggregate_api_ids_json TEXT,
                 request_path TEXT NOT NULL,
                 original_path TEXT,
                 adapted_path TEXT,
                 method TEXT NOT NULL,
+                request_type TEXT,
+                gateway_mode TEXT,
+                transparent_mode INTEGER,
+                enhanced_mode INTEGER,
                 model TEXT,
                 reasoning_effort TEXT,
+                service_tier TEXT,
+                effective_service_tier TEXT,
                 response_adapter TEXT,
                 upstream_url TEXT,
+                aggregate_api_supplier_name TEXT,
+                aggregate_api_url TEXT,
                 status_code INTEGER,
                 duration_ms INTEGER,
+                first_response_ms INTEGER,
                 error TEXT,
                 created_at INTEGER NOT NULL
              );
              INSERT INTO request_logs (
-                id, trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json,
-                candidate_count, attempted_count, skipped_count, skipped_cooldown_count, skipped_inflight_count,
-                route_strategy,
-                requested_model, model_fallback_path_json,
+                id, trace_id, key_id, account_id, initial_account_id, attempted_account_ids_json, initial_aggregate_api_id, attempted_aggregate_api_ids_json,
                 request_path, original_path, adapted_path,
-                method, model, reasoning_effort, response_adapter, upstream_url, status_code, duration_ms, error, created_at
+                method, request_type, gateway_mode, transparent_mode, enhanced_mode, model, reasoning_effort, service_tier, effective_service_tier, response_adapter, upstream_url, aggregate_api_supplier_name, aggregate_api_url, status_code, duration_ms, first_response_ms, error, created_at
              )
              SELECT
-                id, trace_id, key_id, account_id, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, request_path, original_path, adapted_path,
-                method, model, reasoning_effort, response_adapter, upstream_url, status_code, NULL, error, created_at
+                id, trace_id, key_id, account_id, NULL, NULL, NULL, NULL, request_path, original_path, adapted_path,
+                method, NULL, NULL, NULL, NULL, model, reasoning_effort, NULL, NULL, response_adapter, upstream_url, NULL, NULL, status_code, NULL, NULL, error, created_at
              FROM request_logs_legacy_028;
              DROP TABLE request_logs_legacy_028;",
         )?;
@@ -588,6 +717,17 @@ impl Storage {
     }
 }
 
+/// 函数 `map_request_log_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_request_log_row(row: &Row<'_>) -> Result<RequestLog> {
     Ok(RequestLog {
         trace_id: row.get(0)?,
@@ -595,32 +735,35 @@ fn map_request_log_row(row: &Row<'_>) -> Result<RequestLog> {
         account_id: row.get(2)?,
         initial_account_id: row.get(3)?,
         attempted_account_ids_json: row.get(4)?,
-        candidate_count: row.get(5)?,
-        attempted_count: row.get(6)?,
-        skipped_count: row.get(7)?,
-        skipped_cooldown_count: row.get(8)?,
-        skipped_inflight_count: row.get(9)?,
-        route_strategy: row.get(10)?,
-        requested_model: row.get(11)?,
-        model_fallback_path_json: row.get(12)?,
-        request_path: row.get(13)?,
-        original_path: row.get(14)?,
-        adapted_path: row.get(15)?,
-        method: row.get(16)?,
-        model: row.get(17)?,
-        reasoning_effort: row.get(18)?,
+        initial_aggregate_api_id: row.get(5)?,
+        attempted_aggregate_api_ids_json: row.get(6)?,
+        request_path: row.get(7)?,
+        original_path: row.get(8)?,
+        adapted_path: row.get(9)?,
+        method: row.get(10)?,
+        request_type: row.get(11)?,
+        gateway_mode: row.get(12)?,
+        transparent_mode: row.get(13)?,
+        enhanced_mode: row.get(14)?,
+        model: row.get(15)?,
+        reasoning_effort: row.get(16)?,
+        service_tier: row.get(17)?,
+        effective_service_tier: row.get(18)?,
         response_adapter: row.get(19)?,
         upstream_url: row.get(20)?,
-        status_code: row.get(21)?,
-        duration_ms: row.get(22)?,
-        input_tokens: row.get(23)?,
-        cached_input_tokens: row.get(24)?,
-        output_tokens: row.get(25)?,
-        total_tokens: row.get(26)?,
-        reasoning_output_tokens: row.get(27)?,
-        estimated_cost_usd: row.get(28)?,
-        error: row.get(29)?,
-        created_at: row.get(30)?,
+        aggregate_api_supplier_name: row.get(21)?,
+        aggregate_api_url: row.get(22)?,
+        status_code: row.get(23)?,
+        duration_ms: row.get(24)?,
+        first_response_ms: row.get(25)?,
+        input_tokens: row.get(26)?,
+        cached_input_tokens: row.get(27)?,
+        output_tokens: row.get(28)?,
+        total_tokens: row.get(29)?,
+        reasoning_output_tokens: row.get(30)?,
+        estimated_cost_usd: row.get(31)?,
+        error: row.get(32)?,
+        created_at: row.get(33)?,
     })
 }
 
@@ -629,16 +772,17 @@ struct RequestLogSqlFilters {
     params: Vec<Value>,
 }
 
-pub struct RequestLogFilterInput<'a> {
-    pub query: Option<&'a str>,
-    pub status_filter: Option<&'a str>,
-    pub key_id: Option<&'a str>,
-    pub key_ids: &'a [String],
-    pub model: Option<&'a str>,
-    pub time_from: Option<i64>,
-    pub time_to: Option<i64>,
-}
-
+/// 函数 `normalize_request_log_limit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_request_log_limit(value: i64) -> i64 {
     if value <= 0 {
         200
@@ -647,21 +791,36 @@ fn normalize_request_log_limit(value: i64) -> i64 {
     }
 }
 
-fn build_request_log_filters(filters: RequestLogFilterInput<'_>) -> RequestLogSqlFilters {
+/// 函数 `build_request_log_filters`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - query: 参数 query
+/// - status_filter: 参数 status_filter
+///
+/// # 返回
+/// 返回函数执行结果
+fn build_request_log_filters(
+    query: Option<&str>,
+    status_filter: Option<&str>,
+    start_ts: Option<i64>,
+    end_ts: Option<i64>,
+    include_account_lookup: bool,
+) -> RequestLogSqlFilters {
     let mut clauses = Vec::new();
     let mut params = Vec::new();
 
     append_request_log_query_clause(
-        request_log_query::parse_request_log_query(filters.query),
+        request_log_query::parse_request_log_query(query),
+        include_account_lookup,
         &mut clauses,
         &mut params,
     );
-    append_status_filter_clause(filters.status_filter, &mut clauses, &mut params);
-    append_optional_exact_clause("r.key_id", filters.key_id, &mut clauses, &mut params);
-    append_optional_in_clause("r.key_id", filters.key_ids, &mut clauses, &mut params);
-    append_optional_model_clause(filters.model, &mut clauses, &mut params);
-    append_optional_time_clause(">=", filters.time_from, &mut clauses, &mut params);
-    append_optional_time_clause("<=", filters.time_to, &mut clauses, &mut params);
+    append_status_filter_clause(status_filter, &mut clauses, &mut params);
+    append_time_range_clause(start_ts, end_ts, &mut clauses, &mut params);
 
     RequestLogSqlFilters {
         where_clause: if clauses.is_empty() {
@@ -673,81 +832,49 @@ fn build_request_log_filters(filters: RequestLogFilterInput<'_>) -> RequestLogSq
     }
 }
 
-fn append_optional_exact_clause(
-    column: &str,
-    value: Option<&str>,
+fn append_time_range_clause(
+    start_ts: Option<i64>,
+    end_ts: Option<i64>,
     clauses: &mut Vec<String>,
     params: &mut Vec<Value>,
 ) {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return;
-    };
-    clauses.push(format!("{column} = ?"));
-    params.push(Value::Text(value.to_string()));
-}
-
-fn append_optional_in_clause(
-    column: &str,
-    values: &[String],
-    clauses: &mut Vec<String>,
-    params: &mut Vec<Value>,
-) {
-    let normalized = values
-        .iter()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>();
-    if normalized.is_empty() {
-        return;
+    if let Some(start_ts) = start_ts {
+        clauses.push("r.created_at >= ?".to_string());
+        params.push(Value::Integer(start_ts));
     }
-    if normalized.len() == 1 {
-        clauses.push(format!("{column} = ?"));
-    } else {
-        clauses.push(format!(
-            "{column} IN ({})",
-            std::iter::repeat_n("?", normalized.len())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    }
-    for value in normalized {
-        params.push(Value::Text(value.to_string()));
+    if let Some(end_ts) = end_ts {
+        clauses.push("r.created_at < ?".to_string());
+        params.push(Value::Integer(end_ts));
     }
 }
 
-fn append_optional_model_clause(
-    value: Option<&str>,
-    clauses: &mut Vec<String>,
-    params: &mut Vec<Value>,
-) {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return;
-    };
-    clauses.push("(IFNULL(r.model, '') = ? OR IFNULL(r.requested_model, '') = ?)".to_string());
-    params.push(Value::Text(value.to_string()));
-    params.push(Value::Text(value.to_string()));
-}
-
-fn append_optional_time_clause(
-    operator: &str,
-    value: Option<i64>,
-    clauses: &mut Vec<String>,
-    params: &mut Vec<Value>,
-) {
-    let Some(value) = value.filter(|value| *value > 0) else {
-        return;
-    };
-    clauses.push(format!("r.created_at {operator} ?"));
-    params.push(Value::Integer(value));
-}
-
+/// 函数 `append_request_log_query_clause`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - query: 参数 query
+/// - clauses: 参数 clauses
+/// - params: 参数 params
+///
+/// # 返回
+/// 无
 fn append_request_log_query_clause(
     query: request_log_query::RequestLogQuery,
+    include_account_lookup: bool,
     clauses: &mut Vec<String>,
     params: &mut Vec<Value>,
 ) {
     match query {
         request_log_query::RequestLogQuery::All => {}
+        request_log_query::RequestLogQuery::AccountLike(pattern) => {
+            append_account_query_clause(pattern, false, include_account_lookup, clauses, params);
+        }
+        request_log_query::RequestLogQuery::AccountExact(value) => {
+            append_account_query_clause(value, true, include_account_lookup, clauses, params);
+        }
         request_log_query::RequestLogQuery::FieldLike { column, pattern } => {
             clauses.push(format!("IFNULL(r.{column}, '') LIKE ?"));
             params.push(Value::Text(pattern));
@@ -766,40 +893,101 @@ fn append_request_log_query_clause(
             params.push(Value::Integer(end));
         }
         request_log_query::RequestLogQuery::GlobalLike(pattern) => {
-            clauses.push(
-                "(r.request_path LIKE ?
-                    OR IFNULL(r.initial_account_id,'') LIKE ?
-                    OR IFNULL(r.attempted_account_ids_json,'') LIKE ?
-                    OR IFNULL(r.requested_model,'') LIKE ?
-                    OR IFNULL(r.model_fallback_path_json,'') LIKE ?
-                    OR IFNULL(r.original_path,'') LIKE ?
-                    OR IFNULL(r.adapted_path,'') LIKE ?
-                    OR r.method LIKE ?
-                    OR IFNULL(r.account_id,'') LIKE ?
-                    OR IFNULL(r.route_strategy,'') LIKE ?
-                    OR IFNULL(r.model,'') LIKE ?
-                    OR IFNULL(r.reasoning_effort,'') LIKE ?
-                    OR IFNULL(r.response_adapter,'') LIKE ?
-                    OR IFNULL(r.error,'') LIKE ?
-                    OR IFNULL(r.key_id,'') LIKE ?
-                    OR IFNULL(r.trace_id,'') LIKE ?
-                    OR IFNULL(r.upstream_url,'') LIKE ?
-                    OR IFNULL(CAST(r.status_code AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.input_tokens AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.cached_input_tokens AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.output_tokens AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.total_tokens AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.reasoning_output_tokens AS TEXT),'') LIKE ?
-                    OR IFNULL(CAST(t.estimated_cost_usd AS TEXT),'') LIKE ?)"
-                    .to_string(),
-            );
-            for _ in 0..24 {
+            let mut global_fields = vec![
+                "r.request_path LIKE ?",
+                "IFNULL(r.initial_account_id,'') LIKE ?",
+                "IFNULL(r.attempted_account_ids_json,'') LIKE ?",
+                "IFNULL(r.initial_aggregate_api_id,'') LIKE ?",
+                "IFNULL(r.attempted_aggregate_api_ids_json,'') LIKE ?",
+                "IFNULL(r.aggregate_api_supplier_name,'') LIKE ?",
+                "IFNULL(r.aggregate_api_url,'') LIKE ?",
+                "IFNULL(r.original_path,'') LIKE ?",
+                "IFNULL(r.adapted_path,'') LIKE ?",
+                "r.method LIKE ?",
+                "IFNULL(r.request_type,'') LIKE ?",
+                "IFNULL(r.account_id,'') LIKE ?",
+                "IFNULL(r.model,'') LIKE ?",
+                "IFNULL(r.reasoning_effort,'') LIKE ?",
+                "IFNULL(r.service_tier,'') LIKE ?",
+                "IFNULL(r.effective_service_tier,'') LIKE ?",
+                "IFNULL(r.response_adapter,'') LIKE ?",
+                "IFNULL(r.error,'') LIKE ?",
+                "IFNULL(r.key_id,'') LIKE ?",
+                "IFNULL(r.trace_id,'') LIKE ?",
+                "IFNULL(r.upstream_url,'') LIKE ?",
+                "IFNULL(CAST(r.status_code AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.input_tokens AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.cached_input_tokens AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.output_tokens AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.total_tokens AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.reasoning_output_tokens AS TEXT),'') LIKE ?",
+                "IFNULL(CAST(t.estimated_cost_usd AS TEXT),'') LIKE ?",
+            ];
+            if include_account_lookup {
+                global_fields.extend([
+                    "IFNULL(a.label,'') LIKE ?",
+                    "IFNULL(a.chatgpt_account_id,'') LIKE ?",
+                    "IFNULL(a.workspace_id,'') LIKE ?",
+                ]);
+            }
+            clauses.push(format!(
+                "({})",
+                global_fields.join("\n                    OR ")
+            ));
+            for _ in 0..global_fields.len() {
                 params.push(Value::Text(pattern.clone()));
             }
         }
     }
 }
 
+fn account_join_clause(include_account_lookup: bool) -> &'static str {
+    if include_account_lookup {
+        "LEFT JOIN accounts a ON a.id = r.account_id"
+    } else {
+        ""
+    }
+}
+
+fn append_account_query_clause(
+    value: String,
+    is_exact: bool,
+    include_account_lookup: bool,
+    clauses: &mut Vec<String>,
+    params: &mut Vec<Value>,
+) {
+    if include_account_lookup {
+        let comparator = if is_exact { "=" } else { "LIKE" };
+        clauses.push(format!(
+            "(IFNULL(r.account_id, '') {comparator} ?
+                OR IFNULL(a.label, '') {comparator} ?
+                OR IFNULL(a.chatgpt_account_id, '') {comparator} ?
+                OR IFNULL(a.workspace_id, '') {comparator} ?)"
+        ));
+        for _ in 0..4 {
+            params.push(Value::Text(value.clone()));
+        }
+        return;
+    }
+
+    let comparator = if is_exact { "=" } else { "LIKE" };
+    clauses.push(format!("IFNULL(r.account_id, '') {comparator} ?"));
+    params.push(Value::Text(value));
+}
+
+/// 函数 `append_status_filter_clause`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - status_filter: 参数 status_filter
+/// - clauses: 参数 clauses
+/// - params: 参数 params
+///
+/// # 返回
+/// 无
 fn append_status_filter_clause(
     status_filter: Option<&str>,
     clauses: &mut Vec<String>,

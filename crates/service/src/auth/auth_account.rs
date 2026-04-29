@@ -1,7 +1,8 @@
 use codexmanager_core::auth::{
-    extract_chatgpt_account_id, extract_token_exp, extract_workspace_id, parse_id_token_claims,
-    DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
+    extract_chatgpt_account_id, extract_workspace_id, normalize_chatgpt_account_id,
+    normalize_workspace_id, parse_id_token_claims, DEFAULT_CLIENT_ID, DEFAULT_ISSUER,
 };
+use codexmanager_core::rpc::types::LoginStartResult;
 use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 use serde::Serialize;
 
@@ -9,9 +10,10 @@ use crate::account_identity::{
     build_account_storage_id, build_fallback_subject_key, clean_value,
     pick_existing_account_id_by_identity,
 };
-use crate::account_status::mark_account_unavailable_for_refresh_token_error;
+use crate::account_status::mark_account_unavailable_for_auth_error;
 use crate::app_settings::{get_persisted_app_setting, save_persisted_app_setting};
 use crate::storage_helpers::open_storage;
+use crate::usage_http::fetch_account_subscription;
 use crate::usage_token_refresh::refresh_and_persist_access_token;
 
 const CURRENT_AUTH_ACCOUNT_ID_KEY: &str = "auth.current_account_id";
@@ -23,7 +25,6 @@ const AUTH_MODE_CHATGPT_AUTH_TOKENS: &str = "chatgptAuthTokens";
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AccountReadResponse {
     pub(crate) account: Option<CurrentAuthAccount>,
-    pub(crate) auth_mode: Option<String>,
     pub(crate) requires_openai_auth: bool,
 }
 
@@ -36,6 +37,10 @@ pub(crate) struct CurrentAuthAccount {
     pub(crate) email: String,
     pub(crate) plan_type: String,
     pub(crate) plan_type_raw: Option<String>,
+    pub(crate) has_subscription: Option<bool>,
+    pub(crate) subscription_plan: Option<String>,
+    pub(crate) subscription_expires_at: Option<i64>,
+    pub(crate) subscription_renews_at: Option<i64>,
     pub(crate) chatgpt_account_id: Option<String>,
     pub(crate) workspace_id: Option<String>,
     pub(crate) status: String,
@@ -44,21 +49,13 @@ pub(crate) struct CurrentAuthAccount {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ChatgptAuthTokensRefreshResponse {
-    pub(crate) account_id: String,
     pub(crate) access_token: String,
     pub(crate) chatgpt_account_id: String,
     pub(crate) chatgpt_plan_type: Option<String>,
-    pub(crate) chatgpt_plan_type_raw: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ChatgptAuthTokensLoginResponse {
-    #[serde(rename = "type")]
-    pub(crate) kind: String,
-    pub(crate) account_id: String,
-    pub(crate) chatgpt_account_id: String,
-    pub(crate) workspace_id: String,
+    pub(crate) has_subscription: Option<bool>,
+    pub(crate) subscription_plan: Option<String>,
+    pub(crate) subscription_expires_at: Option<i64>,
+    pub(crate) subscription_renews_at: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,16 +63,25 @@ pub(crate) struct ChatgptAuthTokensLoginInput {
     pub(crate) access_token: String,
     pub(crate) refresh_token: Option<String>,
     pub(crate) id_token: Option<String>,
-    pub(crate) cookies: Option<String>,
-    pub(crate) email_hint: Option<String>,
     pub(crate) chatgpt_account_id: Option<String>,
     pub(crate) workspace_id: Option<String>,
     pub(crate) chatgpt_plan_type: Option<String>,
 }
 
+/// 函数 `login_with_chatgpt_auth_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn login_with_chatgpt_auth_tokens(
     input: ChatgptAuthTokensLoginInput,
-) -> Result<ChatgptAuthTokensLoginResponse, String> {
+) -> Result<LoginStartResult, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let access_token = input.access_token.trim();
     if access_token.is_empty() {
@@ -89,32 +95,31 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
 
     let claims = parse_id_token_claims(access_token)
         .map_err(|err| format!("invalid access token jwt: {err}"))?;
-    let id_token_claims = input
-        .id_token
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .and_then(|value| parse_id_token_claims(value).ok());
     let subject_account_id = claims.sub.trim();
     if subject_account_id.is_empty() {
         return Err("access token missing subject".to_string());
     }
+    let claim_chatgpt_account_id = claims
+        .auth
+        .as_ref()
+        .and_then(|auth| normalize_chatgpt_account_id(auth.chatgpt_account_id.as_deref()));
+    let claim_workspace_id = normalize_workspace_id(claims.workspace_id.as_deref());
 
     let chatgpt_account_id = clean_value(
         input
             .chatgpt_account_id
+            .as_deref()
+            .and_then(|value| normalize_chatgpt_account_id(Some(value)))
             .or_else(|| extract_chatgpt_account_id(access_token))
-            .or_else(|| {
-                claims
-                    .auth
-                    .as_ref()
-                    .and_then(|auth| auth.chatgpt_account_id.clone())
-            }),
+            .or(claim_chatgpt_account_id),
     );
     let workspace_id = clean_value(
         input
             .workspace_id
+            .as_deref()
+            .and_then(|value| normalize_workspace_id(Some(value)))
             .or_else(|| extract_workspace_id(access_token))
-            .or_else(|| claims.workspace_id.clone())
+            .or(claim_workspace_id)
             .or_else(|| chatgpt_account_id.clone()),
     );
     let resolved_scope_id = workspace_id
@@ -142,27 +147,13 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
     let existing_account = storage
         .find_account_by_id(&account_id)
         .map_err(|err| err.to_string())?;
-    let existing_tags = storage
-        .list_account_tags()
-        .map_err(|err| err.to_string())?
-        .get(&account_id)
-        .cloned()
-        .flatten();
-    let label = choose_account_label(
-        input.email_hint.as_deref(),
-        id_token_claims
-            .as_ref()
-            .and_then(|claims| claims.email.as_deref()),
-        claims.email.as_deref(),
-        existing_account
-            .as_ref()
-            .map(|account| account.label.as_str()),
-        &resolved_scope_id,
-    );
     let now = now_ts();
     let account = Account {
         id: account_id.clone(),
-        label,
+        label: claims
+            .email
+            .clone()
+            .unwrap_or_else(|| resolved_scope_id.clone()),
         issuer: std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string()),
         chatgpt_account_id: chatgpt_account_id.clone(),
         workspace_id: workspace_id.clone(),
@@ -183,9 +174,6 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
     storage
         .insert_account(&account)
         .map_err(|err| err.to_string())?;
-    storage
-        .update_account_tags(&account_id, existing_tags.as_deref())
-        .map_err(|err| err.to_string())?;
 
     let mut token = Token {
         account_id: account_id.clone(),
@@ -201,106 +189,91 @@ pub(crate) fn login_with_chatgpt_auth_tokens(
     storage
         .insert_token(&token)
         .map_err(|err| err.to_string())?;
-    crate::account_payment::store_account_cookies(&account_id, input.cookies.as_deref())?;
 
     set_current_auth_account_id(Some(&account_id))?;
     set_current_auth_mode(Some(AUTH_MODE_CHATGPT_AUTH_TOKENS))?;
 
-    Ok(ChatgptAuthTokensLoginResponse {
-        kind: "chatgptAuthTokens".to_string(),
-        account_id,
-        chatgpt_account_id: chatgpt_account_id.unwrap_or_else(|| resolved_scope_id.clone()),
-        workspace_id: resolved_scope_id,
-    })
+    Ok(LoginStartResult::ChatgptAuthTokens {})
 }
 
-fn choose_account_label(
-    email_hint: Option<&str>,
-    id_token_email: Option<&str>,
-    access_token_email: Option<&str>,
-    existing_label: Option<&str>,
-    fallback_scope_id: &str,
-) -> String {
-    for candidate in [email_hint, id_token_email, access_token_email] {
-        let normalized = candidate.map(str::trim).filter(|value| !value.is_empty());
-        if let Some(value) = normalized {
-            return value.to_string();
-        }
-    }
-
-    if let Some(value) = existing_label
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != fallback_scope_id)
-    {
-        return value.to_string();
-    }
-
-    fallback_scope_id.to_string()
-}
-
+/// 函数 `read_current_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_current_account(refresh_token: bool) -> Result<AccountReadResponse, String> {
     let Some(storage) = open_storage() else {
         return Ok(AccountReadResponse {
             account: None,
-            auth_mode: None,
             requires_openai_auth: true,
         });
     };
     let Some((account, token)) = resolve_current_account_with_token(&storage)? else {
         return Ok(AccountReadResponse {
             account: None,
-            auth_mode: None,
             requires_openai_auth: true,
         });
     };
 
     let mut token = token;
-    let auth_mode = resolve_current_auth_mode(&token);
-    if refresh_token {
+    if refresh_token && !token.refresh_token.trim().is_empty() {
         let issuer =
             std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
         let client_id = std::env::var("CODEXMANAGER_CLIENT_ID")
             .unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
-        let refresh_result = if auth_mode == AUTH_MODE_CHATGPT_AUTH_TOKENS {
-            refresh_chatgpt_auth_tokens_with_fallback(
-                &storage, &account, &mut token, &issuer, &client_id,
-            )
-        } else if !token.refresh_token.trim().is_empty() {
+        if let Err(err) =
             refresh_and_persist_access_token(&storage, &mut token, &issuer, &client_id)
-        } else {
-            Ok(())
-        };
-        if let Err(err) = refresh_result {
-            let _ = mark_account_unavailable_for_refresh_token_error(&storage, &account.id, &err);
+        {
+            let _ = mark_account_unavailable_for_auth_error(&storage, &account.id, &err);
             return Err(err);
         }
     }
 
+    let auth_mode = resolve_current_auth_mode(&token);
     Ok(AccountReadResponse {
         account: Some(current_account_payload(
+            &storage,
             &account,
             &token,
             auth_mode.as_str(),
         )),
-        auth_mode: Some(auth_mode),
         requires_openai_auth: true,
     })
 }
 
+/// 函数 `refresh_current_chatgpt_auth_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn refresh_current_chatgpt_auth_tokens(
     previous_account_id: Option<&str>,
 ) -> Result<ChatgptAuthTokensRefreshResponse, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let (account, mut token) = resolve_refresh_target(&storage, previous_account_id)?
         .ok_or_else(|| "no current chatgptAuthTokens account".to_string())?;
+    if token.refresh_token.trim().is_empty() {
+        return Err("current account does not have refresh_token".to_string());
+    }
+
     let issuer =
         std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
     let client_id =
         std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
-    if let Err(err) = refresh_chatgpt_auth_tokens_with_fallback(
-        &storage, &account, &mut token, &issuer, &client_id,
-    ) {
-        let _ = mark_account_unavailable_for_refresh_token_error(&storage, &account.id, &err);
+    if let Err(err) = refresh_and_persist_access_token(&storage, &mut token, &issuer, &client_id) {
+        let _ = mark_account_unavailable_for_auth_error(&storage, &account.id, &err);
         return Err(err);
     }
 
@@ -308,127 +281,67 @@ pub(crate) fn refresh_current_chatgpt_auth_tokens(
         .find_account_by_id(&account.id)
         .map_err(|err| err.to_string())?
         .unwrap_or(account);
-    let chatgpt_account_id = refreshed_account
-        .chatgpt_account_id
+    let stored_chatgpt_account_id =
+        normalize_chatgpt_account_id(refreshed_account.chatgpt_account_id.as_deref());
+    let stored_workspace_id = normalize_workspace_id(refreshed_account.workspace_id.as_deref());
+    let chatgpt_account_id = stored_chatgpt_account_id
         .clone()
-        .or_else(|| refreshed_account.workspace_id.clone())
         .or_else(|| extract_chatgpt_account_id(&token.access_token))
+        .or_else(|| stored_workspace_id.clone())
         .or_else(|| extract_workspace_id(&token.access_token))
         .ok_or_else(|| "refreshed token missing chatgptAccountId".to_string())?;
+    let workspace_id = stored_workspace_id
+        .clone()
+        .or_else(|| extract_workspace_id(&token.access_token))
+        .or_else(|| stored_chatgpt_account_id.clone())
+        .or_else(|| extract_chatgpt_account_id(&token.access_token));
     let access_claims = parse_id_token_claims(&token.access_token).ok();
     let plan_type_resolution = resolve_plan_type_resolution(&token, access_claims.as_ref());
+    let base_url = std::env::var("CODEXMANAGER_USAGE_BASE_URL")
+        .unwrap_or_else(|_| "https://chatgpt.com".to_string());
+    let subscription = fetch_account_subscription(
+        &base_url,
+        &token.access_token,
+        &chatgpt_account_id,
+        workspace_id.as_deref(),
+    )?;
+    storage
+        .upsert_account_subscription(
+            &refreshed_account.id,
+            subscription.has_subscription,
+            subscription.plan_type.as_deref(),
+            subscription.expires_at,
+            subscription.renews_at,
+        )
+        .map_err(|err| format!("store account subscription failed: {err}"))?;
+    let chatgpt_plan_type = subscription.plan_type.clone().or_else(|| {
+        plan_type_resolution
+            .as_ref()
+            .map(|plan| plan.normalized.clone())
+    });
 
     Ok(ChatgptAuthTokensRefreshResponse {
-        account_id: refreshed_account.id,
         access_token: token.access_token,
         chatgpt_account_id,
-        chatgpt_plan_type: plan_type_resolution
-            .as_ref()
-            .map(|plan| plan.normalized.clone()),
-        chatgpt_plan_type_raw: plan_type_resolution.and_then(|plan| plan.raw),
+        chatgpt_plan_type,
+        has_subscription: Some(subscription.has_subscription),
+        subscription_plan: subscription.plan_type,
+        subscription_expires_at: subscription.expires_at,
+        subscription_renews_at: subscription.renews_at,
     })
 }
 
-pub(crate) fn refresh_chatgpt_auth_tokens_for_account(
-    account_id: &str,
-) -> Result<ChatgptAuthTokensRefreshResponse, String> {
-    let normalized_account_id = account_id.trim();
-    if normalized_account_id.is_empty() {
-        return Err("missing accountId".to_string());
-    }
-
-    let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
-    let account = storage
-        .find_account_by_id(normalized_account_id)
-        .map_err(|err| err.to_string())?
-        .ok_or_else(|| format!("account not found: {normalized_account_id}"))?;
-    let mut token = storage
-        .find_token_by_account_id(normalized_account_id)
-        .map_err(|err| err.to_string())?
-        .ok_or_else(|| format!("token not found for account: {normalized_account_id}"))?;
-    let issuer =
-        std::env::var("CODEXMANAGER_ISSUER").unwrap_or_else(|_| DEFAULT_ISSUER.to_string());
-    let client_id =
-        std::env::var("CODEXMANAGER_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
-    if let Err(err) = refresh_chatgpt_auth_tokens_with_fallback(
-        &storage, &account, &mut token, &issuer, &client_id,
-    ) {
-        let _ = mark_account_unavailable_for_refresh_token_error(&storage, &account.id, &err);
-        return Err(err);
-    }
-
-    let refreshed_account = storage
-        .find_account_by_id(&account.id)
-        .map_err(|err| err.to_string())?
-        .unwrap_or(account);
-    let chatgpt_account_id = refreshed_account
-        .chatgpt_account_id
-        .clone()
-        .or_else(|| refreshed_account.workspace_id.clone())
-        .or_else(|| extract_chatgpt_account_id(&token.access_token))
-        .or_else(|| extract_workspace_id(&token.access_token))
-        .ok_or_else(|| "refreshed token missing chatgptAccountId".to_string())?;
-    let access_claims = parse_id_token_claims(&token.access_token).ok();
-    let plan_type_resolution = resolve_plan_type_resolution(&token, access_claims.as_ref());
-
-    Ok(ChatgptAuthTokensRefreshResponse {
-        account_id: refreshed_account.id,
-        access_token: token.access_token,
-        chatgpt_account_id,
-        chatgpt_plan_type: plan_type_resolution
-            .as_ref()
-            .map(|plan| plan.normalized.clone()),
-        chatgpt_plan_type_raw: plan_type_resolution.and_then(|plan| plan.raw),
-    })
-}
-
-pub(crate) fn refresh_chatgpt_auth_tokens_with_fallback(
-    storage: &Storage,
-    account: &Account,
-    token: &mut Token,
-    issuer: &str,
-    client_id: &str,
-) -> Result<(), String> {
-    let refresh_error = if token.refresh_token.trim().is_empty() {
-        Some("current account does not have refresh_token".to_string())
-    } else if let Err(err) = refresh_and_persist_access_token(storage, token, issuer, client_id) {
-        Some(err)
-    } else {
-        return Ok(());
-    };
-
-    let cookies = crate::account_payment::read_account_cookies(&account.id)
-        .ok_or_else(|| refresh_error.clone().unwrap_or_default())?;
-    match crate::usage_http::refresh_access_token_with_session_cookies(&cookies) {
-        Ok(access_token) => persist_session_refreshed_access_token(storage, token, &access_token),
-        Err(session_err) => Err(match refresh_error {
-            Some(refresh_err) if !refresh_err.trim().is_empty() => {
-                format!("{refresh_err}; {session_err}")
-            }
-            _ => session_err,
-        }),
-    }
-}
-
-fn persist_session_refreshed_access_token(
-    storage: &Storage,
-    token: &mut Token,
-    access_token: &str,
-) -> Result<(), String> {
-    let normalized_access_token = access_token.trim();
-    if normalized_access_token.is_empty() {
-        return Err("session refreshed access token is empty".to_string());
-    }
-
-    token.access_token = normalized_access_token.to_string();
-    token.last_refresh = now_ts();
-    storage.insert_token(token).map_err(|err| err.to_string())?;
-    let access_exp = extract_token_exp(&token.access_token);
-    let next_refresh_at = access_exp.map(|exp| exp.saturating_sub(600));
-    let _ = storage.update_token_refresh_schedule(&token.account_id, access_exp, next_refresh_at);
-    Ok(())
-}
-
+/// 函数 `logout_current_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn logout_current_account() -> Result<serde_json::Value, String> {
     let storage = open_storage().ok_or_else(|| "storage unavailable".to_string())?;
     let current_account_id = get_persisted_app_setting(CURRENT_AUTH_ACCOUNT_ID_KEY);
@@ -445,12 +358,20 @@ pub(crate) fn logout_current_account() -> Result<serde_json::Value, String> {
     }
     set_current_auth_account_id(None)?;
     set_current_auth_mode(None)?;
-    Ok(serde_json::json!({
-        "ok": true,
-        "accountId": current_account_id,
-    }))
+    Ok(serde_json::json!({}))
 }
 
+/// 函数 `resolve_current_account_with_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_current_account_with_token(
     storage: &Storage,
 ) -> Result<Option<(Account, Token)>, String> {
@@ -473,6 +394,18 @@ fn resolve_current_account_with_token(
     }
 }
 
+/// 函数 `resolve_refresh_target`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - previous_account_id: 参数 previous_account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_refresh_target(
     storage: &Storage,
     previous_account_id: Option<&str>,
@@ -490,8 +423,10 @@ fn resolve_refresh_target(
     let accounts = storage.list_accounts().map_err(|err| err.to_string())?;
     let found = accounts.into_iter().find(|account| {
         account.id == previous_account_id
-            || account.chatgpt_account_id.as_deref() == Some(previous_account_id)
-            || account.workspace_id.as_deref() == Some(previous_account_id)
+            || normalize_chatgpt_account_id(account.chatgpt_account_id.as_deref()).as_deref()
+                == Some(previous_account_id)
+            || normalize_workspace_id(account.workspace_id.as_deref()).as_deref()
+                == Some(previous_account_id)
     });
     let Some(account) = found else {
         return Ok(None);
@@ -502,13 +437,40 @@ fn resolve_refresh_target(
     Ok(token.map(|token| (account, token)))
 }
 
+/// 函数 `current_account_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account: 参数 account
+/// - token: 参数 token
+/// - auth_mode: 参数 auth_mode
+///
+/// # 返回
+/// 返回函数执行结果
 fn current_account_payload(
+    storage: &Storage,
     account: &Account,
     token: &Token,
     auth_mode: &str,
 ) -> CurrentAuthAccount {
     let claims = parse_id_token_claims(&token.access_token).ok();
     let plan_type_resolution = resolve_plan_type_resolution(token, claims.as_ref());
+    let subscription = storage
+        .find_account_subscription(&account.id)
+        .ok()
+        .flatten();
+    let plan_type = subscription
+        .as_ref()
+        .and_then(|value| value.plan_type.clone())
+        .or_else(|| {
+            plan_type_resolution
+                .as_ref()
+                .map(|plan| plan.normalized.clone())
+        })
+        .unwrap_or_else(|| "unknown".to_string());
     CurrentAuthAccount {
         kind: auth_mode.to_string(),
         account_id: account.id.clone(),
@@ -516,17 +478,32 @@ fn current_account_payload(
             .as_ref()
             .and_then(|claims| claims.email.clone())
             .unwrap_or_else(|| account.label.clone()),
-        plan_type: plan_type_resolution
-            .as_ref()
-            .map(|plan| plan.normalized.clone())
-            .unwrap_or_else(|| "unknown".to_string()),
+        plan_type,
         plan_type_raw: plan_type_resolution.and_then(|plan| plan.raw),
-        chatgpt_account_id: account.chatgpt_account_id.clone(),
-        workspace_id: account.workspace_id.clone(),
+        has_subscription: subscription.as_ref().map(|value| value.has_subscription),
+        subscription_plan: subscription
+            .as_ref()
+            .and_then(|value| value.plan_type.clone()),
+        subscription_expires_at: subscription.as_ref().and_then(|value| value.expires_at),
+        subscription_renews_at: subscription.as_ref().and_then(|value| value.renews_at),
+        chatgpt_account_id: normalize_chatgpt_account_id(account.chatgpt_account_id.as_deref()),
+        workspace_id: normalize_workspace_id(account.workspace_id.as_deref()),
         status: account.status.clone(),
     }
 }
 
+/// 函数 `resolve_plan_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+/// - parsed_claims: 参数 parsed_claims
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 fn resolve_plan_type(
     token: &Token,
@@ -535,6 +512,18 @@ fn resolve_plan_type(
     resolve_plan_type_resolution(token, parsed_claims).map(|plan| plan.normalized)
 }
 
+/// 函数 `resolve_plan_type_raw`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+/// - parsed_claims: 参数 parsed_claims
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 fn resolve_plan_type_raw(
     token: &Token,
@@ -549,6 +538,18 @@ struct ResolvedPlanType {
     raw: Option<String>,
 }
 
+/// 函数 `resolve_plan_type_resolution`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+/// - parsed_claims: 参数 parsed_claims
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_plan_type_resolution(
     token: &Token,
     parsed_claims: Option<&codexmanager_core::auth::IdTokenClaims>,
@@ -577,6 +578,17 @@ fn resolve_plan_type_resolution(
         .and_then(normalize_plan_type)
 }
 
+/// 函数 `normalize_plan_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_plan_type(value: String) -> Option<ResolvedPlanType> {
     let normalized = value.trim().to_ascii_lowercase();
     match normalized.as_str() {
@@ -596,14 +608,47 @@ fn normalize_plan_type(value: String) -> Option<ResolvedPlanType> {
     }
 }
 
+/// 函数 `set_current_auth_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_current_auth_account_id(account_id: Option<&str>) -> Result<(), String> {
     save_persisted_app_setting(CURRENT_AUTH_ACCOUNT_ID_KEY, account_id)
 }
 
+/// 函数 `set_current_auth_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn set_current_auth_mode(auth_mode: Option<&str>) -> Result<(), String> {
     save_persisted_app_setting(CURRENT_AUTH_MODE_KEY, auth_mode)
 }
 
+/// 函数 `resolve_current_auth_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_current_auth_mode(token: &Token) -> String {
     get_persisted_app_setting(CURRENT_AUTH_MODE_KEY)
         .map(|value| value.trim().to_string())
@@ -611,6 +656,17 @@ fn resolve_current_auth_mode(token: &Token) -> String {
         .unwrap_or_else(|| infer_auth_mode_from_token(token).to_string())
 }
 
+/// 函数 `infer_auth_mode_from_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 fn infer_auth_mode_from_token(token: &Token) -> &'static str {
     if token.id_token.trim() == token.access_token.trim() {
         AUTH_MODE_CHATGPT_AUTH_TOKENS

@@ -7,11 +7,33 @@ pub struct ServerHandle {
 }
 
 impl ServerHandle {
+    /// 函数 `join`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     pub fn join(self) {
         let _ = self.join.join();
     }
 }
 
+/// 函数 `start_one_shot_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn start_one_shot_server() -> std::io::Result<ServerHandle> {
     crate::portable::bootstrap_current_process();
     crate::gateway::reload_runtime_config_from_env();
@@ -19,13 +41,13 @@ pub fn start_one_shot_server() -> std::io::Result<ServerHandle> {
         log::warn!("storage startup init skipped: {}", err);
     }
     crate::sync_runtime_settings_from_storage();
-    crate::initialize_service_runtime();
-    let server = tiny_http::Server::http("127.0.0.1:0").map_err(io::Error::other)?;
+    let server = tiny_http::Server::http("127.0.0.1:0")
+        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
     let addr = server
         .server_addr()
         .to_ip()
         .map(|a| a.to_string())
-        .ok_or_else(|| io::Error::other("server addr missing"))?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "server addr missing"))?;
     let join = thread::spawn(move || {
         if let Some(request) = server.incoming_requests().next() {
             crate::http::backend_router::handle_backend_request(request);
@@ -34,6 +56,17 @@ pub fn start_one_shot_server() -> std::io::Result<ServerHandle> {
     Ok(ServerHandle { addr, join })
 }
 
+/// 函数 `start_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 pub fn start_server(addr: &str) -> std::io::Result<()> {
     crate::portable::bootstrap_current_process();
     crate::gateway::reload_runtime_config_from_env();
@@ -41,12 +74,9 @@ pub fn start_server(addr: &str) -> std::io::Result<()> {
         log::warn!("storage startup init skipped: {}", err);
     }
     crate::sync_runtime_settings_from_storage();
-    crate::initialize_service_runtime();
-    crate::account::cpa_sync::ensure_cpa_sync_scheduler_started();
     crate::usage_refresh::ensure_usage_polling();
     crate::usage_refresh::ensure_gateway_keepalive();
     crate::usage_refresh::ensure_token_refresh_polling();
-    crate::usage_refresh::ensure_session_probe_polling();
-    crate::alert_engine::ensure_alert_polling();
+    crate::plugin::ensure_plugin_scheduler();
     crate::http::server::start_http(addr)
 }

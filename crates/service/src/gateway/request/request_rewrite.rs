@@ -1,15 +1,25 @@
 use serde_json::Value;
 
 mod request_rewrite_chat_completions;
-mod request_rewrite_responses;
 mod request_rewrite_shared;
 
+use super::official_responses_http as responses;
 use request_rewrite_chat_completions as chat_completions;
-use request_rewrite_responses as responses;
 
 type RetainFn = fn(&str, &mut serde_json::Map<String, Value>) -> Vec<String>;
 const RETAIN_FN_PROBE_KEY: &str = "__codexmanager_allowlist_probe__";
 
+/// 函数 `compute_upstream_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn compute_upstream_url(base: &str, path: &str) -> (String, Option<String>) {
     let base = base.trim_end_matches('/');
     let url = if base.contains("/backend-api/codex") && path.starts_with("/v1/") {
@@ -28,10 +38,33 @@ pub(super) fn compute_upstream_url(base: &str, path: &str) -> (String, Option<St
     (url, url_alt)
 }
 
+/// 函数 `is_codex_backend_base`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - base: 参数 base
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_codex_backend_base(base: &str) -> bool {
     base.to_ascii_lowercase().contains("/backend-api/codex")
 }
 
+/// 函数 `should_apply_codex_responses_compat`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - explicit_upstream_base: 参数 explicit_upstream_base
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_apply_codex_responses_compat(path: &str, explicit_upstream_base: Option<&str>) -> bool {
     if !responses::is_responses_path(path) {
         return false;
@@ -43,6 +76,18 @@ fn should_apply_codex_responses_compat(path: &str, explicit_upstream_base: Optio
     is_codex_backend_base(&normalized_base)
 }
 
+/// 函数 `path_matches_retain_fn`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - retain_fn: 参数 retain_fn
+///
+/// # 返回
+/// 返回函数执行结果
 fn path_matches_retain_fn(path: &str, retain_fn: RetainFn) -> bool {
     let mut probe = serde_json::Map::new();
     probe.insert(RETAIN_FN_PROBE_KEY.to_string(), Value::Null);
@@ -50,6 +95,18 @@ fn path_matches_retain_fn(path: &str, retain_fn: RetainFn) -> bool {
     !probe.contains_key(RETAIN_FN_PROBE_KEY)
 }
 
+/// 函数 `resolve_retain_fn`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - use_codex_responses_compat: 参数 use_codex_responses_compat
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_retain_fn(path: &str, use_codex_responses_compat: bool) -> Option<RetainFn> {
     if path_matches_retain_fn(path, chat_completions::retain_official_fields) {
         return Some(chat_completions::retain_official_fields);
@@ -64,6 +121,19 @@ fn resolve_retain_fn(path: &str, use_codex_responses_compat: bool) -> Option<Ret
     None
 }
 
+/// 函数 `is_allowed_field`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - key: 参数 key
+/// - retain_fn: 参数 retain_fn
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_allowed_field(path: &str, key: &str, retain_fn: RetainFn) -> bool {
     let mut one = serde_json::Map::new();
     one.insert(key.to_string(), Value::Null);
@@ -71,36 +141,19 @@ fn is_allowed_field(path: &str, key: &str, retain_fn: RetainFn) -> bool {
     one.contains_key(key)
 }
 
-fn payload_rewrite_path_matches(rule_path: &str, request_path: &str) -> bool {
-    let normalized_rule = rule_path.trim();
-    normalized_rule == "*" || normalized_rule == request_path
-}
-
-fn apply_payload_rewrite_rules(
-    path: &str,
-    obj: &mut serde_json::Map<String, Value>,
-) -> Vec<String> {
-    let mut applied_fields = Vec::new();
-    for rule in super::runtime_config::current_payload_rewrite_rules() {
-        if !rule.enabled || !payload_rewrite_path_matches(&rule.path, path) {
-            continue;
-        }
-        let field = rule.field.trim();
-        if field.is_empty() {
-            continue;
-        }
-        let should_apply = match rule.mode {
-            super::runtime_config::PayloadRewriteMode::Set => true,
-            super::runtime_config::PayloadRewriteMode::SetIfMissing => !obj.contains_key(field),
-        };
-        if should_apply {
-            obj.insert(field.to_string(), rule.value.clone());
-            applied_fields.push(field.to_string());
-        }
-    }
-    applied_fields
-}
-
+/// 函数 `find_subsequence`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - haystack: 参数 haystack
+/// - needle: 参数 needle
+/// - start: 参数 start
+///
+/// # 返回
+/// 返回函数执行结果
 fn find_subsequence(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
     if needle.is_empty() || start >= haystack.len() || haystack.len() < needle.len() {
         return None;
@@ -111,6 +164,17 @@ fn find_subsequence(haystack: &[u8], needle: &[u8], start: usize) -> Option<usiz
         .map(|idx| idx + start)
 }
 
+/// 函数 `extract_multipart_part_name`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_multipart_part_name(headers: &[u8]) -> Option<String> {
     let headers_str = std::str::from_utf8(headers).ok()?;
     for line in headers_str.split("\r\n") {
@@ -139,6 +203,19 @@ fn extract_multipart_part_name(headers: &[u8]) -> Option<String> {
     None
 }
 
+/// 函数 `filter_form_urlencoded_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - body: 参数 body
+/// - retain_fn: 参数 retain_fn
+///
+/// # 返回
+/// 返回函数执行结果
 fn filter_form_urlencoded_body(
     path: &str,
     body: &[u8],
@@ -168,6 +245,19 @@ fn filter_form_urlencoded_body(
     Some((serializer.finish().into_bytes(), dropped_keys))
 }
 
+/// 函数 `filter_multipart_form_data_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - body: 参数 body
+/// - retain_fn: 参数 retain_fn
+///
+/// # 返回
+/// 返回函数执行结果
 fn filter_multipart_form_data_body(
     path: &str,
     body: &[u8],
@@ -263,6 +353,47 @@ fn filter_multipart_form_data_body(
     Some((rebuilt, dropped_keys))
 }
 
+/// 函数 `apply_model_forward_rule_if_needed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-05
+///
+/// # 参数
+/// - obj: 参数 obj
+///
+/// # 返回
+/// 返回函数执行结果
+fn apply_model_forward_rule_if_needed(obj: &mut serde_json::Map<String, Value>) -> bool {
+    let Some(current_model) = obj
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return false;
+    };
+    let Some(forwarded_model) = super::resolve_forwarded_model(current_model) else {
+        return false;
+    };
+    if forwarded_model.eq_ignore_ascii_case(current_model) {
+        return false;
+    }
+    obj.insert("model".to_string(), Value::String(forwarded_model));
+    true
+}
+
+/// 函数 `apply_request_overrides`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(dead_code)]
 pub(super) fn apply_request_overrides(
     path: &str,
@@ -271,16 +402,59 @@ pub(super) fn apply_request_overrides(
     reasoning_effort: Option<&str>,
     upstream_base_url: Option<&str>,
 ) -> Vec<u8> {
-    apply_request_overrides_with_prompt_cache_key(
+    apply_request_overrides_with_service_tier(
         path,
         body,
         model_slug,
         reasoning_effort,
-        upstream_base_url,
         None,
+        upstream_base_url,
     )
 }
 
+/// 函数 `apply_request_overrides_with_service_tier`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
+pub(super) fn apply_request_overrides_with_service_tier(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    service_tier: Option<&str>,
+    upstream_base_url: Option<&str>,
+) -> Vec<u8> {
+    apply_request_overrides_with_service_tier_and_prompt_cache_key_scope(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        service_tier,
+        upstream_base_url,
+        None,
+        false,
+    )
+}
+
+/// 函数 `apply_request_overrides_with_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
+#[allow(dead_code)]
 pub(super) fn apply_request_overrides_with_prompt_cache_key(
     path: &str,
     body: Vec<u8>,
@@ -289,10 +463,198 @@ pub(super) fn apply_request_overrides_with_prompt_cache_key(
     upstream_base_url: Option<&str>,
     prompt_cache_key: Option<&str>,
 ) -> Vec<u8> {
+    apply_request_overrides_with_service_tier_and_prompt_cache_key_scope(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        None,
+        upstream_base_url,
+        prompt_cache_key,
+        false,
+    )
+}
+
+/// 函数 `apply_request_overrides_with_service_tier_and_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn apply_request_overrides_with_service_tier_and_prompt_cache_key(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    service_tier: Option<&str>,
+    upstream_base_url: Option<&str>,
+    prompt_cache_key: Option<&str>,
+) -> Vec<u8> {
+    apply_request_overrides_with_service_tier_and_prompt_cache_key_scope(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        service_tier,
+        upstream_base_url,
+        prompt_cache_key,
+        false,
+    )
+}
+
+pub(super) fn apply_request_overrides_with_service_tier_and_prompt_cache_key_scope(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    service_tier: Option<&str>,
+    upstream_base_url: Option<&str>,
+    prompt_cache_key: Option<&str>,
+    allow_codex_compat_rewrite: bool,
+) -> Vec<u8> {
+    apply_request_overrides_with_prompt_cache_key_mode(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        upstream_base_url,
+        prompt_cache_key,
+        false,
+        service_tier,
+        allow_codex_compat_rewrite,
+    )
+}
+
+/// 函数 `apply_request_overrides_with_forced_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
+#[cfg(test)]
+pub(super) fn apply_request_overrides_with_forced_prompt_cache_key(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    upstream_base_url: Option<&str>,
+    prompt_cache_key: Option<&str>,
+) -> Vec<u8> {
+    apply_request_overrides_with_service_tier_and_forced_prompt_cache_key(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        None,
+        upstream_base_url,
+        prompt_cache_key,
+    )
+}
+
+/// 函数 `apply_request_overrides_with_service_tier_and_forced_prompt_cache_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn apply_request_overrides_with_service_tier_and_forced_prompt_cache_key(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    service_tier: Option<&str>,
+    upstream_base_url: Option<&str>,
+    prompt_cache_key: Option<&str>,
+) -> Vec<u8> {
+    apply_request_overrides_with_service_tier_and_forced_prompt_cache_key_scope(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        service_tier,
+        upstream_base_url,
+        prompt_cache_key,
+        false,
+    )
+}
+
+pub(super) fn apply_request_overrides_with_service_tier_and_forced_prompt_cache_key_scope(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    service_tier: Option<&str>,
+    upstream_base_url: Option<&str>,
+    prompt_cache_key: Option<&str>,
+    allow_codex_compat_rewrite: bool,
+) -> Vec<u8> {
+    apply_request_overrides_with_prompt_cache_key_mode(
+        path,
+        body,
+        model_slug,
+        reasoning_effort,
+        upstream_base_url,
+        prompt_cache_key,
+        true,
+        service_tier,
+        allow_codex_compat_rewrite,
+    )
+}
+
+/// 函数 `apply_request_overrides_with_prompt_cache_key_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+/// - body: 参数 body
+/// - model_slug: 参数 model_slug
+/// - reasoning_effort: 参数 reasoning_effort
+/// - upstream_base_url: 参数 upstream_base_url
+/// - prompt_cache_key: 参数 prompt_cache_key
+/// - force_prompt_cache_key: 参数 force_prompt_cache_key
+/// - service_tier: 参数 service_tier
+///
+/// # 返回
+/// 返回函数执行结果
+fn apply_request_overrides_with_prompt_cache_key_mode(
+    path: &str,
+    body: Vec<u8>,
+    model_slug: Option<&str>,
+    reasoning_effort: Option<&str>,
+    upstream_base_url: Option<&str>,
+    prompt_cache_key: Option<&str>,
+    force_prompt_cache_key: bool,
+    service_tier: Option<&str>,
+    allow_codex_compat_rewrite: bool,
+) -> Vec<u8> {
     let use_codex_responses_compat = should_apply_codex_responses_compat(path, upstream_base_url);
+    let use_codex_compat_rewrite = allow_codex_compat_rewrite && use_codex_responses_compat;
     let normalized_model = model_slug.map(str::trim).filter(|v| !v.is_empty());
     let normalized_reasoning = reasoning_effort
         .and_then(crate::reasoning_effort::normalize_reasoning_effort)
+        .map(str::to_string);
+    let normalized_service_tier = service_tier
+        .and_then(crate::apikey::service_tier::normalize_service_tier)
         .map(str::to_string);
     if body.is_empty() {
         return body;
@@ -303,7 +665,11 @@ pub(super) fn apply_request_overrides_with_prompt_cache_key(
             let mut dropped_keys = Vec::new();
 
             if let Some(model) = normalized_model {
-                obj.insert("model".to_string(), Value::String(model.to_string()));
+                let forwarded_model = super::resolve_builtin_forwarded_model(model)
+                    .unwrap_or_else(|| model.to_string());
+                obj.insert("model".to_string(), Value::String(forwarded_model));
+                changed = true;
+            } else if use_codex_compat_rewrite && apply_model_forward_rule_if_needed(obj) {
                 changed = true;
             }
 
@@ -320,23 +686,19 @@ pub(super) fn apply_request_overrides_with_prompt_cache_key(
                 }
             }
 
+            if let Some(service_tier) = normalized_service_tier.as_deref() {
+                obj.insert(
+                    "service_tier".to_string(),
+                    Value::String(service_tier.to_string()),
+                );
+                changed = true;
+            }
+
             if chat_completions::ensure_reasoning_effort(path, obj) {
                 changed = true;
             }
             if chat_completions::ensure_stream_usage_override(path, obj) {
                 changed = true;
-            }
-
-            let mut rewritten_fields = apply_payload_rewrite_rules(path, obj);
-            if !rewritten_fields.is_empty() {
-                rewritten_fields.sort_unstable();
-                rewritten_fields.dedup();
-                changed = true;
-                log::debug!(
-                    "event=gateway_request_payload_rewrite_applied path={} fields={}",
-                    path,
-                    rewritten_fields.join(",")
-                );
             }
 
             if super::strict_request_param_allowlist_enabled() {
@@ -347,50 +709,23 @@ pub(super) fn apply_request_overrides_with_prompt_cache_key(
             }
 
             if use_codex_responses_compat {
-                if responses::normalize_dynamic_tools_to_tools(path, obj) {
+                let installation_id = crate::process_env::resolve_installation_id()
+                    .inspect_err(|err| {
+                        log::warn!("event=gateway_installation_id_resolve_failed error={}", err);
+                    })
+                    .ok();
+                let codex_http_result = responses::apply_codex_http_request_rules(
+                    path,
+                    obj,
+                    use_codex_compat_rewrite,
+                    prompt_cache_key,
+                    force_prompt_cache_key,
+                    installation_id.as_deref(),
+                );
+                if codex_http_result.changed {
                     changed = true;
                 }
-                if responses::ensure_input_list(path, obj) {
-                    changed = true;
-                }
-                if responses::ensure_tools_list(path, obj) {
-                    changed = true;
-                }
-                if responses::ensure_parallel_tool_calls_bool(path, obj) {
-                    changed = true;
-                }
-                if !responses::is_compact_path(path) {
-                    let had_stream_passthrough = obj.contains_key("stream_passthrough");
-                    let stream_passthrough = responses::take_stream_passthrough_flag(path, obj);
-                    if had_stream_passthrough {
-                        changed = true;
-                    }
-                    if !stream_passthrough && responses::ensure_stream_true(path, obj) {
-                        changed = true;
-                    }
-                    if responses::ensure_store_false(path, obj) {
-                        changed = true;
-                    }
-                    if responses::ensure_tool_choice_auto(path, obj) {
-                        changed = true;
-                    }
-                    if responses::normalize_service_tier(path, obj) {
-                        changed = true;
-                    }
-                    if responses::ensure_include_list(path, obj) {
-                        changed = true;
-                    }
-                    if responses::ensure_reasoning_include(path, obj) {
-                        changed = true;
-                    }
-                    if responses::ensure_prompt_cache_key(path, obj, prompt_cache_key) {
-                        changed = true;
-                    }
-                }
-                if responses::ensure_instructions(path, obj) {
-                    changed = true;
-                }
-                dropped_keys.extend(responses::retain_codex_fields(path, obj));
+                dropped_keys.extend(codex_http_result.dropped_keys);
             }
 
             if !dropped_keys.is_empty() {

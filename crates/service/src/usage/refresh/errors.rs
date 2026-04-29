@@ -2,7 +2,11 @@ use codexmanager_core::storage::{now_ts, Event, Storage};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use crate::account_status::{mark_account_unavailable_for_refresh_token_error, set_account_status};
+use crate::account_status::{
+    mark_account_unavailable_for_deactivation_error,
+    mark_account_unavailable_for_refresh_token_error,
+    mark_account_unavailable_for_usage_http_error,
+};
 
 const DEFAULT_USAGE_REFRESH_FAILURE_EVENT_WINDOW_SECS: i64 = 60;
 const USAGE_REFRESH_FAILURE_EVENT_WINDOW_ENV: &str =
@@ -16,6 +20,17 @@ struct FailureThrottleKey {
 
 static FAILURE_EVENT_THROTTLE: OnceLock<Mutex<HashMap<FailureThrottleKey, i64>>> = OnceLock::new();
 
+/// 函数 `record_usage_refresh_failure`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn record_usage_refresh_failure(storage: &Storage, account_id: &str, message: &str) {
     let created_at = now_ts();
     let error_class = classify_usage_refresh_error(message);
@@ -33,59 +48,53 @@ pub(super) fn record_usage_refresh_failure(storage: &Storage, account_id: &str, 
     });
 }
 
+/// 函数 `mark_usage_unreachable_if_needed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn mark_usage_unreachable_if_needed(storage: &Storage, account_id: &str, err: &str) {
     if mark_account_unavailable_for_refresh_token_error(storage, account_id, err) {
         return;
     }
-    if let Some(reason) = usage_error_deactivation_reason(err) {
-        set_account_status(storage, account_id, "deactivated", reason);
-        crate::gateway::mark_account_cooldown(
-            account_id,
-            crate::gateway::CooldownReason::Deactivated,
-        );
+    if mark_account_unavailable_for_deactivation_error(storage, account_id, err) {
         return;
     }
-    if let Some(status_code) =
-        extract_usage_status_code(err.trim()).or_else(|| extract_generic_status_code(err.trim()))
-    {
-        crate::gateway::mark_account_cooldown_for_status(account_id, status_code);
-        let current_status = storage
-            .find_account_by_id(account_id)
-            .ok()
-            .flatten()
-            .map(|account| account.status)
-            .unwrap_or_default();
-        if matches!(status_code, 401 | 403)
-            && !current_status.trim().eq_ignore_ascii_case("disabled")
-            && !current_status.trim().eq_ignore_ascii_case("inactive")
-            && !current_status.trim().eq_ignore_ascii_case("deactivated")
-        {
-            set_account_status(storage, account_id, "unavailable", "usage_http_401");
-        }
-        return;
-    }
-    if usage_error_indicates_network_cooldown(err) {
-        crate::gateway::mark_account_cooldown(account_id, crate::gateway::CooldownReason::Network);
-    }
-    let _ = (storage, account_id, err);
+    let _ = mark_account_unavailable_for_usage_http_error(storage, account_id, err);
 }
 
+/// 函数 `should_retry_with_refresh`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn should_retry_with_refresh(err: &str) -> bool {
     err.contains("401") || err.contains("403")
 }
 
-fn usage_error_indicates_network_cooldown(message: &str) -> bool {
-    let normalized = message.trim().to_ascii_lowercase();
-    normalized.contains("timeout")
-        || normalized.contains("timed out")
-        || normalized.contains("connection")
-        || normalized.contains("connect")
-        || normalized.contains("dns")
-        || normalized.contains("network")
-        || normalized.contains("reset by peer")
-        || normalized.contains("broken pipe")
-}
-
+/// 函数 `usage_refresh_failure_event_window_secs`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn usage_refresh_failure_event_window_secs() -> i64 {
     std::env::var(USAGE_REFRESH_FAILURE_EVENT_WINDOW_ENV)
         .ok()
@@ -94,21 +103,24 @@ fn usage_refresh_failure_event_window_secs() -> i64 {
         .unwrap_or(DEFAULT_USAGE_REFRESH_FAILURE_EVENT_WINDOW_SECS)
 }
 
+/// 函数 `classify_usage_refresh_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_usage_refresh_error(message: &str) -> String {
     let normalized = message.trim().to_ascii_lowercase();
-    if let Some(reason) = crate::usage_http::refresh_token_auth_error_reason_from_message(message) {
-        return format!("token_refresh_{}", reason.as_code());
-    }
-    if let Some(status_code) =
-        extract_usage_status_code(&normalized).or_else(|| extract_generic_status_code(&normalized))
-    {
+    if let Some(status_code) = extract_usage_status_code(&normalized) {
         return format!("usage_status_{status_code}");
     }
-    if let Some(reason) = usage_error_deactivation_reason(message) {
-        return match reason {
-            "usage_http_workspace_deactivated" => "workspace_deactivated".to_string(),
-            _ => "account_deactivated".to_string(),
-        };
+    if let Some(reason) = crate::usage_http::refresh_token_auth_error_reason_from_message(message) {
+        return format!("token_refresh_{}", reason.as_code());
     }
     if normalized.contains("timeout") {
         return "timeout".to_string();
@@ -128,29 +140,29 @@ fn classify_usage_refresh_error(message: &str) -> String {
     "other".to_string()
 }
 
-pub(super) fn usage_error_indicates_deactivated_account(message: &str) -> bool {
-    usage_error_deactivation_reason(message).is_some()
-}
-
-fn usage_error_deactivation_reason(message: &str) -> Option<&'static str> {
-    let normalized = message.trim().to_ascii_lowercase();
-    if normalized.contains("workspace has been deactivated")
-        || normalized.contains("workspace is deactivated")
-        || normalized.contains("workspace_deactivated")
-    {
-        return Some("usage_http_workspace_deactivated");
-    }
-    if normalized.contains("your openai account has been deactivated")
-        || (normalized.contains("account has been deactivated")
-            && normalized.contains("help.openai.com"))
-    {
-        return Some("usage_http_deactivated");
-    }
-    None
-}
-
+/// 函数 `extract_usage_status_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - message: 参数 message
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_usage_status_code(message: &str) -> Option<u16> {
-    let rest = message.strip_prefix("usage endpoint status ")?;
+    let rest = if let Some(rest) = message.strip_prefix("usage endpoint status ") {
+        Some(rest)
+    } else if let Some(rest) = message.strip_prefix("usage endpoint failed: status=") {
+        Some(rest)
+    } else if let Some(rest) = message.strip_prefix("subscription endpoint status ") {
+        Some(rest)
+    } else if let Some(rest) = message.strip_prefix("subscription endpoint failed: status=") {
+        Some(rest)
+    } else {
+        None
+    }?;
     let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
     if digits.is_empty() {
         return None;
@@ -158,19 +170,20 @@ fn extract_usage_status_code(message: &str) -> Option<u16> {
     digits.parse::<u16>().ok()
 }
 
-fn extract_generic_status_code(message: &str) -> Option<u16> {
-    for marker in ["status=", "status "] {
-        let Some(rest) = message.split_once(marker).map(|(_, value)| value) else {
-            continue;
-        };
-        let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
-        if let Ok(parsed) = digits.parse::<u16>() {
-            return Some(parsed);
-        }
-    }
-    None
-}
-
+/// 函数 `should_record_failure_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - account_id: 参数 account_id
+/// - error_class: 参数 error_class
+/// - created_at: 参数 created_at
+/// - dedupe_window_secs: 参数 dedupe_window_secs
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_record_failure_event(
     account_id: &str,
     error_class: &str,
@@ -186,6 +199,20 @@ fn should_record_failure_event(
     should_record_failure_event_with_state(&mut state, key, created_at, dedupe_window_secs)
 }
 
+/// 函数 `should_record_failure_event_with_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - state: 参数 state
+/// - key: 参数 key
+/// - created_at: 参数 created_at
+/// - dedupe_window_secs: 参数 dedupe_window_secs
+///
+/// # 返回
+/// 返回函数执行结果
 fn should_record_failure_event_with_state(
     state: &mut HashMap<FailureThrottleKey, i64>,
     key: FailureThrottleKey,
@@ -213,6 +240,19 @@ fn should_record_failure_event_with_state(
     true
 }
 
+/// 函数 `prune_failure_event_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - state: 参数 state
+/// - now: 参数 now
+/// - dedupe_window_secs: 参数 dedupe_window_secs
+///
+/// # 返回
+/// 无
 fn prune_failure_event_state(
     state: &mut HashMap<FailureThrottleKey, i64>,
     now: i64,

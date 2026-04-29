@@ -1,5 +1,14 @@
-pub(super) use codexmanager_core::rpc::types::ModelOption;
-pub(super) use codexmanager_core::storage::{now_ts, Account, ApiKey, Storage, Token};
+#[path = "../support.rs"]
+mod shared;
+
+pub(super) use shared::{test_env_guard, EnvGuard};
+
+pub(super) use codexmanager_core::rpc::types::ModelInfo;
+pub(super) use codexmanager_core::rpc::types::ModelsResponse;
+pub(super) use codexmanager_core::storage::{
+    now_ts, Account, ApiKey, ModelCatalogModelRecord, ModelCatalogReasoningLevelRecord,
+    ModelCatalogScopeRecord, ModelCatalogStringItemRecord, Storage, Token,
+};
 pub(super) use sha2::{Digest, Sha256};
 pub(super) use std::collections::HashMap;
 pub(super) use std::fs;
@@ -9,25 +18,23 @@ pub(super) use std::net::TcpStream;
 pub(super) use std::path::PathBuf;
 pub(super) use std::sync::atomic::{AtomicUsize, Ordering};
 pub(super) use std::sync::mpsc::{self, Receiver};
-pub(super) use std::sync::Mutex;
 pub(super) use std::thread;
 pub(super) use std::time::{Duration, Instant};
 
-pub(super) struct EnvGuard {
-    key: &'static str,
-    original: Option<std::ffi::OsString>,
-}
-
-pub(super) static ENV_LOCK: Mutex<()> = Mutex::new(());
 pub(super) static TEST_DIR_SEQ: AtomicUsize = AtomicUsize::new(0);
+pub(super) static TEST_PORT_SEQ: AtomicUsize = AtomicUsize::new(41000);
 
-pub(super) fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-    // 中文注释：若某个测试 panic 导致锁被 poison，不应让后续测试直接二次失败。
-    ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
+/// 函数 `new_test_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn new_test_dir(prefix: &str) -> PathBuf {
     // 中文注释：Windows 进程 ID 可能被复用；增加递增序号避免复用旧目录/旧 db 文件导致用例不稳定。
     let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -37,30 +44,40 @@ pub(super) fn new_test_dir(prefix: &str) -> PathBuf {
     dir
 }
 
+/// 函数 `bind_test_listener`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn bind_test_listener(label: &str) -> TcpListener {
-    // 中文注释：当前 automation 沙箱会拒绝固定端口绑定；改为 port 0 让系统分配可用端口，
-    // 既避免 41000+ 范围权限问题，也减少并行测试间的端口碰撞。
-    TcpListener::bind(("127.0.0.1", 0)).unwrap_or_else(|err| panic!("bind {label} failed: {err}"))
-}
-
-impl EnvGuard {
-    pub(super) fn set(key: &'static str, value: &str) -> Self {
-        let original = std::env::var_os(key);
-        std::env::set_var(key, value);
-        Self { key, original }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        if let Some(val) = &self.original {
-            std::env::set_var(self.key, val);
-        } else {
-            std::env::remove_var(self.key);
+    for _ in 0..1024 {
+        let port = TEST_PORT_SEQ.fetch_add(1, Ordering::Relaxed) as u16;
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(listener) => return listener,
+            Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => continue,
+            Err(err) => panic!("bind {label} port {port} failed: {err}"),
         }
     }
+    panic!("exhausted test ports for {label}");
 }
 
+/// 函数 `decode_chunked_body_if_needed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn decode_chunked_body_if_needed(body: &str) -> String {
     let normalized = body.replace("\r\n", "\n");
     let bytes = normalized.as_bytes();
@@ -108,84 +125,17 @@ fn decode_chunked_body_if_needed(body: &str) -> String {
     String::from_utf8(out).unwrap_or(normalized)
 }
 
-fn parse_http_status_and_body(raw: &[u8]) -> Option<(u16, String)> {
-    let snapshot = parse_http_response_snapshot(raw)?;
-    Some((snapshot.status, snapshot.body))
-}
-
-#[derive(Debug)]
-pub(super) struct HttpResponseSnapshot {
-    pub(super) status: u16,
-    pub(super) headers: HashMap<String, String>,
-    pub(super) body: String,
-}
-
-fn parse_http_response_snapshot(raw: &[u8]) -> Option<HttpResponseSnapshot> {
-    let header_end = raw.windows(4).position(|window| window == b"\r\n\r\n")?;
-    let header_end = header_end + 4;
-    let status_line = std::str::from_utf8(
-        raw[..header_end]
-            .split(|byte| *byte == b'\n')
-            .next()
-            .unwrap_or_default(),
-    )
-    .ok()?;
-    let status = status_line
-        .split_whitespace()
-        .nth(1)
-        .and_then(|value| value.parse::<u16>().ok())?;
-
-    let headers_text = String::from_utf8_lossy(&raw[..header_end]);
-    let mut content_length = None;
-    let mut chunked = false;
-    let mut headers = HashMap::new();
-    for line in headers_text.lines().skip(1) {
-        let Some((name, value)) = line.split_once(':') else {
-            continue;
-        };
-        let name = name.trim().to_ascii_lowercase();
-        let value = value.trim().to_ascii_lowercase();
-        headers.insert(name.clone(), value.clone());
-        if name == "content-length" {
-            content_length = value.parse::<usize>().ok();
-        }
-        if name == "transfer-encoding" && value.contains("chunked") {
-            chunked = true;
-        }
-    }
-
-    let body_bytes = &raw[header_end..];
-    if let Some(content_length) = content_length {
-        if body_bytes.len() < content_length {
-            return None;
-        }
-        let body = String::from_utf8_lossy(&body_bytes[..content_length]).to_string();
-        return Some(HttpResponseSnapshot {
-            status,
-            headers,
-            body,
-        });
-    }
-
-    if chunked {
-        let body_raw = String::from_utf8_lossy(body_bytes).to_string();
-        if !body_raw.contains("\r\n0\r\n\r\n") && !body_raw.contains("\n0\n\n") {
-            return None;
-        }
-        return Some(HttpResponseSnapshot {
-            status,
-            headers,
-            body: decode_chunked_body_if_needed(&body_raw),
-        });
-    }
-
-    Some(HttpResponseSnapshot {
-        status,
-        headers,
-        body: String::from_utf8_lossy(body_bytes).to_string(),
-    })
-}
-
+/// 函数 `post_http_raw`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn post_http_raw(
     addr: &str,
     path: &str,
@@ -206,119 +156,35 @@ pub(super) fn post_http_raw(
         request.push_str(&format!("Content-Length: {}\r\n\r\n{}", body.len(), body));
         stream.write_all(request.as_bytes()).expect("write");
 
-        let mut raw = Vec::new();
-        let mut buf = [0u8; 4096];
-        loop {
-            match stream.read(&mut buf) {
-                Ok(0) => break,
-                Ok(read) => raw.extend_from_slice(&buf[..read]),
-                Err(err)
-                    if matches!(
-                        err.kind(),
-                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-                    ) =>
-                {
-                    break;
-                }
-                Err(err) => panic!("read: {err}"),
-            }
-        }
-        if let Some((status, body)) = parse_http_status_and_body(&raw) {
+        let mut buf = String::new();
+        stream.read_to_string(&mut buf).expect("read");
+        if let Some(status) = buf
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .and_then(|value| value.parse::<u16>().ok())
+        {
+            let body_raw = buf.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
+            let body = decode_chunked_body_if_needed(&body_raw);
             return (status, body);
         }
-        last_raw = String::from_utf8_lossy(&raw).to_string();
+        last_raw = buf;
         thread::sleep(Duration::from_millis(50));
     }
     panic!("status parse failed, raw response: {last_raw:?}");
 }
 
-pub(super) fn post_http_response(
-    addr: &str,
-    path: &str,
-    body: &str,
-    headers: &[(&str, &str)],
-) -> HttpResponseSnapshot {
-    let mut last_raw = String::new();
-    for _ in 0..20 {
-        let mut stream = TcpStream::connect(addr).expect("connect server");
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
-        let mut request = format!("POST {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n");
-        for (name, value) in headers {
-            request.push_str(name);
-            request.push_str(": ");
-            request.push_str(value);
-            request.push_str("\r\n");
-        }
-        request.push_str(&format!("Content-Length: {}\r\n\r\n{}", body.len(), body));
-        stream.write_all(request.as_bytes()).expect("write");
-
-        let mut raw = Vec::new();
-        let mut buf = [0u8; 4096];
-        loop {
-            match stream.read(&mut buf) {
-                Ok(0) => break,
-                Ok(read) => raw.extend_from_slice(&buf[..read]),
-                Err(err)
-                    if matches!(
-                        err.kind(),
-                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-                    ) =>
-                {
-                    break;
-                }
-                Err(err) => panic!("read: {err}"),
-            }
-        }
-        if let Some(snapshot) = parse_http_response_snapshot(&raw) {
-            return snapshot;
-        }
-        last_raw = String::from_utf8_lossy(&raw).to_string();
-        thread::sleep(Duration::from_millis(50));
-    }
-    panic!("status parse failed, raw response: {last_raw:?}");
-}
-
-pub(super) fn get_http_raw(addr: &str, path: &str, headers: &[(&str, &str)]) -> (u16, String) {
-    let mut last_raw = String::new();
-    for _ in 0..20 {
-        let mut stream = TcpStream::connect(addr).expect("connect server");
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
-        let mut request = format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n");
-        for (name, value) in headers {
-            request.push_str(name);
-            request.push_str(": ");
-            request.push_str(value);
-            request.push_str("\r\n");
-        }
-        request.push_str("\r\n");
-        stream.write_all(request.as_bytes()).expect("write");
-
-        let mut raw = Vec::new();
-        let mut buf = [0u8; 4096];
-        loop {
-            match stream.read(&mut buf) {
-                Ok(0) => break,
-                Ok(read) => raw.extend_from_slice(&buf[..read]),
-                Err(err)
-                    if matches!(
-                        err.kind(),
-                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-                    ) =>
-                {
-                    break;
-                }
-                Err(err) => panic!("read: {err}"),
-            }
-        }
-        if let Some((status, body)) = parse_http_status_and_body(&raw) {
-            return (status, body);
-        }
-        last_raw = String::from_utf8_lossy(&raw).to_string();
-        thread::sleep(Duration::from_millis(50));
-    }
-    panic!("status parse failed, raw response: {last_raw:?}");
-}
-
+/// 函数 `hash_platform_key_for_test`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn hash_platform_key_for_test(key: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(key.as_bytes());
@@ -330,6 +196,218 @@ pub(super) fn hash_platform_key_for_test(key: &str) -> String {
     out
 }
 
+/// 函数 `seed_model_catalog_models`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
+pub(super) fn seed_model_catalog_models(storage: &Storage, models: &[&str]) {
+    seed_model_catalog_response(
+        storage,
+        &ModelsResponse {
+            models: models
+                .iter()
+                .map(|slug| ModelInfo {
+                    slug: (*slug).to_string(),
+                    display_name: (*slug).to_string(),
+                    ..Default::default()
+                })
+                .collect::<Vec<_>>(),
+            ..Default::default()
+        },
+    );
+}
+
+pub(super) fn seed_model_catalog_response(storage: &Storage, response: &ModelsResponse) {
+    let updated_at = now_ts();
+    storage
+        .upsert_model_catalog_scope(&ModelCatalogScopeRecord {
+            scope: "default".to_string(),
+            extra_json: serde_json::to_string(&response.extra).expect("serialize scope extra"),
+            updated_at,
+        })
+        .expect("upsert model catalog scope");
+
+    let rows = response
+        .models
+        .iter()
+        .enumerate()
+        .map(|(index, model)| ModelCatalogModelRecord {
+            scope: "default".to_string(),
+            slug: model.slug.clone(),
+            display_name: model.display_name.clone(),
+            source_kind: "remote".to_string(),
+            user_edited: false,
+            description: model.description.clone(),
+            default_reasoning_level: model.default_reasoning_level.clone(),
+            shell_type: model.shell_type.clone(),
+            visibility: model.visibility.clone(),
+            supported_in_api: Some(model.supported_in_api),
+            priority: Some(model.priority),
+            availability_nux_json: model
+                .availability_nux
+                .as_ref()
+                .map(|value| serde_json::to_string(value).expect("serialize availability_nux")),
+            upgrade_json: model
+                .upgrade
+                .as_ref()
+                .map(|value| serde_json::to_string(value).expect("serialize upgrade")),
+            base_instructions: model.base_instructions.clone(),
+            model_messages_json: model
+                .model_messages
+                .as_ref()
+                .map(|value| serde_json::to_string(value).expect("serialize model messages")),
+            supports_reasoning_summaries: model.supports_reasoning_summaries,
+            default_reasoning_summary: model.default_reasoning_summary.clone(),
+            support_verbosity: model.support_verbosity,
+            default_verbosity_json: model
+                .default_verbosity
+                .as_ref()
+                .map(|value| serde_json::to_string(value).expect("serialize default verbosity")),
+            apply_patch_tool_type: model.apply_patch_tool_type.clone(),
+            web_search_tool_type: model.web_search_tool_type.clone(),
+            truncation_mode: model
+                .truncation_policy
+                .as_ref()
+                .map(|policy| policy.mode.clone()),
+            truncation_limit: model.truncation_policy.as_ref().map(|policy| policy.limit),
+            truncation_extra_json: model.truncation_policy.as_ref().map(|policy| {
+                serde_json::to_string(&policy.extra).expect("serialize truncation extra")
+            }),
+            supports_parallel_tool_calls: model.supports_parallel_tool_calls,
+            supports_image_detail_original: model.supports_image_detail_original,
+            context_window: model.context_window,
+            auto_compact_token_limit: model.auto_compact_token_limit,
+            effective_context_window_percent: model.effective_context_window_percent,
+            minimal_client_version_json: model.minimal_client_version.as_ref().map(|value| {
+                serde_json::to_string(value).expect("serialize minimal client version")
+            }),
+            supports_search_tool: model.supports_search_tool,
+            extra_json: serde_json::to_string(&model.extra).expect("serialize model extra"),
+            sort_index: index as i64,
+            updated_at,
+        })
+        .collect::<Vec<_>>();
+    storage
+        .upsert_model_catalog_models(&rows)
+        .expect("upsert model catalog rows");
+
+    let reasoning_rows = response
+        .models
+        .iter()
+        .flat_map(|model| {
+            model
+                .supported_reasoning_levels
+                .iter()
+                .enumerate()
+                .map(|(index, level)| ModelCatalogReasoningLevelRecord {
+                    scope: "default".to_string(),
+                    slug: model.slug.clone(),
+                    effort: level.effort.clone(),
+                    description: level.description.clone(),
+                    extra_json: serde_json::to_string(&level.extra)
+                        .expect("serialize reasoning extra"),
+                    sort_index: index as i64,
+                    updated_at,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    storage
+        .upsert_model_catalog_reasoning_levels(&reasoning_rows)
+        .expect("upsert reasoning rows");
+
+    seed_model_catalog_string_items(
+        storage,
+        &response.models,
+        updated_at,
+        |model| &model.additional_speed_tiers,
+        |storage, rows| {
+            storage
+                .upsert_model_catalog_additional_speed_tiers(rows)
+                .expect("upsert additional speed tiers");
+        },
+    );
+    seed_model_catalog_string_items(
+        storage,
+        &response.models,
+        updated_at,
+        |model| &model.experimental_supported_tools,
+        |storage, rows| {
+            storage
+                .upsert_model_catalog_experimental_supported_tools(rows)
+                .expect("upsert experimental supported tools");
+        },
+    );
+    seed_model_catalog_string_items(
+        storage,
+        &response.models,
+        updated_at,
+        |model| &model.input_modalities,
+        |storage, rows| {
+            storage
+                .upsert_model_catalog_input_modalities(rows)
+                .expect("upsert input modalities");
+        },
+    );
+    seed_model_catalog_string_items(
+        storage,
+        &response.models,
+        updated_at,
+        |model| &model.available_in_plans,
+        |storage, rows| {
+            storage
+                .upsert_model_catalog_available_in_plans(rows)
+                .expect("upsert available in plans");
+        },
+    );
+}
+
+fn seed_model_catalog_string_items<F>(
+    storage: &Storage,
+    models: &[ModelInfo],
+    updated_at: i64,
+    select: impl Fn(&ModelInfo) -> &[String],
+    upsert: F,
+) where
+    F: Fn(&Storage, &[ModelCatalogStringItemRecord]),
+{
+    let rows = models
+        .iter()
+        .flat_map(|model| {
+            select(model)
+                .iter()
+                .enumerate()
+                .map(|(index, value)| ModelCatalogStringItemRecord {
+                    scope: "default".to_string(),
+                    slug: model.slug.clone(),
+                    value: value.clone(),
+                    sort_index: index as i64,
+                    updated_at,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    upsert(storage, &rows);
+}
+
+/// 函数 `decode_upstream_request_body`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn decode_upstream_request_body(captured: &CapturedUpstreamRequest) -> Vec<u8> {
     if captured
         .headers
@@ -350,6 +428,17 @@ pub(super) struct CapturedUpstreamRequest {
     pub(super) body: Vec<u8>,
 }
 
+/// 函数 `try_read_http_request_once`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - stream: 参数 stream
+///
+/// # 返回
+/// 返回函数执行结果
 fn try_read_http_request_once(stream: &mut TcpStream) -> Option<CapturedUpstreamRequest> {
     // 中文注释：部分测试会命中 reqwest keep-alive 复用，下一轮 mock listener 可能先收到
     // 一个“已建立但没有发任何 HTTP 头”的残留连接；这里把它视作噪声并忽略。
@@ -431,6 +520,18 @@ fn try_read_http_request_once(stream: &mut TcpStream) -> Option<CapturedUpstream
     })
 }
 
+/// 函数 `accept_http_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - listener: 参数 listener
+/// - idle_timeout: 参数 idle_timeout
+///
+/// # 返回
+/// 返回函数执行结果
 fn accept_http_request(
     listener: &TcpListener,
     idle_timeout: Duration,
@@ -458,6 +559,17 @@ fn accept_http_request(
     }
 }
 
+/// 函数 `start_mock_upstream_once`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn start_mock_upstream_once(
     response_json: &str,
 ) -> (
@@ -468,6 +580,17 @@ pub(super) fn start_mock_upstream_once(
     start_mock_upstream_once_with_content_type(response_json, "application/json")
 }
 
+/// 函数 `start_mock_upstream_once_with_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn start_mock_upstream_once_with_content_type(
     response_body: &str,
     content_type: &str,
@@ -501,49 +624,17 @@ pub(super) fn start_mock_upstream_once_with_content_type(
     (addr.to_string(), rx, join)
 }
 
-pub(super) fn start_mock_upstream_once_with_status_content_type_and_headers(
-    status: u16,
-    response_body: &str,
-    content_type: &str,
-    extra_headers: &[(&str, &str)],
-) -> (
-    String,
-    Receiver<CapturedUpstreamRequest>,
-    thread::JoinHandle<()>,
-) {
-    let listener = bind_test_listener("mock upstream");
-    let addr = listener.local_addr().expect("mock upstream addr");
-    let response = response_body.as_bytes().to_vec();
-    let content_type = content_type.to_string();
-    let extra_headers = extra_headers
-        .iter()
-        .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
-        .collect::<Vec<_>>();
-    let (tx, rx) = mpsc::channel();
-
-    let join = thread::spawn(move || {
-        let (mut stream, captured) = accept_http_request(&listener, Duration::from_secs(3))
-            .expect("accept upstream http request");
-        let _ = tx.send(captured);
-
-        let mut header = format!(
-            "HTTP/1.1 {status} OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n",
-            response.len()
-        );
-        for (name, value) in extra_headers {
-            header.push_str(&format!("{name}: {value}\r\n"));
-        }
-        header.push_str("\r\n");
-        stream
-            .write_all(header.as_bytes())
-            .expect("write upstream status");
-        stream.write_all(&response).expect("write upstream body");
-        let _ = stream.flush();
-    });
-
-    (addr.to_string(), rx, join)
-}
-
+/// 函数 `start_mock_upstream_sequence`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn start_mock_upstream_sequence(
     responses: Vec<(u16, String)>,
 ) -> (
@@ -554,60 +645,34 @@ pub(super) fn start_mock_upstream_sequence(
     start_mock_upstream_sequence_lenient(responses, Duration::from_secs(3))
 }
 
-pub(super) fn start_mock_upstream_sequence_with_headers(
-    responses: Vec<(u16, String, Vec<(String, String)>)>,
+/// 函数 `start_mock_upstream_sequence_lenient`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
+pub(super) fn start_mock_upstream_sequence_lenient(
+    responses: Vec<(u16, String)>,
+    idle_timeout: Duration,
 ) -> (
     String,
     Receiver<CapturedUpstreamRequest>,
     thread::JoinHandle<()>,
 ) {
-    let listener = bind_test_listener("mock upstream");
-    let addr = listener.local_addr().expect("mock upstream addr");
-    let (tx, rx) = mpsc::channel();
-
-    let join = thread::spawn(move || {
-        let mut idx = 0usize;
-        let fallback_body =
-            "{\"error\":{\"message\":\"unexpected extra upstream request\",\"type\":\"server_error\"}}"
-                .to_string();
-        loop {
-            let Some((mut stream, captured)) =
-                accept_http_request(&listener, Duration::from_secs(3))
-            else {
-                break;
-            };
-            let _ = tx.send(captured);
-
-            let (status, body, extra_headers) = responses
-                .get(idx)
-                .map(|(status, body, headers)| (*status, body.as_str(), headers.as_slice()))
-                .unwrap_or((500, fallback_body.as_str(), &[]));
-            let body_bytes = body.as_bytes().to_vec();
-            let mut header = format!(
-                "HTTP/1.1 {} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
-                status,
-                body_bytes.len()
-            );
-            for (name, value) in extra_headers {
-                header.push_str(&format!("{name}: {value}\r\n"));
-            }
-            header.push_str("\r\n");
-            stream
-                .write_all(header.as_bytes())
-                .expect("write upstream status");
-            stream
-                .write_all(&body_bytes)
-                .expect("write upstream response body");
-            let _ = stream.flush();
-            idx = idx.saturating_add(1);
-        }
-    });
-
-    (addr.to_string(), rx, join)
+    let typed = responses
+        .into_iter()
+        .map(|(status, body)| (status, body, "application/json".to_string()))
+        .collect();
+    start_mock_upstream_sequence_lenient_with_content_types(typed, idle_timeout)
 }
 
-pub(super) fn start_mock_upstream_sequence_lenient(
-    responses: Vec<(u16, String)>,
+pub(super) fn start_mock_upstream_sequence_lenient_with_content_types(
+    responses: Vec<(u16, String, String)>,
     idle_timeout: Duration,
 ) -> (
     String,
@@ -623,20 +688,22 @@ pub(super) fn start_mock_upstream_sequence_lenient(
         let fallback_body =
             "{\"error\":{\"message\":\"unexpected extra upstream request\",\"type\":\"server_error\"}}"
                 .to_string();
+        let fallback_ct = "application/json".to_string();
         loop {
             let Some((mut stream, captured)) = accept_http_request(&listener, idle_timeout) else {
                 break;
             };
             let _ = tx.send(captured);
 
-            let (status, body) = responses
+            let (status, body, content_type) = responses
                 .get(idx)
-                .map(|(status, body)| (*status, body.as_str()))
-                .unwrap_or((500, fallback_body.as_str()));
+                .map(|(status, body, ct)| (*status, body.as_str(), ct.as_str()))
+                .unwrap_or((500, fallback_body.as_str(), fallback_ct.as_str()));
             let body_bytes = body.as_bytes().to_vec();
             let header = format!(
-                "HTTP/1.1 {} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                "HTTP/1.1 {} OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                 status,
+                content_type,
                 body_bytes.len()
             );
             stream
@@ -658,6 +725,17 @@ pub(super) struct TestServer {
     join: Option<thread::JoinHandle<()>>,
 }
 
+/// 函数 `check_health`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn check_health(addr: &str) -> bool {
     let Ok(mut stream) = TcpStream::connect(addr) else {
         return false;
@@ -675,6 +753,17 @@ fn check_health(addr: &str) -> bool {
 }
 
 impl TestServer {
+    /// 函数 `start`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn start() -> Self {
         codexmanager_service::clear_shutdown_flag();
         for _ in 0..10 {
@@ -708,6 +797,17 @@ impl TestServer {
 }
 
 impl Drop for TestServer {
+    /// 函数 `drop`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn drop(&mut self) {
         codexmanager_service::request_shutdown(&self.addr);
         if let Some(join) = self.join.take() {

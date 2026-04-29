@@ -1,37 +1,19 @@
 use codexmanager_core::storage::{
-    now_ts, Account, AlertChannel, AlertRule, ApiKey, ModelPricing, PluginRecord, RequestLog,
-    RequestTokenStat, Storage, Token, UsageSnapshotRecord,
+    now_ts, Account, ApiKey, Event, RequestLog, RequestTokenStat, Storage, Token,
+    UsageSnapshotRecord,
 };
-use std::ffi::OsString;
 
-struct EnvRestore(Vec<(&'static str, Option<OsString>)>);
-
-impl Drop for EnvRestore {
-    fn drop(&mut self) {
-        for (key, value) in self.0.drain(..) {
-            if let Some(value) = value {
-                std::env::set_var(key, value);
-            } else {
-                std::env::remove_var(key);
-            }
-        }
-    }
-}
-
-fn override_gateway_quota_env(enabled: &str, threshold: &str) -> EnvRestore {
-    let keys = [
-        "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_ENABLED",
-        "CODEXMANAGER_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT",
-    ];
-    let previous = keys
-        .iter()
-        .map(|key| (*key, std::env::var_os(key)))
-        .collect::<Vec<_>>();
-    std::env::set_var(keys[0], enabled);
-    std::env::set_var(keys[1], threshold);
-    EnvRestore(previous)
-}
-
+/// 函数 `storage_can_insert_account_and_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_can_insert_account_and_token() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -65,6 +47,17 @@ fn storage_can_insert_account_and_token() {
     assert_eq!(storage.token_count().expect("count tokens"), 1);
 }
 
+/// 函数 `storage_can_find_token_and_account_by_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_can_find_token_and_account_by_account_id() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -120,6 +113,17 @@ fn storage_can_find_token_and_account_by_account_id() {
         .is_none());
 }
 
+/// 函数 `token_upsert_keeps_refresh_schedule_columns`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn token_upsert_keeps_refresh_schedule_columns() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -162,16 +166,157 @@ fn token_upsert_keeps_refresh_schedule_columns() {
     storage.insert_token(&token2).expect("upsert token");
 
     let due = storage
-        .list_tokens_due_for_refresh(4_102_444_100, 10)
+        .list_tokens_due_for_refresh(4_102_444_100, 4_102_444_700, 10)
         .expect("list due");
     assert!(due.is_empty());
     let due2 = storage
-        .list_tokens_due_for_refresh(4_102_444_300, 10)
+        .list_tokens_due_for_refresh(4_102_444_300, 4_102_444_900, 10)
         .expect("list due2");
     assert_eq!(due2.len(), 1);
     assert_eq!(due2[0].account_id, "acc-schedule-1");
 }
 
+/// 函数 `tokens_due_for_refresh_uses_access_exp_when_next_refresh_is_stale`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-26
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn tokens_due_for_refresh_uses_access_exp_when_next_refresh_is_stale() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+    let now = now_ts();
+    let account = Account {
+        id: "acc-stale-next-refresh".to_string(),
+        label: "stale next refresh".to_string(),
+        issuer: "https://auth.openai.com".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+    storage.insert_account(&account).expect("insert account");
+    storage
+        .insert_token(&Token {
+            account_id: account.id.clone(),
+            id_token: "id".to_string(),
+            access_token: "access".to_string(),
+            refresh_token: "refresh".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        })
+        .expect("insert token");
+    storage
+        .update_token_refresh_schedule(&account.id, Some(4_102_444_800), Some(4_102_999_999))
+        .expect("set stale schedule");
+
+    let due = storage
+        .list_tokens_due_for_refresh(4_102_444_100, 4_102_444_700, 10)
+        .expect("list due before access exp window");
+    assert!(due.is_empty());
+
+    let due = storage
+        .list_tokens_due_for_refresh(4_102_444_100, 4_102_444_900, 10)
+        .expect("list due after access exp window");
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].account_id, account.id);
+}
+
+/// 函数 `tokens_due_for_refresh_include_other_unavailable_accounts_but_skip_deactivated`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn tokens_due_for_refresh_include_other_unavailable_accounts_but_skip_deactivated() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+    let now = now_ts();
+
+    for (id, status) in [
+        ("acc-active-refresh", "active"),
+        ("acc-unavailable-refresh", "unavailable"),
+        ("acc-deactivated-refresh", "banned"),
+    ] {
+        storage
+            .insert_account(&Account {
+                id: id.to_string(),
+                label: id.to_string(),
+                issuer: "https://auth.openai.com".to_string(),
+                chatgpt_account_id: None,
+                workspace_id: None,
+                group_name: None,
+                sort: 0,
+                status: status.to_string(),
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("insert account");
+        storage
+            .insert_token(&Token {
+                account_id: id.to_string(),
+                id_token: format!("id-{id}"),
+                access_token: format!("access-{id}"),
+                refresh_token: format!("refresh-{id}"),
+                api_key_access_token: None,
+                last_refresh: now,
+            })
+            .expect("insert token");
+        storage
+            .update_token_refresh_schedule(id, Some(4_102_444_800), Some(4_102_444_200))
+            .expect("set schedule");
+    }
+    storage
+        .insert_event(&Event {
+            account_id: Some("acc-deactivated-refresh".to_string()),
+            event_type: "account_status_update".to_string(),
+            message: "status=banned reason=account_deactivated".to_string(),
+            created_at: now + 1,
+        })
+        .expect("insert deactivated event");
+
+    let due = storage
+        .list_tokens_due_for_refresh(4_102_444_300, 4_102_444_900, 10)
+        .expect("list due");
+    let account_ids = due
+        .into_iter()
+        .map(|token| token.account_id)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        account_ids,
+        vec![
+            "acc-active-refresh".to_string(),
+            "acc-unavailable-refresh".to_string()
+        ]
+    );
+}
+
+/// 函数 `storage_login_session_roundtrip`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_login_session_roundtrip() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -201,6 +346,121 @@ fn storage_login_session_roundtrip() {
     assert_eq!(loaded.workspace_id.as_deref(), Some("org_123"));
 }
 
+/// 函数 `storage_account_metadata_roundtrip_and_delete_cleanup`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn storage_account_metadata_roundtrip_and_delete_cleanup() {
+    let mut storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    let account = Account {
+        id: "acc-meta-1".to_string(),
+        label: "metadata account".to_string(),
+        issuer: "https://auth.openai.com".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    storage.insert_account(&account).expect("insert account");
+    storage
+        .upsert_account_metadata("acc-meta-1", Some("主账号"), Some("高频,团队A"))
+        .expect("upsert metadata");
+
+    let metadata = storage
+        .find_account_metadata("acc-meta-1")
+        .expect("find metadata")
+        .expect("metadata exists");
+    assert_eq!(metadata.note.as_deref(), Some("主账号"));
+    assert_eq!(metadata.tags.as_deref(), Some("高频,团队A"));
+
+    storage
+        .delete_account("acc-meta-1")
+        .expect("delete account");
+    assert!(storage
+        .find_account_metadata("acc-meta-1")
+        .expect("find metadata after delete")
+        .is_none());
+}
+
+/// 函数 `storage_account_subscription_roundtrip_and_delete_cleanup`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-17
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn storage_account_subscription_roundtrip_and_delete_cleanup() {
+    let mut storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init schema");
+
+    let account = Account {
+        id: "acc-sub-1".to_string(),
+        label: "subscription account".to_string(),
+        issuer: "https://auth.openai.com".to_string(),
+        chatgpt_account_id: Some("org-sub-1".to_string()),
+        workspace_id: Some("org-sub-1".to_string()),
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    storage.insert_account(&account).expect("insert account");
+    storage
+        .upsert_account_subscription(
+            "acc-sub-1",
+            true,
+            Some("plus"),
+            Some(1_746_501_889),
+            Some(1_746_501_889),
+        )
+        .expect("upsert subscription");
+
+    let subscription = storage
+        .find_account_subscription("acc-sub-1")
+        .expect("find subscription")
+        .expect("subscription exists");
+    assert!(subscription.has_subscription);
+    assert_eq!(subscription.plan_type.as_deref(), Some("plus"));
+    assert_eq!(subscription.expires_at, Some(1_746_501_889));
+    assert_eq!(subscription.renews_at, Some(1_746_501_889));
+
+    storage.delete_account("acc-sub-1").expect("delete account");
+    assert!(storage
+        .find_account_subscription("acc-sub-1")
+        .expect("find subscription after delete")
+        .is_none());
+}
+
+/// 函数 `storage_can_update_account_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_can_update_account_status() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -234,6 +494,17 @@ fn storage_can_update_account_status() {
     assert_eq!(loaded.status, "inactive");
 }
 
+/// 函数 `storage_updates_account_status_only_when_changed`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_updates_account_status_only_when_changed() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -270,54 +541,17 @@ fn storage_updates_account_status_only_when_changed() {
     assert_eq!(loaded.status, "inactive");
 }
 
-#[test]
-fn storage_can_roundtrip_api_key_response_cache_config() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
-
-    let now = now_ts();
-    let key = ApiKey {
-        id: "gk-response-cache-roundtrip".to_string(),
-        name: Some("cache".to_string()),
-        model_slug: Some("gpt-5.3-codex".to_string()),
-        reasoning_effort: Some("medium".to_string()),
-        client_type: "codex".to_string(),
-        protocol_type: "openai_compat".to_string(),
-        auth_scheme: "authorization_bearer".to_string(),
-        upstream_base_url: None,
-        static_headers_json: None,
-        key_hash: "hash-response-cache-roundtrip".to_string(),
-        status: "active".to_string(),
-        created_at: now,
-        last_used_at: None,
-        expires_at: None,
-    };
-    storage.insert_api_key(&key).expect("insert api key");
-
-    assert!(storage
-        .find_api_key_response_cache_config_by_id(&key.id)
-        .expect("find empty config")
-        .is_none());
-
-    storage
-        .upsert_api_key_response_cache_config(&key.id, true)
-        .expect("enable response cache");
-    let enabled = storage
-        .find_api_key_response_cache_config_by_id(&key.id)
-        .expect("find enabled config")
-        .expect("enabled config exists");
-    assert!(enabled.enabled);
-
-    storage
-        .upsert_api_key_response_cache_config(&key.id, false)
-        .expect("disable response cache");
-    let disabled = storage
-        .find_api_key_response_cache_config_by_id(&key.id)
-        .expect("find disabled config")
-        .expect("disabled config exists");
-    assert!(!disabled.enabled);
-}
-
+/// 函数 `storage_account_usage_filters_support_sql_pagination`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_account_usage_filters_support_sql_pagination() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -325,32 +559,15 @@ fn storage_account_usage_filters_support_sql_pagination() {
     let now = now_ts();
 
     let accounts = [
-        (
-            "acc-active-1",
-            "active",
-            Some("alpha"),
-            Some(10.0),
-            Some(10.0),
-        ),
-        ("acc-low-1", "active", Some("alpha"), Some(85.0), Some(85.0)),
-        (
-            "acc-inactive-low",
-            "inactive",
-            Some("beta"),
-            Some(90.0),
-            Some(90.0),
-        ),
-        (
-            "acc-healthy-1",
-            "healthy",
-            Some("beta"),
-            Some(30.0),
-            Some(30.0),
-        ),
-        ("acc-no-snapshot", "active", Some("beta"), None, None),
+        ("acc-active-1", "active", Some(10.0), Some(10.0)),
+        ("acc-low-1", "active", Some(85.0), Some(85.0)),
+        ("acc-inactive-low", "inactive", Some(90.0), Some(90.0)),
+        ("acc-healthy-1", "healthy", Some(30.0), Some(30.0)),
+        ("acc-no-snapshot", "active", None, None),
+        ("acc-limited", "limited", None, None),
     ];
 
-    for (idx, (id, status, group_name, primary_used, low_used)) in accounts.iter().enumerate() {
+    for (idx, (id, status, primary_used, low_used)) in accounts.iter().enumerate() {
         storage
             .insert_account(&Account {
                 id: (*id).to_string(),
@@ -358,7 +575,7 @@ fn storage_account_usage_filters_support_sql_pagination() {
                 issuer: "https://auth.openai.com".to_string(),
                 chatgpt_account_id: None,
                 workspace_id: None,
-                group_name: group_name.map(|value| value.to_string()),
+                group_name: None,
                 sort: idx as i64,
                 status: (*status).to_string(),
                 created_at: now + idx as i64,
@@ -387,7 +604,7 @@ fn storage_account_usage_filters_support_sql_pagination() {
         storage
             .account_count_active_available(None, None)
             .expect("count active available"),
-        3
+        4
     );
     assert_eq!(
         storage
@@ -405,74 +622,36 @@ fn storage_account_usage_filters_support_sql_pagination() {
         .collect::<Vec<_>>();
     assert_eq!(active_ids, vec!["acc-active-1", "acc-low-1"]);
 
-    let low_alpha = storage
-        .list_accounts_low_quota(None, Some("alpha"), None)
-        .expect("list low alpha");
-    let low_alpha_ids = low_alpha
+    let next_active_page = storage
+        .list_accounts_active_available(None, None, Some((2, 2)))
+        .expect("list next active page");
+    let next_active_ids = next_active_page
         .iter()
         .map(|account| account.id.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(low_alpha_ids, vec!["acc-low-1"]);
-}
+    assert_eq!(next_active_ids, vec!["acc-healthy-1", "acc-no-snapshot"]);
 
-#[test]
-fn storage_low_quota_filters_exclude_unavailable_accounts() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
-    let now = now_ts();
-
-    let accounts = [
-        ("acc-low-active", "active", 88.0),
-        ("acc-low-unavailable", "unavailable", 92.0),
-    ];
-
-    for (idx, (id, status, used_percent)) in accounts.iter().enumerate() {
-        storage
-            .insert_account(&Account {
-                id: (*id).to_string(),
-                label: (*id).to_string(),
-                issuer: "https://auth.openai.com".to_string(),
-                chatgpt_account_id: None,
-                workspace_id: None,
-                group_name: None,
-                sort: idx as i64,
-                status: (*status).to_string(),
-                created_at: now + idx as i64,
-                updated_at: now + idx as i64,
-            })
-            .expect("insert account");
-
-        storage
-            .insert_usage_snapshot(&UsageSnapshotRecord {
-                account_id: (*id).to_string(),
-                used_percent: Some(*used_percent),
-                window_minutes: Some(300),
-                resets_at: None,
-                secondary_used_percent: Some(*used_percent),
-                secondary_window_minutes: Some(120),
-                secondary_resets_at: None,
-                credits_json: None,
-                captured_at: now + idx as i64,
-            })
-            .expect("insert usage snapshot");
-    }
-
-    assert_eq!(
-        storage
-            .account_count_low_quota(None, None)
-            .expect("count low quota"),
-        1
-    );
-
-    let low_quota_ids = storage
+    let low_quota_accounts = storage
         .list_accounts_low_quota(None, None, None)
-        .expect("list low quota")
-        .into_iter()
-        .map(|account| account.id)
+        .expect("list low quota accounts");
+    let low_quota_ids = low_quota_accounts
+        .iter()
+        .map(|account| account.id.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(low_quota_ids, vec!["acc-low-active".to_string()]);
+    assert_eq!(low_quota_ids, vec!["acc-low-1", "acc-inactive-low"]);
 }
 
+/// 函数 `storage_gateway_candidates_exclude_unavailable_or_missing_token_accounts`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_gateway_candidates_exclude_unavailable_or_missing_token_accounts() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -486,6 +665,7 @@ fn storage_gateway_candidates_exclude_unavailable_or_missing_token_accounts() {
         ("acc-partial", "active", 3_i64),
         ("acc-inactive", "inactive", 4_i64),
         ("acc-no-token", "active", 5_i64),
+        ("acc-limited", "limited", 6_i64),
     ];
     for (id, status, sort) in accounts {
         storage
@@ -510,6 +690,7 @@ fn storage_gateway_candidates_exclude_unavailable_or_missing_token_accounts() {
         "acc-exhausted",
         "acc-partial",
         "acc-inactive",
+        "acc-limited",
     ] {
         storage
             .insert_token(&Token {
@@ -586,6 +767,17 @@ fn storage_gateway_candidates_exclude_unavailable_or_missing_token_accounts() {
     assert_eq!(candidate_ids, vec!["acc-ready", "acc-no-snapshot"]);
 }
 
+/// 函数 `latest_usage_snapshots_break_ties_by_latest_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn latest_usage_snapshots_break_ties_by_latest_id() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -649,67 +841,41 @@ fn latest_usage_snapshots_break_ties_by_latest_id() {
     assert_eq!(acc1.used_percent, Some(30.0));
 }
 
+/// 函数 `request_logs_support_prefixed_query_filters`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
-fn gateway_candidates_respect_quota_protection_threshold() {
-    let _env = override_gateway_quota_env("1", "10");
+fn request_logs_support_prefixed_query_filters() {
     let storage = Storage::open_in_memory().expect("open in memory");
     storage.init().expect("init schema");
-    let now = now_ts();
 
-    for (id, used) in [("acc-safe", 89.0_f64), ("acc-guarded", 90.0_f64)] {
+    for (id, label) in [
+        ("acc-1", "owner-alpha@example.com"),
+        ("acc-2", "owner-beta@example.com"),
+    ] {
         storage
             .insert_account(&Account {
                 id: id.to_string(),
-                label: id.to_string(),
-                issuer: "issuer".to_string(),
+                label: label.to_string(),
+                issuer: "https://auth.openai.com".to_string(),
                 chatgpt_account_id: None,
                 workspace_id: None,
                 group_name: None,
                 sort: 0,
                 status: "active".to_string(),
-                created_at: now,
-                updated_at: now,
+                created_at: now_ts(),
+                updated_at: now_ts(),
             })
             .expect("insert account");
-        storage
-            .insert_token(&Token {
-                account_id: id.to_string(),
-                id_token: "id".to_string(),
-                access_token: "access".to_string(),
-                refresh_token: "refresh".to_string(),
-                api_key_access_token: None,
-                last_refresh: now,
-            })
-            .expect("insert token");
-        storage
-            .insert_usage_snapshot(&UsageSnapshotRecord {
-                account_id: id.to_string(),
-                used_percent: Some(used),
-                window_minutes: Some(300),
-                resets_at: None,
-                secondary_used_percent: None,
-                secondary_window_minutes: None,
-                secondary_resets_at: None,
-                credits_json: None,
-                captured_at: now,
-            })
-            .expect("insert usage");
     }
-
-    let candidates = storage
-        .list_gateway_candidates()
-        .expect("list gateway candidates");
-    let candidate_ids = candidates
-        .iter()
-        .map(|(account, _)| account.id.as_str())
-        .collect::<Vec<_>>();
-    assert_eq!(candidate_ids, vec!["acc-safe"]);
-}
-
-#[test]
-fn request_logs_support_prefixed_query_filters() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
 
     storage
         .insert_request_log(&RequestLog {
@@ -718,24 +884,20 @@ fn request_logs_support_prefixed_query_filters() {
             account_id: Some("acc-1".to_string()),
             initial_account_id: Some("acc-1".to_string()),
             attempted_account_ids_json: Some(r#"["acc-1"]"#.to_string()),
-            candidate_count: None,
-            attempted_count: None,
-            skipped_count: None,
-            skipped_cooldown_count: None,
-            skipped_inflight_count: None,
-            route_strategy: Some("weighted".to_string()),
-            requested_model: None,
-            model_fallback_path_json: None,
             request_path: "/v1/responses".to_string(),
             original_path: Some("/v1/chat/completions".to_string()),
             adapted_path: Some("/v1/responses".to_string()),
             method: "POST".to_string(),
             model: Some("gpt-5.1".to_string()),
             reasoning_effort: Some("low".to_string()),
+            effective_service_tier: Some("priority".to_string()),
             response_adapter: Some("OpenAIChatCompletionsJson".to_string()),
             upstream_url: Some("https://chatgpt.com/backend-api/codex/v1/responses".to_string()),
+            aggregate_api_supplier_name: None,
+            aggregate_api_url: None,
             status_code: Some(201),
             duration_ms: Some(320),
+            first_response_ms: None,
             input_tokens: Some(11),
             cached_input_tokens: Some(3),
             output_tokens: Some(7),
@@ -744,6 +906,7 @@ fn request_logs_support_prefixed_query_filters() {
             estimated_cost_usd: Some(0.0),
             error: None,
             created_at: now_ts() - 2,
+            ..Default::default()
         })
         .expect("insert request log 0");
 
@@ -754,14 +917,6 @@ fn request_logs_support_prefixed_query_filters() {
             account_id: Some("acc-1".to_string()),
             initial_account_id: Some("acc-1".to_string()),
             attempted_account_ids_json: Some(r#"["acc-1"]"#.to_string()),
-            candidate_count: None,
-            attempted_count: None,
-            skipped_count: None,
-            skipped_cooldown_count: None,
-            skipped_inflight_count: None,
-            route_strategy: Some("least-latency".to_string()),
-            requested_model: None,
-            model_fallback_path_json: None,
             request_path: "/v1/responses".to_string(),
             original_path: Some("/v1/responses".to_string()),
             adapted_path: Some("/v1/responses".to_string()),
@@ -770,8 +925,11 @@ fn request_logs_support_prefixed_query_filters() {
             reasoning_effort: Some("low".to_string()),
             response_adapter: Some("Passthrough".to_string()),
             upstream_url: Some("https://chatgpt.com/backend-api/codex/v1/responses".to_string()),
+            aggregate_api_supplier_name: None,
+            aggregate_api_url: None,
             status_code: Some(200),
             duration_ms: Some(210),
+            first_response_ms: None,
             input_tokens: Some(9),
             cached_input_tokens: Some(1),
             output_tokens: Some(5),
@@ -780,6 +938,7 @@ fn request_logs_support_prefixed_query_filters() {
             estimated_cost_usd: Some(0.0),
             error: None,
             created_at: now_ts() - 1,
+            ..Default::default()
         })
         .expect("insert request log 1");
 
@@ -790,14 +949,6 @@ fn request_logs_support_prefixed_query_filters() {
             account_id: Some("acc-2".to_string()),
             initial_account_id: Some("acc-2".to_string()),
             attempted_account_ids_json: Some(r#"["acc-2"]"#.to_string()),
-            candidate_count: None,
-            attempted_count: None,
-            skipped_count: None,
-            skipped_cooldown_count: None,
-            skipped_inflight_count: None,
-            route_strategy: Some("cost-first".to_string()),
-            requested_model: None,
-            model_fallback_path_json: None,
             request_path: "/v1/models".to_string(),
             original_path: Some("/v1/models".to_string()),
             adapted_path: Some("/v1/models".to_string()),
@@ -806,8 +957,11 @@ fn request_logs_support_prefixed_query_filters() {
             reasoning_effort: Some("xhigh".to_string()),
             response_adapter: None,
             upstream_url: Some("https://api.openai.com/v1/models".to_string()),
+            aggregate_api_supplier_name: None,
+            aggregate_api_url: None,
             status_code: Some(503),
             duration_ms: Some(1800),
+            first_response_ms: None,
             input_tokens: None,
             cached_input_tokens: None,
             output_tokens: None,
@@ -816,6 +970,7 @@ fn request_logs_support_prefixed_query_filters() {
             estimated_cost_usd: Some(0.0),
             error: Some("upstream timeout".to_string()),
             created_at: now_ts(),
+            ..Default::default()
         })
         .expect("insert request log 2");
 
@@ -866,13 +1021,13 @@ fn request_logs_support_prefixed_query_filters() {
         Some("OpenAIChatCompletionsJson")
     );
 
-    let strategy_filtered = storage
-        .list_request_logs(Some("least-latency"), 100)
-        .expect("filter by route strategy");
-    assert_eq!(strategy_filtered.len(), 1);
+    let effective_tier_filtered = storage
+        .list_request_logs(Some("effective_tier:=priority"), 100)
+        .expect("filter by effective service tier");
+    assert_eq!(effective_tier_filtered.len(), 1);
     assert_eq!(
-        strategy_filtered[0].route_strategy.as_deref(),
-        Some("least-latency")
+        effective_tier_filtered[0].effective_service_tier.as_deref(),
+        Some("priority")
     );
 
     let fallback_filtered = storage
@@ -883,8 +1038,35 @@ fn request_logs_support_prefixed_query_filters() {
         fallback_filtered[0].error.as_deref(),
         Some("upstream timeout")
     );
+
+    let account_label_filtered = storage
+        .list_request_logs(Some("owner-alpha@example.com"), 100)
+        .expect("filter by account label");
+    assert_eq!(account_label_filtered.len(), 2);
+    assert!(account_label_filtered
+        .iter()
+        .all(|log| log.account_id.as_deref() == Some("acc-1")));
+
+    let account_prefixed_filtered = storage
+        .list_request_logs(Some("account:=owner-alpha@example.com"), 100)
+        .expect("filter by account label with account prefix");
+    assert_eq!(account_prefixed_filtered.len(), 2);
+    assert!(account_prefixed_filtered
+        .iter()
+        .all(|log| log.account_id.as_deref() == Some("acc-1")));
 }
 
+/// 函数 `request_log_today_summary_reads_from_token_stats_table`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_log_today_summary_reads_from_token_stats_table() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -897,14 +1079,6 @@ fn request_log_today_summary_reads_from_token_stats_table() {
             account_id: Some("acc-summary".to_string()),
             initial_account_id: Some("acc-summary".to_string()),
             attempted_account_ids_json: Some(r#"["acc-summary"]"#.to_string()),
-            candidate_count: None,
-            attempted_count: None,
-            skipped_count: None,
-            skipped_cooldown_count: None,
-            skipped_inflight_count: None,
-            route_strategy: Some("weighted".to_string()),
-            requested_model: None,
-            model_fallback_path_json: None,
             request_path: "/v1/responses".to_string(),
             original_path: Some("/v1/responses".to_string()),
             adapted_path: Some("/v1/responses".to_string()),
@@ -913,8 +1087,11 @@ fn request_log_today_summary_reads_from_token_stats_table() {
             reasoning_effort: Some("high".to_string()),
             response_adapter: Some("Passthrough".to_string()),
             upstream_url: Some("https://chatgpt.com/backend-api/codex/responses".to_string()),
+            aggregate_api_supplier_name: None,
+            aggregate_api_url: None,
             status_code: Some(200),
             duration_ms: Some(1450),
+            first_response_ms: None,
             input_tokens: None,
             cached_input_tokens: None,
             output_tokens: None,
@@ -923,6 +1100,7 @@ fn request_log_today_summary_reads_from_token_stats_table() {
             estimated_cost_usd: None,
             error: None,
             created_at,
+            ..Default::default()
         })
         .expect("insert request log");
 
@@ -952,6 +1130,17 @@ fn request_log_today_summary_reads_from_token_stats_table() {
     assert!(summary.estimated_cost_usd > 0.32);
 }
 
+/// 函数 `insert_request_log_with_token_stat_writes_both_tables_in_one_call`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn insert_request_log_with_token_stat_writes_both_tables_in_one_call() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -966,14 +1155,6 @@ fn insert_request_log_with_token_stat_writes_both_tables_in_one_call() {
                 account_id: Some("acc-atomic".to_string()),
                 initial_account_id: Some("acc-atomic".to_string()),
                 attempted_account_ids_json: Some(r#"["acc-atomic"]"#.to_string()),
-                candidate_count: None,
-                attempted_count: None,
-                skipped_count: None,
-                skipped_cooldown_count: None,
-                skipped_inflight_count: None,
-                route_strategy: Some("balanced".to_string()),
-                requested_model: None,
-                model_fallback_path_json: None,
                 request_path: "/v1/responses".to_string(),
                 original_path: Some("/v1/responses".to_string()),
                 adapted_path: Some("/v1/responses".to_string()),
@@ -982,8 +1163,11 @@ fn insert_request_log_with_token_stat_writes_both_tables_in_one_call() {
                 reasoning_effort: Some("high".to_string()),
                 response_adapter: Some("Passthrough".to_string()),
                 upstream_url: Some("https://chatgpt.com/backend-api/codex/responses".to_string()),
+                aggregate_api_supplier_name: None,
+                aggregate_api_url: None,
                 status_code: Some(200),
                 duration_ms: Some(980),
+                first_response_ms: None,
                 input_tokens: None,
                 cached_input_tokens: None,
                 output_tokens: None,
@@ -992,6 +1176,7 @@ fn insert_request_log_with_token_stat_writes_both_tables_in_one_call() {
                 estimated_cost_usd: None,
                 error: None,
                 created_at,
+                ..Default::default()
             },
             &RequestTokenStat {
                 request_log_id: 0,
@@ -1028,6 +1213,17 @@ fn insert_request_log_with_token_stat_writes_both_tables_in_one_call() {
     assert_eq!(logs[0].reasoning_output_tokens, Some(1));
 }
 
+/// 函数 `clear_request_logs_keeps_token_stats_for_usage_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn clear_request_logs_keeps_token_stats_for_usage_summary() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -1040,14 +1236,6 @@ fn clear_request_logs_keeps_token_stats_for_usage_summary() {
             account_id: Some("acc-clear".to_string()),
             initial_account_id: Some("acc-clear".to_string()),
             attempted_account_ids_json: Some(r#"["acc-clear"]"#.to_string()),
-            candidate_count: None,
-            attempted_count: None,
-            skipped_count: None,
-            skipped_cooldown_count: None,
-            skipped_inflight_count: None,
-            route_strategy: Some("ordered".to_string()),
-            requested_model: None,
-            model_fallback_path_json: None,
             request_path: "/v1/responses".to_string(),
             original_path: Some("/v1/responses".to_string()),
             adapted_path: Some("/v1/responses".to_string()),
@@ -1056,8 +1244,11 @@ fn clear_request_logs_keeps_token_stats_for_usage_summary() {
             reasoning_effort: Some("high".to_string()),
             response_adapter: Some("Passthrough".to_string()),
             upstream_url: Some("https://chatgpt.com/backend-api/codex/responses".to_string()),
+            aggregate_api_supplier_name: None,
+            aggregate_api_url: None,
             status_code: Some(200),
             duration_ms: Some(760),
+            first_response_ms: None,
             input_tokens: None,
             cached_input_tokens: None,
             output_tokens: None,
@@ -1066,6 +1257,7 @@ fn clear_request_logs_keeps_token_stats_for_usage_summary() {
             estimated_cost_usd: None,
             error: None,
             created_at,
+            ..Default::default()
         })
         .expect("insert request log");
     storage
@@ -1099,14 +1291,41 @@ fn clear_request_logs_keeps_token_stats_for_usage_summary() {
     assert!(summary.estimated_cost_usd > 0.11);
 }
 
+/// 函数 `request_token_stats_can_summarize_total_tokens_by_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_token_stats_can_summarize_total_tokens_by_key() {
     let storage = Storage::open_in_memory().expect("open in memory");
     storage.init().expect("init schema");
     let created_at = now_ts();
 
-    for (request_log_id, key_id, total_tokens, input_tokens, cached_input_tokens, output_tokens) in [
-        (101_i64, "gk_alpha", Some(120_i64), None, None, None),
+    for (
+        request_log_id,
+        key_id,
+        total_tokens,
+        input_tokens,
+        cached_input_tokens,
+        output_tokens,
+        estimated_cost_usd,
+    ) in [
+        (
+            101_i64,
+            "gk_alpha",
+            Some(120_i64),
+            None,
+            None,
+            None,
+            Some(0.12),
+        ),
         (
             102_i64,
             "gk_alpha",
@@ -1114,9 +1333,18 @@ fn request_token_stats_can_summarize_total_tokens_by_key() {
             Some(90_i64),
             Some(30_i64),
             Some(25_i64),
+            Some(0.34),
         ),
-        (103_i64, "gk_beta", Some(75_i64), None, None, None),
-        (104_i64, "", Some(999_i64), None, None, None),
+        (
+            103_i64,
+            "gk_beta",
+            Some(75_i64),
+            None,
+            None,
+            None,
+            Some(0.78),
+        ),
+        (104_i64, "", Some(999_i64), None, None, None, Some(9.99)),
     ] {
         storage
             .insert_request_token_stat(&RequestTokenStat {
@@ -1133,7 +1361,7 @@ fn request_token_stats_can_summarize_total_tokens_by_key() {
                 output_tokens,
                 total_tokens,
                 reasoning_output_tokens: Some(0),
-                estimated_cost_usd: Some(0.0),
+                estimated_cost_usd,
                 created_at,
             })
             .expect("insert token stat");
@@ -1146,10 +1374,23 @@ fn request_token_stats_can_summarize_total_tokens_by_key() {
     assert_eq!(summary.len(), 2);
     assert_eq!(summary[0].key_id, "gk_alpha");
     assert_eq!(summary[0].total_tokens, 205);
+    assert!((summary[0].estimated_cost_usd - 0.46).abs() < f64::EPSILON);
     assert_eq!(summary[1].key_id, "gk_beta");
     assert_eq!(summary[1].total_tokens, 75);
+    assert!((summary[1].estimated_cost_usd - 0.78).abs() < f64::EPSILON);
 }
 
+/// 函数 `usage_snapshots_can_prune_history_per_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_snapshots_can_prune_history_per_account() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -1202,11 +1443,21 @@ fn usage_snapshots_can_prune_history_per_account() {
     assert_eq!(untouched, 1);
 }
 
+/// 函数 `storage_api_keys_include_profile_fields`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_api_keys_include_profile_fields() {
     let storage = Storage::open_in_memory().expect("open in memory");
     storage.init().expect("init schema");
-    let expires_at = now_ts() + 3600;
 
     storage
         .insert_api_key(&ApiKey {
@@ -1214,6 +1465,11 @@ fn storage_api_keys_include_profile_fields() {
             name: Some("main".to_string()),
             model_slug: Some("claude-sonnet-4".to_string()),
             reasoning_effort: Some("medium".to_string()),
+            service_tier: Some("fast".to_string()),
+            rotation_strategy: "account_rotation".to_string(),
+            aggregate_api_id: None,
+            account_plan_filter: None,
+            aggregate_api_url: None,
             client_type: "claude_code".to_string(),
             protocol_type: "anthropic_native".to_string(),
             auth_scheme: "x_api_key".to_string(),
@@ -1223,7 +1479,6 @@ fn storage_api_keys_include_profile_fields() {
             status: "active".to_string(),
             created_at: now_ts(),
             last_used_at: None,
-            expires_at: Some(expires_at),
         })
         .expect("insert key");
 
@@ -1237,9 +1492,20 @@ fn storage_api_keys_include_profile_fields() {
     assert_eq!(key.protocol_type, "anthropic_native");
     assert_eq!(key.auth_scheme, "x_api_key");
     assert_eq!(key.model_slug.as_deref(), Some("claude-sonnet-4"));
-    assert_eq!(key.expires_at, Some(expires_at));
+    assert_eq!(key.service_tier.as_deref(), Some("fast"));
 }
 
+/// 函数 `storage_can_roundtrip_api_key_secret`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn storage_can_roundtrip_api_key_secret() {
     let storage = Storage::open_in_memory().expect("open in memory");
@@ -1251,6 +1517,11 @@ fn storage_can_roundtrip_api_key_secret() {
             name: Some("secret".to_string()),
             model_slug: None,
             reasoning_effort: None,
+            service_tier: None,
+            rotation_strategy: "account_rotation".to_string(),
+            aggregate_api_id: None,
+            account_plan_filter: None,
+            aggregate_api_url: None,
             client_type: "codex".to_string(),
             protocol_type: "openai_compat".to_string(),
             auth_scheme: "authorization_bearer".to_string(),
@@ -1260,7 +1531,6 @@ fn storage_can_roundtrip_api_key_secret() {
             status: "active".to_string(),
             created_at: now_ts(),
             last_used_at: None,
-            expires_at: None,
         })
         .expect("insert key");
 
@@ -1278,469 +1548,4 @@ fn storage_can_roundtrip_api_key_secret() {
         .find_api_key_secret_by_id("key-secret-1")
         .expect("load removed secret");
     assert!(removed.is_none());
-}
-
-#[test]
-fn storage_can_roundtrip_api_key_rate_limit_config() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
-
-    storage
-        .insert_api_key(&ApiKey {
-            id: "key-rate-1".to_string(),
-            name: Some("rate".to_string()),
-            model_slug: None,
-            reasoning_effort: None,
-            client_type: "codex".to_string(),
-            protocol_type: "openai_compat".to_string(),
-            auth_scheme: "authorization_bearer".to_string(),
-            upstream_base_url: None,
-            static_headers_json: None,
-            key_hash: "hash-rate-1".to_string(),
-            status: "active".to_string(),
-            created_at: now_ts(),
-            last_used_at: None,
-            expires_at: None,
-        })
-        .expect("insert key");
-
-    storage
-        .upsert_api_key_rate_limit("key-rate-1", Some(10), Some(1000), Some(50))
-        .expect("upsert rate limit");
-    let config = storage
-        .find_api_key_rate_limit_by_id("key-rate-1")
-        .expect("load rate limit")
-        .expect("rate limit exists");
-    assert_eq!(config.key_id, "key-rate-1");
-    assert_eq!(config.rpm, Some(10));
-    assert_eq!(config.tpm, Some(1000));
-    assert_eq!(config.daily_limit, Some(50));
-
-    storage
-        .upsert_api_key_rate_limit("key-rate-1", None, None, None)
-        .expect("clear rate limit");
-    let cleared = storage
-        .find_api_key_rate_limit_by_id("key-rate-1")
-        .expect("reload rate limit");
-    assert!(cleared.is_none(), "rate limit row should be removed");
-}
-
-#[test]
-fn storage_can_roundtrip_api_key_model_fallback_config() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
-
-    storage
-        .insert_api_key(&ApiKey {
-            id: "key-fallback-1".to_string(),
-            name: Some("fallback".to_string()),
-            model_slug: Some("o3".to_string()),
-            reasoning_effort: None,
-            client_type: "codex".to_string(),
-            protocol_type: "openai_compat".to_string(),
-            auth_scheme: "authorization_bearer".to_string(),
-            upstream_base_url: None,
-            static_headers_json: None,
-            key_hash: "hash-fallback-1".to_string(),
-            status: "active".to_string(),
-            created_at: now_ts(),
-            last_used_at: None,
-            expires_at: None,
-        })
-        .expect("insert key");
-
-    storage
-        .upsert_api_key_model_fallback(
-            "key-fallback-1",
-            &[
-                "o3".to_string(),
-                "o4-mini".to_string(),
-                "gpt-4o".to_string(),
-            ],
-        )
-        .expect("upsert model fallback");
-    let config = storage
-        .find_api_key_model_fallback_by_id("key-fallback-1")
-        .expect("load model fallback")
-        .expect("model fallback exists");
-    assert_eq!(config.key_id, "key-fallback-1");
-    assert_eq!(config.model_chain_json, r#"["o3","o4-mini","gpt-4o"]"#);
-
-    storage
-        .upsert_api_key_model_fallback("key-fallback-1", &[])
-        .expect("clear model fallback");
-    let cleared = storage
-        .find_api_key_model_fallback_by_id("key-fallback-1")
-        .expect("reload model fallback");
-    assert!(cleared.is_none(), "model fallback row should be removed");
-}
-
-#[test]
-fn storage_can_roundtrip_api_key_allowed_models_config() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
-
-    storage
-        .insert_api_key(&ApiKey {
-            id: "key-allowed-1".to_string(),
-            name: Some("allowed".to_string()),
-            model_slug: None,
-            reasoning_effort: None,
-            client_type: "codex".to_string(),
-            protocol_type: "openai_compat".to_string(),
-            auth_scheme: "authorization_bearer".to_string(),
-            upstream_base_url: None,
-            static_headers_json: None,
-            key_hash: "hash-allowed-1".to_string(),
-            status: "active".to_string(),
-            created_at: now_ts(),
-            last_used_at: None,
-            expires_at: None,
-        })
-        .expect("insert key");
-
-    storage
-        .update_api_key_allowed_models("key-allowed-1", Some("[\"gpt-5\",\"o3\",\"gpt-5\"]"))
-        .expect("save allowed models");
-    let config = storage
-        .find_api_key_allowed_models_by_id("key-allowed-1")
-        .expect("load allowed models");
-    assert_eq!(config.as_deref(), Some("[\"gpt-5\",\"o3\",\"gpt-5\"]"));
-
-    storage
-        .update_api_key_allowed_models("key-allowed-1", None)
-        .expect("clear allowed models");
-    let cleared = storage
-        .find_api_key_allowed_models_by_id("key-allowed-1")
-        .expect("reload allowed models");
-    assert!(cleared.is_none(), "allowed models should be cleared");
-}
-
-#[test]
-fn storage_can_roundtrip_alert_rules_channels_and_history() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
-
-    let created_at = now_ts();
-    storage
-        .upsert_alert_rule(&AlertRule {
-            id: "ar_usage_1".to_string(),
-            name: "额度超限".to_string(),
-            rule_type: "usage_threshold".to_string(),
-            config_json: r#"{"thresholdPercent":90,"channelIds":["ac_webhook_1"]}"#.to_string(),
-            enabled: true,
-            created_at,
-            updated_at: created_at,
-        })
-        .expect("upsert alert rule");
-    storage
-        .upsert_alert_channel(&AlertChannel {
-            id: "ac_webhook_1".to_string(),
-            name: "Webhook 通知".to_string(),
-            channel_type: "webhook".to_string(),
-            config_json: r#"{"url":"http://127.0.0.1:18081/hook"}"#.to_string(),
-            enabled: true,
-            created_at,
-            updated_at: created_at,
-        })
-        .expect("upsert alert channel");
-
-    let rule = storage
-        .find_alert_rule_by_id("ar_usage_1")
-        .expect("find alert rule")
-        .expect("rule exists");
-    assert_eq!(rule.rule_type, "usage_threshold");
-
-    let channel = storage
-        .find_alert_channel_by_id("ac_webhook_1")
-        .expect("find alert channel")
-        .expect("channel exists");
-    assert_eq!(channel.channel_type, "webhook");
-
-    let history_id = storage
-        .insert_alert_history(
-            Some("ar_usage_1"),
-            Some("ac_webhook_1"),
-            "test_success",
-            "test delivered",
-        )
-        .expect("insert alert history");
-    assert!(history_id > 0);
-
-    let history = storage.list_alert_history(10).expect("list alert history");
-    assert_eq!(history.len(), 1);
-    assert_eq!(history[0].rule_name.as_deref(), Some("额度超限"));
-    assert_eq!(history[0].channel_name.as_deref(), Some("Webhook 通知"));
-
-    storage
-        .delete_alert_rule("ar_usage_1")
-        .expect("delete alert rule");
-    storage
-        .delete_alert_channel("ac_webhook_1")
-        .expect("delete alert channel");
-    assert!(storage
-        .find_alert_rule_by_id("ar_usage_1")
-        .expect("reload rule")
-        .is_none());
-    assert!(storage
-        .find_alert_channel_by_id("ac_webhook_1")
-        .expect("reload channel")
-        .is_none());
-}
-
-#[test]
-fn storage_can_roundtrip_model_pricing_config() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
-
-    storage
-        .replace_model_pricing(&[
-            ModelPricing {
-                model_slug: "gpt-4o".to_string(),
-                input_price_per_1k: 0.005,
-                output_price_per_1k: 0.015,
-                updated_at: now_ts(),
-            },
-            ModelPricing {
-                model_slug: "o3".to_string(),
-                input_price_per_1k: 0.02,
-                output_price_per_1k: 0.08,
-                updated_at: now_ts(),
-            },
-        ])
-        .expect("replace model pricing");
-
-    let items = storage.list_model_pricing().expect("list pricing");
-    assert_eq!(items.len(), 2);
-    assert_eq!(items[0].model_slug, "gpt-4o");
-    assert_eq!(items[1].model_slug, "o3");
-    assert_eq!(items[1].input_price_per_1k, 0.02);
-    assert_eq!(items[1].output_price_per_1k, 0.08);
-
-    storage
-        .replace_model_pricing(&[])
-        .expect("clear model pricing");
-    let cleared = storage.list_model_pricing().expect("list cleared pricing");
-    assert!(cleared.is_empty(), "model pricing rows should be removed");
-}
-
-#[test]
-fn storage_can_roundtrip_plugin_registry_entries() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
-
-    let created_at = now_ts();
-    let plugin = PluginRecord {
-        id: "plugin-lua-quota-guard".to_string(),
-        name: "额度保护".to_string(),
-        description: Some("请求前拦截高风险模型".to_string()),
-        runtime: "lua".to_string(),
-        hook_points_json: r#"["pre_route"]"#.to_string(),
-        script_content: "return { allow = true }".to_string(),
-        enabled: true,
-        timeout_ms: 80,
-        created_at,
-        updated_at: created_at,
-    };
-    storage.upsert_plugin(&plugin).expect("insert plugin");
-
-    let inserted = storage
-        .find_plugin_by_id("plugin-lua-quota-guard")
-        .expect("find inserted plugin")
-        .expect("plugin exists");
-    assert_eq!(inserted.name, "额度保护");
-    assert_eq!(
-        inserted.description.as_deref(),
-        Some("请求前拦截高风险模型")
-    );
-    assert_eq!(inserted.hook_points_json, r#"["pre_route"]"#);
-    assert_eq!(inserted.timeout_ms, 80);
-    assert!(inserted.enabled);
-
-    let updated = PluginRecord {
-        id: plugin.id.clone(),
-        name: "额度保护 v2".to_string(),
-        description: Some("补充响应后审计".to_string()),
-        runtime: "lua".to_string(),
-        hook_points_json: r#"["pre_route","post_response"]"#.to_string(),
-        script_content: "return { allow = false, reason = 'quota' }".to_string(),
-        enabled: false,
-        timeout_ms: 95,
-        created_at,
-        updated_at: created_at + 60,
-    };
-    storage.upsert_plugin(&updated).expect("update plugin");
-
-    let items = storage.list_plugins().expect("list plugins");
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0].name, "额度保护 v2");
-    assert_eq!(items[0].description.as_deref(), Some("补充响应后审计"));
-    assert_eq!(
-        items[0].hook_points_json,
-        r#"["pre_route","post_response"]"#
-    );
-    assert_eq!(
-        items[0].script_content,
-        "return { allow = false, reason = 'quota' }"
-    );
-    assert!(!items[0].enabled);
-    assert_eq!(items[0].timeout_ms, 95);
-    assert_eq!(items[0].created_at, created_at);
-
-    storage
-        .delete_plugin("plugin-lua-quota-guard")
-        .expect("delete plugin");
-    assert!(storage
-        .find_plugin_by_id("plugin-lua-quota-guard")
-        .expect("find deleted plugin")
-        .is_none());
-}
-
-#[test]
-fn storage_can_summarize_cost_usage_by_key_model_and_day() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
-
-    storage
-        .insert_request_token_stat(&RequestTokenStat {
-            request_log_id: 1,
-            key_id: Some("key-a".to_string()),
-            account_id: Some("acc-a".to_string()),
-            model: Some("o3".to_string()),
-            input_tokens: Some(100),
-            cached_input_tokens: Some(20),
-            output_tokens: Some(30),
-            total_tokens: Some(110),
-            reasoning_output_tokens: Some(5),
-            estimated_cost_usd: Some(1.2),
-            created_at: 1_700_000_000,
-        })
-        .expect("insert token stat 1");
-    storage
-        .insert_request_token_stat(&RequestTokenStat {
-            request_log_id: 2,
-            key_id: Some("key-b".to_string()),
-            account_id: Some("acc-b".to_string()),
-            model: Some("gpt-4o".to_string()),
-            input_tokens: Some(50),
-            cached_input_tokens: Some(0),
-            output_tokens: Some(25),
-            total_tokens: Some(75),
-            reasoning_output_tokens: Some(0),
-            estimated_cost_usd: Some(0.4),
-            created_at: 1_700_086_400,
-        })
-        .expect("insert token stat 2");
-
-    let total = storage
-        .summarize_cost_usage_between(1_699_999_000, 1_700_172_800)
-        .expect("summarize total");
-    assert_eq!(total.request_count, 2);
-    assert_eq!(total.total_tokens, 185);
-    assert!((total.estimated_cost_usd - 1.6).abs() < 0.0001);
-
-    let by_key = storage
-        .summarize_cost_usage_by_key_between(1_699_999_000, 1_700_172_800)
-        .expect("summarize by key");
-    assert_eq!(by_key.len(), 2);
-    assert_eq!(by_key[0].key_id, "key-a");
-
-    let by_model = storage
-        .summarize_cost_usage_by_model_between(1_699_999_000, 1_700_172_800)
-        .expect("summarize by model");
-    assert_eq!(by_model.len(), 2);
-    assert_eq!(by_model[0].model, "o3");
-
-    let by_day = storage
-        .summarize_cost_usage_by_day_between(1_699_999_000, 1_700_172_800)
-        .expect("summarize by day");
-    assert!(!by_day.is_empty());
-    assert_eq!(by_day.iter().map(|item| item.request_count).sum::<i64>(), 2);
-}
-
-#[test]
-fn storage_can_summarize_request_trends_models_and_heatmap() {
-    let storage = Storage::open_in_memory().expect("open in memory");
-    storage.init().expect("init schema");
-
-    for (id, model, status_code, created_at) in [
-        (1, "o3", 200, 1_700_000_000),
-        (2, "o3", 500, 1_700_000_600),
-        (3, "gpt-4o", 200, 1_700_086_400),
-    ] {
-        storage
-            .insert_request_log(&RequestLog {
-                trace_id: Some(format!("trend-{id}")),
-                key_id: Some("gk-trend".to_string()),
-                account_id: Some("acc-trend".to_string()),
-                initial_account_id: Some("acc-trend".to_string()),
-                attempted_account_ids_json: Some(r#"["acc-trend"]"#.to_string()),
-                candidate_count: None,
-                attempted_count: None,
-                skipped_count: None,
-                skipped_cooldown_count: None,
-                skipped_inflight_count: None,
-                route_strategy: Some("balanced".to_string()),
-                requested_model: Some(model.to_string()),
-                model_fallback_path_json: Some(format!(r#"["{model}"]"#)),
-                request_path: "/v1/responses".to_string(),
-                original_path: Some("/v1/responses".to_string()),
-                adapted_path: Some("/v1/responses".to_string()),
-                method: "POST".to_string(),
-                model: Some(model.to_string()),
-                reasoning_effort: Some("medium".to_string()),
-                response_adapter: Some("Passthrough".to_string()),
-                upstream_url: Some("https://api.openai.com/v1/responses".to_string()),
-                status_code: Some(status_code),
-                duration_ms: Some(120),
-                input_tokens: None,
-                cached_input_tokens: None,
-                output_tokens: None,
-                total_tokens: None,
-                reasoning_output_tokens: None,
-                estimated_cost_usd: None,
-                error: if status_code >= 400 {
-                    Some("upstream error".to_string())
-                } else {
-                    None
-                },
-                created_at,
-            })
-            .expect("insert request log");
-    }
-
-    let request_trends = storage
-        .summarize_request_trends_between(1_699_999_000, 1_700_172_800, "day")
-        .expect("request trends");
-    assert!(!request_trends.is_empty());
-    assert_eq!(
-        request_trends
-            .iter()
-            .map(|item| item.request_count)
-            .sum::<i64>(),
-        3
-    );
-    assert_eq!(
-        request_trends
-            .iter()
-            .map(|item| item.success_count)
-            .sum::<i64>(),
-        2
-    );
-
-    let model_trends = storage
-        .summarize_request_model_trends_between(1_699_999_000, 1_700_172_800)
-        .expect("model trends");
-    assert_eq!(model_trends.len(), 2);
-    assert_eq!(model_trends[0].model, "o3");
-    assert_eq!(model_trends[0].request_count, 2);
-
-    let heatmap = storage
-        .summarize_request_heatmap_between(1_699_999_000, 1_700_172_800)
-        .expect("heatmap");
-    assert!(!heatmap.is_empty());
-    assert_eq!(
-        heatmap.iter().map(|item| item.request_count).sum::<i64>(),
-        3
-    );
 }

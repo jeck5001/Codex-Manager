@@ -33,17 +33,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
             let account_id = super::str_param(req, "accountId");
             let result = match account_id {
                 Some(account_id) => usage_refresh::refresh_usage_for_account(account_id),
-                None => {
-                    let result = usage_refresh::refresh_usage_for_all_accounts();
-                    if result.is_ok() {
-                        crate::operation_audit::record_operation_audit(
-                            "refresh_all_account_usage",
-                            "刷新全部账号用量",
-                            "手动触发全量账号用量刷新".to_string(),
-                        );
-                    }
-                    result
-                }
+                None => usage_refresh::refresh_usage_for_all_accounts(),
             };
             super::ok_or_error(result)
         }

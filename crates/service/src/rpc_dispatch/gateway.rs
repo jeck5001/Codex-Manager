@@ -1,14 +1,25 @@
 use codexmanager_core::rpc::types::{JsonRpcRequest, JsonRpcResponse};
 use serde_json::Value;
 
+/// 函数 `try_handle`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     let result = match req.method.as_str() {
         "gateway/routeStrategy/get" => {
             let strategy = crate::gateway::current_route_strategy();
             super::as_json(serde_json::json!({
                 "strategy": strategy,
-                "options": ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
-                "routeAccountIds": crate::gateway::manual_route_account_ids(),
+                "options": ["ordered", "balanced"],
+                "manualPreferredAccountId": crate::gateway::manual_preferred_account(),
             }))
         }
         "gateway/routeStrategy/set" => {
@@ -19,112 +30,26 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 })
             }))
         }
-        "gateway/routeAccounts/get" => super::as_json(serde_json::json!({
-            "accountIds": crate::gateway::manual_route_account_ids()
+        "gateway/manualAccount/get" => super::as_json(serde_json::json!({
+            "accountId": crate::gateway::manual_preferred_account()
         })),
-        "gateway/routeAccounts/set" => {
-            let account_ids = string_array_param(req, "accountIds").unwrap_or_default();
-            super::value_or_error(crate::gateway::set_manual_route_account_ids(&account_ids).map(
-                |applied| {
-                    serde_json::json!({
-                        "accountIds": applied
-                    })
-                },
-            ))
+        "gateway/manualAccount/set" => {
+            let account_id = super::str_param(req, "accountId").unwrap_or("");
+            super::ok_or_error(crate::gateway::set_manual_preferred_account(account_id))
         }
-        "gateway/routeAccounts/clear" => {
-            super::value_or_error(crate::gateway::clear_manual_route_account_ids().map(|_| {
-                serde_json::json!({
-                    "accountIds": []
-                })
-            }))
-        }
-        "gateway/headerPolicy/get" => super::as_json(serde_json::json!({
-            "cpaNoCookieHeaderModeEnabled": crate::gateway::cpa_no_cookie_header_mode_enabled(),
-            "envKey": "CODEXMANAGER_CPA_NO_COOKIE_HEADER_MODE",
-        })),
-        "gateway/headerPolicy/set" => {
-            let enabled = super::bool_param(req, "cpaNoCookieHeaderModeEnabled")
-                .or_else(|| super::bool_param(req, "enabled"))
-                .unwrap_or(false);
-            super::value_or_error(crate::set_gateway_cpa_no_cookie_header_mode(enabled).map(
-                |applied| {
-                    serde_json::json!({
-                        "cpaNoCookieHeaderModeEnabled": applied,
-                    })
-                },
-            ))
-        }
-        "gateway/retryPolicy/get" => super::as_json(crate::current_gateway_retry_policy()),
-        "gateway/retryPolicy/set" => {
-            let current = crate::current_gateway_retry_policy();
-            let max_retries = usize_param(req, "maxRetries").unwrap_or(current.max_retries);
-            let backoff_strategy = super::str_param(req, "backoffStrategy")
-                .map(str::to_string)
-                .unwrap_or(current.backoff_strategy);
-            let retryable_status_codes = u16_array_param(req, "retryableStatusCodes")
-                .unwrap_or(current.retryable_status_codes);
-            super::value_or_error(crate::set_gateway_retry_policy(
-                max_retries,
-                &backoff_strategy,
-                retryable_status_codes,
-            ))
+        "gateway/manualAccount/clear" => {
+            crate::gateway::clear_manual_preferred_account();
+            super::ok_result()
         }
         "gateway/backgroundTasks/get" => {
             super::as_json(crate::usage_refresh::background_tasks_settings())
         }
-        "healthcheck/config/get" => {
-            super::as_json(crate::usage_refresh::current_healthcheck_config())
+        "gateway/concurrencyRecommendation/get" => {
+            super::as_json(crate::gateway::current_gateway_concurrency_recommendation())
         }
-        "healthcheck/config/set" => {
-            let input = crate::BackgroundTasksInput {
-                session_probe_polling_enabled: super::bool_param(req, "enabled")
-                    .or_else(|| super::bool_param(req, "sessionProbePollingEnabled")),
-                session_probe_interval_secs: u64_param(req, "intervalSecs")
-                    .or_else(|| u64_param(req, "sessionProbeIntervalSecs")),
-                session_probe_sample_size: usize_param(req, "sampleSize")
-                    .or_else(|| usize_param(req, "sessionProbeSampleSize")),
-                ..Default::default()
-            };
-            super::value_or_error(
-                crate::set_gateway_background_tasks(input)
-                    .map(|_| crate::usage_refresh::current_healthcheck_config()),
-            )
+        "gateway/codexLatestVersion/get" => {
+            super::value_or_error(crate::fetch_codex_latest_version())
         }
-        "healthcheck/run" => super::value_or_error(crate::usage_refresh::run_session_probe_batch()),
-        "gateway/cache/config/get" => {
-            super::as_json(crate::gateway::current_response_cache_config())
-        }
-        "gateway/cache/config/set" => {
-            let requested_enabled = super::bool_param(req, "enabled");
-            let requested_ttl_secs = u64_param(req, "ttlSecs");
-            let requested_max_entries = usize_param(req, "maxEntries");
-            super::value_or_error((|| {
-                let enabled = if let Some(value) = requested_enabled {
-                    crate::gateway::set_response_cache_enabled(value)
-                } else {
-                    crate::gateway::current_response_cache_config().enabled
-                };
-                let ttl_secs = if let Some(value) = requested_ttl_secs {
-                    crate::gateway::set_response_cache_ttl_secs(value)?
-                } else {
-                    crate::gateway::current_response_cache_ttl_secs()
-                };
-                let max_entries = if let Some(value) = requested_max_entries {
-                    crate::gateway::set_response_cache_max_entries(value)?
-                } else {
-                    crate::gateway::current_response_cache_max_entries()
-                };
-                Ok(serde_json::json!({
-                    "enabled": enabled,
-                    "ttlSecs": ttl_secs,
-                    "maxEntries": max_entries,
-                    "requiresRestart": false,
-                }))
-            })())
-        }
-        "gateway/cache/stats" => super::as_json(crate::gateway::current_response_cache_stats()),
-        "gateway/cache/clear" => super::as_json(crate::gateway::clear_response_cache()),
         "gateway/upstreamProxy/get" => super::as_json(serde_json::json!({
             "proxyUrl": crate::gateway::current_upstream_proxy_url(),
             "envKey": "CODEXMANAGER_UPSTREAM_PROXY_URL",
@@ -140,7 +65,7 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     Value::String(text) => Some(Some(text.as_str())),
                     _ => None,
                 })
-                .or_else(|| super::str_param(req, "url").map(Some));
+                .or_else(|| super::str_param(req, "url").map(|value| Some(value)));
             let proxy_url = requested.unwrap_or(None);
             super::value_or_error(
                 crate::set_gateway_upstream_proxy_url(proxy_url).map(|applied| {
@@ -152,34 +77,21 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 }),
             )
         }
-        "gateway/freeProxy/sync" => {
-            let result = (|| {
-                let input = req
-                    .params
-                    .as_ref()
-                    .map(|params| {
-                        serde_json::from_value::<crate::gateway::FreeProxySyncInput>(params.clone())
-                    })
-                    .transpose()
-                    .map_err(|err| format!("invalid freeproxy sync payload: {err}"))?
-                    .unwrap_or_default();
-                crate::gateway::sync_proxy_pool_from_freeproxy(input)
-            })();
-            super::value_or_error(result)
-        }
-        "gateway/freeProxy/clear" => super::value_or_error(crate::gateway::clear_proxy_pools()),
         "gateway/transport/get" => super::as_json(serde_json::json!({
             "sseKeepaliveIntervalMs": crate::current_gateway_sse_keepalive_interval_ms(),
             "upstreamStreamTimeoutMs": crate::current_gateway_upstream_stream_timeout_ms(),
+            "upstreamTotalTimeoutMs": crate::current_gateway_upstream_total_timeout_ms(),
             "envKeys": [
                 "CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS",
-                "CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS"
+                "CODEXMANAGER_UPSTREAM_STREAM_TIMEOUT_MS",
+                "CODEXMANAGER_UPSTREAM_TOTAL_TIMEOUT_MS"
             ],
             "requiresRestart": false,
         })),
         "gateway/transport/set" => {
             let requested_sse_keepalive_interval_ms = u64_param(req, "sseKeepaliveIntervalMs");
             let requested_upstream_stream_timeout_ms = u64_param(req, "upstreamStreamTimeoutMs");
+            let requested_upstream_total_timeout_ms = u64_param(req, "upstreamTotalTimeoutMs");
             super::value_or_error((|| {
                 let sse_keepalive_interval_ms =
                     if let Some(value) = requested_sse_keepalive_interval_ms {
@@ -193,9 +105,16 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     } else {
                         crate::current_gateway_upstream_stream_timeout_ms()
                     };
+                let upstream_total_timeout_ms =
+                    if let Some(value) = requested_upstream_total_timeout_ms {
+                        crate::set_gateway_upstream_total_timeout_ms(value)?
+                    } else {
+                        crate::current_gateway_upstream_total_timeout_ms()
+                    };
                 Ok(serde_json::json!({
                     "sseKeepaliveIntervalMs": sse_keepalive_interval_ms,
                     "upstreamStreamTimeoutMs": upstream_stream_timeout_ms,
+                    "upstreamTotalTimeoutMs": upstream_total_timeout_ms,
                     "requiresRestart": false,
                 }))
             })())
@@ -211,52 +130,11 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 token_refresh_polling_enabled: super::bool_param(req, "tokenRefreshPollingEnabled")
                     .or_else(|| super::bool_param(req, "tokenRefreshPolling")),
                 token_refresh_poll_interval_secs: u64_param(req, "tokenRefreshPollIntervalSecs"),
-                session_probe_polling_enabled: super::bool_param(req, "sessionProbePollingEnabled")
-                    .or_else(|| super::bool_param(req, "sessionProbePolling")),
-                session_probe_interval_secs: u64_param(req, "sessionProbeIntervalSecs"),
-                session_probe_sample_size: usize_param(req, "sessionProbeSampleSize"),
                 usage_refresh_workers: usize_param(req, "usageRefreshWorkers"),
                 http_worker_factor: usize_param(req, "httpWorkerFactor"),
                 http_worker_min: usize_param(req, "httpWorkerMin"),
                 http_stream_worker_factor: usize_param(req, "httpStreamWorkerFactor"),
                 http_stream_worker_min: usize_param(req, "httpStreamWorkerMin"),
-                auto_register_pool_enabled: super::bool_param(req, "autoRegisterPoolEnabled"),
-                auto_register_ready_account_count: usize_param(
-                    req,
-                    "autoRegisterReadyAccountCount",
-                ),
-                auto_register_ready_remain_percent: u64_param(
-                    req,
-                    "autoRegisterReadyRemainPercent",
-                ),
-                auto_disable_risky_accounts_enabled: super::bool_param(
-                    req,
-                    "autoDisableRiskyAccountsEnabled",
-                ),
-                auto_disable_risky_accounts_failure_threshold: usize_param(
-                    req,
-                    "autoDisableRiskyAccountsFailureThreshold",
-                ),
-                auto_disable_risky_accounts_health_score_threshold: usize_param(
-                    req,
-                    "autoDisableRiskyAccountsHealthScoreThreshold",
-                ),
-                auto_disable_risky_accounts_lookback_mins: u64_param(
-                    req,
-                    "autoDisableRiskyAccountsLookbackMins",
-                ),
-                account_cooldown_auth_secs: u64_param(req, "accountCooldownAuthSecs"),
-                account_cooldown_rate_limited_secs: u64_param(
-                    req,
-                    "accountCooldownRateLimitedSecs",
-                ),
-                account_cooldown_server_error_secs: u64_param(
-                    req,
-                    "accountCooldownServerErrorSecs",
-                ),
-                account_cooldown_network_secs: u64_param(req, "accountCooldownNetworkSecs"),
-                account_cooldown_low_quota_secs: u64_param(req, "accountCooldownLowQuotaSecs"),
-                account_cooldown_deactivated_secs: u64_param(req, "accountCooldownDeactivatedSecs"),
             };
             let input = crate::BackgroundTasksInput {
                 usage_polling_enabled: patch.usage_polling_enabled,
@@ -265,30 +143,11 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 gateway_keepalive_interval_secs: patch.gateway_keepalive_interval_secs,
                 token_refresh_polling_enabled: patch.token_refresh_polling_enabled,
                 token_refresh_poll_interval_secs: patch.token_refresh_poll_interval_secs,
-                session_probe_polling_enabled: patch.session_probe_polling_enabled,
-                session_probe_interval_secs: patch.session_probe_interval_secs,
-                session_probe_sample_size: patch.session_probe_sample_size,
                 usage_refresh_workers: patch.usage_refresh_workers,
                 http_worker_factor: patch.http_worker_factor,
                 http_worker_min: patch.http_worker_min,
                 http_stream_worker_factor: patch.http_stream_worker_factor,
                 http_stream_worker_min: patch.http_stream_worker_min,
-                auto_register_pool_enabled: patch.auto_register_pool_enabled,
-                auto_register_ready_account_count: patch.auto_register_ready_account_count,
-                auto_register_ready_remain_percent: patch.auto_register_ready_remain_percent,
-                auto_disable_risky_accounts_enabled: patch.auto_disable_risky_accounts_enabled,
-                auto_disable_risky_accounts_failure_threshold: patch
-                    .auto_disable_risky_accounts_failure_threshold,
-                auto_disable_risky_accounts_health_score_threshold: patch
-                    .auto_disable_risky_accounts_health_score_threshold,
-                auto_disable_risky_accounts_lookback_mins: patch
-                    .auto_disable_risky_accounts_lookback_mins,
-                account_cooldown_auth_secs: patch.account_cooldown_auth_secs,
-                account_cooldown_rate_limited_secs: patch.account_cooldown_rate_limited_secs,
-                account_cooldown_server_error_secs: patch.account_cooldown_server_error_secs,
-                account_cooldown_network_secs: patch.account_cooldown_network_secs,
-                account_cooldown_low_quota_secs: patch.account_cooldown_low_quota_secs,
-                account_cooldown_deactivated_secs: patch.account_cooldown_deactivated_secs,
             };
             super::value_or_error(crate::set_gateway_background_tasks(input))
         }
@@ -298,6 +157,18 @@ pub(super) fn try_handle(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
     Some(super::response(req, result))
 }
 
+/// 函数 `u64_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn u64_param(req: &JsonRpcRequest, key: &str) -> Option<u64> {
     let value = req.params.as_ref()?.get(key)?;
     match value {
@@ -307,31 +178,18 @@ fn u64_param(req: &JsonRpcRequest, key: &str) -> Option<u64> {
     }
 }
 
+/// 函数 `usize_param`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - req: 参数 req
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn usize_param(req: &JsonRpcRequest, key: &str) -> Option<usize> {
     u64_param(req, key).and_then(|value| usize::try_from(value).ok())
-}
-
-fn u16_array_param(req: &JsonRpcRequest, key: &str) -> Option<Vec<u16>> {
-    let items = req.params.as_ref()?.get(key)?.as_array()?;
-    items
-        .iter()
-        .map(|item| match item {
-            Value::Number(number) => number.as_u64().and_then(|value| u16::try_from(value).ok()),
-            Value::String(text) => text.trim().parse::<u16>().ok(),
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()
-}
-
-fn string_array_param(req: &JsonRpcRequest, key: &str) -> Option<Vec<String>> {
-    let items = req.params.as_ref()?.get(key)?.as_array()?;
-    Some(
-        items
-            .iter()
-            .filter_map(|item| item.as_str())
-            .map(str::trim)
-            .filter(|item| !item.is_empty())
-            .map(ToString::to_string)
-            .collect(),
-    )
 }

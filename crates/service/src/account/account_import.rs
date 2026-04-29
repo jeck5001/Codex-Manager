@@ -1,11 +1,12 @@
 use codexmanager_core::auth::{
-    extract_chatgpt_account_id, extract_workspace_id, parse_id_token_claims, DEFAULT_ISSUER,
+    extract_chatgpt_account_id, extract_chatgpt_user_id, extract_workspace_id,
+    parse_id_token_claims, IdTokenClaims, DEFAULT_ISSUER,
 };
 use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use crate::account_identity::{
@@ -18,6 +19,7 @@ const MAX_ERROR_ITEMS: usize = 50;
 const DEFAULT_IMPORT_BATCH_SIZE: usize = 200;
 const IMPORT_BATCH_SIZE_ENV: &str = "CODEXMANAGER_ACCOUNT_IMPORT_BATCH_SIZE";
 const ACCOUNT_SORT_STEP: i64 = 5;
+const IMPORT_TOKEN_SUBJECT_PREFIX: &str = "import-token-";
 
 #[derive(Debug, Serialize)]
 pub(crate) struct AccountImportResult {
@@ -38,9 +40,7 @@ struct AccountImportError {
 struct ImportTokenPayload {
     access_token: String,
     id_token: String,
-    refresh_token: Option<String>,
-    session_token: Option<String>,
-    cookies: Option<String>,
+    refresh_token: String,
     account_id_hint: Option<String>,
     chatgpt_account_id_hint: Option<String>,
 }
@@ -50,6 +50,8 @@ struct ImportAccountMeta {
     label: Option<String>,
     issuer: Option<String>,
     group_name: Option<String>,
+    note: Option<String>,
+    tags: Option<String>,
     workspace_id: Option<String>,
     chatgpt_account_id: Option<String>,
 }
@@ -57,10 +59,24 @@ struct ImportAccountMeta {
 #[derive(Default)]
 struct ExistingAccountIndex {
     by_id: HashMap<String, Account>,
+    by_subject_storage_id: HashMap<String, String>,
+    by_subject_key: HashMap<String, String>,
+    ambiguous_subject_keys: HashSet<String>,
     next_sort: i64,
 }
 
 impl ExistingAccountIndex {
+    /// 函数 `build`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - storage: 参数 storage
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn build(storage: &Storage) -> Result<Self, String> {
         let accounts = storage.list_accounts().map_err(|e| e.to_string())?;
         let mut idx = ExistingAccountIndex::default();
@@ -70,9 +86,29 @@ impl ExistingAccountIndex {
                 .max(account.sort.saturating_add(ACCOUNT_SORT_STEP));
             idx.by_id.insert(account.id.clone(), account);
         }
+        for token in storage.list_tokens().map_err(|e| e.to_string())? {
+            if let Some(account) = idx.by_id.get(&token.account_id).cloned() {
+                idx.index_token_subject(&account, &token);
+            }
+        }
         Ok(idx)
     }
 
+    /// 函数 `find_existing_account_id`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - chatgpt_account_id: 参数 chatgpt_account_id
+    /// - workspace_id: 参数 workspace_id
+    /// - fallback_subject_key: 参数 fallback_subject_key
+    /// - account_id_hint: 参数 account_id_hint
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn find_existing_account_id(
         &self,
         chatgpt_account_id: Option<&str>,
@@ -80,20 +116,158 @@ impl ExistingAccountIndex {
         fallback_subject_key: Option<&str>,
         account_id_hint: Option<&str>,
     ) -> Option<String> {
+        if let Some(found) =
+            self.find_by_subject_identity(chatgpt_account_id, workspace_id, fallback_subject_key)
+        {
+            return Some(found);
+        }
+        if fallback_subject_key.is_some() {
+            return None;
+        }
         pick_existing_account_id_by_identity(
             self.by_id.values(),
             chatgpt_account_id,
             workspace_id,
-            fallback_subject_key,
+            None,
             account_id_hint,
         )
     }
 
+    /// 函数 `find_by_subject_identity`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - chatgpt_account_id: 参数 chatgpt_account_id
+    /// - workspace_id: 参数 workspace_id
+    /// - fallback_subject_key: 参数 fallback_subject_key
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    fn find_by_subject_identity(
+        &self,
+        chatgpt_account_id: Option<&str>,
+        workspace_id: Option<&str>,
+        fallback_subject_key: Option<&str>,
+    ) -> Option<String> {
+        let subject_key = fallback_subject_key
+            .map(str::trim)
+            .filter(|v| !v.is_empty())?;
+        let scoped_id =
+            build_account_storage_id(subject_key, chatgpt_account_id, workspace_id, None);
+        if self.by_id.contains_key(&scoped_id) {
+            return Some(scoped_id);
+        }
+        if let Some(account_id) = self.by_subject_storage_id.get(&scoped_id) {
+            return Some(account_id.clone());
+        }
+        if self.by_id.contains_key(subject_key) {
+            return Some(subject_key.to_string());
+        }
+        if let Some(account_id) = self.by_subject_key.get(subject_key) {
+            return Some(account_id.clone());
+        }
+        None
+    }
+
+    /// 函数 `upsert_index`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account: 参数 account
+    ///
+    /// # 返回
+    /// 无
     fn upsert_index(&mut self, account: &Account) {
         self.by_id.insert(account.id.clone(), account.clone());
     }
+
+    /// 函数 `index_token_subject`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account: 参数 account
+    /// - token: 参数 token
+    ///
+    /// # 返回
+    /// 无
+    fn index_token_subject(&mut self, account: &Account, token: &Token) {
+        let Some(subject_account_id) = extract_import_subject_account_id(
+            None,
+            &token.id_token,
+            &token.access_token,
+            &token.refresh_token,
+        ) else {
+            return;
+        };
+        let Some(subject_key) =
+            build_fallback_subject_key(Some(subject_account_id.as_str()), None::<&str>)
+        else {
+            return;
+        };
+        let scoped_id = build_account_storage_id(
+            subject_key.as_str(),
+            account.chatgpt_account_id.as_deref(),
+            account.workspace_id.as_deref(),
+            None,
+        );
+        self.by_subject_storage_id
+            .insert(scoped_id, account.id.clone());
+        self.record_subject_key(subject_key, account.id.clone());
+    }
+
+    /// 函数 `record_subject_key`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - subject_key: 参数 subject_key
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 无
+    fn record_subject_key(&mut self, subject_key: String, account_id: String) {
+        if self.ambiguous_subject_keys.contains(&subject_key) {
+            return;
+        }
+        match self.by_subject_key.get(&subject_key) {
+            Some(existing) if existing == &account_id => {}
+            Some(_) => {
+                self.by_subject_key.remove(&subject_key);
+                self.ambiguous_subject_keys.insert(subject_key);
+            }
+            None => {
+                self.by_subject_key.insert(subject_key, account_id);
+            }
+        }
+    }
 }
 
+/// 函数 `import_account_auth_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn import_account_auth_json(
     contents: Vec<String>,
 ) -> Result<AccountImportResult, String> {
@@ -110,21 +284,38 @@ pub(crate) fn import_account_auth_json(
     let batch_size = import_batch_size();
 
     for content in contents {
-        let items = parse_items_from_content(&content)?;
-        import_items_in_batches(
-            &storage,
-            &mut index,
-            &mut result,
-            &mut progress,
-            items,
-            batch_size,
-        );
+        match parse_items_from_content(&content) {
+            Ok(items) => {
+                import_items_in_batches(
+                    &storage,
+                    &mut index,
+                    &mut result,
+                    &mut progress,
+                    items,
+                    batch_size,
+                );
+            }
+            Err(err) => {
+                record_import_error(&mut result, &mut progress, err);
+            }
+        }
     }
 
     progress.finish();
     Ok(result)
 }
 
+/// 函数 `import_batch_size`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn import_batch_size() -> usize {
     std::env::var(IMPORT_BATCH_SIZE_ENV)
         .ok()
@@ -133,6 +324,22 @@ fn import_batch_size() -> usize {
         .unwrap_or(DEFAULT_IMPORT_BATCH_SIZE)
 }
 
+/// 函数 `import_items_in_batches`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - index: 参数 index
+/// - result: 参数 result
+/// - progress: 参数 progress
+/// - items: 参数 items
+/// - batch_size: 参数 batch_size
+///
+/// # 返回
+/// 无
 fn import_items_in_batches(
     storage: &Storage,
     index: &mut ExistingAccountIndex,
@@ -175,6 +382,35 @@ fn import_items_in_batches(
     }
 }
 
+/// 函数 `record_import_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - result: 参数 result
+/// - progress: 参数 progress
+/// - message: 参数 message
+///
+/// # 返回
+/// 无
+fn record_import_error(
+    result: &mut AccountImportResult,
+    progress: &mut AccountImportProgress,
+    message: String,
+) {
+    result.total += 1;
+    result.failed += 1;
+    progress.on_item_failure();
+    if result.errors.len() < MAX_ERROR_ITEMS {
+        result.errors.push(AccountImportError {
+            index: result.total,
+            message,
+        });
+    }
+}
+
 #[derive(Debug)]
 struct AccountImportProgress {
     started_at: Instant,
@@ -197,6 +433,17 @@ struct AccountImportBatchProgress {
 }
 
 impl AccountImportProgress {
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn new() -> Self {
         Self {
             started_at: Instant::now(),
@@ -208,6 +455,20 @@ impl AccountImportProgress {
         }
     }
 
+    /// 函数 `begin_batch`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - index: 参数 index
+    /// - total: 参数 total
+    /// - size: 参数 size
+    ///
+    /// # 返回
+    /// 无
     fn begin_batch(&mut self, index: usize, total: usize, size: usize) {
         self.active_batch = Some(AccountImportBatchProgress {
             index,
@@ -220,6 +481,18 @@ impl AccountImportProgress {
         });
     }
 
+    /// 函数 `on_item_success`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - created: 参数 created
+    ///
+    /// # 返回
+    /// 无
     fn on_item_success(&mut self, created: bool) {
         self.processed += 1;
         if created {
@@ -237,6 +510,17 @@ impl AccountImportProgress {
         }
     }
 
+    /// 函数 `on_item_failure`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn on_item_failure(&mut self) {
         self.processed += 1;
         self.failed += 1;
@@ -246,6 +530,17 @@ impl AccountImportProgress {
         }
     }
 
+    /// 函数 `finish_batch`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn finish_batch(&mut self) {
         if let Some(batch) = self.active_batch.take() {
             log::info!(
@@ -263,6 +558,17 @@ impl AccountImportProgress {
         }
     }
 
+    /// 函数 `finish`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 无
     fn finish(&self) {
         log::info!(
             "account import finished: processed={} created={} updated={} failed={} elapsed_ms={}",
@@ -275,6 +581,17 @@ impl AccountImportProgress {
     }
 }
 
+/// 函数 `parse_items_from_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - content: 参数 content
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_items_from_content(content: &str) -> Result<Vec<Value>, String> {
     let trimmed = content.trim();
     if trimmed.is_empty() {
@@ -295,19 +612,36 @@ fn parse_items_from_content(content: &str) -> Result<Vec<Value>, String> {
     Ok(out)
 }
 
+/// 函数 `import_single_item`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - index: 参数 index
+/// - item: 参数 item
+/// - sequence: 参数 sequence
+///
+/// # 返回
+/// 返回函数执行结果
 fn import_single_item(
     storage: &Storage,
     index: &mut ExistingAccountIndex,
     item: &Value,
     sequence: usize,
 ) -> Result<bool, String> {
-    let payload = extract_token_payload(item)?;
+    let payload = extract_token_payload(&item)?;
     let meta = extract_account_meta(item);
     let claims = parse_id_token_claims(&payload.id_token).ok();
-    let subject_account_id = claims
-        .as_ref()
-        .map(|c| c.sub.trim().to_string())
-        .filter(|v| !v.is_empty());
+    let token_fingerprint = token_fingerprint(&payload.refresh_token);
+    let subject_account_id = extract_import_subject_account_id(
+        claims.as_ref(),
+        &payload.id_token,
+        &payload.access_token,
+        &payload.refresh_token,
+    );
     let chatgpt_account_id = clean_value(
         meta.chatgpt_account_id
             .clone()
@@ -318,8 +652,7 @@ fn import_single_item(
                     .and_then(|c| c.auth.as_ref()?.chatgpt_account_id.clone())
             })
             .or_else(|| extract_chatgpt_account_id(&payload.id_token))
-            .or_else(|| extract_chatgpt_account_id(&payload.access_token))
-            .or_else(|| payload.account_id_hint.clone()),
+            .or_else(|| extract_chatgpt_account_id(&payload.access_token)),
     );
 
     let workspace_id = clean_value(
@@ -328,11 +661,15 @@ fn import_single_item(
             .or_else(|| claims.as_ref().and_then(|c| c.workspace_id.clone()))
             .or_else(|| extract_workspace_id(&payload.id_token))
             .or_else(|| extract_workspace_id(&payload.access_token))
+            .or_else(|| payload.account_id_hint.clone())
             .or_else(|| chatgpt_account_id.clone()),
     );
-    let token_fingerprint = token_fingerprint(payload.refresh_token.as_deref().unwrap_or(""));
     let fallback_subject_key =
         build_fallback_subject_key(subject_account_id.as_deref(), None::<&str>);
+    let token_fingerprint_for_id = match subject_account_id.as_deref() {
+        Some(subject) if subject.starts_with(IMPORT_TOKEN_SUBJECT_PREFIX) => None,
+        _ => Some(token_fingerprint.as_str()),
+    };
     let account_id = index
         .find_existing_account_id(
             chatgpt_account_id.as_deref(),
@@ -345,7 +682,7 @@ fn import_single_item(
             subject_account_id.as_deref(),
             chatgpt_account_id.as_deref(),
             workspace_id.as_deref(),
-            Some(token_fingerprint.as_str()),
+            token_fingerprint_for_id,
         )?);
 
     let label = meta
@@ -375,6 +712,8 @@ fn import_single_item(
         .group_name
         .clone()
         .filter(|value| !value.trim().is_empty());
+    let note = meta.note.clone().filter(|value| !value.trim().is_empty());
+    let tags = meta.tags.clone().filter(|value| !value.trim().is_empty());
 
     let now = now_ts();
     let (account_id, account, created) =
@@ -429,31 +768,97 @@ fn import_single_item(
             (account_id.clone(), created, true)
         };
 
-    let preserved_tags = storage
-        .list_account_tags()
-        .ok()
-        .and_then(|map| map.get(&account_id).cloned().flatten());
     storage
         .insert_account(&account)
         .map_err(|e| e.to_string())?;
+    let existing_metadata = storage
+        .find_account_metadata(&account_id)
+        .map_err(|e| e.to_string())?;
+    let merged_note = note.or_else(|| {
+        existing_metadata
+            .as_ref()
+            .and_then(|value| value.note.clone())
+    });
+    let merged_tags = tags.or_else(|| {
+        existing_metadata
+            .as_ref()
+            .and_then(|value| value.tags.clone())
+    });
     storage
-        .update_account_tags(&account_id, preserved_tags.as_deref())
+        .upsert_account_metadata(&account_id, merged_note.as_deref(), merged_tags.as_deref())
         .map_err(|e| e.to_string())?;
     let token = Token {
         account_id: account_id.clone(),
         id_token: payload.id_token,
         access_token: payload.access_token,
-        refresh_token: payload.refresh_token.unwrap_or_default(),
+        refresh_token: payload.refresh_token,
         api_key_access_token: None,
         last_refresh: now,
     };
     storage.insert_token(&token).map_err(|e| e.to_string())?;
-    let merged_cookies = merge_session_token_into_cookies(payload.cookies, payload.session_token);
-    crate::account_payment::store_account_cookies(&account_id, merged_cookies.as_deref())?;
     index.upsert_index(&account);
+    index.index_token_subject(&account, &token);
     Ok(created)
 }
 
+/// 函数 `extract_import_subject_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - claims: 参数 claims
+/// - id_token: 参数 id_token
+/// - access_token: 参数 access_token
+/// - refresh_token: 参数 refresh_token
+///
+/// # 返回
+/// 返回函数执行结果
+fn extract_import_subject_account_id(
+    claims: Option<&IdTokenClaims>,
+    id_token: &str,
+    access_token: &str,
+    refresh_token: &str,
+) -> Option<String> {
+    clean_value(
+        claims
+            .and_then(|c| {
+                c.auth.as_ref().and_then(|auth| {
+                    auth.chatgpt_user_id
+                        .clone()
+                        .or_else(|| auth.user_id.clone())
+                })
+            })
+            .or_else(|| {
+                claims
+                    .map(|c| c.sub.trim().to_string())
+                    .filter(|v| !v.is_empty())
+            })
+            .or_else(|| extract_chatgpt_user_id(id_token))
+            .or_else(|| extract_chatgpt_user_id(access_token))
+            .or_else(|| {
+                if refresh_token.trim().is_empty() {
+                    None
+                } else {
+                    let token_fingerprint = token_fingerprint(refresh_token);
+                    Some(format!("{IMPORT_TOKEN_SUBJECT_PREFIX}{token_fingerprint}"))
+                }
+            }),
+    )
+}
+
+/// 函数 `extract_token_payload`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item: 参数 item
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_token_payload(item: &Value) -> Result<ImportTokenPayload, String> {
     let tokens = item.get("tokens").unwrap_or(item);
     let access_token = required_string_any(
@@ -471,25 +876,14 @@ fn extract_token_payload(item: &Value) -> Result<ImportTokenPayload, String> {
         (item, "id_token"),
         (item, "idToken"),
     ])
-    .unwrap_or_else(|| access_token.clone());
+    .unwrap_or_default();
     let refresh_token = optional_string_any(&[
         (tokens, "refresh_token"),
         (tokens, "refreshToken"),
         (item, "refresh_token"),
         (item, "refreshToken"),
-    ]);
-    let session_token = optional_string_any(&[
-        (tokens, "session_token"),
-        (tokens, "sessionToken"),
-        (item, "session_token"),
-        (item, "sessionToken"),
-    ]);
-    let cookies = optional_string_any(&[
-        (tokens, "cookies"),
-        (tokens, "cookie"),
-        (item, "cookies"),
-        (item, "cookie"),
-    ]);
+    ])
+    .unwrap_or_default();
     let account_id_hint = optional_string_any(&[
         (tokens, "account_id"),
         (tokens, "accountId"),
@@ -506,13 +900,26 @@ fn extract_token_payload(item: &Value) -> Result<ImportTokenPayload, String> {
         access_token,
         id_token,
         refresh_token,
-        session_token,
-        cookies,
         account_id_hint,
         chatgpt_account_id_hint,
     })
 }
 
+/// 函数 `resolve_logical_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - payload: 参数 payload
+/// - subject_account_id: 参数 subject_account_id
+/// - chatgpt_account_id: 参数 chatgpt_account_id
+/// - workspace_id: 参数 workspace_id
+/// - token_fingerprint: 参数 token_fingerprint
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_logical_account_id(
     payload: &ImportTokenPayload,
     subject_account_id: Option<&str>,
@@ -576,6 +983,17 @@ fn resolve_logical_account_id(
     Err("unable to resolve account id from tokens.account_id / id_token / access_token".to_string())
 }
 
+/// 函数 `token_fingerprint`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - refresh_token: 参数 refresh_token
+///
+/// # 返回
+/// 返回函数执行结果
 fn token_fingerprint(refresh_token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(refresh_token.as_bytes());
@@ -587,35 +1005,17 @@ fn token_fingerprint(refresh_token: &str) -> String {
     out
 }
 
-fn merge_session_token_into_cookies(
-    cookies: Option<String>,
-    session_token: Option<String>,
-) -> Option<String> {
-    let normalized_cookies = cookies
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    let normalized_session_token = session_token
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-
-    match (normalized_cookies, normalized_session_token) {
-        (Some(existing), Some(_session_token))
-            if existing.contains("__Secure-next-auth.session-token=")
-                || existing.contains("next-auth.session-token=") =>
-        {
-            Some(existing)
-        }
-        (Some(existing), Some(session_token)) => Some(format!(
-            "{existing}; __Secure-next-auth.session-token={session_token}"
-        )),
-        (None, Some(session_token)) => {
-            Some(format!("__Secure-next-auth.session-token={session_token}"))
-        }
-        (Some(existing), None) => Some(existing),
-        (None, None) => None,
-    }
-}
-
+/// 函数 `extract_account_meta`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item: 参数 item
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_account_meta(item: &Value) -> ImportAccountMeta {
     let meta = item.get("meta").unwrap_or(item);
     ImportAccountMeta {
@@ -627,6 +1027,8 @@ fn extract_account_meta(item: &Value) -> ImportAccountMeta {
             (item, "group_name"),
             (item, "groupName"),
         ]),
+        note: optional_string_any(&[(meta, "note"), (item, "note")]),
+        tags: optional_tags_any(&[(meta, "tags"), (item, "tags")]),
         workspace_id: optional_string_any(&[
             (meta, "workspace_id"),
             (meta, "workspaceId"),
@@ -642,6 +1044,18 @@ fn extract_account_meta(item: &Value) -> ImportAccountMeta {
     }
 }
 
+/// 函数 `required_string`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn required_string(value: &Value, key: &str) -> Result<String, String> {
     let raw = value
         .get(key)
@@ -654,6 +1068,18 @@ fn required_string(value: &Value, key: &str) -> Result<String, String> {
     Ok(out.to_string())
 }
 
+/// 函数 `required_string_any`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+/// - label: 参数 label
+///
+/// # 返回
+/// 返回函数执行结果
 fn required_string_any(candidates: &[(&Value, &str)], label: &str) -> Result<String, String> {
     for (value, key) in candidates {
         if let Ok(found) = required_string(value, key) {
@@ -663,6 +1089,18 @@ fn required_string_any(candidates: &[(&Value, &str)], label: &str) -> Result<Str
     Err(format!("missing field: {label}"))
 }
 
+/// 函数 `optional_string`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
 fn optional_string(value: &Value, key: &str) -> Option<String> {
     value
         .get(key)
@@ -672,9 +1110,82 @@ fn optional_string(value: &Value, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// 函数 `optional_string_any`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 返回函数执行结果
 fn optional_string_any(candidates: &[(&Value, &str)]) -> Option<String> {
     for (value, key) in candidates {
         if let Some(found) = optional_string(value, key) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// 函数 `optional_tags`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+/// - key: 参数 key
+///
+/// # 返回
+/// 返回函数执行结果
+fn optional_tags(value: &Value, key: &str) -> Option<String> {
+    let value = value.get(key)?;
+    if let Some(text) = value.as_str() {
+        let normalized = text
+            .split(',')
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .collect::<Vec<_>>();
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized.join(","))
+        }
+    } else if let Some(items) = value.as_array() {
+        let normalized = items
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .collect::<Vec<_>>();
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized.join(","))
+        }
+    } else {
+        None
+    }
+}
+
+/// 函数 `optional_tags_any`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - candidates: 参数 candidates
+///
+/// # 返回
+/// 返回函数执行结果
+fn optional_tags_any(candidates: &[(&Value, &str)]) -> Option<String> {
+    for (value, key) in candidates {
+        if let Some(found) = optional_tags(value, key) {
             return Some(found);
         }
     }

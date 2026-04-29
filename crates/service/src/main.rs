@@ -1,8 +1,19 @@
+/// 函数 `main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn main() {
     codexmanager_service::portable::bootstrap_current_process();
-    codexmanager_service::initialize_process_logging();
-    let addr = std::env::var("CODEXMANAGER_SERVICE_ADDR")
+    let configured_addr = std::env::var("CODEXMANAGER_SERVICE_ADDR")
         .unwrap_or_else(|_| codexmanager_service::default_listener_bind_addr());
+    let addr = codexmanager_service::listener_bind_addr(&configured_addr);
     println!("codexmanager-service listening on {addr}");
     if let Err(err) = codexmanager_service::start_server(&addr) {
         eprintln!("service stopped: {err}");

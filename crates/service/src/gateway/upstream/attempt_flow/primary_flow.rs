@@ -3,16 +3,17 @@ use codexmanager_core::storage::{Account, Storage, Token};
 use reqwest::header::CONTENT_TYPE;
 use std::time::Instant;
 
+use super::super::GatewayUpstreamResponse;
 use super::fallback_branch::{handle_openai_fallback_branch, FallbackBranchResult};
 use super::primary_attempt::{run_primary_upstream_attempt, PrimaryAttemptResult};
 use super::transport::UpstreamRequestContext;
 
-pub(super) enum PrimaryFlowDecision {
+pub(in crate::gateway::upstream) enum PrimaryFlowDecision {
     Continue {
-        upstream: reqwest::blocking::Response,
+        upstream: GatewayUpstreamResponse,
         auth_token: String,
     },
-    RespondUpstream(reqwest::blocking::Response),
+    RespondUpstream(GatewayUpstreamResponse),
     Failover,
     Terminal {
         status_code: u16,
@@ -20,6 +21,17 @@ pub(super) enum PrimaryFlowDecision {
     },
 }
 
+/// 函数 `resolve_chatgpt_primary_bearer`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_chatgpt_primary_bearer(token: &Token) -> Option<String> {
     let access = token.access_token.trim();
     if access.is_empty() {
@@ -29,8 +41,19 @@ fn resolve_chatgpt_primary_bearer(token: &Token) -> Option<String> {
     }
 }
 
+/// 函数 `run_primary_upstream_flow`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 #[allow(clippy::too_many_arguments)]
-pub(super) fn run_primary_upstream_flow<F>(
+pub(in crate::gateway::upstream) fn run_primary_upstream_flow<F>(
     client: &reqwest::blocking::Client,
     storage: &Storage,
     method: &reqwest::Method,
@@ -45,7 +68,6 @@ pub(super) fn run_primary_upstream_flow<F>(
     upstream_fallback_base: Option<&str>,
     account: &Account,
     token: &mut Token,
-    upstream_cookie: Option<&str>,
     strip_session_affinity: bool,
     debug: bool,
     allow_openai_fallback: bool,
@@ -60,11 +82,7 @@ where
             (access_token, "access_token")
         } else {
             let err = "missing chatgpt access token";
-            super::super::super::mark_account_cooldown_for_status(&account.id, 401);
             log_gateway_result(Some(primary_url), 401, Some(err));
-            if super::super::super::should_failover_status(401, has_more_candidates) {
-                return PrimaryFlowDecision::Failover;
-            }
             return PrimaryFlowDecision::Terminal {
                 status_code: 401,
                 message: err.to_string(),
@@ -89,7 +107,6 @@ where
         incoming_headers,
         body,
         is_stream,
-        upstream_cookie,
         auth_token.as_str(),
         account,
         strip_session_affinity,
@@ -122,7 +139,6 @@ where
         upstream_fallback_base,
         account,
         token,
-        upstream_cookie,
         strip_session_affinity,
         debug,
         allow_openai_fallback,

@@ -104,14 +104,6 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
         account_id: Some("acc_1".to_string()),
         initial_account_id: Some("acc_1".to_string()),
         attempted_account_ids_json: Some(r#"["acc_1"]"#.to_string()),
-        candidate_count: Some(8),
-        attempted_count: Some(1),
-        skipped_count: Some(7),
-        skipped_cooldown_count: Some(6),
-        skipped_inflight_count: Some(1),
-        route_strategy: Some("weighted".to_string()),
-        requested_model: None,
-        model_fallback_path_json: None,
         request_path: "/v1/responses".to_string(),
         original_path: Some("/v1/chat/completions".to_string()),
         adapted_path: Some("/v1/responses".to_string()),
@@ -169,12 +161,6 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
         row.attempted_account_ids_json.as_deref(),
         Some(r#"["acc_1"]"#)
     );
-    assert_eq!(row.candidate_count, Some(8));
-    assert_eq!(row.attempted_count, Some(1));
-    assert_eq!(row.skipped_count, Some(7));
-    assert_eq!(row.skipped_cooldown_count, Some(6));
-    assert_eq!(row.skipped_inflight_count, Some(1));
-    assert_eq!(row.route_strategy.as_deref(), Some("weighted"));
     assert_eq!(row.request_path, log.request_path);
     assert_eq!(row.original_path.as_deref(), Some("/v1/chat/completions"));
     assert_eq!(row.adapted_path.as_deref(), Some("/v1/responses"));
@@ -220,14 +206,6 @@ fn token_stat_failure_still_commits_request_log() {
         account_id: Some("acc_1".to_string()),
         initial_account_id: Some("acc_1".to_string()),
         attempted_account_ids_json: Some(r#"["acc_1"]"#.to_string()),
-        candidate_count: Some(1),
-        attempted_count: Some(1),
-        skipped_count: Some(0),
-        skipped_cooldown_count: Some(0),
-        skipped_inflight_count: Some(0),
-        route_strategy: Some("ordered".to_string()),
-        requested_model: None,
-        model_fallback_path_json: None,
         request_path: "/v1/responses".to_string(),
         original_path: Some("/v1/responses".to_string()),
         adapted_path: Some("/v1/responses".to_string()),
@@ -313,14 +291,6 @@ fn request_logs_support_backend_pagination_and_status_filters() {
                 account_id: Some("acc-log".to_string()),
                 initial_account_id: Some("acc-log".to_string()),
                 attempted_account_ids_json: Some(r#"["acc-log"]"#.to_string()),
-                candidate_count: Some(5),
-                attempted_count: Some(1),
-                skipped_count: Some(4),
-                skipped_cooldown_count: Some(3),
-                skipped_inflight_count: Some(1),
-                route_strategy: Some("balanced".to_string()),
-                requested_model: None,
-                model_fallback_path_json: None,
                 request_path: format!("/v1/responses/{index}"),
                 original_path: Some("/v1/responses".to_string()),
                 adapted_path: Some("/v1/responses".to_string()),
@@ -403,14 +373,6 @@ fn request_logs_filtered_summary_aggregates_counts_and_tokens() {
                 account_id: Some("acc-sum".to_string()),
                 initial_account_id: Some("acc-sum".to_string()),
                 attempted_account_ids_json: Some(r#"["acc-sum"]"#.to_string()),
-                candidate_count: Some(4),
-                attempted_count: Some(1),
-                skipped_count: Some(3),
-                skipped_cooldown_count: Some(2),
-                skipped_inflight_count: Some(1),
-                route_strategy: Some("cost-first".to_string()),
-                requested_model: None,
-                model_fallback_path_json: None,
                 request_path: "/v1/responses".to_string(),
                 original_path: Some("/v1/responses".to_string()),
                 adapted_path: Some("/v1/responses".to_string()),
